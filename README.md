@@ -77,6 +77,7 @@ security boundary, and the future `mcp-compose` path.
 | `state/fixtures/` | Canonical, explicitly labelled console and run fixtures |
 | `docs/console.md` | Console launch, truth model, limitations, and Compose path |
 | `docs/positioning.md` | Industry & SOTA positioning, references |
+| `docs/verification-architecture.md` | Accepted CoffeeMachine verification boundaries and Modelica decision |
 | `examples/bracket/` | The end-to-end walkthrough with real numbers |
 | `experiments/oracle/` | The oracle experiment — the project's decisive measurement |
 
