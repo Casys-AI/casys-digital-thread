@@ -41,7 +41,7 @@ interface ConsoleFixture {
     servers: Array<{
       id: string;
       desired: FleetManifest["servers"][number];
-      drift: { status: string };
+      drift: { status: string; fields: Array<{ field: string; status: string }> };
       demo: boolean;
     }>;
   };
@@ -55,6 +55,7 @@ interface FleetManifest {
     id: string;
     mcpUrl: string;
     healthUrl: string;
+    image: string;
     expectedTools: string[];
     expectedViews?: string[];
   }>;
@@ -160,13 +161,18 @@ for (const desired of manifest.servers) {
     fail(`${desired.id}: desired state differs between manifest and snapshot`);
   }
 }
+if (manifest.servers.some((server) => !server.image.includes("@sha256:"))) {
+  fail("engineering-toolchain images must be digest-pinned in the manifest");
+}
 if (
-  snapshot.fleet.counts.drift !== manifest.servers.length ||
-  snapshot.fleet.servers.some((server) => server.drift.status !== "drift")
+  snapshot.fleet.counts.drift !== 0 ||
+  snapshot.fleet.servers.some((server) =>
+    server.drift.status !== "in_sync" ||
+    server.drift.fields.find((field) => field.field === "image")?.status !==
+      "in_sync"
+  )
 ) {
-  fail(
-    "mutable :latest image references must be surfaced as drift in the fixture",
-  );
+  fail("digest-pinned image fixture must be fully in sync");
 }
 
 if (bundle.schemaVersion !== "1.0" || bundle.bundleId !== bundle.runId) {

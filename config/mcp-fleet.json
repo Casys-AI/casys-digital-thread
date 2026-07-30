@@ -15,7 +15,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3009/mcp",
       "healthUrl": "http://127.0.0.1:3009/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
       "required": true,
       "expectedTools": [
         "syson_project_list",
@@ -83,7 +83,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3014/mcp",
       "healthUrl": "http://127.0.0.1:3014/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
       "required": true,
       "expectedTools": [
         "build123d_execute",
@@ -115,7 +115,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3015/mcp",
       "healthUrl": "http://127.0.0.1:3015/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
       "required": true,
       "expectedTools": [
         "calculix_solve_static"

@@ -10,7 +10,7 @@
       "degraded": 0,
       "unavailable": 0,
       "unknown": 0,
-      "drift": 3
+      "drift": 0
     },
     "servers": [
       {
@@ -23,7 +23,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3009/mcp",
           "healthUrl": "http://127.0.0.1:3009/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
           "required": true,
           "expectedTools": [
             "syson_project_list",
@@ -215,11 +215,11 @@
             "present": true,
             "name": "casys-digital-thread-mcp-syson-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain:latest"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
           }
         },
         "drift": {
-          "status": "drift",
+          "status": "in_sync",
           "fields": [
             {
               "field": "endpoint",
@@ -237,13 +237,10 @@
             },
             {
               "field": "image",
-              "status": "drift",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain:latest",
-              "observed": {
-                "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
-                "repoDigests": []
-              },
-              "message": "Desired image uses the mutable :latest tag; pin a version or digest for reproducible runs."
+              "status": "in_sync",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "message": "Observed image matches desired state."
             },
             {
               "field": "tools",
@@ -273,7 +270,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3014/mcp",
           "healthUrl": "http://127.0.0.1:3014/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
           "required": true,
           "expectedTools": [
             "build123d_execute",
@@ -321,11 +318,11 @@
             "present": true,
             "name": "casys-digital-thread-mcp-build123d-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain:latest"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
           }
         },
         "drift": {
-          "status": "drift",
+          "status": "in_sync",
           "fields": [
             {
               "field": "endpoint",
@@ -343,13 +340,10 @@
             },
             {
               "field": "image",
-              "status": "drift",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain:latest",
-              "observed": {
-                "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
-                "repoDigests": []
-              },
-              "message": "Desired image uses the mutable :latest tag; pin a version or digest for reproducible runs."
+              "status": "in_sync",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "message": "Observed image matches desired state."
             },
             {
               "field": "tools",
@@ -379,7 +373,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3015/mcp",
           "healthUrl": "http://127.0.0.1:3015/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
           "required": true,
           "expectedTools": [
             "calculix_solve_static"
@@ -423,11 +417,11 @@
             "present": true,
             "name": "casys-digital-thread-mcp-calculix-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain:latest"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
           }
         },
         "drift": {
-          "status": "drift",
+          "status": "in_sync",
           "fields": [
             {
               "field": "endpoint",
@@ -445,13 +439,10 @@
             },
             {
               "field": "image",
-              "status": "drift",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain:latest",
-              "observed": {
-                "image": "ghcr.io/casys-ai/engineering-toolchain:latest",
-                "repoDigests": []
-              },
-              "message": "Desired image uses the mutable :latest tag; pin a version or digest for reproducible runs."
+              "status": "in_sync",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "message": "Observed image matches desired state."
             },
             {
               "field": "tools",
