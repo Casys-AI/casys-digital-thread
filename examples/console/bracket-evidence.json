@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "bracket-demo-2026-07-30",
+  "runId": "bracket-demo-2026-07-30",
+  "subject": "Al 6061 mounting bracket",
+  "provenance": {
+    "mode": "fixture",
+    "freshCadExecution": false,
+    "freshFeaExecution": false,
+    "statement": "This bundle content-addresses the checked-in CAD inputs and normalizes the bracket measurements already verified or documented by the example. It is not a claim that the MCP fleet ran while this bundle was generated.",
+    "measurementSources": {
+      "geometry": "checked-in bracket.py and bracket.step",
+      "fea": "documented example in examples/bracket/README.md"
+    }
+  },
+  "artifacts": [
+    {
+      "id": "cad-script",
+      "kind": "script",
+      "path": "examples/bracket/bracket.py",
+      "bytes": 694,
+      "sha256": "4030fbfd2a3607d75524d343aa5a6b819ba6bba6f9349b183d0bb0894c6e2f76"
+    },
+    {
+      "id": "step",
+      "kind": "cad",
+      "path": "examples/bracket/bracket.step",
+      "bytes": 35319,
+      "sha256": "7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac"
+    },
+    {
+      "id": "solve-case",
+      "kind": "solve-case",
+      "path": "examples/bracket/solve-case.json",
+      "bytes": 390,
+      "sha256": "aff5f2069b96307e762513e00954a6390e0c8563672dd36bdb63b4d38ded5400"
+    },
+    {
+      "id": "documented-result-source",
+      "kind": "result-source",
+      "path": "examples/bracket/README.md",
+      "bytes": 1736,
+      "sha256": "b97119ed2ac7f29be1a5231424803bf1fc51353143b5eb76200e816665670b82"
+    }
+  ],
+  "measurements": {
+    "density": {
+      "value": 2700,
+      "unit": "kg/m3"
+    },
+    "volume": {
+      "value": 21079.911,
+      "unit": "mm3"
+    },
+    "mass": {
+      "value": 56.915761,
+      "unit": "g"
+    },
+    "centerOfMass": {
+      "value": [
+        -12.43,
+        0,
+        11.51
+      ],
+      "unit": "mm",
+      "precision": 0.01
+    },
+    "boundingBox": {
+      "value": {
+        "x": 60,
+        "y": 40,
+        "z": 52.5
+      },
+      "unit": "mm"
+    },
+    "maxDisplacement": {
+      "value": 0.043,
+      "unit": "mm",
+      "source": "documented-example"
+    },
+    "maxVonMises": {
+      "value": 26.6,
+      "unit": "MPa",
+      "source": "documented-example"
+    }
+  },
+  "verdicts": [
+    {
+      "id": "massBudget",
+      "status": "pass",
+      "computed": {
+        "value": 56.915761,
+        "unit": "g"
+      },
+      "operator": "<=",
+      "limit": {
+        "value": 70,
+        "unit": "g"
+      },
+      "margin": {
+        "value": 13.084239,
+        "unit": "g"
+      }
+    },
+    {
+      "id": "holdLoad",
+      "status": "pass",
+      "computed": {
+        "value": 26.6,
+        "unit": "MPa"
+      },
+      "operator": "<=",
+      "limit": {
+        "value": 160,
+        "unit": "MPa"
+      },
+      "margin": {
+        "value": 133.4,
+        "unit": "MPa"
+      }
+    }
+  ]
+}

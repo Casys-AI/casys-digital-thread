@@ -18,6 +18,16 @@
       "args": ["run", "-i", "--rm",
                "-v", "cad-exports:/exports",
                "ghcr.io/casys-ai/engineering-toolchain", "calculix"]
+    },
+    "digital-thread-console": {
+      "command": "deno",
+      "args": ["run",
+               "--allow-read=config,state,src/ui,mcp-server.yaml",
+               "--allow-net",
+               "--allow-run=docker",
+               "--allow-env",
+               "server.ts",
+               "--stdio"]
     }
   }
 }

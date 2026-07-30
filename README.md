@@ -30,27 +30,52 @@ The research community is converging on this pattern under the name **physics-in
 
 ## Working in this repo
 
-This is the **workspace**, not a source tree. The servers live in their own repos and run from the published image — you clone only this.
+This is the **workspace and its read-only control console**. The engineering
+servers still live in their own repos and run from the published image — you
+clone only this workspace.
 
-Requirements: Docker (Desktop on macOS).
+Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno +
+Node.js for rebuilding the console.
 
 ```bash
 # 1. Bring up SysON + the three MCP servers over HTTP (optional, for the full stack)
 docker compose up -d          # SysON UI: http://localhost:8180
 
 # 2. Or just open this folder in Claude Code:
-#    .mcp.json wires syson / build123d / calculix over stdio via the toolchain image.
+#    .mcp.json wires syson / build123d / calculix plus the read-only console.
 #    SysON must be reachable on localhost:8180 (docker compose up syson-db syson-app).
 ```
 
 The `cad-exports` named volume is shared between build123d and calculix: a STEP exported by `build123d_export` is immediately readable by `calculix_solve_static` at `/exports/<name>.step`.
 
+## MCP control console
+
+The console exposes one MCP App at
+`ui://casys-digital-thread/console`, with Fleet, Runs, and Workbench views. It
+compares the declared fleet with live MCP and Docker observations; all actions
+are read-only.
+
+```bash
+npm --prefix src/ui ci
+npm --prefix src/ui run build
+deno task start                  # http://127.0.0.1:3020/mcp
+```
+
+When the engineering services are stopped, the console reports them as
+unavailable and keeps the checked-in bracket run explicitly labelled as demo.
+See [docs/console.md](docs/console.md) for the data contract, evidence model,
+security boundary, and the future `mcp-compose` path.
+
 ## Repository map
 
 | Path | Contents |
 |---|---|
-| `.mcp.json` | Claude Code wiring for the three servers (Docker stdio) |
+| `.mcp.json` | Claude Code wiring for the three engineering servers and the console |
 | `docker-compose.yml` | The full stack: SysON + MCP servers over HTTP |
+| `server.ts`, `src/` | Read-only console control plane and MCP App |
+| `config/mcp-fleet.json` | Desired fleet, topology, tools, views, and trust boundaries |
+| `state/fixtures/` | Canonical, explicitly labelled console and run fixtures |
+| `docs/console.md` | Console launch, truth model, limitations, and Compose path |
 | `docs/positioning.md` | Industry & SOTA positioning, references |
 | `examples/bracket/` | The end-to-end walkthrough with real numbers |
 | `experiments/oracle/` | The oracle experiment — the project's decisive measurement |
@@ -64,6 +89,8 @@ The `cad-exports` named volume is shared between build123d and calculix: a STEP 
 | [`@casys/mcp-calculix`](https://jsr.io/@casys/mcp-calculix) | JSR | FEA — mesh + linear static solve |
 | [`@casys/constraint-solver`](https://jsr.io/@casys/constraint-solver) | JSR | units-aware evaluation + z3 solving |
 | [`@casys/mcp-server`](https://jsr.io/@casys/mcp-server) | JSR | the MCP framework all servers build on |
+| [`@casys/mcp-view`](https://jsr.io/@casys/mcp-view) | JSR | MCP App view runtime used by the console |
+| [`@casys/mcp-compose`](https://jsr.io/@casys/mcp-compose) | JSR | deterministic multi-view dashboard composition |
 | [`engineering-toolchain`](https://github.com/Casys-AI/engineering-toolchain) | GHCR | one image bundling the chain + system backends |
 | [`@casys/mcp-erpnext`](https://jsr.io/@casys/mcp-erpnext) | JSR | costing side: part structure → ERPNext BOM with real prices |
 
