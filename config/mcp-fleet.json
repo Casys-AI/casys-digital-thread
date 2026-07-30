@@ -146,11 +146,12 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3016/mcp",
       "healthUrl": "http://127.0.0.1:3016/health",
-      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93",
+      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149",
       "required": true,
       "expectedTools": [
         "modelica_kit_list",
         "modelica_simulate",
+        "modelica_run_list",
         "modelica_run_get"
       ],
       "expectedViews": [],

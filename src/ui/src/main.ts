@@ -11,9 +11,12 @@ import type {
   EvidenceArtifact,
   RequirementVerdict,
   RunDetail,
+  RunMeasurement,
+  RunProvenance,
   RunStage,
   RunStatus,
   ServerRecord,
+  VerdictStatus,
   WorkbenchPanel,
 } from "../../domain/types.ts";
 import { demoRunDetail, makeDemoSnapshot } from "./fixtures.ts";
@@ -29,6 +32,7 @@ interface RuntimeState {
   activeTab: Tab;
   snapshot: ConsoleSnapshot;
   selectedRunId?: string;
+  hasExplicitRunSelection: boolean;
   runDetails: Map<string, RunDetail>;
   loadingRunId?: string;
   refreshing: boolean;
@@ -45,6 +49,7 @@ const runtime: RuntimeState = {
   activeTab: "fleet",
   snapshot: makeDemoSnapshot(),
   selectedRunId: demoRunDetail.id,
+  hasExplicitRunSelection: false,
   runDetails: new Map([[demoRunDetail.id, demoRunDetail]]),
   refreshing: false,
   connection: globalThis.parent === globalThis.window ? "standalone" : "connecting",
@@ -160,7 +165,8 @@ function formatDateTime(value?: string): string {
   }).format(date);
 }
 
-function duration(start: string, end?: string): string {
+function duration(start?: string, end?: string): string {
+  if (!start) return "not recorded";
   if (!end) return "in progress";
   const delta = new Date(end).valueOf() - new Date(start).valueOf();
   if (!Number.isFinite(delta) || delta < 0) return "—";
@@ -175,11 +181,14 @@ function statusTone(
     | Availability
     | RunStatus
     | RunStage["status"]
-    | RequirementVerdict["status"],
+    | RequirementVerdict["status"]
+    | VerdictStatus,
 ): string {
-  if (["healthy", "passed", "pass"].includes(status)) return "ok";
+  if (["healthy", "succeeded", "passed", "pass"].includes(status)) return "ok";
   if (["degraded", "running", "unresolved"].includes(status)) return "warn";
-  if (["failed", "fail", "unavailable", "error"].includes(status)) return "bad";
+  if (["failed", "fail", "timed_out", "unavailable", "error"].includes(status)) {
+    return "bad";
+  }
   return "neutral";
 }
 
@@ -213,6 +222,37 @@ function renderStatus(status: string, extraClass = ""): string {
   return `<span class="status ${statusTone(status as Availability)} ${extraClass}">
     <span class="status-dot" aria-hidden="true"></span>${esc(statusLabel(status))}
   </span>`;
+}
+
+function renderLabeledStatus(label: string, status: string, extraClass = ""): string {
+  return `<span class="labeled-status tone-${
+    statusTone(status as VerdictStatus)
+  } ${extraClass}">
+    <small>${esc(label)}</small>${renderStatus(status)}
+  </span>`;
+}
+
+function preferredRunId(snapshot: ConsoleSnapshot): string | undefined {
+  return snapshot.runs.items.find((run) => run.source === "observed")?.id ??
+    snapshot.runs.items[0]?.id;
+}
+
+function reconcileSelectedRun(snapshot: ConsoleSnapshot): void {
+  if (
+    !runtime.selectedRunId || !runtime.hasExplicitRunSelection ||
+    !snapshot.runs.items.some((run) => run.id === runtime.selectedRunId)
+  ) {
+    runtime.selectedRunId = preferredRunId(snapshot);
+  }
+}
+
+function loadSelectedRunDetailIfNeeded(): void {
+  if (
+    runtime.activeTab === "runs" && runtime.selectedRunId &&
+    !runtime.runDetails.has(runtime.selectedRunId)
+  ) {
+    void loadRunDetail(runtime.selectedRunId);
+  }
 }
 
 function renderHeader(): string {
@@ -501,9 +541,14 @@ function renderRunRail(): string {
         esc(duration(run.startedAt, run.completedAt))
       }</span>
               </span>
-              <span class="run-result tone-${statusTone(run.status)}">${
-        esc(run.status)
-      }</span>
+              ${renderLabeledStatus("simulation", run.status, "run-result")}
+              ${
+        renderLabeledStatus(
+          "verdict",
+          run.verdictStatus,
+          "run-verdict",
+        )
+      }
             </button>
           `).join("")
       : `<p class="empty-note">No runs have been indexed.</p>`
@@ -565,12 +610,16 @@ function renderRequirement(requirement: RequirementVerdict): string {
 }
 
 function renderArtifact(artifact: EvidenceArtifact): string {
+  const location = artifact.path ?? "in-memory artifact";
+  const byteSize = artifact.bytes === undefined
+    ? ""
+    : ` · ${formatBytes(artifact.bytes)}`;
   return `
     <li>
       <span class="artifact-kind">${esc(artifact.kind)}</span>
       <div>
         <strong>${esc(artifact.label)}</strong>
-        <small>${esc(artifact.path ?? "in-memory artifact")}</small>
+        <small title="${esc(location)}">${esc(location)}${esc(byteSize)}</small>
       </div>
       <code title="${esc(artifact.sha256)}">${esc(compactHash(artifact.sha256))}</code>
       ${
@@ -584,14 +633,68 @@ function renderArtifact(artifact: EvidenceArtifact): string {
   `;
 }
 
+function renderMeasurement(measurement: RunMeasurement): string {
+  return `
+    <li>
+      <span>${esc(measurement.label)}</span>
+      <strong>${esc(measurement.value.display)}</strong>
+      <code>${esc(measurement.id)}</code>
+    </li>
+  `;
+}
+
+function renderProvenance(fact: RunProvenance): string {
+  const value = fact.value.includes("sha256") || fact.value.length > 38
+    ? `<code title="${esc(fact.value)}">${esc(compactHash(fact.value))}</code>`
+    : `<span>${esc(fact.value)}</span>`;
+  return `<div><dt>${esc(fact.label)}</dt><dd>${value}</dd></div>`;
+}
+
+function renderRequirements(detail: RunDetail): string {
+  if (detail.verdictStatus === "not_evaluated") {
+    return `
+      <div class="verdict-pending">
+        <div>${renderLabeledStatus("requirement verdict", detail.verdictStatus)}</div>
+        <p>No requirement verdict has been attached. This run proves that the simulation executed; SysON and the constraint solver must evaluate limits, units, and margins separately.</p>
+      </div>
+    `;
+  }
+  if (detail.requirements.length === 0) {
+    return `<p class="empty-note">A requirement verdict was reported, but no individual requirement rows were supplied.</p>`;
+  }
+  return `
+    <div class="table-scroll">
+      <table>
+        <caption class="sr-only">Requirement computations, limits, margins, and verdicts</caption>
+        <thead><tr><th>Requirement</th><th>Computed</th><th>Limit</th><th>Margin</th><th>Verdict</th></tr></thead>
+        <tbody>${detail.requirements.map(renderRequirement).join("")}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 function renderRunDetail(detail: RunDetail): string {
+  const requirementCount = detail.passedRequirements + detail.failedRequirements +
+    detail.unresolvedRequirements;
+  const lineageTitle = detail.verdictStatus === "not_evaluated"
+    ? "Input → simulation evidence"
+    : "Requirement → proof";
   return `
     <section class="run-detail">
       <header class="run-titlebar">
         <div>
           <div class="title-line">
             <p class="eyebrow">${esc(detail.id)} // ${esc(detail.source)}</p>
-            ${renderStatus(detail.status)}
+            <div class="run-status-pair">
+              ${renderLabeledStatus("simulation", detail.status)}
+              ${renderLabeledStatus("verdict", detail.verdictStatus)}
+            </div>
           </div>
           <h2>${esc(detail.name)}</h2>
           <p>${esc(detail.description)}</p>
@@ -601,34 +704,56 @@ function renderRunDetail(detail: RunDetail): string {
           <div><dt>Elapsed</dt><dd>${
     esc(duration(detail.startedAt, detail.completedAt))
   }</dd></div>
-          <div><dt>Requirements</dt><dd>${detail.passedRequirements}/${
-    detail.passedRequirements + detail.failedRequirements +
-    detail.unresolvedRequirements
+          <div><dt>Requirements</dt><dd>${
+    detail.verdictStatus === "not_evaluated"
+      ? "not evaluated"
+      : `${detail.passedRequirements}/${requirementCount}`
   }</dd></div>
         </dl>
       </header>
 
       <section class="lineage-block" aria-labelledby="lineage-title">
         <div class="block-heading">
-          <div><span>Execution lineage</span><h3 id="lineage-title">Requirement → proof</h3></div>
-          <small>Each stage declares its provenance; checked-in artifacts are hashed.</small>
+          <div><span>Execution lineage</span><h3 id="lineage-title">${
+    esc(lineageTitle)
+  }</h3></div>
+          <small>Each stage declares its provenance; immutable artifacts are hashed.</small>
         </div>
         <ol class="lineage">${detail.stages.map(renderLineageStage).join("")}</ol>
       </section>
 
       <div class="evidence-grid">
         <section class="requirements-block">
+          <div class="block-heading observations-heading">
+            <div><span>Computed observations</span><h3>Simulation observations</h3></div>
+            <small>Value + unit</small>
+          </div>
+          ${
+    detail.measurements.length
+      ? `<ul class="measurement-list">${
+        detail.measurements.map(renderMeasurement).join("")
+      }</ul>`
+      : `<p class="empty-note">No direct computed observations were attached to this run.</p>`
+  }
+          ${
+    detail.provenance.length
+      ? `<dl class="provenance-list">${
+        detail.provenance.map(renderProvenance).join("")
+      }</dl>`
+      : ""
+  }
+          ${
+    detail.warnings.length
+      ? `<ul class="run-warnings">${
+        detail.warnings.map((warning) => `<li>${esc(warning)}</li>`).join("")
+      }</ul>`
+      : ""
+  }
           <div class="block-heading">
             <div><span>Computed margin</span><h3>Requirement verdicts</h3></div>
-            <small>No inferred values</small>
+            <small>Never inferred from execution status</small>
           </div>
-          <div class="table-scroll">
-            <table>
-              <caption class="sr-only">Requirement computations, limits, margins, and verdicts</caption>
-              <thead><tr><th>Requirement</th><th>Computed</th><th>Limit</th><th>Margin</th><th>Verdict</th></tr></thead>
-              <tbody>${detail.requirements.map(renderRequirement).join("")}</tbody>
-            </table>
-          </div>
+          ${renderRequirements(detail)}
         </section>
 
         <section class="artifacts-block">
@@ -1011,13 +1136,7 @@ async function refreshSnapshot(): Promise<void> {
     const result = await runtime.ctx.callTool("console_refresh", {});
     runtime.snapshot = snapshotFromResult(result);
     runtime.connection = "hosted";
-    const firstRun = runtime.snapshot.runs.items[0];
-    if (
-      !runtime.selectedRunId ||
-      !runtime.snapshot.runs.items.some((run) => run.id === runtime.selectedRunId)
-    ) {
-      runtime.selectedRunId = firstRun?.id;
-    }
+    reconcileSelectedRun(runtime.snapshot);
     runtime.notice = {
       tone: "info",
       message: `Observed state refreshed at ${
@@ -1034,17 +1153,13 @@ async function refreshSnapshot(): Promise<void> {
   } finally {
     runtime.refreshing = false;
     renderNow();
-    if (
-      runtime.activeTab === "runs" && runtime.selectedRunId &&
-      !runtime.runDetails.has(runtime.selectedRunId)
-    ) {
-      void loadRunDetail(runtime.selectedRunId);
-    }
+    loadSelectedRunDetailIfNeeded();
   }
 }
 
 async function selectRun(id: string): Promise<void> {
   runtime.selectedRunId = id;
+  runtime.hasExplicitRunSelection = true;
   renderNow();
   if (!runtime.runDetails.has(id)) await loadRunDetail(id);
 }
@@ -1090,12 +1205,7 @@ const consoleView = defineView<ViewState, void, ConsoleSnapshot>({
   render(ctx, snapshot) {
     runtime.ctx = ctx;
     runtime.snapshot = snapshot;
-    if (
-      !runtime.selectedRunId ||
-      !snapshot.runs.items.some((run) => run.id === runtime.selectedRunId)
-    ) {
-      runtime.selectedRunId = snapshot.runs.items[0]?.id;
-    }
+    reconcileSelectedRun(snapshot);
     return buildConsole();
   },
 });
@@ -1131,7 +1241,9 @@ async function boot(): Promise<void> {
       if (!isConsoleSnapshot(result.structuredContent)) return;
       runtime.snapshot = result.structuredContent;
       runtime.connection = "hosted";
+      reconcileSelectedRun(runtime.snapshot);
       renderNow();
+      loadSelectedRunDetailIfNeeded();
     };
     renderNow();
   } catch (error) {

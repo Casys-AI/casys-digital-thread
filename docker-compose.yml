@@ -101,7 +101,9 @@ services:
   # This image is intentionally independent from engineering-toolchain: OMC
   # and MSL have a separate release, verification path, and evidence volume.
   mcp-modelica:
-    image: ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93
+    # MCP_MODELICA_IMAGE lets a locally verified sidecar be tested without
+    # spending a GitHub Actions image build. The committed default stays pinned.
+    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149}"
     ports:
       - "127.0.0.1:3016:3016"
     volumes:
