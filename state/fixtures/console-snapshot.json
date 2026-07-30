@@ -5,8 +5,8 @@
   "fleet": {
     "status": "healthy",
     "counts": {
-      "total": 3,
-      "healthy": 3,
+      "total": 4,
+      "healthy": 4,
       "degraded": 0,
       "unavailable": 0,
       "unknown": 0,
@@ -450,6 +450,113 @@
               "desired": 1,
               "observed": 1,
               "message": "The expected solve tool is present."
+            },
+            {
+              "field": "resources",
+              "status": "in_sync",
+              "desired": 0,
+              "observed": 0,
+              "message": "No native UI resource is expected."
+            }
+          ]
+        },
+        "demo": true
+      },
+      {
+        "id": "modelica",
+        "desired": {
+          "id": "modelica",
+          "displayName": "OpenModelica",
+          "role": "Dynamic multi-physics system simulation and time-series evidence",
+          "serviceName": "mcp-modelica",
+          "transport": "streamable-http",
+          "mcpUrl": "http://127.0.0.1:3016/mcp",
+          "healthUrl": "http://127.0.0.1:3016/health",
+          "image": "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93",
+          "required": true,
+          "expectedTools": [
+            "modelica_kit_list",
+            "modelica_simulate",
+            "modelica_run_get"
+          ],
+          "expectedViews": [],
+          "network": {
+            "exposure": "loopback-only",
+            "composeNetwork": "chain",
+            "sharedVolumes": [
+              "casys-digital-thread-modelica-runs:/runs"
+            ],
+            "upstreams": []
+          },
+          "trust": {
+            "level": "first-party-local",
+            "executesArbitraryCode": false,
+            "notes": [
+              "Only approved, versioned Modelica kits and scenarios can run; callers cannot submit source, scripts or paths.",
+              "The bounded run volume retains hashed simulation evidence; a successful simulation is not a requirement verdict."
+            ]
+          }
+        },
+        "observed": {
+          "checkedAt": "2026-07-30T12:11:15.000Z",
+          "status": "healthy",
+          "latencyMs": 22,
+          "httpStatus": 200,
+          "mcp": {
+            "reachable": true,
+            "serverName": "mcp-modelica",
+            "tools": [
+              {
+                "name": "modelica_kit_list"
+              },
+              {
+                "name": "modelica_simulate"
+              },
+              {
+                "name": "modelica_run_get"
+              }
+            ],
+            "resourceUris": [],
+            "viewerUris": []
+          },
+          "container": {
+            "runtimeAvailable": true,
+            "present": true,
+            "name": "casys-digital-thread-mcp-modelica-1",
+            "state": "running",
+            "image": "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93"
+          }
+        },
+        "drift": {
+          "status": "in_sync",
+          "fields": [
+            {
+              "field": "endpoint",
+              "status": "in_sync",
+              "desired": "http://127.0.0.1:3016/mcp",
+              "observed": "http://127.0.0.1:3016/mcp",
+              "message": "MCP endpoint matches the manifest."
+            },
+            {
+              "field": "health",
+              "status": "in_sync",
+              "desired": "healthy",
+              "observed": "healthy",
+              "message": "Health probe succeeded."
+            },
+            {
+              "field": "image",
+              "status": "in_sync",
+              "desired": "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93",
+              "observed": "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93",
+              "message": "Observed image matches desired state."
+            },
+            {
+              "field": "tools",
+              "status": "in_sync",
+              "desired": 3,
+              "observed": 3,
+              "message": "All expected tools are present."
             },
             {
               "field": "resources",

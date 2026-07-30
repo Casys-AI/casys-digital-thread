@@ -39,7 +39,7 @@ docker compose up -d
 MCP_PORT=3020 MCP_HOSTNAME=127.0.0.1 deno task start
 ```
 
-Docker is required for real container/image observations, and the three
+Docker is required for real container/image observations, and the four
 configured MCP HTTP endpoints must be reachable. Without them, the console
 still starts but labels unavailable observations and demo evidence instead of
 presenting them as live.
@@ -73,6 +73,9 @@ The verifier reads only; it does not rewrite evidence.
   by version or digest.
 - `build123d_execute` runs Python. The current shared Compose network is
   acceptable only for trusted local inputs and still needs stronger isolation.
+- `mcp-modelica` has no native viewer yet. Its three tools expose bounded,
+  approved simulations and hashed run evidence; it must not receive a static
+  Workbench panel that could be mistaken for a real run viewer.
 - This MVP is a fixed cockpit. A later `mcp-compose` integration can render
   agent-generated YAML layouts and route their cross-panel events; it is not
   part of this change.

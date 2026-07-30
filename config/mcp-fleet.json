@@ -137,6 +137,39 @@
           "Native meshing and solver processes still require untrusted-input hardening."
         ]
       }
+    },
+    {
+      "id": "modelica",
+      "displayName": "OpenModelica",
+      "role": "Dynamic multi-physics system simulation and time-series evidence",
+      "serviceName": "mcp-modelica",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3016/mcp",
+      "healthUrl": "http://127.0.0.1:3016/health",
+      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93",
+      "required": true,
+      "expectedTools": [
+        "modelica_kit_list",
+        "modelica_simulate",
+        "modelica_run_get"
+      ],
+      "expectedViews": [],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread-modelica-runs:/runs"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Only approved, versioned Modelica kits and scenarios can run; callers cannot submit source, scripts or paths.",
+          "The bounded run volume retains hashed simulation evidence; a successful simulation is not a requirement verdict."
+        ]
+      }
     }
   ],
   "workbench": [

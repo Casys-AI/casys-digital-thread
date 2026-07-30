@@ -6,6 +6,7 @@
 #   mcp-syson              MCP over HTTP on http://localhost:3009
 #   mcp-build123d          MCP over HTTP on http://localhost:3014
 #   mcp-calculix           MCP over HTTP on http://localhost:3015
+#   mcp-modelica           MCP over HTTP on http://localhost:3016
 #
 # The MCP servers bind 0.0.0.0 INSIDE their containers (required to be
 # reachable through the port mapping); the mapping itself is loopback-only,
@@ -97,9 +98,28 @@ services:
       - exports:/exports
     networks: [chain]
 
+  # This image is intentionally independent from engineering-toolchain: OMC
+  # and MSL have a separate release, verification path, and evidence volume.
+  mcp-modelica:
+    image: ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93
+    ports:
+      - "127.0.0.1:3016:3016"
+    volumes:
+      - modelica-runs:/runs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3016/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
 networks:
   chain:
 
 volumes:
   syson-db-data:
   exports:
+  # An explicit Docker name lets Compose and the direct stdio MCP share
+  # immutable Modelica run records for modelica_run_get.
+  modelica-runs:
+    name: casys-digital-thread-modelica-runs

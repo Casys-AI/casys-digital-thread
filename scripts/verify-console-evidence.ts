@@ -117,7 +117,7 @@ if (manifest.schemaVersion !== "1.0" || manifest.version !== 1) {
   fail("config/mcp-fleet.json must use schemaVersion 1.0 and version 1");
 }
 
-const expectedServerIds = ["syson", "build123d", "calculix"];
+const expectedServerIds = ["syson", "build123d", "calculix", "modelica"];
 const manifestServerIds = manifest.servers.map((server) => server.id);
 if (JSON.stringify(manifestServerIds) !== JSON.stringify(expectedServerIds)) {
   fail(`manifest server order/IDs differ: ${manifestServerIds.join(", ")}`);
@@ -162,7 +162,7 @@ for (const desired of manifest.servers) {
   }
 }
 if (manifest.servers.some((server) => !server.image.includes("@sha256:"))) {
-  fail("engineering-toolchain images must be digest-pinned in the manifest");
+  fail("images must be digest-pinned in the manifest");
 }
 if (
   snapshot.fleet.counts.drift !== 0 ||

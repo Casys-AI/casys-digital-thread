@@ -19,6 +19,13 @@
                "-v", "cad-exports:/exports",
                "ghcr.io/casys-ai/engineering-toolchain", "calculix"]
     },
+    "modelica": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "-v", "casys-digital-thread-modelica-runs:/runs",
+               "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93",
+               "--stdio"]
+    },
     "digital-thread-console": {
       "command": "deno",
       "args": ["run",

@@ -35,7 +35,7 @@ Key references:
 1. **Model-driven, not prompt-driven.** The papers start from a natural-language prompt; this chain starts from a SysML v2 model with traced requirements. The MBSE ↔ geometry hop is nearly absent from the literature.
 2. **Protocol-level composition.** Paper harnesses are monolithic; these links are independent MCP servers any agent composes — no glue code between packages, the contract is data.
 3. **Units as values.** 2.5 kg against a 4 lb budget fails; most published verifiers compare bare numbers. Unit-blindness in an oracle is a false-positive machine, and false positives are worse than no oracle.
-4. **Shipped infrastructure**, not paper artifacts: five JSR packages, a GHCR image, reproducible for free on any machine with Docker.
+4. **Shipped infrastructure**, not paper artifacts: published JSR packages and digest-pinned GHCR images, reproducible on any machine with Docker.
 
 ## Where the papers are ahead — the open work
 

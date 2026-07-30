@@ -13,6 +13,7 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "syson",
     "build123d",
     "calculix",
+    "modelica",
   ]);
   assertEquals(manifest.servers[1].network?.exposure, "loopback-only");
   assertEquals(

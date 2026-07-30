@@ -65,15 +65,17 @@ kit/adaptateur structurel, pas le vérificateur global de CoffeeMachine.
 
 ## Déploiement choisi
 
-`mcp-modelica` sera un serveur indépendant, dans une image sidecar dérivée et
-verrouillée de `openmodelica/openmodelica:v1.27.0-minimal`, avec la version de la
+`mcp-modelica` est un serveur indépendant, dans une image sidecar dérivée et
+verrouillée par digest de `openmodelica/openmodelica:v1.27.0-minimal`, avec la version de la
 Modelica Standard Library intégrée à l'image. Il n'entre pas dans l'image
 `engineering-toolchain` actuelle : il a son propre cycle de release, ses artefacts et
 son budget disque.
 
-L'image sera multi-architecture : arm64 natif sur le Mac et amd64 en CI ou en
-production. Les modèles, paramètres, résultats CSV/JSON et tolérances de test sont
-versionnés, afin que l'architecture ne change pas le sens de la preuve.
+L'image publiée est un index OCI multi-architecture, `linux/arm64` natif sur le Mac
+et `linux/amd64` en CI ou en production. Le fleet et Compose la référencent par son
+digest, avec un volume `/runs` dédié et sans partage d'exports CAD. Les modèles,
+paramètres, résultats CSV/JSON et tolérances de test sont versionnés, afin que
+l'architecture ne change pas le sens de la preuve.
 
 ## Ce que nous ne créons pas
 
@@ -94,7 +96,8 @@ versionnés, afin que l'architecture ne change pas le sens de la preuve.
    nominal versionné et des sorties CSV/JSON hashées.
 2. Construire `mcp-modelica`, puis faire évaluer ses observations par les outils de
    contraintes existants.
-3. L'ajouter au fleet/Compose seulement après un run réel reproductible.
+3. L'ajouter au fleet/Compose après un run réel reproductible : fait avec l'image
+   `mcp-modelica` 0.1.4, dont les builds amd64 et arm64 exécutent le kit CoffeeMachine.
 4. Extraire un contrat de preuve partagé seulement lorsqu'un second producteur impose
    réellement le même format durable.
 
