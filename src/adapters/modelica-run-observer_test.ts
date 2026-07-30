@@ -70,6 +70,16 @@ Deno.test("ModelicaRunObserver reads persisted evidence through MCP and keeps ex
   }]);
   assertEquals(loaded?.status, "succeeded");
   assertEquals(loaded?.verdictStatus, "not_evaluated");
+  assertEquals(loaded?.modelicaEvidence, {
+    runId: "run_123",
+    fingerprint: "fingerprint-123",
+    model: {
+      id: "coffee-machine-v1",
+      version: "1.0.0",
+      sha256: "model-sha",
+    },
+    scenario: { id: "heat-up-nominal", sha256: "scenario-sha" },
+  });
   assertEquals(loaded?.measurements, [{
     id: "water_temperature_max",
     label: "Maximum water temperature",

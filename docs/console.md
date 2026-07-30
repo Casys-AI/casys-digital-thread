@@ -1,9 +1,15 @@
-# MCP console
+# Reference: MCP console
 
 The console is a read-only MCP App for seeing the engineering fleet and its
 evidence without turning the language model into the control plane. Its own
 tool is `console_snapshot`; its view is
 `ui://casys-digital-thread/console`.
+
+This is a reference page. For a guided CoffeeMachine result, use the
+[tutorial](tutorials/coffee-machine-nominal.md); for opening the local browser
+host, use the [how-to](how-to/preview-console.md). The
+[workspace map](reference/workspace-map.md) is the authoritative path and port
+lookup.
 
 ## Three surfaces
 
@@ -17,15 +23,20 @@ tool is `console_snapshot`; its view is
   MCP server. The checked-in bracket is explicitly a demo run, backed by
   [`examples/console/bracket-evidence.json`](../examples/console/bracket-evidence.json).
   A Modelica `succeeded` state means only that OpenModelica computed evidence;
-  the console renders `not_evaluated` until SysON and the constraint solver
-  attach a requirement verdict.
+  the console renders `not_evaluated` until a comparison is attached. The
+  exact CoffeeMachine nominal model/scenario binding has one live,
+  units-aware `syson_constraint_evaluate` comparison against its versioned
+  `90 degC` scenario target. It is labelled a provisional scenario contract,
+  never a product requirement or SysON project requirement.
 - **Workbench** lists the SysON MCP Apps, the SysON web UI, and CAD/FEA
   evidence panels intended for composition. Cross-panel selection is declared
   but not active in this MVP.
 
-## Launch
+## Connection reference
 
-Deno is enough to launch the console itself:
+The console server's default endpoint is `http://127.0.0.1:3020/mcp`. It
+binds to `127.0.0.1` by default and accepts `MCP_PORT` / `MCP_HOSTNAME` or
+`--port` / `--hostname` overrides. Deno is enough to launch it:
 
 ```bash
 deno task check
@@ -35,6 +46,20 @@ MCP_PORT=3020 MCP_HOSTNAME=127.0.0.1 deno task dev
 Connect an MCP-capable host to `http://127.0.0.1:3020/mcp`, then call
 `console_snapshot`. A UI-capable host renders the returned console resource;
 other hosts still receive the structured JSON snapshot.
+
+For a local browser rendering of that same live MCP App, leave the console on
+`3020` and start the read-only harness in another terminal:
+
+```bash
+deno task preview:browser         # http://127.0.0.1:3021/
+```
+
+The harness reads `ui://casys-digital-thread/console` through `resources/read`
+and relays only `console_snapshot`, `console_run_detail`, and
+`console_refresh` through a persistent MCP session. It is deliberately marked
+as a local MCP Apps harness: it is not a `mcp-compose` dashboard. Its exact
+scope and health check are documented in the
+[browser-preview how-to](how-to/preview-console.md).
 
 For real Fleet probes, start the engineering services first:
 
@@ -79,9 +104,10 @@ The verifier reads only; it does not rewrite evidence.
   acceptable only for trusted local inputs and still needs stronger isolation.
 - `mcp-modelica` has no native viewer yet. Its four tools expose bounded,
   approved simulations and hashed run evidence. The console uses only
-  `modelica_run_list` and `modelica_run_get` to index that evidence; it must
-  not receive a static Workbench panel that could be mistaken for a real run
-  viewer.
+  `modelica_run_list` and `modelica_run_get` to index that evidence; for an
+  exact versioned Coffee scenario binding it may make the additional read-only
+  `syson_constraint_evaluate` call. It must not receive a static Workbench
+  panel that could be mistaken for a real run viewer.
 - This MVP is a fixed cockpit. A later `mcp-compose` integration can render
   agent-generated YAML layouts and route their cross-panel events; it is not
   part of this change.

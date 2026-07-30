@@ -222,6 +222,12 @@ function toDetail(value: unknown, path: string): RunDetail {
     evidence: artifacts.map((artifact, index) =>
       toArtifact(artifact, run.runId, index, `${path}.artifacts[${index}]`)
     ),
+    modelicaEvidence: {
+      runId: run.runId,
+      fingerprint: run.fingerprint,
+      model: run.model,
+      scenario: run.scenario,
+    },
   };
 }
 

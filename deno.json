@@ -6,11 +6,12 @@
   "tasks": {
     "start": "deno run --allow-read=config,state,src/ui,mcp-server.yaml --allow-net --allow-run=docker --allow-env server.ts",
     "dev": "deno run --watch=server.ts,src,config,state --allow-read=config,state,src/ui,mcp-server.yaml --allow-net --allow-run=docker --allow-env server.ts",
-    "check": "deno check server.ts",
+    "preview:browser": "deno run --allow-net=127.0.0.1 scripts/console-browser-harness.ts",
+    "check": "deno check server.ts scripts/console-browser-harness.ts",
     "test": "deno test --allow-read=config,state,src/ui,mcp-server.yaml --allow-net=127.0.0.1,localhost --allow-env src",
     "verify:evidence": "deno run --allow-read scripts/verify-console-evidence.ts",
-    "fmt": "deno fmt --check deno.json server.ts src/adapters src/domain src/tools src/ui/src",
-    "lint": "deno lint server.ts src"
+    "fmt": "deno fmt --check deno.json server.ts scripts src/adapters src/domain src/tools && deno fmt --check src/ui/src",
+    "lint": "deno lint server.ts scripts src"
   },
   "fmt": {
     "lineWidth": 88,

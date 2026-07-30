@@ -52,7 +52,7 @@ export function registerControlPlaneTools(
     const run = await controlPlane.runDetail(id);
     return {
       content:
-        `${run.name}: execution ${run.status}; requirement verdict ${run.verdictStatus}. Source: ${run.source}.`,
+        `${run.name}: execution ${run.status}; comparison verdict ${run.verdictStatus}. Source: ${run.source}.`,
       structuredContent: run,
     };
   });
@@ -105,7 +105,7 @@ const serverDetailTool: MCPTool = {
 const runListTool: MCPTool = {
   name: "console_run_list",
   description:
-    "List available engineering runs with separate execution and requirement-verdict states.",
+    "List available engineering runs with separate execution and comparison-verdict states.",
   inputSchema: {
     type: "object",
     additionalProperties: false,
@@ -120,7 +120,7 @@ const runListTool: MCPTool = {
 const runDetailTool: MCPTool = {
   name: "console_run_detail",
   description:
-    "Read execution stages, observations, requirement verdict state, and hashed evidence artifacts for one engineering run.",
+    "Read execution stages, observations, comparison verdict state, and hashed evidence artifacts for one engineering run.",
   inputSchema: {
     type: "object",
     properties: {

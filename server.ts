@@ -7,6 +7,8 @@ import { HttpMcpProbe, type McpProbe } from "./src/adapters/http-mcp-probe.ts";
 import { loadFleetManifest } from "./src/adapters/manifest.ts";
 import { ModelicaRunObserver } from "./src/adapters/modelica-run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
+import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verifier.ts";
+import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
 import type {
   FleetManifest,
@@ -22,6 +24,8 @@ const DEFAULT_PORT = 3020;
 const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_MANIFEST_PATH = "config/mcp-fleet.json";
 const DEFAULT_RUN_FIXTURE_PATH = "state/fixtures/runs/bracket-demo.json";
+const DEFAULT_SCENARIO_CONTRACT_PLAN_PATH =
+  "config/verification-plans/coffee-machine-nominal-v1.json";
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -51,8 +55,9 @@ export async function createConsoleServer(
         [env("MCP_RUN_FIXTURE") ?? DEFAULT_RUN_FIXTURE_PATH],
     );
   const modelica = manifest.servers.find((server) => server.id === "modelica");
+  const syson = manifest.servers.find((server) => server.id === "syson");
   const observedRuns = options.observedRuns ??
-    (modelica ? new ModelicaRunObserver({ mcpUrl: modelica.mcpUrl }) : undefined);
+    await createObservedRunCatalog(modelica?.mcpUrl, syson?.mcpUrl);
   const controlPlane = new ControlPlane({
     manifest,
     runs,
@@ -82,6 +87,24 @@ export async function createConsoleServer(
   registerControlPlaneTools(app, controlPlane);
   registerConsoleViewer(app);
   return { app, controlPlane };
+}
+
+async function createObservedRunCatalog(
+  modelicaMcpUrl?: string,
+  sysonMcpUrl?: string,
+): Promise<ObservedRunCatalog | undefined> {
+  if (!modelicaMcpUrl) return undefined;
+  const modelica = new ModelicaRunObserver({ mcpUrl: modelicaMcpUrl });
+  if (!sysonMcpUrl) return modelica;
+  const verifier = new ScenarioContractVerifier({
+    planPath: DEFAULT_SCENARIO_CONTRACT_PLAN_PATH,
+    sysonMcpUrl,
+  });
+  await verifier.prepare();
+  return new ScenarioVerifiedRunCatalog({
+    source: modelica,
+    verifier,
+  });
 }
 
 export function registerConsoleViewer(app: McpApp): boolean {

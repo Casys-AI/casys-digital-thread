@@ -1,6 +1,10 @@
-# Positioning — industry category and state of the art
+# Explanation: positioning — industry category and state of the art
 
 *Written 2026-07-30, the day the chain shipped.*
+
+This is explanatory context, not an operating guide. Start from the
+[documentation map](README.md) when you need a tutorial, a focused how-to, or
+an exact repository reference.
 
 ## Industry category: the executable digital thread
 

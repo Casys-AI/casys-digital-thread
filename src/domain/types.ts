@@ -163,10 +163,12 @@ export type VerdictStatus =
   | "passed"
   | "failed"
   | "unresolved"
+  | "error"
   | "not_evaluated";
 
 export type RunSource = "observed" | "demo";
-export type StageStatus = RunStatus | "passed";
+/** A lineage stage can be an execution or an explicit comparison outcome. */
+export type StageStatus = RunStatus | VerdictStatus;
 
 export interface EngineeringValue {
   value: number;
@@ -191,11 +193,12 @@ export interface RequirementVerdict {
   id: string;
   title: string;
   status: "pass" | "fail" | "unresolved" | "error";
-  computed: EngineeringValue;
-  limit: EngineeringValue;
-  operator: "<=" | ">=" | "<" | ">" | "=";
-  margin: EngineeringValue;
-  marginPercent: number;
+  computed?: EngineeringValue;
+  limit?: EngineeringValue;
+  operator?: "<=" | ">=" | "<" | ">" | "=";
+  margin?: EngineeringValue;
+  marginPercent?: number;
+  message?: string;
 }
 
 export interface EvidenceArtifact {
@@ -231,6 +234,23 @@ export interface RunProvenance {
   value: string;
 }
 
+/** Versioned context for the comparison attached to a run. */
+export interface VerificationContext {
+  kind: "requirement" | "scenario_contract";
+  title: string;
+  source: string;
+  planId?: string;
+  planSha256?: string;
+}
+
+/** Identities required to match Modelica evidence to a versioned contract. */
+export interface ModelicaEvidenceIdentity {
+  runId: string;
+  fingerprint: string;
+  model: { id: string; version: string; sha256: string };
+  scenario: { id: string; sha256: string };
+}
+
 export interface RunSummary {
   id: string;
   name: string;
@@ -255,6 +275,8 @@ export interface RunDetail extends RunSummary {
   warnings: string[];
   requirements: RequirementVerdict[];
   evidence: EvidenceArtifact[];
+  verification?: VerificationContext;
+  modelicaEvidence?: ModelicaEvidenceIdentity;
 }
 
 /**

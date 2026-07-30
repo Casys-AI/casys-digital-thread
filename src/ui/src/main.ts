@@ -15,6 +15,7 @@ import type {
   RunProvenance,
   RunStage,
   RunStatus,
+  RunSummary,
   ServerRecord,
   VerdictStatus,
   WorkbenchPanel,
@@ -52,7 +53,9 @@ const runtime: RuntimeState = {
   hasExplicitRunSelection: false,
   runDetails: new Map([[demoRunDetail.id, demoRunDetail]]),
   refreshing: false,
-  connection: globalThis.parent === globalThis.window ? "standalone" : "connecting",
+  connection: globalThis.parent === globalThis.window
+    ? "standalone"
+    : "connecting",
 };
 
 appRoot.innerHTML = `
@@ -186,7 +189,9 @@ function statusTone(
 ): string {
   if (["healthy", "succeeded", "passed", "pass"].includes(status)) return "ok";
   if (["degraded", "running", "unresolved"].includes(status)) return "warn";
-  if (["failed", "fail", "timed_out", "unavailable", "error"].includes(status)) {
+  if (
+    ["failed", "fail", "timed_out", "unavailable", "error"].includes(status)
+  ) {
     return "bad";
   }
   return "neutral";
@@ -206,12 +211,14 @@ function icon(
       `<rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="15" width="18" height="5" rx="1"/><path d="M7 7h.01M7 18h.01M11 7h7M11 18h7"/>`,
     runs:
       `<circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 12h4a3 3 0 0 0 3-3V7M14 15v-3M14 15a3 3 0 0 0 3 3"/>`,
-    workbench: `<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>`,
+    workbench:
+      `<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>`,
     refresh:
       `<path d="M20 6v5h-5M4 18v-5h5"/><path d="M18.1 9A7 7 0 0 0 6.7 6.7L4 11M5.9 15A7 7 0 0 0 17.3 17.3L20 13"/>`,
     shield:
       `<path d="M12 3 5 6v5c0 4.6 2.9 8.1 7 10 4.1-1.9 7-5.4 7-10V6z"/><path d="m9 12 2 2 4-4"/>`,
-    cube: `<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4.4 7.7 12 12l7.6-4.3M12 12v9"/>`,
+    cube:
+      `<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4.4 7.7 12 12l7.6-4.3M12 12v9"/>`,
     copy:
       `<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>`,
   };
@@ -219,12 +226,20 @@ function icon(
 }
 
 function renderStatus(status: string, extraClass = ""): string {
-  return `<span class="status ${statusTone(status as Availability)} ${extraClass}">
-    <span class="status-dot" aria-hidden="true"></span>${esc(statusLabel(status))}
+  return `<span class="status ${
+    statusTone(status as Availability)
+  } ${extraClass}">
+    <span class="status-dot" aria-hidden="true"></span>${
+    esc(statusLabel(status))
+  }
   </span>`;
 }
 
-function renderLabeledStatus(label: string, status: string, extraClass = ""): string {
+function renderLabeledStatus(
+  label: string,
+  status: string,
+  extraClass = "",
+): string {
   return `<span class="labeled-status tone-${
     statusTone(status as VerdictStatus)
   } ${extraClass}">
@@ -356,7 +371,9 @@ function renderToolCoverage(server: ServerRecord): string {
   const observed = new Set(server.observed.mcp.tools.map((tool) => tool.name));
   return server.desired.expectedTools.map((tool) => `
     <span class="token ${observed.has(tool) ? "token-ok" : "token-missing"}">
-      <span aria-hidden="true">${observed.has(tool) ? "✓" : "!"}</span>${esc(tool)}
+      <span aria-hidden="true">${observed.has(tool) ? "✓" : "!"}</span>${
+    esc(tool)
+  }
     </span>
   `).join("");
 }
@@ -364,7 +381,9 @@ function renderToolCoverage(server: ServerRecord): string {
 function renderServerCard(server: ServerRecord, index: number): string {
   const desired = server.desired;
   const observed = server.observed;
-  const driftFields = server.drift.fields.filter((field) => field.status !== "in_sync");
+  const driftFields = server.drift.fields.filter((field) =>
+    field.status !== "in_sync"
+  );
   const views = observed.mcp.viewerUris.length
     ? observed.mcp.viewerUris
     : observed.mcp.resourceUris.filter((uri) => uri.startsWith("ui://"));
@@ -395,7 +414,9 @@ function renderServerCard(server: ServerRecord, index: number): string {
       <div class="server-facts">
         <div>
           <span>Server / version</span>
-          <strong>${esc(observed.mcp.serverName || desired.serviceName)}</strong>
+          <strong>${
+    esc(observed.mcp.serverName || desired.serviceName)
+  }</strong>
           <code>${esc(observed.mcp.serverVersion || "not reported")}</code>
         </div>
         <div>
@@ -442,7 +463,9 @@ function renderServerCard(server: ServerRecord, index: number): string {
         <section class="security-card tone-${securityTone}" aria-label="Security posture">
           <div class="mini-heading"><span>${
     icon("shield")
-  }Execution boundary</span><b>${esc(desired.trust?.level ?? "unspecified")}</b></div>
+  }Execution boundary</span><b>${
+    esc(desired.trust?.level ?? "unspecified")
+  }</b></div>
           <p>
             <strong>${
     arbitrary ? "Arbitrary code executor" : "Constrained tool surface"
@@ -462,7 +485,9 @@ function renderServerCard(server: ServerRecord, index: number): string {
         </section>
       </div>
 
-      <details class="drift-panel" ${server.drift.status === "drift" ? "open" : ""}>
+      <details class="drift-panel" ${
+    server.drift.status === "drift" ? "open" : ""
+  }>
         <summary>
           <span class="drift-label ${
     server.drift.status === "drift" ? "has-drift" : ""
@@ -483,7 +508,9 @@ function renderServerCard(server: ServerRecord, index: number): string {
               <div class="drift-row">
                 <code>${esc(field.field)}</code>
                 <p>${esc(field.message)}</p>
-                <span><small>desired</small>${esc(readableValue(field.desired))}</span>
+                <span><small>desired</small>${
+        esc(readableValue(field.desired))
+      }</span>
                 <span><small>observed</small>${
         esc(readableValue(field.observed))
       }</span>
@@ -586,25 +613,36 @@ function renderLineageStage(stage: RunStage, index: number): string {
 }
 
 function renderRequirement(requirement: RequirementVerdict): string {
-  const width = Math.min(100, Math.max(4, requirement.marginPercent));
+  const width = requirement.marginPercent === undefined
+    ? 0
+    : Math.min(100, Math.max(4, requirement.marginPercent));
+  const computed = requirement.computed?.display ?? "—";
+  const limit = requirement.limit?.display ?? "—";
+  const operator = requirement.operator ?? "";
+  const margin = requirement.margin?.display ?? "—";
+  const marginPercent = requirement.marginPercent === undefined
+    ? "—"
+    : `${requirement.marginPercent.toFixed(1)}%`;
   return `
     <tr>
       <td>
         <span class="requirement-id">${esc(requirement.id)}</span>
         <strong>${esc(requirement.title)}</strong>
       </td>
-      <td><code>${esc(requirement.computed.display)}</code></td>
-      <td><span class="operator">${esc(requirement.operator)}</span> <code>${
-    esc(requirement.limit.display)
+      <td><code>${esc(computed)}</code></td>
+      <td><span class="operator">${esc(operator)}</span> <code>${
+    esc(limit)
   }</code></td>
       <td>
         <div class="margin-cell">
           <div class="margin-track" aria-hidden="true"><span style="width:${width}%"></span></div>
-          <strong>${esc(requirement.margin.display)}</strong>
-          <small>${esc(requirement.marginPercent.toFixed(1))}%</small>
+          <strong>${esc(margin)}</strong>
+          <small>${esc(marginPercent)}</small>
         </div>
       </td>
-      <td>${renderStatus(requirement.status)}</td>
+      <td>${renderStatus(requirement.status)}${
+    requirement.message ? `<small>${esc(requirement.message)}</small>` : ""
+  }</td>
     </tr>
   `;
 }
@@ -621,12 +659,16 @@ function renderArtifact(artifact: EvidenceArtifact): string {
         <strong>${esc(artifact.label)}</strong>
         <small title="${esc(location)}">${esc(location)}${esc(byteSize)}</small>
       </div>
-      <code title="${esc(artifact.sha256)}">${esc(compactHash(artifact.sha256))}</code>
+      <code title="${esc(artifact.sha256)}">${
+    esc(compactHash(artifact.sha256))
+  }</code>
       ${
     artifact.sha256
       ? `<button type="button" class="icon-button" data-copy="${
         esc(artifact.sha256)
-      }" aria-label="Copy SHA-256 for ${esc(artifact.label)}">${icon("copy")}</button>`
+      }" aria-label="Copy SHA-256 for ${esc(artifact.label)}">${
+        icon("copy")
+      }</button>`
       : ""
   }
     </li>
@@ -651,22 +693,32 @@ function renderProvenance(fact: RunProvenance): string {
 }
 
 function renderRequirements(detail: RunDetail): string {
+  const isScenarioContract = detail.verification?.kind === "scenario_contract";
+  const subject = isScenarioContract
+    ? "scenario contract"
+    : "requirement verdict";
   if (detail.verdictStatus === "not_evaluated") {
     return `
       <div class="verdict-pending">
-        <div>${renderLabeledStatus("requirement verdict", detail.verdictStatus)}</div>
-        <p>No requirement verdict has been attached. This run proves that the simulation executed; SysON and the constraint solver must evaluate limits, units, and margins separately.</p>
+        <div>${renderLabeledStatus(subject, detail.verdictStatus)}</div>
+        <p>No versioned comparison has been attached. This run proves that the simulation executed; SysON and the constraint solver must evaluate limits, units, and margins separately.</p>
       </div>
     `;
   }
   if (detail.requirements.length === 0) {
-    return `<p class="empty-note">A requirement verdict was reported, but no individual requirement rows were supplied.</p>`;
+    return `<p class="empty-note">A ${
+      esc(subject)
+    } was reported, but no individual comparison rows were supplied.</p>`;
   }
   return `
     <div class="table-scroll">
       <table>
-        <caption class="sr-only">Requirement computations, limits, margins, and verdicts</caption>
-        <thead><tr><th>Requirement</th><th>Computed</th><th>Limit</th><th>Margin</th><th>Verdict</th></tr></thead>
+        <caption class="sr-only">${
+    esc(subject)
+  } computations, limits, margins, and verdicts</caption>
+        <thead><tr><th>${
+    isScenarioContract ? "Scenario condition" : "Requirement"
+  }</th><th>Computed</th><th>Limit</th><th>Margin</th><th>Verdict</th></tr></thead>
         <tbody>${detail.requirements.map(renderRequirement).join("")}</tbody>
       </table>
     </div>
@@ -680,10 +732,17 @@ function formatBytes(value: number): string {
 }
 
 function renderRunDetail(detail: RunDetail): string {
-  const requirementCount = detail.passedRequirements + detail.failedRequirements +
+  const requirementCount = detail.passedRequirements +
+    detail.failedRequirements +
     detail.unresolvedRequirements;
+  const isScenarioContract = detail.verification?.kind === "scenario_contract";
+  const comparisonLabel = isScenarioContract
+    ? "Scenario contract"
+    : "Requirement verdicts";
   const lineageTitle = detail.verdictStatus === "not_evaluated"
     ? "Input → simulation evidence"
+    : isScenarioContract
+    ? "Scenario → simulation → contract"
     : "Requirement → proof";
   return `
     <section class="run-detail">
@@ -700,13 +759,19 @@ function renderRunDetail(detail: RunDetail): string {
           <p>${esc(detail.description)}</p>
         </div>
         <dl class="run-meta">
-          <div><dt>Started</dt><dd>${esc(formatDateTime(detail.startedAt))}</dd></div>
+          <div><dt>Started</dt><dd>${
+    esc(formatDateTime(detail.startedAt))
+  }</dd></div>
           <div><dt>Elapsed</dt><dd>${
     esc(duration(detail.startedAt, detail.completedAt))
   }</dd></div>
-          <div><dt>Requirements</dt><dd>${
+          <div><dt>${
+    isScenarioContract ? "Conditions" : "Requirements"
+  }</dt><dd>${
     detail.verdictStatus === "not_evaluated"
       ? "not evaluated"
+      : detail.verdictStatus === "error"
+      ? "evaluation error"
       : `${detail.passedRequirements}/${requirementCount}`
   }</dd></div>
         </dl>
@@ -719,7 +784,9 @@ function renderRunDetail(detail: RunDetail): string {
   }</h3></div>
           <small>Each stage declares its provenance; immutable artifacts are hashed.</small>
         </div>
-        <ol class="lineage">${detail.stages.map(renderLineageStage).join("")}</ol>
+        <ol class="lineage">${
+    detail.stages.map(renderLineageStage).join("")
+  }</ol>
       </section>
 
       <div class="evidence-grid">
@@ -750,8 +817,14 @@ function renderRunDetail(detail: RunDetail): string {
       : ""
   }
           <div class="block-heading">
-            <div><span>Computed margin</span><h3>Requirement verdicts</h3></div>
-            <small>Never inferred from execution status</small>
+            <div><span>Computed margin</span><h3>${
+    esc(comparisonLabel)
+  }</h3></div>
+            <small>${
+    detail.verification?.source
+      ? esc(detail.verification.source)
+      : "Never inferred from execution status"
+  }</small>
           </div>
           ${renderRequirements(detail)}
         </section>
@@ -761,7 +834,9 @@ function renderRunDetail(detail: RunDetail): string {
             <div><span>Immutable evidence</span><h3>Artifact ledger</h3></div>
             <small>SHA-256</small>
           </div>
-          <ul class="artifact-list">${detail.evidence.map(renderArtifact).join("")}</ul>
+          <ul class="artifact-list">${
+    detail.evidence.map(renderArtifact).join("")
+  }</ul>
         </section>
       </div>
     </section>
@@ -871,26 +946,49 @@ function constraintsPreview(): string {
   const detail = runtime.selectedRunId
     ? runtime.runDetails.get(runtime.selectedRunId)
     : undefined;
+  if (!detail && runtime.connection === "hosted") {
+    return `
+      <div class="constraint-preview">
+        <p class="empty-note">Live comparison evidence has not been loaded for the selected run.</p>
+      </div>
+    `;
+  }
+  if (detail?.verdictStatus === "not_evaluated") {
+    return `
+      <div class="constraint-preview">
+        <p class="empty-note">This run has real simulation evidence but no attached comparison yet.</p>
+      </div>
+    `;
+  }
   const requirements = detail?.requirements ?? demoRunDetail.requirements;
   return `
     <div class="constraint-preview">
       ${
-    requirements.slice(0, 3).map((requirement) => `
+    requirements.length
+      ? requirements.slice(0, 3).map((requirement) => {
+        const marginPercent = requirement.marginPercent ?? 0;
+        return `
         <div>
           <header><span>${esc(requirement.id)}</span>${
-      renderStatus(requirement.status)
-    }</header>
-          <p><b>${esc(requirement.computed.display)}</b><span>${
-      esc(requirement.operator)
-    } ${esc(requirement.limit.display)}</span></p>
+          renderStatus(requirement.status)
+        }</header>
+          <p><b>${esc(requirement.computed?.display ?? "—")}</b><span>${
+          esc(requirement.operator ?? "")
+        } ${esc(requirement.limit?.display ?? "—")}</span></p>
           <footer>
             <span class="micro-track"><i style="width:${
-      Math.min(100, Math.max(4, requirement.marginPercent))
-    }%"></i></span>
-            <code>+${esc(requirement.marginPercent.toFixed(1))}%</code>
+          Math.min(100, Math.max(4, marginPercent))
+        }%"></i></span>
+            <code>${
+          requirement.marginPercent === undefined
+            ? "—"
+            : `+${esc(requirement.marginPercent.toFixed(1))}%`
+        }</code>
           </footer>
         </div>
-      `).join("")
+      `;
+      }).join("")
+      : `<p class="empty-note">No comparison rows are available.</p>`
   }
     </div>
   `;
@@ -964,7 +1062,9 @@ function renderWorkbench(): string {
       <div class="event-legend">
         <span class="${workbench.synchronization.enabled ? "is-enabled" : ""}">
           <i aria-hidden="true"></i>${
-    workbench.synchronization.enabled ? "Event bus active" : "Composition pending"
+    workbench.synchronization.enabled
+      ? "Event bus active"
+      : "Composition pending"
   }
         </span>
         <small>${workbench.synchronization.events.length} declared events</small>
@@ -996,7 +1096,9 @@ function renderWorkbench(): string {
       </div>
       <div class="event-contracts" aria-label="Declared synchronization events">
         ${
-    workbench.synchronization.events.map((event) => `<code>${esc(event)}</code>`).join(
+    workbench.synchronization.events.map((event) =>
+      `<code>${esc(event)}</code>`
+    ).join(
       "",
     )
   }
@@ -1011,7 +1113,9 @@ function renderNotice(): string {
     <div class="notice tone-${runtime.notice.tone}" role="${
     runtime.notice.tone === "error" ? "alert" : "status"
   }">
-      <span aria-hidden="true">${runtime.notice.tone === "error" ? "!" : "i"}</span>
+      <span aria-hidden="true">${
+    runtime.notice.tone === "error" ? "!" : "i"
+  }</span>
       <p>${esc(runtime.notice.message)}</p>
       <button type="button" data-action="dismiss-notice" aria-label="Dismiss notification">×</button>
     </div>
@@ -1038,7 +1142,9 @@ function buildConsole(): HTMLElement {
     </main>
     <footer class="console-footer">
       <span>CASYS DIGITAL THREAD / CONTROL SURFACE</span>
-      <span>READ-ONLY OPERATIONS · SCHEMA ${esc(runtime.snapshot.schemaVersion)}</span>
+      <span>READ-ONLY OPERATIONS · SCHEMA ${
+    esc(runtime.snapshot.schemaVersion)
+  }</span>
     </footer>
   `;
   bindInteractions(shell);
@@ -1136,6 +1242,12 @@ async function refreshSnapshot(): Promise<void> {
     const result = await runtime.ctx.callTool("console_refresh", {});
     runtime.snapshot = snapshotFromResult(result);
     runtime.connection = "hosted";
+    // A refresh is specifically an operator request for live state. Do not
+    // retain a previous observed detail (and therefore a previous SysON
+    // evaluation) just because the run id is unchanged.
+    for (const run of runtime.snapshot.runs.items) {
+      if (run.source === "observed") runtime.runDetails.delete(run.id);
+    }
     reconcileSelectedRun(runtime.snapshot);
     runtime.notice = {
       tone: "info",
@@ -1172,16 +1284,44 @@ async function loadRunDetail(id: string): Promise<void> {
   renderNow();
   try {
     const result = await runtime.ctx.callTool("console_run_detail", { id });
-    runtime.runDetails.set(id, runDetailFromResult(result));
+    const detail = runDetailFromResult(result);
+    runtime.runDetails.set(id, detail);
+    runtime.snapshot = {
+      ...runtime.snapshot,
+      runs: {
+        ...runtime.snapshot.runs,
+        items: runtime.snapshot.runs.items.map((run) =>
+          run.id === detail.id ? runSummaryFromDetail(detail) : run
+        ),
+      },
+    };
   } catch (error) {
     runtime.notice = {
       tone: "error",
-      message: error instanceof Error ? error.message : `Unable to load run ${id}.`,
+      message: error instanceof Error
+        ? error.message
+        : `Unable to load run ${id}.`,
     };
   } finally {
     runtime.loadingRunId = undefined;
     renderNow();
   }
+}
+
+function runSummaryFromDetail(detail: RunDetail): RunSummary {
+  return {
+    id: detail.id,
+    name: detail.name,
+    subject: detail.subject,
+    status: detail.status,
+    verdictStatus: detail.verdictStatus,
+    source: detail.source,
+    startedAt: detail.startedAt,
+    completedAt: detail.completedAt,
+    passedRequirements: detail.passedRequirements,
+    failedRequirements: detail.failedRequirements,
+    unresolvedRequirements: detail.unresolvedRequirements,
+  };
 }
 
 const consoleView = defineView<ViewState, void, ConsoleSnapshot>({
@@ -1215,7 +1355,8 @@ async function boot(): Promise<void> {
     runtime.connection = "standalone";
     runtime.notice = {
       tone: "info",
-      message: "Standalone preview: all displayed observations are labelled demo data.",
+      message:
+        "Standalone preview: all displayed observations are labelled demo data.",
     };
     renderNow();
     return;
@@ -1234,17 +1375,6 @@ async function boot(): Promise<void> {
     runtime.handle = handle;
     runtime.ctx = handle.ctx;
     runtime.connection = "hosted";
-
-    // mcp-view owns the lifecycle and initial app-only snapshot call above.
-    // This handler also accepts later host-pushed console_snapshot results.
-    handle.ctx.app.ontoolresult = (result) => {
-      if (!isConsoleSnapshot(result.structuredContent)) return;
-      runtime.snapshot = result.structuredContent;
-      runtime.connection = "hosted";
-      reconcileSelectedRun(runtime.snapshot);
-      renderNow();
-      loadSelectedRunDetailIfNeeded();
-    };
     renderNow();
   } catch (error) {
     runtime.connection = "error";

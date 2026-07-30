@@ -1,9 +1,14 @@
-# Architecture de vérification — décision CoffeeMachine
+# Explanation: architecture de vérification — décision CoffeeMachine
 
 **Statut : accepté — 2026-07-30**
 
 Cette décision fixe les responsabilités de calcul de la chaîne et le premier cas
 multi-physique, `CoffeeMachine`.
+
+Cette page explique les frontières choisies. Pour exécuter et lire le premier
+run réel, suivre le [tutoriel CoffeeMachine](tutorials/coffee-machine-nominal.md).
+Pour les chemins, hashes, ports et contrats exacts, consulter la
+[référence de l'espace de travail](reference/workspace-map.md).
 
 ## Décision
 
@@ -50,6 +55,14 @@ hypothèses, et les hashes de ses artefacts CSV/JSON. `mcp-syson` et
 preuves ne sera extrait dans une bibliothèque que lorsqu'au moins deux producteurs en
 auront réellement besoin ; nous ne créons pas cette abstraction maintenant.
 
+Le cockpit applique déjà ce chemin à un **contrat de scénario provisoire** versionné
+(`coffee-machine-nominal-v1`) : le seul test est la cible `90 degC` déclarée par le
+scénario, avec binding exact sur les hashes modèle/scénario et appel live de
+`syson_constraint_evaluate`. Ce contrat prouve le câblage des observations, unités et
+marges ; il n'est ni une exigence produit ni une exigence déposée dans un projet SysON.
+L'horizon de simulation (`900 s`) reste de la provenance de scénario, pas une limite de
+performance inventée.
+
 ## CoffeeMachine v1
 
 Le premier modèle Modelica reste volontairement simple et traçable : chaudière et eau
@@ -95,7 +108,8 @@ l'architecture ne change pas le sens de la preuve.
 1. Construire le kit CoffeeMachine et son premier modèle Modelica, avec un scénario
    nominal versionné et des sorties CSV/JSON hashées.
 2. Construire `mcp-modelica`, puis faire évaluer ses observations par les outils de
-   contraintes existants.
+   contraintes existants : fait pour le contrat de scénario provisoire ; les vraies
+   exigences attendent encore leur modèle SysON et leurs limites métier.
 3. L'ajouter au fleet/Compose après un run réel reproductible : fait avec l'image
    `mcp-modelica` 0.1.5, dont les builds amd64 et arm64 exécutent le kit CoffeeMachine.
 4. Extraire un contrat de preuve partagé seulement lorsqu'un second producteur impose

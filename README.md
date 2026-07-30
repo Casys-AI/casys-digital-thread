@@ -65,16 +65,34 @@ those two read-only Modelica tools; it never reads the sidecar's Docker volume.
 It shows simulation execution separately from a requirement verdict, so a
 `succeeded` simulation is never displayed as a `passed` requirement.
 
+For the exact, version-bound CoffeeMachine nominal run, the console also sends
+the measured temperature to `syson_constraint_evaluate` and displays the live
+result as a **provisional scenario contract**. The sole current condition is
+the scenario's declared `90 degC` target. It is intentionally not a product
+requirement, not a SysON project requirement, and the `900 s` scenario horizon
+remains provenance rather than an invented performance limit.
+
 ```bash
 npm --prefix src/ui ci
 npm --prefix src/ui run build
 deno task start                  # http://127.0.0.1:3020/mcp
+# In a second terminal, browser host for the existing MCP App:
+deno task preview:browser        # http://127.0.0.1:3021/
 ```
+
+The browser host relays the console's three read-only tools to the live MCP
+server. It is a local MCP Apps test harness, explicitly not an
+`mcp-compose`-generated dashboard.
 
 When the engineering services are stopped, the console reports them as
 unavailable and keeps the checked-in bracket run explicitly labelled as demo.
-See [docs/console.md](docs/console.md) for the data contract, evidence model,
-security boundary, and the future `mcp-compose` path.
+The documentation is organized with [Diátaxis](https://diataxis.fr/): start at
+the [documentation map](docs/README.md), follow the
+[CoffeeMachine run tutorial](docs/tutorials/coffee-machine-nominal.md), use the
+[browser-preview how-to](docs/how-to/preview-console.md), or look up exact
+paths and ports in the [workspace reference](docs/reference/workspace-map.md).
+The [console reference](docs/console.md) retains the data contract, evidence
+model, security boundary, and future `mcp-compose` path.
 
 ## Repository map
 
@@ -84,10 +102,15 @@ security boundary, and the future `mcp-compose` path.
 | `docker-compose.yml` | The full stack: SysON + MCP servers over HTTP |
 | `server.ts`, `src/` | Read-only console control plane and MCP App |
 | `config/mcp-fleet.json` | Desired fleet, topology, tools, views, and trust boundaries |
+| `config/verification-plans/` | Versioned provisional scenario-contract plans |
 | `state/fixtures/` | Canonical, explicitly labelled console and run fixtures |
-| `docs/console.md` | Console launch, truth model, limitations, and Compose path |
-| `docs/positioning.md` | Industry & SOTA positioning, references |
-| `docs/verification-architecture.md` | Accepted CoffeeMachine verification boundaries and Modelica decision |
+| `docs/README.md` | Diátaxis documentation map |
+| `docs/tutorials/` | End-to-end learning paths, including the real CoffeeMachine run |
+| `docs/how-to/` | Focused operating guides, including the local browser preview |
+| `docs/reference/` | Exact workspace ownership, contracts, and port lookup |
+| `docs/console.md` | Console resource, tools, truth model, limitations, and Compose boundary |
+| `docs/positioning.md` | Explanation: industry & SOTA positioning and references |
+| `docs/verification-architecture.md` | Explanation: CoffeeMachine verification boundaries and Modelica decision |
 | `examples/bracket/` | The end-to-end walkthrough with real numbers |
 | `experiments/oracle/` | The oracle experiment — the project's decisive measurement |
 

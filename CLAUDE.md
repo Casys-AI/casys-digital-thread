@@ -13,6 +13,12 @@ Ce repo est **l'atelier** de la chaîne « executable digital thread » : exigen
 Composition type : `build123d_export` écrit `/exports/piece.step` → `calculix_solve_static` le lit au même chemin → le résultat (masse, contrainte) se vérifie contre le modèle via `syson_constraint_evaluate` avec valeurs unitées (`{"value": 0.0569, "unit": "kg"}`).
 Les runs Modelica restent dans leur volume dédié `/runs` : ils ne partagent ni export CAD ni socket Docker.
 
+Le seul verdict CoffeeMachine actuellement branché au cockpit est le contrat de scénario
+provisoire `config/verification-plans/coffee-machine-nominal-v1.json` :
+`water_temperature_max >= 90 degC`, appelé en lecture seule via
+`syson_constraint_evaluate` et lié aux hashes modèle/scénario. Ce n'est pas une
+exigence produit/SysON ; les 900 s sont seulement la provenance du scénario.
+
 Le cockpit actuel est une MCP App fixe construite avec `@casys/mcp-view`.
 `@casys/mcp-compose` reste la couche prévue pour qu'un agent produise ensuite
 des layouts YAML déterministes, réunisse plusieurs vues MCP et route leurs

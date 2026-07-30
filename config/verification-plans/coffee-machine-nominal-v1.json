@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "id": "coffee-machine-nominal-v1",
+  "title": "CoffeeMachine nominal scenario contract",
+  "version": "1.0.0",
+  "provisional": true,
+  "source": {
+    "kind": "versioned-modelica-scenario",
+    "source_path": "mcp-modelica/scenarios/heat-up-nominal.json",
+    "target_temperature": {
+      "value": 90,
+      "unit": "degC"
+    },
+    "horizon": {
+      "value": 900,
+      "unit": "s"
+    }
+  },
+  "model": {
+    "id": "coffee-machine-v1",
+    "version": "0.1.0",
+    "sha256": "a641b63a493435fd2ce8123a7b6afbd478656a124610ca33d22112985af8e8ec"
+  },
+  "scenario": {
+    "id": "heat-up-nominal",
+    "sha256": "5db8a06592050a03a8d727900801f9185b2e7fa2fb3092ce15dd3c6c70eb0941"
+  },
+  "constraints": [
+    {
+      "id": "scenario-target-temperature-reached",
+      "name": "Scenario target temperature reached",
+      "expression": {
+        "kind": "binary",
+        "op": ">=",
+        "left": {
+          "kind": "ref",
+          "featurePath": [
+            "water_temperature_max"
+          ]
+        },
+        "right": {
+          "kind": "literal",
+          "value": 90,
+          "unit": "degC"
+        }
+      }
+    }
+  ]
+}
