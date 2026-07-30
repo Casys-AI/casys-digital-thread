@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "syson": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "--add-host=host.docker.internal:host-gateway",
+               "-e", "SYSON_URL=http://host.docker.internal:8180",
+               "ghcr.io/casys-ai/engineering-toolchain", "syson"]
+    },
+    "build123d": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "-v", "cad-exports:/exports",
+               "ghcr.io/casys-ai/engineering-toolchain", "build123d"]
+    },
+    "calculix": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm",
+               "-v", "cad-exports:/exports",
+               "ghcr.io/casys-ai/engineering-toolchain", "calculix"]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "step_path": "/exports/bracket.step",
+  "mesh_size_mm": 3,
+  "material": { "e_mpa": 70000, "nu": 0.33 },
+  "selections": [
+    { "name": "FIXED",  "box": { "min": [-31, -21, -3.1], "max": [31, 21, -2.4] } },
+    { "name": "LOADED", "box": { "min": [-31, -21, 49.4], "max": [-24, 21, 50.1] } }
+  ],
+  "fixed": ["FIXED"],
+  "loads": [{ "selection": "LOADED", "force_n": [0, 0, -500] }]
+}
