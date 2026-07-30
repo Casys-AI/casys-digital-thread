@@ -1,0 +1,210 @@
+{
+  "schemaVersion": "1.0",
+  "version": 1,
+  "console": {
+    "resourceUri": "ui://casys-digital-thread/console",
+    "snapshotTool": "console_snapshot",
+    "readOnly": true
+  },
+  "servers": [
+    {
+      "id": "syson",
+      "displayName": "SysON",
+      "role": "System model, requirements and units-aware verdicts",
+      "serviceName": "mcp-syson",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3009/mcp",
+      "healthUrl": "http://127.0.0.1:3009/health",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+      "required": true,
+      "expectedTools": [
+        "syson_project_list",
+        "syson_project_get",
+        "syson_project_create",
+        "syson_project_delete",
+        "syson_project_templates",
+        "syson_model_stereotypes",
+        "syson_model_child_types",
+        "syson_model_create",
+        "syson_model_domains",
+        "syson_element_create",
+        "syson_element_get",
+        "syson_element_children",
+        "syson_element_rename",
+        "syson_element_delete",
+        "syson_element_insert_sysml",
+        "syson_query_aql",
+        "syson_search",
+        "syson_query_eval",
+        "syson_query_requirements_trace",
+        "syson_part_structure",
+        "syson_diagram_list",
+        "syson_diagram_create",
+        "syson_diagram_drop",
+        "syson_diagram_arrange",
+        "syson_diagram_snapshot",
+        "syson_constraint_extract",
+        "syson_constraint_evaluate",
+        "syson_constraint_validate",
+        "syson_constraint_solve",
+        "syson_value_read",
+        "syson_value_set"
+      ],
+      "expectedViews": [
+        "ui://mcp-syson/query-results-viewer",
+        "ui://mcp-syson/requirements-trace-viewer",
+        "ui://mcp-syson/diagram-viewer",
+        "ui://mcp-syson/validation-viewer",
+        "ui://mcp-syson/value-change-viewer",
+        "ui://mcp-syson/model-explorer-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [],
+        "upstreams": [
+          "http://syson-app:8080"
+        ]
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The MCP exposes model mutations; the console MVP never invokes them.",
+          "AQL is evaluated by the connected SysON instance and must be treated as privileged model access."
+        ]
+      }
+    },
+    {
+      "id": "build123d",
+      "displayName": "build123d",
+      "role": "Parametric CAD execution, exact geometry metrics and export",
+      "serviceName": "mcp-build123d",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3014/mcp",
+      "healthUrl": "http://127.0.0.1:3014/health",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+      "required": true,
+      "expectedTools": [
+        "build123d_execute",
+        "build123d_export"
+      ],
+      "expectedViews": [],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "exports:/exports"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local-privileged",
+        "executesArbitraryCode": true,
+        "notes": [
+          "build123d_execute runs supplied Python in the toolchain container.",
+          "The current Compose topology shares the chain network; do not accept untrusted scripts."
+        ]
+      }
+    },
+    {
+      "id": "calculix",
+      "displayName": "CalculiX",
+      "role": "STEP meshing and linear static finite-element solve",
+      "serviceName": "mcp-calculix",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3015/mcp",
+      "healthUrl": "http://127.0.0.1:3015/health",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+      "required": true,
+      "expectedTools": [
+        "calculix_solve_static"
+      ],
+      "expectedViews": [],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "exports:/exports"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The solver consumes files from the shared exports volume.",
+          "Native meshing and solver processes still require untrusted-input hardening."
+        ]
+      }
+    },
+    {
+      "id": "modelica",
+      "displayName": "OpenModelica",
+      "role": "Dynamic multi-physics system simulation and time-series evidence",
+      "serviceName": "mcp-modelica",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3016/mcp",
+      "healthUrl": "http://127.0.0.1:3016/health",
+      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:1642cbe799f80363f9665f1b459a890703bbf60e5dbbb21998f34be5c58ebb93",
+      "required": true,
+      "expectedTools": [
+        "modelica_kit_list",
+        "modelica_simulate",
+        "modelica_run_get"
+      ],
+      "expectedViews": [],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread-modelica-runs:/runs"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Only approved, versioned Modelica kits and scenarios can run; callers cannot submit source, scripts or paths.",
+          "The bounded run volume retains hashed simulation evidence; a successful simulation is not a requirement verdict."
+        ]
+      }
+    }
+  ],
+  "workbench": [
+    {
+      "id": "requirements-trace",
+      "title": "Requirements trace",
+      "kind": "mcp-app",
+      "sourceServerId": "syson",
+      "resourceUri": "ui://mcp-syson/requirements-trace-viewer"
+    },
+    {
+      "id": "model-diagram",
+      "title": "System model diagram",
+      "kind": "mcp-app",
+      "sourceServerId": "syson",
+      "resourceUri": "ui://mcp-syson/diagram-viewer"
+    },
+    {
+      "id": "cad-evidence",
+      "title": "Bracket geometry evidence",
+      "kind": "evidence",
+      "sourceServerId": "build123d"
+    },
+    {
+      "id": "fea-evidence",
+      "title": "Bracket FEA evidence",
+      "kind": "evidence",
+      "sourceServerId": "calculix"
+    },
+    {
+      "id": "syson-ui",
+      "title": "SysON modeler",
+      "kind": "external",
+      "sourceServerId": "syson",
+      "endpoint": "http://127.0.0.1:8180"
+    }
+  ]
+}

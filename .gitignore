@@ -2,3 +2,5 @@
 .env.*
 !.env.example
 cad-exports/
+node_modules/
+src/ui/.vite/
