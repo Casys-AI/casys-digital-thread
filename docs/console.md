@@ -12,9 +12,13 @@ tool is `console_snapshot`; its view is
   `tools/list`, `resources/list`, and read-only Docker/Compose observations.
   It shows missing or unexpected tools/views, container state, image drift,
   network exposure, shared volumes, and trust notes.
-- **Runs** exposes the requirement → geometry → STEP → FEA → verdict chain.
-  The checked-in bracket is explicitly a demo run, backed by
+- **Runs** exposes the requirement → geometry → STEP → FEA → verdict chain,
+  plus persisted Modelica simulations discovered read-only through the owning
+  MCP server. The checked-in bracket is explicitly a demo run, backed by
   [`examples/console/bracket-evidence.json`](../examples/console/bracket-evidence.json).
+  A Modelica `succeeded` state means only that OpenModelica computed evidence;
+  the console renders `not_evaluated` until SysON and the constraint solver
+  attach a requirement verdict.
 - **Workbench** lists the SysON MCP Apps, the SysON web UI, and CAD/FEA
   evidence panels intended for composition. Cross-panel selection is declared
   but not active in this MVP.
@@ -73,9 +77,11 @@ The verifier reads only; it does not rewrite evidence.
   by version or digest.
 - `build123d_execute` runs Python. The current shared Compose network is
   acceptable only for trusted local inputs and still needs stronger isolation.
-- `mcp-modelica` has no native viewer yet. Its three tools expose bounded,
-  approved simulations and hashed run evidence; it must not receive a static
-  Workbench panel that could be mistaken for a real run viewer.
+- `mcp-modelica` has no native viewer yet. Its four tools expose bounded,
+  approved simulations and hashed run evidence. The console uses only
+  `modelica_run_list` and `modelica_run_get` to index that evidence; it must
+  not receive a static Workbench panel that could be mistaken for a real run
+  viewer.
 - This MVP is a fixed cockpit. A later `mcp-compose` integration can render
   agent-generated YAML layouts and route their cross-panel events; it is not
   part of this change.

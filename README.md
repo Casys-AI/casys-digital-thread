@@ -53,14 +53,17 @@ docker compose up -d          # SysON UI: http://localhost:8180
 
 The `cad-exports` named volume is shared between build123d and calculix: a STEP exported by `build123d_export` is immediately readable by `calculix_solve_static` at `/exports/<name>.step`.
 `casys-digital-thread-modelica-runs` is separate and retains bounded, hashed
-OpenModelica run records for `modelica_run_get`.
+OpenModelica run records for `modelica_run_list` and `modelica_run_get`.
 
 ## MCP control console
 
 The console exposes one MCP App at
 `ui://casys-digital-thread/console`, with Fleet, Runs, and Workbench views. It
 compares the declared fleet with live MCP and Docker observations; all actions
-are read-only.
+are read-only. The Runs view also discovers persisted Modelica records through
+those two read-only Modelica tools; it never reads the sidecar's Docker volume.
+It shows simulation execution separately from a requirement verdict, so a
+`succeeded` simulation is never displayed as a `passed` requirement.
 
 ```bash
 npm --prefix src/ui ci

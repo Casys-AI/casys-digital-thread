@@ -2,7 +2,8 @@
   "id": "bracket-demo-2026-07-30",
   "name": "Bracket verification",
   "subject": "Al 6061 mounting bracket",
-  "status": "passed",
+  "status": "succeeded",
+  "verdictStatus": "passed",
   "source": "demo",
   "startedAt": "2026-07-30T08:00:00.000Z",
   "completedAt": "2026-07-30T08:00:03.200Z",
@@ -122,6 +123,11 @@
         "unresolved": 0
       }
     }
+  ],
+  "measurements": [],
+  "provenance": [],
+  "warnings": [
+    "The documented FEA result was not freshly solved while this demo fixture was generated."
   ],
   "requirements": [
     {

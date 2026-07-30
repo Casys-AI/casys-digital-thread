@@ -97,7 +97,7 @@ l'architecture ne change pas le sens de la preuve.
 2. Construire `mcp-modelica`, puis faire évaluer ses observations par les outils de
    contraintes existants.
 3. L'ajouter au fleet/Compose après un run réel reproductible : fait avec l'image
-   `mcp-modelica` 0.1.4, dont les builds amd64 et arm64 exécutent le kit CoffeeMachine.
+   `mcp-modelica` 0.1.5, dont les builds amd64 et arm64 exécutent le kit CoffeeMachine.
 4. Extraire un contrat de preuve partagé seulement lorsqu'un second producteur impose
    réellement le même format durable.
 

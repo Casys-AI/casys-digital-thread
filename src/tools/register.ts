@@ -39,20 +39,20 @@ export function registerControlPlaneTools(
     };
   });
 
-  app.registerTool(runListTool, () => {
-    const items = controlPlane.runList();
+  app.registerTool(runListTool, async () => {
+    const items = await controlPlane.runList();
     return {
       content: `${items.length} engineering run(s) available.`,
       structuredContent: { items },
     };
   });
 
-  app.registerTool(runDetailTool, (args) => {
+  app.registerTool(runDetailTool, async (args) => {
     const id = requiredString(args.id, "id");
-    const run = controlPlane.runDetail(id);
+    const run = await controlPlane.runDetail(id);
     return {
       content:
-        `${run.name}: ${run.status}; ${run.passedRequirements} requirement(s) passed, ${run.failedRequirements} failed, ${run.unresolvedRequirements} unresolved. Source: ${run.source}.`,
+        `${run.name}: execution ${run.status}; requirement verdict ${run.verdictStatus}. Source: ${run.source}.`,
       structuredContent: run,
     };
   });
@@ -105,7 +105,7 @@ const serverDetailTool: MCPTool = {
 const runListTool: MCPTool = {
   name: "console_run_list",
   description:
-    "List available engineering verification runs and their labelled data source.",
+    "List available engineering runs with separate execution and requirement-verdict states.",
   inputSchema: {
     type: "object",
     additionalProperties: false,
@@ -120,7 +120,7 @@ const runListTool: MCPTool = {
 const runDetailTool: MCPTool = {
   name: "console_run_detail",
   description:
-    "Read the stages, units-aware requirement verdicts, and hashed evidence artifacts for one engineering run.",
+    "Read execution stages, observations, requirement verdict state, and hashed evidence artifacts for one engineering run.",
   inputSchema: {
     type: "object",
     properties: {

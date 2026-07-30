@@ -5,9 +5,14 @@ import {
 } from "./src/adapters/docker-observer.ts";
 import { HttpMcpProbe, type McpProbe } from "./src/adapters/http-mcp-probe.ts";
 import { loadFleetManifest } from "./src/adapters/manifest.ts";
+import { ModelicaRunObserver } from "./src/adapters/modelica-run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
-import type { FleetManifest, RunDetail } from "./src/domain/types.ts";
+import type {
+  FleetManifest,
+  ObservedRunCatalog,
+  RunDetail,
+} from "./src/domain/types.ts";
 import {
   CONSOLE_RESOURCE_URI,
   registerControlPlaneTools,
@@ -25,6 +30,7 @@ export interface CreateConsoleServerOptions {
   runFixturePaths?: string[];
   probe?: McpProbe;
   docker?: DockerObserver;
+  observedRuns?: ObservedRunCatalog;
   now?: () => Date;
   monotonicNow?: () => number;
   cacheTtlMs?: number;
@@ -44,9 +50,13 @@ export async function createConsoleServer(
       options.runFixturePaths ??
         [env("MCP_RUN_FIXTURE") ?? DEFAULT_RUN_FIXTURE_PATH],
     );
+  const modelica = manifest.servers.find((server) => server.id === "modelica");
+  const observedRuns = options.observedRuns ??
+    (modelica ? new ModelicaRunObserver({ mcpUrl: modelica.mcpUrl }) : undefined);
   const controlPlane = new ControlPlane({
     manifest,
     runs,
+    observedRuns,
     probe: options.probe ?? new HttpMcpProbe(),
     docker: options.docker ?? new DockerComposeObserver(),
     now: options.now,

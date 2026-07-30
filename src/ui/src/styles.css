@@ -619,6 +619,23 @@ svg {
   background: currentColor;
 }
 
+.labeled-status {
+  display: inline-grid;
+  gap: 0.2rem;
+  color: var(--muted);
+}
+
+.labeled-status > small {
+  color: var(--muted);
+  font: 650 0.47rem/1 var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.labeled-status .status {
+  color: currentColor;
+}
+
 .status.ok,
 .tone-ok {
   color: var(--green);
@@ -990,9 +1007,12 @@ svg {
 .run-result {
   grid-column: 2;
   justify-self: start;
-  font: 700 0.53rem/1 var(--mono);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  margin-top: 0.1rem;
+}
+
+.run-verdict {
+  grid-column: 2;
+  justify-self: start;
 }
 
 .run-detail {
@@ -1016,6 +1036,13 @@ svg {
 
 .run-titlebar .title-line {
   gap: 0.75rem;
+}
+
+.run-status-pair {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
 }
 
 .run-titlebar h2 {
@@ -1218,6 +1245,111 @@ svg {
 
 .requirements-block {
   border-right: 1px solid var(--line);
+}
+
+.observations-heading {
+  margin-top: 0;
+}
+
+.measurement-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 1rem;
+  padding: 1px;
+  background: var(--line);
+  list-style: none;
+}
+
+.measurement-list li {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.7rem;
+  background: var(--surface-1);
+}
+
+.measurement-list span,
+.provenance-list dt {
+  color: var(--muted);
+  font: 650 0.5rem/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.measurement-list strong {
+  overflow: hidden;
+  color: var(--green);
+  font: 750 0.78rem/1.2 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.measurement-list code {
+  overflow: hidden;
+  color: var(--cyan);
+  font-size: 0.5rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provenance-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 1.1rem;
+  padding: 1px;
+  background: var(--line);
+}
+
+.provenance-list > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.62rem 0.7rem;
+  background: var(--surface-0);
+}
+
+.provenance-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font: 0.58rem/1.3 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provenance-list dd code {
+  color: var(--cyan);
+}
+
+.run-warnings {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1.1rem;
+  padding: 0.7rem 0.8rem 0.7rem 1.65rem;
+  border-left: 2px solid var(--amber);
+  color: var(--text-soft);
+  background: var(--amber-dim);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.verdict-pending {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border: 1px solid #665026;
+  color: var(--text-soft);
+  background: var(--amber-dim);
+}
+
+.verdict-pending p {
+  max-width: 650px;
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
 }
 
 .table-scroll {
@@ -2209,6 +2341,11 @@ td code {
 
   .lineage {
     grid-template-columns: repeat(5, 190px);
+  }
+
+  .measurement-list,
+  .provenance-list {
+    grid-template-columns: 1fr;
   }
 
   .artifact-list li {

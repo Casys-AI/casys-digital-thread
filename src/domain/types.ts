@@ -144,9 +144,29 @@ export interface FleetSnapshot {
   servers: ServerRecord[];
 }
 
-export type RunStatus = "passed" | "failed" | "running" | "unavailable";
+/**
+ * State of the computation itself. A successful computation is evidence, not
+ * a requirement verdict.
+ */
+export type RunStatus =
+  | "succeeded"
+  | "failed"
+  | "timed_out"
+  | "running"
+  | "unavailable";
+
+/**
+ * State of the requirements evaluation, which may be intentionally absent
+ * while a run is only simulation, CAD, or solver evidence.
+ */
+export type VerdictStatus =
+  | "passed"
+  | "failed"
+  | "unresolved"
+  | "not_evaluated";
+
 export type RunSource = "observed" | "demo";
-export type StageStatus = "passed" | "failed" | "running" | "unavailable";
+export type StageStatus = RunStatus | "passed";
 
 export interface EngineeringValue {
   value: number;
@@ -180,11 +200,35 @@ export interface RequirementVerdict {
 
 export interface EvidenceArtifact {
   id: string;
-  kind: "model" | "script" | "cad" | "solve-case" | "result" | "verdict";
+  kind:
+    | "request"
+    | "resolved-parameters"
+    | "model"
+    | "script"
+    | "cad"
+    | "solve-case"
+    | "diagnostics"
+    | "result"
+    | "evidence"
+    | "verdict";
   label: string;
   path?: string;
   sha256?: string;
+  bytes?: number;
   producedBy?: string;
+}
+
+/** A directly computed observation, always accompanied by its unit. */
+export interface RunMeasurement {
+  id: string;
+  label: string;
+  value: EngineeringValue;
+}
+
+/** Small, displayable provenance fact for evidence that is not a measurement. */
+export interface RunProvenance {
+  label: string;
+  value: string;
 }
 
 export interface RunSummary {
@@ -192,8 +236,11 @@ export interface RunSummary {
   name: string;
   subject: string;
   status: RunStatus;
+  /** Never infer this from status: it comes from SysON/constraint-solver. */
+  verdictStatus: VerdictStatus;
   source: RunSource;
-  startedAt: IsoDateTime;
+  /** Omitted for legacy evidence records which did not persist timing. */
+  startedAt?: IsoDateTime;
   completedAt?: IsoDateTime;
   passedRequirements: number;
   failedRequirements: number;
@@ -203,8 +250,20 @@ export interface RunSummary {
 export interface RunDetail extends RunSummary {
   description: string;
   stages: RunStage[];
+  measurements: RunMeasurement[];
+  provenance: RunProvenance[];
+  warnings: string[];
   requirements: RequirementVerdict[];
   evidence: EvidenceArtifact[];
+}
+
+/**
+ * Read-only source of runs which are owned by another engineering service.
+ * The console never accesses a service's Docker volume directly.
+ */
+export interface ObservedRunCatalog {
+  list(): Promise<readonly RunSummary[]>;
+  detail(id: string): Promise<RunDetail | undefined>;
 }
 
 export interface RunsSnapshot {

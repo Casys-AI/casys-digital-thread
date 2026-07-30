@@ -9,6 +9,7 @@ import type {
   FleetCounts,
   FleetManifest,
   ObservedContainer,
+  ObservedRunCatalog,
   ObservedServer,
   RunDetail,
   RunSummary,
@@ -26,6 +27,7 @@ export interface ControlPlaneOptions {
   monotonicNow?: () => number;
   cacheTtlMs?: number;
   runs: readonly RunDetail[];
+  observedRuns?: ObservedRunCatalog;
 }
 
 export class ControlPlaneNotFoundError extends Error {
@@ -43,6 +45,7 @@ export class ControlPlane {
   readonly #monotonicNow: () => number;
   readonly #cacheTtlMs: number;
   readonly #runs: readonly RunDetail[];
+  readonly #observedRuns?: ObservedRunCatalog;
   #cache?: { expiresAt: number; value: ConsoleSnapshot };
   #inFlight?: Promise<ConsoleSnapshot>;
 
@@ -54,6 +57,7 @@ export class ControlPlane {
     this.#monotonicNow = options.monotonicNow ?? (() => performance.now());
     this.#cacheTtlMs = options.cacheTtlMs ?? 5_000;
     this.#runs = options.runs;
+    this.#observedRuns = options.observedRuns;
   }
 
   async snapshot(options: SnapshotOptions = {}): Promise<ConsoleSnapshot> {
@@ -89,23 +93,34 @@ export class ControlPlane {
     return server;
   }
 
-  runList(): RunSummary[] {
-    return this.#runs.map(toRunSummary).map((run) => structuredClone(run));
+  async runList(): Promise<RunSummary[]> {
+    const observed = this.#observedRuns ? await this.#safeObservedRunList() : [];
+    // The modelica owner keeps its catalog deterministic by run id. The
+    // console is an operator surface, so present evidence by its actual
+    // completion/start time instead; legacy records without timing stay last.
+    return [...observed, ...this.#runs.map(toRunSummary)]
+      .sort(compareRunsByEvidenceTime)
+      .map((run) => structuredClone(run));
   }
 
-  runDetail(id: string): RunDetail {
+  async runDetail(id: string): Promise<RunDetail> {
     const run = this.#runs.find((entry) => entry.id === id);
-    if (!run) throw new ControlPlaneNotFoundError("run", id);
-    return structuredClone(run);
+    if (run) return structuredClone(run);
+    const observed = this.#observedRuns
+      ? await this.#observedRuns.detail(id)
+      : undefined;
+    if (!observed) throw new ControlPlaneNotFoundError("run", id);
+    return structuredClone(observed);
   }
 
   async #buildSnapshot(): Promise<ConsoleSnapshot> {
     const generatedAt = this.#now().toISOString();
-    const [probeResults, containers] = await Promise.all([
+    const [probeResults, containers, runs] = await Promise.all([
       Promise.all(
         this.#manifest.servers.map((server) => this.#safeProbe(server)),
       ),
       this.#safeDockerObservation(),
+      this.runList(),
     ]);
 
     const servers = this.#manifest.servers.map((desired, index) => {
@@ -118,7 +133,7 @@ export class ControlPlane {
     });
     const counts = fleetCounts(servers);
     const fleetStatus = fleetAvailability(counts);
-    const mode = consoleMode(this.#runs);
+    const mode = consoleMode(runs);
 
     return {
       schemaVersion: "1.0",
@@ -130,7 +145,7 @@ export class ControlPlane {
         servers,
       },
       runs: {
-        items: this.runList(),
+        items: runs,
       },
       workbench: buildWorkbench(this.#manifest, servers),
     };
@@ -169,6 +184,17 @@ export class ControlPlane {
       );
     }
   }
+
+  async #safeObservedRunList(): Promise<readonly RunSummary[]> {
+    try {
+      return await this.#observedRuns!.list();
+    } catch {
+      // Fleet observation reports the owner service's reachability. A failed
+      // supplementary run index must not replace honest checked-in evidence
+      // with a guessed or synthetic record.
+      return [];
+    }
+  }
 }
 
 function fleetCounts(servers: ServerRecord[]): FleetCounts {
@@ -194,7 +220,7 @@ function fleetAvailability(counts: FleetCounts): Availability {
   return "degraded";
 }
 
-function consoleMode(runs: readonly RunDetail[]): ConsoleMode {
+function consoleMode(runs: readonly RunSummary[]): ConsoleMode {
   // Fleet data in this service always comes from real probes, including honest
   // unavailable observations. Combining that live truth with a demo run is
   // mixed mode, never a wholly synthetic demo snapshot.
@@ -250,6 +276,7 @@ function toRunSummary(run: RunDetail): RunSummary {
     name: run.name,
     subject: run.subject,
     status: run.status,
+    verdictStatus: run.verdictStatus,
     source: run.source,
     startedAt: run.startedAt,
     completedAt: run.completedAt,
@@ -257,6 +284,20 @@ function toRunSummary(run: RunDetail): RunSummary {
     failedRequirements: run.failedRequirements,
     unresolvedRequirements: run.unresolvedRequirements,
   };
+}
+
+function compareRunsByEvidenceTime(left: RunSummary, right: RunSummary): number {
+  const leftTime = left.completedAt ?? left.startedAt;
+  const rightTime = right.completedAt ?? right.startedAt;
+  if (leftTime && rightTime) {
+    const timeOrder = rightTime.localeCompare(leftTime);
+    if (timeOrder !== 0) return timeOrder;
+  } else if (leftTime) {
+    return -1;
+  } else if (rightTime) {
+    return 1;
+  }
+  return left.id.localeCompare(right.id);
 }
 
 function unavailableContainer(message: string): ObservedContainer {

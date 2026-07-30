@@ -51,6 +51,7 @@ export function validateRunFixture(value: unknown, path = "run"): RunDetail {
       "name",
       "subject",
       "status",
+      "verdictStatus",
       "source",
       "startedAt",
       "description",
@@ -64,11 +65,12 @@ export function validateRunFixture(value: unknown, path = "run"): RunDetail {
     throw new RunFixtureError(`${path}.source must be demo or observed`);
   }
   if (
-    !Array.isArray(value.stages) || !Array.isArray(value.requirements) ||
-    !Array.isArray(value.evidence)
+    !Array.isArray(value.stages) || !Array.isArray(value.measurements) ||
+    !Array.isArray(value.provenance) || !Array.isArray(value.warnings) ||
+    !Array.isArray(value.requirements) || !Array.isArray(value.evidence)
   ) {
     throw new RunFixtureError(
-      `${path} must contain stages, requirements, and evidence arrays`,
+      `${path} must contain stages, measurements, provenance, warnings, requirements, and evidence arrays`,
     );
   }
   for (
