@@ -1,6 +1,8 @@
 .env
 .env.*
 !.env.example
+!.env.erpnext.example
 cad-exports/
 node_modules/
 src/ui/.vite/
+state/local/

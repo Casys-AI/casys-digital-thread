@@ -47,6 +47,15 @@ To run the real engineering evidence dashboard instead:
 deno task compose:engineering
 ```
 
+That dashboard also includes the ERPNext BOM panel. Its local build, credential and
+network prerequisites are documented in
+[Show the real ERPNext BOM in Compose](show-erpnext-bom.md). A live `count: 0` is an
+empty ERP, not permission to substitute mock BOM rows.
+
+For the product-specific four-panel example, use `deno task compose:cm01`. Its saved
+layout, local runtime arguments, and replay semantics are documented in
+[View the CoffeeMachine CM-01 digital thread](view-coffee-machine-cm01.md).
+
 ## 3. Confirm the right behaviour
 
 The page has one Console panel because the current template calls `console_snapshot`. In

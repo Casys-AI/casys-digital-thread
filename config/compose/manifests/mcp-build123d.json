@@ -71,6 +71,27 @@
         ],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "build123d_export_read",
+      "description": "App-only helper that reads one bounded GLB export by safe basename for the interactive viewer.",
+      "appCallable": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 255,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*\\.glb$",
+            "description": "Safe GLB basename returned in build123d_export.files[].viewer.name"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
     }
   ]
 }

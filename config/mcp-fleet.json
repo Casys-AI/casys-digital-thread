@@ -177,6 +177,72 @@
           "The bounded run volume retains hashed simulation evidence; a successful simulation is not a requirement verdict."
         ]
       }
+    },
+    {
+      "id": "erpnext",
+      "displayName": "ERPNext",
+      "role": "Manufacturing BOM, materials, operations and cost detail",
+      "serviceName": "mcp-erpnext",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3012/mcp",
+      "healthUrl": "http://127.0.0.1:3012/health",
+      "image": "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467",
+      "required": true,
+      "expectedTools": [
+        "erpnext_bom_list",
+        "erpnext_bom_get",
+        "erpnext_work_order_list",
+        "erpnext_work_order_get",
+        "erpnext_work_order_create",
+        "erpnext_job_card_list",
+        "erpnext_job_card_get",
+        "erpnext_item_list",
+        "erpnext_item_get",
+        "erpnext_item_create",
+        "erpnext_item_update",
+        "erpnext_stock_balance",
+        "erpnext_warehouse_list",
+        "erpnext_stock_entry_list",
+        "erpnext_stock_entry_get",
+        "erpnext_stock_entry_create",
+        "erpnext_file_upload",
+        "erpnext_doc_create",
+        "erpnext_doc_update",
+        "erpnext_doc_delete",
+        "erpnext_doc_submit",
+        "erpnext_doc_cancel",
+        "erpnext_doc_get",
+        "erpnext_doc_list",
+        "erpnext_doc_assign",
+        "erpnext_doc_unassign"
+      ],
+      "expectedViews": [
+        "ui://mcp-erpnext/doclist-viewer",
+        "ui://mcp-erpnext/invoice-viewer",
+        "ui://mcp-erpnext/stock-viewer",
+        "ui://mcp-erpnext/chart-viewer",
+        "ui://mcp-erpnext/kanban-viewer",
+        "ui://mcp-erpnext/kpi-viewer",
+        "ui://mcp-erpnext/funnel-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [],
+        "upstreams": [
+          "http://frontend:8080"
+        ]
+      },
+      "trust": {
+        "level": "first-party-local-privileged",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The local container combines the reviewed viewer/UOM fix 1d99467 with the pending mcp-server 0.24 base 17ca098; the fix itself is merged on main as 50d4a538, while the 0.24 base remains explicit until its own review is complete.",
+          "The server exposes manufacturing, inventory and generic operations so an agent can create Items and BOM documents from zero; these categories include create, update, submit, cancel, delete, upload and assignment mutations.",
+          "The Compose dashboard grant is a separate capability boundary and permits only the read-only BOM list and detail tools.",
+          "ERPNext API credentials are supplied at runtime and never stored in this manifest."
+        ]
+      }
     }
   ],
   "workbench": [
@@ -205,6 +271,13 @@
       "title": "Bracket FEA evidence",
       "kind": "evidence",
       "sourceServerId": "calculix"
+    },
+    {
+      "id": "manufacturing-bom",
+      "title": "Manufacturing BOM",
+      "kind": "mcp-app",
+      "sourceServerId": "erpnext",
+      "resourceUri": "ui://mcp-erpnext/doclist-viewer"
     },
     {
       "id": "syson-ui",

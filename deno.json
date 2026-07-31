@@ -17,6 +17,7 @@
     "dev": "deno run --watch=server.ts,src,config,state --allow-read=config,state,src/ui,mcp-server.yaml --allow-net --allow-run=docker --allow-env server.ts",
     "compose:console": "deno run --allow-read=config/compose --allow-net=127.0.0.1,localhost scripts/serve-compose-dashboard.ts console",
     "compose:engineering": "deno run --allow-read=config/compose --allow-net=127.0.0.1,localhost scripts/serve-compose-dashboard.ts engineering",
+    "compose:cm01": "deno run --allow-read=config/compose,state/local --allow-net=127.0.0.1,localhost scripts/serve-compose-dashboard.ts cm01",
     "preview:browser": "deno run --allow-net=127.0.0.1 scripts/console-browser-harness.ts",
     "check": "deno check server.ts scripts/console-browser-harness.ts scripts/serve-compose-dashboard.ts",
     "test": "deno test --allow-read=config,state,src/ui,mcp-server.yaml --allow-net=127.0.0.1,localhost --allow-env src scripts/*_test.ts",

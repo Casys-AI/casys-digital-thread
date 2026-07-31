@@ -7,6 +7,7 @@
 #   mcp-build123d          MCP over HTTP on http://localhost:3014
 #   mcp-calculix           MCP over HTTP on http://localhost:3015
 #   mcp-modelica           MCP over HTTP on http://localhost:3016
+#   mcp-erpnext            MCP over HTTP on http://localhost:3012
 #
 # The MCP servers bind 0.0.0.0 INSIDE their containers (required to be
 # reachable through the port mapping); the mapping itself is loopback-only,
@@ -109,8 +110,51 @@ services:
       retries: 6
     networks: [chain]
 
+  # Until the mcp-server 0.24 base is reviewed and released by mcp-erpnext, the
+  # local tag combines base 17ca098 with viewer/UOM fix 1d99467. Build only from
+  # that exact clean commit (MCP_ERPNEXT_CONTEXT can select another worktree).
+  # The ERP API remains on its own network; only this MCP bridge joins both.
+  mcp-erpnext:
+    build:
+      context: "${MCP_ERPNEXT_CONTEXT:-../mcp-erpnext}"
+    image: "${MCP_ERPNEXT_IMAGE:-casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467}"
+    command:
+      [
+        "run",
+        "--allow-all",
+        "server.ts",
+        "--http",
+        "--port=3012",
+        "--hostname=0.0.0.0",
+        "--categories=manufacturing,inventory,operations",
+      ]
+    env_file:
+      - path: "${ERPNEXT_ENV_FILE:-../mcp-erpnext/.env}"
+        required: false
+    environment:
+      # Container DNS is preferable to routing API credentials through a host
+      # port. Override only when the ERPNext stack uses another service name.
+      ERPNEXT_URL: "${ERPNEXT_UPSTREAM_URL:-http://frontend:8080}"
+    ports:
+      - "127.0.0.1:3012:3012"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3012/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain, erpnext]
+
 networks:
   chain:
+  erpnext:
+    external: true
+    name: "${ERPNEXT_DOCKER_NETWORK:-erpnext-docker_frappe_network}"
 
 volumes:
   syson-db-data:

@@ -1,0 +1,194 @@
+{
+  "name": "mcp-syson",
+  "description": "Reviewed SysON dashboard surface for diagrams, queries, requirements, constraints and values.",
+  "transport": {
+    "type": "http",
+    "url": "http://127.0.0.1:3009",
+    "protocol": "stateless-2026-07-28"
+  },
+  "tools": [
+    {
+      "name": "syson_constraint_validate",
+      "description": "Validate a model element against its constraints and return the validation viewer.",
+      "resourceUri": "ui://mcp-syson/validation-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "editing_context_id": {
+            "type": "string",
+            "description": "Editing context ID from syson_project_get."
+          },
+          "element_id": {
+            "type": "string",
+            "description": "UUID of the model element to validate."
+          },
+          "values": {
+            "type": "object",
+            "description": "Optional numeric or unit-bearing overrides."
+          }
+        },
+        "required": [
+          "editing_context_id",
+          "element_id"
+        ]
+      }
+    },
+    {
+      "name": "syson_diagram_snapshot",
+      "description": "Render a SysON diagram as SVG and return the diagram viewer.",
+      "resourceUri": "ui://mcp-syson/diagram-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "editing_context_id": {
+            "type": "string",
+            "description": "SysON project editing-context ID."
+          },
+          "diagram_id": {
+            "type": "string",
+            "description": "UUID of the diagram to render."
+          }
+        },
+        "required": [
+          "editing_context_id",
+          "diagram_id"
+        ]
+      }
+    },
+    {
+      "name": "syson_query_eval",
+      "description": "Evaluate an AQL expression on selected model elements and return the query-results viewer.",
+      "resourceUri": "ui://mcp-syson/query-results-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "editing_context_id": {
+            "type": "string",
+            "description": "SysON project editing-context ID."
+          },
+          "expression": {
+            "type": "string",
+            "description": "AQL expression to evaluate."
+          },
+          "selected_object_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Model element IDs used as query context."
+          }
+        },
+        "required": [
+          "editing_context_id",
+          "expression",
+          "selected_object_ids"
+        ]
+      }
+    },
+    {
+      "name": "syson_query_requirements_trace",
+      "description": "Trace requirements to satisfying elements and return the requirements-trace viewer.",
+      "resourceUri": "ui://mcp-syson/requirements-trace-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "editing_context_id": {
+            "type": "string",
+            "description": "SysON project editing-context ID."
+          },
+          "root_id": {
+            "type": "string",
+            "description": "Root model element from which requirements are traced."
+          }
+        },
+        "required": [
+          "editing_context_id",
+          "root_id"
+        ]
+      }
+    },
+    {
+      "name": "syson_search",
+      "description": "Search model elements and return the query-results viewer.",
+      "resourceUri": "ui://mcp-syson/query-results-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "editing_context_id": {
+            "type": "string",
+            "description": "SysON project editing-context ID."
+          },
+          "text": {
+            "type": "string",
+            "description": "Search text."
+          },
+          "match_case": {
+            "type": "boolean",
+            "description": "Perform a case-sensitive search."
+          },
+          "whole_word": {
+            "type": "boolean",
+            "description": "Match complete words only."
+          },
+          "use_regex": {
+            "type": "boolean",
+            "description": "Interpret the search text as a regular expression."
+          }
+        },
+        "required": [
+          "editing_context_id",
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "syson_value_read",
+      "description": "Read a numeric model value and return the value-change viewer.",
+      "resourceUri": "ui://mcp-syson/value-change-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "editing_context_id": {
+            "type": "string",
+            "description": "SysON project editing-context ID."
+          },
+          "element_id": {
+            "type": "string",
+            "description": "UUID of the AttributeUsage to read."
+          }
+        },
+        "required": [
+          "editing_context_id",
+          "element_id"
+        ]
+      }
+    },
+    {
+      "name": "syson_value_set",
+      "description": "Change a numeric model value and return the value-change viewer.",
+      "resourceUri": "ui://mcp-syson/value-change-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "editing_context_id": {
+            "type": "string",
+            "description": "SysON project editing-context ID."
+          },
+          "element_id": {
+            "type": "string",
+            "description": "UUID of the AttributeUsage to change."
+          },
+          "value": {
+            "type": "number",
+            "description": "New numeric value."
+          }
+        },
+        "required": [
+          "editing_context_id",
+          "element_id",
+          "value"
+        ]
+      }
+    }
+  ]
+}

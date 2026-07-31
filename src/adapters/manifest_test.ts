@@ -14,6 +14,7 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "build123d",
     "calculix",
     "modelica",
+    "erpnext",
   ]);
   assertEquals(manifest.servers[1].network?.exposure, "loopback-only");
   assertEquals(
@@ -21,6 +22,10 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "first-party-local-privileged",
   );
   assertEquals(manifest.servers[1].trust?.executesArbitraryCode, true);
+  const erpnext = manifest.servers.find((server) => server.id === "erpnext");
+  assertEquals(erpnext?.expectedTools.length, 26);
+  assertEquals(erpnext?.trust?.level, "first-party-local-privileged");
+  assertEquals(erpnext?.trust?.executesArbitraryCode, false);
 });
 
 Deno.test("validateFleetManifest ignores documentation extensions", () => {
