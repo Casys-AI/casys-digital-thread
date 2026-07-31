@@ -6,9 +6,9 @@ categories deliberately answer different questions.
 
 ## Tutorials — learn by doing
 
-- [Inspect the first real CoffeeMachine scenario run](tutorials/coffee-machine-nominal.md)
-  starts the local stack, opens the live console, and follows one Modelica run through
-  its provisional scenario-contract verdict.
+- [Run the first CoffeeMachine evidence through Compose](tutorials/coffee-machine-nominal.md)
+  starts the stateless local services, creates a real Modelica run, reads its immutable
+  structured evidence, and then follows its separate provisional scenario comparison.
 
 ## How-to guides — achieve a focused task
 
@@ -18,6 +18,8 @@ categories deliberately answer different questions.
 - [Host the Console in a local Compose dashboard](how-to/compose-console.md) uses the
   generic local MCP Apps host, the explicit Console manifest, and the YAML template
   without replacing the fixed browser harness.
+- [Add a result-viewer MCP App](how-to/add-mcp-app.md) scaffolds, builds, registers, and
+  verifies a standard structured-result view without broadening its server grants.
 
 ## Reference — look up exact contracts and locations
 
@@ -26,12 +28,17 @@ categories deliberately answer different questions.
 - [Workspace map and local ports](reference/workspace-map.md) identifies the Compose
   manifest/template, scenario-contract plan, observers, UI sources, generated bundle,
   harness, volumes, and every local endpoint.
+- [Building blocks and artifact ownership](reference/building-blocks.md) maps the MCP
+  packages and engineering repositories to their code, images, manifests, dashboards,
+  and evidence outputs.
 
 ## Explanation — understand why the boundaries exist
 
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.
+- [Proofs and verdicts](explanations/proofs-and-verdicts.md) explains why CAD, FEA,
+  physical simulation, and constraint evaluation remain separate stages.
 - [Industry positioning and state of the art](positioning.md) explains the
   executable-digital-thread and physics-in-the-loop framing.
 
