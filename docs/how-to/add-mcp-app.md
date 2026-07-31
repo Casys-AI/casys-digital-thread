@@ -6,9 +6,9 @@
 
 ## 1. Scaffold into a new, empty child directory
 
-The standard viewer is the target `@casys/mcp-view@0.4.0` scaffold. Run it only when
-that version is available to the resolver in your environment; this guide does not
-assert registry availability or authorize a global dependency-age override.
+`@casys/mcp-view@0.4.0` is published on JSR and is the standard result-viewer scaffold.
+On Deno 2.9, a package published less than 24 hours ago can still be withheld by the
+resolver's minimum dependency age.
 
 ```bash
 deno run -A jsr:@casys/mcp-view@0.4.0/scaffold result-viewer ./src/ui/my-result-viewer
@@ -22,9 +22,9 @@ target by default; use `--force` only when replacing its named files is intentio
 emits a standalone `index.html`, TypeScript parser/renderer, host-aware styles, build
 script, and parser/render test. The build writes `dist/result-viewer/index.html`.
 
-If a local resolver needs a temporary exception for this one target version, scope it to
-`jsr:@casys/mcp-view@0.4.0` outside the repository's global policy; remove the exception
-after resolution succeeds.
+If Deno 2.9 reports that age gate, make a temporary exception scoped only to
+`jsr:@casys/mcp-view@0.4.0`; do not set a global `minimumDependencyAge: 0`. Remove the
+exception once the package is past the age window.
 
 ## 2. Keep the tool result closed and versioned
 

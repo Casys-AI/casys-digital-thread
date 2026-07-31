@@ -130,36 +130,31 @@ export function registerConsoleViewer(app: McpApp): boolean {
 if (import.meta.main) {
   const cli = parseCli(Deno.args);
   const { app } = await createConsoleServer();
-  if (cli.stdio) {
-    await app.start();
-  } else {
-    const port = cli.port ?? integerEnv("MCP_PORT") ?? DEFAULT_PORT;
-    const hostname = cli.hostname ?? env("MCP_HOSTNAME") ?? DEFAULT_HOSTNAME;
-    await app.startHttp({
-      port,
-      hostname,
-      corsOrigins: ["http://127.0.0.1", "http://localhost"],
-      onListen: ({ hostname: boundHostname, port: boundPort }) => {
-        console.error(
-          `Casys digital-thread console: http://${boundHostname}:${boundPort}/mcp`,
-        );
-      },
-    });
-  }
+  const port = cli.port ?? integerEnv("MCP_PORT") ?? DEFAULT_PORT;
+  const hostname = cli.hostname ?? env("MCP_HOSTNAME") ?? DEFAULT_HOSTNAME;
+  await app.startHttp({
+    port,
+    hostname,
+    corsOrigins: ["http://127.0.0.1", "http://localhost"],
+    onListen: ({ hostname: boundHostname, port: boundPort }) => {
+      console.error(
+        `Casys digital-thread console: http://${boundHostname}:${boundPort}/mcp`,
+      );
+    },
+  });
 }
 
 interface CliOptions {
-  stdio: boolean;
   port?: number;
   hostname?: string;
 }
 
 function parseCli(args: string[]): CliOptions {
-  const result: CliOptions = { stdio: false };
+  const result: CliOptions = {};
   for (let index = 0; index < args.length; index++) {
     const argument = args[index];
     if (argument === "--stdio") {
-      result.stdio = true;
+      throw new TypeError("--stdio is not supported; use stateless HTTP on /mcp.");
     } else if (argument.startsWith("--port=")) {
       result.port = positiveInteger(argument.slice("--port=".length), "--port");
     } else if (argument === "--port") {

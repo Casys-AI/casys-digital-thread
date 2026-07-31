@@ -9,7 +9,11 @@ read-only (`server.ts`, `src/`). Pour éditer un serveur d'ingénierie, cloner s
 (`Casys-AI/mcp-syson`, `mcp-build123d`, `mcp-calculix`, `mcp-modelica`,
 `constraint-solver`).
 
-## Les outils de la chaîne (via .mcp.json)
+## Les outils de la chaîne (MCP stateless)
+
+Les serveurs exposent `/mcp` avec le protocole stateless `2026-07-28`. Démarrer les
+services requis avec Compose ; ce repo n'embarque plus de configuration stdio ni de
+chemin de compatibilité legacy.
 
 - `syson_*` — modèle SysML v2 (31 tools) : projets, éléments, AQL, contraintes
   (`syson_constraint_validate`, `syson_constraint_solve` — z3), structure produit

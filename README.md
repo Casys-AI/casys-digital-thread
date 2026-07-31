@@ -57,13 +57,17 @@ Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + No
 for rebuilding the console.
 
 ```bash
-# 1. Bring up SysON + the four MCP servers over HTTP (optional, for the full stack)
+# 1. Bring up SysON + the four stateless MCP servers (optional, for the full stack)
 docker compose up -d          # SysON UI: http://localhost:8180
 
-# 2. Or just open this folder in Claude Code:
-#    .mcp.json wires syson / build123d / calculix / modelica plus the read-only console.
-#    SysON must be reachable on localhost:8180 (docker compose up syson-db syson-app).
+# 2. Start the read-only Console when you need its MCP App.
+npm --prefix src/ui ci
+npm --prefix src/ui run build
+deno task start
 ```
+
+The active interface is stateless MCP `2026-07-28` over `/mcp`; this workspace no longer
+ships a stdio configuration or compatibility path.
 
 The `cad-exports` named volume is shared between build123d and calculix: a STEP exported
 by `build123d_export` is immediately readable by `calculix_solve_static` at
@@ -118,7 +122,6 @@ boundary, and local `mcp-compose` path.
 
 | Path                                | Contents                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------ |
-| `.mcp.json`                         | Claude Code wiring for the four engineering servers and the console      |
 | `docker-compose.yml`                | The full stack: SysON + MCP servers over HTTP                            |
 | `server.ts`, `src/`                 | Read-only console control plane and MCP App                              |
 | `config/mcp-fleet.json`             | Desired fleet, topology, tools, views, and trust boundaries              |
