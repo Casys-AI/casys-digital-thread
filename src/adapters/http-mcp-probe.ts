@@ -31,11 +31,19 @@ interface RpcEnvelope {
   error?: { code?: number; message?: string };
 }
 
-const MCP_PROTOCOL_VERSION = "2025-06-18";
+const MCP_PROTOCOL_VERSION = "2026-07-28";
+const CLIENT_META = {
+  "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": {
+    name: "casys-digital-thread-console",
+    version: "0.1.0",
+  },
+};
 
 /**
- * Read-only HTTP probe. It verifies the normal health route, opens a short MCP
- * session, discovers tools/resources, then closes only that probe session.
+ * Read-only stateless HTTP probe. It verifies the health route, discovers the
+ * server, then lists its tools and resources without a session or SSE stream.
  */
 export class HttpMcpProbe implements McpProbe {
   readonly #fetch: typeof fetch;
@@ -86,42 +94,20 @@ export class HttpMcpProbe implements McpProbe {
       };
     }
 
-    let sessionId: string | undefined;
     try {
-      const initialized = await this.#rpc(
+      const discovered = await this.#rpc(
         server.mcpUrl,
         {
           jsonrpc: "2.0",
           id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: MCP_PROTOCOL_VERSION,
-            capabilities: {},
-            clientInfo: {
-              name: "casys-digital-thread-console",
-              version: "0.1.0",
-            },
-          },
+          method: "server/discover",
+          params: { _meta: CLIENT_META },
         },
       );
-      sessionId = initialized.response.headers.get("mcp-session-id") ??
-        undefined;
-      const initializeResult = requireResult(
-        initialized.payload,
-        "initialize",
+      const discoverResult = requireCompleteResult(
+        discovered.payload,
+        "server/discover",
       );
-
-      if (sessionId) {
-        await this.#rpc(
-          server.mcpUrl,
-          {
-            jsonrpc: "2.0",
-            method: "notifications/initialized",
-          },
-          sessionId,
-          true,
-        );
-      }
 
       const toolsEnvelope = await this.#rpc(
         server.mcpUrl,
@@ -129,11 +115,10 @@ export class HttpMcpProbe implements McpProbe {
           jsonrpc: "2.0",
           id: 2,
           method: "tools/list",
-          params: {},
+          params: { _meta: CLIENT_META },
         },
-        sessionId,
       );
-      const toolsResult = requireResult(toolsEnvelope.payload, "tools/list");
+      const toolsResult = requireCompleteResult(toolsEnvelope.payload, "tools/list");
       const tools = parseTools(toolsResult.tools);
 
       let resourceUris: string[] = [];
@@ -144,11 +129,10 @@ export class HttpMcpProbe implements McpProbe {
             jsonrpc: "2.0",
             id: 3,
             method: "resources/list",
-            params: {},
+            params: { _meta: CLIENT_META },
           },
-          sessionId,
         );
-        const resourcesResult = requireResult(
+        const resourcesResult = requireCompleteResult(
           resourcesEnvelope.payload,
           "resources/list",
         );
@@ -162,8 +146,8 @@ export class HttpMcpProbe implements McpProbe {
         ...tools.flatMap((tool) => tool.resourceUri ? [tool.resourceUri] : []),
         ...resourceUris.filter((uri) => uri.startsWith("ui://")),
       ]);
-      const serverInfo = isRecord(initializeResult.serverInfo)
-        ? initializeResult.serverInfo
+      const serverInfo = isRecord(discoverResult.serverInfo)
+        ? discoverResult.serverInfo
         : {};
 
       return {
@@ -173,7 +157,7 @@ export class HttpMcpProbe implements McpProbe {
         httpStatus: healthResponse.status,
         mcp: {
           reachable: true,
-          protocolVersion: stringValue(initializeResult.protocolVersion),
+          protocolVersion: MCP_PROTOCOL_VERSION,
           serverName: stringValue(serverInfo.name),
           serverVersion: stringValue(serverInfo.version),
           tools,
@@ -191,24 +175,23 @@ export class HttpMcpProbe implements McpProbe {
         mcp: { ...emptyMcp(), error: message },
         error: `MCP discovery failed: ${message}`,
       };
-    } finally {
-      if (sessionId) {
-        await this.#closeSession(server.mcpUrl, sessionId);
-      }
     }
   }
 
   async #rpc(
     url: string,
     body: Record<string, unknown>,
-    sessionId?: string,
-    allowEmpty = false,
   ): Promise<{ response: Response; payload: RpcEnvelope }> {
     const headers: Record<string, string> = {
-      "accept": "application/json, text/event-stream",
+      "accept": "application/json",
       "content-type": "application/json",
+      "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+      "mcp-method": String(body.method),
     };
-    if (sessionId) headers["mcp-session-id"] = sessionId;
+    const params = isRecord(body.params) ? body.params : {};
+    if (body.method === "tools/call" && typeof params.name === "string") {
+      headers["mcp-name"] = params.name;
+    }
 
     const response = await this.#request(url, {
       method: "POST",
@@ -219,10 +202,7 @@ export class HttpMcpProbe implements McpProbe {
       throw new Error(`MCP endpoint returned HTTP ${response.status}`);
     }
     const text = await response.text();
-    if (allowEmpty && text.trim() === "") {
-      return { response, payload: {} };
-    }
-    return { response, payload: parseRpcBody(text, response.headers) };
+    return { response, payload: parseRpcBody(text) };
   }
 
   async #request(url: string, init: RequestInit): Promise<Response> {
@@ -234,32 +214,11 @@ export class HttpMcpProbe implements McpProbe {
       clearTimeout(timer);
     }
   }
-
-  async #closeSession(url: string, sessionId: string): Promise<void> {
-    try {
-      await this.#request(url, {
-        method: "DELETE",
-        headers: { "mcp-session-id": sessionId },
-      });
-    } catch {
-      // Best-effort session cleanup must never change the probe result.
-    }
-  }
 }
 
-function parseRpcBody(text: string, headers: Headers): RpcEnvelope {
-  const contentType = headers.get("content-type") ?? "";
-  let jsonText = text.trim();
-  if (contentType.includes("text/event-stream") || jsonText.startsWith("event:")) {
-    const data = jsonText
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trim())
-      .find((line) => line.length > 0);
-    if (!data) throw new Error("MCP endpoint returned an empty event stream");
-    jsonText = data;
-  }
-  if (jsonText === "") return {};
+function parseRpcBody(text: string): RpcEnvelope {
+  const jsonText = text.trim();
+  if (jsonText === "") throw new Error("MCP endpoint returned an empty JSON body");
   try {
     return JSON.parse(jsonText) as RpcEnvelope;
   } catch {
@@ -267,7 +226,7 @@ function parseRpcBody(text: string, headers: Headers): RpcEnvelope {
   }
 }
 
-function requireResult(
+function requireCompleteResult(
   envelope: RpcEnvelope,
   operation: string,
 ): Record<string, unknown> {
@@ -278,6 +237,9 @@ function requireResult(
   }
   if (!isRecord(envelope.result)) {
     throw new Error(`${operation}: missing result`);
+  }
+  if (envelope.result.resultType !== "complete") {
+    throw new Error(`${operation}: expected resultType \"complete\"`);
   }
   return envelope.result;
 }

@@ -4,7 +4,7 @@
   "transport": {
     "type": "http",
     "url": "http://127.0.0.1:3020",
-    "protocol": "streamable-http"
+    "protocol": "stateless-2026-07-28"
   },
   "tools": [
     {

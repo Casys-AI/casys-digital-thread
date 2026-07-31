@@ -15,7 +15,7 @@
 const DEFAULT_PORT = 3021;
 const DEFAULT_MCP_URL = "http://127.0.0.1:3020/mcp";
 const CONSOLE_RESOURCE_URI = "ui://casys-digital-thread/console";
-const MCP_PROTOCOL_VERSION = "2025-06-18";
+const MCP_PROTOCOL_VERSION = "2026-07-28";
 const MCP_APP_PROTOCOL_VERSION = "2026-01-26";
 
 const ALLOWED_TOOLS = new Set([
@@ -43,14 +43,8 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-interface McpSession {
-  id: string;
-  protocolVersion: string;
-}
-
 const options = parseCli(Deno.args);
 let nextRequestId = 1;
-let activeSession: McpSession | undefined;
 let mcpCallQueue: Promise<unknown> = Promise.resolve();
 
 const server = Deno.serve(
@@ -153,86 +147,45 @@ async function readConsoleResource(): Promise<string> {
 }
 
 /**
- * Proxies through one persistent Streamable HTTP MCP session. A browser
+ * Proxies every call through the Console's stateless MCP endpoint. A browser
  * refresh or viewer tool call therefore observes the server currently bound
  * on port 3020; it never reads a fixture or talks directly to Docker.
- *
- * The queue avoids simultaneous initialize/tool calls from the iframe during
- * bootstrap and respects the console's explicit initialize rate limit.
  */
 function callMcp(method: string, params: unknown): Promise<JsonRpcResponse> {
-  const call = mcpCallQueue.then(() => callMcpInSession(method, params));
+  const call = mcpCallQueue.then(() => callMcpStateless(method, params));
   mcpCallQueue = call.catch(() => undefined);
   return call;
 }
 
-async function callMcpInSession(
+async function callMcpStateless(
   method: string,
   params: unknown,
 ): Promise<JsonRpcResponse> {
-  const session = await getMcpSession();
-  try {
-    const response = await postMcp(
-      { jsonrpc: "2.0", id: nextId(), method, params },
-      session.protocolVersion,
-      session.id,
-    );
-    return await jsonRpcFrom(response);
-  } catch (error) {
-    if (!isSessionFailure(error)) throw error;
-    activeSession = undefined;
-    const replacement = await getMcpSession();
-    const response = await postMcp(
-      { jsonrpc: "2.0", id: nextId(), method, params },
-      replacement.protocolVersion,
-      replacement.id,
-    );
-    return await jsonRpcFrom(response);
-  }
-}
-
-async function getMcpSession(): Promise<McpSession> {
-  if (activeSession) return activeSession;
-  const initialized = await postMcp({
+  const response = await postMcp({
     jsonrpc: "2.0",
     id: nextId(),
-    method: "initialize",
-    params: {
-      protocolVersion: MCP_PROTOCOL_VERSION,
-      capabilities: {},
-      clientInfo: { name: "casys-console-browser-harness", version: "0.1.0" },
-    },
-  }, MCP_PROTOCOL_VERSION);
-  const initializeReply = await jsonRpcFrom(initialized);
-  if (initializeReply.error) {
-    throw new Error(`MCP initialize failed: ${initializeReply.error.message}`);
-  }
-  const sessionId = initialized.headers.get("mcp-session-id");
-  if (!sessionId) {
-    throw new Error("The console MCP did not return an MCP session id.");
-  }
-  const serverProtocol = protocolVersionFrom(initializeReply.result) ??
-    MCP_PROTOCOL_VERSION;
-  await postMcp(
-    { jsonrpc: "2.0", method: "notifications/initialized", params: {} },
-    serverProtocol,
-    sessionId,
-  );
-  activeSession = { id: sessionId, protocolVersion: serverProtocol };
-  return activeSession;
+    method,
+    params: statelessParams(params),
+  });
+  return await jsonRpcFrom(response);
 }
 
 async function postMcp(
   payload: Omit<JsonRpcRequest, "id"> | JsonRpcRequest,
-  protocolVersion: string,
-  sessionId?: string,
 ): Promise<Response> {
+  const params = asRecord(payload.params);
   const headers = new Headers({
-    "Accept": "application/json, text/event-stream",
+    "Accept": "application/json",
     "Content-Type": "application/json",
-    "MCP-Protocol-Version": protocolVersion,
+    "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+    "Mcp-Method": payload.method,
   });
-  if (sessionId) headers.set("Mcp-Session-Id", sessionId);
+  const name = payload.method === "tools/call"
+    ? params?.name
+    : payload.method === "resources/read"
+    ? params?.uri
+    : undefined;
+  if (typeof name === "string") headers.set("Mcp-Name", name);
   const response = await fetch(options.mcpUrl, {
     method: "POST",
     headers,
@@ -243,6 +196,20 @@ async function postMcp(
     throw new Error(`MCP HTTP ${response.status}: ${body.slice(0, 500)}`);
   }
   return response;
+}
+
+function statelessParams(params: unknown): Record<string, unknown> {
+  return {
+    ...asRecord(params),
+    _meta: {
+      "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+      "io.modelcontextprotocol/clientCapabilities": {},
+      "io.modelcontextprotocol/clientInfo": {
+        name: "casys-console-browser-harness",
+        version: "0.1.0",
+      },
+    },
+  };
 }
 
 async function jsonRpcFrom(response: Response): Promise<JsonRpcResponse> {
@@ -424,11 +391,6 @@ function toolNameFrom(params: unknown): string | undefined {
   return typeof record?.name === "string" ? record.name : undefined;
 }
 
-function protocolVersionFrom(value: unknown): string | undefined {
-  const protocolVersion = asRecord(value)?.protocolVersion;
-  return typeof protocolVersion === "string" ? protocolVersion : undefined;
-}
-
 function rpcError(
   id: string | number | null,
   code: number,
@@ -456,12 +418,6 @@ function htmlResponse(html: string, status = 200): Response {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isSessionFailure(error: unknown): boolean {
-  const message = errorMessage(error).toLowerCase();
-  return message.includes("mcp http 404") || message.includes("session not found") ||
-    message.includes("invalid session");
 }
 
 function escapeHtml(value: string): string {

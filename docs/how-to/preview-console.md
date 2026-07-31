@@ -49,7 +49,8 @@ live result to look for.
 
 The harness is a narrow visual-test host for the existing fixed MCP App. It reads the
 registered console resource from the live MCP server and supplies the MCP Apps host
-capability the view needs for its server-side, read-only calls. It forwards exactly
+capability the view needs for its server-side, read-only calls. Its upstream requests use
+the stateless MCP 2026-07-28 wire, with no session or SSE fallback. It forwards exactly
 these console tools:
 
 - `console_snapshot`

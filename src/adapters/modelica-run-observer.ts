@@ -9,7 +9,16 @@ import type {
   RunSummary,
 } from "../domain/types.ts";
 
-const MCP_PROTOCOL_VERSION = "2025-06-18";
+const MCP_PROTOCOL_VERSION = "2026-07-28";
+const MODELICA_RESULTS_SCHEMA_VERSION = "1.0";
+const CLIENT_META = {
+  "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": {
+    name: "casys-digital-thread-console",
+    version: "0.1.0",
+  },
+};
 const MODEL_RUN_PREFIX = "modelica:";
 // mcp-modelica bounds its active, unarchived evidence ledger to 20 records;
 // requesting that maximum therefore reads the whole owner catalog, not a
@@ -17,7 +26,7 @@ const MODEL_RUN_PREFIX = "modelica:";
 const MAX_LISTED_RUNS = 20;
 
 export interface ModelicaRunObserverOptions {
-  /** Streamable HTTP MCP endpoint owned by mcp-modelica. */
+  /** Stateless HTTP MCP endpoint owned by mcp-modelica. */
   mcpUrl: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
@@ -47,91 +56,51 @@ export class ModelicaRunObserver implements ObservedRunCatalog {
   }
 
   async list(): Promise<readonly RunSummary[]> {
-    const response = await this.#callTool("modelica_run_list", {
+    const envelope = await this.#callTool("modelica_run_list", {
       limit: MAX_LISTED_RUNS,
     });
-    if (!Array.isArray(response)) {
-      throw new ModelicaRunObserverError(
-        "modelica_run_list returned an unsupported structuredContent contract.",
-      );
-    }
-    return response.map((run, index) => toSummary(run, `runs[${index}]`));
+    return listEnvelope(envelope).runs.map((run, index) =>
+      toSummary(run, `runs[${index}]`)
+    );
   }
 
   async detail(id: string): Promise<RunDetail | undefined> {
     if (!id.startsWith(MODEL_RUN_PREFIX)) return undefined;
     const runId = id.slice(MODEL_RUN_PREFIX.length);
     if (runId.length === 0) return undefined;
-    const response = await this.#callTool("modelica_run_get", {
+    const envelope = await this.#callTool("modelica_run_get", {
       run_id: runId,
     });
-    return toDetail(response, "modelica_run_get");
+    return toDetail(runEnvelope(envelope).run, "modelica_run_get.run");
   }
 
-  async #callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    let sessionId: string | undefined;
-    try {
-      const initialized = await this.#rpc({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: {
-          protocolVersion: MCP_PROTOCOL_VERSION,
-          capabilities: {},
-          clientInfo: {
-            name: "casys-digital-thread-console",
-            version: "0.1.0",
-          },
-        },
-      });
-      sessionId = initialized.response.headers.get("mcp-session-id") ?? undefined;
-      requireResult(initialized.payload, "initialize");
-
-      if (sessionId) {
-        await this.#rpc(
-          {
-            jsonrpc: "2.0",
-            method: "notifications/initialized",
-          },
-          sessionId,
-          true,
-        );
-      }
-
-      const result = await this.#rpc({
-        jsonrpc: "2.0",
-        id: 2,
-        method: "tools/call",
-        params: { name, arguments: args },
-      }, sessionId);
-      const toolResult = requireResult(result.payload, `tools/call ${name}`);
-      if (toolResult.isError === true) {
-        throw new ModelicaRunObserverError(toolError(toolResult));
-      }
-      if (
-        "structuredContent" in toolResult && toolResult.structuredContent !== undefined
-      ) {
-        return toolResult.structuredContent;
-      }
-      // mcp-modelica currently uses the portable MCP text envelope rather
-      // than structuredContent. Parse only its one JSON text value; retain
-      // structuredContent support for a future server release.
-      return parseToolJsonContent(toolResult, name);
-    } finally {
-      if (sessionId) await this.#closeSession(sessionId);
+  async #callTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const result = await this.#rpc({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { _meta: CLIENT_META, name, arguments: args },
+    });
+    const toolResult = requireCompleteResult(result.payload, `tools/call ${name}`);
+    if (toolResult.isError === true) {
+      throw new ModelicaRunObserverError(toolError(toolResult));
     }
+    return object(toolResult.structuredContent, `tools/call ${name}.structuredContent`);
   }
 
   async #rpc(
     body: Record<string, unknown>,
-    sessionId?: string,
-    allowEmpty = false,
   ): Promise<{ response: Response; payload: RpcEnvelope }> {
     const headers: Record<string, string> = {
-      "accept": "application/json, text/event-stream",
+      "accept": "application/json",
       "content-type": "application/json",
+      "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+      "mcp-method": String(body.method),
+      "mcp-name": String((body.params as Record<string, unknown>).name),
     };
-    if (sessionId) headers["mcp-session-id"] = sessionId;
     const response = await this.#request({
       method: "POST",
       headers,
@@ -143,19 +112,7 @@ export class ModelicaRunObserver implements ObservedRunCatalog {
       );
     }
     const text = await response.text();
-    if (allowEmpty && text.trim() === "") return { response, payload: {} };
-    return { response, payload: parseRpcBody(text, response.headers) };
-  }
-
-  async #closeSession(sessionId: string): Promise<void> {
-    try {
-      await this.#request({
-        method: "DELETE",
-        headers: { "mcp-session-id": sessionId },
-      });
-    } catch {
-      // A closing best-effort request must not obscure a tool response.
-    }
+    return { response, payload: parseRpcBody(text) };
   }
 
   async #request(init: RequestInit): Promise<Response> {
@@ -371,23 +328,11 @@ function scenarioIdentity(
   };
 }
 
-function parseRpcBody(text: string, headers: Headers): RpcEnvelope {
-  const contentType = headers.get("content-type") ?? "";
-  let jsonText = text.trim();
-  if (contentType.includes("text/event-stream") || jsonText.startsWith("event:")) {
-    const data = jsonText
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trim())
-      .find((line) => line.length > 0);
-    if (!data) {
-      throw new ModelicaRunObserverError(
-        "MCP endpoint returned an empty event stream.",
-      );
-    }
-    jsonText = data;
+function parseRpcBody(text: string): RpcEnvelope {
+  const jsonText = text.trim();
+  if (jsonText === "") {
+    throw new ModelicaRunObserverError("MCP endpoint returned an empty JSON body.");
   }
-  if (jsonText === "") return {};
   try {
     return JSON.parse(jsonText) as RpcEnvelope;
   } catch {
@@ -395,7 +340,7 @@ function parseRpcBody(text: string, headers: Headers): RpcEnvelope {
   }
 }
 
-function requireResult(
+function requireCompleteResult(
   envelope: RpcEnvelope,
   operation: string,
 ): Record<string, unknown> {
@@ -406,6 +351,11 @@ function requireResult(
   }
   if (!isRecord(envelope.result)) {
     throw new ModelicaRunObserverError(`${operation}: missing result.`);
+  }
+  if (envelope.result.resultType !== "complete") {
+    throw new ModelicaRunObserverError(
+      `${operation}: expected resultType \"complete\".`,
+    );
   }
   return envelope.result;
 }
@@ -421,26 +371,24 @@ function toolError(result: Record<string, unknown>): string {
   return text || "mcp-modelica reported a tool error.";
 }
 
-function parseToolJsonContent(result: Record<string, unknown>, name: string): unknown {
-  const content = Array.isArray(result.content) ? result.content : [];
-  const texts = content.flatMap((item) => {
-    if (!isRecord(item) || item.type !== "text" || typeof item.text !== "string") {
-      return [];
-    }
-    return [item.text];
-  });
-  if (texts.length !== 1) {
+function runEnvelope(value: Record<string, unknown>): { run: Record<string, unknown> } {
+  if (value.schemaVersion !== MODELICA_RESULTS_SCHEMA_VERSION || value.kind !== "run") {
     throw new ModelicaRunObserverError(
-      `tools/call ${name} did not return one JSON text result.`,
+      "modelica_run_get returned an unsupported v1 run envelope.",
     );
   }
-  try {
-    return JSON.parse(texts[0]);
-  } catch {
+  return { run: object(value.run, "modelica_run_get.run") };
+}
+
+function listEnvelope(value: Record<string, unknown>): { runs: unknown[] } {
+  if (
+    value.schemaVersion !== MODELICA_RESULTS_SCHEMA_VERSION || value.kind !== "run-list"
+  ) {
     throw new ModelicaRunObserverError(
-      `tools/call ${name} returned invalid JSON text.`,
+      "modelica_run_list returned an unsupported v1 run-list envelope.",
     );
   }
+  return { runs: array(value.runs, "modelica_run_list.runs") };
 }
 
 function object(value: unknown, path: string): Record<string, unknown> {

@@ -54,8 +54,8 @@ deno task preview:browser         # http://127.0.0.1:3021/
 ```
 
 The harness reads `ui://casys-digital-thread/console` through `resources/read` and
-relays only `console_snapshot`, `console_run_detail`, and `console_refresh` through a
-persistent MCP session. It is deliberately marked as a local MCP Apps harness: it is not
+relays only `console_snapshot`, `console_run_detail`, and `console_refresh` as stateless
+MCP 2026-07-28 requests. It is deliberately marked as a local MCP Apps harness: it is not
 a `mcp-compose` dashboard. Its exact scope and health check are documented in the
 [browser-preview how-to](how-to/preview-console.md).
 

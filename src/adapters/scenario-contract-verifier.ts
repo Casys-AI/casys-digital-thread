@@ -1,4 +1,12 @@
-const MCP_PROTOCOL_VERSION = "2025-06-18";
+const MCP_PROTOCOL_VERSION = "2026-07-28";
+const CLIENT_META = {
+  "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": {
+    name: "casys-digital-thread-scenario-contract-verifier",
+    version: "0.1.0",
+  },
+};
 const TARGET_TEMPERATURE_METRIC = "water_temperature_max";
 
 export interface Quantity {
@@ -71,7 +79,7 @@ export interface LoadedScenarioContractPlan {
 
 export interface ScenarioContractVerifierOptions {
   planPath: string;
-  /** Streamable HTTP MCP endpoint owned by mcp-syson. */
+  /** Stateless MCP endpoint owned by mcp-syson. */
   sysonMcpUrl: string;
   fetch?: typeof fetch;
   readTextFile?: (path: string | URL) => Promise<string>;
@@ -188,59 +196,36 @@ export class ScenarioContractVerifier {
       values: Readonly<Record<string, Quantity>>;
     },
   ): Promise<Record<string, unknown>> {
-    let sessionId: string | undefined;
-    try {
-      const initialized = await this.#rpc({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: {
-          protocolVersion: MCP_PROTOCOL_VERSION,
-          capabilities: {},
-          clientInfo: {
-            name: "casys-digital-thread-scenario-contract-verifier",
-            version: "0.1.0",
-          },
-        },
-      });
-      sessionId = initialized.response.headers.get("mcp-session-id") ?? undefined;
-      requireResult(initialized.payload, "initialize");
-
-      await this.#rpc(
-        { jsonrpc: "2.0", method: "notifications/initialized" },
-        sessionId,
-        true,
-      );
-
-      const response = await this.#rpc({
-        jsonrpc: "2.0",
-        id: 2,
-        method: "tools/call",
-        params: { name: "syson_constraint_evaluate", arguments: args },
-      }, sessionId);
-      const result = requireResult(
-        response.payload,
-        "tools/call syson_constraint_evaluate",
-      );
-      if (result.isError === true) {
-        throw new ScenarioContractVerifierError(toolError(result));
-      }
-      return structuredToolOutcome(result);
-    } finally {
-      if (sessionId) await this.#closeSession(sessionId);
+    const response = await this.#rpc({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        _meta: CLIENT_META,
+        name: "syson_constraint_evaluate",
+        arguments: args,
+      },
+    });
+    const result = requireCompleteResult(
+      response.payload,
+      "tools/call syson_constraint_evaluate",
+    );
+    if (result.isError === true) {
+      throw new ScenarioContractVerifierError(toolError(result));
     }
+    return structuredToolOutcome(result);
   }
 
   async #rpc(
     body: Record<string, unknown>,
-    sessionId?: string,
-    allowEmpty = false,
   ): Promise<{ response: Response; payload: RpcEnvelope }> {
     const headers: Record<string, string> = {
-      accept: "application/json, text/event-stream",
+      accept: "application/json",
       "content-type": "application/json",
+      "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+      "mcp-method": String(body.method),
+      "mcp-name": String((body.params as Record<string, unknown>).name),
     };
-    if (sessionId) headers["mcp-session-id"] = sessionId;
     const response = await this.#request({
       method: "POST",
       headers,
@@ -252,19 +237,7 @@ export class ScenarioContractVerifier {
       );
     }
     const text = await response.text();
-    if (allowEmpty && text.trim() === "") return { response, payload: {} };
-    return { response, payload: parseRpcBody(text, response.headers) };
-  }
-
-  async #closeSession(sessionId: string): Promise<void> {
-    try {
-      await this.#request({
-        method: "DELETE",
-        headers: { "mcp-session-id": sessionId },
-      });
-    } catch {
-      // Session cleanup cannot obscure an otherwise valid verification result.
-    }
+    return { response, payload: parseRpcBody(text) };
   }
 
   async #request(init: RequestInit): Promise<Response> {
@@ -454,23 +427,13 @@ function explicitMetricValues(
   return values;
 }
 
-function parseRpcBody(text: string, headers: Headers): RpcEnvelope {
-  const contentType = headers.get("content-type") ?? "";
-  let jsonText = text.trim();
-  if (contentType.includes("text/event-stream") || jsonText.startsWith("event:")) {
-    const data = jsonText
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trim())
-      .find((line) => line.length > 0);
-    if (!data) {
-      throw new ScenarioContractVerifierError(
-        "SysON MCP endpoint returned an empty event stream.",
-      );
-    }
-    jsonText = data;
+function parseRpcBody(text: string): RpcEnvelope {
+  const jsonText = text.trim();
+  if (jsonText === "") {
+    throw new ScenarioContractVerifierError(
+      "SysON MCP endpoint returned an empty JSON body.",
+    );
   }
-  if (jsonText === "") return {};
   try {
     return JSON.parse(jsonText) as RpcEnvelope;
   } catch {
@@ -480,7 +443,7 @@ function parseRpcBody(text: string, headers: Headers): RpcEnvelope {
   }
 }
 
-function requireResult(
+function requireCompleteResult(
   envelope: RpcEnvelope,
   operation: string,
 ): Record<string, unknown> {
@@ -492,6 +455,11 @@ function requireResult(
   if (!isRecord(envelope.result)) {
     throw new ScenarioContractVerifierError(`${operation}: missing result.`);
   }
+  if (envelope.result.resultType !== "complete") {
+    throw new ScenarioContractVerifierError(
+      `${operation}: expected resultType \"complete\".`,
+    );
+  }
   return envelope.result;
 }
 
@@ -499,27 +467,9 @@ function structuredToolOutcome(
   result: Record<string, unknown>,
 ): Record<string, unknown> {
   if (isRecord(result.structuredContent)) return result.structuredContent;
-  const content = Array.isArray(result.content) ? result.content : [];
-  const texts = content.flatMap((item) => {
-    if (!isRecord(item) || item.type !== "text" || typeof item.text !== "string") {
-      return [];
-    }
-    return [item.text];
-  });
-  if (texts.length !== 1) {
-    throw new ScenarioContractVerifierError(
-      "syson_constraint_evaluate did not return one structured JSON result.",
-    );
-  }
-  try {
-    const parsed: unknown = JSON.parse(texts[0]);
-    return object(parsed, "syson_constraint_evaluate result");
-  } catch (error) {
-    if (error instanceof ScenarioContractVerifierError) throw error;
-    throw new ScenarioContractVerifierError(
-      "syson_constraint_evaluate returned invalid JSON text.",
-    );
-  }
+  throw new ScenarioContractVerifierError(
+    "syson_constraint_evaluate did not return structuredContent.",
+  );
 }
 
 function toolError(result: Record<string, unknown>): string {

@@ -43,7 +43,12 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
   });
   try {
     const client = new TestMcpClient(`http://127.0.0.1:${port}/mcp`);
-    await client.initialize();
+    const discovered = await client.discover();
+    assertEquals(discovered.resultType, "complete");
+    assertEquals(discovered.serverInfo, {
+      name: "casys-digital-thread-console",
+      version: "0.1.0",
+    });
     const listed = await client.call("tools/list", {});
     const tools = listed.tools as Array<Record<string, unknown>>;
     assertEquals(tools.map((tool) => tool.name).sort(), [
@@ -78,34 +83,18 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     assert("fleet" in structured);
     assert("runs" in structured);
     assert("workbench" in structured);
-    await client.close();
   } finally {
     await http.shutdown();
   }
 });
 
 class TestMcpClient {
-  #sessionId?: string;
   #id = 0;
 
   constructor(private readonly url: string) {}
 
-  async initialize(): Promise<void> {
-    const response = await this.#request({
-      jsonrpc: "2.0",
-      id: ++this.#id,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-06-18",
-        capabilities: {},
-        clientInfo: { name: "test", version: "1" },
-      },
-    });
-    this.#sessionId = response.headers.get("mcp-session-id") ?? undefined;
-    await this.#request({
-      jsonrpc: "2.0",
-      method: "notifications/initialized",
-    });
+  async discover(): Promise<Record<string, unknown>> {
+    return await this.call("server/discover", {});
   }
 
   async call(
@@ -116,32 +105,40 @@ class TestMcpClient {
       jsonrpc: "2.0",
       id: ++this.#id,
       method,
-      params,
+      params: {
+        ...params,
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {},
+          "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" },
+        },
+      },
     });
     const body = await parseResponse(response);
     if (body.error) throw new Error(JSON.stringify(body.error));
-    return body.result as Record<string, unknown>;
+    const result = body.result as Record<string, unknown>;
+    assertEquals(result.resultType, "complete");
+    return result;
   }
 
-  async close(): Promise<void> {
-    if (!this.#sessionId) return;
-    await fetch(this.url, {
-      method: "DELETE",
-      headers: { "mcp-session-id": this.#sessionId },
-    });
-  }
-
-  #request(body: Record<string, unknown>): Promise<Response> {
+  async #request(body: Record<string, unknown>): Promise<Response> {
     const headers: Record<string, string> = {
-      "accept": "application/json, text/event-stream",
+      "accept": "application/json",
       "content-type": "application/json",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": String(body.method),
     };
-    if (this.#sessionId) headers["mcp-session-id"] = this.#sessionId;
-    return fetch(this.url, {
+    const params = body.params as Record<string, unknown>;
+    if (body.method === "tools/call" && typeof params.name === "string") {
+      headers["mcp-name"] = params.name;
+    }
+    const response = await fetch(this.url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
     });
+    assertEquals(response.headers.get("mcp-session-id"), null);
+    return response;
   }
 }
 
@@ -149,13 +146,7 @@ async function parseResponse(
   response: Response,
 ): Promise<Record<string, unknown>> {
   const text = await response.text();
-  if (text === "") return {};
-  const data = text
-    .split(/\r?\n/)
-    .find((line) => line.startsWith("data:"))
-    ?.slice(5)
-    .trim();
-  return JSON.parse(data || text);
+  return JSON.parse(text);
 }
 
 function manifestFixture(): FleetManifest {

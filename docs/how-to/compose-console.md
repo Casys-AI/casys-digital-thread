@@ -97,7 +97,9 @@ the template, manifest, Console endpoint, and harness locations.
 
 The Compose manifest is
 [`config/compose/manifests/casys-digital-thread.json`](../../config/compose/manifests/casys-digital-thread.json).
-It pins the existing Console to `"streamable-http"` and marks only these read-only App
+It pins the existing Console to `"stateless-2026-07-28"`. Every request carries the
+stateless MCP 2026-07-28 headers and client metadata; there is no initialize exchange,
+session identifier, or SSE stream. It marks only these read-only App
 calls as `appCallable`:
 
 - `console_snapshot`

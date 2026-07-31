@@ -11,7 +11,7 @@ const PLAN_SHA256 = "2208a36ee6c2bae10422550ad032f43e7720fe25833152840bc9b80da2e
 Deno.test("ScenarioContractVerifier evaluates the exact bound scenario with unit-bearing evidence", async () => {
   const source = await Deno.readTextFile(PLAN_PATH);
   const readPaths: string[] = [];
-  const calls: Array<{ method: string; rpcMethod?: string; session?: string }> = [];
+  const calls: Array<{ method: string; rpcMethod?: string; headers?: Headers }> = [];
   let requestedArguments: unknown;
   const rawOutcome = {
     results: [{
@@ -31,34 +31,39 @@ Deno.test("ScenarioContractVerifier evaluates the exact bound scenario with unit
     await Promise.resolve();
     const method = init?.method ?? "GET";
     const headers = new Headers(init?.headers);
-    if (method === "DELETE") {
-      calls.push({ method, session: headers.get("mcp-session-id") ?? undefined });
-      return new Response(null, { status: 204 });
-    }
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
     calls.push({
       method,
       rpcMethod: String(body.method),
-      session: headers.get("mcp-session-id") ?? undefined,
+      headers,
     });
-    if (body.method === "initialize") {
-      return Response.json({
-        jsonrpc: "2.0",
-        id: 1,
-        result: { protocolVersion: "2025-06-18", serverInfo: { name: "mcp-syson" } },
-      }, { headers: { "mcp-session-id": "scenario-session" } });
-    }
-    if (body.method === "notifications/initialized") {
-      return new Response(null, { status: 202 });
-    }
     if (body.method === "tools/call") {
       const params = body.params as Record<string, unknown>;
       assertEquals(params.name, "syson_constraint_evaluate");
+      assertEquals(headers.get("mcp-protocol-version"), "2026-07-28");
+      assertEquals(headers.get("mcp-method"), "tools/call");
+      assertEquals(headers.get("mcp-name"), "syson_constraint_evaluate");
+      assertEquals(headers.get("mcp-session-id"), null);
+      assertEquals(
+        (params._meta as Record<string, unknown>)[
+          "io.modelcontextprotocol/protocolVersion"
+        ],
+        "2026-07-28",
+      );
+      assertEquals(
+        (params._meta as Record<string, unknown>)[
+          "io.modelcontextprotocol/clientCapabilities"
+        ],
+        {},
+      );
       requestedArguments = params.arguments;
       return Response.json({
         jsonrpc: "2.0",
-        id: 2,
-        result: { content: [{ type: "text", text: JSON.stringify(rawOutcome) }] },
+        id: 1,
+        result: {
+          resultType: "complete",
+          structuredContent: rawOutcome,
+        },
       });
     }
     throw new Error(`Unexpected RPC method ${String(body.method)}`);
@@ -100,15 +105,8 @@ Deno.test("ScenarioContractVerifier evaluates the exact bound scenario with unit
     values: { water_temperature_max: { value: 94, unit: "degC" } },
   });
   assertEquals(result?.outcome, rawOutcome);
-  assertEquals(calls, [
-    { method: "POST", rpcMethod: "initialize", session: undefined },
-    {
-      method: "POST",
-      rpcMethod: "notifications/initialized",
-      session: "scenario-session",
-    },
-    { method: "POST", rpcMethod: "tools/call", session: "scenario-session" },
-    { method: "DELETE", session: "scenario-session" },
+  assertEquals(calls.map(({ method, rpcMethod }) => ({ method, rpcMethod })), [
+    { method: "POST", rpcMethod: "tools/call" },
   ]);
 });
 
@@ -136,35 +134,21 @@ Deno.test("ScenarioContractVerifier returns undefined without a SysON call when 
   assertEquals(fetchCalls, 0);
 });
 
-Deno.test("ScenarioContractVerifier sends initialized even when SysON does not issue a session id", async () => {
+Deno.test("ScenarioContractVerifier rejects a non-complete stateless result", async () => {
   const source = await Deno.readTextFile(PLAN_PATH);
-  const calls: Array<{ rpcMethod: string; session?: string }> = [];
+  const calls: string[] = [];
   const rawOutcome = { results: [], summary: { total: 0 } };
   const fakeFetch = ((
     _input: string | URL | Request,
     init?: RequestInit,
   ) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-    const headers = new Headers(init?.headers);
-    calls.push({
-      rpcMethod: String(body.method),
-      session: headers.get("mcp-session-id") ?? undefined,
-    });
-    if (body.method === "initialize") {
-      return Promise.resolve(Response.json({
-        jsonrpc: "2.0",
-        id: 1,
-        result: { protocolVersion: "2025-06-18", serverInfo: { name: "mcp-syson" } },
-      }));
-    }
-    if (body.method === "notifications/initialized") {
-      return Promise.resolve(new Response(null, { status: 202 }));
-    }
+    calls.push(String(body.method));
     if (body.method === "tools/call") {
       return Promise.resolve(Response.json({
         jsonrpc: "2.0",
-        id: 2,
-        result: { structuredContent: rawOutcome },
+        id: 1,
+        result: { resultType: "input_required", structuredContent: rawOutcome },
       }));
     }
     throw new Error(`Unexpected RPC method ${String(body.method)}`);
@@ -176,14 +160,36 @@ Deno.test("ScenarioContractVerifier sends initialized even when SysON does not i
     readTextFile: () => Promise.resolve(source),
   });
 
-  const result = await verifier.verify(nominalEvidence());
+  await assertRejects(
+    () => verifier.verify(nominalEvidence()),
+    ScenarioContractVerifierError,
+    'expected resultType "complete"',
+  );
+  assertEquals(calls, ["tools/call"]);
+});
 
-  assertEquals(result?.outcome, rawOutcome);
-  assertEquals(calls, [
-    { rpcMethod: "initialize", session: undefined },
-    { rpcMethod: "notifications/initialized", session: undefined },
-    { rpcMethod: "tools/call", session: undefined },
-  ]);
+Deno.test("ScenarioContractVerifier rejects legacy JSON text output", async () => {
+  const source = await Deno.readTextFile(PLAN_PATH);
+  const verifier = new ScenarioContractVerifier({
+    planPath: PLAN_PATH,
+    sysonMcpUrl: "http://127.0.0.1:3009/mcp",
+    fetch: (() =>
+      Promise.resolve(Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          resultType: "complete",
+          content: [{ type: "text", text: JSON.stringify({ results: [] }) }],
+        },
+      }))) as typeof fetch,
+    readTextFile: () => Promise.resolve(source),
+  });
+
+  await assertRejects(
+    () => verifier.verify(nominalEvidence()),
+    ScenarioContractVerifierError,
+    "did not return structuredContent",
+  );
 });
 
 Deno.test("ScenarioContractVerifier rejects a plan that adds a product limit", async () => {

@@ -71,6 +71,7 @@ export async function createConsoleServer(
   const app = new McpApp({
     name: "casys-digital-thread-console",
     version: "0.1.0",
+    transport: "stateless",
     maxConcurrent: 8,
     backpressureStrategy: "queue",
     validateSchema: true,

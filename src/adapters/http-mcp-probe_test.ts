@@ -2,8 +2,10 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { DesiredServer } from "../domain/types.ts";
 import { HttpMcpProbe } from "./http-mcp-probe.ts";
 
-Deno.test("HttpMcpProbe discovers tools, resources, and closes its session", async () => {
-  const calls: Array<{ url: string; method: string; session?: string }> = [];
+Deno.test("HttpMcpProbe discovers a stateless server, tools, and resources", async () => {
+  const calls: Array<
+    { url: string; method: string; headers: Headers; body?: Record<string, unknown> }
+  > = [];
   const fakeFetch = (async (
     input: string | URL | Request,
     init?: RequestInit,
@@ -12,35 +14,40 @@ Deno.test("HttpMcpProbe discovers tools, resources, and closes its session", asy
     const url = String(input);
     const method = init?.method ?? "GET";
     const headers = new Headers(init?.headers);
-    calls.push({
-      url,
-      method,
-      session: headers.get("mcp-session-id") ?? undefined,
-    });
+    const body = method === "POST"
+      ? JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+      : undefined;
+    calls.push({ url, method, headers, body });
     if (url.endsWith("/health")) {
       return Response.json({ status: "ok" });
     }
-    if (method === "DELETE") return new Response(null, { status: 204 });
-    const body = JSON.parse(String(init?.body ?? "{}"));
-    if (body.method === "initialize") {
+    assertEquals(headers.get("mcp-protocol-version"), "2026-07-28");
+    assertEquals(headers.get("mcp-method"), body?.method);
+    assertEquals(headers.get("mcp-session-id"), null);
+    const meta = (body?.params as Record<string, unknown>)._meta as Record<
+      string,
+      unknown
+    >;
+    assertEquals(meta["io.modelcontextprotocol/protocolVersion"], "2026-07-28");
+    assertEquals(meta["io.modelcontextprotocol/clientCapabilities"], {});
+    if (body?.method === "server/discover") {
       return Response.json({
         jsonrpc: "2.0",
         id: 1,
         result: {
-          protocolVersion: "2025-06-18",
+          resultType: "complete",
+          supportedVersions: ["2026-07-28"],
           serverInfo: { name: "fake-mcp", version: "1.2.3" },
           capabilities: { tools: {}, resources: {} },
         },
-      }, { headers: { "mcp-session-id": "probe-session" } });
+      });
     }
-    if (body.method === "notifications/initialized") {
-      return new Response(null, { status: 202 });
-    }
-    if (body.method === "tools/list") {
+    if (body?.method === "tools/list") {
       return Response.json({
         jsonrpc: "2.0",
         id: 2,
         result: {
+          resultType: "complete",
           tools: [{
             name: "test_read",
             description: "Read",
@@ -49,11 +56,12 @@ Deno.test("HttpMcpProbe discovers tools, resources, and closes its session", asy
         },
       });
     }
-    if (body.method === "resources/list") {
+    if (body?.method === "resources/list") {
       return Response.json({
         jsonrpc: "2.0",
         id: 3,
         result: {
+          resultType: "complete",
           resources: [{ uri: "ui://test/view" }, { uri: "data://test" }],
         },
       });
@@ -78,11 +86,12 @@ Deno.test("HttpMcpProbe discovers tools, resources, and closes its session", asy
   }]);
   assertEquals(result.mcp.resourceUris, ["data://test", "ui://test/view"]);
   assertEquals(result.mcp.viewerUris, ["ui://test/view"]);
-  assertEquals(calls.at(-1), {
-    url: "http://127.0.0.1:3999/mcp",
-    method: "DELETE",
-    session: "probe-session",
-  });
+  assertEquals(calls.map((call) => call.body?.method), [
+    undefined,
+    "server/discover",
+    "tools/list",
+    "resources/list",
+  ]);
 });
 
 Deno.test("HttpMcpProbe keeps an honest unavailable observation", async () => {
