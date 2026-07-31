@@ -23,7 +23,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3009/mcp",
           "healthUrl": "http://127.0.0.1:3009/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
           "required": true,
           "expectedTools": [
             "syson_project_list",
@@ -215,7 +215,7 @@
             "present": true,
             "name": "casys-digital-thread-mcp-syson-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
           }
         },
         "drift": {
@@ -238,8 +238,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
-              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
               "message": "Observed image matches desired state."
             },
             {
@@ -270,7 +270,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3014/mcp",
           "healthUrl": "http://127.0.0.1:3014/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
           "required": true,
           "expectedTools": [
             "build123d_execute",
@@ -326,7 +326,7 @@
             "present": true,
             "name": "casys-digital-thread-mcp-build123d-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
           }
         },
         "drift": {
@@ -349,8 +349,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
-              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
               "message": "Observed image matches desired state."
             },
             {
@@ -385,7 +385,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3015/mcp",
           "healthUrl": "http://127.0.0.1:3015/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
           "required": true,
           "expectedTools": [
             "calculix_solve_static"
@@ -436,7 +436,7 @@
             "present": true,
             "name": "casys-digital-thread-mcp-calculix-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
           }
         },
         "drift": {
@@ -459,8 +459,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
-              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
               "message": "Observed image matches desired state."
             },
             {
@@ -495,7 +495,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3016/mcp",
           "healthUrl": "http://127.0.0.1:3016/health",
-          "image": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149",
+          "image": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
           "required": true,
           "expectedTools": [
             "modelica_kit_list",
@@ -560,7 +560,7 @@
             "present": true,
             "name": "casys-digital-thread-mcp-modelica-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149"
+            "image": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3"
           }
         },
         "drift": {
@@ -583,8 +583,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149",
-              "observed": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149",
+              "desired": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
+              "observed": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
               "message": "Observed image matches desired state."
             },
             {
