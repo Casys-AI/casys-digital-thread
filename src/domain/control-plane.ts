@@ -263,9 +263,9 @@ function buildWorkbench(
     panels,
     synchronization: {
       enabled: false,
-      events: ["requirement.select", "artifact.select", "result.select"],
+      events: [],
       note:
-        "Cross-panel synchronization is declared for the workbench but is not activated by this read-only MVP.",
+        "mcp-compose owns each live dashboard lifecycle; the Console does not simulate cross-panel events.",
     },
   };
 }

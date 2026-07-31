@@ -247,44 +247,32 @@
   ],
   "workbench": [
     {
-      "id": "requirements-trace",
-      "title": "Requirements trace",
-      "kind": "mcp-app",
-      "sourceServerId": "syson",
-      "resourceUri": "ui://mcp-syson/requirements-trace-viewer"
-    },
-    {
-      "id": "model-diagram",
-      "title": "System model diagram",
+      "id": "cm01-architecture",
+      "title": "CM-01 system architecture",
       "kind": "mcp-app",
       "sourceServerId": "syson",
       "resourceUri": "ui://mcp-syson/diagram-viewer"
     },
     {
-      "id": "cad-evidence",
-      "title": "Bracket geometry evidence",
-      "kind": "evidence",
-      "sourceServerId": "build123d"
+      "id": "cm01-cad",
+      "title": "CM-01 CAD assembly",
+      "kind": "mcp-app",
+      "sourceServerId": "build123d",
+      "resourceUri": "ui://mcp-build123d/results-viewer"
     },
     {
-      "id": "fea-evidence",
-      "title": "Bracket FEA evidence",
-      "kind": "evidence",
-      "sourceServerId": "calculix"
-    },
-    {
-      "id": "manufacturing-bom",
-      "title": "Manufacturing BOM",
+      "id": "cm01-bom",
+      "title": "CM-01 manufacturing BOM",
       "kind": "mcp-app",
       "sourceServerId": "erpnext",
       "resourceUri": "ui://mcp-erpnext/doclist-viewer"
     },
     {
-      "id": "syson-ui",
-      "title": "SysON modeler",
-      "kind": "external",
-      "sourceServerId": "syson",
-      "endpoint": "http://127.0.0.1:8180"
+      "id": "cm01-simulation",
+      "title": "CM-01 Modelica simulation",
+      "kind": "mcp-app",
+      "sourceServerId": "modelica",
+      "resourceUri": "ui://mcp-modelica/results-viewer"
     }
   ]
 }

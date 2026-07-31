@@ -18,7 +18,6 @@ import type {
   RunSummary,
   ServerRecord,
   VerdictStatus,
-  WorkbenchPanel,
 } from "../../domain/types.ts";
 import {
   initialSnapshotFromResult,
@@ -307,7 +306,7 @@ function renderHeader(): string {
 const tabMeta: Array<{ id: Tab; label: string; sub: string }> = [
   { id: "fleet", label: "Fleet", sub: "Runtime & trust" },
   { id: "runs", label: "Runs", sub: "Lineage & evidence" },
-  { id: "workbench", label: "Workbench", sub: "Synchronized views" },
+  { id: "workbench", label: "Workbench", sub: "Dynamic Compose" },
 ];
 
 function renderTabs(): string {
@@ -858,247 +857,34 @@ function renderRuns(): string {
   `;
 }
 
-function sysonPreview(): string {
-  return `
-    <div class="model-tree">
-      <div><span class="tree-caret">⌄</span><b>part</b><strong> bracket</strong></div>
-      <div class="tree-child"><span class="type-mark">A</span><span>totalMass</span><code>56.915761 g</code></div>
-      <div class="tree-child"><span class="type-mark">R</span><span>massBudget</span>${
-    renderStatus("pass")
-  }</div>
-      <div class="tree-child"><span class="type-mark">R</span><span>holdLoad</span>${
-    renderStatus("pass")
-  }</div>
-      <div class="model-rule"><code>totalMass ≤ 0.070 [kg]</code></div>
-    </div>
-  `;
-}
-
-function cadPreview(): string {
-  return `
-    <div class="visual-frame cad-frame" aria-label="Stylized bracket geometry preview">
-      <svg viewBox="0 0 420 230" role="img" aria-label="Isometric mounting bracket">
-        <g class="axis"><path d="M54 189h52M54 189l-21-17M54 189v-43"/><text x="110" y="193">X</text><text x="24" y="170">Y</text><text x="48" y="140">Z</text></g>
-        <g class="cad-shadow"><path d="m137 169 102 34 129-60-101-35z"/></g>
-        <g class="cad-part">
-          <path d="m89 145 111 37 166-74-109-37z"/>
-          <path d="m89 145 111 37v27L89 172z"/>
-          <path d="m200 182 166-74v26l-166 75z"/>
-          <path d="m104 137 33-15V42l74 25v86l-18 8z"/>
-          <path d="m137 42 72-31 74 25-72 31z"/>
-          <path d="m211 67 72-31v86l-72 31z"/>
-          <ellipse cx="164" cy="109" rx="17" ry="23" transform="rotate(-16 164 109)"/>
-          <ellipse cx="146" cy="155" rx="17" ry="7" transform="rotate(17 146 155)"/>
-          <ellipse cx="304" cy="119" rx="18" ry="8" transform="rotate(-24 304 119)"/>
-        </g>
-        <g class="dimension"><path d="M83 205h286M83 198v14M369 138v74"/><text x="208" y="222">60.00 mm</text></g>
-      </svg>
-      <div class="visual-readout"><span>CHECKED-IN MASS</span><b>56.915761</b><small>g</small></div>
-    </div>
-  `;
-}
-
-function feaPreview(): string {
-  return `
-    <div class="visual-frame fea-frame" aria-label="Stylized finite element result preview">
-      <svg viewBox="0 0 420 230" role="img" aria-label="Bracket finite element stress result">
-        <g class="fea-part">
-          <path class="stress-1" d="m89 145 111 37 166-74-109-37z"/>
-          <path class="stress-2" d="m89 145 111 37v27L89 172z"/>
-          <path class="stress-3" d="m200 182 166-74v26l-166 75z"/>
-          <path class="stress-4" d="m104 137 33-15V42l74 25v111l-11 4-96-32z"/>
-          <path class="stress-2" d="m137 42 72-31 74 25-72 31z"/>
-          <path class="stress-1" d="m211 67 72-31v93l-72 49z"/>
-          <g class="mesh">
-            <path d="m90 145 71-12 39 49 26-64 140-10M104 137l55-37 52 67 33-74M137 42l22 58 50-89 35 82 39-57M90 172l71-39 39 76 26-91 140 16M211 67l33 26 39 36"/>
-            <path d="m119 49 40 51 50-33 35 26 39-57M104 150l55-50 52 78 33-85 122 41"/>
-          </g>
-          <ellipse class="fea-hole" cx="164" cy="109" rx="17" ry="23" transform="rotate(-16 164 109)"/>
-        </g>
-        <g class="load-arrow"><path d="M98 48v57"/><path d="m88 94 10 12 10-12"/><text x="70" y="35">500 N</text></g>
-      </svg>
-      <div class="stress-scale" aria-label="Stress scale from 0 to 26.6 megapascals">
-        <span class="s1"></span><span class="s2"></span><span class="s3"></span><span class="s4"></span>
-        <small>0</small><small>26.6 MPa</small>
-      </div>
-      <div class="provenance-flag">DOCUMENTED EXAMPLE · NOT FRESHLY SOLVED</div>
-      <div class="visual-readout"><span>MAX VON MISES</span><b>26.6</b><small>MPa</small></div>
-    </div>
-  `;
-}
-
-function constraintsPreview(): string {
-  const detail = runtime.selectedRunId
-    ? runtime.runDetails.get(runtime.selectedRunId)
-    : undefined;
-  if (!detail && runtime.connection === "hosted") {
-    return `
-      <div class="constraint-preview">
-        <p class="empty-note">Live comparison evidence has not been loaded for the selected run.</p>
-      </div>
-    `;
-  }
-  if (detail?.verdictStatus === "not_evaluated") {
-    return `
-      <div class="constraint-preview">
-        <p class="empty-note">This run has real simulation evidence but no attached comparison yet.</p>
-      </div>
-    `;
-  }
-  if (!detail) {
-    return `
-      <div class="constraint-preview">
-        <p class="empty-note">Live comparison evidence has not been loaded for the selected run.</p>
-      </div>
-    `;
-  }
-  const requirements = detail.requirements;
-  return `
-    <div class="constraint-preview">
-      ${
-    requirements.length
-      ? requirements.slice(0, 3).map((requirement) => {
-        const marginPercent = requirement.marginPercent ?? 0;
-        return `
-        <div>
-          <header><span>${esc(requirement.id)}</span>${
-          renderStatus(requirement.status)
-        }</header>
-          <p><b>${esc(requirement.computed?.display ?? "—")}</b><span>${
-          esc(requirement.operator ?? "")
-        } ${esc(requirement.limit?.display ?? "—")}</span></p>
-          <footer>
-            <span class="micro-track"><i style="width:${
-          Math.min(100, Math.max(4, marginPercent))
-        }%"></i></span>
-            <code>${
-          requirement.marginPercent === undefined
-            ? "—"
-            : `+${esc(requirement.marginPercent.toFixed(1))}%`
-        }</code>
-          </footer>
-        </div>
-      `;
-      }).join("")
-      : `<p class="empty-note">No comparison rows are available.</p>`
-  }
-    </div>
-  `;
-}
-
-function genericPreview(panel: WorkbenchPanel): string {
-  return `
-    <div class="generic-preview">
-      ${icon("cube")}
-      <strong>${esc(panel.kind)}</strong>
-      <code>${
-    esc(panel.resourceUri ?? panel.endpoint ?? "No resource URI advertised")
-  }</code>
-    </div>
-  `;
-}
-
-function workbenchPreview(panel: WorkbenchPanel): string {
-  const key = `${panel.id} ${panel.title}`.toLowerCase();
-  if (key.includes("requirement")) return constraintsPreview();
-  if (key.includes("syson") || key.includes("sysml")) return sysonPreview();
-  if (key.includes("model") || key.includes("diagram")) return sysonPreview();
-  if (
-    key.includes("build123d") || key.includes("cad") || key.includes("geometry")
-  ) {
-    return cadPreview();
-  }
-  if (
-    key.includes("calculix") || key.includes("fea") || key.includes("physics")
-  ) {
-    return feaPreview();
-  }
-  if (key.includes("constraint") || key.includes("verdict")) {
-    return constraintsPreview();
-  }
-  return genericPreview(panel);
-}
-
-function renderWorkbenchPanel(panel: WorkbenchPanel, index: number): string {
-  return `
-    <article class="workbench-panel panel-${index + 1}">
-      <header>
-        <div>
-          <span class="panel-index">${String(index + 1).padStart(2, "0")}</span>
-          <div><h3>${esc(panel.title)}</h3><code>${
-    esc(panel.sourceServerId ?? panel.kind)
-  }</code></div>
-        </div>
-        ${renderStatus(panel.availability)}
-      </header>
-      ${workbenchPreview(panel)}
-      <footer>
-        <span>${panel.demo ? "Demo projection" : "Observed resource"}</span>
-        <code title="${esc(panel.resourceUri ?? panel.endpoint ?? "")}">${
-    esc(panel.resourceUri ?? panel.endpoint ?? "evidence://local")
-  }</code>
-      </footer>
-    </article>
-  `;
-}
-
 function renderWorkbench(): string {
   const { workbench } = currentSnapshot();
   return `
     <section class="section-heading workbench-heading">
       <div>
-        <p class="eyebrow">COMPOSED ENGINEERING CONTEXT</p>
-        <h2>Cross-tool workbench</h2>
-        <p>${workbench.panels.length} read-only model and evidence surfaces assembled around the same run context.</p>
+        <p class="eyebrow">LIVE MCP COMPOSITIONS</p>
+        <h2>Compose Workbench</h2>
+        <p>Select a saved composition, then work with its real MCP viewers without leaving the Console.</p>
       </div>
-      <div class="event-legend">
-        <span class="${workbench.synchronization.enabled ? "is-enabled" : ""}">
-          <i aria-hidden="true"></i>${
-    workbench.synchronization.enabled
-      ? "Event bus active"
-      : "Composition pending"
-  }
-        </span>
-        <small>${workbench.synchronization.events.length} declared events</small>
+      <div class="workbench-runtime">
+        <span><i aria-hidden="true"></i>Dynamic host</span>
+        <small>${workbench.panels.length} declared viewer contracts · port 60060</small>
       </div>
     </section>
 
-    <section class="workbench-grid" aria-label="Engineering application panels">
-      ${workbench.panels.map(renderWorkbenchPanel).join("")}
-    </section>
-
-    <section class="compose-bay">
-      <div class="compose-rail" aria-hidden="true">
-        ${
-    workbench.panels.map((_, index) =>
-      `<span>${String(index + 1).padStart(2, "0")}</span>`
-    ).join("<i></i>")
-  }
-      </div>
-      <div class="compose-copy">
-        <p class="eyebrow">MCP-COMPOSE RUNTIME BAY</p>
-        <h3>${
-    workbench.synchronization.enabled
-      ? "Agent-authored dashboard mounted"
-      : "Awaiting an agent-authored composition"
-  }</h3>
-        <p>Deterministic container/runtime for a generated YAML composition. ${
-    esc(workbench.synchronization.note)
-  }</p>
-      </div>
-      <div class="event-contracts" aria-label="Declared synchronization events">
-        ${
-    workbench.synchronization.events.map((event) =>
-      `<code>${esc(event)}</code>`
-    ).join(
-      "",
-    )
-  }
-      </div>
+    <section class="compose-workbench-host" aria-label="Dynamic MCP Compose Workbench">
+      <iframe
+        src="http://127.0.0.1:60060/"
+        title="Compose Workbench dashboard selector"
+        loading="eager"
+      ></iframe>
+      <footer>
+        <span>The Workbench manager must be running locally.</span>
+        <code>deno task compose:workbench</code>
+      </footer>
     </section>
   `;
 }
-
 function renderNotice(): string {
   if (!runtime.notice) return "";
   return `

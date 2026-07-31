@@ -15,9 +15,9 @@ categories deliberately answer different questions.
 - [Preview the MCP console in a local browser](how-to/preview-console.md) explains the
   `127.0.0.1:3021` harness, how to confirm that it is live, and what it intentionally
   does not do.
-- [Host the Console in a local Compose dashboard](how-to/compose-console.md) uses the
-  generic local MCP Apps host, the explicit Console manifest, and the YAML template
-  without replacing the fixed browser harness.
+- [Host the Console in a local Compose dashboard](how-to/compose-console.md) starts the
+  stable Workbench selector with the published 0.7.1 runtime, mounts reviewed YAML
+  compositions in place, and explains the direct one-dashboard launchers.
 - [Show the real ERPNext BOM in Compose](how-to/show-erpnext-bom.md) builds the scoped
   ERP engineering bridge, keeps credentials outside Git, explains its mutation boundary,
   and distinguishes live ERP data from successful viewer hydration.

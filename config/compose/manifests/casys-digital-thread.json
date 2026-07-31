@@ -4,7 +4,7 @@
   "transport": {
     "type": "http",
     "url": "http://127.0.0.1:3020",
-    "protocol": "stateless-2026-07-28"
+    "protocol": "auto"
   },
   "tools": [
     {
@@ -14,8 +14,7 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false
-      },
-      "appCallable": true
+      }
     },
     {
       "name": "console_refresh",

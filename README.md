@@ -104,16 +104,20 @@ npm --prefix src/ui run build
 deno task start                  # http://127.0.0.1:3020/mcp
 # In a second terminal, browser host for the existing MCP App:
 deno task preview:browser        # http://127.0.0.1:3021/
+deno task compose:workbench      # http://127.0.0.1:60060/
 ```
 
 The browser host relays the console's three read-only tools to the live MCP server. It
 is a local MCP Apps test harness, explicitly not an `mcp-compose`-generated dashboard.
 
-The repository also carries an explicit one-panel Compose manifest and YAML template
-under `config/compose/`. It is exercised from the sibling `mcp-server` checkout through
-the local interactive host; this route resolves the Console with MCP `resources/read`
-and grants only the declared read-only App calls. It does not replace the fixed harness.
-See the [Compose Console how-to](docs/how-to/compose-console.md).
+The new Workbench manager is implemented for port `60060`. Its reviewed catalogue lists
+the CM-01 and Engineering YAML compositions; selecting one starts a real,
+capability-bounded `mcp-compose` dashboard in place and stops the previous host after the
+swap. The normal task consumes the published, pinned
+`@casys/mcp-compose@0.7.1` package. The
+`compose:console`, `compose:engineering`, and `compose:cm01` tasks remain useful as
+direct one-dashboard launchers. See the
+[Compose Console how-to](docs/how-to/compose-console.md).
 
 The first product dashboard is now a separate saved recipe: `deno task compose:cm01`
 renders the live SysON internal structure, interactive build123d GLB assembly, submitted

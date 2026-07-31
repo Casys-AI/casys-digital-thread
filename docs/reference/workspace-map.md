@@ -12,7 +12,7 @@ scenario contract cannot be confused.
 | [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                                       | Desired MCP fleet: endpoints, expected tools/resources, trust notes, and Workbench panel declarations | The expected fleet, never proof that it is running                                   |
 | [`config/compose/manifests/casys-digital-thread.json`](../../config/compose/manifests/casys-digital-thread.json)             | Explicit Console source transport and browser-callable tool grants for the local Compose host         | What the embedded Console panel may call                                             |
 | [`config/compose/dashboards/console.yaml`](../../config/compose/dashboards/console.yaml)                                     | One-panel Console Compose layout                                                                      | Which Console tool instantiates the first composed dashboard                         |
-| [`config/compose/manifests/`](../../config/compose/manifests/)                                                               | Reviewed stateless Compose surfaces for the Console, SysON, build123d, CalculiX, Modelica and ERPNext | Exact endpoints, composable tool schemas, resource URIs, and browser-callable grants |
+| [`config/compose/manifests/`](../../config/compose/manifests/)                                                               | Reviewed Compose surfaces for the Console, SysON, build123d, CalculiX, Modelica and ERPNext           | Exact endpoints, composable tool schemas, resource URIs, and browser-callable grants |
 | [`config/compose/dashboards/engineering-results.yaml`](../../config/compose/dashboards/engineering-results.yaml)             | Parallel Modelica, build123d and ERPNext BOM panels                                                   | The real engineering dashboard and its explicit no-CAD-to-FEA limitation             |
 | [`config/compose/dashboards/coffee-machine-cm01.yaml`](../../config/compose/dashboards/coffee-machine-cm01.yaml)             | Saved 2×2 SysON, build123d, ERPNext and Modelica layout and calls                                     | Replaying the first product dashboard without storing its environment-specific IDs   |
 | [`config/compose/args/coffee-machine-cm01.example.json`](../../config/compose/args/coffee-machine-cm01.example.json)         | Documented runtime-argument names and portable non-secret defaults                                    | Preparing the ignored `state/local/coffee-machine-cm01.json` file                    |
@@ -30,6 +30,8 @@ scenario contract cannot be confused.
 | [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                                     | Generated single-file viewer registered by the console                                                | The built artifact; rebuild it, do not hand-edit it                                  |
 | [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                                             | Loopback browser host for the existing console resource                                               | Local visual preview only                                                            |
 | [`scripts/serve-compose-dashboard.ts`](../../scripts/serve-compose-dashboard.ts)                                             | Published `mcp-compose` launcher for the Console and engineering dashboards                           | Starting the capability-bounded multi-panel host                                     |
+| [`scripts/compose-workbench.ts`](../../scripts/compose-workbench.ts)                                                         | Stable dashboard catalogue, same-origin activation API, and atomic active-host swap                    | Workbench shell lifecycle and browser boundary                                       |
+| [`scripts/serve-compose-workbench.ts`](../../scripts/serve-compose-workbench.ts)                                             | Maps the CM-01 and Engineering ids to reviewed YAML recipes and the `mcp-compose` runtime               | Starting the dynamic Workbench on port `60060`                                       |
 | [`state/fixtures/`](../../state/fixtures/)                                                                                   | Explicitly labelled demo evidence                                                                     | Demo state, never a live observation                                                 |
 | [`scripts/verify-console-evidence.ts`](../../scripts/verify-console-evidence.ts)                                             | Read-only fixture/hash consistency check                                                              | Verifying checked-in bracket evidence                                                |
 
@@ -48,12 +50,15 @@ internal ports only so that Compose can route between them.
 | `http://127.0.0.1:3012/mcp`        | `mcp-erpnext`                       | Manufacturing BOM list and selected raw-material/operation detail                       |
 | `http://127.0.0.1:3020/mcp`        | `deno task start`                   | Read-only digital-thread console MCP server                                             |
 | `http://127.0.0.1:3021/`           | `deno task preview:browser`         | Local browser host for `ui://casys-digital-thread/console`                              |
+| `http://127.0.0.1:60060/`          | `deno task compose:workbench`       | Persistent selector and active Compose dashboard embedded by the Console Workbench      |
 | Dynamic `http://127.0.0.1:<port>/` | `composeAndServeDashboard()`        | Local Compose parent dashboard; it also creates one distinct loopback origin per iframe |
 
 The console defaults to `MCP_HOSTNAME=127.0.0.1` and `MCP_PORT=3020`; the server also
 accepts `--hostname` and `--port`. The preview harness defaults to `3021` and targets
-the console on `3020`. `deno task compose:console`, `deno task compose:engineering`, and
-`deno task compose:cm01` print the dynamic parent URL they allocate.
+the console on `3020`. `deno task compose:workbench` keeps the stable `60060` shell and
+allocates a dynamic parent only for its active selection. `deno task compose:console`,
+`deno task compose:engineering`, and `deno task compose:cm01` print the dynamic parent
+URL they allocate when launched directly.
 
 ## Runtime data ownership
 
@@ -84,12 +89,13 @@ The browser harness intentionally forwards only `console_snapshot`,
 the MCP Apps host capability needed by the fixed view to make those read-only server
 calls.
 
-The Compose manifest declares the same three as `appCallable`, which is a
+The Compose manifest keeps `console_snapshot` as the initiating host call and grants
+only `console_refresh` and `console_run_detail` as `appCallable`. This is a
 deny-by-default browser capability grant. Its generic local host can use only those
 declared tools and the exact Console resource URI. It resolves the view with MCP
 `resources/read`, not a source-specific `/ui` HTTP endpoint. See the
 [Compose Console how-to](../how-to/compose-console.md) for the runnable local path
-backed by the published `@casys/mcp-compose@0.6.0` package.
+backed by the published `@casys/mcp-compose@0.7.1` package.
 
 The ERPNext MCP itself has a larger privileged agent surface: 26 manufacturing,
 inventory, and generic-operation tools are required to create Items and BOM documents
@@ -136,9 +142,10 @@ scenario. Product requirements must be modelled and traced separately in SysON.
 
 ## Composition boundary
 
-The current console is one fixed MCP App built with `@casys/mcp-view`.
-`@casys/mcp-compose` now provides a separate, local host path for its explicit Console
-manifest/template: generated layouts, MCP resource resolution, and manifest-bounded App
-calls. The existing browser preview remains the smaller, fixed-view harness. The
-one-panel Compose template does not yet make the whole Workbench a composed dashboard or
-activate cross-panel events.
+The console remains one fixed MCP App built with `@casys/mcp-view`; Fleet and Runs belong
+to it. Its Workbench tab embeds the stable local manager rather than reimplementing
+engineering viewers. The manager owns the saved-composition selector and one active
+dashboard handle. `@casys/mcp-compose` owns the selected layout, MCP resource resolution,
+per-viewer origins, initiating results, and manifest-bounded App calls. The existing
+browser preview remains the smaller fixed-view harness. Cross-panel events exist only
+when a selected YAML composition declares and its viewers implement them.

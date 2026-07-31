@@ -44,6 +44,11 @@ type FleetManifest = {
     required: boolean;
     expectedTools: string[];
   }>;
+  workbench: Array<{
+    id: string;
+    sourceServerId?: string;
+    resourceUri?: string;
+  }>;
 };
 
 const configRoot = new URL("../../config/compose/", import.meta.url);
@@ -244,6 +249,31 @@ Deno.test("Compose manifests declare the stateless engineering viewers and minim
   );
 });
 
+Deno.test("Console Compose manifest keeps snapshot initiating-only and grants only in-view reads", async () => {
+  const consoleManifest = await loadManifest("casys-digital-thread");
+
+  assertEquals(consoleManifest.transport, {
+    type: "http",
+    url: "http://127.0.0.1:3020",
+    protocol: "auto",
+  });
+  assertEquals(consoleManifest.tools.map((tool) => tool.name), [
+    "console_snapshot",
+    "console_refresh",
+    "console_run_detail",
+  ]);
+  assertEquals(
+    consoleManifest.tools.find((tool) => tool.name === "console_snapshot")?.appCallable,
+    undefined,
+  );
+  assertEquals(
+    consoleManifest.tools.filter((tool) => tool.appCallable === true).map((tool) =>
+      tool.name
+    ),
+    ["console_refresh", "console_run_detail"],
+  );
+});
+
 Deno.test("engineering dashboard parses approved simulation, CAD and read-only BOM sources", async () => {
   const dashboard = await Deno.readTextFile(
     new URL("dashboards/engineering-results.yaml", configRoot),
@@ -279,10 +309,14 @@ Deno.test("engineering dashboard parses approved simulation, CAD and read-only B
 });
 
 Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", async () => {
-  const source = await Deno.readTextFile(
-    new URL("dashboards/coffee-machine-cm01.yaml", configRoot),
-  );
+  const [source, fleetSource] = await Promise.all([
+    Deno.readTextFile(
+      new URL("dashboards/coffee-machine-cm01.yaml", configRoot),
+    ),
+    Deno.readTextFile(new URL("../../config/mcp-fleet.json", import.meta.url)),
+  ]);
   const parsed = parseYaml(source) as EngineeringDashboard;
+  const fleet = JSON.parse(fleetSource) as FleetManifest;
 
   assertEquals(parsed.name, "CoffeeMachine CM-01 digital thread");
   assertEquals(
@@ -320,4 +354,33 @@ Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", a
   });
   assertEquals(source.includes("erpnext_doc_create"), false);
   assertEquals(source.includes("manifest: mcp-calculix"), false);
+  assertEquals(
+    fleet.workbench.map(({ id, sourceServerId, resourceUri }) => ({
+      id,
+      sourceServerId,
+      resourceUri,
+    })),
+    [
+      {
+        id: "cm01-architecture",
+        sourceServerId: "syson",
+        resourceUri: "ui://mcp-syson/diagram-viewer",
+      },
+      {
+        id: "cm01-cad",
+        sourceServerId: "build123d",
+        resourceUri: "ui://mcp-build123d/results-viewer",
+      },
+      {
+        id: "cm01-bom",
+        sourceServerId: "erpnext",
+        resourceUri: "ui://mcp-erpnext/doclist-viewer",
+      },
+      {
+        id: "cm01-simulation",
+        sourceServerId: "modelica",
+        resourceUri: "ui://mcp-modelica/results-viewer",
+      },
+    ],
+  );
 });

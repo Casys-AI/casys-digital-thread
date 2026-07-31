@@ -27,9 +27,11 @@ host, use the [Compose how-to](how-to/compose-console.md). The
   `syson_constraint_evaluate` comparison against its versioned `90 degC` scenario
   target. It is labelled a provisional scenario contract, never a product requirement or
   SysON project requirement.
-- **Workbench** lists the SysON MCP Apps, the SysON web UI, and CAD/FEA evidence panels
-  intended for composition. Cross-panel selection is declared but not active in this
-  MVP.
+- **Workbench** embeds the local Compose manager: its reviewed selector contains the
+  CM-01 and Engineering YAML dashboards, and the active dashboard stays in the same
+  page. The CoffeeMachine composition renders live SysON, build123d, ERPNext and
+  Modelica viewers; the Console contains no substitute geometry, FEA, BOM, or model
+  preview.
 
 ## Connection reference
 
@@ -64,14 +66,14 @@ MCP 2026-07-28 requests. It is deliberately marked as a local MCP Apps harness: 
 not a `mcp-compose` dashboard. Its exact scope and health check are documented in the
 [browser-preview how-to](how-to/preview-console.md).
 
-The Compose integration uses the same Console resource but has a different contract. Its
-explicit manifest and one-panel YAML template live under `config/compose/`; the generic
-local host resolves the resource through MCP `resources/read`, not an HTTP `/ui`
-convention. It grants the view only the read-only manifest tools marked `appCallable`,
-gives it a dedicated loopback iframe origin, and delivers the initiating snapshot only
-after `ui/notifications/initialized`. See the
-[Compose how-to](how-to/compose-console.md) for the source-checkout command and
-verification path.
+The Compose integration uses the same Console resource but has a different contract.
+Explicit manifests and saved YAML templates live under `config/compose/`; the generic
+local host resolves resources through MCP `resources/read`, not an HTTP `/ui`
+convention. The stable Workbench manager on `127.0.0.1:60060` selects one composition at
+a time. Each selected dashboard has a dedicated loopback origin, grants only manifest
+tools marked `appCallable`, and delivers initiating results only after
+`ui/notifications/initialized`. See the
+[Compose how-to](how-to/compose-console.md) for the runnable paths.
 
 For real Fleet probes, start the engineering services first:
 

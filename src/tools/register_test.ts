@@ -28,6 +28,14 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assert(content);
       assertEquals(content.uri, CONSOLE_RESOURCE_URI);
       assert(content.text.includes("<html"));
+      assertEquals(
+        (content as unknown as Record<string, unknown>)._meta,
+        {
+          ui: {
+            csp: { frameDomains: ["http://127.0.0.1:60060"] },
+          },
+        },
+      );
     }
   } catch (error) {
     if (!(error instanceof Deno.errors.NotFound)) throw error;
