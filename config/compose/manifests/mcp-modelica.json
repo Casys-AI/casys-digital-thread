@@ -84,6 +84,7 @@
       "name": "modelica_run_get",
       "description": "Read a Modelica simulation run by stable run id.",
       "resourceUri": "ui://mcp-modelica/results-viewer",
+      "appCallable": true,
       "inputSchema": {
         "type": "object",
         "properties": {

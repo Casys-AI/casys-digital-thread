@@ -573,7 +573,8 @@
   "workspace": {
     "dependencies": [
       "jsr:@casys/mcp-server@0.24.0",
-      "jsr:@std/assert@1.0.14"
+      "jsr:@std/assert@1.0.14",
+      "jsr:@std/yaml@1"
     ]
   }
 }

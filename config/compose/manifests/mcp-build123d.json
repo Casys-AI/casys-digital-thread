@@ -9,7 +9,7 @@
   "tools": [
     {
       "name": "build123d_execute",
-      "description": "Execute a bounded build123d script and return geometry evidence.",
+      "description": "Execute trusted-local build123d Python and return geometry evidence.",
       "resourceUri": "ui://mcp-build123d/results-viewer",
       "inputSchema": {
         "type": "object",
@@ -27,7 +27,8 @@
         },
         "required": [
           "script"
-        ]
+        ],
+        "additionalProperties": false
       }
     },
     {
@@ -67,7 +68,8 @@
           "script",
           "formats",
           "name"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   ]

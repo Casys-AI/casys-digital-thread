@@ -1,3 +1,6 @@
+# mcp-compose runs sources in parallel and only injects caller-supplied args.
+# It cannot pass a build123d STEP export into CalculiX, so this dashboard does
+# not claim a live CAD -> FEA chain until ordered result-to-argument binding exists.
 name: Coffee machine simulation and CAD evidence
 sources:
   - id: coffee-machine-simulation
@@ -12,6 +15,8 @@ sources:
     calls:
       - tool: build123d_execute
         args:
-          script: result = Box(10,20,5)
+          script: |
+            from build123d import Box
+            result = Box(10, 20, 5)
 orchestration:
   layout: grid

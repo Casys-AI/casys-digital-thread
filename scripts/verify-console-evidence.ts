@@ -155,6 +155,10 @@ expectedEngineeringViewer(
   "ui://mcp-build123d/results-viewer",
 );
 expectedEngineeringViewer(
+  "calculix",
+  "ui://mcp-calculix/results-viewer",
+);
+expectedEngineeringViewer(
   "modelica",
   "ui://mcp-modelica/results-viewer",
 );

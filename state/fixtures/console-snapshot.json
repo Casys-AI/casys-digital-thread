@@ -390,7 +390,9 @@
           "expectedTools": [
             "calculix_solve_static"
           ],
-          "expectedViews": [],
+          "expectedViews": [
+            "ui://mcp-calculix/results-viewer"
+          ],
           "network": {
             "exposure": "loopback-only",
             "composeNetwork": "chain",
@@ -418,11 +420,16 @@
             "serverName": "@casys/mcp-calculix",
             "tools": [
               {
-                "name": "calculix_solve_static"
+                "name": "calculix_solve_static",
+                "resourceUri": "ui://mcp-calculix/results-viewer"
               }
             ],
-            "resourceUris": [],
-            "viewerUris": []
+            "resourceUris": [
+              "ui://mcp-calculix/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-calculix/results-viewer"
+            ]
           },
           "container": {
             "runtimeAvailable": true,
@@ -466,9 +473,13 @@
             {
               "field": "resources",
               "status": "in_sync",
-              "desired": 0,
-              "observed": 0,
-              "message": "No native UI resource is expected."
+              "desired": [
+                "ui://mcp-calculix/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-calculix/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
             }
           ]
         },

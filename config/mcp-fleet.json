@@ -122,7 +122,9 @@
       "expectedTools": [
         "calculix_solve_static"
       ],
-      "expectedViews": [],
+      "expectedViews": [
+        "ui://mcp-calculix/results-viewer"
+      ],
       "network": {
         "exposure": "loopback-only",
         "composeNetwork": "chain",
