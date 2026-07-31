@@ -57,6 +57,9 @@ these console tools:
 - `console_run_detail`
 - `console_refresh`
 
+The harness invokes `console_snapshot` once as the initiating host call, then delivers
+that complete result after `ui/notifications/initialized`; the view never repeats it.
+
 It does not forward lifecycle mutations, Docker access, Modelica tools, SysON model
 mutations, arbitrary resources, or arbitrary MCP calls. The console continues to own the
 observation logic; the browser host does not substitute its own data.

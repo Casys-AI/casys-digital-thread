@@ -52,7 +52,7 @@ const server = Deno.serve(
   async (request) => {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") {
-      return htmlResponse(hostPage());
+      return htmlResponse(await hostPage());
     }
     if (request.method === "GET" && url.pathname === "/resource/console.html") {
       try {
@@ -229,7 +229,8 @@ async function jsonRpcFrom(response: Response): Promise<JsonRpcResponse> {
   return payload;
 }
 
-function hostPage(): string {
+async function hostPage(): Promise<string> {
+  const initialToolResult = await initialSnapshotResult();
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -262,6 +263,8 @@ function hostPage(): string {
         hostCapabilities: { serverTools: {}, serverResources: {} },
         hostContext: { theme: "dark", displayMode: "inline", locale: "en-US" },
       };
+      const initialToolResult = ${inlineJson(initialToolResult)};
+      let initialResultDelivered = false;
 
       function reply(id, result) {
         frame.contentWindow.postMessage({ jsonrpc: "2.0", id, result }, "*");
@@ -282,6 +285,17 @@ function hostPage(): string {
 
         if (message.method === "ui/initialize") {
           if (message.id !== undefined) reply(message.id, hostResult);
+          return;
+        }
+        if (message.method === "ui/notifications/initialized") {
+          if (!initialResultDelivered) {
+            initialResultDelivered = true;
+            frame.contentWindow.postMessage({
+              jsonrpc: "2.0",
+              method: "ui/notifications/tool-result",
+              params: initialToolResult,
+            }, "*");
+          }
           return;
         }
         if (message.method === "tools/call" || message.method === "resources/read") {
@@ -313,6 +327,43 @@ function hostPage(): string {
     </script>
   </body>
 </html>`;
+}
+
+/** The host, not the view, executes the tool that opens the Console. */
+async function initialSnapshotResult(): Promise<unknown> {
+  try {
+    const response = await callMcp("tools/call", {
+      name: "console_snapshot",
+      arguments: {},
+    });
+    if (response.error) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: response.error.message }],
+      };
+    }
+    if (!asRecord(response.result)) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: "Console MCP returned no tool result." }],
+      };
+    }
+    return response.result;
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{ type: "text", text: errorMessage(error) }],
+    };
+  }
+}
+
+function inlineJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }
 
 function resourceErrorPage(error: unknown): string {
