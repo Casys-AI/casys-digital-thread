@@ -5,9 +5,9 @@
 Cette décision fixe les responsabilités de calcul de la chaîne et le premier cas
 multi-physique, `CoffeeMachine`.
 
-Cette page explique les frontières choisies. Pour exécuter et lire le premier
-run réel, suivre le [tutoriel CoffeeMachine](tutorials/coffee-machine-nominal.md).
-Pour les chemins, hashes, ports et contrats exacts, consulter la
+Cette page explique les frontières choisies. Pour exécuter et lire le premier run réel,
+suivre le [tutoriel CoffeeMachine](tutorials/coffee-machine-nominal.md). Pour les
+chemins, hashes, ports et contrats exacts, consulter la
 [référence de l'espace de travail](reference/workspace-map.md).
 
 ## Décision
@@ -78,17 +78,17 @@ kit/adaptateur structurel, pas le vérificateur global de CoffeeMachine.
 
 ## Déploiement choisi
 
-`mcp-modelica` est un serveur indépendant, dans une image sidecar dérivée et
-verrouillée par digest de `openmodelica/openmodelica:v1.27.0-minimal`, avec la version de la
+`mcp-modelica` est un serveur indépendant, dans une image sidecar dérivée et verrouillée
+par digest de `openmodelica/openmodelica:v1.27.0-minimal`, avec la version de la
 Modelica Standard Library intégrée à l'image. Il n'entre pas dans l'image
 `engineering-toolchain` actuelle : il a son propre cycle de release, ses artefacts et
 son budget disque.
 
-L'image publiée est un index OCI multi-architecture, `linux/arm64` natif sur le Mac
-et `linux/amd64` en CI ou en production. Le fleet et Compose la référencent par son
-digest, avec un volume `/runs` dédié et sans partage d'exports CAD. Les modèles,
-paramètres, résultats CSV/JSON et tolérances de test sont versionnés, afin que
-l'architecture ne change pas le sens de la preuve.
+L'image publiée est un index OCI multi-architecture, `linux/arm64` natif sur le Mac et
+`linux/amd64` en CI ou en production. Le fleet et Compose la référencent par son digest,
+avec un volume `/runs` dédié et sans partage d'exports CAD. Les modèles, paramètres,
+résultats CSV/JSON et tolérances de test sont versionnés, afin que l'architecture ne
+change pas le sens de la preuve.
 
 ## Ce que nous ne créons pas
 
@@ -110,8 +110,9 @@ l'architecture ne change pas le sens de la preuve.
 2. Construire `mcp-modelica`, puis faire évaluer ses observations par les outils de
    contraintes existants : fait pour le contrat de scénario provisoire ; les vraies
    exigences attendent encore leur modèle SysON et leurs limites métier.
-3. L'ajouter au fleet/Compose après un run réel reproductible : fait avec l'image
-   `mcp-modelica` 0.1.5, dont les builds amd64 et arm64 exécutent le kit CoffeeMachine.
+3. L'ajouter au fleet/Compose après un run réel reproductible : fait ; l'image exacte
+   est référencée par digest dans la topologie, sans figer cette décision à un numéro de
+   release historique.
 4. Extraire un contrat de preuve partagé seulement lorsqu'un second producteur impose
    réellement le même format durable.
 

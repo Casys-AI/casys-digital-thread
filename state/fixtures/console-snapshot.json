@@ -23,7 +23,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3009/mcp",
           "healthUrl": "http://127.0.0.1:3009/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
           "required": true,
           "expectedTools": [
             "syson_project_list",
@@ -215,7 +215,7 @@
             "present": true,
             "name": "casys-digital-thread-mcp-syson-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
           }
         },
         "drift": {
@@ -238,8 +238,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
-              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
               "message": "Observed image matches desired state."
             },
             {
@@ -270,13 +270,15 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3014/mcp",
           "healthUrl": "http://127.0.0.1:3014/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
           "required": true,
           "expectedTools": [
             "build123d_execute",
             "build123d_export"
           ],
-          "expectedViews": [],
+          "expectedViews": [
+            "ui://mcp-build123d/results-viewer"
+          ],
           "network": {
             "exposure": "loopback-only",
             "composeNetwork": "chain",
@@ -304,21 +306,27 @@
             "serverName": "@casys/mcp-build123d",
             "tools": [
               {
-                "name": "build123d_execute"
+                "name": "build123d_execute",
+                "resourceUri": "ui://mcp-build123d/results-viewer"
               },
               {
-                "name": "build123d_export"
+                "name": "build123d_export",
+                "resourceUri": "ui://mcp-build123d/results-viewer"
               }
             ],
-            "resourceUris": [],
-            "viewerUris": []
+            "resourceUris": [
+              "ui://mcp-build123d/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-build123d/results-viewer"
+            ]
           },
           "container": {
             "runtimeAvailable": true,
             "present": true,
             "name": "casys-digital-thread-mcp-build123d-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
           }
         },
         "drift": {
@@ -341,8 +349,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
-              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
               "message": "Observed image matches desired state."
             },
             {
@@ -355,9 +363,13 @@
             {
               "field": "resources",
               "status": "in_sync",
-              "desired": 0,
-              "observed": 0,
-              "message": "No native UI resource is expected."
+              "desired": [
+                "ui://mcp-build123d/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-build123d/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
             }
           ]
         },
@@ -373,12 +385,14 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3015/mcp",
           "healthUrl": "http://127.0.0.1:3015/health",
-          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+          "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
           "required": true,
           "expectedTools": [
             "calculix_solve_static"
           ],
-          "expectedViews": [],
+          "expectedViews": [
+            "ui://mcp-calculix/results-viewer"
+          ],
           "network": {
             "exposure": "loopback-only",
             "composeNetwork": "chain",
@@ -406,18 +420,23 @@
             "serverName": "@casys/mcp-calculix",
             "tools": [
               {
-                "name": "calculix_solve_static"
+                "name": "calculix_solve_static",
+                "resourceUri": "ui://mcp-calculix/results-viewer"
               }
             ],
-            "resourceUris": [],
-            "viewerUris": []
+            "resourceUris": [
+              "ui://mcp-calculix/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-calculix/results-viewer"
+            ]
           },
           "container": {
             "runtimeAvailable": true,
             "present": true,
             "name": "casys-digital-thread-mcp-calculix-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084"
+            "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3"
           }
         },
         "drift": {
@@ -440,8 +459,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
-              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084",
+              "desired": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
+              "observed": "ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3",
               "message": "Observed image matches desired state."
             },
             {
@@ -454,9 +473,13 @@
             {
               "field": "resources",
               "status": "in_sync",
-              "desired": 0,
-              "observed": 0,
-              "message": "No native UI resource is expected."
+              "desired": [
+                "ui://mcp-calculix/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-calculix/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
             }
           ]
         },
@@ -472,7 +495,7 @@
           "transport": "streamable-http",
           "mcpUrl": "http://127.0.0.1:3016/mcp",
           "healthUrl": "http://127.0.0.1:3016/health",
-          "image": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149",
+          "image": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
           "required": true,
           "expectedTools": [
             "modelica_kit_list",
@@ -480,7 +503,9 @@
             "modelica_run_list",
             "modelica_run_get"
           ],
-          "expectedViews": [],
+          "expectedViews": [
+            "ui://mcp-modelica/results-viewer"
+          ],
           "network": {
             "exposure": "loopback-only",
             "composeNetwork": "chain",
@@ -511,24 +536,31 @@
                 "name": "modelica_kit_list"
               },
               {
-                "name": "modelica_simulate"
+                "name": "modelica_simulate",
+                "resourceUri": "ui://mcp-modelica/results-viewer"
               },
               {
-                "name": "modelica_run_list"
+                "name": "modelica_run_list",
+                "resourceUri": "ui://mcp-modelica/results-viewer"
               },
               {
-                "name": "modelica_run_get"
+                "name": "modelica_run_get",
+                "resourceUri": "ui://mcp-modelica/results-viewer"
               }
             ],
-            "resourceUris": [],
-            "viewerUris": []
+            "resourceUris": [
+              "ui://mcp-modelica/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-modelica/results-viewer"
+            ]
           },
           "container": {
             "runtimeAvailable": true,
             "present": true,
             "name": "casys-digital-thread-mcp-modelica-1",
             "state": "running",
-            "image": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149"
+            "image": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3"
           }
         },
         "drift": {
@@ -551,8 +583,8 @@
             {
               "field": "image",
               "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149",
-              "observed": "ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149",
+              "desired": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
+              "observed": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
               "message": "Observed image matches desired state."
             },
             {
@@ -565,9 +597,13 @@
             {
               "field": "resources",
               "status": "in_sync",
-              "desired": 0,
-              "observed": 0,
-              "message": "No native UI resource is expected."
+              "desired": [
+                "ui://mcp-modelica/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-modelica/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
             }
           ]
         },

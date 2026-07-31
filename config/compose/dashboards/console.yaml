@@ -1,0 +1,8 @@
+name: Casys Digital Thread Console
+sources:
+  - id: console
+    manifest: casys-digital-thread
+    calls:
+      - tool: console_snapshot
+orchestration:
+  layout: stack

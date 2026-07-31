@@ -1,45 +1,38 @@
-import { assertEquals } from "@std/assert";
-import { ModelicaRunObserver } from "./modelica-run-observer.ts";
+import { assertEquals, assertRejects } from "@std/assert";
+import {
+  ModelicaRunObserver,
+  ModelicaRunObserverError,
+} from "./modelica-run-observer.ts";
 
-Deno.test("ModelicaRunObserver reads persisted evidence through MCP and keeps execution separate from verdict", async () => {
+Deno.test("ModelicaRunObserver reads exact v1 envelopes over stateless MCP", async () => {
   const toolCalls: string[] = [];
-  const closedSessions: string[] = [];
-  let sessionNumber = 0;
   const fakeFetch = (async (
     _input: string | URL | Request,
     init?: RequestInit,
   ) => {
     await Promise.resolve();
-    const method = init?.method ?? "GET";
     const headers = new Headers(init?.headers);
-    if (method === "DELETE") {
-      closedSessions.push(headers.get("mcp-session-id") ?? "");
-      return new Response(null, { status: 204 });
-    }
     const body = JSON.parse(String(init?.body ?? "{}"));
-    if (body.method === "initialize") {
-      sessionNumber++;
+    assertEquals(headers.get("mcp-protocol-version"), "2026-07-28");
+    assertEquals(headers.get("mcp-method"), "tools/call");
+    assertEquals(headers.get("mcp-name"), body.params.name);
+    assertEquals(headers.get("mcp-session-id"), null);
+    assertEquals(
+      body.params._meta["io.modelcontextprotocol/protocolVersion"],
+      "2026-07-28",
+    );
+    if (body.method === "tools/call") {
+      const tool = body.params.name;
+      toolCalls.push(tool);
+      const structuredContent = tool === "modelica_run_list"
+        ? { schemaVersion: "1.0", kind: "run-list", runs: [summary()] }
+        : { schemaVersion: "1.0", kind: "run", run: detail() };
       return Response.json({
         jsonrpc: "2.0",
         id: 1,
         result: {
-          protocolVersion: "2025-06-18",
-          serverInfo: { name: "mcp-modelica", version: "0.1.5" },
-        },
-      }, { headers: { "mcp-session-id": "session-" + sessionNumber } });
-    }
-    if (body.method === "notifications/initialized") {
-      return new Response(null, { status: 202 });
-    }
-    if (body.method === "tools/call") {
-      const tool = body.params.name;
-      toolCalls.push(tool);
-      const payload = tool === "modelica_run_list" ? [summary()] : detail();
-      return Response.json({
-        jsonrpc: "2.0",
-        id: 2,
-        result: {
-          content: [{ type: "text", text: JSON.stringify(payload) }],
+          resultType: "complete",
+          structuredContent,
         },
       });
     }
@@ -54,7 +47,6 @@ Deno.test("ModelicaRunObserver reads persisted evidence through MCP and keeps ex
   const loaded = await observer.detail(listed[0].id);
 
   assertEquals(toolCalls, ["modelica_run_list", "modelica_run_get"]);
-  assertEquals(closedSessions, ["session-1", "session-2"]);
   assertEquals(listed, [{
     id: "modelica:run_123",
     name: "coffee-machine-v1 / heat-up-nominal",
@@ -96,29 +88,17 @@ Deno.test("ModelicaRunObserver reads persisted evidence through MCP and keeps ex
   });
 });
 
-Deno.test("ModelicaRunObserver preserves missing legacy timing rather than inventing it", async () => {
+Deno.test("ModelicaRunObserver rejects a legacy text result without the v1 envelope", async () => {
   const fakeFetch = (async (
     _input: string | URL | Request,
-    init?: RequestInit,
+    _init?: RequestInit,
   ) => {
     await Promise.resolve();
-    const method = init?.method ?? "GET";
-    if (method === "DELETE") return new Response(null, { status: 204 });
-    const body = JSON.parse(String(init?.body ?? "{}"));
-    if (body.method === "initialize") {
-      return Response.json({
-        jsonrpc: "2.0",
-        id: 1,
-        result: {},
-      }, { headers: { "mcp-session-id": "legacy-session" } });
-    }
-    if (body.method === "notifications/initialized") {
-      return new Response(null, { status: 202 });
-    }
     return Response.json({
       jsonrpc: "2.0",
-      id: 2,
+      id: 1,
       result: {
+        resultType: "complete",
         content: [{ type: "text", text: JSON.stringify([legacySummary()]) }],
       },
     });
@@ -128,19 +108,32 @@ Deno.test("ModelicaRunObserver preserves missing legacy timing rather than inven
     fetch: fakeFetch,
   });
 
-  assertEquals(await observer.list(), [{
-    id: "modelica:run_legacy",
-    name: "coffee-machine-v1 / heat-up-nominal",
-    subject: "Modelica 1.0.0",
-    status: "succeeded",
-    verdictStatus: "not_evaluated",
-    source: "observed",
-    startedAt: undefined,
-    completedAt: undefined,
-    passedRequirements: 0,
-    failedRequirements: 0,
-    unresolvedRequirements: 0,
-  }]);
+  await assertRejects(
+    () => observer.list(),
+    ModelicaRunObserverError,
+    "structuredContent must be an object",
+  );
+});
+
+Deno.test("ModelicaRunObserver rejects a v1 envelope with the wrong kind", async () => {
+  const observer = new ModelicaRunObserver({
+    mcpUrl: "http://127.0.0.1:3016/mcp",
+    fetch: (() =>
+      Promise.resolve(Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          resultType: "complete",
+          structuredContent: { schemaVersion: "1.0", kind: "run", run: detail() },
+        },
+      }))) as typeof fetch,
+  });
+
+  await assertRejects(
+    () => observer.list(),
+    ModelicaRunObserverError,
+    "unsupported v1 run-list envelope",
+  );
 });
 
 function summary(): Record<string, unknown> {

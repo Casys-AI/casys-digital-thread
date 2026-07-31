@@ -16,9 +16,6 @@
 # build123d_export is immediately readable by calculix_solve_static at
 # /exports/<name>.step.
 #
-# For stdio mode (Claude Desktop) you do not need compose at all — see the
-# README's MCP configuration section.
-
 services:
   syson-db:
     image: postgres:15
@@ -36,8 +33,8 @@ services:
     networks: [chain]
 
   syson-app:
-    # SysON and the engineering-toolchain image are amd64-only. Make the
-    # architecture explicit so Docker Desktop/Colima emulates on Apple Silicon.
+    # SysON is amd64-only. Make the architecture explicit so
+    # Docker Desktop/Colima emulates it on Apple Silicon.
     platform: linux/amd64
     image: "${SYSON_IMAGE:-eclipsesyson/syson:v2026.7.0}"
     ports:
@@ -66,9 +63,8 @@ services:
     networks: [chain]
 
   mcp-syson:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084}"
-    platform: linux/amd64
-    command: ["syson", "--http", "--port=3009", "--hostname=0.0.0.0"]
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3}"
+    command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
     ports:
@@ -79,9 +75,8 @@ services:
     networks: [chain]
 
   mcp-build123d:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084}"
-    platform: linux/amd64
-    command: ["build123d", "--http", "--port=3014", "--hostname=0.0.0.0"]
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3}"
+    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3014:3014"
     volumes:
@@ -89,9 +84,8 @@ services:
     networks: [chain]
 
   mcp-calculix:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084}"
-    platform: linux/amd64
-    command: ["calculix", "--http", "--port=3015", "--hostname=0.0.0.0"]
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3}"
+    command: ["calculix", "--port=3015", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3015:3015"
     volumes:
@@ -103,7 +97,7 @@ services:
   mcp-modelica:
     # MCP_MODELICA_IMAGE lets a locally verified sidecar be tested without
     # spending a GitHub Actions image build. The committed default stays pinned.
-    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:c25462461a7aa4191e0a22c2275788fe03dad817532ab755f5cb45ad7d7c7149}"
+    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3}"
     ports:
       - "127.0.0.1:3016:3016"
     volumes:
@@ -121,7 +115,7 @@ networks:
 volumes:
   syson-db-data:
   exports:
-  # An explicit Docker name lets Compose and the direct stdio MCP share
-  # immutable Modelica run records for modelica_run_get.
+  # An explicit Docker name preserves immutable Modelica run records across
+  # Compose restarts for modelica_run_get.
   modelica-runs:
     name: casys-digital-thread-modelica-runs

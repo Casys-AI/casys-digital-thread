@@ -20,7 +20,10 @@ import type {
   VerdictStatus,
   WorkbenchPanel,
 } from "../../domain/types.ts";
-import { demoRunDetail, makeDemoSnapshot } from "./fixtures.ts";
+import {
+  initialSnapshotFromResult,
+  toolResultErrorMessage,
+} from "./initial-result.ts";
 import "./styles.css";
 
 type Tab = "fleet" | "runs" | "workbench";
@@ -31,13 +34,13 @@ interface ViewState {
 
 interface RuntimeState {
   activeTab: Tab;
-  snapshot: ConsoleSnapshot;
+  snapshot?: ConsoleSnapshot;
   selectedRunId?: string;
   hasExplicitRunSelection: boolean;
   runDetails: Map<string, RunDetail>;
   loadingRunId?: string;
   refreshing: boolean;
-  connection: "connecting" | "hosted" | "standalone" | "error";
+  connection: "connecting" | "hosted" | "error";
   notice?: { tone: "info" | "error"; message: string };
   ctx?: AppContext<ViewState>;
   handle?: AppHandle<ViewState>;
@@ -48,14 +51,11 @@ if (!appRoot) throw new Error("Missing #app mount point");
 
 const runtime: RuntimeState = {
   activeTab: "fleet",
-  snapshot: makeDemoSnapshot(),
-  selectedRunId: demoRunDetail.id,
+  selectedRunId: undefined,
   hasExplicitRunSelection: false,
-  runDetails: new Map([[demoRunDetail.id, demoRunDetail]]),
+  runDetails: new Map(),
   refreshing: false,
-  connection: globalThis.parent === globalThis.window
-    ? "standalone"
-    : "connecting",
+  connection: "connecting",
 };
 
 appRoot.innerHTML = `
@@ -68,19 +68,6 @@ appRoot.innerHTML = `
   </main>
 `;
 
-function isConsoleSnapshot(value: unknown): value is ConsoleSnapshot {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<ConsoleSnapshot>;
-  return candidate.schemaVersion === "1.0" &&
-    typeof candidate.generatedAt === "string" &&
-    !!candidate.fleet &&
-    Array.isArray(candidate.fleet.servers) &&
-    !!candidate.runs &&
-    Array.isArray(candidate.runs.items) &&
-    !!candidate.workbench &&
-    Array.isArray(candidate.workbench.panels);
-}
-
 function isRunDetail(value: unknown): value is RunDetail {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<RunDetail>;
@@ -90,30 +77,17 @@ function isRunDetail(value: unknown): value is RunDetail {
     Array.isArray(candidate.evidence);
 }
 
-function getToolError(result: ToolResult): string {
-  const text = result.content
-    ?.filter((
-      item,
-    ): item is Extract<(typeof result.content)[number], { type: "text" }> =>
-      item.type === "text"
-    )
-    .map((item) => item.text)
-    .join(" ");
-  return text || "The control-plane tool returned an error.";
-}
-
 function snapshotFromResult(result: ToolResult): ConsoleSnapshot {
-  if (result.isError) throw new Error(getToolError(result));
-  if (!isConsoleSnapshot(result.structuredContent)) {
-    throw new Error(
-      "console_snapshot returned an unsupported structuredContent contract.",
-    );
-  }
-  return result.structuredContent;
+  return initialSnapshotFromResult(result);
 }
 
 function runDetailFromResult(result: ToolResult): RunDetail {
-  if (result.isError) throw new Error(getToolError(result));
+  if (result.isError) {
+    throw new Error(
+      toolResultErrorMessage(result) ??
+        "The control-plane tool returned an error.",
+    );
+  }
   if (!isRunDetail(result.structuredContent)) {
     throw new Error(
       "console_run_detail returned an unsupported structuredContent contract.",
@@ -270,8 +244,17 @@ function loadSelectedRunDetailIfNeeded(): void {
   }
 }
 
+function currentSnapshot(): ConsoleSnapshot {
+  if (!runtime.snapshot) {
+    throw new Error(
+      "Console view rendered before its initiating snapshot arrived.",
+    );
+  }
+  return runtime.snapshot;
+}
+
 function renderHeader(): string {
-  const { snapshot } = runtime;
+  const snapshot = currentSnapshot();
   const generatedLabel = formatClock(snapshot.generatedAt);
   const connectionLabel = runtime.connection === "hosted"
     ? "MCP HOST"
@@ -347,7 +330,8 @@ function renderTabs(): string {
 }
 
 function renderFleetSummary(): string {
-  const counts = runtime.snapshot.fleet.counts;
+  const snapshot = currentSnapshot();
+  const counts = snapshot.fleet.counts;
   return `
     <section class="section-heading">
       <div>
@@ -358,7 +342,7 @@ function renderFleetSummary(): string {
       <div class="health-score" aria-label="${counts.healthy} of ${counts.total} servers healthy">
         <span class="health-ring"><b>${counts.healthy}</b><small>/${counts.total}</small></span>
         <div><strong>${
-    statusLabel(runtime.snapshot.fleet.status)
+    statusLabel(snapshot.fleet.status)
   }</strong><small>${counts.drift} drifting server${
     counts.drift === 1 ? "" : "s"
   }</small></div>
@@ -537,16 +521,17 @@ function readableValue(value: unknown): string {
 }
 
 function renderFleet(): string {
+  const snapshot = currentSnapshot();
   return `
     ${renderFleetSummary()}
     <div class="server-list">
-      ${runtime.snapshot.fleet.servers.map(renderServerCard).join("")}
+      ${snapshot.fleet.servers.map(renderServerCard).join("")}
     </div>
   `;
 }
 
 function renderRunRail(): string {
-  const runs = runtime.snapshot.runs.items;
+  const runs = currentSnapshot().runs.items;
   return `
     <aside class="run-rail" aria-label="Available engineering runs">
       <div class="rail-heading">
@@ -960,7 +945,14 @@ function constraintsPreview(): string {
       </div>
     `;
   }
-  const requirements = detail?.requirements ?? demoRunDetail.requirements;
+  if (!detail) {
+    return `
+      <div class="constraint-preview">
+        <p class="empty-note">Live comparison evidence has not been loaded for the selected run.</p>
+      </div>
+    `;
+  }
+  const requirements = detail.requirements;
   return `
     <div class="constraint-preview">
       ${
@@ -1051,7 +1043,7 @@ function renderWorkbenchPanel(panel: WorkbenchPanel, index: number): string {
 }
 
 function renderWorkbench(): string {
-  const { workbench } = runtime.snapshot;
+  const { workbench } = currentSnapshot();
   return `
     <section class="section-heading workbench-heading">
       <div>
@@ -1123,6 +1115,7 @@ function renderNotice(): string {
 }
 
 function buildConsole(): HTMLElement {
+  const snapshot = currentSnapshot();
   const shell = document.createElement("div");
   shell.className = "console-shell";
   const activeContent = runtime.activeTab === "fleet"
@@ -1142,17 +1135,40 @@ function buildConsole(): HTMLElement {
     </main>
     <footer class="console-footer">
       <span>CASYS DIGITAL THREAD / CONTROL SURFACE</span>
-      <span>READ-ONLY OPERATIONS · SCHEMA ${
-    esc(runtime.snapshot.schemaVersion)
-  }</span>
+      <span>READ-ONLY OPERATIONS · SCHEMA ${esc(snapshot.schemaVersion)}</span>
     </footer>
   `;
   bindInteractions(shell);
   return shell;
 }
 
+function buildWaitingState(): HTMLElement {
+  const shell = document.createElement("main");
+  const failed = runtime.connection === "error";
+  shell.className = "boot";
+  shell.setAttribute("aria-busy", failed ? "false" : "true");
+  shell.innerHTML = `
+    <div class="boot-mark" aria-hidden="true">DT</div>
+    <div>
+      <p class="eyebrow">CASYS // THREAD CONSOLE</p>
+      <h1>${
+    failed ? "Console result unavailable" : "Waiting for console snapshot"
+  }</h1>
+      <p class="boot-copy">${
+    esc(
+      runtime.notice?.message ??
+        "The MCP Apps host will deliver the initiating console_snapshot result.",
+    )
+  }</p>
+    </div>
+  `;
+  return shell;
+}
+
 function renderNow(): void {
-  appRoot.replaceChildren(buildConsole());
+  appRoot.replaceChildren(
+    runtime.snapshot ? buildConsole() : buildWaitingState(),
+  );
 }
 
 function bindInteractions(shell: HTMLElement): void {
@@ -1240,19 +1256,20 @@ async function refreshSnapshot(): Promise<void> {
   renderNow();
   try {
     const result = await runtime.ctx.callTool("console_refresh", {});
-    runtime.snapshot = snapshotFromResult(result);
+    const snapshot = snapshotFromResult(result);
+    runtime.snapshot = snapshot;
     runtime.connection = "hosted";
     // A refresh is specifically an operator request for live state. Do not
     // retain a previous observed detail (and therefore a previous SysON
     // evaluation) just because the run id is unchanged.
-    for (const run of runtime.snapshot.runs.items) {
+    for (const run of snapshot.runs.items) {
       if (run.source === "observed") runtime.runDetails.delete(run.id);
     }
-    reconcileSelectedRun(runtime.snapshot);
+    reconcileSelectedRun(snapshot);
     runtime.notice = {
       tone: "info",
       message: `Observed state refreshed at ${
-        formatClock(runtime.snapshot.generatedAt)
+        formatClock(snapshot.generatedAt)
       }.`,
     };
   } catch (error) {
@@ -1286,11 +1303,12 @@ async function loadRunDetail(id: string): Promise<void> {
     const result = await runtime.ctx.callTool("console_run_detail", { id });
     const detail = runDetailFromResult(result);
     runtime.runDetails.set(id, detail);
+    const snapshot = currentSnapshot();
     runtime.snapshot = {
-      ...runtime.snapshot,
+      ...snapshot,
       runs: {
-        ...runtime.snapshot.runs,
-        items: runtime.snapshot.runs.items.map((run) =>
+        ...snapshot.runs,
+        items: snapshot.runs.items.map((run) =>
           run.id === detail.id ? runSummaryFromDetail(detail) : run
         ),
       },
@@ -1324,39 +1342,20 @@ function runSummaryFromDetail(detail: RunDetail): RunSummary {
   };
 }
 
-const consoleView = defineView<ViewState, void, ConsoleSnapshot>({
-  async onEnter(ctx) {
+const consoleView = defineView<ViewState>({
+  render(ctx) {
     runtime.ctx = ctx;
-    try {
-      const result = await ctx.callTool("console_snapshot", {});
-      runtime.connection = "hosted";
-      return snapshotFromResult(result);
-    } catch (error) {
-      runtime.connection = "error";
-      runtime.notice = {
-        tone: "error",
-        message: `Live snapshot unavailable; labelled demo fixture is shown. ${
-          error instanceof Error ? error.message : ""
-        }`,
-      };
-      return makeDemoSnapshot();
-    }
-  },
-  render(ctx, snapshot) {
-    runtime.ctx = ctx;
-    runtime.snapshot = snapshot;
-    reconcileSelectedRun(snapshot);
-    return buildConsole();
+    return runtime.snapshot ? buildConsole() : buildWaitingState();
   },
 });
 
 async function boot(): Promise<void> {
   if (globalThis.parent === globalThis.window) {
-    runtime.connection = "standalone";
+    runtime.connection = "error";
     runtime.notice = {
-      tone: "info",
+      tone: "error",
       message:
-        "Standalone preview: all displayed observations are labelled demo data.",
+        "This Console requires an MCP Apps host to deliver console_snapshot.",
     };
     renderNow();
     return;
@@ -1371,16 +1370,34 @@ async function boot(): Promise<void> {
       initialState: { initialized: true },
       strict: true,
       autoResize: true,
+      // mcp-view wires this callback before connect() and replays a result
+      // Compose delivered during the handshake once the view handle exists.
+      async onToolResult(result, app) {
+        try {
+          const snapshot = initialSnapshotFromResult(result);
+          runtime.snapshot = snapshot;
+          runtime.connection = "hosted";
+          runtime.notice = undefined;
+          reconcileSelectedRun(snapshot);
+        } catch (error) {
+          runtime.connection = "error";
+          runtime.notice = {
+            tone: "error",
+            message: error instanceof Error
+              ? error.message
+              : "The initiating console result could not be read.",
+          };
+        }
+        await app.navigate("console");
+      },
     });
     runtime.handle = handle;
     runtime.ctx = handle.ctx;
-    runtime.connection = "hosted";
-    renderNow();
   } catch (error) {
     runtime.connection = "error";
     runtime.notice = {
       tone: "error",
-      message: `MCP Apps handshake failed; labelled demo fixture is shown. ${
+      message: `MCP Apps handshake failed. ${
         error instanceof Error ? error.message : ""
       }`,
     };
