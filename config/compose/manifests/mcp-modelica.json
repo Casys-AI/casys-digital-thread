@@ -1,0 +1,102 @@
+{
+  "name": "mcp-modelica",
+  "description": "Approved Modelica simulation evidence and results viewer.",
+  "transport": {
+    "type": "http",
+    "url": "http://127.0.0.1:3016",
+    "protocol": "stateless-2026-07-28"
+  },
+  "tools": [
+    {
+      "name": "modelica_kit_list",
+      "description": "List approved Modelica kits and scenarios.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "modelica_simulate",
+      "description": "Run an approved Modelica scenario and return its evidence viewer.",
+      "resourceUri": "ui://mcp-modelica/results-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scenario_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parameter_overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "type": "number"
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "value",
+                "unit"
+              ]
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120000
+          }
+        },
+        "required": [
+          "model_id",
+          "scenario_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "modelica_run_list",
+      "description": "List bounded Modelica simulation runs.",
+      "resourceUri": "ui://mcp-modelica/results-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "modelica_run_get",
+      "description": "Read a Modelica simulation run by stable run id.",
+      "resourceUri": "ui://mcp-modelica/results-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

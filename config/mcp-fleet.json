@@ -89,7 +89,9 @@
         "build123d_execute",
         "build123d_export"
       ],
-      "expectedViews": [],
+      "expectedViews": [
+        "ui://mcp-build123d/results-viewer"
+      ],
       "network": {
         "exposure": "loopback-only",
         "composeNetwork": "chain",
@@ -154,7 +156,9 @@
         "modelica_run_list",
         "modelica_run_get"
       ],
-      "expectedViews": [],
+      "expectedViews": [
+        "ui://mcp-modelica/results-viewer"
+      ],
       "network": {
         "exposure": "loopback-only",
         "composeNetwork": "chain",

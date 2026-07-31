@@ -16,9 +16,6 @@
 # build123d_export is immediately readable by calculix_solve_static at
 # /exports/<name>.step.
 #
-# For stdio mode (Claude Desktop) you do not need compose at all — see the
-# README's MCP configuration section.
-
 services:
   syson-db:
     image: postgres:15
@@ -68,7 +65,7 @@ services:
   mcp-syson:
     image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084}"
     platform: linux/amd64
-    command: ["syson", "--http", "--port=3009", "--hostname=0.0.0.0"]
+    command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
     ports:
@@ -81,7 +78,7 @@ services:
   mcp-build123d:
     image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084}"
     platform: linux/amd64
-    command: ["build123d", "--http", "--port=3014", "--hostname=0.0.0.0"]
+    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3014:3014"
     volumes:
@@ -91,7 +88,7 @@ services:
   mcp-calculix:
     image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:875362406aedf003fef36ee28e170dbe24912f41d8752feeaba0c1cb134e6084}"
     platform: linux/amd64
-    command: ["calculix", "--http", "--port=3015", "--hostname=0.0.0.0"]
+    command: ["calculix", "--port=3015", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3015:3015"
     volumes:
@@ -121,7 +118,7 @@ networks:
 volumes:
   syson-db-data:
   exports:
-  # An explicit Docker name lets Compose and the direct stdio MCP share
-  # immutable Modelica run records for modelica_run_get.
+  # An explicit Docker name preserves immutable Modelica run records across
+  # Compose restarts for modelica_run_get.
   modelica-runs:
     name: casys-digital-thread-modelica-runs

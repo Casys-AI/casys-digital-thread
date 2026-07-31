@@ -1,0 +1,17 @@
+name: Coffee machine simulation and CAD evidence
+sources:
+  - id: coffee-machine-simulation
+    manifest: mcp-modelica
+    calls:
+      - tool: modelica_simulate
+        args:
+          model_id: coffee-machine-v1
+          scenario_id: heat-up-nominal
+  - id: sample-cad
+    manifest: mcp-build123d
+    calls:
+      - tool: build123d_execute
+        args:
+          script: result = Box(10,20,5)
+orchestration:
+  layout: grid

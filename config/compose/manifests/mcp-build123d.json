@@ -1,0 +1,74 @@
+{
+  "name": "mcp-build123d",
+  "description": "Local build123d CAD results and viewer.",
+  "transport": {
+    "type": "http",
+    "url": "http://127.0.0.1:3014",
+    "protocol": "stateless-2026-07-28"
+  },
+  "tools": [
+    {
+      "name": "build123d_execute",
+      "description": "Execute a bounded build123d script and return geometry evidence.",
+      "resourceUri": "ui://mcp-build123d/results-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "type": "string"
+          },
+          "density_kg_m3": {
+            "type": "number"
+          },
+          "timeout_ms": {
+            "type": "number",
+            "description": "Execution time limit in milliseconds (default 60000)"
+          }
+        },
+        "required": [
+          "script"
+        ]
+      }
+    },
+    {
+      "name": "build123d_export",
+      "description": "Export a previous build123d geometry result.",
+      "resourceUri": "ui://mcp-build123d/results-viewer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "type": "string"
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "step",
+                "stl",
+                "gltf"
+              ]
+            },
+            "minItems": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "density_kg_m3": {
+            "type": "number"
+          },
+          "timeout_ms": {
+            "type": "number",
+            "description": "Execution time limit in milliseconds (default 60000)"
+          }
+        },
+        "required": [
+          "script",
+          "formats",
+          "name"
+        ]
+      }
+    }
+  ]
+}

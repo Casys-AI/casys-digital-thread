@@ -276,7 +276,9 @@
             "build123d_execute",
             "build123d_export"
           ],
-          "expectedViews": [],
+          "expectedViews": [
+            "ui://mcp-build123d/results-viewer"
+          ],
           "network": {
             "exposure": "loopback-only",
             "composeNetwork": "chain",
@@ -304,14 +306,20 @@
             "serverName": "@casys/mcp-build123d",
             "tools": [
               {
-                "name": "build123d_execute"
+                "name": "build123d_execute",
+                "resourceUri": "ui://mcp-build123d/results-viewer"
               },
               {
-                "name": "build123d_export"
+                "name": "build123d_export",
+                "resourceUri": "ui://mcp-build123d/results-viewer"
               }
             ],
-            "resourceUris": [],
-            "viewerUris": []
+            "resourceUris": [
+              "ui://mcp-build123d/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-build123d/results-viewer"
+            ]
           },
           "container": {
             "runtimeAvailable": true,
@@ -355,9 +363,13 @@
             {
               "field": "resources",
               "status": "in_sync",
-              "desired": 0,
-              "observed": 0,
-              "message": "No native UI resource is expected."
+              "desired": [
+                "ui://mcp-build123d/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-build123d/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
             }
           ]
         },
@@ -480,7 +492,9 @@
             "modelica_run_list",
             "modelica_run_get"
           ],
-          "expectedViews": [],
+          "expectedViews": [
+            "ui://mcp-modelica/results-viewer"
+          ],
           "network": {
             "exposure": "loopback-only",
             "composeNetwork": "chain",
@@ -511,17 +525,24 @@
                 "name": "modelica_kit_list"
               },
               {
-                "name": "modelica_simulate"
+                "name": "modelica_simulate",
+                "resourceUri": "ui://mcp-modelica/results-viewer"
               },
               {
-                "name": "modelica_run_list"
+                "name": "modelica_run_list",
+                "resourceUri": "ui://mcp-modelica/results-viewer"
               },
               {
-                "name": "modelica_run_get"
+                "name": "modelica_run_get",
+                "resourceUri": "ui://mcp-modelica/results-viewer"
               }
             ],
-            "resourceUris": [],
-            "viewerUris": []
+            "resourceUris": [
+              "ui://mcp-modelica/results-viewer"
+            ],
+            "viewerUris": [
+              "ui://mcp-modelica/results-viewer"
+            ]
           },
           "container": {
             "runtimeAvailable": true,
@@ -565,9 +586,13 @@
             {
               "field": "resources",
               "status": "in_sync",
-              "desired": 0,
-              "observed": 0,
-              "message": "No native UI resource is expected."
+              "desired": [
+                "ui://mcp-modelica/results-viewer"
+              ],
+              "observed": [
+                "ui://mcp-modelica/results-viewer"
+              ],
+              "message": "1 viewer resources match desired state."
             }
           ]
         },

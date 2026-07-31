@@ -142,6 +142,23 @@ if (
   fail("syson: expectedViews must list all six published/discoverable viewers");
 }
 
+const expectedEngineeringViewer = (serverId: string, viewerUri: string) => {
+  const actual = manifest.servers.find((server) => server.id === serverId)
+    ?.expectedViews;
+  if (JSON.stringify(actual) !== JSON.stringify([viewerUri])) {
+    fail(`${serverId}: expectedViews must list ${viewerUri}`);
+  }
+};
+
+expectedEngineeringViewer(
+  "build123d",
+  "ui://mcp-build123d/results-viewer",
+);
+expectedEngineeringViewer(
+  "modelica",
+  "ui://mcp-modelica/results-viewer",
+);
+
 if (snapshot.schemaVersion !== "1.0" || snapshot.mode !== "demo") {
   fail(
     "console snapshot must be explicitly labelled schemaVersion 1.0 and demo mode",
