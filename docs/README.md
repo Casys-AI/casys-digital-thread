@@ -18,6 +18,12 @@ categories deliberately answer different questions.
 - [Host the Console in a local Compose dashboard](how-to/compose-console.md) uses the
   generic local MCP Apps host, the explicit Console manifest, and the YAML template
   without replacing the fixed browser harness.
+- [Show the real ERPNext BOM in Compose](how-to/show-erpnext-bom.md) builds the scoped
+  ERP engineering bridge, keeps credentials outside Git, explains its mutation boundary,
+  and distinguishes live ERP data from successful viewer hydration.
+- [View the CoffeeMachine CM-01 digital thread](how-to/view-coffee-machine-cm01.md)
+  replays the saved four-panel SysON, 3D CAD, ERPNext BOM, and Modelica dashboard with
+  environment-specific identifiers kept outside Git.
 - [Add a result-viewer MCP App](how-to/add-mcp-app.md) scaffolds, builds, registers, and
   verifies a standard structured-result view without broadening its server grants.
 

@@ -57,7 +57,7 @@ Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + No
 for rebuilding the console.
 
 ```bash
-# 1. Bring up SysON + the four stateless MCP servers (optional, for the full stack)
+# 1. Bring up SysON + the five stateless MCP servers (optional, for the full stack)
 docker compose up -d          # SysON UI: http://localhost:8180
 
 # 2. Start the read-only Console when you need its MCP App.
@@ -68,6 +68,14 @@ deno task start
 
 The active interface is stateless MCP `2026-07-28` over `/mcp`; this workspace no longer
 ships a stdio configuration or compatibility path.
+
+The fifth server is a scoped ERP engineering bridge on port `3012`. Its manufacturing,
+inventory and generic-operation tools let an agent create Items and BOM documents from
+zero, so the MCP itself is privileged; the dashboard still grants only BOM reads. For
+now it builds the clean sibling `mcp-erpnext` checkout so it can use `@casys/mcp-server`
+0.24 before the next package release. Credentials stay in an ignored env file, and the
+bridge joins the existing ERPNext Docker network rather than owning that database. See
+the [BOM how-to](docs/how-to/show-erpnext-bom.md).
 
 The `cad-exports` named volume is shared between build123d and calculix: a STEP exported
 by `build123d_export` is immediately readable by `calculix_solve_static` at
@@ -107,14 +115,21 @@ the local interactive host; this route resolves the Console with MCP `resources/
 and grants only the declared read-only App calls. It does not replace the fixed harness.
 See the [Compose Console how-to](docs/how-to/compose-console.md).
 
+The first product dashboard is now a separate saved recipe: `deno task compose:cm01`
+renders the live SysON internal structure, interactive build123d GLB assembly, submitted
+ERPNext BOM, and Modelica heat-up run in one 2×2 layout. The YAML stores layout and
+calls; it does not freeze their results. See
+[View the CoffeeMachine CM-01 digital thread](docs/how-to/view-coffee-machine-cm01.md).
+
 When the engineering services are stopped, the console reports them as unavailable and
 keeps the checked-in bracket run explicitly labelled as demo. The documentation is
 organized with [Diátaxis](https://diataxis.fr/): start at the
 [documentation map](docs/README.md), follow the
 [CoffeeMachine run tutorial](docs/tutorials/coffee-machine-nominal.md), use the
 [browser-preview how-to](docs/how-to/preview-console.md), use the
-[Compose Console how-to](docs/how-to/compose-console.md), or look up exact paths and
-ports in the [workspace reference](docs/reference/workspace-map.md). The
+[Compose Console how-to](docs/how-to/compose-console.md), the
+[CM-01 dashboard how-to](docs/how-to/view-coffee-machine-cm01.md), or look up exact
+paths and ports in the [workspace reference](docs/reference/workspace-map.md). The
 [console reference](docs/console.md) retains the data contract, evidence model, security
 boundary, and local `mcp-compose` path.
 
@@ -125,7 +140,7 @@ boundary, and local `mcp-compose` path.
 | `docker-compose.yml`                | The full stack: SysON + MCP servers over HTTP                            |
 | `server.ts`, `src/`                 | Read-only console control plane and MCP App                              |
 | `config/mcp-fleet.json`             | Desired fleet, topology, tools, views, and trust boundaries              |
-| `config/compose/`                   | Explicit Console Compose manifest and one-panel YAML dashboard template  |
+| `config/compose/`                   | Reviewed MCP manifests, saved dashboard YAML, and runtime-arg examples   |
 | `config/verification-plans/`        | Versioned provisional scenario-contract plans                            |
 | `state/fixtures/`                   | Canonical, explicitly labelled console and run fixtures                  |
 | `docs/README.md`                    | Diátaxis documentation map                                               |

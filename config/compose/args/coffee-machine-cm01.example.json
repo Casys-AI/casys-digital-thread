@@ -1,0 +1,8 @@
+{
+  "syson_editing_context_id": "replace-with-syson-editing-context-id",
+  "syson_diagram_id": "replace-with-syson-diagram-id",
+  "bom_item": "CASYS-CM01",
+  "cad_name": "coffee-machine-cm01",
+  "modelica_model_id": "coffee-machine-v1",
+  "modelica_scenario_id": "heat-up-nominal"
+}

@@ -1,0 +1,106 @@
+# Saved layout and reproducible tool recipe for the first real digital-thread
+# example. Environment-specific SysON identifiers are injected from a local
+# args file; ERP, CAD and simulation inputs remain explicit and replayable.
+name: CoffeeMachine CM-01 digital thread
+sources:
+  - id: architecture
+    manifest: mcp-syson
+    calls:
+      - tool: syson_diagram_snapshot
+        args:
+          editing_context_id: "{{syson_editing_context_id}}"
+          diagram_id: "{{syson_diagram_id}}"
+  - id: cad
+    manifest: mcp-build123d
+    calls:
+      - tool: build123d_export
+        args:
+          name: "{{cad_name}}"
+          formats:
+            - gltf
+          script: |
+            from build123d import Box, Color, Compound, Cylinder, Location
+
+            def placed(shape, x=0, y=0, z=0):
+                return shape.moved(Location((x, y, z)))
+
+            def component(shape, name, color):
+                shape.label = name
+                shape.color = color
+                return shape
+
+            outer = placed(Box(260, 330, 380), z=190)
+            cavity = placed(Box(226, 330, 344), y=-10, z=190)
+            shell = outer.cut(cavity)
+            fascia = placed(Box(242, 18, 86), y=-156, z=317)
+            ui_aperture = placed(Box(136, 24, 76), y=-156, z=319)
+            enclosure = component(
+                shell.fuse(fascia).cut(ui_aperture).clean(),
+                "enclosure", Color("slategray")
+            )
+            water_tank = component(
+                placed(Box(88, 92, 188), x=-65, y=94, z=230),
+                "waterTank", Color(0.25, 0.65, 0.95, 0.58)
+            )
+            boiler = component(
+                placed(Cylinder(43, 128), x=59, y=47, z=194),
+                "boiler", Color("darkorange")
+            )
+            pump = component(
+                placed(Cylinder(21, 86, rotation=(0, 90, 0)), x=49, y=-44, z=102),
+                "pump", Color("royalblue")
+            )
+            brew_unit = component(
+                placed(Cylinder(51, 82, rotation=(90, 0, 0)), y=-91, z=203),
+                "brewUnit", Color("sienna")
+            )
+            controller = component(
+                placed(Box(108, 70, 7), x=-49, y=49, z=83),
+                "controller", Color("seagreen")
+            )
+            power_supply = component(
+                placed(Box(76, 82, 55), x=67, y=100, z=63),
+                "powerSupply", Color("dimgray")
+            )
+            temperature_sensor = component(
+                placed(Cylinder(6, 68), x=61, y=12, z=269),
+                "temperatureSensor", Color("gold")
+            )
+            user_interface = component(
+                placed(Box(128, 10, 68), y=-160, z=319),
+                "userInterface", Color("deepskyblue")
+            )
+            tray_blank = placed(Box(184, 100, 16), y=-115, z=28)
+            tray_recess = placed(Box(154, 70, 8), y=-123, z=34)
+            drip_tray = component(
+                tray_blank.cut(tray_recess), "dripTray", Color("silver")
+            )
+
+            result = Compound(children=[
+                enclosure, water_tank, boiler, pump, brew_unit, controller,
+                power_supply, temperature_sensor, user_interface, drip_tray,
+            ], label="CoffeeMachine CM-01")
+  - id: bom
+    manifest: mcp-erpnext
+    calls:
+      - tool: erpnext_bom_list
+        args:
+          item: "{{bom_item}}"
+          is_active: true
+          is_default: true
+          limit: 5
+  - id: simulation
+    manifest: mcp-modelica
+    calls:
+      - tool: modelica_simulate
+        args:
+          model_id: "{{modelica_model_id}}"
+          scenario_id: "{{modelica_scenario_id}}"
+orchestration:
+  layout:
+    areas:
+      - [architecture, cad]
+      - [bom, simulation]
+    columns: [1, 1.15]
+    rows: [1, 1]
+    gap: normal

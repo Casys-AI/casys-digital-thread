@@ -1,0 +1,55 @@
+{
+  "name": "mcp-erpnext",
+  "description": "Reviewed read-only ERPNext BOM list and detail surface.",
+  "transport": {
+    "type": "http",
+    "url": "http://127.0.0.1:3012",
+    "protocol": "stateless-2026-07-28"
+  },
+  "tools": [
+    {
+      "name": "erpnext_bom_list",
+      "description": "List real ERPNext Bills of Materials with item, quantity, status and total cost.",
+      "resourceUri": "ui://mcp-erpnext/doclist-viewer",
+      "appCallable": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "item": {
+            "type": "string"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "is_default": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "erpnext_bom_get",
+      "description": "Read one ERPNext BOM with its raw materials and operations for the selected list row.",
+      "appCallable": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

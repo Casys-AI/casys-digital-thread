@@ -117,7 +117,13 @@ if (manifest.schemaVersion !== "1.0" || manifest.version !== 1) {
   fail("config/mcp-fleet.json must use schemaVersion 1.0 and version 1");
 }
 
-const expectedServerIds = ["syson", "build123d", "calculix", "modelica"];
+const expectedServerIds = [
+  "syson",
+  "build123d",
+  "calculix",
+  "modelica",
+  "erpnext",
+];
 const manifestServerIds = manifest.servers.map((server) => server.id);
 if (JSON.stringify(manifestServerIds) !== JSON.stringify(expectedServerIds)) {
   fail(`manifest server order/IDs differ: ${manifestServerIds.join(", ")}`);
@@ -163,6 +169,15 @@ expectedEngineeringViewer(
   "ui://mcp-modelica/results-viewer",
 );
 
+const erpnextViews = manifest.servers.find((server) => server.id === "erpnext")
+  ?.expectedViews;
+if (
+  erpnextViews?.length !== 7 ||
+  !erpnextViews.includes("ui://mcp-erpnext/doclist-viewer")
+) {
+  fail("erpnext: expectedViews must list all seven registered viewers");
+}
+
 if (snapshot.schemaVersion !== "1.0" || snapshot.mode !== "demo") {
   fail(
     "console snapshot must be explicitly labelled schemaVersion 1.0 and demo mode",
@@ -182,8 +197,17 @@ for (const desired of manifest.servers) {
     fail(`${desired.id}: desired state differs between manifest and snapshot`);
   }
 }
-if (manifest.servers.some((server) => !server.image.includes("@sha256:"))) {
-  fail("images must be digest-pinned in the manifest");
+const localErpNextImage = "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467";
+if (
+  manifest.servers.some((server) =>
+    server.id === "erpnext"
+      ? server.image !== localErpNextImage
+      : !server.image.includes("@sha256:")
+  )
+) {
+  fail(
+    "published images must be digest-pinned and the temporary local ERPNext image must name its source revision",
+  );
 }
 if (
   snapshot.fleet.counts.drift !== 0 ||
@@ -193,7 +217,7 @@ if (
       "in_sync"
   )
 ) {
-  fail("digest-pinned image fixture must be fully in sync");
+  fail("source-pinned image fixture must be fully in sync");
 }
 
 if (bundle.schemaVersion !== "1.0" || bundle.bundleId !== bundle.runId) {
