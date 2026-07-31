@@ -9,8 +9,8 @@
 
 | Building block          | Code and runtime responsibility                                                                                                          | Produces / owns                                                                                                 | Does not own                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `mcp-server`            | Shared MCP server layer. The workspace currently imports `@casys/mcp-server@0.24.0`; the target transport is stateless MCP `2026-07-28`. | Tool/resource registration, HTTP contract, structured MCP results.                                              | Engineering models, solver outputs, dashboards, or requirement verdicts.                 |
-| `mcp-view`              | Browser-side MCP Apps primitives and the standard result-viewer scaffold. `@casys/mcp-view@0.4.0` is published on JSR.                   | App source, built single-HTML resource, structured-result rendering.                                            | Server tools, a dashboard host, and evidence authority.                                  |
+| `mcp-server`            | Shared MCP server layer. The workspace currently imports `@casys/mcp-server@0.24.1`; the target transport is stateless MCP `2026-07-28`. | Tool/resource registration, HTTP contract, structured MCP results.                                              | Engineering models, solver outputs, dashboards, or requirement verdicts.                 |
+| `mcp-view`              | Browser-side MCP Apps primitives and the standard result-viewer scaffold. `@casys/mcp-view@0.4.1` is published on JSR.                   | App source, built single-HTML resource, structured-result rendering.                                            | Server tools, a dashboard host, and evidence authority.                                  |
 | `mcp-compose`           | Manifest/template-driven local MCP Apps host and iframe/capability boundary.                                                             | Composed dashboard layout and host-side, declared tool grants.                                                  | A source server's resources, evidence, or hidden cross-server access.                    |
 | `mcp-modelica`          | Approved Modelica kit/scenario execution. The Compose service is `mcp-modelica` on port `3016`.                                          | Dynamic multi-physics runs, metrics, time-series artifacts, hashes, and immutable `/runs` records.              | SysML requirements or `pass`/`fail` verdicts.                                            |
 | `mcp-build123d`         | Parametric CAD execution and export. The Compose service is `mcp-build123d` on port `3014`.                                              | Geometry programs, exact geometry metrics, and CAD exports in `/exports`.                                       | FEA solve results, dynamic system simulation, or product verdicts.                       |
@@ -20,8 +20,9 @@
 | `casys-digital-thread`  | This control-plane workspace: read-only Console, fleet configuration, Compose declarations, scenario plan, and docs.                     | Console source and bundle, manifests, dashboard templates, observation/projection code, labelled demo fixtures. | Direct solver execution, persistent Modelica data, CAD exports, or SysON model mutation. |
 
 With Deno 2.9, a JSR package published less than 24 hours ago may be held by the default
-minimum dependency age. If `@casys/mcp-view@0.4.0` is temporarily affected, use an
-exception scoped to that exact package/version; do not disable the age gate globally.
+minimum dependency age. If `@casys/mcp-view@0.4.1` is temporarily affected, keep the
+version pin and use an exception scoped to the package name `jsr:@casys/mcp-view`; do
+not disable the age gate globally.
 
 ## Where each artifact lives
 

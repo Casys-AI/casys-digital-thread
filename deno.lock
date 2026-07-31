@@ -2,7 +2,7 @@
   "version": "5",
   "specifiers": {
     "jsr:@casys/mcp-compose@0.6.0": "0.6.0",
-    "jsr:@casys/mcp-server@0.24.0": "0.24.0",
+    "jsr:@casys/mcp-server@0.24.1": "0.24.1",
     "jsr:@std/assert@1.0.14": "1.0.14",
     "jsr:@std/internal@^1.0.10": "1.0.14",
     "jsr:@std/yaml@1": "1.1.2",
@@ -22,8 +22,8 @@
         "npm:@modelcontextprotocol/sdk"
       ]
     },
-    "@casys/mcp-server@0.24.0": {
-      "integrity": "99a562ae3ff7081ea7d1fe121f2b59eebcdbadd15132c01734e3c92cd56d6c7c",
+    "@casys/mcp-server@0.24.1": {
+      "integrity": "5163093e08b0b0e9fba8fce0688af725a24b0ba4b352bb1b2085ec375a086ece",
       "dependencies": [
         "jsr:@std/yaml",
         "npm:@modelcontextprotocol/ext-apps",
@@ -582,7 +582,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@casys/mcp-compose@0.6.0",
-      "jsr:@casys/mcp-server@0.24.0",
+      "jsr:@casys/mcp-server@0.24.1",
       "jsr:@std/assert@1.0.14",
       "jsr:@std/yaml@1"
     ]

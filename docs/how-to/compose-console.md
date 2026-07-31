@@ -39,7 +39,7 @@ The host binds only to loopback and enforces the manifest capability allowlist.
 
 The project keeps Deno's one-day dependency quarantine enabled. Its two name-based
 exceptions cover only the newly published Casys packages; the import map and lockfile
-pin `mcp-compose` to `0.6.0` and `mcp-server` to `0.24.0`.
+pin `mcp-compose` to `0.6.0` and `mcp-server` to `0.24.1`.
 
 To run the real engineering evidence dashboard instead:
 
