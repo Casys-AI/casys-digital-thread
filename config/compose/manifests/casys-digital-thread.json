@@ -1,0 +1,46 @@
+{
+  "name": "casys-digital-thread",
+  "description": "Read-only Casys Digital Thread console MCP App.",
+  "transport": {
+    "type": "http",
+    "url": "http://127.0.0.1:3020",
+    "protocol": "streamable-http"
+  },
+  "tools": [
+    {
+      "name": "console_snapshot",
+      "description": "Open the live fleet, run and workbench snapshot.",
+      "resourceUri": "ui://casys-digital-thread/console",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "appCallable": true
+    },
+    {
+      "name": "console_refresh",
+      "description": "Refresh the console's read-only observations.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "appCallable": true
+    },
+    {
+      "name": "console_run_detail",
+      "description": "Load a selected engineering-run detail.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable run id from the snapshot's runs.items."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "appCallable": true
+    }
+  ]
+}
