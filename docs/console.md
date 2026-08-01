@@ -1,125 +1,69 @@
 # Reference: MCP console
 
-The console is a read-only MCP App for seeing the engineering fleet and its evidence
-without turning the language model into the control plane. Its own tool is
-`console_snapshot`; its view is `ui://casys-digital-thread/console`.
+The Console is a read-only MCP App for observing the engineering fleet and
+indexed evidence. Its resource is `ui://casys-digital-thread/console`; its
+operational snapshot contract is `2.0`.
 
-This is a reference page. For a guided CoffeeMachine result, use the
-[tutorial](tutorials/coffee-machine-nominal.md); for the fixed browser harness, use the
-[browser-preview how-to](how-to/preview-console.md); and for the generic local Compose
-host, use the [Compose how-to](how-to/compose-console.md). The
-[workspace map](reference/workspace-map.md) is the authoritative path and port lookup.
+## Surfaces
 
-## Three surfaces
+- **Fleet** compares [`config/mcp-fleet.json`](../config/mcp-fleet.json) with
+  live MCP discovery and read-only Docker observations.
+- **Runs** keeps execution, evidence, and requirement-verdict states separate.
+- **Workbench** renders the native linked-thread projection. It does not mount
+  provider Apps or call provider MCPs from the browser.
 
-- **Fleet** compares desired state from
-  [`config/mcp-fleet.json`](../config/mcp-fleet.json) with HTTP health, `tools/list`,
-  `resources/list`, and read-only Docker/Compose observations. It shows missing or
-  unexpected tools/views, container state, image drift, network exposure, shared
-  volumes, and trust notes.
-- **Runs** exposes the requirement → geometry → STEP → FEA → verdict chain, plus
-  persisted Modelica simulations discovered read-only through the owning MCP server. The
-  checked-in bracket is explicitly a demo run, backed by
-  [`examples/console/bracket-evidence.json`](../examples/console/bracket-evidence.json).
-  A Modelica `succeeded` state means only that OpenModelica computed evidence; the
-  console renders `not_evaluated` until a comparison is attached. The exact
-  CoffeeMachine nominal model/scenario binding has one live, units-aware
-  `syson_constraint_evaluate` comparison against its versioned `90 degC` scenario
-  target. It is labelled a provisional scenario contract, never a product requirement or
-  SysON project requirement.
-- **Workbench** embeds the local Compose manager: its reviewed selector contains the
-  CM-01, Engineering qualification, Manufacturing readiness, and focused CalculiX YAML
-  dashboards, and the active dashboard stays in the same page. The three product
-  compositions render live SysON, build123d, CalculiX, Modelica, and ERPNext component
-  surfaces; the Console contains no substitute geometry, FEA, BOM, or model preview.
-
-## Connection reference
-
-The console server's default endpoint is `http://127.0.0.1:3020/mcp`. It binds to
-`127.0.0.1` by default and accepts `MCP_PORT` / `MCP_HOSTNAME` or `--port` /
-`--hostname` overrides. Deno is enough to launch it:
+## Endpoints
 
 ```bash
-deno task check
-MCP_PORT=3020 MCP_HOSTNAME=127.0.0.1 deno task dev
+deno task start             # http://127.0.0.1:3020/mcp
+deno task preview:browser   # http://127.0.0.1:3021/
+deno task thread:assemble
+deno task preview:thread    # http://127.0.0.1:5173/
 ```
 
-Connect an MCP-capable host to `http://127.0.0.1:3020/mcp`, then call
-`console_snapshot`. A UI-capable host renders the returned console resource; other hosts
-still receive the structured JSON snapshot.
+The browser harness relays only the Console's reviewed read operations. The
+native preview reads a persisted canonical snapshot from
+`GET /api/thread/workbench`. Neither path starts CAD, meshing, FEA, Modelica, or
+a SysON mutation on page load.
 
-In the Compose path, that initiating `CallToolResult` is the Console's first and only
-snapshot load. Compose delivers its full `structuredContent` after the MCP Apps
-handshake; the view does not issue a second `console_snapshot` call, parse a text
-fallback, or hydrate a local demo/session substitute.
+## Tools
 
-For a local browser rendering of that same live MCP App, leave the console on `3020` and
-start the read-only harness in another terminal:
+| Tool                    | Audience       | Meaning                                                        |
+| ----------------------- | -------------- | -------------------------------------------------------------- |
+| `console_snapshot`      | Any MCP client | Fleet observations and run summaries                           |
+| `console_server_detail` | Any MCP client | Desired state, observation, drift, image and trust information |
+| `console_run_list`      | Any MCP client | Indexed engineering-run summaries                              |
+| `console_run_detail`    | Any MCP client | Evidence, observations, comparisons and provenance             |
+| `console_refresh`       | MCP App only   | Explicitly refresh the read-only probes                        |
 
-```bash
-deno task preview:browser         # http://127.0.0.1:3021/
-```
+`console_snapshot` no longer carries dashboard-panel declarations. Product state
+lives in the canonical [`ThreadSnapshot`](reference/thread-snapshot.md) and its
+native Workbench projection.
 
-The harness reads `ui://casys-digital-thread/console` through `resources/read` and
-relays only `console_snapshot`, `console_run_detail`, and `console_refresh` as stateless
-MCP 2026-07-28 requests. It is deliberately marked as a local MCP Apps harness: it is
-not a `mcp-compose` dashboard. Its exact scope and health check are documented in the
-[browser-preview how-to](how-to/preview-console.md).
+## Truth boundary
 
-The Compose integration uses the same Console resource but has a different contract.
-Explicit manifests and saved YAML templates live under `config/compose/`; the generic
-local host resolves resources through MCP `resources/read`, not an HTTP `/ui`
-convention. The stable Workbench manager on `127.0.0.1:60060` selects one composition at
-a time. Each selected dashboard has a dedicated loopback origin, grants only manifest
-tools marked `appCallable`, and delivers initiating results only after
-`ui/notifications/initialized`. See the [Compose how-to](how-to/compose-console.md) for
-the runnable paths.
+Desired state comes from the fleet manifest. Observed state comes from the
+running MCP endpoints and Docker. Checked-in example evidence is always labelled
+demo.
 
-For real Fleet probes, start the engineering services first:
+The native Workbench BFF is deliberately read-only. Its local file adapter
+validates and serves immutable `ThreadSnapshot` documents; it exposes no
+workflow execution endpoint. The current CM-01 document assembles captured or
+read-only observed branches from SysON, build123d, CalculiX, Modelica, and
+ERPNext through an explicit identity manifest. The live CoffeeMachine model
+still has no mechanical `ConstraintUsage`, so no model-owned stress verdict
+exists. Assembly does not claim that independent thermal or ERP evidence was
+caused by the CAD branch.
 
-```bash
-docker compose up -d
-MCP_PORT=3020 MCP_HOSTNAME=127.0.0.1 deno task start
-```
+ERPNext remains one provider-native MCP on port `3012`. The backend selects
+reviewed read tools and projects their results; the browser receives neither ERP
+credentials nor generic tool-call authority.
 
-Docker is required for real container/image observations, and the five configured MCP
-HTTP endpoints must be reachable. Without them, the console still starts but labels
-unavailable observations and demo evidence instead of presenting them as live.
-
-## Desired, observed, evidence
-
-Desired state is declarative: endpoints, image references, expected tools and views,
-topology, and trust boundaries live in `config/mcp-fleet.json`. Observed state always
-comes from the running endpoints and Docker. Differences remain visible; observed values
-never overwrite the manifest.
-
-The bracket fixture records `56.915761 g`, a `52.5 mm` Z bounding box, and the
-documented `26.6 MPa` FEA result. The FEA value is intentionally labelled
-`documented-example`: generating the fixture did not run CalculiX. Source, STEP,
-solve-case, and result-document hashes bind the display to this checkout.
-
-Verify the console JSON, cross-file values, byte counts, and SHA-256 hashes with:
+## Verification
 
 ```bash
 deno run --allow-read scripts/verify-console-evidence.ts
 ```
 
-The verifier reads only; it does not rewrite evidence.
-
-## MVP boundaries
-
-- No restart, stop, delete, pull, configuration change, or other mutation is exposed.
-- The console is an observer, not a persistent scheduler or run database.
-- `:latest` is a mutable image reference and is reported as drift until pinned by
-  version or digest.
-- `build123d_execute` runs Python. The current shared Compose network is acceptable only
-  for trusted local inputs and still needs stronger isolation.
-- The local `mcp-modelica` 0.2.0 implementation has a native results viewer for its
-  bounded, approved simulations and hashed run evidence. This records local code state
-  only; it is not a claim that an `mcp-modelica` 0.2.0 package has been published. The
-  console uses only `modelica_run_list` and `modelica_run_get` to index that evidence;
-  for an exact versioned Coffee scenario binding it may make the additional read-only
-  `syson_constraint_evaluate` call.
-- A Compose panel must receive a real initiating structured result from its source MCP
-  server. It must not substitute a static Workbench panel or fixture that could be
-  mistaken for a run viewer, and it has no implicit cross-panel selection authority.
+This checks the Console fixture, cross-file values, byte counts and SHA-256
+identities without rewriting evidence.

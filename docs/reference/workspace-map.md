@@ -1,156 +1,69 @@
 # Reference: workspace map and local ports
 
-This page is the lookup reference for the control-plane workspace. It names the source
-of each fact so that desired configuration, observed runtime state, demo evidence, and a
-scenario contract cannot be confused.
-
 ## Source map
 
-| Location                                                                                                                     | Owns                                                                                                  | Read it when you need                                                                |
-| ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [`docker-compose.yml`](../../docker-compose.yml)                                                                             | Full HTTP topology, image references, networks, volumes, and loopback port mappings                   | What `docker compose up -d` actually starts                                          |
-| [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                                       | Desired MCP fleet: endpoints, expected tools/resources, trust notes, and Workbench panel declarations | The expected fleet, never proof that it is running                                   |
-| [`config/compose/manifests/casys-digital-thread.json`](../../config/compose/manifests/casys-digital-thread.json)             | Explicit Console source transport and browser-callable tool grants for the local Compose host         | What the embedded Console panel may call                                             |
-| [`config/compose/dashboards/console.yaml`](../../config/compose/dashboards/console.yaml)                                     | One-panel Console Compose layout                                                                      | Which Console tool instantiates the first composed dashboard                         |
-| [`config/compose/manifests/`](../../config/compose/manifests/)                                                               | Reviewed Compose surfaces for the Console, SysON, build123d, CalculiX, Modelica and ERPNext           | Exact endpoints, composable tool schemas, resource URIs, and browser-callable grants |
-| [`config/compose/dashboards/engineering-results.yaml`](../../config/compose/dashboards/engineering-results.yaml)             | Compact five-MCP qualification surface                                                                | Reviewing architecture, CAD, structural, thermal, and BOM evidence together          |
-| [`config/compose/dashboards/coffee-machine-cm01.yaml`](../../config/compose/dashboards/coffee-machine-cm01.yaml)             | Saved five-MCP calls, component selections, event route, and cockpit layout                           | Replaying the first product dashboard without storing its environment-specific IDs   |
-| [`config/compose/dashboards/manufacturing-readiness.yaml`](../../config/compose/dashboards/manufacturing-readiness.yaml)     | Alternative five-MCP component selection focused on manufacturing handoff                             | Proving the same palettes compose into a second product surface                      |
-| [`config/compose/args/coffee-machine-cm01.example.json`](../../config/compose/args/coffee-machine-cm01.example.json)         | Documented runtime-argument names and portable non-secret defaults                                    | Preparing the ignored `state/local/coffee-machine-cm01.json` file                    |
-| [`config/verification-plans/coffee-machine-nominal-v1.json`](../../config/verification-plans/coffee-machine-nominal-v1.json) | The versioned, provisional CoffeeMachine scenario-contract plan                                       | The only condition currently eligible for the live CoffeeMachine comparison          |
-| [`server.ts`](../../server.ts)                                                                                               | Console process, default address, registered viewer, and assembly of observers                        | How the read-only console is started                                                 |
-| [`src/adapters/manifest.ts`](../../src/adapters/manifest.ts)                                                                 | Manifest loading and validation                                                                       | How declared fleet data enters the console                                           |
-| [`src/adapters/http-mcp-probe.ts`](../../src/adapters/http-mcp-probe.ts)                                                     | HTTP MCP health/tool/resource observations                                                            | Live MCP observations                                                                |
-| [`src/adapters/docker-observer.ts`](../../src/adapters/docker-observer.ts)                                                   | Read-only Compose/container/image observation                                                         | Live Docker observations                                                             |
-| [`src/adapters/modelica-run-observer.ts`](../../src/adapters/modelica-run-observer.ts)                                       | Read-only Modelica run discovery through `modelica_run_list` and `modelica_run_get`                   | Persisted simulation evidence without mounting the Modelica volume                   |
-| [`src/adapters/scenario-contract-verifier.ts`](../../src/adapters/scenario-contract-verifier.ts)                             | Exact identity check and units-aware SysON call for the plan                                          | Why only a matching CoffeeMachine run receives a contract result                     |
-| [`src/adapters/scenario-verified-run-catalog.ts`](../../src/adapters/scenario-verified-run-catalog.ts)                       | Read-only overlay that projects the SysON response into a console run                                 | How simulation evidence and comparison stay separate                                 |
-| [`src/domain/`](../../src/domain/)                                                                                           | Control-plane types, drift rules, and aggregation                                                     | The stable console data contract                                                     |
-| [`src/tools/register.ts`](../../src/tools/register.ts)                                                                       | Console MCP tools and their read-only annotations                                                     | The public console tool surface                                                      |
-| [`src/ui/src/`](../../src/ui/src/)                                                                                           | TypeScript/CSS source for the fixed MCP App                                                           | The editable console UI                                                              |
-| [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                                     | Generated single-file viewer registered by the console                                                | The built artifact; rebuild it, do not hand-edit it                                  |
-| [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                                             | Loopback browser host for the existing console resource                                               | Local visual preview only                                                            |
-| [`scripts/serve-compose-dashboard.ts`](../../scripts/serve-compose-dashboard.ts)                                             | Published `mcp-compose` launcher for the Console and engineering dashboards                           | Starting the capability-bounded multi-panel host                                     |
-| [`scripts/compose-workbench.ts`](../../scripts/compose-workbench.ts)                                                         | Stable dashboard catalogue, same-origin activation API, and atomic active-host swap                   | Workbench shell lifecycle and browser boundary                                       |
-| [`scripts/serve-compose-workbench.ts`](../../scripts/serve-compose-workbench.ts)                                             | Maps three five-MCP recipes and the focused CalculiX proof to the `mcp-compose` runtime               | Starting the dynamic Workbench on port `60060`                                       |
-| [`services/mcp-erpnext-components/`](../../services/mcp-erpnext-components/)                                                 | Product-only read-only ERPNext tool, Preact components, and built single-file App                     | ERP presentation for Compose without expanding browser authority                     |
-| [`state/fixtures/`](../../state/fixtures/)                                                                                   | Explicitly labelled demo evidence                                                                     | Demo state, never a live observation                                                 |
-| [`scripts/verify-console-evidence.ts`](../../scripts/verify-console-evidence.ts)                                             | Read-only fixture/hash consistency check                                                              | Verifying checked-in bracket evidence                                                |
+| Location                                                                                             | Owns                                                         |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [`docker-compose.yml`](../../docker-compose.yml)                                                     | Provider containers, networks, volumes and loopback ports    |
+| [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                               | Desired MCP endpoints, tools, views and trust posture        |
+| [`config/thread-workflows/`](../../config/thread-workflows/)                                         | Reviewed typed causal DAGs                                   |
+| [`config/thread-subjects/`](../../config/thread-subjects/)                                           | Reviewed provider-to-product identity bindings               |
+| [`config/verification-plans/`](../../config/verification-plans/)                                     | Provisional scenario comparisons                             |
+| [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                               | Canonical linked product state                               |
+| [`src/workflow/`](../../src/workflow/)                                                               | Validation, compilation, execution and normalization         |
+| [`src/adapters/http-mcp-tool-client.ts`](../../src/adapters/http-mcp-tool-client.ts)                 | Backend-only provider calls                                  |
+| [`src/adapters/live-thread-update-store.ts`](../../src/adapters/live-thread-update-store.ts)         | Cross-process append-only live activity journal              |
+| [`src/adapters/recording-mcp-tool-client.ts`](../../src/adapters/recording-mcp-tool-client.ts)       | Browser-safe running/fresh/failed MCP projections            |
+| [`src/adapters/file-thread-snapshot-store.ts`](../../src/adapters/file-thread-snapshot-store.ts)     | Immutable local snapshot persistence                         |
+| [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)     | Canonical-state to Workbench projection                      |
+| [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                     | Native lineage feed, graph, inspectors, ledgers, SSE client  |
+| [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                             | Generated Console MCP App bundle                             |
+| [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                     | Loopback Console preview                                     |
+| [`scripts/serve-native-workbench.ts`](../../scripts/serve-native-workbench.ts)                       | Read-only native Workbench BFF                               |
+| [`scripts/materialize-coffee-machine-thread.ts`](../../scripts/materialize-coffee-machine-thread.ts) | Read-only CM-01 branch assembler                             |
+| [`scripts/run-coffee-machine-build.ts`](../../scripts/run-coffee-machine-build.ts)                   | Explicit SysON to build123d MCP runner                       |
+| [`scripts/attach-coffee-machine-build-run.ts`](../../scripts/attach-coffee-machine-build-run.ts)     | Capture validation, canonical publication and reconciliation |
+| [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)         | Explicit read-only SysON inventory capture                   |
+| [`state/fixtures/`](../../state/fixtures/)                                                           | Explicitly labelled demo evidence                            |
 
 ## Local endpoints
 
-All bindings below are loopback-only on the host. Container services listen on their
-internal ports only so that Compose can route between them.
+| Endpoint                    | Owner                       | Purpose                                   |
+| --------------------------- | --------------------------- | ----------------------------------------- |
+| `http://127.0.0.1:8180`     | SysON                       | SysML web modeler                         |
+| `http://127.0.0.1:3009/mcp` | `mcp-syson`                 | Model, constraints and evaluations        |
+| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`               | Provider-native ERP data                  |
+| `http://127.0.0.1:3014/mcp` | `mcp-build123d`             | CAD execution and exports                 |
+| `http://127.0.0.1:3015/mcp` | `mcp-calculix`              | Meshing and static FEA                    |
+| `http://127.0.0.1:3016/mcp` | `mcp-modelica`              | Approved simulations and run records      |
+| `http://127.0.0.1:3020/mcp` | `deno task start`           | Read-only operational Console             |
+| `http://127.0.0.1:3021/`    | `deno task preview:browser` | Console MCP App browser harness           |
+| `http://127.0.0.1:5173/`    | `deno task preview:thread`  | Native snapshot and SSE lineage Workbench |
 
-| Host endpoint                      | Process or service                  | Purpose                                                                                 |
-| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
-| `http://127.0.0.1:8180`            | `syson-app` (container port `8080`) | SysON web modeler                                                                       |
-| `http://127.0.0.1:3009/mcp`        | `mcp-syson`                         | SysML model, constraints, and units-aware evaluation                                    |
-| `http://127.0.0.1:3014/mcp`        | `mcp-build123d`                     | Parametric CAD execution and export                                                     |
-| `http://127.0.0.1:3015/mcp`        | `mcp-calculix`                      | Meshing and static FEA                                                                  |
-| `http://127.0.0.1:3016/mcp`        | `mcp-modelica`                      | Approved dynamic system simulation and persisted evidence                               |
-| `http://127.0.0.1:3012/mcp`        | `mcp-erpnext`                       | Manufacturing BOM list and selected raw-material/operation detail                       |
-| `http://127.0.0.1:3017/mcp`        | `mcp-erpnext-components`            | Read-only BOM result shaped as six composable Preact components                         |
-| `http://127.0.0.1:3020/mcp`        | `deno task start`                   | Read-only digital-thread console MCP server                                             |
-| `http://127.0.0.1:3021/`           | `deno task preview:browser`         | Local browser host for `ui://casys-digital-thread/console`                              |
-| `http://127.0.0.1:60060/`          | `deno task compose:workbench`       | Persistent selector and active Compose dashboard embedded by the Console Workbench      |
-| Dynamic `http://127.0.0.1:<port>/` | `composeAndServeDashboard()`        | Local Compose parent dashboard; it also creates one distinct loopback origin per iframe |
+Docker Compose starts the provider topology only. Product composition occurs in the
+backend workflow and linked state, not in the container orchestrator.
 
-The console defaults to `MCP_HOSTNAME=127.0.0.1` and `MCP_PORT=3020`; the server also
-accepts `--hostname` and `--port`. The preview harness defaults to `3021` and targets
-the console on `3020`. `deno task compose:workbench` keeps the stable `60060` shell and
-allocates a dynamic parent only for its active selection. `deno task compose:console`,
-`deno task compose:engineering`, `deno task compose:manufacturing`, and
-`deno task compose:cm01` print the dynamic parent URL they allocate when launched
-directly.
+`deno task thread:assemble` reads the declared CM-01 manifest, the latest captured SysON
+inventory, the local attested CAD → FEA capture, one persisted Modelica run, and
+reviewed ERPNext list/balance responses. It writes immutable local snapshots and an ERP
+capture; it does not start CAD, FEA, Modelica, mutate SysON or mutate ERPNext.
 
-## Runtime data ownership
+`deno task thread:run-coffee-machine-build` is the explicit execution path. It calls
+SysON and build123d through backend MCP clients and appends redacted progress to
+`state/local/live-thread-updates/`. `deno task thread:attach-coffee-machine-build`
+validates the persisted capture, publishes the next immutable snapshot, then reconciles
+that run's provisional feed nodes.
 
-| Data                                 | Owner                                                         | Console access                                                                       |
-| ------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| SysON model and product requirements | SysON                                                         | Through its MCP endpoint; the console itself performs no model mutation              |
-| CAD export                           | `exports` Docker volume, shared by build123d and CalculiX     | The console observes metadata/evidence; it does not use the volume as a run store    |
-| Modelica runs                        | `casys-digital-thread-modelica-runs` Docker volume at `/runs` | Only `modelica_run_list` and `modelica_run_get`; the console never mounts the volume |
-| Manufacturing BOM                    | ERPNext database on the external ERPNext Docker network       | Broad server uses provider-native tools; product palette uses `erpnext_bom_surface`  |
-| CM-01 dashboard runtime arguments    | Ignored `state/local/coffee-machine-cm01.json`                | Injected into YAML placeholders at compose time; never treated as evidence           |
-| Bracket demo                         | Checked-in `state/fixtures/` and `examples/` data             | Explicitly displayed as demo                                                         |
-| CoffeeMachine comparison plan        | Checked-in JSON under `config/verification-plans/`            | Loaded and hash-bound before a matching SysON evaluation                             |
+## Runtime ownership
 
-## Console resource and tools
+| Data                      | Owner                      | Workspace access                             |
+| ------------------------- | -------------------------- | -------------------------------------------- |
+| SysML and requirements    | SysON                      | Provider MCP; no automatic mutation          |
+| CAD exports               | `exports` volume           | Hash-attested build123d to CalculiX exchange |
+| Modelica runs             | `modelica-runs` volume     | Read through `modelica_run_list/get`         |
+| ERP data                  | External ERPNext database  | Provider-native MCP from backend only        |
+| Native `ThreadSnapshot`   | Immutable local file store | Read-only projection in the native Workbench |
+| Live engineering activity | Append-only local JSONL    | SSE projection; never canonical authority    |
 
-The console resource URI is `ui://casys-digital-thread/console`.
-
-| Tool                    | Audience       | Meaning                                                                                 |
-| ----------------------- | -------------- | --------------------------------------------------------------------------------------- |
-| `console_snapshot`      | Any MCP client | Desired versus observed fleet, run summaries, and Workbench declarations                |
-| `console_server_detail` | Any MCP client | Desired data, observation, drift, Docker/image evidence, and trust notes for one server |
-| `console_run_list`      | Any MCP client | Run summaries with execution and comparison states kept separate                        |
-| `console_run_detail`    | Any MCP client | Stages, measurements, comparison result, provenance, and hashed artifacts for one run   |
-| `console_refresh`       | MCP App only   | Re-probe the read-only control plane                                                    |
-
-The browser harness intentionally forwards only `console_snapshot`,
-`console_run_detail`, and `console_refresh`. It is not a general MCP proxy. It supplies
-the MCP Apps host capability needed by the fixed view to make those read-only server
-calls.
-
-The Compose manifest keeps `console_snapshot` as the initiating host call and grants
-only `console_refresh` and `console_run_detail` as `appCallable`. This is a
-deny-by-default browser capability grant. Its generic local host can use only those
-declared tools and the exact Console resource URI. It resolves the view with MCP
-`resources/read`, not a source-specific `/ui` HTTP endpoint. See the
-[Compose Console how-to](../how-to/compose-console.md) for the runnable local path
-backed by the published npm `@casys/mcp-compose@0.8.1` runtime.
-
-The public ERPNext MCP has the larger privileged agent surface required to create and
-manage Items and BOM documents. It remains available to agents but is not a product
-dashboard source. `mcp-erpnext-components` exposes exactly one read-only
-`erpnext_bom_surface` tool and six advertised components; its manifest grants no
-additional browser-callable tool.
-
-## CoffeeMachine scenario-contract binding
-
-The plan `coffee-machine-nominal-v1` is provisional and contains exactly one condition:
-
-```text
-water_temperature_max >= 90 degC
-```
-
-The evaluator attaches it only when all of the following match the persisted Modelica
-evidence:
-
-| Binding          | Expected value                                                                                                  |
-| ---------------- | --------------------------------------------------------------------------------------------------------------- |
-| Model            | `coffee-machine-v1` version `0.1.0`, SHA-256 `a641b63a493435fd2ce8123a7b6afbd478656a124610ca33d22112985af8e8ec` |
-| Scenario         | `heat-up-nominal`, SHA-256 `5db8a06592050a03a8d727900801f9185b2e7fa2fb3092ce15dd3c6c70eb0941`                   |
-| Scenario source  | `mcp-modelica/scenarios/heat-up-nominal.json`                                                                   |
-| Scenario target  | `90 degC`                                                                                                       |
-| Scenario horizon | `900 s` provenance only                                                                                         |
-
-The plan is raw-byte hashed. At this revision its SHA-256 is
-`2208a36ee6c2bae10422550ad032f43e7720fe25833152840bc9b80da2ed8b7d`. The live call is
-`syson_constraint_evaluate`. A mismatch causes no comparison to be attached
-(`not_evaluated`); malformed or unavailable evaluation becomes an `error`, never an
-optimistic pass.
-
-This is not a product requirement and is not a requirement stored in a SysON project.
-The threshold comes from the scenario itself, while the horizon only identifies the
-scenario. Product requirements must be modelled and traced separately in SysON.
-
-## Status vocabulary
-
-- **`demo`**: checked-in fixture, not live execution.
-- **`observed`**: data discovered from a running server.
-- **`succeeded` / `failed` / `timed_out`**: simulation execution state.
-- **`not_evaluated`**: execution evidence exists but no eligible comparison is attached.
-- **`passed` / `failed` / `unresolved` / `error`**: comparison state. It never changes
-  the fact of whether the simulation executed.
-
-## Composition boundary
-
-The console remains one fixed MCP App built with `@casys/mcp-view`; Fleet and Runs
-belong to it. Its Workbench tab embeds the stable local manager rather than
-reimplementing engineering viewers. The manager owns the saved-composition selector and
-one active dashboard handle. `@casys/mcp-compose` owns the selected layout, MCP resource
-resolution, per-viewer origins, initiating results, and manifest-bounded App calls. The
-existing browser preview remains the smaller fixed-view harness. Cross-panel events
-exist only when a selected YAML composition declares and its viewers implement them.
+The Console browser harness forwards only reviewed Console tools. It is not a generic
+MCP proxy. The native browser receives ordinary linked JSON and no MCP credentials.

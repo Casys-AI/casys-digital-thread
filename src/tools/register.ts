@@ -69,7 +69,7 @@ export function registerControlPlaneTools(
 const consoleSnapshotTool: MCPTool = {
   name: "console_snapshot",
   description:
-    "Read the complete Casys digital-thread console snapshot: desired versus observed MCP fleet, run summaries, and workbench panels.",
+    "Read the Casys digital-thread operational snapshot: desired versus observed MCP fleet and run summaries.",
   inputSchema: {
     type: "object",
     additionalProperties: false,

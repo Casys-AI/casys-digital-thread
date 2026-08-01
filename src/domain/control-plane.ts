@@ -15,8 +15,6 @@ import type {
   RunSummary,
   ServerRecord,
   SnapshotOptions,
-  WorkbenchPanel,
-  WorkbenchSnapshot,
 } from "./types.ts";
 
 export interface ControlPlaneOptions {
@@ -136,7 +134,7 @@ export class ControlPlane {
     const mode = consoleMode(runs);
 
     return {
-      schemaVersion: "1.0",
+      schemaVersion: "2.0",
       generatedAt,
       mode,
       fleet: {
@@ -147,7 +145,6 @@ export class ControlPlane {
       runs: {
         items: runs,
       },
-      workbench: buildWorkbench(this.#manifest, servers),
     };
   }
 
@@ -225,49 +222,6 @@ function consoleMode(runs: readonly RunSummary[]): ConsoleMode {
   // unavailable observations. Combining that live truth with a demo run is
   // mixed mode, never a wholly synthetic demo snapshot.
   return runs.some((run) => run.source === "demo") ? "mixed" : "live";
-}
-
-function buildWorkbench(
-  manifest: FleetManifest,
-  servers: ServerRecord[],
-): WorkbenchSnapshot {
-  const panels: WorkbenchPanel[] = (manifest.workbench ?? []).map((panel) => {
-    const source = panel.sourceServerId
-      ? servers.find((server) => server.id === panel.sourceServerId)
-      : undefined;
-    let availability: Availability = source?.observed.status ?? "unknown";
-    if (
-      panel.kind === "mcp-app" && source?.observed.mcp.reachable &&
-      panel.resourceUri &&
-      !source.observed.mcp.viewerUris.includes(panel.resourceUri)
-    ) {
-      availability = "unavailable";
-    }
-    return {
-      ...panel,
-      availability,
-      demo: source?.demo ?? false,
-    };
-  });
-  const healthy = panels.filter((panel) => panel.availability === "healthy")
-    .length;
-  const status: Availability = panels.length === 0
-    ? "unknown"
-    : healthy === panels.length
-    ? "healthy"
-    : healthy === 0
-    ? "unavailable"
-    : "degraded";
-  return {
-    status,
-    panels,
-    synchronization: {
-      enabled: false,
-      events: [],
-      note:
-        "mcp-compose owns each live dashboard lifecycle; the Console does not simulate cross-panel events.",
-    },
-  };
 }
 
 function toRunSummary(run: RunDetail): RunSummary {

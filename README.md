@@ -1,12 +1,14 @@
 # Casys Digital Thread
 
-**An executable digital thread** — requirement → system model → geometry → physics →
-proof, traversed and verified by AI agents instead of maintained by hand.
+**An executable digital thread** — requirement → system model → geometry →
+physics → proof, traversed and verified by AI agents instead of maintained by
+hand.
 
-Everywhere else, the digital thread is a traceability _concept_: document links,
-exports, a spreadsheet a systems engineer keeps alive. This one executes: an agent walks
-the thread, derives each artifact from the previous one, and proves the result against
-the model's own requirements — with units, margins, and named conflicts.
+Everywhere else, the digital thread is often a traceability _concept_: document
+links, exports, and a spreadsheet a systems engineer keeps alive. This workspace
+is building an executable alternative in which an agent walks the thread,
+derives each artifact from the previous one, and proves the result against
+model-owned requirements — with units, margins, and named conflicts.
 
 ```
 SysML v2 model          mcp-syson         requirements, constraints, part structure
@@ -22,39 +24,45 @@ verified verdict        constraint-solver units-aware evaluation, z3 satisfiabil
 ```
 
 The CoffeeMachine dynamics branch is complementary: `mcp-modelica` runs approved
-Modelica scenarios to produce time, temperature and energy evidence; SysON and the
-constraint solver evaluate that evidence against requirements. It does not replace the
-CAD → FEA branch.
+Modelica scenarios to produce time, temperature and energy evidence; SysON and
+the constraint solver evaluate that evidence against requirements. It does not
+replace the CAD → FEA branch.
 
-The chain answers, continuously and in minutes, the question that today takes weeks
-between requirement freeze and design review: **does this design hold every requirement
-it traces to — with computed proof?**
+The target chain answers, continuously and in minutes, the question that today
+takes weeks between requirement freeze and design review: **does this design
+hold every requirement it traces to — with computed proof?** The repository
+currently proves the individual transports, computations, artifact attestation,
+and presentation concepts. A read-only CoffeeMachine CM-01 snapshot now
+aggregates observed evidence from all five providers; the closed verification
+and correction loop remains under construction because the SysON model has no
+mechanical criterion to evaluate.
 
 ## Positioning
 
 The research community is converging on this pattern under the name
-**physics-in-the-loop** (generate-and-verify / LLM-Modulo family): the agent proposes,
-sound physical tools dispose. See [docs/positioning.md](docs/positioning.md) for the
-full analysis and references. What distinguishes this implementation:
+**physics-in-the-loop** (generate-and-verify / LLM-Modulo family): the agent
+proposes, sound physical tools dispose. See
+[docs/positioning.md](docs/positioning.md) for the full analysis and references.
+What distinguishes this implementation:
 
-- **Model-driven** — the thread starts from a SysML v2 model with traced requirements,
-  not from a prompt.
-- **Units are values** — 2.5 kg against a 4 lb budget _fails_; unit-blind comparison is
-  the false positive this stack exists to prevent.
-- **Composable at protocol level** — each link is an independent MCP server; the agent
-  composes them, no glue code between packages.
-- **The computation is the oracle, not the product** — no LLM inside any tool; OCCT,
-  OpenModelica and CalculiX produce evidence, then the constraint solver evaluates
-  requirement verdicts.
+- **Model-driven** — the thread starts from a SysML v2 model with traced
+  requirements, not from a prompt.
+- **Units are values** — 2.5 kg against a 4 lb budget _fails_; unit-blind
+  comparison is the false positive this stack exists to prevent.
+- **Composable at protocol level** — each link is an independent MCP server; the
+  agent composes them, no glue code between packages.
+- **The computation is the oracle, not the product** — no LLM inside any tool;
+  OCCT, OpenModelica and CalculiX produce evidence, then the constraint solver
+  evaluates requirement verdicts.
 
 ## Working in this repo
 
-This is the **workspace and its read-only control console**. The engineering servers
-still live in their own repos and run from their published container images — you clone
-only this workspace.
+This is the **workspace and its read-only control console**. The engineering
+servers still live in their own repos and run from their published container
+images — you clone only this workspace.
 
-Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + Node.js
-for rebuilding the console.
+Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno +
+Node.js for rebuilding the console.
 
 ```bash
 # 1. Bring up SysON + the engineering and ERP MCP services
@@ -66,36 +74,39 @@ npm --prefix src/ui run build
 deno task start
 ```
 
-The active interface is stateless MCP `2026-07-28` over `/mcp`; this workspace no longer
-ships a stdio configuration or compatibility path.
+The active interface is stateless MCP `2026-07-28` over `/mcp`; this workspace
+no longer ships a stdio configuration or compatibility path.
 
-ERPNext has two deliberately separate interfaces. The provider-native bridge on port
-`3012` keeps the broad agent API. The product dashboard uses the component-only,
-read-only Preact service on port `3017`; it reuses the published ERPNext client but owns
-only one BOM presentation tool and six atomic components. Credentials stay in an ignored
-env file, and both bridges join the existing ERPNext Docker network rather than owning
-that database. See the [BOM how-to](docs/how-to/show-erpnext-bom.md).
+ERPNext has one provider-native MCP interface on port `3012`. The backend
+invokes only the reviewed read tools required by a workflow and projects their
+data into the linked thread; the browser never receives ERP credentials or calls
+ERPNext directly. The bridge joins the existing ERPNext Docker network rather
+than owning that database.
 
-The `cad-exports` named volume is shared between build123d and calculix: a STEP exported
-by `build123d_export` is immediately readable by `calculix_solve_static` at
-`/exports/<name>.step`. `casys-digital-thread-modelica-runs` is separate and retains
-bounded, hashed OpenModelica run records for `modelica_run_list` and `modelica_run_get`.
+The `cad-exports` named volume is shared between build123d and CalculiX, but a
+shared path is not provenance. The native thread contract requires
+`build123d_export` to hash the exact STEP bytes and `calculix_solve_static` to
+attest the hash it consumed. This was proved against the local provider
+checkouts on 2026-08-01, including fail-fast rejection of a false expected hash,
+but those provider changes are not yet a published release.
+`casys-digital-thread-modelica-runs` is separate and retains bounded, hashed
+OpenModelica run records for `modelica_run_list` and `modelica_run_get`.
 
-## MCP control console
+## Console and native Workbench
 
-The console exposes one MCP App at `ui://casys-digital-thread/console`, with Fleet,
-Runs, and Workbench views. It compares the declared fleet with live MCP and Docker
-observations; all actions are read-only. The Runs view also discovers persisted Modelica
-records through those two read-only Modelica tools; it never reads the sidecar's Docker
-volume. It shows simulation execution separately from a requirement verdict, so a
-`succeeded` simulation is never displayed as a `passed` requirement.
+The console exposes one MCP App at `ui://casys-digital-thread/console`. Fleet
+and Runs compare the declared fleet with live MCP and Docker observations; all
+actions are read-only. Runs also discovers persisted Modelica records through
+its two read-only tools; it never reads the sidecar's Docker volume. It shows
+simulation execution separately from a requirement verdict, so a `succeeded`
+simulation is never displayed as a `passed` requirement.
 
-For the exact, version-bound CoffeeMachine nominal run, the console also sends the
-measured temperature to `syson_constraint_evaluate` and displays the live result as a
-**provisional scenario contract**. The sole current condition is the scenario's declared
-`90 degC` target. It is intentionally not a product requirement, not a SysON project
-requirement, and the `900 s` scenario horizon remains provenance rather than an invented
-performance limit.
+For the exact, version-bound CoffeeMachine nominal run, the console also sends
+the measured temperature to `syson_constraint_evaluate` and displays the live
+result as a **provisional scenario contract**. The sole current condition is the
+scenario's declared `90 degC` target. It is intentionally not a product
+requirement, not a SysON project requirement, and the `900 s` scenario horizon
+remains provenance rather than an invented performance limit.
 
 ```bash
 npm --prefix src/ui ci
@@ -103,61 +114,82 @@ npm --prefix src/ui run build
 deno task start                  # http://127.0.0.1:3020/mcp
 # In a second terminal, browser host for the existing MCP App:
 deno task preview:browser        # http://127.0.0.1:3021/
-deno task compose:workbench      # http://127.0.0.1:60060/
+# Assemble the observed CM-01 branches, then serve the native shell:
+deno task thread:assemble
+deno task preview:thread
 ```
 
-The browser host relays the console's three read-only tools to the live MCP server. It
-is a local MCP Apps test harness, explicitly not an `mcp-compose`-generated dashboard.
+The browser host relays the Console's read-only tools to the live MCP server. It
+is a local MCP Apps test harness, not the product Workbench.
 
-The Workbench manager is implemented for port `60060`. Its reviewed catalogue lists
-three five-MCP compositions—CM-01, Engineering qualification, and Manufacturing
-readiness—plus the focused CalculiX proof. Selecting one starts a real,
-capability-bounded `mcp-compose` dashboard in place and stops the previous host after
-the swap. The component-surface candidate is imported from the sibling `mcp-server`
-workspace while it is being release-checked. The `compose:engineering`,
-`compose:manufacturing`, and `compose:cm01` tasks remain useful as direct launchers. See
-the [Compose Console how-to](docs/how-to/compose-console.md).
+The product direction is one native Preact shell reading a persisted, versioned
+`ThreadSnapshot` from a backend-for-frontend. Engineering `tools/call` requests
+remain backend-only and occur only after an explicit execution command; opening
+or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
+builds a local CM-01 revision from read-only SysON inventory, attested CAD →
+FEA evidence, one persisted Modelica run, and reviewed ERPNext reads. It is real
+observed evidence, not a new solve and not a closed SysON verification loop.
+See the
+[native preview how-to](docs/how-to/preview-native-workbench.md) and the
+[ThreadSnapshot reference](docs/reference/thread-snapshot.md).
 
-The first product recipe, `deno task compose:cm01`, renders live SysON structure,
-interactive build123d geometry, the ERPNext BOM, Modelica thermal evidence, and a
-CalculiX static solve in one five-MCP cockpit. The YAML selects atomic components and
-layout; it does not freeze results or copy viewer code. See
-[View the CoffeeMachine CM-01 digital thread](docs/how-to/view-coffee-machine-cm01.md).
+The current live CoffeeMachine model contains two `RequirementUsage` elements
+but zero `ConstraintUsage` elements. A real workflow probe therefore stops at
+requirement extraction and blocks CAD, FEA, normalization, and evaluation
+instead of inventing a threshold or spending solver time. Adding a model-owned
+constraint is the next domain step, not a UI workaround.
 
-The shared visual baseline now lives in `@casys/mcp-view`, extracted from the ERPNext
-BOM palette: restrained cards, compact uppercase titles, dense metrics and tables,
-semantic badges, selection state, and container-aware layout. Domain viewers add only
-their specialized diagram, CAD, physics, or evidence rendering. See
+[`config/thread-workflows/`](config/thread-workflows/) describes typed causal
+DAGs. No dashboard-layout YAML, iframe host, or presentation-only MCP sits
+between the backend and provider-native MCP tools. See the
+[workflow reference](docs/reference/thread-workflows.md).
+
+The five branches share the system subject only through
+[`config/thread-subjects/coffee-machine-cm01.json`](config/thread-subjects/coffee-machine-cm01.json):
+reviewed SysON project ID, build123d STEP path, Modelica run ID, and ERPNext item
+code. Matching labels never create a join. The current assembly observes
+`0.05691576 kg` bracket mass, `26.29 MPa` maximum stress, `94 degC` maximum
+water temperature, and ERPNext's one active default BOM for `CASYS-CM01`; it
+does not assert that the CAD branch caused the Modelica result, or that zero Bin
+rows means zero inventory.
+
+The shared visual baseline now lives in `@casys/mcp-view`, extracted from the
+ERPNext BOM palette: restrained cards, compact uppercase titles, dense metrics
+and tables, semantic badges, selection state, and container-aware layout. Domain
+viewers add only their specialized diagram, CAD, physics, or evidence rendering.
+See
 [The mcp-view component language](docs/explanations/mcp-view-component-language.md).
 
-When the engineering services are stopped, the console reports them as unavailable and
-keeps the checked-in bracket run explicitly labelled as demo. The documentation is
-organized with [Diátaxis](https://diataxis.fr/): start at the
-[documentation map](docs/README.md), follow the
+When the engineering services are stopped, the console reports them as
+unavailable and keeps the checked-in bracket run explicitly labelled as demo.
+The documentation is organized with [Diátaxis](https://diataxis.fr/): start at
+the [documentation map](docs/README.md), follow the
 [CoffeeMachine run tutorial](docs/tutorials/coffee-machine-nominal.md), use the
 [browser-preview how-to](docs/how-to/preview-console.md), use the
-[Compose Console how-to](docs/how-to/compose-console.md), the
-[CM-01 dashboard how-to](docs/how-to/view-coffee-machine-cm01.md), or look up exact
-paths and ports in the [workspace reference](docs/reference/workspace-map.md). The
-[console reference](docs/console.md) retains the data contract, evidence model, security
-boundary, and local `mcp-compose` path.
+[native Workbench preview](docs/how-to/preview-native-workbench.md), or follow
+the [CM-01 assembly guide](docs/how-to/assemble-coffee-machine-thread.md) and
+the [CoffeeMachine workflow guide](docs/how-to/view-coffee-machine-cm01.md).
+Look up exact paths and ports in the
+[workspace reference](docs/reference/workspace-map.md). The
+[console reference](docs/console.md) retains the observer contract, evidence
+model, and security boundary.
 
 ## Repository map
 
 | Path                                | Contents                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------ |
 | `docker-compose.yml`                | The full stack: SysON + MCP servers over HTTP                            |
-| `server.ts`, `src/`                 | Read-only console control plane and MCP App                              |
+| `server.ts`, `src/`                 | Console plus native thread contracts and orchestration prototypes        |
 | `config/mcp-fleet.json`             | Desired fleet, topology, tools, views, and trust boundaries              |
-| `config/compose/`                   | Reviewed MCP manifests, saved dashboard YAML, and runtime-arg examples   |
-| `services/mcp-erpnext-components/`  | Read-only Preact ERPNext component palette for product dashboards        |
+| `config/thread-workflows/`          | Reviewed YAML authoring prototypes compiled into typed causal DAGs       |
+| `config/thread-subjects/`           | Reviewed explicit provider-to-product identity bindings                  |
 | `config/verification-plans/`        | Versioned provisional scenario-contract plans                            |
 | `state/fixtures/`                   | Canonical, explicitly labelled console and run fixtures                  |
 | `docs/README.md`                    | Diátaxis documentation map                                               |
 | `docs/tutorials/`                   | End-to-end learning paths, including the real CoffeeMachine run          |
-| `docs/how-to/`                      | Focused operating guides: fixed browser preview and local Compose host   |
+| `docs/how-to/`                      | Focused operating guides for native workflows and MCP Apps               |
 | `docs/reference/`                   | Exact workspace ownership, contracts, and port lookup                    |
-| `docs/console.md`                   | Console resource, tools, truth model, limitations, and Compose boundary  |
+| `docs/console.md`                   | Console resource, tools, truth model, limitations, and security boundary |
 | `docs/positioning.md`               | Explanation: industry & SOTA positioning and references                  |
 | `docs/verification-architecture.md` | Explanation: CoffeeMachine verification boundaries and Modelica decision |
 | `examples/bracket/`                 | The end-to-end walkthrough with real numbers                             |
@@ -174,7 +206,6 @@ boundary, and local `mcp-compose` path.
 | [`@casys/constraint-solver`](https://jsr.io/@casys/constraint-solver)                  | JSR      | units-aware evaluation + z3 solving                         |
 | [`@casys/mcp-server`](https://jsr.io/@casys/mcp-server)                                | JSR      | the MCP framework all servers build on                      |
 | [`@casys/mcp-view`](https://jsr.io/@casys/mcp-view)                                    | JSR      | MCP App view runtime used by the console                    |
-| [`@casys/mcp-compose`](https://jsr.io/@casys/mcp-compose)                              | JSR      | deterministic multi-view dashboard composition              |
 | [`engineering-toolchain`](https://github.com/Casys-AI/engineering-toolchain)           | GHCR     | one image bundling the chain + system backends              |
 | [`mcp-modelica`](https://github.com/Casys-AI/mcp-modelica/pkgs/container/mcp-modelica) | GHCR     | pinned OpenModelica + MSL simulation sidecar                |
 | [`@casys/mcp-erpnext`](https://jsr.io/@casys/mcp-erpnext)                              | JSR      | costing side: part structure → ERPNext BOM with real prices |

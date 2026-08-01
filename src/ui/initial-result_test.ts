@@ -6,7 +6,7 @@ import {
 } from "./src/initial-result.ts";
 
 const SNAPSHOT = {
-  schemaVersion: "1.0",
+  schemaVersion: "2.0",
   generatedAt: "2026-07-31T00:00:00.000Z",
   mode: "demo",
   fleet: {
@@ -22,14 +22,9 @@ const SNAPSHOT = {
     servers: [],
   },
   runs: { items: [] },
-  workbench: {
-    status: "healthy",
-    panels: [],
-    synchronization: { enabled: false, events: [], note: "" },
-  },
 } as ConsoleSnapshot;
 
-Deno.test("console initial result consumes Compose structuredContent, never text", () => {
+Deno.test("console initial result consumes host structuredContent, never text", () => {
   const snapshot = initialSnapshotFromResult({
     content: [{ type: "text", text: "not a console snapshot" }],
     structuredContent: SNAPSHOT,
@@ -51,7 +46,7 @@ Deno.test("console initial result rejects malformed payloads and preserves MCP e
   assertThrows(
     () =>
       initialSnapshotFromResult({
-        structuredContent: { schemaVersion: "1.0" },
+        structuredContent: { schemaVersion: "2.0" },
       }),
     Error,
     "structuredContent",

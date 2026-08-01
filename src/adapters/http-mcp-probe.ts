@@ -250,11 +250,10 @@ function parseTools(value: unknown): ObservedTool[] {
     if (!isRecord(entry) || typeof entry.name !== "string") return [];
     const meta = isRecord(entry._meta) ? entry._meta : {};
     const ui = isRecord(meta.ui) ? meta.ui : {};
-    const legacyUri = stringValue(meta["ui/resourceUri"]);
     return [{
       name: entry.name,
       description: stringValue(entry.description),
-      resourceUri: stringValue(ui.resourceUri) ?? legacyUri,
+      resourceUri: stringValue(ui.resourceUri),
     }];
   });
 }

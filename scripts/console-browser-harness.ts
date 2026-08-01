@@ -1,8 +1,7 @@
 /**
  * Local MCP Apps host for the existing Thread Console resource.
  *
- * This deliberately is not mcp-compose. It is a small, read-only browser
- * harness for visual testing: it reads the registered UI resource from the
+ * This is a small, read-only browser harness for visual testing. It reads the registered UI resource from the
  * live console MCP and proxies only the three read-only console tools that
  * the App itself uses.
  *
@@ -252,7 +251,7 @@ async function hostPage(): Promise<string> {
     <header>
       <span class="dot" aria-hidden="true"></span>
       <strong>LOCAL MCP APPS HARNESS</strong>
-      <small>real resource + read-only tool calls relayed to the live console; not mcp-compose</small>
+      <small>real resource + reviewed read-only calls relayed to the live console</small>
     </header>
     <iframe id="console" title="Casys Thread Console"></iframe>
     <script>

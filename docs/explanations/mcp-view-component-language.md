@@ -3,16 +3,22 @@
 The ERPNext BOM palette established the visual baseline for Casys component viewers. It
 worked because every block reads as one calm engineering fact: a short uppercase title,
 dense content, restrained borders, one warm accent, and no page-level chrome competing
-with the dashboard. That baseline now belongs to `mcp-view`, not to ERPNext.
+with its host. That baseline now belongs to `mcp-view`, not to ERPNext.
+
+The same primitives serve two different shells. Standard MCP Apps keep their isolated
+runtime for individual rich tool results. The native digital-thread Workbench imports
+reviewed first-party components directly so that one application owns layout, selection,
+navigation, and linked state.
 
 ## What is shared
 
-`@casys/mcp-view/preact` exports the real reusable presentation primitives, while
-`@casys/mcp-view` installs their small shared theme. Domain MCPs import the primitives
-instead of copying their markup and CSS:
+The intended native import is the presentation-only `@casys/mcp-view/preact/components`
+entry point. It exports the reusable primitives and shared theme without the Apps
+lifecycle. Provider MCP Apps may continue to use `@casys/mcp-view/preact`, which also
+exposes the lifecycle adapter.
 
 ```tsx
-import { Badge, Card, DataTable, MetricGrid } from "@casys/mcp-view/preact";
+import { Badge, Card, DataTable, MetricGrid } from "@casys/mcp-view/preact/components";
 ```
 
 The curated core currently contains:
@@ -25,9 +31,9 @@ The curated core currently contains:
 - simple stacks and rows with container-query behaviour.
 
 The default palette follows host MCP Apps color variables first and supplies the proven
-dark neutral fallbacks only when the host provides none. A component can therefore live
-inside a small dashboard cell without knowing the page width or inventing `S/M/L/XL`
-variants.
+dark neutral fallbacks only when the host provides none. Container-aware components can
+therefore live in an isolated result view or in the native shell without inventing
+`S/M/L/XL` variants.
 
 ## What stays domain-specific
 
@@ -36,29 +42,37 @@ its diagrams, Build123d owns its Three.js canvas, CalculiX owns mesh and solve e
 Modelica owns simulation provenance, and ERPNext owns BOM semantics. Those components
 may extend the theme, but should reuse its shell, spacing, states, and typography.
 
-Compose does not send CSS or inspect an iframe. YAML selects advertised component keys,
-their safe props, and a `stack|row|grid` surface. The child MCP App still validates
-data, renders its domain, holds local state, and cleans up its renderer.
+The native shell imports reviewed first-party components and renders a linked
+`ThreadSnapshot` projection directly. YAML selects data-producing workflow nodes and
+bindings; presentation remains native application code.
 
 ## Authoring rule
 
-New atomic viewers use Preact by default through `@casys/mcp-view/preact`, unless a
-specialized renderer gives a concrete reason not to. They call
-`startPreactSurfaceApp()`, which installs the theme and handles the result-driven Apps
-lifecycle. A domain component assembles `Card`, `MetricGrid`, `DataTable`, `Badge`,
+New atomic components use Preact by default through `@casys/mcp-view/preact/components`,
+unless a specialized renderer gives a concrete reason not to. An MCP App adapter calls
+`startPreactSurfaceApp()` from `@casys/mcp-view/preact` for the result-driven Apps
+lifecycle. The native shell imports the pure component and theme layer without starting
+that bridge. Domain UI assembles `Card`, `MetricGrid`, `DataTable`, `Badge`,
 `KeyValueList`, `Toolbar`, `Button`, `EmptyState`, and `StateMessage`, then adds local
 CSS only for its irreducible diagram, CAD, mesh, or evidence layout.
 
 This is shadcn-like in authoring style—small typed building blocks composed in the
 consumer—but the canonical primitives are package imports, not copied source files. That
-keeps five independent MCP Apps visually and behaviourally aligned through one versioned
-contract. Compose still selects only advertised domain component keys; it never receives
-arbitrary Preact code from YAML.
+keeps isolated MCP Apps and the native shell visually aligned through one versioned
+contract. Workflow YAML never receives arbitrary Preact code.
 
-A public viewer may keep a `defaultSurface` for standalone use. A product-only palette,
-such as `mcp-erpnext-components`, omits it and exposes an explicit component vocabulary
-for Compose. Missing composition then yields `surface-required`; no fake standalone
-dashboard is assembled.
+A provider viewer may keep a `defaultSurface` for a single rich MCP result. The product
+Workbench does not mount that viewer; it imports trusted primitives and domain renderers
+directly.
 
-This gives agents a small visual and semantic language: they compose real domain blocks,
-not screenshots, arbitrary DOM, or full pages squeezed into panels.
+### Release gate
+
+This repository consumes `@casys/mcp-view@0.7.1`, the first published version with the
+pure `./preact/components` export. `deno task verify:thread:presentation` is therefore a
+hard gate: it requires that exact import boundary and fails if `ui/initialize`,
+`toolresult`, or `postMessage` reappear in the native bundle. No sibling or `file:`
+dependency is involved.
+
+This gives agents a small visual and semantic language without making iframe layout the
+product architecture: agents compose workflows and linked evidence, while trusted UI
+code composes reusable domain blocks.

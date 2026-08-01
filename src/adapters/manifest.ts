@@ -1,8 +1,4 @@
-import type {
-  DesiredServer,
-  FleetManifest,
-  WorkbenchPanelConfig,
-} from "../domain/types.ts";
+import type { DesiredServer, FleetManifest } from "../domain/types.ts";
 
 export interface ManifestLoaderOptions {
   readTextFile?: (path: string) => Promise<string>;
@@ -64,15 +60,10 @@ export function validateFleetManifest(value: unknown): FleetManifest {
     ids.add(server.id);
   }
 
-  const workbench = root.workbench === undefined
-    ? undefined
-    : validateWorkbench(root.workbench);
-
   return {
     schemaVersion: optionalLiteral(root.schemaVersion, "1.0"),
     version: 1,
     servers,
-    workbench,
   };
 }
 
@@ -113,34 +104,6 @@ function validateServer(value: unknown, path: string): DesiredServer {
     network,
     trust,
   };
-}
-
-function validateWorkbench(value: unknown): WorkbenchPanelConfig[] {
-  if (!Array.isArray(value)) {
-    throw new ManifestError("manifest.workbench must be an array");
-  }
-  return value.map((panel, index) => {
-    const path = `manifest.workbench[${index}]`;
-    const input = record(panel, path);
-    const kind = oneOf(
-      input.kind,
-      ["mcp-app", "external", "evidence"] as const,
-      `${path}.kind`,
-    );
-    return {
-      id: nonEmptyString(input.id, `${path}.id`),
-      title: nonEmptyString(input.title, `${path}.title`),
-      kind,
-      sourceServerId: optionalString(
-        input.sourceServerId,
-        `${path}.sourceServerId`,
-      ),
-      resourceUri: optionalString(input.resourceUri, `${path}.resourceUri`),
-      endpoint: input.endpoint === undefined
-        ? undefined
-        : url(input.endpoint, `${path}.endpoint`),
-    };
-  });
 }
 
 function validateNetwork(

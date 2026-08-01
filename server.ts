@@ -115,9 +115,6 @@ export function registerConsoleViewer(app: McpApp): boolean {
     moduleUrl: import.meta.url,
     exists: fileExists,
     readFile: Deno.readTextFile,
-    csp: {
-      frameDomains: ["http://127.0.0.1:60060"],
-    },
   });
   if (
     summary.registered.length > 0 &&

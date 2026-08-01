@@ -1,0 +1,355 @@
+{
+  "schemaVersion": "thread-components/1.0",
+  "authority": "workspace-declared",
+  "subjectId": "coffee-machine-cm01",
+  "rationale": "Exact SysON PartUsage, ERPNext Item and build123d artifact identities reviewed for the CM-01 product structure. Matching labels alone never create a component link.",
+  "systemViews": {
+    "syson": {
+      "projectId": "54607f66-c590-4d5e-ac25-2abebe33dfd8",
+      "editingContextId": "01942665-3ded-4d3a-9902-08691eae190e",
+      "diagramId": "bc2367e3-0822-473c-b119-bb1b6ddcad5f",
+      "diagramLabel": "CM-01 Internal Structure"
+    },
+    "erpnext": {
+      "bomName": "BOM-CASYS-CM01-001"
+    }
+  },
+  "components": [
+    {
+      "id": "cm01-assembly",
+      "label": "CoffeeMachine CM-01",
+      "kind": "assembly",
+      "quantity": 1,
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "201dab49-e8c3-4439-ba78-db0c67c28e7e",
+          "label": "cm01 : CoffeeMachine",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01",
+          "label": "Coffee Machine CM-01",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "artifact",
+          "id": "/exports/coffee-machine-7fce4d8056860b65.step",
+          "label": "CoffeeMachine CM-01 STEP assembly",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ],
+      "preview": {
+        "provider": "build123d",
+        "artifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-stl",
+        "mediaType": "model/stl",
+        "url": "/api/thread/assets/coffee-machine-8208d581f067.stl",
+        "sha256": "8208d581f06796b4e6b6c5f6f6dc4e3785245c251b355859d31ea69445ccaf7e"
+      }
+    },
+    {
+      "id": "cm01-enclosure",
+      "label": "Enclosure",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "06cd41ad-617e-4b94-a4b4-8b133ce13042",
+          "label": "enclosure : Enclosure",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-ENC",
+          "label": "CM-01 Enclosure",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-enclosure",
+          "label": "build123d child cm01-enclosure",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-water-tank",
+      "label": "Water tank",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "777f1aa0-26c3-44c4-8d58-1d0b58eca789",
+          "label": "waterTank : WaterTank",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-TANK",
+          "label": "CM-01 Water Tank",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-water-tank",
+          "label": "build123d child cm01-water-tank",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-boiler",
+      "label": "Boiler",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "3ac45250-9a48-428c-9d0b-75f701214df0",
+          "label": "boiler : Boiler",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-BOILER",
+          "label": "CM-01 Boiler",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-boiler",
+          "label": "build123d child cm01-boiler",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-pump",
+      "label": "Pump",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "91a897d6-69ec-4d6b-9344-bdd5c8420fd1",
+          "label": "pump : Pump",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-PUMP",
+          "label": "CM-01 Pump",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-pump",
+          "label": "build123d child cm01-pump",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-brew-unit",
+      "label": "Brew unit",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "807e3b2c-7eba-4958-89a2-a3d4d0f919a4",
+          "label": "brewUnit : BrewUnit",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-BREW",
+          "label": "CM-01 Brew Unit",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-brew-unit",
+          "label": "build123d child cm01-brew-unit",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-controller",
+      "label": "Control PCB",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "16ca0d87-2ec9-4501-b413-32b84799a08e",
+          "label": "controller : ControlPCB",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-PCB",
+          "label": "CM-01 Control PCB",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-controller",
+          "label": "build123d child cm01-controller",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-power-supply",
+      "label": "Power supply",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "d49f54b2-f597-4ad6-8685-89adc123ba08",
+          "label": "powerSupply : PowerSupply",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-PSU",
+          "label": "CM-01 Power Supply",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-power-supply",
+          "label": "build123d child cm01-power-supply",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-temperature-sensor",
+      "label": "Temperature sensor",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "935f4016-1b40-446a-b368-7225be986b4a",
+          "label": "temperatureSensor : TemperatureSensor",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-TSENS",
+          "label": "CM-01 Temperature Sensor",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-temperature-sensor",
+          "label": "build123d child cm01-temperature-sensor",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-user-interface",
+      "label": "User interface",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "10b27aec-2774-4645-aa39-9918aabcd9e4",
+          "label": "userInterface : UserInterface",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-UI",
+          "label": "CM-01 User Interface",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-user-interface",
+          "label": "build123d child cm01-user-interface",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    },
+    {
+      "id": "cm01-drip-tray",
+      "label": "Drip tray",
+      "kind": "part",
+      "quantity": 1,
+      "parentId": "cm01-assembly",
+      "bindings": [
+        {
+          "provider": "syson",
+          "kind": "part-usage",
+          "id": "ea6cdc62-4e96-4485-8e8a-e5aa2cfaf7b9",
+          "label": "dripTray : DripTray",
+          "evidenceArtifactId": "syson-inventory-ca7f3bda7bfa"
+        },
+        {
+          "provider": "erpnext",
+          "kind": "item",
+          "id": "CASYS-CM01-TRAY",
+          "label": "CM-01 Drip Tray",
+          "evidenceArtifactId": "erpnext-bom-detail-bom-casys-cm01-001-cc0786ec3461"
+        },
+        {
+          "provider": "build123d",
+          "kind": "assembly-child",
+          "id": "cm01-drip-tray",
+          "label": "build123d child cm01-drip-tray",
+          "evidenceArtifactId": "coffee-machine-build-coffee-machine-build-20260801T102117Z-step"
+        }
+      ]
+    }
+  ]
+}

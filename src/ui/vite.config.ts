@@ -12,7 +12,9 @@ function trimGeneratedHtml(): Plugin {
           output.fileName.endsWith(".html") &&
           typeof output.source === "string"
         ) {
-          output.source = output.source.replace(/[ \t]+$/gm, "");
+          output.source = output.source
+            .replace(/^[ ]+\t/gm, "\t")
+            .replace(/[ \t]+$/gm, "");
         }
       }
     },

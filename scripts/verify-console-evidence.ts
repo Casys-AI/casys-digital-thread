@@ -182,14 +182,14 @@ const erpnextViews = manifest.servers.find((server) => server.id === "erpnext")
   ?.expectedViews;
 if (
   JSON.stringify(erpnextViews) !==
-    JSON.stringify(["ui://mcp-erpnext-components/bom-surface"])
+    JSON.stringify(["ui://mcp-erpnext/doclist-viewer"])
 ) {
-  fail("erpnext: expectedViews must list the component-only BOM surface");
+  fail("erpnext: expectedViews must list the provider-native document viewer");
 }
 
-if (snapshot.schemaVersion !== "1.0" || snapshot.mode !== "demo") {
+if (snapshot.schemaVersion !== "2.0" || snapshot.mode !== "demo") {
   fail(
-    "console snapshot must be explicitly labelled schemaVersion 1.0 and demo mode",
+    "console snapshot must be explicitly labelled schemaVersion 2.0 and demo mode",
   );
 }
 if (snapshot.fleet.counts.total !== expectedServerIds.length) {
@@ -200,7 +200,7 @@ if (snapshot.fleet.servers.some((server) => !server.demo)) {
 }
 // The checked-in snapshot is a labelled historical demo, not a second desired-state
 // manifest. Current desired state is validated directly above and by adapter tests.
-const localErpNextImage = "casys-digital-thread/mcp-erpnext-components:0.1.0-local";
+const localErpNextImage = "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467";
 if (
   manifest.servers.some((server) =>
     server.id === "erpnext"
@@ -209,7 +209,7 @@ if (
   )
 ) {
   fail(
-    "published images must be digest-pinned and the local ERPNext component image must be explicit",
+    "published images must be digest-pinned and the local ERPNext image must be explicit",
   );
 }
 if (

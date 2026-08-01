@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.0",
   "generatedAt": "2026-07-30T08:00:04.000Z",
   "mode": "demo",
   "fleet": {
@@ -672,7 +672,7 @@
             "notes": [
               "The local container combines the reviewed viewer/UOM fix 1d99467 with the pending mcp-server 0.24 base 17ca098; the fix itself is merged on main as 50d4a538, while the 0.24 base remains explicit until its own review is complete.",
               "The server exposes manufacturing, inventory and generic operations so an agent can create Items and BOM documents from zero; these categories include create, update, submit, cancel, delete, upload and assignment mutations.",
-              "The Compose dashboard grant is a separate capability boundary and permits only the read-only BOM list and detail tools.",
+              "The native Workbench backend selects reviewed read tools and never exposes ERP credentials or generic MCP authority to the browser.",
               "ERPNext API credentials are supplied at runtime and never stored in this manifest."
             ]
           }
@@ -876,67 +876,5 @@
         "unresolvedRequirements": 0
       }
     ]
-  },
-  "workbench": {
-    "status": "healthy",
-    "panels": [
-      {
-        "id": "requirements-trace",
-        "title": "Requirements trace",
-        "kind": "mcp-app",
-        "sourceServerId": "syson",
-        "resourceUri": "ui://mcp-syson/requirements-trace-viewer",
-        "availability": "healthy",
-        "demo": true
-      },
-      {
-        "id": "model-diagram",
-        "title": "System model diagram",
-        "kind": "mcp-app",
-        "sourceServerId": "syson",
-        "resourceUri": "ui://mcp-syson/diagram-viewer",
-        "availability": "healthy",
-        "demo": true
-      },
-      {
-        "id": "cad-evidence",
-        "title": "Bracket geometry evidence",
-        "kind": "evidence",
-        "sourceServerId": "build123d",
-        "availability": "healthy",
-        "demo": true
-      },
-      {
-        "id": "fea-evidence",
-        "title": "Bracket FEA evidence",
-        "kind": "evidence",
-        "sourceServerId": "calculix",
-        "availability": "healthy",
-        "demo": true
-      },
-      {
-        "id": "manufacturing-bom",
-        "title": "Manufacturing BOM",
-        "kind": "mcp-app",
-        "sourceServerId": "erpnext",
-        "resourceUri": "ui://mcp-erpnext/doclist-viewer",
-        "availability": "healthy",
-        "demo": true
-      },
-      {
-        "id": "syson-ui",
-        "title": "SysON modeler",
-        "kind": "external",
-        "sourceServerId": "syson",
-        "endpoint": "http://127.0.0.1:8180",
-        "availability": "healthy",
-        "demo": true
-      }
-    ],
-    "synchronization": {
-      "enabled": false,
-      "events": [],
-      "note": "Cross-panel selection is a planned mcp-compose capability; the MVP surfaces read-only panels and evidence."
-    }
   }
 }

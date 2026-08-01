@@ -23,6 +23,13 @@ import {
   initialSnapshotFromResult,
   toolResultErrorMessage,
 } from "./initial-result.ts";
+import { h, render as renderPreact } from "preact";
+import { installMcpViewTheme } from "./mcp-view-primitives.ts";
+import {
+  createThreadWorkbenchClient,
+  type ThreadWorkbenchBootstrap,
+} from "./thread/client.ts";
+import { ThreadWorkbench } from "./thread/workbench.tsx";
 import "./styles.css";
 
 type Tab = "fleet" | "runs" | "workbench";
@@ -47,6 +54,18 @@ interface RuntimeState {
 
 const appRoot = document.querySelector<HTMLElement>("#app")!;
 if (!appRoot) throw new Error("Missing #app mount point");
+
+declare global {
+  interface Window {
+    /** Optional BFF-injected snapshot or read-only HTTP endpoint. */
+    __CASYS_THREAD_BOOTSTRAP__?: ThreadWorkbenchBootstrap;
+  }
+}
+
+installMcpViewTheme(document);
+const threadClient = createThreadWorkbenchClient(
+  globalThis.window.__CASYS_THREAD_BOOTSTRAP__,
+);
 
 const runtime: RuntimeState = {
   activeTab: "fleet",
@@ -295,7 +314,7 @@ function renderHeader(): string {
     snapshot.fleet.counts.drift === 1 ? "" : "s"
   }</small></div>
       <div><span>Runs</span><strong>${snapshot.runs.items.length}</strong><small>indexed</small></div>
-      <div><span>Workbench</span><strong>${snapshot.workbench.panels.length}</strong><small>panel contracts</small></div>
+      <div><span>Workbench</span><strong>NATIVE</strong><small>linked thread model</small></div>
       <div class="signal-time"><span>Last observation</span><strong>${
     esc(generatedLabel)
   }</strong><small>${esc(snapshot.schemaVersion)}</small></div>
@@ -306,7 +325,7 @@ function renderHeader(): string {
 const tabMeta: Array<{ id: Tab; label: string; sub: string }> = [
   { id: "fleet", label: "Fleet", sub: "Runtime & trust" },
   { id: "runs", label: "Runs", sub: "Lineage & evidence" },
-  { id: "workbench", label: "Workbench", sub: "Dynamic Compose" },
+  { id: "workbench", label: "Workbench", sub: "Linked evidence" },
 ];
 
 function renderTabs(): string {
@@ -858,31 +877,19 @@ function renderRuns(): string {
 }
 
 function renderWorkbench(): string {
-  const { workbench } = currentSnapshot();
   return `
     <section class="section-heading workbench-heading">
       <div>
-        <p class="eyebrow">LIVE MCP COMPOSITIONS</p>
-        <h2>Compose Workbench</h2>
-        <p>Select a saved composition, then work with its real MCP viewers without leaving the Console.</p>
+        <p class="eyebrow">LINKED ENGINEERING STATE</p>
+        <h2>Digital Thread Workbench</h2>
+        <p>A single native surface for change impact, evidence currency, requirement verdicts, and corrective actions.</p>
       </div>
       <div class="workbench-runtime">
-        <span><i aria-hidden="true"></i>Dynamic host</span>
-        <small>${workbench.panels.length} declared viewer contracts · port 60060</small>
+        <span><i aria-hidden="true"></i>Native thread model</span>
+        <small>One state · one selection · zero nested viewers</small>
       </div>
     </section>
-
-    <section class="compose-workbench-host" aria-label="Dynamic MCP Compose Workbench">
-      <iframe
-        src="http://127.0.0.1:60060/"
-        title="Compose Workbench dashboard selector"
-        loading="eager"
-      ></iframe>
-      <footer>
-        <span>The Workbench manager must be running locally.</span>
-        <code>deno task compose:workbench</code>
-      </footer>
-    </section>
+    <section id="thread-workbench-root" aria-label="Digital Thread Workbench"></section>
   `;
 }
 function renderNotice(): string {
@@ -925,6 +932,14 @@ function buildConsole(): HTMLElement {
     </footer>
   `;
   bindInteractions(shell);
+  if (runtime.activeTab === "workbench") {
+    const workbenchRoot = shell.querySelector<HTMLElement>(
+      "#thread-workbench-root",
+    );
+    if (workbenchRoot) {
+      renderPreact(h(ThreadWorkbench, { client: threadClient }), workbenchRoot);
+    }
+  }
   return shell;
 }
 

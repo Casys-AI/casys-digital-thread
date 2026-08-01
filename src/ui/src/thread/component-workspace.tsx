@@ -1,0 +1,489 @@
+/** @jsxImportSource preact */
+
+import type { JSX } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import type {
+  ThreadComponent,
+  ThreadComponentBinding,
+  ThreadComponentPreview,
+  ThreadComponentProvider,
+  ThreadWorkbenchSnapshot,
+} from "./types.ts";
+
+export interface ComponentWorkspaceProps {
+  snapshot: ThreadWorkbenchSnapshot;
+  activeProvider: ThreadComponentProvider;
+  selectedComponentId?: string;
+  onProviderChange: (provider: ThreadComponentProvider) => void;
+  onComponentSelect: (component: ThreadComponent) => void;
+  onBindingSelect: (binding: ThreadComponentBinding) => void;
+}
+
+const PROVIDERS: readonly {
+  id: ThreadComponentProvider;
+  label: string;
+  role: string;
+}[] = [
+  { id: "syson", label: "SysON", role: "system structure" },
+  { id: "build123d", label: "build123d", role: "geometry" },
+  { id: "erpnext", label: "ERPNext", role: "enterprise record" },
+];
+
+export function ComponentWorkspace({
+  snapshot,
+  activeProvider,
+  selectedComponentId,
+  onProviderChange,
+  onComponentSelect,
+  onBindingSelect,
+}: ComponentWorkspaceProps): JSX.Element {
+  const components = snapshot.components.components;
+  const selected =
+    components.find((component) => component.id === selectedComponentId) ??
+      components[0];
+
+  if (!selected) {
+    return (
+      <div class="component-empty">
+        <span>00</span>
+        <h4>No reviewed product structure</h4>
+        <p>{snapshot.components.rationale}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div class="component-workspace">
+      <header class="component-workspace-header">
+        <div>
+          <p>PART-CENTRIC WORKSPACE</p>
+          <h4>{selected.label}</h4>
+        </div>
+        <div class="component-workspace-count">
+          <strong>{String(components.length).padStart(2, "0")}</strong>
+          <span>reviewed components</span>
+        </div>
+      </header>
+
+      <div
+        class="component-provider-tabs"
+        role="tablist"
+        aria-label="Tool facet"
+      >
+        {PROVIDERS.map((provider) => {
+          const linked = components.filter((component) =>
+            verifiedBinding(component, provider.id)
+          ).length;
+          return (
+            <button
+              key={provider.id}
+              type="button"
+              role="tab"
+              aria-selected={activeProvider === provider.id}
+              onClick={() =>
+                onProviderChange(provider.id)}
+            >
+              <span>{provider.label}</span>
+              <small>{linked}/{components.length} · {provider.role}</small>
+            </button>
+          );
+        })}
+      </div>
+
+      <PartTraceStrip
+        component={selected}
+        activeProvider={activeProvider}
+        onProviderChange={onProviderChange}
+        onBindingSelect={onBindingSelect}
+      />
+
+      <div class="component-provider-surface" data-provider={activeProvider}>
+        {activeProvider === "syson"
+          ? (
+            <SysonStructure
+              snapshot={snapshot}
+              selected={selected}
+              onSelect={onComponentSelect}
+              onInspect={onBindingSelect}
+            />
+          )
+          : activeProvider === "erpnext"
+          ? (
+            <ErpBom
+              snapshot={snapshot}
+              selected={selected}
+              onSelect={onComponentSelect}
+              onInspect={onBindingSelect}
+            />
+          )
+          : (
+            <CadGeometry
+              snapshot={snapshot}
+              selected={selected}
+              onSelect={onComponentSelect}
+              onInspect={onBindingSelect}
+            />
+          )}
+      </div>
+    </div>
+  );
+}
+
+function PartTraceStrip({
+  component,
+  activeProvider,
+  onProviderChange,
+  onBindingSelect,
+}: {
+  component: ThreadComponent;
+  activeProvider: ThreadComponentProvider;
+  onProviderChange: (provider: ThreadComponentProvider) => void;
+  onBindingSelect: (binding: ThreadComponentBinding) => void;
+}): JSX.Element {
+  return (
+    <div
+      class="part-trace-strip"
+      aria-label={`Tool identities for ${component.label}`}
+    >
+      {PROVIDERS.map((provider, index) => {
+        const binding = bindingFor(component, provider.id);
+        const verified = binding?.status === "verified";
+        return (
+          <div class="part-trace-step" key={provider.id}>
+            {index > 0 && (
+              <span class="part-trace-connector" aria-hidden="true" />
+            )}
+            <button
+              type="button"
+              data-state={verified ? "verified" : "gap"}
+              aria-current={activeProvider === provider.id ? "true" : undefined}
+              onClick={() => {
+                onProviderChange(provider.id);
+                if (verified && binding) onBindingSelect(binding);
+              }}
+            >
+              <i aria-hidden="true">{verified ? "✓" : "!"}</i>
+              <span>
+                <small>{provider.label}</small>
+                <strong>{binding?.id ?? "Unlinked facet"}</strong>
+              </span>
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
+  snapshot: ThreadWorkbenchSnapshot;
+  selected: ThreadComponent;
+  onSelect: (component: ThreadComponent) => void;
+  onInspect: (binding: ThreadComponentBinding) => void;
+}): JSX.Element {
+  const view = snapshot.components.systemViews.syson;
+  return (
+    <section class="syson-structure" aria-label="SysON product structure">
+      <header class="provider-surface-header">
+        <div>
+          <p>SYSML V2 · PART USAGES</p>
+          <h5>{view?.diagramLabel ?? "System structure"}</h5>
+        </div>
+        <code>{view?.diagramId ?? "diagram identity unavailable"}</code>
+      </header>
+      <div class="syson-root-node">
+        <span>ASSEMBLY</span>
+        <strong>{snapshot.subject.label}</strong>
+        <small>{snapshot.components.components.length} declared usages</small>
+      </div>
+      <div class="syson-part-grid">
+        {snapshot.components.components.map((component, index) => {
+          const binding = bindingFor(component, "syson");
+          return (
+            <button
+              key={component.id}
+              type="button"
+              class={component.id === selected.id ? "is-selected" : undefined}
+              data-state={binding?.status ?? "missing"}
+              onClick={() => onSelect(component)}
+              onDblClick={() => binding && onInspect(binding)}
+            >
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <strong>{component.label}</strong>
+              <small>{binding?.label ?? "No SysON PartUsage"}</small>
+              <code>{binding?.id ?? "TRACE GAP"}</code>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ErpBom({ snapshot, selected, onSelect, onInspect }: {
+  snapshot: ThreadWorkbenchSnapshot;
+  selected: ThreadComponent;
+  onSelect: (component: ThreadComponent) => void;
+  onInspect: (binding: ThreadComponentBinding) => void;
+}): JSX.Element {
+  const bomName = snapshot.components.systemViews.erpnext?.bomName;
+  return (
+    <section class="erp-bom" aria-label="ERPNext bill of materials">
+      <header class="provider-surface-header">
+        <div>
+          <p>MANUFACTURING BILL OF MATERIALS</p>
+          <h5>{bomName ?? "ERP BOM identity unavailable"}</h5>
+        </div>
+        <span>{snapshot.components.components.length} component records</span>
+      </header>
+      <div class="erp-bom-table" role="table">
+        <div class="erp-bom-row erp-bom-head" role="row">
+          <span>Line</span>
+          <span>Item</span>
+          <span>Description</span>
+          <span>Qty</span>
+          <span>Trace</span>
+        </div>
+        {snapshot.components.components.map((component, index) => {
+          const binding = bindingFor(component, "erpnext");
+          return (
+            <button
+              key={component.id}
+              type="button"
+              class={`erp-bom-row${
+                component.id === selected.id ? " is-selected" : ""
+              }`}
+              data-state={binding?.status ?? "missing"}
+              role="row"
+              onClick={() => onSelect(component)}
+              onDblClick={() => binding && onInspect(binding)}
+            >
+              <span>{String(index + 10).padStart(3, "0")}</span>
+              <code>{binding?.id ?? "UNLINKED"}</code>
+              <strong>{component.label}</strong>
+              <span>{component.quantity}</span>
+              <span class="erp-trace-state">
+                {binding?.status === "verified" ? "verified" : "gap"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
+  snapshot: ThreadWorkbenchSnapshot;
+  selected: ThreadComponent;
+  onSelect: (component: ThreadComponent) => void;
+  onInspect: (binding: ThreadComponentBinding) => void;
+}): JSX.Element {
+  const binding = bindingFor(selected, "build123d");
+  const available = snapshot.components.components.filter((component) =>
+    component.preview && verifiedBinding(component, "build123d")
+  );
+  return (
+    <section class="cad-geometry" aria-label="build123d geometry">
+      <header class="provider-surface-header">
+        <div>
+          <p>PARAMETRIC CAD · PRESENTATION MESH</p>
+          <h5>{selected.label}</h5>
+        </div>
+        {binding
+          ? (
+            <button type="button" onClick={() => onInspect(binding)}>
+              inspect evidence →
+            </button>
+          )
+          : <span>CAD facet not linked</span>}
+      </header>
+      {selected.preview && binding?.status === "verified"
+        ? <CadStlViewer preview={selected.preview} snapshot={snapshot} />
+        : (
+          <div class="cad-trace-gap">
+            <span aria-hidden="true">CAD?</span>
+            <div>
+              <h5>No exact geometry is linked to {selected.label}</h5>
+              <p>
+                The component exists in the shared product structure, but this
+                revision contains no reviewed build123d identity for it.
+              </p>
+            </div>
+            {available.length > 0 && (
+              <div class="cad-available-parts">
+                <small>AVAILABLE GEOMETRY</small>
+                {available.map((component) => (
+                  <button
+                    type="button"
+                    onClick={() => onSelect(component)}
+                  >
+                    {component.label} →
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+    </section>
+  );
+}
+
+function CadStlViewer({ preview, snapshot }: {
+  preview: ThreadComponentPreview;
+  snapshot: ThreadWorkbenchSnapshot;
+}): JSX.Element {
+  const host = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const source = snapshot.artifacts.find((artifact) =>
+    artifact.id === preview.artifactId
+  );
+
+  useEffect(() => {
+    const container = host.current;
+    if (!container) return;
+    let disposed = false;
+    let frame = 0;
+    let geometry: THREE.BufferGeometry | undefined;
+    let material: THREE.MeshStandardMaterial | undefined;
+    setState("loading");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0f10);
+    scene.fog = new THREE.Fog(0x0b0f10, 350, 900);
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.replaceChildren(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.enablePan = true;
+
+    scene.add(new THREE.HemisphereLight(0xdce9dd, 0x202828, 2.3));
+    const key = new THREE.DirectionalLight(0xf4f0dc, 3.6);
+    key.position.set(180, 220, 260);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x80adb0, 2.2);
+    rim.position.set(-180, 100, -120);
+    scene.add(rim);
+    const grid = new THREE.GridHelper(500, 20, 0x52605a, 0x26302e);
+    scene.add(grid);
+
+    const resize = () => {
+      const width = Math.max(container.clientWidth, 1);
+      const height = Math.max(container.clientHeight, 1);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+    resize();
+
+    new STLLoader().load(
+      preview.url,
+      (loaded) => {
+        if (disposed) {
+          loaded.dispose();
+          return;
+        }
+        geometry = loaded;
+        geometry.computeVertexNormals();
+        geometry.center();
+        geometry.computeBoundingSphere();
+        material = new THREE.MeshStandardMaterial({
+          color: 0xa8bf72,
+          metalness: 0.34,
+          roughness: 0.56,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        const radius = Math.max(geometry.boundingSphere?.radius ?? 50, 1);
+        camera.near = Math.max(radius / 100, 0.1);
+        camera.far = radius * 30;
+        camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
+        camera.updateProjectionMatrix();
+        controls.target.set(0, 0, 0);
+        controls.update();
+        grid.scale.setScalar(Math.max(radius / 120, 0.35));
+        setState("ready");
+      },
+      undefined,
+      () => !disposed && setState("error"),
+    );
+
+    const render = () => {
+      controls.update();
+      renderer.render(scene, camera);
+      frame = requestAnimationFrame(render);
+    };
+    render();
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      controls.dispose();
+      geometry?.dispose();
+      material?.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, [preview.url]);
+
+  return (
+    <div class="cad-viewer-shell">
+      <div class="cad-viewer" aria-label="Interactive STL geometry">
+        <div class="cad-viewer-canvas" ref={host} />
+        <div class="cad-viewer-state" data-state={state}>
+          {state === "loading"
+            ? "Loading presentation mesh…"
+            : state === "error"
+            ? "Presentation mesh unavailable"
+            : "Drag to orbit · wheel to zoom"}
+        </div>
+        <div class="cad-axis" aria-hidden="true">
+          <i>X</i>
+          <i>Y</i>
+          <i>Z</i>
+        </div>
+      </div>
+      <footer class="cad-viewer-evidence">
+        <div>
+          <small>ENGINEERING AUTHORITY</small>
+          <strong>{source?.label ?? preview.artifactId}</strong>
+          <code>{source?.fingerprint ?? "fingerprint unavailable"}</code>
+        </div>
+        <div>
+          <small>PRESENTATION ONLY · STL</small>
+          <strong>Derived display mesh</strong>
+          <code>{preview.sha256}</code>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function bindingFor(
+  component: ThreadComponent,
+  provider: ThreadComponentProvider,
+): ThreadComponentBinding | undefined {
+  return component.bindings.find((binding) => binding.provider === provider);
+}
+
+function verifiedBinding(
+  component: ThreadComponent,
+  provider: ThreadComponentProvider,
+): ThreadComponentBinding | undefined {
+  const binding = bindingFor(component, provider);
+  return binding?.status === "verified" ? binding : undefined;
+}

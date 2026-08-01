@@ -30,11 +30,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assert(content.text.includes("<html"));
       assertEquals(
         (content as unknown as Record<string, unknown>)._meta,
-        {
-          ui: {
-            csp: { frameDomains: ["http://127.0.0.1:60060"] },
-          },
-        },
+        undefined,
       );
     }
   } catch (error) {
@@ -86,11 +82,11 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       arguments: {},
     });
     const structured = result.structuredContent as Record<string, unknown>;
-    assertEquals(structured.schemaVersion, "1.0");
+    assertEquals(structured.schemaVersion, "2.0");
     assertEquals(structured.mode, "mixed");
     assert("fleet" in structured);
     assert("runs" in structured);
-    assert("workbench" in structured);
+    assertEquals("workbench" in structured, false);
   } finally {
     await http.shutdown();
   }

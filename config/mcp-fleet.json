@@ -67,7 +67,7 @@
         ]
       },
       "trust": {
-        "level": "first-party-local",
+        "level": "first-party-local-privileged",
         "executesArbitraryCode": false,
         "notes": [
           "The MCP exposes model mutations; the console MVP never invokes them.",
@@ -182,19 +182,23 @@
     },
     {
       "id": "erpnext",
-      "displayName": "ERPNext components",
-      "role": "Read-only atomic BOM identity, materials, operations and costs",
-      "serviceName": "mcp-erpnext-components",
+      "displayName": "ERPNext",
+      "role": "Provider-native manufacturing, inventory, operations and costing data",
+      "serviceName": "mcp-erpnext",
       "transport": "streamable-http",
-      "mcpUrl": "http://127.0.0.1:3017/mcp",
-      "healthUrl": "http://127.0.0.1:3017/health",
-      "image": "casys-digital-thread/mcp-erpnext-components:0.1.0-local",
+      "mcpUrl": "http://127.0.0.1:3012/mcp",
+      "healthUrl": "http://127.0.0.1:3012/health",
+      "image": "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467",
       "required": true,
       "expectedTools": [
-        "erpnext_bom_surface"
+        "erpnext_bom_list",
+        "erpnext_bom_get",
+        "erpnext_item_get",
+        "erpnext_work_order_list",
+        "erpnext_job_card_list"
       ],
       "expectedViews": [
-        "ui://mcp-erpnext-components/bom-surface"
+        "ui://mcp-erpnext/doclist-viewer"
       ],
       "network": {
         "exposure": "loopback-only",
@@ -205,51 +209,14 @@
         ]
       },
       "trust": {
-        "level": "first-party-local",
+        "level": "first-party-local-privileged",
         "executesArbitraryCode": false,
         "notes": [
-          "This presentation MCP uses the provider-native @casys/mcp-erpnext client as its data plane but exposes no mutation tools.",
-          "Its component catalog has no default surface: Compose must explicitly select the BOM components to mount.",
+          "The native Workbench backend calls only the reviewed read tools required by a workflow; the browser receives linked product data, never ERP credentials.",
+          "Mutation tools remain available to authorized agents but are never invoked by opening the Workbench.",
           "ERPNext API credentials are supplied at runtime and never stored in this manifest."
         ]
       }
-    }
-  ],
-  "workbench": [
-    {
-      "id": "cm01-architecture",
-      "title": "CM-01 system architecture",
-      "kind": "mcp-app",
-      "sourceServerId": "syson",
-      "resourceUri": "ui://mcp-syson/diagram-viewer"
-    },
-    {
-      "id": "cm01-cad",
-      "title": "CM-01 CAD assembly",
-      "kind": "mcp-app",
-      "sourceServerId": "build123d",
-      "resourceUri": "ui://mcp-build123d/results-viewer"
-    },
-    {
-      "id": "cm01-bom",
-      "title": "CM-01 manufacturing BOM",
-      "kind": "mcp-app",
-      "sourceServerId": "erpnext",
-      "resourceUri": "ui://mcp-erpnext-components/bom-surface"
-    },
-    {
-      "id": "cm01-simulation",
-      "title": "CM-01 Modelica simulation",
-      "kind": "mcp-app",
-      "sourceServerId": "modelica",
-      "resourceUri": "ui://mcp-modelica/results-viewer"
-    },
-    {
-      "id": "cm01-mechanical",
-      "title": "CM-01 structural proof",
-      "kind": "mcp-app",
-      "sourceServerId": "calculix",
-      "resourceUri": "ui://mcp-calculix/results-viewer"
     }
   ]
 }

@@ -23,11 +23,17 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
   );
   assertEquals(manifest.servers[1].trust?.executesArbitraryCode, true);
   const erpnext = manifest.servers.find((server) => server.id === "erpnext");
-  assertEquals(erpnext?.expectedTools, ["erpnext_bom_surface"]);
-  assertEquals(erpnext?.expectedViews, [
-    "ui://mcp-erpnext-components/bom-surface",
+  assertEquals(erpnext?.expectedTools, [
+    "erpnext_bom_list",
+    "erpnext_bom_get",
+    "erpnext_item_get",
+    "erpnext_work_order_list",
+    "erpnext_job_card_list",
   ]);
-  assertEquals(erpnext?.trust?.level, "first-party-local");
+  assertEquals(erpnext?.expectedViews, [
+    "ui://mcp-erpnext/doclist-viewer",
+  ]);
+  assertEquals(erpnext?.trust?.level, "first-party-local-privileged");
   assertEquals(erpnext?.trust?.executesArbitraryCode, false);
 });
 

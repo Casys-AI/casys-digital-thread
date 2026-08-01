@@ -1,6 +1,6 @@
 import type { ConsoleSnapshot } from "../../domain/types.ts";
 
-/** Minimal shape of the MCP Apps result notification delivered by Compose. */
+/** Minimal shape of the MCP Apps result notification delivered by a host. */
 export interface InitialToolResult {
   readonly isError?: boolean;
   readonly content?: readonly unknown[];
@@ -10,14 +10,12 @@ export interface InitialToolResult {
 function isConsoleSnapshot(value: unknown): value is ConsoleSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<ConsoleSnapshot>;
-  return candidate.schemaVersion === "1.0" &&
+  return candidate.schemaVersion === "2.0" &&
     typeof candidate.generatedAt === "string" &&
     !!candidate.fleet &&
     Array.isArray(candidate.fleet.servers) &&
     !!candidate.runs &&
-    Array.isArray(candidate.runs.items) &&
-    !!candidate.workbench &&
-    Array.isArray(candidate.workbench.panels);
+    Array.isArray(candidate.runs.items);
 }
 
 export function toolResultErrorMessage(
@@ -35,7 +33,7 @@ export function toolResultErrorMessage(
 }
 
 /**
- * Narrow Compose's initiating `console_snapshot` result. The viewer trusts
+ * Narrow the host's initiating `console_snapshot` result. The viewer trusts
  * only structured content: text is retained exclusively for a tool error.
  */
 export function initialSnapshotFromResult(

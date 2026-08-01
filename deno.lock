@@ -1,12 +1,12 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@casys/mcp-compose@0.8.1": "0.8.1",
     "jsr:@casys/mcp-server@0.24.1": "0.24.1",
     "jsr:@std/assert@1.0.14": "1.0.14",
     "jsr:@std/internal@^1.0.10": "1.0.14",
+    "jsr:@std/internal@^1.0.14": "1.0.14",
+    "jsr:@std/path@*": "1.1.6",
     "jsr:@std/yaml@1": "1.1.2",
-    "npm:@casys/mcp-compose@0.8.1": "0.8.1_zod@4.4.3",
     "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3",
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.30.0_zod@4.4.3",
     "npm:@opentelemetry/api@^1.9.0": "1.9.1",
@@ -15,12 +15,6 @@
     "npm:jose@6": "6.2.5"
   },
   "jsr": {
-    "@casys/mcp-compose@0.8.1": {
-      "integrity": "4637518125286bf5e457d59c3cd7f78b9e5a67eb126c2857e7517e46fc827d87",
-      "dependencies": [
-        "npm:@modelcontextprotocol/ext-apps"
-      ]
-    },
     "@casys/mcp-server@0.24.1": {
       "integrity": "5163093e08b0b0e9fba8fce0688af725a24b0ba4b352bb1b2085ec375a086ece",
       "dependencies": [
@@ -36,24 +30,23 @@
     "@std/assert@1.0.14": {
       "integrity": "68d0d4a43b365abc927f45a9b85c639ea18a9fab96ad92281e493e4ed84abaa4",
       "dependencies": [
-        "jsr:@std/internal"
+        "jsr:@std/internal@^1.0.10"
       ]
     },
     "@std/internal@1.0.14": {
       "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    },
+    "@std/path@1.1.6": {
+      "integrity": "c68485c2a4dfbb5ae3cc74fae4e8c4e5d874cf8a8ed12927917235c758b46cbe",
+      "dependencies": [
+        "jsr:@std/internal@^1.0.14"
+      ]
     },
     "@std/yaml@1.1.2": {
       "integrity": "de612653c036749ba2044165e316f52412b0f0698afffb7ee80b5331d6d2abae"
     }
   },
   "npm": {
-    "@casys/mcp-compose@0.8.1_zod@4.4.3": {
-      "integrity": "sha512-butS8nxdy8EnVJ3eRK5edPPsa/JTjoHrIk71u9Hr6V0sYpD3T1LOPqmV4ZBm9aE/KyMIQZFEy06Rr4IwIr/8yQ==",
-      "dependencies": [
-        "@modelcontextprotocol/ext-apps",
-        "@modelcontextprotocol/sdk"
-      ]
-    },
     "@hono/node-server@2.0.12_hono@4.12.32": {
       "integrity": "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==",
       "dependencies": [
@@ -589,8 +582,7 @@
     "dependencies": [
       "jsr:@casys/mcp-server@0.24.1",
       "jsr:@std/assert@1.0.14",
-      "jsr:@std/yaml@1",
-      "npm:@casys/mcp-compose@0.8.1"
+      "jsr:@std/yaml@1"
     ]
   }
 }

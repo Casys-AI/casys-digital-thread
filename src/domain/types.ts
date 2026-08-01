@@ -21,7 +21,6 @@ export interface FleetManifest {
   schemaVersion?: "1.0";
   version: 1;
   servers: DesiredServer[];
-  workbench?: WorkbenchPanelConfig[];
 }
 
 export interface DesiredServer {
@@ -52,15 +51,6 @@ export interface DesiredServer {
     executesArbitraryCode: boolean;
     notes?: string[];
   };
-}
-
-export interface WorkbenchPanelConfig {
-  id: string;
-  title: string;
-  kind: "mcp-app" | "external" | "evidence";
-  sourceServerId?: string;
-  resourceUri?: string;
-  endpoint?: string;
 }
 
 export interface ObservedTool {
@@ -292,34 +282,12 @@ export interface RunsSnapshot {
   items: RunSummary[];
 }
 
-export interface WorkbenchPanel {
-  id: string;
-  title: string;
-  kind: "mcp-app" | "external" | "evidence";
-  sourceServerId?: string;
-  resourceUri?: string;
-  endpoint?: string;
-  availability: Availability;
-  demo: boolean;
-}
-
-export interface WorkbenchSnapshot {
-  status: Availability;
-  panels: WorkbenchPanel[];
-  synchronization: {
-    enabled: boolean;
-    events: string[];
-    note: string;
-  };
-}
-
 export interface ConsoleSnapshot {
-  schemaVersion: "1.0";
+  schemaVersion: "2.0";
   generatedAt: IsoDateTime;
   mode: ConsoleMode;
   fleet: FleetSnapshot;
   runs: RunsSnapshot;
-  workbench: WorkbenchSnapshot;
 }
 
 export interface SnapshotOptions {
