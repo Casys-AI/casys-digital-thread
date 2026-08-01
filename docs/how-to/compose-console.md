@@ -6,10 +6,8 @@ the App handshake, and relays the Console's explicitly granted read-only calls. 
 smallest visual check of this one fixed view, use the
 [browser-preview how-to](preview-console.md) instead.
 
-The component-only proof currently consumes the sibling `@casys/mcp-compose@0.8.1`
-source checkout. JSR has `0.8.0`; the patch candidate adds explicit no-default catalog
-handling. After `0.8.1` is released, replace the two local imports in `deno.json` with
-the published package/subpath and regenerate `deno.lock`.
+The Workbench consumes the published npm `@casys/mcp-compose@0.8.1` package and its
+`/runtime` subpath. No sibling checkout is required to start or switch compositions.
 
 ## 1. Start the Console MCP server
 
@@ -60,9 +58,7 @@ The launcher has only read access to `config/compose` and network access to loop
 The host binds only to loopback and enforces the manifest capability allowlist.
 
 The project keeps Deno's one-day dependency quarantine enabled. Its two name-based
-exceptions cover only Casys packages. The current import map uses the sibling Compose
-candidate and keeps `mcp-server` pinned to `0.24.1`; do not publish a temporary package
-merely to run the local proof.
+exceptions cover only Casys packages, while `mcp-server` stays pinned to `0.24.1`.
 
 To run the real engineering evidence dashboard instead:
 

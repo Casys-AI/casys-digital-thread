@@ -1,9 +1,12 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@casys/mcp-compose@0.8.1": "0.8.1",
+    "jsr:@casys/mcp-server@0.24.1": "0.24.1",
     "jsr:@std/assert@1.0.14": "1.0.14",
     "jsr:@std/internal@^1.0.10": "1.0.14",
     "jsr:@std/yaml@1": "1.1.2",
+    "npm:@casys/mcp-compose@0.8.1": "0.8.1_zod@4.4.3",
     "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3",
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.30.0_zod@4.4.3",
     "npm:@opentelemetry/api@^1.9.0": "1.9.1",
@@ -12,6 +15,24 @@
     "npm:jose@6": "6.2.5"
   },
   "jsr": {
+    "@casys/mcp-compose@0.8.1": {
+      "integrity": "4637518125286bf5e457d59c3cd7f78b9e5a67eb126c2857e7517e46fc827d87",
+      "dependencies": [
+        "npm:@modelcontextprotocol/ext-apps"
+      ]
+    },
+    "@casys/mcp-server@0.24.1": {
+      "integrity": "5163093e08b0b0e9fba8fce0688af725a24b0ba4b352bb1b2085ec375a086ece",
+      "dependencies": [
+        "jsr:@std/yaml",
+        "npm:@modelcontextprotocol/ext-apps",
+        "npm:@modelcontextprotocol/sdk",
+        "npm:@opentelemetry/api",
+        "npm:ajv",
+        "npm:hono",
+        "npm:jose"
+      ]
+    },
     "@std/assert@1.0.14": {
       "integrity": "68d0d4a43b365abc927f45a9b85c639ea18a9fab96ad92281e493e4ed84abaa4",
       "dependencies": [
@@ -26,6 +47,13 @@
     }
   },
   "npm": {
+    "@casys/mcp-compose@0.8.1_zod@4.4.3": {
+      "integrity": "sha512-butS8nxdy8EnVJ3eRK5edPPsa/JTjoHrIk71u9Hr6V0sYpD3T1LOPqmV4ZBm9aE/KyMIQZFEy06Rr4IwIr/8yQ==",
+      "dependencies": [
+        "@modelcontextprotocol/ext-apps",
+        "@modelcontextprotocol/sdk"
+      ]
+    },
     "@hono/node-server@2.0.12_hono@4.12.32": {
       "integrity": "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==",
       "dependencies": [
@@ -561,51 +589,8 @@
     "dependencies": [
       "jsr:@casys/mcp-server@0.24.1",
       "jsr:@std/assert@1.0.14",
-      "jsr:@std/yaml@1"
-    ],
-    "links": {
-      "jsr:@casys/mcp-bridge@0.3.0": {
-        "dependencies": [
-          "jsr:@deno/dnt@0.41",
-          "jsr:@std/assert@1"
-        ]
-      },
-      "jsr:@casys/mcp-compose@0.8.1": {
-        "dependencies": [
-          "jsr:@deno/dnt@0.41",
-          "jsr:@std/assert@1",
-          "jsr:@std/yaml@1",
-          "npm:@modelcontextprotocol/ext-apps@^1.7.4",
-          "npm:@modelcontextprotocol/sdk@^1.29.0",
-          "npm:@opentelemetry/api@^1.9.0",
-          "npm:ajv@^8.17.1",
-          "npm:hono@4",
-          "npm:jose@6"
-        ]
-      },
-      "jsr:@casys/mcp-server@0.24.1": {
-        "dependencies": [
-          "jsr:@std/assert@1",
-          "jsr:@std/yaml@1",
-          "npm:@modelcontextprotocol/ext-apps@^1.7.4",
-          "npm:@modelcontextprotocol/sdk@^1.29.0",
-          "npm:@opentelemetry/api@^1.9.0",
-          "npm:ajv@^8.17.1",
-          "npm:hono@4",
-          "npm:jose@6"
-        ]
-      },
-      "jsr:@casys/mcp-view@0.6.0": {
-        "dependencies": [
-          "jsr:@deno/dnt@0.41",
-          "jsr:@std/assert@1",
-          "jsr:@std/path@^1.1.0",
-          "npm:@modelcontextprotocol/ext-apps@^1.7.4",
-          "npm:@modelcontextprotocol/sdk@^1.29.0",
-          "npm:preact@^10.28.3"
-        ]
-      },
-      "npm:@casys/mcp-bridge@0.3.0": {}
-    }
+      "jsr:@std/yaml@1",
+      "npm:@casys/mcp-compose@0.8.1"
+    ]
   }
 }

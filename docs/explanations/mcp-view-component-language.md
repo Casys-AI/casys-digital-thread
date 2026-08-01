@@ -7,8 +7,15 @@ with the dashboard. That baseline now belongs to `mcp-view`, not to ERPNext.
 
 ## What is shared
 
-`@casys/mcp-view` installs one small theme for component-surface Apps. It defines tokens
-and stable structural classes for:
+`@casys/mcp-view/preact` exports the real reusable presentation primitives, while
+`@casys/mcp-view` installs their small shared theme. Domain MCPs import the primitives
+instead of copying their markup and CSS:
+
+```tsx
+import { Badge, Card, DataTable, MetricGrid } from "@casys/mcp-view/preact";
+```
+
+The curated core currently contains:
 
 - cards and compact section titles;
 - responsive metric grids;
@@ -38,7 +45,15 @@ data, renders its domain, holds local state, and cleans up its renderer.
 New atomic viewers use Preact by default through `@casys/mcp-view/preact`, unless a
 specialized renderer gives a concrete reason not to. They call
 `startPreactSurfaceApp()`, which installs the theme and handles the result-driven Apps
-lifecycle. A domain component uses the shared classes before adding local CSS.
+lifecycle. A domain component assembles `Card`, `MetricGrid`, `DataTable`, `Badge`,
+`KeyValueList`, `Toolbar`, `Button`, `EmptyState`, and `StateMessage`, then adds local
+CSS only for its irreducible diagram, CAD, mesh, or evidence layout.
+
+This is shadcn-like in authoring style—small typed building blocks composed in the
+consumer—but the canonical primitives are package imports, not copied source files. That
+keeps five independent MCP Apps visually and behaviourally aligned through one versioned
+contract. Compose still selects only advertised domain component keys; it never receives
+arbitrary Preact code from YAML.
 
 A public viewer may keep a `defaultSurface` for standalone use. A product-only palette,
 such as `mcp-erpnext-components`, omits it and exposes an explicit component vocabulary

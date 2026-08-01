@@ -102,11 +102,11 @@ later, but Compose does not reimplement A2UI or execute agent-generated UI code.
 - `services/mcp-erpnext-components/` owns the product-only ERP presentation palette;
 - this repository owns saved product surfaces under `config/compose/dashboards/`.
 
-JSR currently has `@casys/mcp-view@0.5.0` and `@casys/mcp-compose@0.8.0`. The sibling
-workspace contains the post-proof `0.6.0` view candidate (Preact adapter and shared
-theme) and `0.8.1` Compose candidate (component-only catalogs). Until those revisions
-are published, real integration checks use the sibling builds. After publication,
-update domain locks and rerun the same built-resource and Workbench proof.
+The reusable presentation contract ships as `@casys/mcp-view@0.7.0`; the Workbench
+runtime consumes npm `@casys/mcp-compose@0.8.1`. Domain repositories pin those releases,
+build their single-file resources locally, and rerun the same built-resource and
+Workbench proof before publication. A sibling checkout is only an explicit development
+override, never a runtime prerequisite.
 
 ## Next boundary
 

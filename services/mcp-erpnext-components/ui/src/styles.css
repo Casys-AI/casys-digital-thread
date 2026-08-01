@@ -12,7 +12,7 @@ button {
 }
 code {
   display: block;
-  color: var(--color-text-secondary, #a99c8f);
+  color: var(--mcp-view-muted);
   font-size: 0.72rem;
 }
 .identity {
@@ -25,7 +25,7 @@ code {
   display: grid;
   gap: 0.35rem;
 }
-.bom-list button {
+.bom-list-entry {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -34,14 +34,17 @@ code {
   padding: 0.55rem 0.65rem;
   border: 1px solid transparent;
   border-radius: 0.5rem;
-  background: rgba(128, 112, 95, 0.08);
+  background: var(--mcp-view-subtle);
   color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  min-height: 0;
   text-align: left;
-  cursor: pointer;
 }
-.bom-list button.selected {
-  border-color: #e49a53;
-  background: rgba(228, 154, 83, 0.12);
+.bom-list-entry[aria-pressed="true"] {
+  border-color: var(--mcp-view-accent);
+  background: color-mix(in srgb, var(--mcp-view-accent) 12%, transparent);
+  color: inherit;
 }
 .operations,
 .costs {
@@ -56,7 +59,7 @@ code {
   gap: 0.75rem;
   padding: 0.58rem;
   border-radius: 0.5rem;
-  background: rgba(128, 112, 95, 0.08);
+  background: var(--mcp-view-subtle);
 }
 .operations article > div {
   display: grid;
@@ -65,7 +68,7 @@ code {
 .operations span,
 .operations small,
 .costs span {
-  color: var(--color-text-secondary, #a99c8f);
+  color: var(--mcp-view-muted);
   font-size: 0.7rem;
 }
 .costs > div {
@@ -74,7 +77,7 @@ code {
 }
 progress {
   width: 100%;
-  accent-color: #e49a53;
+  accent-color: var(--mcp-view-accent);
 }
 
 @container (max-width: 440px) {

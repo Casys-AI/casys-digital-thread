@@ -1,6 +1,12 @@
 import { defineComponentRegistry, readSurfaceContext } from "@casys/mcp-view";
 import {
+  Badge,
+  Button,
+  Card,
+  DataTable,
   definePreactComponent,
+  EmptyState,
+  MetricGrid,
   type PreactSurfaceComponentProps,
   type PreactSurfaceContext,
 } from "@casys/mcp-view/preact";
@@ -16,9 +22,9 @@ const BomList = ({ data, context }: Props) => (
   <Card title="Bills of materials">
     <div class="bom-list">
       {data.boms.map((bom) => (
-        <button
-          class={bom.name === data.selectedName ? "selected" : ""}
-          type="button"
+        <Button
+          className="bom-list-entry"
+          pressed={bom.name === data.selectedName}
           onClick={() =>
             publishSelection(context, "erpnext.bom.selected", {
               name: bom.name,
@@ -27,7 +33,7 @@ const BomList = ({ data, context }: Props) => (
         >
           <span>{bom.itemName || bom.item}</span>
           <code>{bom.name}</code>
-        </button>
+        </Button>
       ))}
     </div>
   </Card>
@@ -45,12 +51,12 @@ const BomIdentity = ({ data }: Props) => {
               <code>{bom.name}</code>
             </div>
             <div class="mcp-view-badges">
-              {bom.active && <span class="mcp-view-badge">Active</span>}
-              {bom.default && <span class="mcp-view-badge">Default</span>}
+              {bom.active && <Badge tone="success">Active</Badge>}
+              {bom.default && <Badge tone="success">Default</Badge>}
             </div>
           </div>
         )
-        : <Empty />}
+        : <EmptyState>No matching BOM data</EmptyState>}
     </Card>
   );
 };
@@ -59,27 +65,35 @@ const BomMetrics = ({ data }: Props) => {
   const bom = data.selected;
   const metrics = bom
     ? [
-      ["Output quantity", formatNumber(bom.quantity), bom.uom],
-      ["Materials", String(bom.materials.length), undefined],
-      ["Operations", String(bom.operations.length), undefined],
-      ["Total cost", formatMoney(bom.totalCost, bom.currency), bom.currency],
+      {
+        id: "output-quantity",
+        label: "Output quantity",
+        value: formatNumber(bom.quantity),
+        unit: bom.uom,
+      },
+      {
+        id: "materials",
+        label: "Materials",
+        value: String(bom.materials.length),
+      },
+      {
+        id: "operations",
+        label: "Operations",
+        value: String(bom.operations.length),
+      },
+      {
+        id: "total-cost",
+        label: "Total cost",
+        value: formatMoney(bom.totalCost, bom.currency),
+        unit: bom.currency,
+      },
     ]
     : [];
   return (
     <Card title="BOM metrics">
       {metrics.length
-        ? (
-          <div class="mcp-view-metrics">
-            {metrics.map(([label, value, unit]) => (
-              <article class="mcp-view-metric">
-                <span class="mcp-view-metric-label">{label}</span>
-                <strong class="mcp-view-metric-value">{value}</strong>
-                {unit && <small class="mcp-view-metric-unit">{unit}</small>}
-              </article>
-            ))}
-          </div>
-        )
-        : <Empty />}
+        ? <MetricGrid items={metrics} />
+        : <EmptyState>No matching BOM data</EmptyState>}
     </Card>
   );
 };
@@ -113,68 +127,56 @@ const BomMaterials = ({ data, context }: Props) => {
       )}
       {data.selected?.materials.length
         ? (
-          <div class="mcp-view-table-wrap">
-            <table class="mcp-view-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Qty</th>
-                  <th>Rate</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.selected.materials.map((material) => (
-                  <MaterialRow
-                    material={material}
-                    selected={material.itemCode === selectedItemCode}
-                    onSelect={() => {
-                      setSelectedItemCode(material.itemCode);
-                      publishSelection(
-                        context,
-                        "erpnext.material.selected",
-                        { itemCode: material.itemCode },
-                      );
-                    }}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            label="BOM materials"
+            rows={data.selected.materials}
+            columns={MATERIAL_COLUMNS}
+            rowKey={(material) => material.itemCode}
+            selected={(material) => material.itemCode === selectedItemCode}
+            onSelect={(material) => {
+              setSelectedItemCode(material.itemCode);
+              publishSelection(
+                context,
+                "erpnext.material.selected",
+                { itemCode: material.itemCode },
+              );
+            }}
+          />
         )
-        : <Empty />}
+        : <EmptyState>No matching BOM data</EmptyState>}
     </Card>
   );
 };
 
-const MaterialRow = ({
-  material,
-  selected,
-  onSelect,
-}: {
-  material: BomMaterial;
-  selected: boolean;
-  onSelect: () => void;
-}) => (
-  <tr
-    class={selected ? "mcp-view-selected" : ""}
-    onClick={onSelect}
-    onKeyDown={(event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      onSelect();
-    }}
-    tabindex={0}
-  >
-    <td>
-      <strong>{material.itemName || material.itemCode}</strong>
-      <code>{material.itemCode}</code>
-    </td>
-    <td>{formatNumber(material.quantity)} {material.uom}</td>
-    <td>{formatNumber(material.rate)}</td>
-    <td>{formatNumber(material.amount)}</td>
-  </tr>
-);
+const MATERIAL_COLUMNS = [
+  {
+    id: "item",
+    label: "Item",
+    render: (material: BomMaterial) => (
+      <>
+        <strong>{material.itemName || material.itemCode}</strong>
+        <code>{material.itemCode}</code>
+      </>
+    ),
+  },
+  {
+    id: "quantity",
+    label: "Qty",
+    render: (material: BomMaterial) => (
+      <>{formatNumber(material.quantity)} {material.uom}</>
+    ),
+  },
+  {
+    id: "rate",
+    label: "Rate",
+    render: (material: BomMaterial) => formatNumber(material.rate),
+  },
+  {
+    id: "amount",
+    label: "Amount",
+    render: (material: BomMaterial) => formatNumber(material.amount),
+  },
+] as const;
 
 const BomOperations = ({ data }: Props) => (
   <Card title="Operations">
@@ -195,7 +197,7 @@ const BomOperations = ({ data }: Props) => (
           ))}
         </div>
       )
-      : <Empty />}
+      : <EmptyState>No matching BOM data</EmptyState>}
   </Card>
 );
 
@@ -219,7 +221,7 @@ const BomCosts = ({ data }: Props) => {
             <Cost label="Total" value={bom.totalCost} total={bom.totalCost} />
           </div>
         )
-        : <Empty />}
+        : <EmptyState>No matching BOM data</EmptyState>}
     </Card>
   );
 };
@@ -233,17 +235,6 @@ const Cost = (
     <strong>{formatNumber(value)}</strong>
   </div>
 );
-
-const Card = (
-  { title, children }: { title: string; children: preact.ComponentChildren },
-) => (
-  <section class="mcp-view-card">
-    <h2 class="mcp-view-card-title">{title}</h2>
-    {children}
-  </section>
-);
-
-const Empty = () => <p class="mcp-view-empty">No matching BOM data</p>;
 
 export const bomRegistry = defineComponentRegistry<
   ErpNextBomSurfaceData,

@@ -27,8 +27,8 @@ differs.
 
 The editable service is
 [`services/mcp-erpnext-components/`](../../services/mcp-erpnext-components/). It uses
-the published `@casys/mcp-erpnext` client as its provider data plane and the local
-`@casys/mcp-view/preact` candidate for presentation.
+the published `@casys/mcp-erpnext` client as its provider data plane and
+`@casys/mcp-view/preact@0.7.0` for the shared presentation primitives.
 
 ```bash
 cd services/mcp-erpnext-components

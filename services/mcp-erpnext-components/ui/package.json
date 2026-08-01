@@ -8,7 +8,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@casys/mcp-view": "file:../../../../mcp-server/packages/view/dist-node",
+    "@casys/mcp-view": "^0.7.0",
     "preact": "^10.29.7"
   },
   "devDependencies": {

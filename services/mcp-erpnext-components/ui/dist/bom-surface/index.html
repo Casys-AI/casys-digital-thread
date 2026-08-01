@@ -164,6 +164,35 @@ container holding the app. Specify either width or maxWidth, and either height o
   text-transform: uppercase;
 }
 
+.mcp-view-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.72rem;
+}
+
+.mcp-view-card-heading { min-width: 0; }
+
+.mcp-view-card-header .mcp-view-card-title { margin: 0; }
+
+.mcp-view-card-eyebrow {
+  margin: 0 0 0.18rem;
+  color: var(--mcp-view-accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mcp-view-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
 .mcp-view-message,
 .mcp-view-empty {
   color: var(--mcp-view-muted);
@@ -204,6 +233,11 @@ container holding the app. Specify either width or maxWidth, and either height o
   font-size: 1.1rem;
 }
 
+.mcp-view-metric[data-tone="info"] .mcp-view-metric-value { color: var(--mcp-view-accent); }
+.mcp-view-metric[data-tone="success"] .mcp-view-metric-value { color: var(--mcp-view-success); }
+.mcp-view-metric[data-tone="warning"] .mcp-view-metric-value { color: var(--mcp-view-warning); }
+.mcp-view-metric[data-tone="danger"] .mcp-view-metric-value { color: var(--mcp-view-danger); }
+
 .mcp-view-badges {
   display: flex;
   flex-wrap: wrap;
@@ -213,10 +247,35 @@ container holding the app. Specify either width or maxWidth, and either height o
 .mcp-view-badge {
   padding: 0.2rem 0.45rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--mcp-view-success) 15%, transparent);
-  color: var(--mcp-view-success);
+  background: color-mix(in srgb, var(--mcp-view-muted) 12%, transparent);
+  color: var(--mcp-view-muted);
   font-size: 0.68rem;
   font-weight: 700;
+}
+
+.mcp-view-badge[data-tone="info"] {
+  background: color-mix(in srgb, var(--mcp-view-accent) 15%, transparent);
+  color: var(--mcp-view-accent);
+}
+
+.mcp-view-badge:not([data-tone]) {
+  background: color-mix(in srgb, var(--mcp-view-success) 15%, transparent);
+  color: var(--mcp-view-success);
+}
+
+.mcp-view-badge[data-tone="success"] {
+  background: color-mix(in srgb, var(--mcp-view-success) 15%, transparent);
+  color: var(--mcp-view-success);
+}
+
+.mcp-view-badge[data-tone="warning"] {
+  background: color-mix(in srgb, var(--mcp-view-warning) 15%, transparent);
+  color: var(--mcp-view-warning);
+}
+
+.mcp-view-badge[data-tone="danger"] {
+  background: color-mix(in srgb, var(--mcp-view-danger) 15%, transparent);
+  color: var(--mcp-view-danger);
 }
 
 .mcp-view-table-wrap {
@@ -235,15 +294,20 @@ container holding the app. Specify either width or maxWidth, and either height o
 .mcp-view-table td {
   padding: 0.48rem 0.42rem;
   border-bottom: 1px solid color-mix(in srgb, var(--mcp-view-border) 67%, transparent);
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
 }
 
-.mcp-view-table th:first-child,
-.mcp-view-table td:first-child { text-align: left; }
+.mcp-view-table [data-align="right"] { text-align: right; }
 
-.mcp-view-table tbody tr { cursor: pointer; }
-.mcp-view-table tbody tr:hover { background: color-mix(in srgb, var(--mcp-view-accent) 8%, transparent); }
+.mcp-view-table tbody tr[data-interactive="true"] { cursor: pointer; }
+.mcp-view-table tbody tr[data-interactive="true"]:hover {
+  background: color-mix(in srgb, var(--mcp-view-accent) 8%, transparent);
+}
+.mcp-view-table tbody tr[data-interactive="true"]:focus-visible {
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: -2px;
+}
 
 .mcp-view-selected {
   background: color-mix(in srgb, var(--mcp-view-accent) 18%, transparent);
@@ -282,12 +346,100 @@ container holding the app. Specify either width or maxWidth, and either height o
   background: var(--mcp-view-subtle);
 }
 
+.mcp-view-key-values {
+  display: grid;
+  gap: 0.42rem;
+  margin: 0;
+}
+
+.mcp-view-key-value {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.58rem;
+  border-radius: 0.5rem;
+  background: var(--mcp-view-subtle);
+}
+
+.mcp-view-key-value dt {
+  color: var(--mcp-view-muted);
+  font-size: 0.7rem;
+}
+
+.mcp-view-key-value dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.mcp-view-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.mcp-view-button {
+  min-height: 1.9rem;
+  padding: 0.35rem 0.58rem;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: 0.5rem;
+  background: var(--mcp-view-subtle);
+  color: var(--mcp-view-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.mcp-view-button:not(:disabled):hover,
+.mcp-view-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--mcp-view-accent) 58%, var(--mcp-view-border));
+  color: var(--mcp-view-accent);
+}
+
+.mcp-view-button:focus-visible {
+  border-color: var(--mcp-view-accent);
+  color: var(--mcp-view-accent);
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: 2px;
+}
+
+.mcp-view-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--mcp-view-accent) 13%, transparent);
+}
+
+.mcp-view-button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.mcp-view-state {
+  display: grid;
+  gap: 0.3rem;
+  min-height: 4rem;
+  place-content: center;
+  padding: 1rem;
+  border: 1px dashed var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius);
+  color: var(--mcp-view-muted);
+  text-align: center;
+}
+
+.mcp-view-state[data-tone="success"] strong { color: var(--mcp-view-success); }
+.mcp-view-state[data-tone="warning"] strong { color: var(--mcp-view-warning); }
+.mcp-view-state[data-tone="danger"] strong { color: var(--mcp-view-danger); }
+.mcp-view-state[data-tone="info"] strong { color: var(--mcp-view-accent); }
+
+.mcp-view-state-detail { max-width: 48ch; }
+
 @container (max-width: 440px) {
   .mcp-view-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mcp-view-row-responsive { align-items: flex-start; flex-direction: column; }
+  .mcp-view-card-header { align-items: stretch; flex-direction: column; }
+  .mcp-view-card-actions { justify-content: flex-start; }
+  .mcp-view-key-value { grid-template-columns: 1fr; gap: 0.2rem; }
+  .mcp-view-key-value dd { text-align: left; }
 }
-`;function Lb(e=document){let t=e.getElementById(Fb);if(t)return t;let n=e.createElement(`style`);return n.id=Fb,n.textContent=Ib,e.head.append(n),n}var Rb={mount(e,t,n){ke(ae(e,t),n)},unmount(e){ke(null,e)}};function zb(e,t,n=Rb){return Qy({descriptor:e,mount(e,r){return n.mount(t,{data:r.data,context:r.appContext,instanceId:r.instanceId,props:r.props},e),()=>n.unmount(e)}})}async function Bb(e){e.theme!==!1&&Lb();let t={},n,r,i=0,a,o=t=>{e.onError?e.onError(t):console.error(`[mcp-view/preact] Component surface failed`,t)},s=(t,n)=>{if(e.renderMessage)return e.renderMessage(t,n);let r=document.createElement(`div`);return r.className=`mcp-view-message mcp-view-message-${n}`,r.textContent=t,r},c=Tb({onEnter(e,n){return t.currentData=n,n},render(t,a){let c=document.createElement(`div`);c.className=e.surfaceClassName??`mcp-view-preact-surface`;let l=ib(e.registry,t.hostContext);if(!l)return c.replaceChildren(s(e.surfaceRequiredLabel??`This App exposes components and requires a host-selected surface.`,`surface-required`)),c;let u=++i;return r=ab({root:c,registry:e.registry,data:a,appContext:t,hostContext:t.hostContext,surface:l}).then(async e=>{if(u!==i){await e.dispose();return}n=e}).catch(e=>{c.replaceChildren(s(`Component surface failed: ${e instanceof Error?e.message:String(e)}`,`error`)),o(e)}),c},onLeave:async()=>{i+=1,await r,r=void 0;let e=n;n=void 0,await e?.dispose()}}),l=await Eb({info:e.info,root:e.root,views:{loading:Tb({render:()=>s(e.loadingLabel??`Waiting for data…`,`loading`)}),empty:Tb({render:()=>s(e.emptyLabel??`No structured data received.`,`empty`)}),surface:c},initialView:`loading`,initialState:t,componentCatalog:tb(e.registry),onToolInputPartial:async(e,n)=>{t.currentData=void 0,await n.navigate(`loading`)},onToolResult:async(t,n)=>{let r=Mb(t,{fallback:`json-text`,...e.validate?{validate:e.validate}:{}});await n.navigate(r?`surface`:`empty`,r)},onTeardown:()=>{a?.(),a=void 0}}),u=()=>{let e=t.currentData;!e||l.currentView!==`surface`||l.navigate(`surface`,e).catch(o)};l.ctx.app.addEventListener(`hostcontextchanged`,u),a=()=>{l.ctx.app.removeEventListener(`hostcontextchanged`,u)}}var Vb,Z,Hb,Ub,Wb=0,Gb=[],Q=a,Kb=Q.__b,qb=Q.__r,Jb=Q.diffed,Yb=Q.__c,Xb=Q.unmount,Zb=Q.__;function Qb(e,t){Q.__h&&Q.__h(Z,e,Wb||t),Wb=0;var n=Z.__H||(Z.__H={__:[],__h:[]});return e>=n.__.length&&n.__.push({}),n.__[e]}function $b(e){return Wb=1,ex(cx,e)}function ex(e,t,n){var r=Qb(Vb++,2);if(r.t=e,!r.__c&&(r.__=[n?n(t):cx(void 0,t),function(e){var t=r.__N?r.__N[0]:r.__[0],n=r.t(t,e);t!==n&&(r.__N=[n,r.__[1]],r.__c.setState({}))}],r.__c=Z,!Z.__f)){var i=function(e,t,n){if(!r.__c.__H)return!0;var i=!1,o=r.__c.props!==e;if(r.__c.__H.__.some(function(e){if(e.__N){i=!0;var t=e.__[0];e.__=e.__N,e.__N=void 0,t!==e.__[0]&&(o=!0)}}),a){var s=a.call(this,e,t,n);return i?s||o:s}return!i||o};Z.__f=!0;var a=Z.shouldComponentUpdate,o=Z.componentWillUpdate;Z.componentWillUpdate=function(e,t,n){if(this.__e){var r=a;a=void 0,i(e,t,n),a=r}o&&o.call(this,e,t,n)},Z.shouldComponentUpdate=i}return r.__N||r.__}function tx(e,t){var n=Qb(Vb++,3);!Q.__s&&sx(n.__H,t)&&(n.__=e,n.u=t,Z.__H.__h.push(n))}function nx(){for(var e;e=Gb.shift();){var t=e.__H;if(e.__P&&t)try{t.__h.some(ax),t.__h.some(ox),t.__h=[]}catch(n){t.__h=[],Q.__e(n,e.__v)}}}Q.__b=function(e){Z=null,Kb&&Kb(e)},Q.__=function(e,t){e&&t.__k&&t.__k.__m&&(e.__m=t.__k.__m),Zb&&Zb(e,t)},Q.__r=function(e){qb&&qb(e),Vb=0;var t=(Z=e.__c).__H;t&&(Hb===Z?(t.__h=[],Z.__h=[],t.__.some(function(e){e.__N&&(e.__=e.__N),e.u=e.__N=void 0})):(t.__h.some(ax),t.__h.some(ox),t.__h=[],Vb=0)),Hb=Z},Q.diffed=function(e){Jb&&Jb(e);var t=e.__c;t&&t.__H&&(t.__H.__h.length&&(Gb.push(t)!==1&&Ub===Q.requestAnimationFrame||((Ub=Q.requestAnimationFrame)||ix)(nx)),t.__H.__.some(function(e){e.u&&=(e.__H=e.u,void 0)})),Hb=Z=null},Q.__c=function(e,t){t.some(function(e){try{e.__h.some(ax),e.__h=e.__h.filter(function(e){return!e.__||ox(e)})}catch(n){t.some(function(e){e.__h&&=[]}),t=[],Q.__e(n,e.__v)}}),Yb&&Yb(e,t)},Q.unmount=function(e){Xb&&Xb(e);var t,n=e.__c;n&&n.__H&&(n.__H.__.some(function(e){try{ax(e)}catch(e){t=e}}),n.__H=void 0,t&&Q.__e(t,n.__v))};var rx=typeof requestAnimationFrame==`function`;function ix(e){var t,n=function(){clearTimeout(r),rx&&cancelAnimationFrame(t),setTimeout(e)},r=setTimeout(n,35);rx&&(t=requestAnimationFrame(n))}function ax(e){var t=Z,n=e.__c;typeof n==`function`&&(e.__c=void 0,n()),Z=t}function ox(e){var t=Z;e.__c=e.__(),Z=t}function sx(e,t){return!e||e.length!==t.length||t.some(function(t,n){return t!==e[n]})}function cx(e,t){return typeof t==`function`?t(e):t}var lx={bomList:`erpnext.bom.list`,bomIdentity:`erpnext.bom.identity`,bomMetrics:`erpnext.bom.metrics`,bomMaterials:`erpnext.bom.materials`,bomOperations:`erpnext.bom.operations`,bomCosts:`erpnext.bom.costs`},ux=0;Array.isArray;function $(e,t,n,r,i,o){t||={};var s,c,l=t;if(`ref`in l)for(c in l={},t)c==`ref`?s=t[c]:l[c]=t[c];var u={type:e,props:l,key:n,ref:s,__k:null,__:null,__b:0,__e:null,__c:null,constructor:void 0,__v:--ux,__i:-1,__u:0,__source:i,__self:o};if(typeof e==`function`&&(s=e.defaultProps))for(c in s)l[c]===void 0&&(l[c]=s[c]);return a.vnode&&a.vnode(u),u}var dx=({data:e,context:t})=>$(yx,{title:`Bills of materials`,children:$(`div`,{class:`bom-list`,children:e.boms.map(n=>$(`button`,{class:n.name===e.selectedName?`selected`:``,type:`button`,onClick:()=>Sx(t,`erpnext.bom.selected`,{name:n.name,item:n.item}),children:[$(`span`,{children:n.itemName||n.item}),$(`code`,{children:n.name})]}))})}),fx=({data:e})=>{let t=e.selected;return $(yx,{title:`BOM identity`,children:t?$(`div`,{class:`identity mcp-view-row-responsive`,children:[$(`div`,{children:[$(`strong`,{children:t.itemName||t.item}),$(`code`,{children:t.name})]}),$(`div`,{class:`mcp-view-badges`,children:[t.active&&$(`span`,{class:`mcp-view-badge`,children:`Active`}),t.default&&$(`span`,{class:`mcp-view-badge`,children:`Default`})]})]}):$(bx,{})})},px=({data:e})=>{let t=e.selected,n=t?[[`Output quantity`,Cx(t.quantity),t.uom],[`Materials`,String(t.materials.length),void 0],[`Operations`,String(t.operations.length),void 0],[`Total cost`,wx(t.totalCost,t.currency),t.currency]]:[];return $(yx,{title:`BOM metrics`,children:n.length?$(`div`,{class:`mcp-view-metrics`,children:n.map(([e,t,n])=>$(`article`,{class:`mcp-view-metric`,children:[$(`span`,{class:`mcp-view-metric-label`,children:e}),$(`strong`,{class:`mcp-view-metric-value`,children:t}),n&&$(`small`,{class:`mcp-view-metric-unit`,children:n})]}))}):$(bx,{})})},mx=({data:e,context:t})=>{let[n,r]=$b(),[i,a]=$b();return tx(()=>t.events?.on(`syson.element.selected`,({data:t})=>{let n=Tx(t);n&&(r(n),a(Ex(e,n)?.itemCode))}),[t,e]),$(yx,{title:`Materials`,children:[n&&$(`div`,{class:`mcp-view-cross-selection`,role:`status`,children:[`SysON selection: `,$(`strong`,{children:n}),!i&&$(`span`,{class:`mcp-view-cross-selection-status`,children:`No direct BOM match`})]}),e.selected?.materials.length?$(`div`,{class:`mcp-view-table-wrap`,children:$(`table`,{class:`mcp-view-table`,children:[$(`thead`,{children:$(`tr`,{children:[$(`th`,{children:`Item`}),$(`th`,{children:`Qty`}),$(`th`,{children:`Rate`}),$(`th`,{children:`Amount`})]})}),$(`tbody`,{children:e.selected.materials.map(e=>$(hx,{material:e,selected:e.itemCode===i,onSelect:()=>{a(e.itemCode),Sx(t,`erpnext.material.selected`,{itemCode:e.itemCode})}}))})]})}):$(bx,{})]})},hx=({material:e,selected:t,onSelect:n})=>$(`tr`,{class:t?`mcp-view-selected`:``,onClick:n,onKeyDown:e=>{(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),n())},tabindex:0,children:[$(`td`,{children:[$(`strong`,{children:e.itemName||e.itemCode}),$(`code`,{children:e.itemCode})]}),$(`td`,{children:[Cx(e.quantity),` `,e.uom]}),$(`td`,{children:Cx(e.rate)}),$(`td`,{children:Cx(e.amount)})]}),gx=({data:e})=>$(yx,{title:`Operations`,children:e.selected?.operations.length?$(`div`,{class:`operations`,children:e.selected.operations.map(e=>$(`article`,{children:[$(`div`,{children:[$(`strong`,{children:e.operation}),$(`span`,{children:e.workstation||`Unassigned`})]}),$(`div`,{children:[$(`b`,{children:[Cx(e.timeMinutes),` min`]}),$(`small`,{children:Cx(e.operatingCost)})]})]}))}):$(bx,{})}),_x=({data:e})=>{let t=e.selected;return $(yx,{title:`Cost structure`,children:t?$(`div`,{class:`costs`,children:[$(vx,{label:`Raw materials`,value:t.rawMaterialCost,total:t.totalCost}),$(vx,{label:`Operations`,value:t.operatingCost,total:t.totalCost}),$(vx,{label:`Total`,value:t.totalCost,total:t.totalCost})]}):$(bx,{})})},vx=({label:e,value:t,total:n})=>$(`div`,{children:[$(`span`,{children:e}),$(`progress`,{max:Math.max(n,1),value:t}),$(`strong`,{children:Cx(t)})]}),yx=({title:e,children:t})=>$(`section`,{class:`mcp-view-card`,children:[$(`h2`,{class:`mcp-view-card-title`,children:e}),t]}),bx=()=>$(`p`,{class:`mcp-view-empty`,children:`No matching BOM data`}),xx=$y({components:{[lx.bomList]:zb({title:`BOM list`,description:`Selectable ERPNext BOM documents.`},dx),[lx.bomIdentity]:zb({title:`BOM identity`,description:`Selected item, document and status.`},fx),[lx.bomMetrics]:zb({title:`BOM metrics`,description:`Compact quantity, cost and count metrics.`},px),[lx.bomMaterials]:zb({title:`BOM materials`,description:`Raw material quantities and costs.`},mx),[lx.bomOperations]:zb({title:`BOM operations`,description:`Manufacturing operations and workstations.`},gx),[lx.bomCosts]:zb({title:`BOM costs`,description:`Material and operating cost structure.`},_x)}});function Sx(e,t,n){e.capabilities.updateModelContext&&e.app.updateModelContext({content:[{type:`text`,text:`${t}: ${JSON.stringify(n)}`}],structuredContent:{event:t,...n}}),nb(e.hostContext)?.eventChannel===`ui/compose/event`&&e.events?.emit(t,n)}function Cx(e){return new Intl.NumberFormat(void 0,{maximumFractionDigits:2}).format(e)}function wx(e,t){if(!t)return Cx(e);try{return new Intl.NumberFormat(void 0,{style:`currency`,currency:t}).format(e)}catch{return`${Cx(e)} ${t}`}}function Tx(e){if(!e||typeof e!=`object`||Array.isArray(e))return;let t=e.label;if(typeof t!=`string`||!t.trim())return;let n=t.replace(/«[^»]+»/g,``).trim();return n.split(`:`).at(-1)?.trim()||n}function Ex(e,t){let n=Dx(t);if(n)return e.selected?.materials.find(e=>{let t=Dx(e.itemCode),r=Dx(e.itemName??``);return t===n||r.length>0&&(r===n||r.includes(n)||n.includes(r))})}function Dx(e){return e.toLocaleLowerCase().replace(/[^a-z0-9]+/g,``)}var Ox=document.getElementById(`app`);if(!Ox)throw Error(`Missing #app root`);await Bb({root:Ox,info:{name:`ERPNext BOM components`,version:`0.1.0`},registry:xx,surfaceClassName:`erpnext-component-surface`,loadingLabel:`Waiting for ERPNext BOM data…`,emptyLabel:`ERPNext returned no composable BOM data.`,surfaceRequiredLabel:`This resource exposes ERPNext components and requires a Compose-selected surface.`,validate:e=>{if(!e||typeof e!=`object`||Array.isArray(e))return!1;let t=e;return Array.isArray(t.boms)&&typeof t.count==`number`}});</script>
-    <style rel="stylesheet" crossorigin>body{background:0 0;min-width:0;margin:0}button{font:inherit}.erpnext-component-surface{padding:.65rem}code{color:var(--color-text-secondary,#a99c8f);font-size:.72rem;display:block}.identity{justify-content:space-between;align-items:center;gap:.75rem;display:flex}.bom-list{gap:.35rem;display:grid}.bom-list button{width:100%;color:inherit;text-align:left;cursor:pointer;background:#80705f14;border:1px solid #0000;border-radius:.5rem;justify-content:space-between;align-items:center;gap:.6rem;padding:.55rem .65rem;display:flex}.bom-list button.selected{background:#e49a531f;border-color:#e49a53}.operations,.costs{gap:.42rem;display:grid}.operations article,.costs>div{background:#80705f14;border-radius:.5rem;justify-content:space-between;align-items:center;gap:.75rem;padding:.58rem;display:flex}.operations article>div{gap:.12rem;display:grid}.operations span,.operations small,.costs span{color:var(--color-text-secondary,#a99c8f);font-size:.7rem}.costs>div{grid-template-columns:minmax(6rem,1fr) minmax(5rem,2fr) auto;display:grid}progress{accent-color:#e49a53;width:100%}@container (width<=440px){.costs>div{grid-template-columns:1fr auto}.costs progress{grid-area:2/1/auto/-1}}
+`;function Lb(e=document){let t=e.getElementById(Fb);if(t)return t;let n=e.createElement(`style`);return n.id=Fb,n.textContent=Ib,e.head.append(n),n}var Rb={mount(e,t,n){ke(ae(e,t),n)},unmount(e){ke(null,e)}};function zb(e,t,n=Rb){return Qy({descriptor:e,mount(e,r){return n.mount(t,{data:r.data,context:r.appContext,instanceId:r.instanceId,props:r.props},e),()=>n.unmount(e)}})}async function Bb(e){e.theme!==!1&&Lb();let t={},n,r,i=0,a,o=t=>{e.onError?e.onError(t):console.error(`[mcp-view/preact] Component surface failed`,t)},s=(t,n)=>{if(e.renderMessage)return e.renderMessage(t,n);let r=document.createElement(`div`);return r.className=`mcp-view-message mcp-view-message-${n}`,r.textContent=t,r},c=Tb({onEnter(e,n){return t.currentData=n,n},render(t,a){let c=document.createElement(`div`);c.className=e.surfaceClassName??`mcp-view-preact-surface`;let l=ib(e.registry,t.hostContext);if(!l)return c.replaceChildren(s(e.surfaceRequiredLabel??`This App exposes components and requires a host-selected surface.`,`surface-required`)),c;let u=++i;return r=ab({root:c,registry:e.registry,data:a,appContext:t,hostContext:t.hostContext,surface:l}).then(async e=>{if(u!==i){await e.dispose();return}n=e}).catch(e=>{c.replaceChildren(s(`Component surface failed: ${e instanceof Error?e.message:String(e)}`,`error`)),o(e)}),c},onLeave:async()=>{i+=1,await r,r=void 0;let e=n;n=void 0,await e?.dispose()}}),l=await Eb({info:e.info,root:e.root,views:{loading:Tb({render:()=>s(e.loadingLabel??`Waiting for data…`,`loading`)}),empty:Tb({render:()=>s(e.emptyLabel??`No structured data received.`,`empty`)}),surface:c},initialView:`loading`,initialState:t,componentCatalog:tb(e.registry),onToolInputPartial:async(e,n)=>{t.currentData=void 0,await n.navigate(`loading`)},onToolResult:async(t,n)=>{let r=Mb(t,{fallback:`json-text`,...e.validate?{validate:e.validate}:{}});await n.navigate(r?`surface`:`empty`,r)},onTeardown:()=>{a?.(),a=void 0}}),u=()=>{let e=t.currentData;!e||l.currentView!==`surface`||l.navigate(`surface`,e).catch(o)};l.ctx.app.addEventListener(`hostcontextchanged`,u),a=()=>{l.ctx.app.removeEventListener(`hostcontextchanged`,u)}}var Vb=0;Array.isArray;function Z(e,t,n,r,i,o){t||={};var s,c,l=t;if(`ref`in l)for(c in l={},t)c==`ref`?s=t[c]:l[c]=t[c];var u={type:e,props:l,key:n,ref:s,__k:null,__:null,__b:0,__e:null,__c:null,constructor:void 0,__v:--Vb,__i:-1,__u:0,__source:i,__self:o};if(typeof e==`function`&&(s=e.defaultProps))for(c in s)l[c]===void 0&&(l[c]=s[c]);return a.vnode&&a.vnode(u),u}function Hb({title:e,eyebrow:t,actions:n,className:r,children:i}){return Z(`section`,{class:Xb(`mcp-view-card`,r),children:[(e||t||n)&&Z(`header`,{class:`mcp-view-card-header`,children:[Z(`div`,{class:`mcp-view-card-heading`,children:[t&&Z(`p`,{class:`mcp-view-card-eyebrow`,children:t}),e&&Z(`h2`,{class:`mcp-view-card-title`,children:e})]}),n&&Z(`div`,{class:`mcp-view-card-actions`,children:n})]}),i]})}function Ub({tone:e=`neutral`,children:t,className:n}){return Z(`span`,{class:Xb(`mcp-view-badge`,n),"data-tone":e,children:t})}function Wb({items:e,className:t}){return Z(`div`,{class:Xb(`mcp-view-metrics`,t),children:e.map(e=>Z(`article`,{class:`mcp-view-metric`,"data-metric":e.id,"data-tone":e.tone??`neutral`,children:[Z(`span`,{class:`mcp-view-metric-label`,children:e.label}),Z(`strong`,{class:`mcp-view-metric-value`,children:e.value}),e.unit&&Z(`small`,{class:`mcp-view-metric-unit`,children:e.unit}),e.detail&&Z(`small`,{class:`mcp-view-metric-detail`,children:e.detail})]},e.id))})}function Gb({label:e,rows:t,columns:n,rowKey:r,selected:i,onSelect:a,emptyLabel:o=`No matching data`,className:s}){return t.length===0?Z(`div`,{"aria-label":e,class:Xb(`mcp-view-table-wrap`,s),role:`status`,children:Z(qb,{children:o})}):Z(`div`,{class:Xb(`mcp-view-table-wrap`,s),children:Z(`table`,{class:`mcp-view-table`,"aria-label":e,children:[Z(`thead`,{children:Z(`tr`,{children:n.map(e=>Z(`th`,{scope:`col`,"data-align":e.align??`left`,children:e.label},e.id))})}),Z(`tbody`,{children:t.map(e=>{let t=a!==void 0,o=i?.(e),s=()=>a?.(e);return Z(`tr`,{"aria-selected":i?o:void 0,class:o?`mcp-view-selected`:void 0,"data-interactive":t?`true`:void 0,tabIndex:t?0:void 0,onClick:t?e=>{Yb(e.currentTarget,e.target)||s()}:void 0,onKeyDown:t?e=>{e.target===e.currentTarget&&(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),s())}:void 0,children:n.map(t=>Z(`td`,{"data-align":t.align??`left`,children:t.render(e)},t.id))},r(e))})})]})})}function Kb({type:e=`button`,pressed:t,disabled:n,title:r,className:i,onClick:a,children:o}){return Z(`button`,{"aria-pressed":t,class:Xb(`mcp-view-button`,i),disabled:n,onClick:a,title:r,type:e,children:o})}function qb({children:e,className:t}){return Z(`p`,{class:Xb(`mcp-view-empty`,t),children:e})}var Jb=[`a[href]`,`button`,`input`,`select`,`textarea`,`[role='button']`,`[role='link']`].join(`,`);function Yb(e,t){let n=t;if(!n||typeof n.closest!=`function`)return!1;let r=n.closest(Jb);return r!==null&&r!==e&&e.contains(r)}function Xb(...e){return e.filter(Boolean).join(` `)}var Zb,Q,Qb,$b,ex=0,tx=[],$=a,nx=$.__b,rx=$.__r,ix=$.diffed,ax=$.__c,ox=$.unmount,sx=$.__;function cx(e,t){$.__h&&$.__h(Q,e,ex||t),ex=0;var n=Q.__H||(Q.__H={__:[],__h:[]});return e>=n.__.length&&n.__.push({}),n.__[e]}function lx(e){return ex=1,ux(vx,e)}function ux(e,t,n){var r=cx(Zb++,2);if(r.t=e,!r.__c&&(r.__=[n?n(t):vx(void 0,t),function(e){var t=r.__N?r.__N[0]:r.__[0],n=r.t(t,e);t!==n&&(r.__N=[n,r.__[1]],r.__c.setState({}))}],r.__c=Q,!Q.__f)){var i=function(e,t,n){if(!r.__c.__H)return!0;var i=!1,o=r.__c.props!==e;if(r.__c.__H.__.some(function(e){if(e.__N){i=!0;var t=e.__[0];e.__=e.__N,e.__N=void 0,t!==e.__[0]&&(o=!0)}}),a){var s=a.call(this,e,t,n);return i?s||o:s}return!i||o};Q.__f=!0;var a=Q.shouldComponentUpdate,o=Q.componentWillUpdate;Q.componentWillUpdate=function(e,t,n){if(this.__e){var r=a;a=void 0,i(e,t,n),a=r}o&&o.call(this,e,t,n)},Q.shouldComponentUpdate=i}return r.__N||r.__}function dx(e,t){var n=cx(Zb++,3);!$.__s&&_x(n.__H,t)&&(n.__=e,n.u=t,Q.__H.__h.push(n))}function fx(){for(var e;e=tx.shift();){var t=e.__H;if(e.__P&&t)try{t.__h.some(hx),t.__h.some(gx),t.__h=[]}catch(n){t.__h=[],$.__e(n,e.__v)}}}$.__b=function(e){Q=null,nx&&nx(e)},$.__=function(e,t){e&&t.__k&&t.__k.__m&&(e.__m=t.__k.__m),sx&&sx(e,t)},$.__r=function(e){rx&&rx(e),Zb=0;var t=(Q=e.__c).__H;t&&(Qb===Q?(t.__h=[],Q.__h=[],t.__.some(function(e){e.__N&&(e.__=e.__N),e.u=e.__N=void 0})):(t.__h.some(hx),t.__h.some(gx),t.__h=[],Zb=0)),Qb=Q},$.diffed=function(e){ix&&ix(e);var t=e.__c;t&&t.__H&&(t.__H.__h.length&&(tx.push(t)!==1&&$b===$.requestAnimationFrame||(($b=$.requestAnimationFrame)||mx)(fx)),t.__H.__.some(function(e){e.u&&=(e.__H=e.u,void 0)})),Qb=Q=null},$.__c=function(e,t){t.some(function(e){try{e.__h.some(hx),e.__h=e.__h.filter(function(e){return!e.__||gx(e)})}catch(n){t.some(function(e){e.__h&&=[]}),t=[],$.__e(n,e.__v)}}),ax&&ax(e,t)},$.unmount=function(e){ox&&ox(e);var t,n=e.__c;n&&n.__H&&(n.__H.__.some(function(e){try{hx(e)}catch(e){t=e}}),n.__H=void 0,t&&$.__e(t,n.__v))};var px=typeof requestAnimationFrame==`function`;function mx(e){var t,n=function(){clearTimeout(r),px&&cancelAnimationFrame(t),setTimeout(e)},r=setTimeout(n,35);px&&(t=requestAnimationFrame(n))}function hx(e){var t=Q,n=e.__c;typeof n==`function`&&(e.__c=void 0,n()),Q=t}function gx(e){var t=Q;e.__c=e.__(),Q=t}function _x(e,t){return!e||e.length!==t.length||t.some(function(t,n){return t!==e[n]})}function vx(e,t){return typeof t==`function`?t(e):t}var yx={bomList:`erpnext.bom.list`,bomIdentity:`erpnext.bom.identity`,bomMetrics:`erpnext.bom.metrics`,bomMaterials:`erpnext.bom.materials`,bomOperations:`erpnext.bom.operations`,bomCosts:`erpnext.bom.costs`},bx=({data:e,context:t})=>Z(Hb,{title:`Bills of materials`,children:Z(`div`,{class:`bom-list`,children:e.boms.map(n=>Z(Kb,{className:`bom-list-entry`,pressed:n.name===e.selectedName,onClick:()=>kx(t,`erpnext.bom.selected`,{name:n.name,item:n.item}),children:[Z(`span`,{children:n.itemName||n.item}),Z(`code`,{children:n.name})]}))})}),xx=({data:e})=>{let t=e.selected;return Z(Hb,{title:`BOM identity`,children:t?Z(`div`,{class:`identity mcp-view-row-responsive`,children:[Z(`div`,{children:[Z(`strong`,{children:t.itemName||t.item}),Z(`code`,{children:t.name})]}),Z(`div`,{class:`mcp-view-badges`,children:[t.active&&Z(Ub,{tone:`success`,children:`Active`}),t.default&&Z(Ub,{tone:`success`,children:`Default`})]})]}):Z(qb,{children:`No matching BOM data`})})},Sx=({data:e})=>{let t=e.selected,n=t?[{id:`output-quantity`,label:`Output quantity`,value:Ax(t.quantity),unit:t.uom},{id:`materials`,label:`Materials`,value:String(t.materials.length)},{id:`operations`,label:`Operations`,value:String(t.operations.length)},{id:`total-cost`,label:`Total cost`,value:jx(t.totalCost,t.currency),unit:t.currency}]:[];return Z(Hb,{title:`BOM metrics`,children:n.length?Z(Wb,{items:n}):Z(qb,{children:`No matching BOM data`})})},Cx=({data:e,context:t})=>{let[n,r]=lx(),[i,a]=lx();return dx(()=>t.events?.on(`syson.element.selected`,({data:t})=>{let n=Mx(t);n&&(r(n),a(Nx(e,n)?.itemCode))}),[t,e]),Z(Hb,{title:`Materials`,children:[n&&Z(`div`,{class:`mcp-view-cross-selection`,role:`status`,children:[`SysON selection: `,Z(`strong`,{children:n}),!i&&Z(`span`,{class:`mcp-view-cross-selection-status`,children:`No direct BOM match`})]}),e.selected?.materials.length?Z(Gb,{label:`BOM materials`,rows:e.selected.materials,columns:wx,rowKey:e=>e.itemCode,selected:e=>e.itemCode===i,onSelect:e=>{a(e.itemCode),kx(t,`erpnext.material.selected`,{itemCode:e.itemCode})}}):Z(qb,{children:`No matching BOM data`})]})},wx=[{id:`item`,label:`Item`,render:e=>Z(se,{children:[Z(`strong`,{children:e.itemName||e.itemCode}),Z(`code`,{children:e.itemCode})]})},{id:`quantity`,label:`Qty`,render:e=>Z(se,{children:[Ax(e.quantity),` `,e.uom]})},{id:`rate`,label:`Rate`,render:e=>Ax(e.rate)},{id:`amount`,label:`Amount`,render:e=>Ax(e.amount)}],Tx=({data:e})=>Z(Hb,{title:`Operations`,children:e.selected?.operations.length?Z(`div`,{class:`operations`,children:e.selected.operations.map(e=>Z(`article`,{children:[Z(`div`,{children:[Z(`strong`,{children:e.operation}),Z(`span`,{children:e.workstation||`Unassigned`})]}),Z(`div`,{children:[Z(`b`,{children:[Ax(e.timeMinutes),` min`]}),Z(`small`,{children:Ax(e.operatingCost)})]})]}))}):Z(qb,{children:`No matching BOM data`})}),Ex=({data:e})=>{let t=e.selected;return Z(Hb,{title:`Cost structure`,children:t?Z(`div`,{class:`costs`,children:[Z(Dx,{label:`Raw materials`,value:t.rawMaterialCost,total:t.totalCost}),Z(Dx,{label:`Operations`,value:t.operatingCost,total:t.totalCost}),Z(Dx,{label:`Total`,value:t.totalCost,total:t.totalCost})]}):Z(qb,{children:`No matching BOM data`})})},Dx=({label:e,value:t,total:n})=>Z(`div`,{children:[Z(`span`,{children:e}),Z(`progress`,{max:Math.max(n,1),value:t}),Z(`strong`,{children:Ax(t)})]}),Ox=$y({components:{[yx.bomList]:zb({title:`BOM list`,description:`Selectable ERPNext BOM documents.`},bx),[yx.bomIdentity]:zb({title:`BOM identity`,description:`Selected item, document and status.`},xx),[yx.bomMetrics]:zb({title:`BOM metrics`,description:`Compact quantity, cost and count metrics.`},Sx),[yx.bomMaterials]:zb({title:`BOM materials`,description:`Raw material quantities and costs.`},Cx),[yx.bomOperations]:zb({title:`BOM operations`,description:`Manufacturing operations and workstations.`},Tx),[yx.bomCosts]:zb({title:`BOM costs`,description:`Material and operating cost structure.`},Ex)}});function kx(e,t,n){e.capabilities.updateModelContext&&e.app.updateModelContext({content:[{type:`text`,text:`${t}: ${JSON.stringify(n)}`}],structuredContent:{event:t,...n}}),nb(e.hostContext)?.eventChannel===`ui/compose/event`&&e.events?.emit(t,n)}function Ax(e){return new Intl.NumberFormat(void 0,{maximumFractionDigits:2}).format(e)}function jx(e,t){if(!t)return Ax(e);try{return new Intl.NumberFormat(void 0,{style:`currency`,currency:t}).format(e)}catch{return`${Ax(e)} ${t}`}}function Mx(e){if(!e||typeof e!=`object`||Array.isArray(e))return;let t=e.label;if(typeof t!=`string`||!t.trim())return;let n=t.replace(/«[^»]+»/g,``).trim();return n.split(`:`).at(-1)?.trim()||n}function Nx(e,t){let n=Px(t);if(n)return e.selected?.materials.find(e=>{let t=Px(e.itemCode),r=Px(e.itemName??``);return t===n||r.length>0&&(r===n||r.includes(n)||n.includes(r))})}function Px(e){return e.toLocaleLowerCase().replace(/[^a-z0-9]+/g,``)}var Fx=document.getElementById(`app`);if(!Fx)throw Error(`Missing #app root`);await Bb({root:Fx,info:{name:`ERPNext BOM components`,version:`0.1.0`},registry:Ox,surfaceClassName:`erpnext-component-surface`,loadingLabel:`Waiting for ERPNext BOM data…`,emptyLabel:`ERPNext returned no composable BOM data.`,surfaceRequiredLabel:`This resource exposes ERPNext components and requires a Compose-selected surface.`,validate:e=>{if(!e||typeof e!=`object`||Array.isArray(e))return!1;let t=e;return Array.isArray(t.boms)&&typeof t.count==`number`}});</script>
+    <style rel="stylesheet" crossorigin>body{background:0 0;min-width:0;margin:0}button{font:inherit}.erpnext-component-surface{padding:.65rem}code{color:var(--mcp-view-muted);font-size:.72rem;display:block}.identity{justify-content:space-between;align-items:center;gap:.75rem;display:flex}.bom-list{gap:.35rem;display:grid}.bom-list-entry{background:var(--mcp-view-subtle);width:100%;color:inherit;font-size:inherit;font-weight:inherit;text-align:left;border:1px solid #0000;border-radius:.5rem;justify-content:space-between;align-items:center;gap:.6rem;min-height:0;padding:.55rem .65rem;display:flex}.bom-list-entry[aria-pressed=true]{border-color:var(--mcp-view-accent);background:color-mix(in srgb, var(--mcp-view-accent) 12%, transparent);color:inherit}.operations,.costs{gap:.42rem;display:grid}.operations article,.costs>div{background:var(--mcp-view-subtle);border-radius:.5rem;justify-content:space-between;align-items:center;gap:.75rem;padding:.58rem;display:flex}.operations article>div{gap:.12rem;display:grid}.operations span,.operations small,.costs span{color:var(--mcp-view-muted);font-size:.7rem}.costs>div{grid-template-columns:minmax(6rem,1fr) minmax(5rem,2fr) auto;display:grid}progress{width:100%;accent-color:var(--mcp-view-accent)}@container (width<=440px){.costs>div{grid-template-columns:1fr auto}.costs progress{grid-area:2/1/auto/-1}}
 /*$vite$:1*/</style>
   </head>
   <body>

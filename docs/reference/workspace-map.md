@@ -99,8 +99,7 @@ deny-by-default browser capability grant. Its generic local host can use only th
 declared tools and the exact Console resource URI. It resolves the view with MCP
 `resources/read`, not a source-specific `/ui` HTTP endpoint. See the
 [Compose Console how-to](../how-to/compose-console.md) for the runnable local path
-backed by the sibling `@casys/mcp-compose@0.8.1` candidate until component-only catalog
-handling is published.
+backed by the published npm `@casys/mcp-compose@0.8.1` runtime.
 
 The public ERPNext MCP has the larger privileged agent surface required to create and
 manage Items and BOM documents. It remains available to agents but is not a product
