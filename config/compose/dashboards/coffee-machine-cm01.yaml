@@ -10,6 +10,7 @@ sources:
       components:
         - { id: diagram-summary, component: syson.diagram.summary }
         - { id: architecture-diagram, component: syson.diagram.visual }
+        - { id: architecture-elements, component: syson.diagram.elements }
         - { id: diagram-identity, component: syson.diagram.identity }
     calls:
       - tool: syson_diagram_snapshot
@@ -94,9 +95,16 @@ sources:
                 power_supply, temperature_sensor, user_interface, drip_tray,
             ], label="CoffeeMachine CM-01")
   - id: bom
-    manifest: mcp-erpnext
+    manifest: mcp-erpnext-components
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: bom-identity, component: erpnext.bom.identity }
+        - { id: bom-metrics, component: erpnext.bom.metrics }
+        - { id: bom-materials, component: erpnext.bom.materials }
+        - { id: bom-costs, component: erpnext.bom.costs }
     calls:
-      - tool: erpnext_bom_list
+      - tool: erpnext_bom_surface
         args:
           item: "{{bom_item}}"
           is_active: true
@@ -118,11 +126,42 @@ sources:
         args:
           model_id: "{{modelica_model_id}}"
           scenario_id: "{{modelica_scenario_id}}"
+  # The support-bracket STEP is a persisted, reproducible prerequisite. Compose
+  # currently executes sources in parallel and therefore does not claim that
+  # the CAD result above is piped into this solve during the same dashboard run.
+  - id: mechanical
+    manifest: mcp-calculix
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: solve-metrics, component: calculix.solve-metrics }
+        - { id: mesh-summary, component: calculix.mesh-summary }
+        - { id: constraints, component: calculix.constraints }
+        - { id: displacement, component: calculix.displacement-details }
+    calls:
+      - tool: calculix_solve_static
+        args:
+          step_path: /exports/bracket.step
+          mesh_size_mm: 3
+          material: { e_mpa: 70000, nu: 0.33 }
+          selections:
+            - name: FIXED
+              box: { min: [-31, -21, -3.1], max: [31, 21, -2.4] }
+            - name: LOADED
+              box: { min: [-31, -21, 49.4], max: [-24, 21, 50.1] }
+          fixed: [FIXED]
+          loads:
+            - { selection: LOADED, force_n: [0, 0, -500] }
 orchestration:
   layout:
     areas:
-      - [architecture, cad]
-      - [bom, simulation]
-    columns: [1, 1.15]
+      - [architecture, architecture, cad]
+      - [bom, simulation, mechanical]
+    columns: [1, 1, 1.15]
     rows: [1, 1]
     gap: normal
+  sync:
+    - from: "mcp-syson:syson_diagram_snapshot"
+      event: syson.element.selected
+      to: "mcp-erpnext-components:erpnext_bom_surface"
+      action: syson.element.selected

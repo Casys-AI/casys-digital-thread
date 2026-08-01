@@ -1,0 +1,88 @@
+body {
+  margin: 0;
+  min-width: 0;
+  background: transparent;
+}
+button {
+  font: inherit;
+}
+
+.erpnext-component-surface {
+  padding: 0.65rem;
+}
+code {
+  display: block;
+  color: var(--color-text-secondary, #a99c8f);
+  font-size: 0.72rem;
+}
+.identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.bom-list {
+  display: grid;
+  gap: 0.35rem;
+}
+.bom-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: rgba(128, 112, 95, 0.08);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bom-list button.selected {
+  border-color: #e49a53;
+  background: rgba(228, 154, 83, 0.12);
+}
+.operations,
+.costs {
+  display: grid;
+  gap: 0.42rem;
+}
+.operations article,
+.costs > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.58rem;
+  border-radius: 0.5rem;
+  background: rgba(128, 112, 95, 0.08);
+}
+.operations article > div {
+  display: grid;
+  gap: 0.12rem;
+}
+.operations span,
+.operations small,
+.costs span {
+  color: var(--color-text-secondary, #a99c8f);
+  font-size: 0.7rem;
+}
+.costs > div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) minmax(5rem, 2fr) auto;
+}
+progress {
+  width: 100%;
+  accent-color: #e49a53;
+}
+
+@container (max-width: 440px) {
+  .costs > div {
+    grid-template-columns: 1fr auto;
+  }
+  .costs progress {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

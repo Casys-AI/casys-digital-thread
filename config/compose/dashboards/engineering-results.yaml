@@ -1,42 +1,116 @@
-# mcp-compose runs sources in parallel and only injects caller-supplied args.
-# It cannot pass a build123d STEP export into CalculiX, so this dashboard does
-# not claim a live CAD -> FEA chain until ordered result-to-argument binding exists.
-name: Coffee machine simulation, CAD and BOM evidence
+# Five-MCP qualification review. The CAD recipe and persisted bracket STEP are
+# reproducible counterparts, not an ordered in-run CAD -> FEA binding: Compose
+# still launches sources in parallel.
+name: CM-01 engineering qualification review
 sources:
-  - id: coffee-machine-simulation
+  - id: architecture
+    manifest: mcp-syson
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: architecture-summary, component: syson.diagram.summary }
+        - { id: architecture-elements, component: syson.diagram.elements }
+    calls:
+      - tool: syson_diagram_snapshot
+        args:
+          editing_context_id: "{{syson_editing_context_id}}"
+          diagram_id: "{{syson_diagram_id}}"
+
+  - id: thermal
     manifest: mcp-modelica
     surface:
       layout: { type: grid, columns: 2, gap: sm }
       components:
-        - { id: status, component: modelica.execution-status }
-        - { id: metrics, component: modelica.metrics }
-        - { id: provenance, component: modelica.provenance }
-        - { id: artifacts, component: modelica.artifacts }
+        - { id: thermal-status, component: modelica.execution-status }
+        - { id: thermal-metrics, component: modelica.metrics }
+        - { id: thermal-warnings, component: modelica.warnings }
+        - { id: thermal-provenance, component: modelica.provenance }
     calls:
       - tool: modelica_simulate
         args:
-          model_id: coffee-machine-v1
-          scenario_id: heat-up-nominal
-  - id: sample-cad
+          model_id: "{{modelica_model_id}}"
+          scenario_id: "{{modelica_scenario_id}}"
+
+  - id: cad
     manifest: mcp-build123d
     surface:
       layout: { type: stack, gap: sm }
       components:
-        - { id: status, component: build123d.geometry-status }
-        - { id: metrics, component: build123d.geometry-metrics }
-        - { id: canvas, component: build123d.geometry-canvas }
+        - { id: bracket-status, component: build123d.geometry-status }
+        - { id: bracket-metrics, component: build123d.geometry-metrics }
+        - { id: bracket-canvas, component: build123d.geometry-canvas }
     calls:
-      - tool: build123d_execute
+      - tool: build123d_export
         args:
+          name: qualification-bracket
+          formats: [gltf]
+          density_kg_m3: 2700
           script: |
-            from build123d import Box
-            result = Box(10, 20, 5)
-  - id: manufacturing-bom
-    manifest: mcp-erpnext
+            from build123d import *
+
+            length_mm, width_mm, height_mm = 60.0, 40.0, 50.0
+            thickness_mm, hole_d_mm, fillet_mm = 5.0, 6.0, 4.0
+
+            with BuildPart() as bracket:
+                Box(length_mm, width_mm, thickness_mm)
+                with Locations((-length_mm / 2 + thickness_mm / 2, 0, height_mm / 2)):
+                    Box(thickness_mm, width_mm, height_mm)
+                edge = bracket.edges().filter_by(Axis.Y).group_by(Axis.X)[1].group_by(Axis.Z)[-1]
+                fillet(edge, fillet_mm)
+                with Locations((15, 12, 0), (15, -12, 0)):
+                    Hole(hole_d_mm / 2)
+            result = bracket
+
+  - id: mechanical
+    manifest: mcp-calculix
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: structural-metrics, component: calculix.solve-metrics }
+        - { id: structural-displacement, component: calculix.displacement-details }
+        - { id: structural-mesh, component: calculix.mesh-summary }
+        - { id: structural-constraints, component: calculix.constraints }
     calls:
-      - tool: erpnext_bom_list
+      - tool: calculix_solve_static
         args:
-          limit: 20
+          step_path: /exports/bracket.step
+          mesh_size_mm: 3
+          material: { e_mpa: 70000, nu: 0.33 }
+          selections:
+            - name: FIXED
+              box: { min: [-31, -21, -3.1], max: [31, 21, -2.4] }
+            - name: LOADED
+              box: { min: [-31, -21, 49.4], max: [-24, 21, 50.1] }
+          fixed: [FIXED]
+          loads:
+            - { selection: LOADED, force_n: [0, 0, -500] }
+
+  - id: bom
+    manifest: mcp-erpnext-components
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: bom-identity, component: erpnext.bom.identity }
+        - { id: bom-materials, component: erpnext.bom.materials }
+        - { id: bom-costs, component: erpnext.bom.costs }
+    calls:
+      - tool: erpnext_bom_surface
+        args:
+          item: "{{bom_item}}"
           is_active: true
+          is_default: true
+          limit: 5
+
 orchestration:
-  layout: grid
+  layout:
+    areas:
+      - [architecture, thermal, thermal]
+      - [cad, mechanical, bom]
+    columns: [1, 1, 1]
+    rows: [0.82, 1.18]
+    gap: normal
+  sync:
+    - from: "mcp-syson:syson_diagram_snapshot"
+      event: syson.element.selected
+      to: "mcp-erpnext-components:erpnext_bom_surface"
+      action: syson.element.selected

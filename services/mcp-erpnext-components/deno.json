@@ -1,0 +1,26 @@
+{
+  "name": "@casys/mcp-erpnext-components",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "minimumDependencyAge": {
+    "age": "P1D",
+    "exclude": ["jsr:@casys/mcp-erpnext", "jsr:@casys/mcp-server"]
+  },
+  "tasks": {
+    "serve": "deno run --allow-env --allow-net --allow-read=ui/dist,mcp-server.yaml server.ts --http --port=3017",
+    "ui:build": "cd ui && npm run build",
+    "ui:check": "cd ui && npm run check",
+    "check": "deno check mod.ts server.ts",
+    "test": "deno test mod_test.ts",
+    "verify": "deno fmt --check && deno lint && deno task check && deno task test && deno task ui:check && deno task ui:build"
+  },
+  "imports": {
+    "@casys/mcp-erpnext": "jsr:@casys/mcp-erpnext@3.0.0",
+    "@casys/mcp-server": "jsr:@casys/mcp-server@0.24.1",
+    "@std/assert": "jsr:@std/assert@1"
+  },
+  "fmt": {
+    "lineWidth": 88,
+    "exclude": ["ui/dist", "ui/node_modules"]
+  }
+}

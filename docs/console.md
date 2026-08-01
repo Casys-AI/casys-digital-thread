@@ -28,10 +28,10 @@ host, use the [Compose how-to](how-to/compose-console.md). The
   target. It is labelled a provisional scenario contract, never a product requirement or
   SysON project requirement.
 - **Workbench** embeds the local Compose manager: its reviewed selector contains the
-  CM-01 and Engineering YAML dashboards, and the active dashboard stays in the same
-  page. The CoffeeMachine composition renders live SysON, build123d, ERPNext and
-  Modelica viewers; the Console contains no substitute geometry, FEA, BOM, or model
-  preview.
+  CM-01, Engineering qualification, Manufacturing readiness, and focused CalculiX YAML
+  dashboards, and the active dashboard stays in the same page. The three product
+  compositions render live SysON, build123d, CalculiX, Modelica, and ERPNext component
+  surfaces; the Console contains no substitute geometry, FEA, BOM, or model preview.
 
 ## Connection reference
 
@@ -72,8 +72,8 @@ local host resolves resources through MCP `resources/read`, not an HTTP `/ui`
 convention. The stable Workbench manager on `127.0.0.1:60060` selects one composition at
 a time. Each selected dashboard has a dedicated loopback origin, grants only manifest
 tools marked `appCallable`, and delivers initiating results only after
-`ui/notifications/initialized`. See the
-[Compose how-to](how-to/compose-console.md) for the runnable paths.
+`ui/notifications/initialized`. See the [Compose how-to](how-to/compose-console.md) for
+the runnable paths.
 
 For real Fleet probes, start the engineering services first:
 
@@ -82,7 +82,7 @@ docker compose up -d
 MCP_PORT=3020 MCP_HOSTNAME=127.0.0.1 deno task start
 ```
 
-Docker is required for real container/image observations, and the four configured MCP
+Docker is required for real container/image observations, and the five configured MCP
 HTTP endpoints must be reachable. Without them, the console still starts but labels
 unavailable observations and demo evidence instead of presenting them as live.
 

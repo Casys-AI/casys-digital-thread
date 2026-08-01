@@ -205,7 +205,7 @@
       "kind": "result",
       "label": "Documented 26.6 MPa FEA result (not freshly solved)",
       "path": "examples/bracket/README.md",
-      "sha256": "cdc69a05ead1cdb3151089993a9111890fa0a31786bf3521ffd1283452889e0a",
+      "sha256": "5f6bd7c863b26f9d58071c7716cee6b7a5b64635571e1855b08b662dd2e505f3",
       "producedBy": "documented-example"
     },
     {

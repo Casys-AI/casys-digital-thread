@@ -6,10 +6,10 @@ the App handshake, and relays the Console's explicitly granted read-only calls. 
 smallest visual check of this one fixed view, use the
 [browser-preview how-to](preview-console.md) instead.
 
-The component-surface prototype currently consumes the sibling
-`@casys/mcp-compose@0.8.0` source checkout. This keeps real integration local while the
-candidate is unpublished. After `0.8.0` is released, replace the two local imports in
-`deno.json` with the published package/subpath and regenerate `deno.lock`.
+The component-only proof currently consumes the sibling `@casys/mcp-compose@0.8.1`
+source checkout. JSR has `0.8.0`; the patch candidate adds explicit no-default catalog
+handling. After `0.8.1` is released, replace the two local imports in `deno.json` with
+the published package/subpath and regenerate `deno.lock`.
 
 ## 1. Start the Console MCP server
 
@@ -35,11 +35,11 @@ deno task compose:workbench
 ```
 
 It listens on `http://127.0.0.1:60060/`. Open the Console through an MCP Apps host and
-select **Workbench**, or open that URL directly. The left rail lists the saved
-engineering and CoffeeMachine compositions. The Console composition remains a direct
-launcher so it cannot recursively embed its own Workbench. Selecting a dashboard starts
-its real Compose host inside the page; selecting another swaps hosts and then closes the
-previous MCP cluster.
+select **Workbench**, or open that URL directly. The left rail lists the CM-01,
+Engineering qualification, Manufacturing readiness, and focused CalculiX compositions.
+The Console composition remains a direct launcher so it cannot recursively embed its own
+Workbench. Selecting a dashboard starts its real Compose host inside the page; selecting
+another swaps hosts and then closes the previous MCP cluster.
 
 The manager accepts activation only from its own browser origin. Each dashboard accepts
 framing only from that exact manager origin, while every child viewer keeps its separate
@@ -70,6 +70,12 @@ To run the real engineering evidence dashboard instead:
 deno task compose:engineering
 ```
 
+To run the five-MCP manufacturing handoff composition:
+
+```bash
+deno task compose:manufacturing
+```
+
 To run the reproducible CalculiX bracket solve and its four-component surface:
 
 ```bash
@@ -79,12 +85,12 @@ deno task compose:calculix
 This expects `/exports/bracket.step`, produced by the Build123d step documented in
 [`examples/bracket`](../../examples/bracket/README.md).
 
-That dashboard also includes the ERPNext BOM panel. Its local build, credential and
-network prerequisites are documented in
+The five-MCP dashboards also include the ERPNext BOM components. Their local build,
+credential and network prerequisites are documented in
 [Show the real ERPNext BOM in Compose](show-erpnext-bom.md). A live `count: 0` is an
 empty ERP, not permission to substitute mock BOM rows.
 
-For the product-specific four-panel example, use `deno task compose:cm01`. Its saved
+For the product-specific five-MCP example, use `deno task compose:cm01`. Its saved
 layout, local runtime arguments, and replay semantics are documented in
 [View the CoffeeMachine CM-01 digital thread](view-coffee-machine-cm01.md).
 

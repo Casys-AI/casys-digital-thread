@@ -1,0 +1,113 @@
+# A second five-MCP composition focused on manufacturing handoff. It selects a
+# different subset of the same atomic component catalogs; no viewer fork exists.
+name: CM-01 manufacturing readiness
+sources:
+  - id: architecture
+    manifest: mcp-syson
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: system-visual, component: syson.diagram.visual }
+        - { id: system-elements, component: syson.diagram.elements }
+    calls:
+      - tool: syson_diagram_snapshot
+        args:
+          editing_context_id: "{{syson_editing_context_id}}"
+          diagram_id: "{{syson_diagram_id}}"
+
+  - id: bom
+    manifest: mcp-erpnext-components
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: manufacturing-identity, component: erpnext.bom.identity }
+        - { id: manufacturing-metrics, component: erpnext.bom.metrics }
+        - { id: manufacturing-materials, component: erpnext.bom.materials }
+        - { id: manufacturing-operations, component: erpnext.bom.operations }
+        - { id: manufacturing-costs, component: erpnext.bom.costs }
+    calls:
+      - tool: erpnext_bom_surface
+        args:
+          item: "{{bom_item}}"
+          is_active: true
+          is_default: true
+          limit: 5
+
+  - id: cad
+    manifest: mcp-build123d
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: cad-metrics, component: build123d.geometry-metrics }
+        - { id: cad-artifacts, component: build123d.export-artifacts }
+        - { id: cad-canvas, component: build123d.geometry-canvas }
+    calls:
+      - tool: build123d_export
+        args:
+          name: manufacturing-bracket
+          formats: [gltf]
+          density_kg_m3: 2700
+          script: |
+            from build123d import *
+
+            with BuildPart() as bracket:
+                Box(60, 40, 5)
+                with Locations((-27.5, 0, 25)):
+                    Box(5, 40, 50)
+                edge = bracket.edges().filter_by(Axis.Y).group_by(Axis.X)[1].group_by(Axis.Z)[-1]
+                fillet(edge, 4)
+                with Locations((15, 12, 0), (15, -12, 0)):
+                    Hole(3)
+            result = bracket
+
+  - id: mechanical
+    manifest: mcp-calculix
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: mesh, component: calculix.mesh-summary }
+        - { id: boundary-conditions, component: calculix.constraints }
+        - { id: structural-metrics, component: calculix.solve-metrics }
+    calls:
+      - tool: calculix_solve_static
+        args:
+          step_path: /exports/bracket.step
+          mesh_size_mm: 3
+          material: { e_mpa: 70000, nu: 0.33 }
+          selections:
+            - name: FIXED
+              box: { min: [-31, -21, -3.1], max: [31, 21, -2.4] }
+            - name: LOADED
+              box: { min: [-31, -21, 49.4], max: [-24, 21, 50.1] }
+          fixed: [FIXED]
+          loads:
+            - { selection: LOADED, force_n: [0, 0, -500] }
+
+  - id: simulation
+    manifest: mcp-modelica
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: simulation-status, component: modelica.execution-status }
+        - { id: simulation-provenance, component: modelica.provenance }
+        - { id: simulation-artifacts, component: modelica.artifacts }
+        - { id: simulation-warnings, component: modelica.warnings }
+    calls:
+      - tool: modelica_simulate
+        args:
+          model_id: "{{modelica_model_id}}"
+          scenario_id: "{{modelica_scenario_id}}"
+
+orchestration:
+  layout:
+    areas:
+      - [bom, bom, architecture]
+      - [cad, mechanical, simulation]
+    columns: [1.1, 1, 1]
+    rows: [1.15, 0.85]
+    gap: normal
+  sync:
+    - from: "mcp-syson:syson_diagram_snapshot"
+      event: syson.element.selected
+      to: "mcp-erpnext-components:erpnext_bom_surface"
+      action: syson.element.selected

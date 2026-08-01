@@ -7,12 +7,16 @@ import {
 export const DASHBOARD_FILES: Readonly<Record<string, string>> = {
   console: "console.yaml",
   engineering: "engineering-results.yaml",
+  manufacturing: "manufacturing-readiness.yaml",
   calculix: "calculix-bracket.yaml",
   cm01: "coffee-machine-cm01.yaml",
+  erpnext: "erpnext-components.yaml",
 };
 
 const DEFAULT_ARGS_FILES: Readonly<Record<string, string>> = {
   cm01: "state/local/coffee-machine-cm01.json",
+  engineering: "state/local/coffee-machine-cm01.json",
+  manufacturing: "state/local/coffee-machine-cm01.json",
 };
 
 export interface DashboardCliOptions {

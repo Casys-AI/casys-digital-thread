@@ -38,6 +38,12 @@ type EngineeringDashboard = {
       rows?: number[];
       gap?: string;
     };
+    sync?: Array<{
+      from: string;
+      event: string;
+      to: string;
+      action: string;
+    }>;
   };
 };
 
@@ -66,6 +72,7 @@ async function loadManifest(name: string): Promise<ComposeManifest> {
 }
 
 function composeManifestName(fleetId: string): string {
+  if (fleetId === "erpnext") return "mcp-erpnext-components";
   return `mcp-${fleetId}`;
 }
 
@@ -110,7 +117,7 @@ Deno.test("Compose manifests declare the stateless engineering viewers and minim
       loadManifest("mcp-modelica"),
       loadManifest("mcp-build123d"),
       loadManifest("mcp-calculix"),
-      loadManifest("mcp-erpnext"),
+      loadManifest("mcp-erpnext-components"),
       Deno.readTextFile(new URL("../../config/mcp-fleet.json", import.meta.url)),
     ]);
   const fleet = JSON.parse(fleetSource) as FleetManifest;
@@ -154,7 +161,7 @@ Deno.test("Compose manifests declare the stateless engineering viewers and minim
   });
   assertEquals(erpnext.transport, {
     type: "http",
-    url: "http://127.0.0.1:3012",
+    url: "http://127.0.0.1:3017",
     protocol: "stateless-2026-07-28",
   });
   assertEquals(modelica.tools.map((tool) => tool.name), [
@@ -257,18 +264,15 @@ Deno.test("Compose manifests declare the stateless engineering viewers and minim
     "constraints",
     "metrics",
   ]);
-  assertEquals(erpnext.tools.map((tool) => tool.name), [
-    "erpnext_bom_list",
-    "erpnext_bom_get",
-  ]);
+  assertEquals(erpnext.tools.map((tool) => tool.name), ["erpnext_bom_surface"]);
   assertEquals(
-    erpnext.tools.find((tool) => tool.name === "erpnext_bom_list")?.resourceUri,
-    "ui://mcp-erpnext/doclist-viewer",
+    erpnext.tools[0].resourceUri,
+    "ui://mcp-erpnext-components/bom-surface",
   );
-  assertEquals(erpnext.tools.map((tool) => tool.appCallable), [true, true]);
+  assertEquals(erpnext.tools.map((tool) => tool.appCallable), [undefined]);
   assertEquals(
     erpnext.tools.map((tool) => tool.inputSchema.additionalProperties),
-    [false, false],
+    [false],
   );
 });
 
@@ -297,7 +301,7 @@ Deno.test("Console Compose manifest keeps snapshot initiating-only and grants on
   );
 });
 
-Deno.test("engineering dashboard parses approved simulation, CAD and read-only BOM sources", async () => {
+Deno.test("engineering dashboard composes five approved atomic sources", async () => {
   const dashboard = await Deno.readTextFile(
     new URL("dashboards/engineering-results.yaml", configRoot),
   );
@@ -310,28 +314,37 @@ Deno.test("engineering dashboard parses approved simulation, CAD and read-only B
   const build123d = parsed.sources.find((source) =>
     source.manifest === "mcp-build123d"
   );
-  const erpnext = parsed.sources.find((source) => source.manifest === "mcp-erpnext");
+  const erpnext = parsed.sources.find((source) =>
+    source.manifest === "mcp-erpnext-components"
+  );
+  const calculix = parsed.sources.find((source) => source.manifest === "mcp-calculix");
   assertEquals(modelica?.calls, [{
     tool: "modelica_simulate",
-    args: { model_id: "coffee-machine-v1", scenario_id: "heat-up-nominal" },
-  }]);
-  assertEquals(build123d?.calls, [{
-    tool: "build123d_execute",
     args: {
-      script: "from build123d import Box\nresult = Box(10, 20, 5)\n",
+      model_id: "{{modelica_model_id}}",
+      scenario_id: "{{modelica_scenario_id}}",
     },
   }]);
+  assertEquals(build123d?.calls[0].tool, "build123d_export");
+  assertEquals(build123d?.calls[0].args.name, "qualification-bracket");
+  assertEquals(build123d?.calls[0].args.formats, ["gltf"]);
   assertEquals(erpnext?.calls, [{
-    tool: "erpnext_bom_list",
-    args: { limit: 20, is_active: true },
+    tool: "erpnext_bom_surface",
+    args: {
+      item: "{{bom_item}}",
+      is_active: true,
+      is_default: true,
+      limit: 5,
+    },
   }]);
-  assertStringIncludes(dashboard, "cannot pass a build123d STEP export into CalculiX");
-  assertEquals(dashboard.includes("manifest: mcp-calculix"), false);
+  assertEquals(calculix?.calls[0].tool, "calculix_solve_static");
+  assertStringIncludes(dashboard, "not an ordered in-run CAD -> FEA binding");
+  assertEquals(parsed.sources.length, 5);
   assertEquals(defaultConsole.includes("modelica_simulate"), false);
   assertEquals(defaultConsole.includes("build123d_execute"), false);
 });
 
-Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", async () => {
+Deno.test("CM-01 dashboard saves five component sources and event routing", async () => {
   const [source, fleetSource] = await Promise.all([
     Deno.readTextFile(
       new URL("dashboards/coffee-machine-cm01.yaml", configRoot),
@@ -355,20 +368,38 @@ Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", a
         tools: ["syson_diagram_snapshot"],
       },
       { id: "cad", manifest: "mcp-build123d", tools: ["build123d_export"] },
-      { id: "bom", manifest: "mcp-erpnext", tools: ["erpnext_bom_list"] },
+      {
+        id: "bom",
+        manifest: "mcp-erpnext-components",
+        tools: ["erpnext_bom_surface"],
+      },
       {
         id: "simulation",
         manifest: "mcp-modelica",
         tools: ["modelica_simulate"],
       },
+      {
+        id: "mechanical",
+        manifest: "mcp-calculix",
+        tools: ["calculix_solve_static"],
+      },
     ],
   );
   assertEquals(parsed.orchestration?.layout, {
-    areas: [["architecture", "cad"], ["bom", "simulation"]],
-    columns: [1, 1.15],
+    areas: [
+      ["architecture", "architecture", "cad"],
+      ["bom", "simulation", "mechanical"],
+    ],
+    columns: [1, 1, 1.15],
     rows: [1, 1],
     gap: "normal",
   });
+  assertEquals(parsed.orchestration?.sync, [{
+    from: "mcp-syson:syson_diagram_snapshot",
+    event: "syson.element.selected",
+    to: "mcp-erpnext-components:erpnext_bom_surface",
+    action: "syson.element.selected",
+  }]);
 
   const architectureArgs = parsed.sources[0].calls[0].args;
   assertEquals(architectureArgs, {
@@ -376,10 +407,11 @@ Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", a
     diagram_id: "{{syson_diagram_id}}",
   });
   assertEquals(source.includes("erpnext_doc_create"), false);
-  assertEquals(source.includes("manifest: mcp-calculix"), false);
+  assertEquals(source.includes("erpnext_doc_create"), false);
   assertEquals(parsed.sources[0].surface?.components.map((item) => item.component), [
     "syson.diagram.summary",
     "syson.diagram.visual",
+    "syson.diagram.elements",
     "syson.diagram.identity",
   ]);
   assertEquals(parsed.sources[1].surface?.components.map((item) => item.component), [
@@ -388,7 +420,12 @@ Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", a
     "build123d.geometry-canvas",
     "build123d.export-artifacts",
   ]);
-  assertEquals(parsed.sources[2].surface, undefined);
+  assertEquals(parsed.sources[2].surface?.components.map((item) => item.component), [
+    "erpnext.bom.identity",
+    "erpnext.bom.metrics",
+    "erpnext.bom.materials",
+    "erpnext.bom.costs",
+  ]);
   assertEquals(parsed.sources[3].surface?.components.map((item) => item.component), [
     "modelica.run-identity",
     "modelica.execution-status",
@@ -396,6 +433,12 @@ Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", a
     "modelica.provenance",
     "modelica.artifacts",
     "modelica.warnings",
+  ]);
+  assertEquals(parsed.sources[4].surface?.components.map((item) => item.component), [
+    "calculix.solve-metrics",
+    "calculix.mesh-summary",
+    "calculix.constraints",
+    "calculix.displacement-details",
   ]);
   assertEquals(
     fleet.workbench.map(({ id, sourceServerId, resourceUri }) => ({
@@ -417,12 +460,17 @@ Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", a
       {
         id: "cm01-bom",
         sourceServerId: "erpnext",
-        resourceUri: "ui://mcp-erpnext/doclist-viewer",
+        resourceUri: "ui://mcp-erpnext-components/bom-surface",
       },
       {
         id: "cm01-simulation",
         sourceServerId: "modelica",
         resourceUri: "ui://mcp-modelica/results-viewer",
+      },
+      {
+        id: "cm01-mechanical",
+        sourceServerId: "calculix",
+        resourceUri: "ui://mcp-calculix/results-viewer",
       },
     ],
   );

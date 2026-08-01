@@ -18,21 +18,30 @@ export const WORKBENCH_DASHBOARDS: readonly DashboardSource[] = [
   {
     id: "cm01",
     title: "CoffeeMachine CM-01",
-    description: "SysON, CAD, BOM and Modelica evidence for the reference product.",
+    description: "Five-MCP system, CAD, structural, thermal and BOM cockpit.",
     file: "coffee-machine-cm01.yaml",
+    argsFile: "state/local/coffee-machine-cm01.json",
+  },
+  {
+    id: "engineering",
+    title: "Engineering qualification",
+    description: "Compact five-MCP design review with cross-viewer selection.",
+    file: "engineering-results.yaml",
+    argsFile: "state/local/coffee-machine-cm01.json",
+  },
+  {
+    id: "manufacturing",
+    title: "Manufacturing readiness",
+    description:
+      "Five-MCP handoff focused on BOM, artifacts and verification evidence.",
+    file: "manufacturing-readiness.yaml",
     argsFile: "state/local/coffee-machine-cm01.json",
   },
   {
     id: "calculix",
     title: "Mechanical bracket proof",
-    description: "Real mesh, constraints and static-solve extrema from CalculiX.",
+    description: "Focused real mesh, constraints and static-solve extrema.",
     file: "calculix-bracket.yaml",
-  },
-  {
-    id: "engineering",
-    title: "Engineering evidence",
-    description: "Parallel calculation, geometry and traceability results.",
-    file: "engineering-results.yaml",
   },
 ];
 

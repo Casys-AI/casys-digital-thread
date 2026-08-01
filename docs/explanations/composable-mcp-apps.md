@@ -13,7 +13,7 @@ tool result -> domain App -> advertised component catalog -> selected surface
                    |                                      |
                    +-- validation and rendering           +-- stack / row / grid
                    +-- local state and actions             +-- stable instance IDs
-                   +-- standalone default surface          +-- declared event routes
+                   +-- optional standalone surface         +-- declared event routes
 ```
 
 ## Three contracts, not one magic UI
@@ -21,8 +21,8 @@ tool result -> domain App -> advertised component catalog -> selected surface
 1. Standard MCP Apps still owns the iframe handshake, host theme, display mode, tool
    result, and teardown lifecycle.
 2. `mcp-view` adds `io.casys.mcp.view-components/v1`: stable component keys,
-   descriptions, a default standalone surface, safe primitives, and deterministic
-   mounting/cleanup.
+   descriptions, an optional standalone surface, a shared visual language, safe
+   primitives, and deterministic mounting/cleanup.
 3. `mcp-compose` sends `io.casys.mcp.surface/v1`: an explicit JSON-only selection and
    layout of advertised components. `ui/compose/event` remains a separate cross-view
    event route.
@@ -30,13 +30,14 @@ tool result -> domain App -> advertised component catalog -> selected surface
 Compose never reads the child DOM, sends arbitrary CSS, or generates JavaScript for an
 App. A surface contains only `stack|row|grid`, a bounded column count, a gap token,
 stable instance IDs, component keys, and JSON props. An unknown key becomes
-`unresolved`; it is not silently omitted.
+`unresolved`; it is not silently omitted. A component-only App without a requested
+surface becomes `surface-required`; Compose does not fabricate one.
 
 ## Standalone and dashboard use the same code
 
-Every componentized App declares one `defaultSurface`. In an ordinary MCP Apps host,
-that surface is the complete standalone viewer. In Compose, YAML may select a smaller or
-differently arranged surface from the same component implementations:
+An App with meaningful standalone usage declares one `defaultSurface`, built from the
+same components. A product-only palette may omit it. In Compose, YAML selects the useful
+subset and arrangement explicitly:
 
 ```yaml
 - id: simulation
@@ -57,17 +58,25 @@ table, or action is rendered.
 
 ## Current component estates
 
-| MCP       | Components                                                                                                   | Examples                               |
-| --------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
-| Modelica  | run identity, execution status, metrics, parameters, provenance, artifacts, warnings, run-list summary/table | `modelica.metrics`                     |
-| Build123d | geometry status, metrics, Three.js canvas, export artifacts                                                  | `build123d.geometry-canvas`            |
-| CalculiX  | solve metrics, mesh summary, constraints, displacement details                                               | `calculix.mesh-summary`                |
-| SysON     | 21 components across diagram, model explorer, query, requirements, validation, and value Apps                | `syson.diagram.visual`                 |
-| ERPNext   | unchanged legacy React Apps                                                                                  | no component surface in this migration |
+| MCP                  | Components                                                                                                   | Examples                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------- |
+| Modelica             | run identity, execution status, metrics, parameters, provenance, artifacts, warnings, run-list summary/table | `modelica.metrics`          |
+| Build123d            | geometry status, metrics, Three.js canvas, export artifacts                                                  | `build123d.geometry-canvas` |
+| CalculiX             | solve metrics, mesh summary, constraints, displacement details                                               | `calculix.mesh-summary`     |
+| SysON                | 21 components across diagram, model explorer, query, requirements, validation, and value Apps                | `syson.diagram.visual`      |
+| ERPNext presentation | BOM list, identity, metrics, materials, operations, and costs                                                | `erpnext.bom.materials`     |
 
-ERPNext is not defective. It already implements standard MCP Apps correctly and has the
-only public viewer compatibility surface in this group. It remains a legacy child from
-Compose's perspective; the host mounts its default complete App unchanged.
+The public ERPNext server is unchanged and remains a valid standard MCP Apps provider.
+Product dashboards use a separate read-only Preact MCP at port `3017`. It calls the
+published ERPNext data client, exposes one bounded BOM tool, and deliberately has no
+standalone default. This separates provider authority from presentation without forking
+ERPNext data access.
+
+All new component palettes share the visual tokens and structural classes from
+`mcp-view`. That language was extracted from the ERPNext palette after the first real
+five-MCP dashboards proved it. Compose still chooses components and layout only; it does
+not style child DOM. See
+[The mcp-view component language](mcp-view-component-language.md).
 
 ## Events remain orthogonal
 
@@ -90,12 +99,14 @@ later, but Compose does not reimplement A2UI or execute agent-generated UI code.
 - `mcp-server/packages/compose/src/host/renderer/js/event-bus.ts` negotiates catalogs
   and host context while preserving standard MCP Apps dimensions and events.
 - each domain repository owns its `src/ui/` catalog and component implementations;
+- `services/mcp-erpnext-components/` owns the product-only ERP presentation palette;
 - this repository owns saved product surfaces under `config/compose/dashboards/`.
 
-The local candidates are `@casys/mcp-view@0.5.0` and `@casys/mcp-compose@0.8.0`. Until
-published, real integration checks use the sibling workspace builds. After publication,
-update the domain locks and this repository's Compose pin, then rerun the same
-built-resource and Workbench proof.
+JSR currently has `@casys/mcp-view@0.5.0` and `@casys/mcp-compose@0.8.0`. The sibling
+workspace contains the post-proof `0.6.0` view candidate (Preact adapter and shared
+theme) and `0.8.1` Compose candidate (component-only catalogs). Until those revisions
+are published, real integration checks use the sibling builds. After publication,
+update domain locks and rerun the same built-resource and Workbench proof.
 
 ## Next boundary
 

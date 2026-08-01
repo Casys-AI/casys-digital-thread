@@ -8,6 +8,7 @@
 #   mcp-calculix           MCP over HTTP on http://localhost:3015
 #   mcp-modelica           MCP over HTTP on http://localhost:3016
 #   mcp-erpnext            MCP over HTTP on http://localhost:3012
+#   mcp-erpnext-components Read-only atomic BOM MCP on http://localhost:3017
 #
 # The MCP servers bind 0.0.0.0 INSIDE their containers (required to be
 # reachable through the port mapping); the mapping itself is loopback-only,
@@ -144,6 +145,33 @@ services:
           "deno",
           "eval",
           "const response = await fetch('http://127.0.0.1:3012/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain, erpnext]
+
+  # Product-facing presentation boundary for Compose. It deliberately exposes
+  # one read-only BOM tool and a catalog of small Preact components instead of
+  # the broad provider-native ERPNext surface above.
+  mcp-erpnext-components:
+    build:
+      context: ./services/mcp-erpnext-components
+    image: "${MCP_ERPNEXT_COMPONENTS_IMAGE:-casys-digital-thread/mcp-erpnext-components:0.1.0-local}"
+    env_file:
+      - path: "${ERPNEXT_ENV_FILE:-../mcp-erpnext/.env}"
+        required: false
+    environment:
+      ERPNEXT_URL: "${ERPNEXT_UPSTREAM_URL:-http://frontend:8080}"
+    ports:
+      - "127.0.0.1:3017:3017"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3017/health'); if (!response.ok) Deno.exit(1);",
         ]
       interval: 10s
       timeout: 5s

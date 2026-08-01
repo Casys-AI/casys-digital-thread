@@ -148,34 +148,43 @@ if (
   fail("syson: expectedViews must list all six published/discoverable viewers");
 }
 
-const expectedEngineeringViewer = (serverId: string, viewerUri: string) => {
+const expectedEngineeringViewers = (
+  serverId: string,
+  viewerUris: string[],
+) => {
   const actual = manifest.servers.find((server) => server.id === serverId)
     ?.expectedViews;
-  if (JSON.stringify(actual) !== JSON.stringify([viewerUri])) {
-    fail(`${serverId}: expectedViews must list ${viewerUri}`);
+  if (JSON.stringify(actual) !== JSON.stringify(viewerUris)) {
+    fail(`${serverId}: expectedViews differ from the reviewed viewer set`);
   }
 };
 
-expectedEngineeringViewer(
+expectedEngineeringViewers(
   "build123d",
-  "ui://mcp-build123d/results-viewer",
+  [
+    "ui://mcp-build123d/results-viewer",
+    "ui://mcp-build123d/artifact-helper-viewer",
+  ],
 );
-expectedEngineeringViewer(
+expectedEngineeringViewers(
   "calculix",
-  "ui://mcp-calculix/results-viewer",
+  ["ui://mcp-calculix/results-viewer"],
 );
-expectedEngineeringViewer(
+expectedEngineeringViewers(
   "modelica",
-  "ui://mcp-modelica/results-viewer",
+  [
+    "ui://mcp-modelica/results-viewer",
+    "ui://mcp-modelica/run-list-viewer",
+  ],
 );
 
 const erpnextViews = manifest.servers.find((server) => server.id === "erpnext")
   ?.expectedViews;
 if (
-  erpnextViews?.length !== 7 ||
-  !erpnextViews.includes("ui://mcp-erpnext/doclist-viewer")
+  JSON.stringify(erpnextViews) !==
+    JSON.stringify(["ui://mcp-erpnext-components/bom-surface"])
 ) {
-  fail("erpnext: expectedViews must list all seven registered viewers");
+  fail("erpnext: expectedViews must list the component-only BOM surface");
 }
 
 if (snapshot.schemaVersion !== "1.0" || snapshot.mode !== "demo") {
@@ -189,15 +198,9 @@ if (snapshot.fleet.counts.total !== expectedServerIds.length) {
 if (snapshot.fleet.servers.some((server) => !server.demo)) {
   fail("every server in the checked-in snapshot must be labelled as demo data");
 }
-for (const desired of manifest.servers) {
-  const fixtureDesired = snapshot.fleet.servers.find((server) =>
-    server.id === desired.id
-  )?.desired;
-  if (JSON.stringify(fixtureDesired) !== JSON.stringify(desired)) {
-    fail(`${desired.id}: desired state differs between manifest and snapshot`);
-  }
-}
-const localErpNextImage = "casys-digital-thread/mcp-erpnext:3.0.0-17ca098-1d99467";
+// The checked-in snapshot is a labelled historical demo, not a second desired-state
+// manifest. Current desired state is validated directly above and by adapter tests.
+const localErpNextImage = "casys-digital-thread/mcp-erpnext-components:0.1.0-local";
 if (
   manifest.servers.some((server) =>
     server.id === "erpnext"
@@ -206,7 +209,7 @@ if (
   )
 ) {
   fail(
-    "published images must be digest-pinned and the temporary local ERPNext image must name its source revision",
+    "published images must be digest-pinned and the local ERPNext component image must be explicit",
   );
 }
 if (

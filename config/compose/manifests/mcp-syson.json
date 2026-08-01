@@ -37,6 +37,9 @@
       "name": "syson_diagram_snapshot",
       "description": "Render a SysON diagram as SVG and return the diagram viewer.",
       "resourceUri": "ui://mcp-syson/diagram-viewer",
+      "emits": [
+        "syson.element.selected"
+      ],
       "inputSchema": {
         "type": "object",
         "properties": {

@@ -1,21 +1,17 @@
 # How-to: show the real ERPNext BOM in Compose
 
-Use this guide to add the manufacturing BOM panel to the engineering dashboard. The
-panel reads ERPNext; an empty list is valid live data and must not be replaced by a demo
+Use this guide to run the read-only ERPNext component palette used by the three five-MCP
+dashboards. Empty ERP data is valid live data and must never be replaced by a demo
 fixture.
 
 ## Prerequisites
 
-- The ERPNext Docker stack is running and exposes its frontend service as `frontend` on
-  the external network `erpnext-docker_frappe_network`.
-- An `mcp-erpnext` checkout is clean at commit
-  `1d99467f58cdb6a606e044ace5010b2bbb6c5386`. That remote branch combines the pending
-  `@casys/mcp-server` 0.24 base with the viewer/UOM fix already merged independently on
-  main. This temporary composite build remains explicit until the 0.24 base receives its
-  own review and release.
-- A local env file contains `ERPNEXT_API_KEY` and `ERPNEXT_API_SECRET`. Never commit it.
+- The ERPNext Docker stack exposes its frontend service as `frontend` on the external
+  network `erpnext-docker_frappe_network`.
+- A local ignored env file contains `ERPNEXT_API_KEY` and `ERPNEXT_API_SECRET`.
+- Deno and Node are installed for local verification; Docker performs the runtime build.
 
-The default workspace layout reads `../mcp-erpnext/.env`. For an independent local file:
+The default workspace layout reads `../mcp-erpnext/.env`. For an independent file:
 
 ```bash
 cp .env.erpnext.example .env.erpnext
@@ -23,52 +19,52 @@ cp .env.erpnext.example .env.erpnext
 export ERPNEXT_ENV_FILE=.env.erpnext
 ```
 
-`docker-compose.yml` replaces only `ERPNEXT_URL` with `http://frontend:8080`, which has
-been verified from the external ERPNext network. Set `ERPNEXT_DOCKER_NETWORK`,
-`ERPNEXT_UPSTREAM_URL`, or `MCP_ERPNEXT_CONTEXT` only when the local topology or source
-checkout differs. Before rebuilding the local image, verify the selected context rather
-than silently building the tag from another branch:
+`docker-compose.yml` replaces only `ERPNEXT_URL` with `http://frontend:8080`. Override
+`ERPNEXT_DOCKER_NETWORK` or `ERPNEXT_UPSTREAM_URL` only when the local ERP topology
+differs.
+
+## Verify and start the component MCP
+
+The editable service is
+[`services/mcp-erpnext-components/`](../../services/mcp-erpnext-components/). It uses
+the published `@casys/mcp-erpnext` client as its provider data plane and the local
+`@casys/mcp-view/preact` candidate for presentation.
 
 ```bash
-git -C "${MCP_ERPNEXT_CONTEXT:-../mcp-erpnext}" rev-parse HEAD
-# Expected temporary composite revision: 1d99467f58cdb6a606e044ace5010b2bbb6c5386
+cd services/mcp-erpnext-components
+deno task verify
+cd ../..
+docker compose build mcp-erpnext-components
+docker compose up -d mcp-erpnext-components
+curl --fail --silent http://127.0.0.1:3017/health
 ```
 
-## Build and start the manufacturing MCP
+The server registers one read-only tool, `erpnext_bom_surface`, and one UI resource,
+`ui://mcp-erpnext-components/bom-surface`. Its component catalog contains BOM list,
+identity, metrics, materials, operations, and cost blocks. It intentionally omits a
+standalone `defaultSurface`; the Compose YAML decides which blocks form a product view.
 
-```bash
-docker compose build mcp-erpnext
-docker compose up -d mcp-erpnext
-docker compose ps mcp-erpnext
-```
+The broad provider-native `mcp-erpnext` service remains available on port `3012` for
+agent workflows. It is not a browser capability and is not the source used by these
+product dashboards.
 
-The host endpoints are `http://127.0.0.1:3012/health` and `http://127.0.0.1:3012/mcp`.
-The server deliberately loads 26 tools from `manufacturing`, `inventory`, and
-`operations`. This is the minimum current agent surface that can create Items, create
-and submit a BOM document, then read manufacturing detail; it also includes generic
-update, cancel, delete, upload, and assignment mutations. Treat the MCP as privileged.
+## Open a real dashboard
 
-Compose applies a narrower, independent capability boundary. It grants only two
-read-only calls: `erpnext_bom_list` for initial load and refresh, and `erpnext_bom_get`
-for the selected row's material/operation detail. The BOM viewer cannot invoke the
-mutation tools.
-
-## Open the engineering dashboard
-
-Start the other engineering services, then launch the existing dashboard:
+Start the remaining services and choose a recipe:
 
 ```bash
 docker compose up -d
 deno task compose:engineering
+# or: deno task compose:cm01
+# or: deno task compose:manufacturing
 ```
 
-Open the printed loopback URL. The `manufacturing-bom` panel calls `erpnext_bom_list`
-with active-only filtering. Confirm both gates separately:
+Open the printed loopback URL. Confirm the BOM identity and real rows from ERPNext. A
+healthy container proves connectivity; the rendered component proves that MCP
+`resources/read`, the Apps handshake, the initiating tool result, Preact mounting, and
+the selected surface all completed.
 
-1. the tool result is non-error structured data with `doctype: "BOM"` (a `count` of zero
-   means the ERP currently has no active BOM);
-2. the Doclist MCP App receives that initiating result after its Apps handshake and can
-   refresh or open a row detail.
-
-A healthy container or a successful API call proves connectivity, not visual hydration.
-Do not label the panel verified until both gates pass.
+In CM-01 and Manufacturing readiness, select a SysON part such as Boiler. The declared
+`syson.element.selected` route should display the selection in the ERP materials block
+and highlight `CASYS-CM01-BOILER`. That interaction is an event route between viewers,
+not hidden ERP access.

@@ -1,4 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
+import { parse as parseYaml } from "@std/yaml";
 import {
   DASHBOARD_FILES,
   parseDashboardCliArgs,
@@ -23,6 +24,13 @@ Deno.test("resolveDashboardFile selects the CalculiX bracket proof", () => {
 
 Deno.test("resolveDashboardFile selects the CM-01 digital thread", () => {
   assertEquals(resolveDashboardFile("cm01"), "coffee-machine-cm01.yaml");
+});
+
+Deno.test("resolveDashboardFile selects manufacturing readiness", () => {
+  assertEquals(
+    resolveDashboardFile("manufacturing"),
+    "manufacturing-readiness.yaml",
+  );
 });
 
 Deno.test("resolveDashboardFile rejects unknown dashboards", () => {
@@ -69,4 +77,55 @@ Deno.test("parseRuntimeArgsJson requires one object", () => {
     Error,
     "must contain one JSON object",
   );
+});
+
+Deno.test("product recipes compose five explicit MCP component palettes", async () => {
+  const expectedManifests = [
+    "mcp-build123d",
+    "mcp-calculix",
+    "mcp-erpnext-components",
+    "mcp-modelica",
+    "mcp-syson",
+  ];
+
+  for (
+    const file of [
+      "coffee-machine-cm01.yaml",
+      "engineering-results.yaml",
+      "manufacturing-readiness.yaml",
+    ]
+  ) {
+    const text = await Deno.readTextFile(
+      new URL(`../config/compose/dashboards/${file}`, import.meta.url),
+    );
+    const recipe = parseYaml(text) as {
+      sources: Array<{
+        manifest: string;
+        surface?: { components?: Array<{ component: string }> };
+      }>;
+      orchestration?: {
+        sync?: Array<{ event: string; action: string; to: string }>;
+      };
+    };
+
+    assertEquals(
+      recipe.sources.map((source) => source.manifest).sort(),
+      expectedManifests,
+      `${file} must contain each product MCP exactly once`,
+    );
+    assertEquals(
+      recipe.sources.every((source) => (source.surface?.components?.length ?? 0) > 0),
+      true,
+      `${file} must select atomic components for every MCP`,
+    );
+    assertEquals(
+      recipe.orchestration?.sync?.some((route) =>
+        route.event === "syson.element.selected" &&
+        route.action === "syson.element.selected" &&
+        route.to === "mcp-erpnext-components:erpnext_bom_surface"
+      ),
+      true,
+      `${file} must preserve SysON to ERPNext selection routing`,
+    );
+  }
 });

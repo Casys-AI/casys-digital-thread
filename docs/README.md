@@ -18,12 +18,15 @@ categories deliberately answer different questions.
 - [Host the Console in a local Compose dashboard](how-to/compose-console.md) starts the
   stable Workbench selector with the local component-surface candidate, mounts reviewed
   YAML compositions in place, and explains the direct one-dashboard launchers.
+- [The mcp-view component language](explanations/mcp-view-component-language.md)
+  explains the ERPNext-derived visual baseline, Preact default, and component-only
+  palette rule.
 - [Show the real ERPNext BOM in Compose](how-to/show-erpnext-bom.md) builds the scoped
-  ERP engineering bridge, keeps credentials outside Git, explains its mutation boundary,
-  and distinguishes live ERP data from successful viewer hydration.
+  read-only component MCP, keeps credentials outside Git, explains its separation from
+  the broad provider API, and distinguishes live data from viewer hydration.
 - [View the CoffeeMachine CM-01 digital thread](how-to/view-coffee-machine-cm01.md)
-  replays the saved four-panel SysON, 3D CAD, ERPNext BOM, and Modelica dashboard with
-  environment-specific identifiers kept outside Git.
+  replays the saved five-MCP SysON, 3D CAD, CalculiX, ERPNext BOM, and Modelica cockpit
+  with environment-specific identifiers kept outside Git.
 - [Add a result-viewer MCP App](how-to/add-mcp-app.md) scaffolds, builds, registers, and
   verifies a standard structured-result view without broadening its server grants.
 
@@ -48,7 +51,7 @@ categories deliberately answer different questions.
 - [Industry positioning and state of the art](positioning.md) explains the
   executable-digital-thread and physics-in-the-loop framing.
 - [Composable MCP Apps](explanations/composable-mcp-apps.md) explains reusable domain
-  components, standalone/default surfaces, viewer-to-viewer events, the A2UI boundary,
+  components, optional standalone surfaces, viewer-to-viewer events, the A2UI boundary,
   and the local package release sequence.
 
 ## Read the status labels literally

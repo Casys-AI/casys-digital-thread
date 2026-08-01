@@ -57,7 +57,7 @@ Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + No
 for rebuilding the console.
 
 ```bash
-# 1. Bring up SysON + the five stateless MCP servers (optional, for the full stack)
+# 1. Bring up SysON + the engineering and ERP MCP services
 docker compose up -d          # SysON UI: http://localhost:8180
 
 # 2. Start the read-only Console when you need its MCP App.
@@ -69,13 +69,12 @@ deno task start
 The active interface is stateless MCP `2026-07-28` over `/mcp`; this workspace no longer
 ships a stdio configuration or compatibility path.
 
-The fifth server is a scoped ERP engineering bridge on port `3012`. Its manufacturing,
-inventory and generic-operation tools let an agent create Items and BOM documents from
-zero, so the MCP itself is privileged; the dashboard still grants only BOM reads. For
-now it builds the clean sibling `mcp-erpnext` checkout so it can use `@casys/mcp-server`
-0.24 before the next package release. Credentials stay in an ignored env file, and the
-bridge joins the existing ERPNext Docker network rather than owning that database. See
-the [BOM how-to](docs/how-to/show-erpnext-bom.md).
+ERPNext has two deliberately separate interfaces. The provider-native bridge on port
+`3012` keeps the broad agent API. The product dashboard uses the component-only,
+read-only Preact service on port `3017`; it reuses the published ERPNext client but owns
+only one BOM presentation tool and six atomic components. Credentials stay in an ignored
+env file, and both bridges join the existing ERPNext Docker network rather than owning
+that database. See the [BOM how-to](docs/how-to/show-erpnext-bom.md).
 
 The `cad-exports` named volume is shared between build123d and calculix: a STEP exported
 by `build123d_export` is immediately readable by `calculix_solve_static` at
@@ -110,26 +109,26 @@ deno task compose:workbench      # http://127.0.0.1:60060/
 The browser host relays the console's three read-only tools to the live MCP server. It
 is a local MCP Apps test harness, explicitly not an `mcp-compose`-generated dashboard.
 
-The new Workbench manager is implemented for port `60060`. Its reviewed catalogue lists
-the CM-01 and Engineering YAML compositions; selecting one starts a real,
-capability-bounded `mcp-compose` dashboard in place and stops the previous host after the
-swap. The normal task consumes the published, pinned
-`@casys/mcp-compose@0.7.1` package. The
-`compose:console`, `compose:engineering`, and `compose:cm01` tasks remain useful as
-direct one-dashboard launchers. See the
-[Compose Console how-to](docs/how-to/compose-console.md).
+The Workbench manager is implemented for port `60060`. Its reviewed catalogue lists
+three five-MCP compositions—CM-01, Engineering qualification, and Manufacturing
+readiness—plus the focused CalculiX proof. Selecting one starts a real,
+capability-bounded `mcp-compose` dashboard in place and stops the previous host after
+the swap. The component-surface candidate is imported from the sibling `mcp-server`
+workspace while it is being release-checked. The `compose:engineering`,
+`compose:manufacturing`, and `compose:cm01` tasks remain useful as direct launchers. See
+the [Compose Console how-to](docs/how-to/compose-console.md).
 
-The first product dashboard is now a separate saved recipe: `deno task compose:cm01`
-renders the live SysON internal structure, interactive build123d GLB assembly, submitted
-ERPNext BOM, and Modelica heat-up run in one 2×2 layout. The YAML stores layout and
-calls; it does not freeze their results. See
+The first product recipe, `deno task compose:cm01`, renders live SysON structure,
+interactive build123d geometry, the ERPNext BOM, Modelica thermal evidence, and a
+CalculiX static solve in one five-MCP cockpit. The YAML selects atomic components and
+layout; it does not freeze results or copy viewer code. See
 [View the CoffeeMachine CM-01 digital thread](docs/how-to/view-coffee-machine-cm01.md).
 
-The first product dashboard is now a separate saved recipe: `deno task compose:cm01`
-renders the live SysON internal structure, interactive build123d GLB assembly, submitted
-ERPNext BOM, and Modelica heat-up run in one 2×2 layout. The YAML stores layout and
-calls; it does not freeze their results. See
-[View the CoffeeMachine CM-01 digital thread](docs/how-to/view-coffee-machine-cm01.md).
+The shared visual baseline now lives in `@casys/mcp-view`, extracted from the ERPNext
+BOM palette: restrained cards, compact uppercase titles, dense metrics and tables,
+semantic badges, selection state, and container-aware layout. Domain viewers add only
+their specialized diagram, CAD, physics, or evidence rendering. See
+[The mcp-view component language](docs/explanations/mcp-view-component-language.md).
 
 When the engineering services are stopped, the console reports them as unavailable and
 keeps the checked-in bracket run explicitly labelled as demo. The documentation is
@@ -151,6 +150,7 @@ boundary, and local `mcp-compose` path.
 | `server.ts`, `src/`                 | Read-only console control plane and MCP App                              |
 | `config/mcp-fleet.json`             | Desired fleet, topology, tools, views, and trust boundaries              |
 | `config/compose/`                   | Reviewed MCP manifests, saved dashboard YAML, and runtime-arg examples   |
+| `services/mcp-erpnext-components/`  | Read-only Preact ERPNext component palette for product dashboards        |
 | `config/verification-plans/`        | Versioned provisional scenario-contract plans                            |
 | `state/fixtures/`                   | Canonical, explicitly labelled console and run fixtures                  |
 | `docs/README.md`                    | Diátaxis documentation map                                               |
