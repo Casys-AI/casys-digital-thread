@@ -47,6 +47,9 @@ categories deliberately answer different questions.
   identity, exact-byte consumption, observations, requirements, evaluations, violations,
   freshness, provenance, actions, explicit subject bindings, and the current persistence
   boundary.
+- [EngineeringProjectSnapshot contract](reference/engineering-project.md) defines
+  project intent, derived phases, human-agent work, decisions and approvals, blockers,
+  execution runs, and exact references into immutable thread evidence.
 - [Cross-tool component identity](reference/thread-components.md) defines the reviewed
   SysON PartUsage, build123d artifact, and ERPNext Item bindings used by the native
   **Parts** workspace, including visible trace gaps.

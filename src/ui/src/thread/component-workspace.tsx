@@ -6,12 +6,17 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import type {
+  ThreadArtifact,
   ThreadComponent,
   ThreadComponentBinding,
   ThreadComponentPreview,
   ThreadComponentProvider,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
+import {
+  cadSurfaceCoverage,
+  resolveCadSurface,
+} from "./component-workspace-model.ts";
 
 export interface ComponentWorkspaceProps {
   snapshot: ThreadWorkbenchSnapshot;
@@ -41,6 +46,7 @@ export function ComponentWorkspace({
   onBindingSelect,
 }: ComponentWorkspaceProps): JSX.Element {
   const components = snapshot.components.components;
+  const cadCoverage = cadSurfaceCoverage(snapshot);
   const selected =
     components.find((component) => component.id === selectedComponentId) ??
       components[0];
@@ -77,23 +83,35 @@ export function ComponentWorkspace({
           const linked = components.filter((component) =>
             verifiedBinding(component, provider.id)
           ).length;
+          const selectedCad = provider.id === "build123d"
+            ? resolveCadSurface(snapshot, selected)
+            : undefined;
           return (
             <button
               key={provider.id}
               type="button"
               role="tab"
               aria-selected={activeProvider === provider.id}
-              onClick={() =>
-                onProviderChange(provider.id)}
+              onClick={() => {
+                onProviderChange(provider.id);
+                if (selectedCad) {
+                  onBindingSelect(selectedCad.inspectionBinding);
+                }
+              }}
             >
               <span>{provider.label}</span>
-              <small>{linked}/{components.length} · {provider.role}</small>
+              <small>
+                {provider.id === "build123d"
+                  ? `${cadCoverage.assemblySurfaces} assembly · ${cadCoverage.partSurfaces} parts`
+                  : `${linked}/${components.length} · ${provider.role}`}
+              </small>
             </button>
           );
         })}
       </div>
 
       <PartTraceStrip
+        snapshot={snapshot}
         component={selected}
         activeProvider={activeProvider}
         onProviderChange={onProviderChange}
@@ -133,11 +151,13 @@ export function ComponentWorkspace({
 }
 
 function PartTraceStrip({
+  snapshot,
   component,
   activeProvider,
   onProviderChange,
   onBindingSelect,
 }: {
+  snapshot: ThreadWorkbenchSnapshot;
   component: ThreadComponent;
   activeProvider: ThreadComponentProvider;
   onProviderChange: (provider: ThreadComponentProvider) => void;
@@ -150,7 +170,11 @@ function PartTraceStrip({
     >
       {PROVIDERS.map((provider, index) => {
         const binding = bindingFor(component, provider.id);
-        const verified = binding?.status === "verified";
+        const cadSurface = provider.id === "build123d"
+          ? resolveCadSurface(snapshot, component)
+          : undefined;
+        const verified = binding?.status === "verified" || !!cadSurface;
+        const inspectableBinding = cadSurface?.inspectionBinding ?? binding;
         return (
           <div class="part-trace-step" key={provider.id}>
             {index > 0 && (
@@ -162,7 +186,9 @@ function PartTraceStrip({
               aria-current={activeProvider === provider.id ? "true" : undefined}
               onClick={() => {
                 onProviderChange(provider.id);
-                if (verified && binding) onBindingSelect(binding);
+                if (verified && inspectableBinding) {
+                  onBindingSelect(inspectableBinding);
+                }
               }}
             >
               <i aria-hidden="true">{verified ? "✓" : "!"}</i>
@@ -283,34 +309,72 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
   onInspect: (binding: ThreadComponentBinding) => void;
 }): JSX.Element {
   const binding = bindingFor(selected, "build123d");
-  const available = snapshot.components.components.filter((component) =>
-    component.preview && verifiedBinding(component, "build123d")
-  );
+  const surface = resolveCadSurface(snapshot, selected);
+  const available = snapshot.components.components.flatMap((component) => {
+    const candidate = resolveCadSurface(snapshot, component);
+    return candidate?.preview ? [component] : [];
+  });
   return (
     <section class="cad-geometry" aria-label="build123d geometry">
       <header class="provider-surface-header">
         <div>
-          <p>PARAMETRIC CAD · PRESENTATION MESH</p>
+          <p>
+            {surface?.scope === "assembly"
+              ? "ASSEMBLY-LEVEL CAD · PRESENTATION MESH"
+              : "PARAMETRIC CAD · PRESENTATION MESH"}
+          </p>
           <h5>{selected.label}</h5>
         </div>
-        {binding
+        {surface
+          ? (
+            <button
+              type="button"
+              onClick={() => onInspect(surface.inspectionBinding)}
+            >
+              inspect evidence →
+            </button>
+          )
+          : binding?.selection
           ? (
             <button type="button" onClick={() => onInspect(binding)}>
               inspect evidence →
             </button>
           )
-          : <span>CAD facet not linked</span>}
+          : <span>CAD surface not linked</span>}
       </header>
-      {selected.preview && binding?.status === "verified"
-        ? <CadStlViewer preview={selected.preview} snapshot={snapshot} />
+      {surface?.preview
+        ? (
+          <>
+            {surface.scope === "assembly" && (
+              <div class="cad-scope-notice">
+                <span>ASSEMBLY SCOPE</span>
+                <p>
+                  This is the exact global CM-01 assembly export. It does not
+                  imply separate geometry identities for its child parts.
+                </p>
+              </div>
+            )}
+            <CadStlViewer
+              preview={surface.preview}
+              authoritativeArtifact={surface.authoritativeArtifact}
+              snapshot={snapshot}
+            />
+          </>
+        )
         : (
           <div class="cad-trace-gap">
             <span aria-hidden="true">CAD?</span>
             <div>
-              <h5>No exact geometry is linked to {selected.label}</h5>
+              <h5>
+                No exact{" "}
+                {selected.kind === "part" ? "part " : ""}geometry is linked to
+                {" "}
+                {selected.label}
+              </h5>
               <p>
-                The component exists in the shared product structure, but this
-                revision contains no reviewed build123d identity for it.
+                {selected.kind === "part"
+                  ? "The global assembly can be viewed, but this revision does not prove an independently addressable build123d shape for this part."
+                  : "This revision contains no exact build123d assembly artifact and matching presentation mesh."}
               </p>
             </div>
             {available.length > 0 && (
@@ -318,6 +382,7 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
                 <small>AVAILABLE GEOMETRY</small>
                 {available.map((component) => (
                   <button
+                    key={component.id}
                     type="button"
                     onClick={() => onSelect(component)}
                   >
@@ -332,13 +397,14 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
   );
 }
 
-function CadStlViewer({ preview, snapshot }: {
+function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
   preview: ThreadComponentPreview;
+  authoritativeArtifact: ThreadArtifact;
   snapshot: ThreadWorkbenchSnapshot;
 }): JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const source = snapshot.artifacts.find((artifact) =>
+  const presentation = snapshot.artifacts.find((artifact) =>
     artifact.id === preview.artifactId
   );
 
@@ -460,13 +526,15 @@ function CadStlViewer({ preview, snapshot }: {
       <footer class="cad-viewer-evidence">
         <div>
           <small>ENGINEERING AUTHORITY</small>
-          <strong>{source?.label ?? preview.artifactId}</strong>
-          <code>{source?.fingerprint ?? "fingerprint unavailable"}</code>
+          <strong>{authoritativeArtifact.label}</strong>
+          <code>
+            {authoritativeArtifact.fingerprint ?? "fingerprint unavailable"}
+          </code>
         </div>
         <div>
           <small>PRESENTATION ONLY · STL</small>
-          <strong>Derived display mesh</strong>
-          <code>{preview.sha256}</code>
+          <strong>{presentation?.label ?? "Derived display mesh"}</strong>
+          <code>{presentation?.fingerprint ?? preview.sha256}</code>
         </div>
       </footer>
     </div>

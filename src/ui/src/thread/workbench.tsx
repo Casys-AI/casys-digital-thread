@@ -15,6 +15,18 @@ import {
   StateMessage,
   Toolbar,
 } from "../mcp-view-primitives.ts";
+import {
+  buildProjectBrief,
+  projectStatusLabel,
+  projectStatusTone,
+} from "../project/model.ts";
+import {
+  ProjectNavigation,
+  projectViewLabel,
+  type ProjectWorkspaceView,
+} from "../project/navigation.tsx";
+import { ProjectOverview } from "../project/overview.tsx";
+import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
 import type { ThreadStreamStatus, ThreadWorkbenchClient } from "./client.ts";
 import { activityFeedNodes } from "./feed-model.ts";
 import { nextLiveFocusNode } from "./live-update.ts";
@@ -27,6 +39,7 @@ import {
 } from "./tool-inspectors.tsx";
 import { resolveToolInspectorTarget } from "./tool-inspector-model.ts";
 import type {
+  EngineeringWorkbenchSnapshot,
   ThreadAction,
   ThreadArtifact,
   ThreadComponent,
@@ -57,14 +70,12 @@ interface PreparedAction {
 export function ThreadWorkbench({
   client,
 }: ThreadWorkbenchProps): JSX.Element {
-  const [snapshot, setSnapshot] = useState<ThreadWorkbenchSnapshot>();
+  const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
-  const [workspaceMode, setWorkspaceMode] = useState<
-    "feed" | "topology" | "parts"
-  >(
-    "feed",
+  const [activeView, setActiveView] = useState<ProjectWorkspaceView>(
+    "overview",
   );
   const [activeComponentProvider, setActiveComponentProvider] = useState<
     ThreadComponentProvider
@@ -79,7 +90,7 @@ export function ThreadWorkbench({
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [prepared, setPrepared] = useState<PreparedAction>();
   const [error, setError] = useState<string>();
-  const snapshotRef = useRef<ThreadWorkbenchSnapshot>();
+  const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
   const followLiveRef = useRef(followLive);
   followLiveRef.current = followLive;
 
@@ -89,16 +100,17 @@ export function ThreadWorkbench({
     setError(undefined);
     client.load(controller.signal).then((next) => {
       snapshotRef.current = next;
-      setSnapshot(next);
-      setSelectedComponentId(next.components.components[0]?.id);
-      const liveNode = activityFeedNodes(next.graph.nodes)[0];
+      setWorkbench(next);
+      const thread = next.thread;
+      setSelectedComponentId(thread.components.components[0]?.id);
+      const liveNode = activityFeedNodes(thread.graph.nodes)[0];
       const initialSelection: ThreadRef = liveNode?.selection ??
-        (next.violations[0]
-          ? { kind: "violation", id: next.violations[0].id }
-          : { kind: "change", id: next.change.id });
+        (thread.violations[0]
+          ? { kind: "violation", id: thread.violations[0].id }
+          : { kind: "change", id: thread.change.id });
       setSelection(initialSelection);
       const initialNode = liveNode ??
-        graphNodeForSelection(next, initialSelection);
+        graphNodeForSelection(thread, initialSelection);
       setLineageFocus(initialNode?.ref);
       setGraphSelection(
         initialNode ? { kind: "node", ref: initialNode.ref } : undefined,
@@ -107,9 +119,9 @@ export function ThreadWorkbench({
         unsubscribe = client.subscribe((incoming) => {
           const previous = snapshotRef.current;
           snapshotRef.current = incoming;
-          setSnapshot(incoming);
+          setWorkbench(incoming);
           if (!followLiveRef.current) return;
-          const liveNode = nextLiveFocusNode(previous, incoming);
+          const liveNode = nextLiveFocusNode(previous?.thread, incoming.thread);
           if (!liveNode) return;
           setLineageFocus(liveNode.ref);
           setGraphSelection({ kind: "node", ref: liveNode.ref });
@@ -135,22 +147,26 @@ export function ThreadWorkbench({
 
   if (error) {
     return (
-      <StateMessage title="Thread snapshot unavailable" tone="danger">
+      <StateMessage title="Engineering project unavailable" tone="danger">
         {error}
       </StateMessage>
     );
   }
-  if (!snapshot || !selection) {
+  if (!workbench || !selection) {
     return (
       <div class="thread-loading" aria-busy="true">
         <span class="thread-loading-mark" aria-hidden="true" />
         <div>
-          <strong>Reading linked evidence</strong>
+          <strong>Reading project intent and linked evidence</strong>
           <small>No engineering tool is being executed.</small>
         </div>
       </div>
     );
   }
+
+  const snapshot = workbench.thread;
+  const project = workbench.project;
+  const projectBrief = buildProjectBrief(project);
 
   const prepareAction = (action: ThreadAction) => {
     setPrepared({
@@ -243,7 +259,7 @@ export function ThreadWorkbench({
         )
       );
     if (component) setSelectedComponentId(component.id);
-    setWorkspaceMode("parts");
+    setActiveView("product");
   };
 
   const selectedEdge = graphSelection?.kind === "edge"
@@ -257,13 +273,83 @@ export function ThreadWorkbench({
   const selectedGraphNode = inspectorTarget.node;
   const inspectorRecord = inspectorTarget.record;
 
+  const inspector = (
+    <aside
+      class="thread-tool-drawer"
+      aria-label="Active engineering tool workspace"
+    >
+      {selectedEdge
+        ? (
+          <GraphEdgeInspector
+            snapshot={snapshot}
+            edge={selectedEdge}
+            onSelectGraphNode={selectGraphNode}
+          />
+        )
+        : (
+          <>
+            <div
+              class="thread-drawer-tabs"
+              role="tablist"
+              aria-label="Inspector mode"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={drawerMode === "tool"}
+                onClick={() => setDrawerMode("tool")}
+              >
+                Tool context
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={drawerMode === "record"}
+                disabled={!inspectorRecord}
+                onClick={() => setDrawerMode("record")}
+              >
+                Exact record
+              </button>
+            </div>
+            {drawerMode === "tool"
+              ? (
+                <ToolInspectorPanel
+                  snapshot={snapshot}
+                  node={selectedGraphNode}
+                  selection={inspectorRecord}
+                  onSelect={selectThreadElement}
+                  onPrepareAction={prepareAction}
+                  onOpenToolView={openToolView}
+                  availableFullViews={["syson", "build123d", "erpnext"]}
+                />
+              )
+              : inspectorRecord
+              ? (
+                <SelectionInspector
+                  snapshot={snapshot}
+                  selection={inspectorRecord}
+                  onSelect={selectThreadElement}
+                  onPrepare={prepareAction}
+                />
+              )
+              : (
+                <EmptyState>
+                  This graph entity has no richer record projection. Use the
+                  tool context to inspect its recorded neighbours.
+                </EmptyState>
+              )}
+          </>
+        )}
+    </aside>
+  );
+
   return (
     <div class="thread-workbench mcp-view-surface">
       <header class="thread-cockpit-header">
         <div class="thread-cockpit-identity">
           <div class="thread-kicker">
             <span class="thread-coordinate">
-              HUMAN + AGENT ENGINEERING COCKPIT
+              ENGINEERING PROJECT COCKPIT
             </span>
             <Badge tone={snapshot.source === "fixture" ? "warning" : "success"}>
               {snapshot.sourceLabel}
@@ -272,8 +358,13 @@ export function ThreadWorkbench({
           <div class="thread-subject-heading">
             <span class="thread-subject-mark" aria-hidden="true">DT</span>
             <div>
-              <p class="thread-program">{snapshot.subject.program}</p>
-              <h2>{snapshot.subject.label}</h2>
+              <p class="thread-program">
+                PROJECT {project.project.id} · REVISION {project.revision}
+              </p>
+              <h2>{project.project.name}</h2>
+              <span class="thread-subject-context">
+                Technical subject · {snapshot.subject.label}
+              </span>
             </div>
           </div>
         </div>
@@ -290,235 +381,170 @@ export function ThreadWorkbench({
             </div>
           </div>
           <div class="thread-session-change">
-            <small>CURRENT CHANGE</small>
-            <strong>{snapshot.change.title}</strong>
+            <small>NOW</small>
+            <strong>
+              {projectBrief.activeRuns[0]?.summary ??
+                projectBrief.currentWork[0]?.title ?? "No active work recorded"}
+            </strong>
           </div>
           <dl class="thread-session-facts">
             <div>
-              <dt>Revision</dt>
-              <dd>
-                <code>{shortIdentifier(snapshot.change.revision)}</code>
+              <dt>Project</dt>
+              <dd data-project-tone={projectStatusTone(projectBrief.status)}>
+                {projectStatusLabel(projectBrief.status)}
               </dd>
             </div>
             <div>
               <dt>Updated</dt>
-              <dd>{formatTime(snapshot.generatedAt)}</dd>
+              <dd>{formatTime(project.generatedAt)}</dd>
             </div>
           </dl>
         </div>
       </header>
 
-      <MetricGrid
-        className="thread-metrics"
-        items={summaryMetrics(snapshot)}
+      <ProjectNavigation
+        activeView={activeView}
+        onChange={setActiveView}
       />
 
-      <section class="thread-flow-section" aria-labelledby="thread-flow-title">
-        <div class="thread-section-heading">
+      {workbench.alignment.status === "thread-ahead" && (
+        <div class="project-alignment-notice" role="status">
+          <span aria-hidden="true">!</span>
           <div>
-            <p>OPERATOR WORKSPACE</p>
-            <h3 id="thread-flow-title">
-              {workspaceMode === "feed"
-                ? "Live engineering activity"
-                : workspaceMode === "topology"
-                ? "Impact topology"
-                : "Product structure & tool facets"}
-            </h3>
-          </div>
-          <div class="thread-workspace-heading-tools">
-            <div
-              class="thread-workspace-switch"
-              role="tablist"
-              aria-label="Workspace view"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={workspaceMode === "topology"}
-                onClick={() => setWorkspaceMode("topology")}
-              >
-                Graph
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={workspaceMode === "feed"}
-                onClick={() => setWorkspaceMode("feed")}
-              >
-                Feed
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={workspaceMode === "parts"}
-                onClick={() => setWorkspaceMode("parts")}
-              >
-                Parts
-              </button>
-            </div>
-            <span>
-              Snapshot <code>{snapshot.id}</code> ·{" "}
-              {formatTime(snapshot.generatedAt)}
-            </span>
+            <strong>Project intent needs reconciliation</strong>
+            <small>
+              The technical thread is at revision{" "}
+              {workbench.alignment.currentThreadRevision}, while project
+              decisions remain anchored to revision{" "}
+              {workbench.alignment.projectThreadRevision}.
+            </small>
           </div>
         </div>
-        <div class="thread-workspace-meta">
-          <p class="thread-flow-explanation">
-            {workspaceMode === "feed"
-              ? "Validated facts arrive as the agent works. Each event assembles its recorded lineage while the active tool remains available for inspection and control."
-              : workspaceMode === "topology"
-              ? "Inspect the complete evidence topology. Shared subject identity is visible, but only recorded relations are treated as causal."
-              : "Select one physical component, then move across its exact SysON, build123d and ERPNext identities without leaving the engineering cockpit."}
-          </p>
-          <div class="thread-operator-contract" aria-label="Operator controls">
-            <span data-state={followLive ? "live" : "history"}>
-              <i aria-hidden="true" />
-              {followLive ? "Following activity" : "Reviewing history"}
-            </span>
-            <span>
-              <b>CONTROL</b> executions require operator confirmation
-            </span>
-          </div>
-        </div>
-        <div class="thread-graph-legend" aria-label="Graph legend">
-          <span data-tone="source">upstream evidence</span>
-          <span data-tone="focus">selected fact</span>
-          <span data-tone="impact">downstream impact</span>
-          <span data-tone="attested">hash-attested handoff</span>
-        </div>
-        <div class="thread-graph-workspace">
-          <div class="thread-graph-stage">
-            {workspaceMode === "feed"
-              ? (
-                <ThreadFeed
-                  nodes={snapshot.graph.nodes}
-                  edges={snapshot.graph.edges}
-                  focus={lineageFocus}
-                  selection={graphSelection}
-                  followLive={followLive}
-                  streamStatus={streamStatus}
-                  onFollowLiveChange={changeFollowLive}
-                  onSelectNode={(node) =>
-                    selectGraphNode(node, { pauseLive: true })}
-                  onSelectEdge={(edge) => {
-                    setGraphSelection({ kind: "edge", id: edge.id });
-                    setDrawerMode("tool");
-                  }}
-                  onInspect={(next, node) => {
-                    setSelection(next);
-                    setLineageFocus(node.ref);
-                    setDrawerMode("tool");
-                  }}
-                />
-              )
-              : workspaceMode === "topology"
-              ? (
-                <ThreadGraph
-                  nodes={snapshot.graph.nodes}
-                  edges={snapshot.graph.edges}
-                  selection={graphSelection}
-                  focus={lineageFocus}
-                  onSelectionChange={(next) => {
-                    if (next?.kind === "node") {
-                      const node = graphNodeByRef(snapshot, next.ref);
-                      if (node) selectGraphNode(node);
-                      return;
-                    }
-                    setGraphSelection(next);
-                    if (next?.kind === "edge") setDrawerMode("tool");
-                  }}
-                  onInspect={(next, node) => {
-                    setSelection(next);
-                    setLineageFocus(node.ref);
-                    setDrawerMode("tool");
-                  }}
-                />
-              )
-              : (
-                <ComponentWorkspace
-                  snapshot={snapshot}
-                  activeProvider={activeComponentProvider}
-                  selectedComponentId={selectedComponentId}
-                  onProviderChange={changeComponentProvider}
-                  onComponentSelect={selectComponent}
-                  onBindingSelect={inspectComponentBinding}
-                />
-              )}
-          </div>
-          <aside
-            class="thread-tool-drawer"
-            aria-label="Active engineering tool workspace"
+      )}
+
+      {activeView === "overview"
+        ? (
+          <ProjectOverview
+            project={project}
+            thread={snapshot}
+            onNavigate={setActiveView}
+          />
+        )
+        : (
+          <section
+            class={`thread-flow-section project-workspace-page is-${activeView}`}
+            id="project-workspace-panel"
+            aria-labelledby="thread-flow-title"
           >
-            {selectedEdge
-              ? (
-                <GraphEdgeInspector
-                  snapshot={snapshot}
-                  edge={selectedEdge}
-                  onSelectGraphNode={(node) => {
-                    selectGraphNode(node);
-                  }}
+            <div class="thread-section-heading">
+              <div>
+                <p>{workspaceEyebrow(activeView)}</p>
+                <h3 id="thread-flow-title">{workspaceTitle(activeView)}</h3>
+              </div>
+              <div class="thread-workspace-heading-tools">
+                <span>
+                  {projectViewLabel(activeView)} ·{" "}
+                  {formatTime(snapshot.generatedAt)}
+                </span>
+              </div>
+            </div>
+            <div class="thread-workspace-meta">
+              <p class="thread-flow-explanation">
+                {workspaceDescription(activeView)}
+              </p>
+              <div
+                class="thread-operator-contract"
+                aria-label="Operator controls"
+              >
+                <span data-state={followLive ? "live" : "history"}>
+                  <i aria-hidden="true" />
+                  {followLive ? "Following activity" : "Reviewing history"}
+                </span>
+                <span>
+                  <b>CONTROL</b> executions require operator confirmation
+                </span>
+              </div>
+            </div>
+            {activeView === "work" && <ProjectWorkRibbon project={project} />}
+            {activeView === "verification" && (
+              <>
+                <MetricGrid
+                  className="thread-metrics project-verification-metrics"
+                  items={summaryMetrics(snapshot)}
                 />
-              )
-              : (
-                <>
-                  <div
-                    class="thread-drawer-tabs"
-                    role="tablist"
-                    aria-label="Inspector mode"
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={drawerMode === "tool"}
-                      onClick={() => setDrawerMode("tool")}
-                    >
-                      Tool context
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={drawerMode === "record"}
-                      disabled={!inspectorRecord}
-                      onClick={() => setDrawerMode("record")}
-                    >
-                      Exact record
-                    </button>
-                  </div>
-                  {drawerMode === "tool"
-                    ? (
-                      <ToolInspectorPanel
-                        snapshot={snapshot}
-                        node={selectedGraphNode}
-                        selection={inspectorRecord}
-                        onSelect={selectThreadElement}
-                        onPrepareAction={prepareAction}
-                        onOpenToolView={openToolView}
-                        availableFullViews={["syson", "build123d", "erpnext"]}
-                      />
-                    )
-                    : (
-                      inspectorRecord
-                        ? (
-                          <SelectionInspector
-                            snapshot={snapshot}
-                            selection={inspectorRecord}
-                            onSelect={selectThreadElement}
-                            onPrepare={prepareAction}
-                          />
-                        )
-                        : (
-                          <EmptyState>
-                            This graph entity has no richer record projection.
-                            Use the tool context to inspect its recorded
-                            neighbours.
-                          </EmptyState>
-                        )
-                    )}
-                </>
-              )}
-          </aside>
-        </div>
-      </section>
+                <div class="thread-graph-legend" aria-label="Graph legend">
+                  <span data-tone="source">upstream evidence</span>
+                  <span data-tone="focus">selected fact</span>
+                  <span data-tone="impact">downstream impact</span>
+                  <span data-tone="attested">hash-attested handoff</span>
+                </div>
+              </>
+            )}
+            <div class="thread-graph-workspace">
+              <div class="thread-graph-stage">
+                {activeView === "work"
+                  ? (
+                    <ThreadFeed
+                      nodes={snapshot.graph.nodes}
+                      edges={snapshot.graph.edges}
+                      focus={lineageFocus}
+                      selection={graphSelection}
+                      followLive={followLive}
+                      streamStatus={streamStatus}
+                      onFollowLiveChange={changeFollowLive}
+                      onSelectNode={(node) =>
+                        selectGraphNode(node, { pauseLive: true })}
+                      onSelectEdge={(edge) => {
+                        setGraphSelection({ kind: "edge", id: edge.id });
+                        setDrawerMode("tool");
+                      }}
+                      onInspect={(next, node) => {
+                        setSelection(next);
+                        setLineageFocus(node.ref);
+                        setDrawerMode("tool");
+                      }}
+                    />
+                  )
+                  : activeView === "verification"
+                  ? (
+                    <ThreadGraph
+                      nodes={snapshot.graph.nodes}
+                      edges={snapshot.graph.edges}
+                      selection={graphSelection}
+                      focus={lineageFocus}
+                      onSelectionChange={(next) => {
+                        if (next?.kind === "node") {
+                          const node = graphNodeByRef(snapshot, next.ref);
+                          if (node) selectGraphNode(node);
+                          return;
+                        }
+                        setGraphSelection(next);
+                        if (next?.kind === "edge") setDrawerMode("tool");
+                      }}
+                      onInspect={(next, node) => {
+                        setSelection(next);
+                        setLineageFocus(node.ref);
+                        setDrawerMode("tool");
+                      }}
+                    />
+                  )
+                  : activeView === "product"
+                  ? (
+                    <ComponentWorkspace
+                      snapshot={snapshot}
+                      activeProvider={activeComponentProvider}
+                      selectedComponentId={selectedComponentId}
+                      onProviderChange={changeComponentProvider}
+                      onComponentSelect={selectComponent}
+                      onBindingSelect={inspectComponentBinding}
+                    />
+                  )
+                  : <ProjectOperations project={project} thread={snapshot} />}
+              </div>
+              {inspector}
+            </div>
+          </section>
+        )}
 
       {prepared && (
         <div class="thread-action-notice" role="status">
@@ -542,6 +568,39 @@ export function ThreadWorkbench({
       )}
     </div>
   );
+}
+
+function workspaceEyebrow(
+  view: Exclude<ProjectWorkspaceView, "overview">,
+): string {
+  if (view === "work") return "HUMAN + AGENT WORKSPACE";
+  if (view === "product") return "PRODUCT DEFINITION";
+  if (view === "verification") return "TRACEABLE VERIFICATION";
+  return "EXECUTION CONTROL";
+}
+
+function workspaceTitle(
+  view: Exclude<ProjectWorkspaceView, "overview">,
+): string {
+  if (view === "work") return "Live engineering activity";
+  if (view === "product") return "Product structure across tools";
+  if (view === "verification") return "Evidence, impact and verdicts";
+  return "Runs, work plan and tool surfaces";
+}
+
+function workspaceDescription(
+  view: Exclude<ProjectWorkspaceView, "overview">,
+): string {
+  if (view === "work") {
+    return "Validated results appear as the agent works. The feed exposes actions and outcomes, never private chain-of-thought.";
+  }
+  if (view === "product") {
+    return "Select one physical component, then move across its exact SysON, build123d and ERPNext identities without leaving the project.";
+  }
+  if (view === "verification") {
+    return "Follow recorded evidence from source to consequence. Shared subject identity is visible, but only explicit relations are treated as causal.";
+  }
+  return "Review declared work, agent run states and the engineering tools which contributed evidence to this project.";
 }
 
 function GraphEdgeInspector({ snapshot, edge, onSelectGraphNode }: {
@@ -1314,10 +1373,6 @@ function streamStatusLabel(
   if (status === "connecting") return "Connecting activity stream";
   if (status === "reconnecting") return "Reconnecting activity stream";
   return "Persisted snapshot";
-}
-
-function shortIdentifier(value: string): string {
-  return value.length > 18 ? `${value.slice(0, 15)}…` : value;
 }
 
 function formatTime(value: string): string {

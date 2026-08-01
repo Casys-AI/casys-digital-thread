@@ -50,11 +50,24 @@ provisoire `config/verification-plans/coffee-machine-nominal-v1.json` :
 `syson_constraint_evaluate` et lié aux hashes modèle/scénario. Ce n'est pas une exigence
 produit/SysON ; les 900 s sont seulement la provenance du scénario.
 
-Le produit est un Workbench Preact natif sur un `ThreadSnapshot` lié. Le backend compose
-les données par un DAG explicite sous `config/thread-workflows/`; la YAML ne décrit ni
-layout ni composant. Ouvrir la page ne lance aucun solver. Les MCP Apps restent des
-réponses riches unitaires pour les agents, jamais des panneaux du produit. Ports,
-contrats et frontières exacts : `docs/reference/workspace-map.md`.
+Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.1` :
+un `EngineeringProjectSnapshot` immuable pour l'intention, le travail, les décisions et
+les blocages ; un `ThreadSnapshot` lié pour la preuve technique ; et un état explicite
+`aligned` ou `thread-ahead`. Les cinq espaces sont `Overview`, `Work`, `Product`,
+`Verification` et `Operations`. Le feed live appartient à `Work`, le graphe à
+`Verification`, les facettes composants à `Product`, et les runs et outils à
+`Operations`.
+
+Le backend compose les données par un DAG explicite sous `config/thread-workflows/` ; la
+YAML ne décrit ni layout ni composant. Ouvrir la page ne lance aucun solver. Les MCP
+Apps restent des réponses riches unitaires pour les agents, jamais des panneaux du
+produit. Ports, contrats et frontières exacts : `docs/reference/workspace-map.md`.
+
+Le projet CM-01 suivi vit sous `config/projects/`. Il référence des IDs de snapshots
+exacts, jamais `latest`. `config/projects/baselines/` contient une capture observée r5
+et son STL de présentation lossless pour rendre le preview reproductible sans provider.
+Le store local actif reste prioritaire ; le baseline ne peut satisfaire que le même ID
+ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service actif.
 
 ## Principes non négociables (hérités des règles AgentCards)
 

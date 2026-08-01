@@ -30,10 +30,11 @@ CAD → FEA branch.
 The target chain answers, continuously and in minutes, the question that today takes
 weeks between requirement freeze and design review: **does this design hold every
 requirement it traces to — with computed proof?** The repository currently proves the
-individual transports, computations, artifact attestation, and presentation concepts. A
-read-only CoffeeMachine CM-01 snapshot now aggregates observed evidence from all five
-providers; the closed verification and correction loop remains under construction
-because the SysON model has no mechanical criterion to evaluate.
+individual transports, computations, artifact attestation, and presentation concepts.
+The clean CoffeeMachine CM-01 baseline aggregates observed SysON, Modelica, ERPNext and
+whole-machine build123d evidence. CalculiX is deliberately absent until a mechanical
+case and SysON criterion are reviewed; the closed verification and correction loop
+therefore remains under construction.
 
 ## Positioning
 
@@ -110,24 +111,39 @@ npm --prefix src/ui run build
 deno task start                  # http://127.0.0.1:3020/mcp
 # In a second terminal, browser host for the existing MCP App:
 deno task preview:browser        # http://127.0.0.1:3021/
-# Assemble the observed CM-01 branches, then serve the native shell:
-deno task thread:assemble
+# The native shell can open the checked-in observed CM-01 baseline directly.
 deno task preview:thread
+# Reassemble only when deliberately producing new local evidence:
+deno task thread:assemble
 ```
 
 The browser host relays the Console's read-only tools to the live MCP server. It is a
 local MCP Apps test harness, not the product Workbench.
 
-The product direction is one native Preact shell reading a persisted, versioned
-`ThreadSnapshot` from a backend-for-frontend. Engineering `tools/call` requests remain
-backend-only and occur only after an explicit execution command; opening or refreshing
-the UI never launches CAD, FEA, or Modelica. `thread:assemble` bootstraps a local CM-01
-revision from read-only SysON inventory, one persisted Modelica run, and reviewed
-ERPNext reads. The explicit build runner then adds the current SysON-derived CAD
-artifacts. It is real observed evidence, not a new FEA solve and not a closed SysON
-verification loop. See the
+The product is one native Preact cockpit reading an `engineering-workbench/0.1` document
+from a read-only backend-for-frontend. That atomic document combines project intent
+(`EngineeringProjectSnapshot`), the current technical projection (`ThreadSnapshot` plus
+provisional live overlay), and an explicit `aligned`/`thread-ahead` signal. The cockpit
+is organized as **Overview**, **Work**, **Product**, **Verification**, and
+**Operations** so project objective, human-agent work, physical structure, technical
+proof, and execution records no longer compete in one lineage screen.
+
+Engineering `tools/call` requests remain backend-only and occur only after an explicit
+execution command; opening or refreshing the UI never launches CAD, FEA, or Modelica.
+`thread:assemble` bootstraps a local CM-01 revision from read-only SysON inventory, one
+persisted Modelica run, and reviewed ERPNext reads. The explicit build runner then adds
+the current SysON-derived CAD artifacts. It is real observed evidence, not a new FEA
+solve and not a closed SysON verification loop. See the
 [native preview how-to](docs/how-to/preview-native-workbench.md) and the
 [ThreadSnapshot reference](docs/reference/thread-snapshot.md).
+
+The tracked project under
+[`config/projects/coffee-machine-cm01.project.json`](config/projects/coffee-machine-cm01.project.json)
+references an exact observed r5 capture under `config/projects/baselines/`. On a fresh
+clone, the BFF can therefore show the reviewed project, thread and exact STL without
+running a provider. Active local snapshots and assets take priority when present, but a
+baseline is accepted only for the same exact ID or filename—never as a substitute for
+`latest` or for missing evidence.
 
 The current live CoffeeMachine model contains two `RequirementUsage` elements but zero
 `ConstraintUsage` elements. The mechanical DAG may produce evidence only after an
@@ -174,6 +190,7 @@ security boundary.
 | `docker-compose.yml`                | The full stack: SysON + MCP servers over HTTP                            |
 | `server.ts`, `src/`                 | Console plus native thread contracts and orchestration prototypes        |
 | `config/mcp-fleet.json`             | Desired fleet, topology, tools, views, and trust boundaries              |
+| `config/projects/`                  | Versioned project intent plus exact observed baseline captures           |
 | `config/thread-workflows/`          | Reviewed YAML authoring prototypes compiled into typed causal DAGs       |
 | `config/thread-subjects/`           | Reviewed explicit provider-to-product identity bindings                  |
 | `config/verification-plans/`        | Versioned provisional scenario-contract plans                            |

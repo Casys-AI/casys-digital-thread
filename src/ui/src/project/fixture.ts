@@ -1,0 +1,211 @@
+import type { EngineeringProjectSnapshot } from "../../../domain/engineering-project.ts";
+import { COFFEE_MACHINE_THREAD_FIXTURE } from "../thread/fixture.ts";
+import type { EngineeringWorkbenchSnapshot } from "../thread/types.ts";
+
+/** Labelled UI fallback. It demonstrates project control, never production truth. */
+export const COFFEE_MACHINE_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
+  schemaVersion: "1.0",
+  id: "project-snapshot-cm01-fixture",
+  revision: 1,
+  generatedAt: COFFEE_MACHINE_THREAD_FIXTURE.generatedAt,
+  project: {
+    id: "project-cm01-fixture",
+    name: "Coffee Machine CM-01",
+    subjectId: COFFEE_MACHINE_THREAD_FIXTURE.subject.id,
+    objective: {
+      title: "Build a verifiable coffee-machine demonstrator",
+      statement:
+        "Connect system intent, product geometry, simulation evidence and industrial records so every engineering decision can be reviewed against exact inputs.",
+    },
+  },
+  threadSnapshots: [{
+    snapshotId: COFFEE_MACHINE_THREAD_FIXTURE.id,
+    revision: 1,
+    subjectId: COFFEE_MACHINE_THREAD_FIXTURE.subject.id,
+  }],
+  phases: [
+    phase("define", "Define", 1, ["work-define"], [], "change", "CHG-184"),
+    phase(
+      "architect",
+      "Architect",
+      2,
+      ["work-architect"],
+      [],
+      "artifact",
+      "ART-SYSML-018",
+    ),
+    phase(
+      "design",
+      "Design",
+      3,
+      ["work-design"],
+      [],
+      "artifact",
+      "ART-CAD-018",
+    ),
+    phase("simulate", "Simulate", 4, ["work-simulate"], [
+      "decision-mechanical-inputs",
+    ]),
+    phase("verify", "Verify", 5, ["work-verify"]),
+    phase("industrialize", "Industrialize", 6, ["work-industrialize"]),
+  ],
+  workItems: [
+    work(
+      "work-define",
+      "define",
+      "Frame the system objective",
+      "completed",
+      "shared",
+    ),
+    work(
+      "work-architect",
+      "architect",
+      "Establish the SysML structure",
+      "completed",
+      "agent",
+    ),
+    work(
+      "work-design",
+      "design",
+      "Produce linked product geometry",
+      "completed",
+      "agent",
+    ),
+    {
+      ...work(
+        "work-simulate",
+        "simulate",
+        "Prepare mechanical verification inputs",
+        "waiting-for-decision",
+        "shared",
+      ),
+      dependsOnWorkItemIds: ["work-design"],
+      decisionIds: ["decision-mechanical-inputs"],
+      blockerIds: ["blocker-mechanical-inputs"],
+    },
+    {
+      ...work(
+        "work-verify",
+        "verify",
+        "Evaluate model requirements",
+        "planned",
+        "agent",
+      ),
+      dependsOnWorkItemIds: ["work-simulate"],
+      blockerIds: ["blocker-mechanical-inputs"],
+    },
+    {
+      ...work(
+        "work-industrialize",
+        "industrialize",
+        "Reconcile the manufacturing record",
+        "planned",
+        "shared",
+      ),
+      dependsOnWorkItemIds: ["work-verify"],
+    },
+  ],
+  agentRuns: [{
+    id: "agent-run-mechanical-fixture",
+    workItemId: "work-simulate",
+    status: "waiting-for-decision",
+    summary: "Mechanical verification is waiting for reviewed analysis inputs.",
+    queuedAt: "2026-08-01T08:40:00.000Z",
+    startedAt: "2026-08-01T08:40:03.000Z",
+    evidenceRefs: [],
+  }],
+  decisions: [{
+    id: "decision-mechanical-inputs",
+    phaseId: "simulate",
+    title: "Mechanical reference case",
+    question:
+      "Which material, supports, loads and model-owned acceptance criterion should govern the reference calculation?",
+    status: "required",
+    requestedAt: "2026-08-01T08:40:04.000Z",
+    inputEvidenceRefs: [],
+    approvalIds: ["approval-mechanical-inputs"],
+  }],
+  approvals: [{
+    id: "approval-mechanical-inputs",
+    decisionId: "decision-mechanical-inputs",
+    status: "pending",
+    requestedAt: "2026-08-01T08:40:04.000Z",
+    inputEvidenceRefs: [],
+  }],
+  blockers: [{
+    id: "blocker-mechanical-inputs",
+    phaseId: "simulate",
+    title: "Reference case is not reviewed",
+    description:
+      "The solver must not run until material, supports, loads and the acceptance criterion are explicit.",
+    kind: "decision-required",
+    status: "open",
+    openedAt: "2026-08-01T08:40:04.000Z",
+    workItemIds: ["work-simulate", "work-verify"],
+    decisionIds: ["decision-mechanical-inputs"],
+  }],
+};
+
+export const COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE:
+  EngineeringWorkbenchSnapshot = {
+    schemaVersion: "engineering-workbench/0.1",
+    project: COFFEE_MACHINE_PROJECT_FIXTURE,
+    thread: COFFEE_MACHINE_THREAD_FIXTURE,
+    alignment: {
+      status: "aligned",
+      projectThreadRevision: 1,
+      currentThreadRevision: 1,
+    },
+  };
+
+function phase(
+  id: EngineeringProjectSnapshot["phases"][number]["id"],
+  name: string,
+  order: number,
+  workItemIds: string[],
+  requiredDecisionIds: string[] = [],
+  evidenceKind?:
+    EngineeringProjectSnapshot["phases"][number]["evidenceRefs"][number][
+      "kind"
+    ],
+  evidenceId?: string,
+): EngineeringProjectSnapshot["phases"][number] {
+  return {
+    id,
+    name,
+    order,
+    description: `${name} the linked engineering subject.`,
+    workItemIds,
+    requiredDecisionIds,
+    evidenceRefs: evidenceKind && evidenceId
+      ? [{
+        snapshotId: COFFEE_MACHINE_THREAD_FIXTURE.id,
+        snapshotRevision: 1,
+        kind: evidenceKind,
+        id: evidenceId,
+      }]
+      : [],
+  };
+}
+
+function work(
+  id: string,
+  phaseId: string,
+  title: string,
+  status: EngineeringProjectSnapshot["workItems"][number]["status"],
+  owner: EngineeringProjectSnapshot["workItems"][number]["owner"],
+): EngineeringProjectSnapshot["workItems"][number] {
+  return {
+    id,
+    phaseId,
+    title,
+    description: title,
+    kind: phaseId as EngineeringProjectSnapshot["workItems"][number]["kind"],
+    status,
+    owner,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: [],
+    blockerIds: [],
+  };
+}

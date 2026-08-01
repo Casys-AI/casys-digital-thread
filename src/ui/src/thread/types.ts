@@ -5,6 +5,9 @@
  * tool calls and projects their persisted, linked evidence into this snapshot.
  */
 
+import type { EngineeringProjectSnapshot } from "../../../domain/engineering-project.ts";
+import { isEngineeringProjectSnapshot } from "../project/contract.ts";
+
 export type ThreadFreshness = "fresh" | "stale" | "running" | "failed";
 export type ThreadTone = "neutral" | "info" | "success" | "warning" | "danger";
 
@@ -243,6 +246,33 @@ export interface ThreadWorkbenchSnapshot {
   requirements: ThreadRequirement[];
   violations: ThreadViolation[];
   actions: ThreadAction[];
+}
+
+/** Project intent and linked technical proof delivered as one atomic BFF read. */
+export interface EngineeringWorkbenchSnapshot {
+  readonly schemaVersion: "engineering-workbench/0.1";
+  readonly project: EngineeringProjectSnapshot;
+  readonly thread: ThreadWorkbenchSnapshot;
+  readonly alignment: {
+    readonly status: "aligned" | "thread-ahead";
+    readonly projectThreadRevision: number;
+    readonly currentThreadRevision: number;
+  };
+}
+
+export function isEngineeringWorkbenchSnapshot(
+  value: unknown,
+): value is EngineeringWorkbenchSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<EngineeringWorkbenchSnapshot>;
+  return candidate.schemaVersion === "engineering-workbench/0.1" &&
+    isEngineeringProjectSnapshot(candidate.project) &&
+    isThreadWorkbenchSnapshot(candidate.thread) &&
+    !!candidate.alignment &&
+    (candidate.alignment.status === "aligned" ||
+      candidate.alignment.status === "thread-ahead") &&
+    typeof candidate.alignment.projectThreadRevision === "number" &&
+    typeof candidate.alignment.currentThreadRevision === "number";
 }
 
 export function isThreadWorkbenchSnapshot(

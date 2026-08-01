@@ -1,6 +1,23 @@
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
+import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
+import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import {
+  type EngineeringProjectStore,
+  FileEngineeringProjectStore,
+} from "../src/adapters/engineering-project-store.ts";
+import { projectEngineeringWorkbenchSnapshot } from "../src/adapters/engineering-workbench-projector.ts";
+import {
+  type ExactThreadSnapshotReader,
+  FileExactThreadSnapshotDirectory,
+  OrderedExactThreadSnapshotReader,
+} from "../src/adapters/engineering-thread-snapshot-resolver.ts";
+import {
+  Base64EngineeringAssetReader,
+  FileEngineeringAssetReader,
+  OrderedEngineeringAssetReader,
+} from "../src/adapters/engineering-asset-resolver.ts";
 import { projectThreadWorkbenchSnapshot } from "../src/adapters/thread-workbench-projector.ts";
 import {
   FileLiveThreadUpdateStore,
@@ -15,6 +32,9 @@ import {
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
+  projectStore: EngineeringProjectStore;
+  /** Active store plus optional exact, versioned project baselines. */
+  projectSnapshots?: ExactThreadSnapshotReader;
   subjectId: string;
   html: string;
   componentCatalog?: ThreadComponentCatalog;
@@ -36,23 +56,33 @@ export function createNativeWorkbenchHandler(
     }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
-      return snapshotEventStream(request, options);
+      return await snapshotEventStream(request, options);
     }
     if (url.pathname === "/api/thread/workbench") {
       if (request.method !== "GET") return methodNotAllowed();
-      const snapshot = await options.store.latest(options.subjectId);
+      const [project, activeSnapshot] = await Promise.all([
+        options.projectStore.get(),
+        options.store.latest(options.subjectId),
+      ]);
+      if (!project) return projectNotFound(options.subjectId);
+      const snapshot = activeSnapshot ??
+        await resolveDeclaredProjectHead(project, options);
       if (!snapshot) {
         return json({
           error: "thread_snapshot_not_found",
           subjectId: options.subjectId,
         }, 404);
       }
-      const projection = await projectWorkbenchSnapshot(snapshot, options);
+      const projection = await projectWorkbenchSnapshot(
+        project,
+        snapshot,
+        options,
+      );
       return json(
         projection,
         200,
         {
-          "X-Casys-Data-Source": projection.live?.active.length
+          "X-Casys-Data-Source": projection.thread.live.active.length
             ? "canonical-thread-snapshot+live-updates"
             : "canonical-thread-snapshot",
         },
@@ -74,10 +104,13 @@ export function createNativeWorkbenchHandler(
   };
 }
 
-function snapshotEventStream(
+async function snapshotEventStream(
   request: Request,
   options: NativeWorkbenchHandlerOptions,
-): Response {
+): Promise<Response> {
+  const initialProject = await options.projectStore.get();
+  if (!initialProject) return projectNotFound(options.subjectId);
+  let project = initialProject;
   const encoder = new TextEncoder();
   const pollIntervalMs = options.pollIntervalMs ?? 500;
   let lastEventId = request.headers.get("Last-Event-ID") ?? "";
@@ -91,16 +124,23 @@ function snapshotEventStream(
         // return, even while a streaming response is still open. Stream
         // cancellation is the reliable browser-disconnect signal here.
         while (!cancelled) {
-          const snapshot = await options.store.latest(options.subjectId);
-          const liveUpdates = await options.liveUpdates?.list(options.subjectId) ?? [];
+          const [activeSnapshot, latestProject, liveUpdates] = await Promise.all([
+            options.store.latest(options.subjectId),
+            options.projectStore.get(),
+            options.liveUpdates?.list(options.subjectId) ?? [],
+          ]);
+          // A manifest removed during an established stream cannot revoke the
+          // last valid event. A reconnect will receive an explicit 404.
+          if (latestProject) project = latestProject;
+          const snapshot = activeSnapshot ??
+            await resolveDeclaredProjectHead(project, options);
           const liveVersion = liveUpdates.at(-1)?.sequence ?? 0;
           const eventId = snapshot
-            ? options.liveUpdates
-              ? `${snapshot.revision}:${liveVersion}`
-              : String(snapshot.revision)
+            ? `${project.revision}:${snapshot.revision}:${liveVersion}`
             : "";
           if (snapshot && eventId !== lastEventId) {
             const projection = await projectWorkbenchSnapshot(
+              project,
               snapshot,
               options,
               liveUpdates,
@@ -149,6 +189,48 @@ function snapshotEventStream(
 }
 
 async function projectWorkbenchSnapshot(
+  project: EngineeringProjectSnapshot,
+  snapshot: ThreadSnapshot,
+  options: NativeWorkbenchHandlerOptions,
+  liveUpdates?: LiveThreadUpdate[],
+) {
+  const declaredSnapshots = await Promise.all(
+    project.threadSnapshots.map((reference) =>
+      reference.snapshotId === snapshot.id &&
+        reference.revision === snapshot.revision
+        ? Promise.resolve(snapshot)
+        : (options.projectSnapshots ?? options.store).get(reference.snapshotId)
+    ),
+  );
+  const validatedProject = validateEngineeringProjectThreadReferences(
+    project,
+    declaredSnapshots.filter(
+      (candidate): candidate is ThreadSnapshot => candidate !== undefined,
+    ),
+  );
+  return projectEngineeringWorkbenchSnapshot(
+    validatedProject,
+    await projectThreadSnapshot(snapshot, options, liveUpdates),
+    snapshot.revision,
+  );
+}
+
+async function resolveDeclaredProjectHead(
+  project: EngineeringProjectSnapshot,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<ThreadSnapshot | undefined> {
+  const reference =
+    [...project.threadSnapshots].sort((left, right) =>
+      right.revision - left.revision ||
+      right.snapshotId.localeCompare(left.snapshotId)
+    )[0];
+  if (!reference) return undefined;
+  return await (options.projectSnapshots ?? options.store).get(
+    reference.snapshotId,
+  );
+}
+
+async function projectThreadSnapshot(
   snapshot: ThreadSnapshot,
   options: NativeWorkbenchHandlerOptions,
   liveUpdates?: LiveThreadUpdate[],
@@ -202,6 +284,12 @@ if (import.meta.main) {
   const snapshotDirectory = argument("snapshot-dir") ??
     "state/local/thread-snapshots";
   const subjectId = argument("subject") ?? "coffee-machine-cm01";
+  const projectPath = argument("project") ??
+    `config/projects/${subjectId}.project.json`;
+  const projectBaselineDirectory = argument("project-baseline-dir") ??
+    "config/projects/baselines";
+  const projectBaselineAssetDirectory = argument("project-baseline-asset-dir") ??
+    `${projectBaselineDirectory}/assets`;
   const htmlPath = argument("html") ??
     "src/ui/dist/thread/native-workbench.html";
   const componentCatalogPath = argument("component-catalog") ??
@@ -214,20 +302,22 @@ if (import.meta.main) {
     JSON.parse(await Deno.readTextFile(componentCatalogPath)),
   );
   const store = new FileThreadSnapshotStore(snapshotDirectory);
+  const assetReader = new OrderedEngineeringAssetReader([
+    new FileEngineeringAssetReader(assetDirectory),
+    new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
+  ]);
   const handler = createNativeWorkbenchHandler({
     store,
+    projectStore: new FileEngineeringProjectStore(projectPath),
+    projectSnapshots: new OrderedExactThreadSnapshotReader([
+      store,
+      new FileExactThreadSnapshotDirectory(projectBaselineDirectory),
+    ]),
     subjectId,
     html,
     componentCatalog,
     liveUpdates: new FileLiveThreadUpdateStore(liveUpdateDirectory),
-    assetReader: async (filename) => {
-      try {
-        return await Deno.readFile(`${assetDirectory}/${filename}`);
-      } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return undefined;
-        throw error;
-      }
-    },
+    assetReader: (filename) => assetReader.read(filename),
   });
 
   Deno.serve({
@@ -236,6 +326,11 @@ if (import.meta.main) {
     onListen: ({ hostname, port }) => {
       console.log(`Native Workbench: http://${hostname}:${port}/`);
       console.log(`Snapshot subject: ${subjectId}`);
+      console.log(`Engineering project: ${projectPath}`);
+      console.log(`Versioned project baselines: ${projectBaselineDirectory}`);
+      console.log(
+        `Versioned presentation baselines: ${projectBaselineAssetDirectory}`,
+      );
       console.log(`Component identities: ${componentCatalogPath}`);
       console.log(`Live activity journal: ${liveUpdateDirectory}`);
       console.log("Read-only: page loads never execute an engineering tool.");
@@ -262,6 +357,13 @@ function methodNotAllowed(): Response {
     status: 405,
     headers: { Allow: "GET" },
   });
+}
+
+function projectNotFound(subjectId: string): Response {
+  return json({
+    error: "engineering_project_not_found",
+    subjectId,
+  }, 404);
 }
 
 function argument(name: string): string | undefined {
