@@ -14,7 +14,6 @@ names.
 
 The local evidence inputs must be available:
 
-- `state/local/attested-mechanical-run.json`, the previously captured CAD → FEA proof;
 - a captured SysON inventory in `state/local/syson-inventory/`;
 - the declared Modelica run available through `http://127.0.0.1:3016/mcp`; and
 - ERPNext available through `http://127.0.0.1:3012/mcp`.
@@ -40,13 +39,11 @@ deno task thread:assemble
 The task persists successive immutable revisions under `state/local/thread-snapshots/`
 and an exact ERPNext capture under `state/local/erpnext-captures/`. It reads:
 
-| Provider  | Evidence used by the current CM-01 assembly                                    |
-| --------- | ------------------------------------------------------------------------------ |
-| SysON     | Captured read-only model inventory                                             |
-| build123d | Attested STEP export and mass                                                  |
-| CalculiX  | Attested consumed STEP hash, displacement, and stress                          |
-| Modelica  | Declared persisted run, its model/scenario identities, results, and quantities |
-| ERPNext   | Active default BOM list and item-filtered Bin query                            |
+| Provider | Evidence used by the CM-01 bootstrap                                           |
+| -------- | ------------------------------------------------------------------------------ |
+| SysON    | Captured read-only model inventory                                             |
+| Modelica | Declared persisted run, its model/scenario identities, results, and quantities |
+| ERPNext  | Active default BOM list, detail document, and item-filtered Bin query          |
 
 The task does not run `build123d_execute`, `calculix_solve_static`, or
 `modelica_simulate`. It does not mutate SysON or ERPNext. Its provider calls are the
@@ -98,11 +95,9 @@ The native Workbench at `http://127.0.0.1:5173/` reads the latest validated CM-0
 snapshot through its read-only BFF. It does not call MCP from the browser and does not
 rerun assembly on refresh.
 
-The assembled subject contains five provider identities and the following observed
-values in the current local evidence:
+After bootstrap, the subject contains the thermal and enterprise observations below. The
+explicit SysON-to-CAD run adds build123d evidence in a later immutable revision:
 
-- bracket mass `0.05691576 kg`;
-- maximum displacement `0.0427849 mm` and maximum von Mises stress `26.29 MPa`;
 - Modelica maximum water temperature `94.000000073 degC`, time to target `138 s`, heater
   energy `493914.2758 J`, and peak power `1500 W`;
 - ERPNext active default BOM `BOM-CASYS-CM01-001` at quantity `1 Nos`; and
@@ -115,10 +110,9 @@ contains two `RequirementUsage` elements and no `ConstraintUsage`, so there is n
 model-owned mechanical criterion to evaluate. No `120 MPa` or other limit is inserted by
 the assembler.
 
-The five branches are assembled under one declared product subject, but their provenance
-remains bounded. In particular, the support-bracket CAD → FEA edge is hash-attested; the
-Modelica run is an independent versioned system scenario; and the ERP observations are
-provider-native manufacturing data. Assembly does not claim that changing the STEP
+The branches share one declared product subject, but their provenance remains bounded.
+The Modelica run is an independent versioned system scenario and the ERP observations
+are provider-native manufacturing data. Assembly does not claim that changing the STEP
 caused the thermal result or the BOM state.
 
 Likewise, zero rows from the ERPNext Bin query means only that this query returned zero

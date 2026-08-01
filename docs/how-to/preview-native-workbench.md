@@ -14,13 +14,12 @@ deno task thread:assemble
 ```
 
 The assembler reads the workspace-declared identity manifest, captured SysON inventory,
-the attested CAD → FEA capture, one persisted Modelica run, and two reviewed ERPNext
-reads. It writes successive immutable canonical documents under
-`state/local/thread-snapshots/`; all captures remain ignored local state. See
-[the assembly how-to](assemble-coffee-machine-thread.md) for prerequisites and the exact
-read boundary.
+one persisted Modelica run, and reviewed ERPNext reads. It writes successive immutable
+canonical documents under `state/local/thread-snapshots/`; all captures remain ignored
+local state. See [the assembly how-to](assemble-coffee-machine-thread.md) for
+prerequisites and the exact read boundary.
 
-The command reports five providers, `requirements: 0`, and
+The clean bootstrap reports SysON, Modelica, and ERPNext, `requirements: 0`, and
 `verdict: unavailable-no-model-owned-mechanical-criterion`. This is expected: the live
 CoffeeMachine model has no approved mechanical `ConstraintUsage`.
 
@@ -72,10 +71,9 @@ The projection must show:
 
 - source `observed`, not `fixture`;
 - exact producer and consumed SHA-256 values for every claimed CAD handoff;
-- mass `0.05691576 kg`, maximum displacement `0.0427849 mm`, and maximum von Mises
-  stress `26.29 MPa`;
-- four explicit branches in addition to SysON: build123d, CalculiX, Modelica, and
-  ERPNext;
+- the canonical whole-machine STEP after an explicit build run is attached;
+- SysON, Modelica, and ERPNext bootstrap branches, plus build123d and CalculiX only
+  after their explicit runs are published;
 - zero requirements and an unavailable verdict, not a successful one.
 
 The page opens on the lineage feed. Use it as the primary navigation:
@@ -115,9 +113,9 @@ the target environment.
 ## Know what this slice proves
 
 It proves durable canonical snapshot validation, explicit provider-to-subject and
-component identity, exact CAD → FEA artifact identity, persisted Modelica observations
-and ERPNext BOM detail, a read-only BFF, and one coherent native UI with shared
-selection and no nested Apps.
+component identity, persisted Modelica observations and ERPNext BOM detail, a read-only
+BFF, and one coherent native UI with shared selection and no nested Apps. When a FEA
+branch exists, its exact CAD consumption must be attested before projection.
 
 It does **not** prove:
 
@@ -128,7 +126,7 @@ It does **not** prove:
   backend runners own provider MCP calls.
 
 The assembly groups independent branches under a reviewed CM-01 identity; it does not
-manufacture causal links between the CAD/FEA, thermal, and ERP branches.
+manufacture causal links between the CAD, thermal, ERP, or future FEA branches.
 
 ## Compare the preview paths
 

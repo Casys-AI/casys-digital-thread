@@ -9,7 +9,7 @@ if (!runId) {
 }
 
 const directory = argument("output") ?? "state/local/thread-snapshots";
-const subjectId = argument("subject") ?? "coffee-machine-support-bracket";
+const subjectId = argument("subject") ?? "coffee-machine-cm01";
 const snapshotId = argument("base");
 const mcpUrl = argument("mcp-url") ?? "http://127.0.0.1:3016/mcp";
 const store = new FileThreadSnapshotStore(directory);

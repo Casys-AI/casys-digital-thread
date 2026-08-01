@@ -220,21 +220,6 @@ Deno.test("coffee workflow blocks SysON evaluation when CalculiX attests differe
   const calls: Array<{ server: string; call: McpToolCall }> = [];
   const clients = new Map<string, McpToolClient>([
     [
-      "build123d",
-      client("build123d", calls, {
-        text: "STEP exported",
-        structuredContent: {
-          files: [{
-            format: "step",
-            path: "/exports/coffee-machine-support.step",
-            bytes: 1234,
-            sha256: producerHash,
-          }],
-          metrics: { mass_kg: 0.42 },
-        },
-      }),
-    ],
-    [
       "calculix",
       client("calculix", calls, {
         text: "Solve completed",
@@ -267,9 +252,17 @@ Deno.test("coffee workflow blocks SysON evaluation when CalculiX attests differe
   const execution = await executor(clients).execute(workflow, {
     syson_editing_context_id: "coffee-context",
     syson_mechanical_requirements_element_id: "mechanical-requirements",
-    reviewed_material_density_kg_m3: 2700,
+    cad_step_path: "/exports/coffee-machine-current.step",
+    cad_step_sha256: producerHash,
+    reviewed_mesh_size_mm: 4,
     reviewed_material_e_mpa: 70_000,
     reviewed_material_nu: 0.33,
+    reviewed_fixed_box_min: [-131, -161, -191],
+    reviewed_fixed_box_max: [131, 161, -189],
+    reviewed_loaded_box_min: [-40, -40, 150],
+    reviewed_loaded_box_max: [40, 40, 191],
+    reviewed_load_force_x_n: 0,
+    reviewed_load_force_y_n: 0,
     reviewed_load_force_z_n: -500,
   });
 
@@ -278,14 +271,13 @@ Deno.test("coffee workflow blocks SysON evaluation when CalculiX attests differe
     execution.nodes.map((node) => [node.nodeId, node.status]),
     [
       ["requirements", "succeeded"],
-      ["cad", "succeeded"],
       ["mechanical", "succeeded"],
       ["observations", "failed"],
       ["evaluation", "blocked"],
     ],
   );
   assertEquals(
-    execution.nodes[3].error?.includes("does not match consumed"),
+    execution.nodes[2].error?.includes("does not match consumed"),
     true,
   );
   assertEquals(

@@ -9,40 +9,39 @@ import type { CompiledBinding } from "./types.ts";
 
 const COFFEE_WORKFLOW = "config/thread-workflows/coffee-machine-mechanical-v1.yaml";
 
-Deno.test("coffee workflow compiles the exact CAD to FEA to normalization to SysON data chain", async () => {
+Deno.test("coffee workflow compiles the canonical STEP to FEA to normalization to SysON data chain", async () => {
   const workflow = await loadAndCompileThreadWorkflow(COFFEE_WORKFLOW);
 
   assertEquals(workflow.kind, "thread-workflow-dag");
   assertEquals(workflow.nodes.map((node) => node.id), [
     "requirements",
-    "cad",
     "mechanical",
     "observations",
     "evaluation",
   ]);
 
   const mechanical = workflow.nodes.find((node) => node.id === "mechanical")!;
-  assertEquals(mechanical.explicitDependencies, []);
-  assertEquals(mechanical.inferredDependencies, ["cad"]);
-  assertEquals(mechanical.dependencies, ["cad"]);
-  assertEquals(
-    mechanical.arguments.step_path,
-    binding({
-      expression: "${cad.step_path}",
-      nodeId: "cad",
-      output: "step_path",
+  assertEquals(mechanical.explicitDependencies, ["requirements"]);
+  assertEquals(mechanical.inferredDependencies, []);
+  assertEquals(mechanical.dependencies, ["requirements"]);
+  assertEquals(mechanical.arguments.step_path, {
+    kind: "binding",
+    expression: "${inputs.cad_step_path}",
+    source: {
+      kind: "workflow-input",
+      input: "cad_step_path",
       type: "artifact-uri",
-    }),
-  );
-  assertEquals(
-    mechanical.arguments.expected_step_sha256,
-    binding({
-      expression: "${cad.step_sha256}",
-      nodeId: "cad",
-      output: "step_sha256",
+    },
+  });
+  assertEquals(mechanical.arguments.expected_step_sha256, {
+    kind: "binding",
+    expression: "${inputs.cad_step_sha256}",
+    source: {
+      kind: "workflow-input",
+      input: "cad_step_sha256",
       type: "string",
-    }),
-  );
+    },
+  });
   assertEquals(
     (mechanical.arguments.material as Record<string, unknown>).e_mpa,
     {
@@ -57,7 +56,7 @@ Deno.test("coffee workflow compiles the exact CAD to FEA to normalization to Sys
   );
 
   const observations = workflow.nodes.find((node) => node.id === "observations")!;
-  assertEquals(observations.dependencies, ["cad", "mechanical"]);
+  assertEquals(observations.dependencies, ["mechanical"]);
 
   const evaluation = workflow.nodes.find((node) => node.id === "evaluation")!;
   assertEquals(evaluation.dependencies, ["observations", "requirements"]);

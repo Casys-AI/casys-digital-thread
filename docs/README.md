@@ -16,8 +16,8 @@ categories deliberately answer different questions.
   assembles the observed CM-01 branches, starts the single-shell Preact product surface,
   and explains why the page itself performs no provider call or solve.
 - [Assemble the CoffeeMachine CM-01 thread](how-to/assemble-coffee-machine-thread.md)
-  joins five provider branches through reviewed identities and persists a read-only
-  snapshot without manufacturing requirements or cross-branch cause.
+  bootstraps the reviewed SysON, Modelica, and ERPNext branches; explicit runners add
+  CAD and future FEA revisions without manufacturing cross-branch cause.
 - [Preview the MCP console in a local browser](how-to/preview-console.md) explains the
   `127.0.0.1:3021` harness, how to confirm that it is live, and what it intentionally
   does not do.
@@ -25,8 +25,8 @@ categories deliberately answer different questions.
   explains the ERPNext-derived visual baseline, Preact default, and component-only
   palette rule.
 - [Run the CoffeeMachine mechanical workflow](how-to/view-coffee-machine-cm01.md)
-  validates the causal SysON → CAD → FEA graph and explains why it refuses to run until
-  the model owns a real mechanical criterion.
+  validates the canonical STEP → FEA → SysON graph and lists the reviewed analysis-case
+  inputs required before a real mechanical runner can exist.
 - [Attach a persisted Modelica branch](how-to/attach-observed-modelica-branch.md)
   imports one exact, already-persisted thermal run as evidence only: the model,
   scenario, metrics, and hashes are retained, without inventing a verdict.

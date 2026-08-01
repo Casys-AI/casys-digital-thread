@@ -1,15 +1,15 @@
 # Authoring prototype only. Loading or compiling this file performs no MCP call.
-# Runtime SysON identifiers deliberately remain conspicuous authoring markers:
-# v1 does not silently invent them or pull them from dashboard state.
+# The caller must resolve the STEP path and digest from a canonical ThreadSnapshot
+# and supply one reviewed analysis case. No material, support, load, or limit is
+# inferred from the CAD geometry or from a display name.
 schemaVersion: "1.0"
 kind: thread-workflow
 id: coffee-machine-mechanical-v1
 name: Coffee machine mechanical verification
 description: >-
-  First causal slice of the coffee-machine thread: generate one support part,
-  solve the exact generated STEP, normalize unit-bearing observations, then
-  evaluate model constraints. Modelica and ERP are intentionally absent until
-  a causal input or consequence connects them to this slice.
+  Consume the canonical CoffeeMachine STEP, solve one explicitly reviewed
+  static analysis case, normalize unit-bearing observations, then evaluate
+  only constraints extracted from SysON.
 
 inputs:
   syson_editing_context_id:
@@ -18,22 +18,46 @@ inputs:
   syson_mechanical_requirements_element_id:
     type: string
     description: Element whose child ConstraintUsage defines the mechanical limits.
-  reviewed_material_density_kg_m3:
+  cad_step_path:
+    type: artifact-uri
+    description: STEP path resolved from the current canonical build artifact.
+  cad_step_sha256:
+    type: string
+    description: SHA-256 of that exact canonical STEP artifact.
+  reviewed_mesh_size_mm:
     type: number
-    description: Density from the reviewed material specification; no workflow default.
+    description: Mesh size from the reviewed analysis case; no workflow default.
   reviewed_material_e_mpa:
     type: number
-    description: Young modulus from the reviewed material specification; no workflow default.
+    description: Young modulus from the reviewed material specification.
   reviewed_material_nu:
     type: number
-    description: Poisson ratio from the reviewed material specification; no workflow default.
+    description: Poisson ratio from the reviewed material specification.
+  reviewed_fixed_box_min:
+    type: array
+    description: Minimum XYZ coordinates of the reviewed fixed-face box in mm.
+  reviewed_fixed_box_max:
+    type: array
+    description: Maximum XYZ coordinates of the reviewed fixed-face box in mm.
+  reviewed_loaded_box_min:
+    type: array
+    description: Minimum XYZ coordinates of the reviewed loaded-face box in mm.
+  reviewed_loaded_box_max:
+    type: array
+    description: Maximum XYZ coordinates of the reviewed loaded-face box in mm.
+  reviewed_load_force_x_n:
+    type: number
+    description: Reviewed total X force in N.
+  reviewed_load_force_y_n:
+    type: number
+    description: Reviewed total Y force in N.
   reviewed_load_force_z_n:
     type: number
-    description: Signed Z load from the reviewed mechanical load case; no workflow default.
+    description: Reviewed total Z force in N.
 
 nodes:
   requirements:
-    description: Read the reviewed SysML constraints; do not invent thresholds here.
+    description: Read the reviewed SysML constraints; an empty result stays explicit.
     server: syson
     tool: syson_constraint_extract
     arguments:
@@ -43,67 +67,36 @@ nodes:
       constraints:
         select: constraints
         type: array
-        minItems: 1
-        description: Constraint ASTs extracted from the model.
-
-  cad:
-    description: Generate the support geometry and its exact STEP artifact.
-    server: build123d
-    tool: build123d_export
-    needs: [requirements]
-    arguments:
-      name: coffee-machine-support
-      formats: [step]
-      density_kg_m3: "${inputs.reviewed_material_density_kg_m3}"
-      script: |-
-        from build123d import *
-
-        length_mm, width_mm, height_mm = 60.0, 40.0, 50.0
-        thickness_mm, hole_d_mm, fillet_mm = 5.0, 6.0, 4.0
-
-        with BuildPart() as bracket:
-            Box(length_mm, width_mm, thickness_mm)
-            with Locations((-length_mm / 2 + thickness_mm / 2, 0, height_mm / 2)):
-                Box(thickness_mm, width_mm, height_mm)
-            edge = bracket.edges().filter_by(Axis.Y).group_by(Axis.X)[1].group_by(Axis.Z)[-1]
-            fillet(edge, fillet_mm)
-            with Locations((15, 12, 0), (15, -12, 0)):
-                Hole(hole_d_mm / 2)
-
-        result = bracket
-    outputs:
-      step_path:
-        select: files.0.path
-        type: artifact-uri
-        description: STEP location produced by this invocation.
-      step_sha256:
-        select: files.0.sha256
-        type: string
-        description: Digest computed from the exact exported STEP bytes.
-      mass_kg:
-        select: metrics.mass_kg
-        type: number
-        description: Kernel volume times the explicitly supplied density.
+        description: Constraint ASTs extracted from the model, possibly empty.
 
   mechanical:
-    description: Solve the STEP emitted by cad, never a persisted dashboard prerequisite.
+    description: Solve the exact canonical STEP under the reviewed analysis case.
     server: calculix
     tool: calculix_solve_static
+    needs: [requirements]
     arguments:
-      step_path: "${cad.step_path}"
-      expected_step_sha256: "${cad.step_sha256}"
-      mesh_size_mm: 3
+      step_path: "${inputs.cad_step_path}"
+      expected_step_sha256: "${inputs.cad_step_sha256}"
+      mesh_size_mm: "${inputs.reviewed_mesh_size_mm}"
       material:
         e_mpa: "${inputs.reviewed_material_e_mpa}"
         nu: "${inputs.reviewed_material_nu}"
       selections:
         - name: FIXED
-          box: { min: [-31, -21, -3.1], max: [31, 21, -2.4] }
+          box:
+            min: "${inputs.reviewed_fixed_box_min}"
+            max: "${inputs.reviewed_fixed_box_max}"
         - name: LOADED
-          box: { min: [-31, -21, 49.4], max: [-24, 21, 50.1] }
+          box:
+            min: "${inputs.reviewed_loaded_box_min}"
+            max: "${inputs.reviewed_loaded_box_max}"
       fixed: [FIXED]
       loads:
-        - { selection: LOADED, force_n: [0, 0, "${inputs.reviewed_load_force_z_n}"] }
+        - selection: LOADED
+          force_n:
+            - "${inputs.reviewed_load_force_x_n}"
+            - "${inputs.reviewed_load_force_y_n}"
+            - "${inputs.reviewed_load_force_z_n}"
     outputs:
       input_step_sha256:
         select: inputArtifact.sha256
@@ -117,30 +110,25 @@ nodes:
         type: quantity
 
   observations:
-    description: Convert provider outputs into the feature-value map expected by SysON.
+    description: Convert solver outputs into the feature-value map expected by SysON.
     server: digital-thread
     tool: thread_observations_normalize
     arguments:
       observations:
-        support_mass:
-          value: "${cad.mass_kg}"
-          unit: kg
-          produced_by: cad
-        support_max_displacement:
+        assembly_max_displacement:
           quantity: "${mechanical.max_displacement}"
           produced_by: mechanical
-        support_max_von_mises:
+        assembly_max_von_mises:
           quantity: "${mechanical.max_von_mises}"
           produced_by: mechanical
       artifact_attestations:
-        - producer_sha256: "${cad.step_sha256}"
+        - producer_sha256: "${inputs.cad_step_sha256}"
           consumer_sha256: "${mechanical.input_step_sha256}"
           relation: consumed_exact_artifact
     outputs:
       values:
         select: values
         type: object
-        description: Unit-bearing feature-path to value map.
       provenance:
         select: provenance
         type: object

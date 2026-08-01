@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
-import { materializeAttestedMechanicalRun } from "../src/adapters/attested-mechanical-run.ts";
+import { materializeAttestedMechanicalRun } from "../src/testing/attested-mechanical-run-fixture.ts";
 import { createNativeWorkbenchHandler } from "./serve-native-workbench.ts";
 import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
 

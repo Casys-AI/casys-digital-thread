@@ -21,7 +21,7 @@
     {
       "provider": "build123d",
       "kind": "artifact-path",
-      "id": "/exports/coffee-machine-support-attested.step"
+      "id": "/exports/coffee-machine-7fce4d8056860b65.step"
     },
     {
       "provider": "modelica",

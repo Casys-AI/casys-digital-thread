@@ -70,10 +70,8 @@ export interface AttestedMechanicalMaterializationOptions {
 }
 
 /**
- * Convert one captured, hash-attested CAD -> FEA run into the canonical model.
- *
- * This adapter performs no engineering computation and never manufactures a
- * requirement. In particular, an observed stress value is not a verdict.
+ * Test fixture: convert one captured bracket proof into a canonical snapshot.
+ * It performs no computation and never manufactures a requirement.
  */
 export async function materializeAttestedMechanicalRun(
   value: unknown,

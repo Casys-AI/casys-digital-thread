@@ -1,4 +1,3 @@
-import { materializeAttestedMechanicalRun } from "../src/adapters/attested-mechanical-run.ts";
 import {
   materializeErpNextCoffeeMachineBomDetailExtension,
   materializeErpNextCoffeeMachineBomExtension,
@@ -12,10 +11,7 @@ import {
   materializeSysonInventorySubject,
   sysonModelInventoryExtension,
 } from "../src/adapters/syson-model-inventory-extension.ts";
-import {
-  applyThreadSnapshotExtensionIfNew,
-  snapshotEvidenceExtension,
-} from "../src/domain/thread-snapshot-extension.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../src/domain/thread-snapshot-extension.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { ThreadSnapshotExtension } from "../src/domain/thread-snapshot-extension.ts";
 import {
@@ -25,8 +21,6 @@ import {
 
 const manifestPath = argument("manifest") ??
   "config/thread-subjects/coffee-machine-cm01.json";
-const mechanicalPath = argument("mechanical") ??
-  "state/local/attested-mechanical-run.json";
 const sysonPath = argument("syson-inventory") ??
   await latestJson("state/local/syson-inventory");
 const outputDirectory = argument("output") ?? "state/local/thread-snapshots";
@@ -54,29 +48,6 @@ if (!snapshot) {
   snapshot = await applyAndPersist(snapshot, sysonExtension);
 }
 
-const mechanicalCapture: unknown = JSON.parse(await Deno.readTextFile(mechanicalPath));
-const mechanical = await materializeAttestedMechanicalRun(mechanicalCapture, {
-  sourceUri: mechanicalPath,
-});
-const mechanicalProviderExtension = snapshotEvidenceExtension(mechanical, {
-  id: "attach-attested-support-bracket",
-  name: "Attach the attested support-bracket CAD and FEA branch",
-  subjectId: mechanical.subject.id,
-});
-const mechanicalBinding = {
-  provider: "build123d",
-  kind: "artifact-path",
-  id: mechanical.artifacts[0].uri ?? "",
-};
-snapshot = await applyAndPersist(
-  snapshot,
-  bindThreadSnapshotExtension(
-    mechanicalProviderExtension,
-    manifest,
-    mechanicalBinding,
-  ),
-  { appliedAt: later(snapshot.generatedAt, mechanical.generatedAt) },
-);
 const modelicaBinding = uniqueBinding(manifest, "modelica", "run");
 const modelicaObserver = new ModelicaRunObserver({
   mcpUrl: argument("modelica-mcp-url") ?? "http://127.0.0.1:3016/mcp",

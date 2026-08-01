@@ -44,9 +44,9 @@ Docker Compose starts the provider topology only. Product composition occurs in 
 backend workflow and linked state, not in the container orchestrator.
 
 `deno task thread:assemble` reads the declared CM-01 manifest, the latest captured SysON
-inventory, the local attested CAD → FEA capture, one persisted Modelica run, and
-reviewed ERPNext list/balance responses. It writes immutable local snapshots and an ERP
-capture; it does not start CAD, FEA, Modelica, mutate SysON or mutate ERPNext.
+inventory, one persisted Modelica run, and reviewed ERPNext list/detail/balance
+responses. It writes immutable local snapshots and an ERP capture; it does not start
+CAD, FEA, Modelica, mutate SysON, or mutate ERPNext.
 
 `deno task thread:run-coffee-machine-build` is the explicit execution path. It calls
 SysON and build123d through backend MCP clients and appends redacted progress to

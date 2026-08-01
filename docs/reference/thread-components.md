@@ -36,15 +36,11 @@ consumption attestation, and model-owned evaluation.
 
 ## Current CM-01 structure
 
-The catalog contains ten existing assembly components with exact SysON `PartUsage` and
-ERPNext `Item` identities. The ERP evidence is the persisted full result of
-`erpnext_bom_get` for `BOM-CASYS-CM01-001`, including its ten child rows; the BOM-list
-header is not used as component proof.
-
-The build123d support bracket is an eleventh component. It has an exact STEP artifact
-and presentation mesh but no reviewed SysON PartUsage or ERPNext Item in the current
-model. Those two facets are intentionally rendered as trace gaps. The Workbench never
-maps the bracket to `Enclosure` merely because that would make the screen look complete.
+The catalog contains one root assembly and ten child components. Each has an exact SysON
+`PartUsage`, ERPNext `Item`, and build123d assembly identity. The ERP evidence is the
+persisted full result of `erpnext_bom_get` for `BOM-CASYS-CM01-001`; the BOM-list header
+is not used as component proof. Child CAD bindings use the explicit `assembly-child`
+identity kind and point to the canonical whole-machine STEP evidence.
 
 ## System views and presentation assets
 

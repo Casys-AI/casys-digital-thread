@@ -30,7 +30,7 @@ export interface CapturedSysonModelInventory {
 export async function sysonModelInventoryExtension(
   value: unknown,
   sourceUri: string,
-  subjectId = "coffee-machine-support-bracket",
+  subjectId = "coffee-machine-cm01",
 ): Promise<ThreadSnapshotExtension> {
   const capture = parseCapturedSysonModelInventory(value);
   const fingerprint = await sha256(canonicalJson(capture.inventory));
