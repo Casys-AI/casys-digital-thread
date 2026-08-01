@@ -16,8 +16,8 @@ categories deliberately answer different questions.
   `127.0.0.1:3021` harness, how to confirm that it is live, and what it intentionally
   does not do.
 - [Host the Console in a local Compose dashboard](how-to/compose-console.md) starts the
-  stable Workbench selector with the published 0.7.1 runtime, mounts reviewed YAML
-  compositions in place, and explains the direct one-dashboard launchers.
+  stable Workbench selector with the local component-surface candidate, mounts reviewed
+  YAML compositions in place, and explains the direct one-dashboard launchers.
 - [Show the real ERPNext BOM in Compose](how-to/show-erpnext-bom.md) builds the scoped
   ERP engineering bridge, keeps credentials outside Git, explains its mutation boundary,
   and distinguishes live ERP data from successful viewer hydration.
@@ -47,6 +47,9 @@ categories deliberately answer different questions.
   physical simulation, and constraint evaluation remain separate stages.
 - [Industry positioning and state of the art](positioning.md) explains the
   executable-digital-thread and physics-in-the-loop framing.
+- [Composable MCP Apps](explanations/composable-mcp-apps.md) explains reusable domain
+  components, standalone/default surfaces, viewer-to-viewer events, the A2UI boundary,
+  and the local package release sequence.
 
 ## Read the status labels literally
 

@@ -5,6 +5,12 @@ name: CoffeeMachine CM-01 digital thread
 sources:
   - id: architecture
     manifest: mcp-syson
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: diagram-summary, component: syson.diagram.summary }
+        - { id: architecture-diagram, component: syson.diagram.visual }
+        - { id: diagram-identity, component: syson.diagram.identity }
     calls:
       - tool: syson_diagram_snapshot
         args:
@@ -12,6 +18,13 @@ sources:
           diagram_id: "{{syson_diagram_id}}"
   - id: cad
     manifest: mcp-build123d
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: geometry-status, component: build123d.geometry-status }
+        - { id: geometry-metrics, component: build123d.geometry-metrics }
+        - { id: geometry-canvas, component: build123d.geometry-canvas }
+        - { id: export-artifacts, component: build123d.export-artifacts }
     calls:
       - tool: build123d_export
         args:
@@ -91,6 +104,15 @@ sources:
           limit: 5
   - id: simulation
     manifest: mcp-modelica
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: run-identity, component: modelica.run-identity }
+        - { id: execution-status, component: modelica.execution-status }
+        - { id: simulation-metrics, component: modelica.metrics }
+        - { id: provenance, component: modelica.provenance }
+        - { id: artifacts, component: modelica.artifacts }
+        - { id: warnings, component: modelica.warnings }
     calls:
       - tool: modelica_simulate
         args:

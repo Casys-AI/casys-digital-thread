@@ -7,6 +7,7 @@ import {
 export const DASHBOARD_FILES: Readonly<Record<string, string>> = {
   console: "console.yaml",
   engineering: "engineering-results.yaml",
+  calculix: "calculix-bracket.yaml",
   cm01: "coffee-machine-cm01.yaml",
 };
 

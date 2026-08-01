@@ -5,6 +5,13 @@ name: Coffee machine simulation, CAD and BOM evidence
 sources:
   - id: coffee-machine-simulation
     manifest: mcp-modelica
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: status, component: modelica.execution-status }
+        - { id: metrics, component: modelica.metrics }
+        - { id: provenance, component: modelica.provenance }
+        - { id: artifacts, component: modelica.artifacts }
     calls:
       - tool: modelica_simulate
         args:
@@ -12,6 +19,12 @@ sources:
           scenario_id: heat-up-nominal
   - id: sample-cad
     manifest: mcp-build123d
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: status, component: build123d.geometry-status }
+        - { id: metrics, component: build123d.geometry-metrics }
+        - { id: canvas, component: build123d.geometry-canvas }
     calls:
       - tool: build123d_execute
         args:

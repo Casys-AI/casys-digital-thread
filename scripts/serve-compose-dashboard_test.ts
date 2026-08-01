@@ -17,6 +17,10 @@ Deno.test("resolveDashboardFile selects the engineering evidence dashboard", () 
   );
 });
 
+Deno.test("resolveDashboardFile selects the CalculiX bracket proof", () => {
+  assertEquals(resolveDashboardFile("calculix"), "calculix-bracket.yaml");
+});
+
 Deno.test("resolveDashboardFile selects the CM-01 digital thread", () => {
   assertEquals(resolveDashboardFile("cm01"), "coffee-machine-cm01.yaml");
 });

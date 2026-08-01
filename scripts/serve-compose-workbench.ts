@@ -23,6 +23,12 @@ export const WORKBENCH_DASHBOARDS: readonly DashboardSource[] = [
     argsFile: "state/local/coffee-machine-cm01.json",
   },
   {
+    id: "calculix",
+    title: "Mechanical bracket proof",
+    description: "Real mesh, constraints and static-solve extrema from CalculiX.",
+    file: "calculix-bracket.yaml",
+  },
+  {
     id: "engineering",
     title: "Engineering evidence",
     description: "Parallel calculation, geometry and traceability results.",

@@ -90,7 +90,8 @@
         "build123d_export"
       ],
       "expectedViews": [
-        "ui://mcp-build123d/results-viewer"
+        "ui://mcp-build123d/results-viewer",
+        "ui://mcp-build123d/artifact-helper-viewer"
       ],
       "network": {
         "exposure": "loopback-only",
@@ -159,7 +160,8 @@
         "modelica_run_get"
       ],
       "expectedViews": [
-        "ui://mcp-modelica/results-viewer"
+        "ui://mcp-modelica/results-viewer",
+        "ui://mcp-modelica/run-list-viewer"
       ],
       "network": {
         "exposure": "loopback-only",

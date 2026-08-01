@@ -6,8 +6,10 @@ the App handshake, and relays the Console's explicitly granted read-only calls. 
 smallest visual check of this one fixed view, use the
 [browser-preview how-to](preview-console.md) instead.
 
-The checked-in launchers consume the exact published `@casys/mcp-compose@0.7.1`
-runtime. No sibling source checkout is required.
+The component-surface prototype currently consumes the sibling
+`@casys/mcp-compose@0.8.0` source checkout. This keeps real integration local while the
+candidate is unpublished. After `0.8.0` is released, replace the two local imports in
+`deno.json` with the published package/subpath and regenerate `deno.lock`.
 
 ## 1. Start the Console MCP server
 
@@ -58,14 +60,24 @@ The launcher has only read access to `config/compose` and network access to loop
 The host binds only to loopback and enforces the manifest capability allowlist.
 
 The project keeps Deno's one-day dependency quarantine enabled. Its two name-based
-exceptions cover only the newly published Casys packages; the import map and lockfile
-pin `mcp-compose` to `0.7.1` and `mcp-server` to `0.24.1`.
+exceptions cover only Casys packages. The current import map uses the sibling Compose
+candidate and keeps `mcp-server` pinned to `0.24.1`; do not publish a temporary package
+merely to run the local proof.
 
 To run the real engineering evidence dashboard instead:
 
 ```bash
 deno task compose:engineering
 ```
+
+To run the reproducible CalculiX bracket solve and its four-component surface:
+
+```bash
+deno task compose:calculix
+```
+
+This expects `/exports/bracket.step`, produced by the Build123d step documented in
+[`examples/bracket`](../../examples/bracket/README.md).
 
 That dashboard also includes the ERPNext BOM panel. Its local build, credential and
 network prerequisites are documented in
@@ -98,8 +110,8 @@ Compose does not synthesize data or bypass it.
 `127.0.0.1:3021`. It has a small, deliberately hard-coded forwarding surface for Console
 visual testing.
 
-`deno task compose:workbench` is the persistent product shell on `127.0.0.1:60060`.
-It owns the selector and one active dashboard handle; it does not imitate any viewer or
+`deno task compose:workbench` is the persistent product shell on `127.0.0.1:60060`. It
+owns the selector and one active dashboard handle; it does not imitate any viewer or
 manufacture tool results.
 
 `composeAndServeDashboard()` starts a separate loopback dashboard with a random free

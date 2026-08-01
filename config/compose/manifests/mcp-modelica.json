@@ -67,7 +67,7 @@
     {
       "name": "modelica_run_list",
       "description": "List bounded Modelica simulation runs.",
-      "resourceUri": "ui://mcp-modelica/results-viewer",
+      "resourceUri": "ui://mcp-modelica/run-list-viewer",
       "inputSchema": {
         "type": "object",
         "properties": {

@@ -25,6 +25,10 @@ type EngineeringDashboard = {
   sources: Array<{
     id?: string;
     manifest: string;
+    surface?: {
+      layout: { type: string; columns?: number; gap?: string };
+      components: Array<{ id: string; component: string }>;
+    };
     calls: Array<{ tool: string; args: Record<string, unknown> }>;
   }>;
   orchestration?: {
@@ -43,6 +47,7 @@ type FleetManifest = {
     mcpUrl: string;
     required: boolean;
     expectedTools: string[];
+    expectedViews: string[];
   }>;
   workbench: Array<{
     id: string;
@@ -165,7 +170,11 @@ Deno.test("Compose manifests declare the stateless engineering viewers and minim
   ]);
   assertEquals(
     modelica.tools.slice(1).map((tool) => tool.resourceUri),
-    Array(3).fill("ui://mcp-modelica/results-viewer"),
+    [
+      "ui://mcp-modelica/results-viewer",
+      "ui://mcp-modelica/run-list-viewer",
+      "ui://mcp-modelica/results-viewer",
+    ],
   );
   assertEquals(
     build123d.tools.map((tool) => tool.resourceUri),
@@ -200,6 +209,20 @@ Deno.test("Compose manifests declare the stateless engineering viewers and minim
     fleet.servers.find((server) => server.id === "build123d")?.expectedTools
       .includes("build123d_export_read"),
     false,
+  );
+  assertEquals(
+    fleet.servers.find((server) => server.id === "build123d")?.expectedViews,
+    [
+      "ui://mcp-build123d/results-viewer",
+      "ui://mcp-build123d/artifact-helper-viewer",
+    ],
+  );
+  assertEquals(
+    fleet.servers.find((server) => server.id === "modelica")?.expectedViews,
+    [
+      "ui://mcp-modelica/results-viewer",
+      "ui://mcp-modelica/run-list-viewer",
+    ],
   );
   assertEquals(
     (build123dExportRead?.inputSchema as {
@@ -354,6 +377,26 @@ Deno.test("CM-01 dashboard saves four live sources and a portable 2x2 layout", a
   });
   assertEquals(source.includes("erpnext_doc_create"), false);
   assertEquals(source.includes("manifest: mcp-calculix"), false);
+  assertEquals(parsed.sources[0].surface?.components.map((item) => item.component), [
+    "syson.diagram.summary",
+    "syson.diagram.visual",
+    "syson.diagram.identity",
+  ]);
+  assertEquals(parsed.sources[1].surface?.components.map((item) => item.component), [
+    "build123d.geometry-status",
+    "build123d.geometry-metrics",
+    "build123d.geometry-canvas",
+    "build123d.export-artifacts",
+  ]);
+  assertEquals(parsed.sources[2].surface, undefined);
+  assertEquals(parsed.sources[3].surface?.components.map((item) => item.component), [
+    "modelica.run-identity",
+    "modelica.execution-status",
+    "modelica.metrics",
+    "modelica.provenance",
+    "modelica.artifacts",
+    "modelica.warnings",
+  ]);
   assertEquals(
     fleet.workbench.map(({ id, sourceServerId, resourceUri }) => ({
       id,

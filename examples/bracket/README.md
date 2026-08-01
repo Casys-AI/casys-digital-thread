@@ -51,3 +51,12 @@ someone written `totalMass <= 0.05 [lb]` by mistake, the kg/lb conversion makes 
 
 Every number above is reproducible from this folder with the three stateless MCP servers
 started through Compose.
+
+After `/exports/bracket.step` exists, open the componentized CalculiX result directly
+with `deno task compose:calculix`, or select **Mechanical bracket proof** in
+`deno task compose:workbench`. The saved surface uses the real solve result and mounts
+`calculix.solve-metrics`, `calculix.mesh-summary`, `calculix.constraints`, and
+`calculix.displacement-details`; it contains no demo fixture.
+
+See the current real run in
+[`calculix-component-surface.png`](../../docs/assets/calculix-component-surface.png).
