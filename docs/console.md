@@ -1,16 +1,18 @@
 # Reference: MCP console
 
-The Console is a read-only MCP App for observing the engineering fleet and
-indexed evidence. Its resource is `ui://casys-digital-thread/console`; its
-operational snapshot contract is `2.0`.
+The Console MCP App is a read-only observer for the engineering fleet and indexed
+evidence. Its resource is `ui://casys-digital-thread/console`; its operational snapshot
+contract is `2.0`. The same MCP server also exposes a separate project-control tool
+family for agents. Those tools mutate project revisions, never the Console fleet model
+or a provider directly.
 
 ## Surfaces
 
-- **Fleet** compares [`config/mcp-fleet.json`](../config/mcp-fleet.json) with
-  live MCP discovery and read-only Docker observations.
+- **Fleet** compares [`config/mcp-fleet.json`](../config/mcp-fleet.json) with live MCP
+  discovery and read-only Docker observations.
 - **Runs** keeps execution, evidence, and requirement-verdict states separate.
-- **Workbench** renders the native linked-thread projection. It does not mount
-  provider Apps or call provider MCPs from the browser.
+- **Workbench** renders the native linked-thread projection. It does not mount provider
+  Apps or call provider MCPs from the browser.
 
 ## Endpoints
 
@@ -21,10 +23,9 @@ deno task thread:assemble
 deno task preview:thread    # http://127.0.0.1:5173/
 ```
 
-The browser harness relays only the Console's reviewed read operations. The
-native preview reads a persisted canonical snapshot from
-`GET /api/thread/workbench`. Neither path starts CAD, meshing, FEA, Modelica, or
-a SysON mutation on page load.
+The browser harness relays only the Console's reviewed read operations. The native
+preview passively reads persisted state from `GET /api/thread/workbench` and SSE.
+Neither path starts CAD, meshing, FEA, Modelica, or a SysON mutation on page load.
 
 ## Tools
 
@@ -36,28 +37,53 @@ a SysON mutation on page load.
 | `console_run_detail`    | Any MCP client | Evidence, observations, comparisons and provenance             |
 | `console_refresh`       | MCP App only   | Explicitly refresh the read-only probes                        |
 
-`console_snapshot` no longer carries dashboard-panel declarations. Product state
-lives in the canonical [`ThreadSnapshot`](reference/thread-snapshot.md) and its
-native Workbench projection.
+`console_snapshot` no longer carries dashboard-panel declarations. Product state lives
+in the canonical [`ThreadSnapshot`](reference/thread-snapshot.md) and its native
+Workbench projection.
+
+### Engineering project tools
+
+| Tool                        | Authority      | Meaning                                                                                |
+| --------------------------- | -------------- | -------------------------------------------------------------------------------------- |
+| `project_snapshot`          | Read           | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts |
+| `project_decision_propose`  | Agent mutation | Record a concrete typed proposal; human approval remains required                      |
+| `project_agent_run_start`   | Agent mutation | Claim and start one already human-queued run                                           |
+| `project_agent_run_progress` | Agent mutation | Append a public progress summary to the claimed running run                            |
+| `project_agent_run_publish` | Agent mutation | Enter publishing, then complete against exact validated evidence                       |
+| `project_agent_run_fail`    | Agent mutation | Record a terminal run failure without deleting evidence                                |
+
+Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
+identical command ID and payload returns its immutable result; changing the request
+under the same ID is rejected. There is deliberately no MCP tool for approving,
+rejecting, or queueing work.
 
 ## Truth boundary
 
-Desired state comes from the fleet manifest. Observed state comes from the
-running MCP endpoints and Docker. Checked-in example evidence is always labelled
-demo.
+Desired state comes from the fleet manifest. Observed state comes from the running MCP
+endpoints and Docker. Checked-in example evidence is always labelled demo.
 
-The native Workbench BFF is deliberately read-only. Its local file adapter
-validates and serves immutable `ThreadSnapshot` documents; it exposes no
-workflow execution endpoint. The current CM-01 document assembles captured or
-read-only observed branches from SysON, build123d, CalculiX, Modelica, and
-ERPNext through an explicit identity manifest. The live CoffeeMachine model
-still has no mechanical `ConstraintUsage`, so no model-owned stress verdict
-exists. Assembly does not claim that independent thermal or ERP evidence was
-caused by the CAD branch.
+The native Workbench BFF keeps page reads and SSE passive. Its narrow same-origin
+`POST /api/project/commands` accepts only human propose, approve, reject, and queue
+commands with `X-Casys-Operator-Intent: explicit` and an expected project revision. The
+actor ID is self-declared and unauthenticated. The browser cannot claim or complete a
+run and receives no generic MCP authority.
 
-ERPNext remains one provider-native MCP on port `3012`. The backend selects
-reviewed read tools and projects their results; the browser receives neither ERP
-credentials nor generic tool-call authority.
+Both browser and MCP project commands append validated immutable revisions under
+`state/local/engineering-projects/`. They do not execute the workflow or a provider. The
+current CM-01 document assembles captured or read-only observed branches from SysON,
+build123d, Modelica, and ERPNext through an explicit identity manifest. The live
+CoffeeMachine model still has no mechanical `ConstraintUsage`, so no model-owned stress
+verdict or CalculiX branch exists in the clean baseline. Assembly does not claim that
+independent thermal or ERP evidence was caused by the CAD branch.
+
+ERPNext remains one provider-native MCP on port `3012`. The backend selects reviewed
+read tools and projects their results; the browser receives neither ERP credentials nor
+generic tool-call authority.
+
+An agent must invoke reviewed provider tools separately, publish a canonical
+`ThreadSnapshot`, and cite entities from that exact result when completing a run.
+Missing or invented snapshot/evidence references are rejected. Project lifecycle tools
+are not provider proxies.
 
 ## Verification
 
@@ -65,5 +91,5 @@ credentials nor generic tool-call authority.
 deno run --allow-read scripts/verify-console-evidence.ts
 ```
 
-This checks the Console fixture, cross-file values, byte counts and SHA-256
-identities without rewriting evidence.
+This checks the Console fixture, cross-file values, byte counts and SHA-256 identities
+without rewriting evidence.

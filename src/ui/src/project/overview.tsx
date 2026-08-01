@@ -4,11 +4,11 @@ import type { ComponentChildren, JSX } from "preact";
 import type {
   EngineeringAgentRun,
   EngineeringBlocker,
-  EngineeringDecision,
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../../../domain/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import { DecisionCenter, type ProjectControlProps } from "./control-center.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   buildProjectBrief,
@@ -18,8 +18,7 @@ import {
   workStatusLabel,
 } from "./model.ts";
 
-export interface ProjectOverviewProps {
-  project: EngineeringProjectSnapshot;
+export interface ProjectOverviewProps extends ProjectControlProps {
   thread: ThreadWorkbenchSnapshot;
   onNavigate: (view: ProjectWorkspaceView) => void;
 }
@@ -28,10 +27,14 @@ export function ProjectOverview({
   project,
   thread,
   onNavigate,
+  capability,
+  actorId,
+  onActorIdChange,
+  feedback,
+  onCommand,
 }: ProjectOverviewProps): JSX.Element {
   const brief = buildProjectBrief(project);
   const leadRun = brief.activeRuns[0];
-  const pendingDecision = brief.pendingDecisions[0];
   const openBlocker = brief.openBlockers[0];
 
   return (
@@ -155,13 +158,14 @@ export function ProjectOverview({
         </ProjectControlPanel>
       </section>
 
-      {pendingDecision && (
-        <DecisionCallout
-          decision={pendingDecision}
-          project={project}
-          onOpen={() => onNavigate("work")}
-        />
-      )}
+      <DecisionCenter
+        project={project}
+        capability={capability}
+        actorId={actorId}
+        onActorIdChange={onActorIdChange}
+        feedback={feedback}
+        onCommand={onCommand}
+      />
 
       <section
         class="project-evidence-overview"
@@ -299,39 +303,6 @@ function BlockerSummary(
       <p>{blocker.description}</p>
       <small>Open since {formatShortDate(blocker.openedAt)}</small>
     </div>
-  );
-}
-
-function DecisionCallout({ decision, project, onOpen }: {
-  decision: EngineeringDecision;
-  project: EngineeringProjectSnapshot;
-  onOpen: () => void;
-}): JSX.Element {
-  const phase = project.phases.find((candidate) =>
-    candidate.id === decision.phaseId
-  );
-  return (
-    <section
-      class="project-decision-callout"
-      aria-labelledby="project-decision-title"
-    >
-      <div class="project-decision-mark" aria-hidden="true">!</div>
-      <div>
-        <p>YOUR DECISION · {phase?.name ?? decision.phaseId}</p>
-        <h3 id="project-decision-title">{decision.title}</h3>
-        <blockquote>{decision.question}</blockquote>
-        <small>
-          Requested {formatShortDate(decision.requestedAt)} ·{" "}
-          {decision.inputEvidenceRefs.length}{" "}
-          exact input reference{decision.inputEvidenceRefs.length === 1
-            ? ""
-            : "s"}
-        </small>
-      </div>
-      <button type="button" onClick={onOpen}>
-        Examine decision <span aria-hidden="true">→</span>
-      </button>
-    </section>
   );
 }
 

@@ -103,7 +103,17 @@ export function isEngineeringProjectSnapshot(
         typeof item.summary === "string" &&
         typeof item.queuedAt === "string" &&
         AGENT_RUN_STATUSES.includes(item.status as EngineeringAgentRunStatus) &&
-        Array.isArray(item.evidenceRefs) && hasValidInputAnchor(item),
+        Array.isArray(item.evidenceRefs) && hasValidInputAnchor(item) &&
+        (item.claimedBy === undefined || isCommandActor(item.claimedBy)) &&
+        (item.waitingForDecisionIds === undefined ||
+          isStringArray(item.waitingForDecisionIds)) &&
+        (item.resultSnapshot === undefined ||
+          isThreadSnapshotRef(item.resultSnapshot)) &&
+        (item.failure === undefined ||
+          (isRecord(item.failure) && typeof item.failure.code === "string" &&
+            typeof item.failure.message === "string")) &&
+        (item.statusHistory === undefined ||
+          isArrayOf(item.statusHistory, isAgentRunTransition)),
     ) &&
     isArrayOf(
       value.decisions,
@@ -115,7 +125,8 @@ export function isEngineeringProjectSnapshot(
         DECISION_STATUSES.includes(item.status as EngineeringDecisionStatus) &&
         isStringArray(item.approvalIds) &&
         Array.isArray(item.inputEvidenceRefs) &&
-        hasValidInputAnchor(item),
+        hasValidInputAnchor(item) &&
+        (item.proposal === undefined || isDecisionProposal(item.proposal)),
     ) &&
     isArrayOf(
       value.approvals,
@@ -124,7 +135,9 @@ export function isEngineeringProjectSnapshot(
         typeof item.decisionId === "string" &&
         typeof item.requestedAt === "string" &&
         APPROVAL_STATUSES.includes(item.status as EngineeringApprovalStatus) &&
-        Array.isArray(item.inputEvidenceRefs) && hasValidInputAnchor(item),
+        Array.isArray(item.inputEvidenceRefs) && hasValidInputAnchor(item) &&
+        (item.decidedByOrigin === undefined ||
+          item.decidedByOrigin === "human" || item.decidedByOrigin === "agent"),
     ) &&
     isArrayOf(
       value.blockers,
@@ -166,4 +179,38 @@ function hasValidInputAnchor(value: Record<string, unknown>): boolean {
     isRecord(value.inputFingerprint) &&
     value.inputFingerprint.algorithm === "sha256" &&
     typeof value.inputFingerprint.digest === "string";
+}
+
+function isThreadSnapshotRef(value: unknown): boolean {
+  return isRecord(value) && typeof value.snapshotId === "string" &&
+    typeof value.revision === "number" && typeof value.subjectId === "string";
+}
+
+function isCommandActor(value: unknown): boolean {
+  return isRecord(value) && typeof value.id === "string" &&
+    (value.origin === "human" || value.origin === "agent");
+}
+
+function isDecisionProposal(value: unknown): boolean {
+  return isRecord(value) && typeof value.summary === "string" &&
+    typeof value.proposedAt === "string" &&
+    isCommandActor(value.proposedBy) &&
+    isArrayOf(value.parameters, (parameter) => {
+      if (!isRecord(parameter)) return false;
+      const hasSupportedValue = typeof parameter.value === "string" ||
+        typeof parameter.value === "number" ||
+        typeof parameter.value === "boolean";
+      return typeof parameter.key === "string" &&
+        typeof parameter.label === "string" && hasSupportedValue &&
+        (parameter.unit === undefined ||
+          (typeof parameter.value === "number" &&
+            typeof parameter.unit === "string"));
+    });
+}
+
+function isAgentRunTransition(value: unknown): boolean {
+  return isRecord(value) && typeof value.commandId === "string" &&
+    AGENT_RUN_STATUSES.includes(value.status as EngineeringAgentRunStatus) &&
+    typeof value.at === "string" && isCommandActor(value.actor) &&
+    typeof value.summary === "string";
 }

@@ -6,6 +6,10 @@
  */
 
 import type { EngineeringProjectSnapshot } from "../../../domain/engineering-project.ts";
+import {
+  type EngineeringWorkbenchCapabilities,
+  isOperatorCommandCapabilities,
+} from "../project/command-contract.ts";
 import { isEngineeringProjectSnapshot } from "../project/contract.ts";
 
 export type ThreadFreshness = "fresh" | "stale" | "running" | "failed";
@@ -253,6 +257,8 @@ export interface EngineeringWorkbenchSnapshot {
   readonly schemaVersion: "engineering-workbench/0.1";
   readonly project: EngineeringProjectSnapshot;
   readonly thread: ThreadWorkbenchSnapshot;
+  /** Absent means read-only. Mutation is never inferred from HTTP availability. */
+  readonly capabilities?: EngineeringWorkbenchCapabilities;
   readonly alignment: {
     readonly status: "aligned" | "thread-ahead";
     readonly projectThreadRevision: number;
@@ -268,6 +274,11 @@ export function isEngineeringWorkbenchSnapshot(
   return candidate.schemaVersion === "engineering-workbench/0.1" &&
     isEngineeringProjectSnapshot(candidate.project) &&
     isThreadWorkbenchSnapshot(candidate.thread) &&
+    (candidate.capabilities === undefined ||
+      (!!candidate.capabilities &&
+        isOperatorCommandCapabilities(
+          candidate.capabilities.operatorCommands,
+        ))) &&
     !!candidate.alignment &&
     (candidate.alignment.status === "aligned" ||
       candidate.alignment.status === "thread-ahead") &&

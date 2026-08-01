@@ -16,6 +16,14 @@ import {
   Toolbar,
 } from "../mcp-view-primitives.ts";
 import {
+  createProjectCommandRequest,
+  type ProjectOperatorCommand,
+} from "../project/command-contract.ts";
+import {
+  DecisionCenter,
+  type ProjectCommandFeedback,
+} from "../project/control-center.tsx";
+import {
   buildProjectBrief,
   projectStatusLabel,
   projectStatusTone,
@@ -27,9 +35,16 @@ import {
 } from "../project/navigation.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
-import type { ThreadStreamStatus, ThreadWorkbenchClient } from "./client.ts";
+import {
+  ProjectCommandConflictError,
+  type ThreadStreamStatus,
+  type ThreadWorkbenchClient,
+} from "./client.ts";
 import { activityFeedNodes } from "./feed-model.ts";
-import { nextLiveFocusNode } from "./live-update.ts";
+import {
+  nextLiveFocusNode,
+  shouldAcceptWorkbenchUpdate,
+} from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
 import { ComponentWorkspace } from "./component-workspace.tsx";
@@ -89,6 +104,12 @@ export function ThreadWorkbench({
   );
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [prepared, setPrepared] = useState<PreparedAction>();
+  const [operatorId, setOperatorId] = useState("");
+  const [commandFeedback, setCommandFeedback] = useState<
+    ProjectCommandFeedback
+  >(
+    { state: "idle" },
+  );
   const [error, setError] = useState<string>();
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
   const followLiveRef = useRef(followLive);
@@ -118,6 +139,9 @@ export function ThreadWorkbench({
       if (client.subscribe) {
         unsubscribe = client.subscribe((incoming) => {
           const previous = snapshotRef.current;
+          if (previous && !shouldAcceptWorkbenchUpdate(previous, incoming)) {
+            return;
+          }
           snapshotRef.current = incoming;
           setWorkbench(incoming);
           if (!followLiveRef.current) return;
@@ -167,6 +191,89 @@ export function ThreadWorkbench({
   const snapshot = workbench.thread;
   const project = workbench.project;
   const projectBrief = buildProjectBrief(project);
+  const commandCapability = workbench.capabilities?.operatorCommands;
+
+  const executeProjectCommand = async (
+    commandKey: string,
+    command: ProjectOperatorCommand,
+  ) => {
+    const current = snapshotRef.current;
+    const capability = current?.capabilities?.operatorCommands;
+    const actorId = operatorId.trim();
+    if (!current || !capability?.enabled || !client.command || !actorId) {
+      setCommandFeedback({
+        state: "error",
+        commandKey,
+        message:
+          "This project is read-only or the local operator identity is missing.",
+      });
+      return;
+    }
+    setCommandFeedback({
+      state: "submitting",
+      commandKey,
+      message: "Applying the explicit operator command…",
+    });
+    const request = createProjectCommandRequest({
+      command,
+      commandId: createCommandId(),
+      projectId: current.project.project.id,
+      expectedRevision: current.project.revision,
+      issuedAt: new Date().toISOString(),
+      actorId,
+    });
+    try {
+      const next = await client.command(request);
+      const latest = snapshotRef.current;
+      if (!latest || next.project.revision >= latest.project.revision) {
+        snapshotRef.current = next;
+        setWorkbench(next);
+      }
+      setCommandFeedback({
+        state: "success",
+        commandKey,
+        message:
+          `Command recorded at project revision ${next.project.revision}.`,
+      });
+    } catch (reason: unknown) {
+      if (reason instanceof ProjectCommandConflictError) {
+        try {
+          const refreshed = await client.load();
+          const latest = snapshotRef.current;
+          if (
+            !latest || refreshed.project.revision >= latest.project.revision
+          ) {
+            snapshotRef.current = refreshed;
+            setWorkbench(refreshed);
+          }
+          setCommandFeedback({
+            state: "conflict",
+            commandKey,
+            message: `Project revision changed${
+              reason.actualRevision !== undefined
+                ? ` to ${reason.actualRevision}`
+                : ""
+            }. The latest state was loaded; review it before trying again.`,
+          });
+        } catch {
+          setCommandFeedback({
+            state: "error",
+            commandKey,
+            message:
+              "The command conflicted with a newer revision, and the refresh failed.",
+          });
+        }
+        return;
+      }
+      setCommandFeedback({
+        state: "error",
+        commandKey,
+        message: reason instanceof Error
+          ? reason.message
+          : "The operator command could not be applied.",
+      });
+    }
+  };
 
   const prepareAction = (action: ThreadAction) => {
     setPrepared({
@@ -428,6 +535,11 @@ export function ThreadWorkbench({
             project={project}
             thread={snapshot}
             onNavigate={setActiveView}
+            capability={commandCapability}
+            actorId={operatorId}
+            onActorIdChange={setOperatorId}
+            feedback={commandFeedback}
+            onCommand={executeProjectCommand}
           />
         )
         : (
@@ -465,7 +577,30 @@ export function ThreadWorkbench({
                 </span>
               </div>
             </div>
-            {activeView === "work" && <ProjectWorkRibbon project={project} />}
+            {activeView === "work" && (
+              <>
+                <ProjectWorkRibbon project={project} />
+                <details class="project-work-decision-drawer">
+                  <summary>
+                    <span>DECISION CENTER</span>
+                    <strong>
+                      {project.decisions.filter((decision) =>
+                        decision.status === "approved"
+                      ).length}/{project.decisions.length} approved
+                    </strong>
+                    <small>Review inputs and release work</small>
+                  </summary>
+                  <DecisionCenter
+                    project={project}
+                    capability={commandCapability}
+                    actorId={operatorId}
+                    onActorIdChange={setOperatorId}
+                    feedback={commandFeedback}
+                    onCommand={executeProjectCommand}
+                  />
+                </details>
+              </>
+            )}
             {activeView === "verification" && (
               <>
                 <MetricGrid
@@ -539,7 +674,17 @@ export function ThreadWorkbench({
                       onBindingSelect={inspectComponentBinding}
                     />
                   )
-                  : <ProjectOperations project={project} thread={snapshot} />}
+                  : (
+                    <ProjectOperations
+                      project={project}
+                      thread={snapshot}
+                      capability={commandCapability}
+                      actorId={operatorId}
+                      onActorIdChange={setOperatorId}
+                      feedback={commandFeedback}
+                      onCommand={executeProjectCommand}
+                    />
+                  )}
               </div>
               {inspector}
             </div>
@@ -568,6 +713,11 @@ export function ThreadWorkbench({
       )}
     </div>
   );
+}
+
+function createCommandId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `command-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function workspaceEyebrow(

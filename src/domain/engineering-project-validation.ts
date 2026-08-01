@@ -3,6 +3,7 @@ import type {
   EngineeringApproval,
   EngineeringBlocker,
   EngineeringDecision,
+  EngineeringProjectCommandReceipt,
   EngineeringProjectPhase,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
@@ -68,7 +69,7 @@ export function collectEngineeringProjectIssues(
       "approvals",
       "blockers",
     ],
-    ["previous"],
+    ["previous", "commandReceipts"],
     issues,
   );
   if (!root) return issues;
@@ -88,6 +89,14 @@ export function collectEngineeringProjectIssues(
   validateArray(root.decisions, "$.decisions", issues, validateDecision);
   validateArray(root.approvals, "$.approvals", issues, validateApproval);
   validateArray(root.blockers, "$.blockers", issues, validateBlocker);
+  if (root.commandReceipts !== undefined) {
+    validateArray(
+      root.commandReceipts,
+      "$.commandReceipts",
+      issues,
+      validateCommandReceipt,
+    );
+  }
 
   if (issues.length === 0) {
     validateInvariants(value as EngineeringProjectSnapshot, issues);
@@ -358,7 +367,18 @@ function validateAgentRun(
     value,
     path,
     ["id", "workItemId", "status", "summary", "queuedAt", "evidenceRefs"],
-    ["startedAt", "completedAt", "baseSnapshot", "inputFingerprint"],
+    [
+      "startedAt",
+      "completedAt",
+      "claimedAt",
+      "claimedBy",
+      "baseSnapshot",
+      "inputFingerprint",
+      "waitingForDecisionIds",
+      "resultSnapshot",
+      "failure",
+      "statusHistory",
+    ],
     issues,
   );
   if (!input) return;
@@ -382,6 +402,10 @@ function validateAgentRun(
   isoDateTime(input.queuedAt, `${path}.queuedAt`, issues);
   optionalIsoDateTime(input.startedAt, `${path}.startedAt`, issues);
   optionalIsoDateTime(input.completedAt, `${path}.completedAt`, issues);
+  optionalIsoDateTime(input.claimedAt, `${path}.claimedAt`, issues);
+  if (input.claimedBy !== undefined) {
+    validateCommandActor(input.claimedBy, `${path}.claimedBy`, issues);
+  }
   validateExecutionBinding(input, path, issues);
   validateArray(
     input.evidenceRefs,
@@ -389,6 +413,37 @@ function validateAgentRun(
     issues,
     validateEvidenceRef,
   );
+  if (input.waitingForDecisionIds !== undefined) {
+    stringArray(
+      input.waitingForDecisionIds,
+      `${path}.waitingForDecisionIds`,
+      issues,
+    );
+  }
+  if (input.resultSnapshot !== undefined) {
+    validateSnapshotRef(input.resultSnapshot, `${path}.resultSnapshot`, issues);
+  }
+  if (input.failure !== undefined) {
+    const failure = exactRecord(
+      input.failure,
+      `${path}.failure`,
+      ["code", "message"],
+      [],
+      issues,
+    );
+    if (failure) {
+      nonEmptyString(failure.code, `${path}.failure.code`, issues);
+      nonEmptyString(failure.message, `${path}.failure.message`, issues);
+    }
+  }
+  if (input.statusHistory !== undefined) {
+    validateArray(
+      input.statusHistory,
+      `${path}.statusHistory`,
+      issues,
+      validateRunTransition,
+    );
+  }
 }
 
 function validateDecision(
@@ -409,7 +464,7 @@ function validateDecision(
       "inputEvidenceRefs",
       "approvalIds",
     ],
-    ["supersedesDecisionId", "baseSnapshot", "inputFingerprint"],
+    ["supersedesDecisionId", "baseSnapshot", "inputFingerprint", "proposal"],
     issues,
   );
   if (!input) return;
@@ -437,6 +492,9 @@ function validateDecision(
     `${path}.supersedesDecisionId`,
     issues,
   );
+  if (input.proposal !== undefined) {
+    validateDecisionProposal(input.proposal, `${path}.proposal`, issues);
+  }
 }
 
 function validateApproval(
@@ -452,6 +510,7 @@ function validateApproval(
       "decidedAt",
       "decidedBy",
       "rationale",
+      "decidedByOrigin",
       "baseSnapshot",
       "inputFingerprint",
     ],
@@ -470,6 +529,14 @@ function validateApproval(
   optionalIsoDateTime(input.decidedAt, `${path}.decidedAt`, issues);
   optionalNonEmptyString(input.decidedBy, `${path}.decidedBy`, issues);
   optionalNonEmptyString(input.rationale, `${path}.rationale`, issues);
+  if (input.decidedByOrigin !== undefined) {
+    oneOf(
+      input.decidedByOrigin,
+      ["human", "agent"],
+      `${path}.decidedByOrigin`,
+      issues,
+    );
+  }
   validateExecutionBinding(input, path, issues);
   validateArray(
     input.inputEvidenceRefs,
@@ -477,6 +544,166 @@ function validateApproval(
     issues,
     validateEvidenceRef,
   );
+}
+
+function validateCommandActor(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(value, path, ["id", "origin"], [], issues);
+  if (!input) return;
+  nonEmptyString(input.id, `${path}.id`, issues);
+  oneOf(input.origin, ["human", "agent"], `${path}.origin`, issues);
+}
+
+function validateDecisionProposal(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["summary", "parameters", "proposedAt", "proposedBy"],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.summary, `${path}.summary`, issues);
+  isoDateTime(input.proposedAt, `${path}.proposedAt`, issues);
+  validateCommandActor(input.proposedBy, `${path}.proposedBy`, issues);
+  if (Array.isArray(input.parameters) && input.parameters.length === 0) {
+    issue(
+      issues,
+      "missing_parameter",
+      `${path}.parameters`,
+      "must contain at least one typed parameter",
+    );
+  }
+  validateArray(
+    input.parameters,
+    `${path}.parameters`,
+    issues,
+    (parameter, itemPath) => {
+      const item = exactRecord(
+        parameter,
+        itemPath,
+        ["key", "label", "value"],
+        ["unit"],
+        issues,
+      );
+      if (!item) return;
+      nonEmptyString(item.key, `${itemPath}.key`, issues);
+      nonEmptyString(item.label, `${itemPath}.label`, issues);
+      if (
+        typeof item.value !== "string" && typeof item.value !== "number" &&
+        typeof item.value !== "boolean"
+      ) {
+        issue(
+          issues,
+          "invalid_type",
+          `${itemPath}.value`,
+          "must be a string, finite number or boolean",
+        );
+      } else if (typeof item.value === "string") {
+        nonEmptyString(item.value, `${itemPath}.value`, issues);
+      } else if (typeof item.value === "number" && !Number.isFinite(item.value)) {
+        issue(issues, "invalid_number", `${itemPath}.value`, "must be finite");
+      }
+      optionalNonEmptyString(item.unit, `${itemPath}.unit`, issues);
+      if (item.unit !== undefined && typeof item.value !== "number") {
+        issue(
+          issues,
+          "invalid_unit",
+          `${itemPath}.unit`,
+          "is only valid for a numeric parameter",
+        );
+      }
+    },
+  );
+}
+
+function validateRunTransition(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["commandId", "status", "at", "actor", "summary"],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.commandId, `${path}.commandId`, issues);
+  oneOf(
+    input.status,
+    [
+      "queued",
+      "running",
+      "waiting-for-decision",
+      "publishing",
+      "completed",
+      "failed",
+      "cancelled",
+    ],
+    `${path}.status`,
+    issues,
+  );
+  isoDateTime(input.at, `${path}.at`, issues);
+  validateCommandActor(input.actor, `${path}.actor`, issues);
+  nonEmptyString(input.summary, `${path}.summary`, issues);
+}
+
+function validateCommandReceipt(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "commandId",
+      "type",
+      "actor",
+      "issuedAt",
+      "appliedAt",
+      "requestFingerprint",
+      "resultingSnapshot",
+    ],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.commandId, `${path}.commandId`, issues);
+  oneOf(
+    input.type,
+    [
+      "decision.propose",
+      "decision.approve",
+      "decision.reject",
+      "agent-run.queue",
+      "agent-run.claim",
+      "agent-run.progress",
+      "agent-run.publish",
+      "agent-run.complete",
+      "agent-run.fail",
+    ],
+    `${path}.type`,
+    issues,
+  );
+  validateCommandActor(input.actor, `${path}.actor`, issues);
+  isoDateTime(input.issuedAt, `${path}.issuedAt`, issues);
+  isoDateTime(input.appliedAt, `${path}.appliedAt`, issues);
+  validateFingerprint(
+    input.requestFingerprint,
+    `${path}.requestFingerprint`,
+    issues,
+  );
+  validatePrevious(input.resultingSnapshot, `${path}.resultingSnapshot`, issues);
 }
 
 function validateBlocker(
@@ -575,12 +802,14 @@ function validateInvariants(
     );
   } else if (project.revision > 1 && project.previous === undefined) {
     issue(issues, "missing_previous", "$.previous", "is required after revision 1");
-  } else if (project.previous && project.previous.revision >= project.revision) {
+  } else if (
+    project.previous && project.previous.revision !== project.revision - 1
+  ) {
     issue(
       issues,
       "invalid_revision",
       "$.previous.revision",
-      "must be lower than current revision",
+      "must be the immediately preceding revision",
     );
   }
 
@@ -590,6 +819,17 @@ function validateInvariants(
     "$.threadSnapshots",
     issues,
   );
+  if (
+    project.revision > 1 &&
+    (project.commandReceipts?.length ?? 0) !== project.revision - 1
+  ) {
+    issue(
+      issues,
+      "incomplete_command_history",
+      "$.commandReceipts",
+      "must contain exactly one durable receipt for every command-created revision",
+    );
+  }
   requireUnique(
     project.threadSnapshots,
     (item) => `${item.subjectId}\u0000${item.revision}`,
@@ -602,6 +842,12 @@ function validateInvariants(
   requireUnique(project.decisions, (item) => item.id, "$.decisions", issues);
   requireUnique(project.approvals, (item) => item.id, "$.approvals", issues);
   requireUnique(project.blockers, (item) => item.id, "$.blockers", issues);
+  requireUnique(
+    project.commandReceipts ?? [],
+    (item) => item.commandId,
+    "$.commandReceipts",
+    issues,
+  );
 
   if (project.threadSnapshots.length === 0) {
     issue(
@@ -690,6 +936,21 @@ function validateInvariants(
         "thread_subject_mismatch",
         `${path}.subjectId`,
         "must match the project subjectId",
+      );
+    }
+  });
+  project.agentRuns.forEach((run, index) => {
+    if (!run.resultSnapshot) return;
+    if (
+      !declaredSnapshots.has(
+        snapshotKey(run.resultSnapshot.snapshotId, run.resultSnapshot.revision),
+      )
+    ) {
+      issue(
+        issues,
+        "unknown_thread_snapshot",
+        `$.agentRuns[${index}].resultSnapshot`,
+        "references an undeclared ThreadSnapshot revision",
       );
     }
   });
@@ -800,6 +1061,25 @@ function validateInvariants(
         "waiting-for-decision requires an unresolved linked decision",
       );
     }
+    if (item.status === "ready") {
+      const decisionsApproved = item.decisionIds.every((id) =>
+        decisionById.get(id)?.status === "approved"
+      );
+      const blockersResolved = item.blockerIds.every((id) =>
+        blockerById.get(id)?.status === "resolved"
+      );
+      const dependenciesCompleted = item.dependsOnWorkItemIds.every((id) =>
+        workById.get(id)?.status === "completed"
+      );
+      if (!decisionsApproved || !blockersResolved || !dependenciesCompleted) {
+        issue(
+          issues,
+          "work_item_not_ready",
+          `${path}.status`,
+          "ready requires every decision approved, blocker resolved and dependency completed",
+        );
+      }
+    }
   });
   detectWorkCycles(project.workItems, issues);
 
@@ -822,6 +1102,9 @@ function validateInvariants(
   project.blockers.forEach((blocker, index) =>
     validateBlockerInvariant(blocker, index, phaseById, workById, decisionById, issues)
   );
+  (project.commandReceipts ?? []).forEach((receipt, index) =>
+    validateCommandReceiptInvariant(receipt, index, project, issues)
+  );
 }
 
 function validateRunInvariant(
@@ -840,6 +1123,16 @@ function validateRunInvariant(
     );
   }
   uniqueEvidence(run.evidenceRefs, `${path}.evidenceRefs`, issues);
+  uniqueStrings(
+    run.waitingForDecisionIds ?? [],
+    `${path}.waitingForDecisionIds`,
+    issues,
+  );
+  uniqueStrings(
+    (run.statusHistory ?? []).map((transition) => transition.commandId),
+    `${path}.statusHistory`,
+    issues,
+  );
   const active = ["running", "waiting-for-decision", "publishing"].includes(run.status);
   const terminal = ["completed", "failed", "cancelled"].includes(run.status);
   if (run.status === "queued" && (run.startedAt || run.completedAt)) {
@@ -848,6 +1141,26 @@ function validateRunInvariant(
       "invalid_run_lifecycle",
       path,
       "a queued run cannot have start or completion timestamps",
+    );
+  }
+  if (
+    run.status === "queued" &&
+    (run.claimedAt || run.claimedBy || run.waitingForDecisionIds ||
+      run.resultSnapshot || run.failure)
+  ) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      path,
+      "a queued run cannot have claim, waiting, result or failure fields",
+    );
+  }
+  if (active && (!run.claimedAt || !run.claimedBy)) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      path,
+      "an active run must have an agent claim",
     );
   }
   if (active && (!run.startedAt || run.completedAt)) {
@@ -873,6 +1186,89 @@ function validateRunInvariant(
       `${path}.evidenceRefs`,
       "a completed run requires exact ThreadSnapshot evidence",
     );
+  }
+  if (run.status === "completed" && !run.resultSnapshot) {
+    issue(
+      issues,
+      "missing_evidence",
+      `${path}.resultSnapshot`,
+      "a completed run requires an exact result ThreadSnapshot",
+    );
+  }
+  if (
+    run.status === "completed" && run.resultSnapshot &&
+    run.evidenceRefs.some((reference) =>
+      reference.snapshotId !== run.resultSnapshot?.snapshotId ||
+      reference.snapshotRevision !== run.resultSnapshot?.revision
+    )
+  ) {
+    issue(
+      issues,
+      "result_evidence_mismatch",
+      `${path}.evidenceRefs`,
+      "completed evidence must belong to the exact result ThreadSnapshot",
+    );
+  }
+  if (run.status === "failed" && !run.failure) {
+    issue(
+      issues,
+      "missing_failure",
+      `${path}.failure`,
+      "a failed run requires a structured failure",
+    );
+  }
+  if (run.status !== "failed" && run.failure) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      `${path}.failure`,
+      "failure is only valid for a failed run",
+    );
+  }
+  if (
+    run.status === "waiting-for-decision" &&
+    (run.waitingForDecisionIds?.length ?? 0) === 0
+  ) {
+    issue(
+      issues,
+      "missing_decision",
+      `${path}.waitingForDecisionIds`,
+      "a waiting run must name at least one exact decision",
+    );
+  }
+  if (run.status !== "waiting-for-decision" && run.waitingForDecisionIds) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      `${path}.waitingForDecisionIds`,
+      "waiting decision ids are only valid while waiting",
+    );
+  }
+  if (run.statusHistory) {
+    if (
+      run.statusHistory.length === 0 || run.statusHistory.at(-1)?.status !== run.status
+    ) {
+      issue(
+        issues,
+        "invalid_run_history",
+        `${path}.statusHistory`,
+        "must end with the current run status",
+      );
+    }
+    run.statusHistory.forEach((transition, transitionIndex) => {
+      if (
+        transitionIndex > 0 &&
+        Date.parse(transition.at) <
+          Date.parse(run.statusHistory![transitionIndex - 1].at)
+      ) {
+        issue(
+          issues,
+          "invalid_chronology",
+          `${path}.statusHistory[${transitionIndex}].at`,
+          "cannot precede the previous transition",
+        );
+      }
+    });
   }
   chronological(run.queuedAt, run.startedAt, `${path}.startedAt`, issues);
   chronological(run.startedAt, run.completedAt, `${path}.completedAt`, issues);
@@ -904,6 +1300,7 @@ function validateDecisionInvariant(
     }
     return approval;
   }).filter((item): item is EngineeringApproval => item !== undefined);
+  const currentApproval = approvals.at(-1);
 
   if (decision.status === "required" && approvals.length > 0) {
     issue(
@@ -914,8 +1311,34 @@ function validateDecisionInvariant(
     );
   }
   if (
+    decision.status === "required" &&
+    (decision.proposal || decision.baseSnapshot || decision.inputFingerprint)
+  ) {
+    issue(
+      issues,
+      "decision_proposal_contradiction",
+      path,
+      "a required decision cannot already carry a concrete proposal binding",
+    );
+  }
+  if (decision.status !== "required" && !decision.proposal) {
+    issue(
+      issues,
+      "missing_proposal",
+      `${path}.proposal`,
+      "a proposed, decided or superseded decision requires its concrete proposal",
+    );
+  }
+  if (decision.proposal) {
+    uniqueStrings(
+      decision.proposal.parameters.map((parameter) => parameter.key),
+      `${path}.proposal.parameters`,
+      issues,
+    );
+  }
+  if (
     decision.status === "proposed" &&
-    !approvals.some((item) => item.status === "pending")
+    currentApproval?.status !== "pending"
   ) {
     issue(
       issues,
@@ -926,7 +1349,7 @@ function validateDecisionInvariant(
   }
   if (
     decision.status === "approved" &&
-    !approvals.some((item) => item.status === "approved")
+    currentApproval?.status !== "approved"
   ) {
     issue(
       issues,
@@ -937,7 +1360,7 @@ function validateDecisionInvariant(
   }
   if (
     decision.status === "rejected" &&
-    !approvals.some((item) => item.status === "rejected")
+    currentApproval?.status !== "rejected"
   ) {
     issue(
       issues,
@@ -985,24 +1408,37 @@ function validateApprovalInvariant(
     return;
   }
   uniqueEvidence(approval.inputEvidenceRefs, `${path}.inputEvidenceRefs`, issues);
-  if (!sameEvidenceSet(approval.inputEvidenceRefs, decision.inputEvidenceRefs)) {
+  const isCurrentApproval = decision.approvalIds.at(-1) === approval.id;
+  if (isCurrentApproval) {
+    if (!sameEvidenceSet(approval.inputEvidenceRefs, decision.inputEvidenceRefs)) {
+      issue(
+        issues,
+        "approval_input_mismatch",
+        `${path}.inputEvidenceRefs`,
+        "the current approval must exactly match the decision evidence inputs",
+      );
+    }
+    if (!sameExecutionBinding(approval, decision)) {
+      issue(
+        issues,
+        "approval_input_mismatch",
+        path,
+        "the current approval binding must exactly match the decision",
+      );
+    }
+  } else if (approval.status === "pending") {
     issue(
       issues,
-      "approval_input_mismatch",
-      `${path}.inputEvidenceRefs`,
-      "must exactly match the decision evidence inputs",
-    );
-  }
-  if (!sameExecutionBinding(approval, decision)) {
-    issue(
-      issues,
-      "approval_input_mismatch",
-      path,
-      "baseSnapshot and inputFingerprint must exactly match the decision",
+      "stale_pending_approval",
+      `${path}.status`,
+      "a historical approval cannot remain pending after a newer proposal",
     );
   }
   if (approval.status === "pending") {
-    if (approval.decidedAt || approval.decidedBy || approval.rationale) {
+    if (
+      approval.decidedAt || approval.decidedBy || approval.rationale ||
+      approval.decidedByOrigin
+    ) {
       issue(
         issues,
         "approval_lifecycle_contradiction",
@@ -1010,7 +1446,10 @@ function validateApprovalInvariant(
         "a pending approval cannot have decision fields",
       );
     }
-  } else if (!approval.decidedAt || !approval.decidedBy || !approval.rationale) {
+  } else if (
+    !approval.decidedAt || !approval.decidedBy || !approval.rationale ||
+    !approval.decidedByOrigin
+  ) {
     issue(
       issues,
       "approval_lifecycle_contradiction",
@@ -1018,7 +1457,71 @@ function validateApprovalInvariant(
       "a decided approval requires decidedAt, decidedBy and rationale",
     );
   }
+  if (approval.decidedByOrigin && approval.decidedByOrigin !== "human") {
+    issue(
+      issues,
+      "approval_origin_forbidden",
+      `${path}.decidedByOrigin`,
+      "only a human origin can approve or reject a decision",
+    );
+  }
   chronological(approval.requestedAt, approval.decidedAt, `${path}.decidedAt`, issues);
+}
+
+function validateCommandReceiptInvariant(
+  receipt: EngineeringProjectCommandReceipt,
+  index: number,
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const path = `$.commandReceipts[${index}]`;
+  if (
+    receipt.resultingSnapshot.revision < 2 ||
+    receipt.resultingSnapshot.revision > project.revision
+  ) {
+    issue(
+      issues,
+      "invalid_revision",
+      `${path}.resultingSnapshot.revision`,
+      "must address a command-created revision in this project history",
+    );
+  }
+  if (
+    receipt.resultingSnapshot.revision === project.revision &&
+    receipt.resultingSnapshot.snapshotId !== project.id
+  ) {
+    issue(
+      issues,
+      "invalid_revision",
+      `${path}.resultingSnapshot.snapshotId`,
+      "must match the current snapshot id for the current revision",
+    );
+  }
+  if (receipt.resultingSnapshot.revision !== index + 2) {
+    issue(
+      issues,
+      "invalid_revision",
+      `${path}.resultingSnapshot.revision`,
+      `must equal command revision ${index + 2}`,
+    );
+  }
+  const previous = project.commandReceipts?.[index - 1];
+  if (previous && Date.parse(receipt.appliedAt) < Date.parse(previous.appliedAt)) {
+    issue(
+      issues,
+      "invalid_chronology",
+      `${path}.appliedAt`,
+      "cannot precede the previous command application time",
+    );
+  }
+  if (Date.parse(receipt.appliedAt) > Date.parse(project.generatedAt)) {
+    issue(
+      issues,
+      "invalid_chronology",
+      `${path}.appliedAt`,
+      "cannot be later than the project snapshot generation time",
+    );
+  }
 }
 
 function validateBlockerInvariant(

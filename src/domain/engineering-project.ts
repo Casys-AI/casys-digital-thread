@@ -26,6 +26,39 @@ export interface EngineeringProjectIdentity {
   readonly objective: EngineeringProjectObjective;
 }
 
+export type EngineeringCommandOriginKind = "human" | "agent";
+
+export type EngineeringProjectCommandName =
+  | "decision.propose"
+  | "decision.approve"
+  | "decision.reject"
+  | "agent-run.queue"
+  | "agent-run.claim"
+  | "agent-run.progress"
+  | "agent-run.publish"
+  | "agent-run.complete"
+  | "agent-run.fail";
+
+export interface EngineeringCommandActor {
+  readonly id: string;
+  readonly origin: EngineeringCommandOriginKind;
+}
+
+export interface EngineeringDecisionProposalParameter {
+  readonly key: string;
+  readonly label: string;
+  readonly value: string | number | boolean;
+  readonly unit?: string;
+}
+
+/** Concrete, reviewed decision input. Audit fields are stamped by the service. */
+export interface EngineeringDecisionProposal {
+  readonly summary: string;
+  readonly parameters: readonly EngineeringDecisionProposalParameter[];
+  readonly proposedAt: IsoDateTime;
+  readonly proposedBy: EngineeringCommandActor;
+}
+
 /** An exact revision of a ThreadSnapshot; `latest` aliases are forbidden. */
 export interface EngineeringThreadSnapshotRef {
   readonly snapshotId: string;
@@ -101,10 +134,29 @@ export interface EngineeringAgentRun {
   readonly queuedAt: IsoDateTime;
   readonly startedAt?: IsoDateTime;
   readonly completedAt?: IsoDateTime;
+  readonly claimedAt?: IsoDateTime;
+  readonly claimedBy?: EngineeringCommandActor;
   /** Exact thread state and normalized inputs used by this execution. */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
   readonly inputFingerprint?: ContentFingerprint;
   readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
+  readonly waitingForDecisionIds?: readonly string[];
+  readonly resultSnapshot?: EngineeringThreadSnapshotRef;
+  readonly failure?: EngineeringAgentRunFailure;
+  readonly statusHistory?: readonly EngineeringAgentRunTransition[];
+}
+
+export interface EngineeringAgentRunFailure {
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface EngineeringAgentRunTransition {
+  readonly commandId: string;
+  readonly status: EngineeringAgentRunStatus;
+  readonly at: IsoDateTime;
+  readonly actor: EngineeringCommandActor;
+  readonly summary: string;
 }
 
 export type EngineeringDecisionStatus =
@@ -128,6 +180,7 @@ export interface EngineeringDecision {
   readonly inputEvidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly approvalIds: readonly string[];
   readonly supersedesDecisionId?: string;
+  readonly proposal?: EngineeringDecisionProposal;
 }
 
 export type EngineeringApprovalStatus =
@@ -144,11 +197,23 @@ export interface EngineeringApproval {
   readonly decidedAt?: IsoDateTime;
   readonly decidedBy?: string;
   readonly rationale?: string;
+  readonly decidedByOrigin?: EngineeringCommandOriginKind;
   /** Must equal the concrete decision scope being approved. */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
   readonly inputFingerprint?: ContentFingerprint;
   /** Must match the decision inputs exactly; changed inputs need a new approval. */
   readonly inputEvidenceRefs: readonly EngineeringThreadEntityRef[];
+}
+
+export interface EngineeringProjectCommandReceipt {
+  readonly commandId: string;
+  readonly type: EngineeringProjectCommandName;
+  readonly actor: EngineeringCommandActor;
+  readonly issuedAt: IsoDateTime;
+  /** Authoritative server-side application time. */
+  readonly appliedAt: IsoDateTime;
+  readonly requestFingerprint: ContentFingerprint;
+  readonly resultingSnapshot: EngineeringProjectPreviousSnapshot;
 }
 
 export type EngineeringBlockerKind =
@@ -187,6 +252,8 @@ export interface EngineeringProjectSnapshot {
   readonly decisions: readonly EngineeringDecision[];
   readonly approvals: readonly EngineeringApproval[];
   readonly blockers: readonly EngineeringBlocker[];
+  /** Durable idempotency/audit ledger, introduced on the first command revision. */
+  readonly commandReceipts?: readonly EngineeringProjectCommandReceipt[];
 }
 
 export type EngineeringPhaseStatus =
@@ -253,7 +320,8 @@ export function deriveEngineeringProjectStatus(
   if (phaseStatuses.every((status) => status === "completed")) return "completed";
   if (
     snapshot.decisions.some((decision) =>
-      decision.status === "required" || decision.status === "proposed"
+      decision.status === "required" || decision.status === "proposed" ||
+      decision.status === "rejected"
     )
   ) return "attention-required";
   if (phaseStatuses.some((status) => status === "blocked")) return "blocked";

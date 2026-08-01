@@ -79,7 +79,8 @@ export function buildProjectBrief(
       run.status === "waiting-for-decision" || run.status === "publishing"
     ),
     pendingDecisions: snapshot.decisions.filter((decision) =>
-      decision.status === "required" || decision.status === "proposed"
+      decision.status === "required" || decision.status === "proposed" ||
+      decision.status === "rejected"
     ),
     openBlockers: snapshot.blockers.filter((blocker) =>
       blocker.status === "open"

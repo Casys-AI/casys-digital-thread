@@ -98,6 +98,12 @@ Deno.test("execution base and normalized input fingerprint are atomic and exact"
   decision.status = "proposed";
   decision.baseSnapshot = structuredClone(proposed.threadSnapshots[0]);
   decision.inputFingerprint = fingerprint("a");
+  decision.proposal = {
+    summary: "Test-only proposal",
+    parameters: [{ key: "choice", label: "Choice", value: "fixture" }],
+    proposedAt: decision.requestedAt,
+    proposedBy: { id: "test-human", origin: "human" },
+  };
   decision.approvalIds = ["approval-mechanical-criterion-v1"];
   proposed.approvals = [{
     id: "approval-mechanical-criterion-v1",

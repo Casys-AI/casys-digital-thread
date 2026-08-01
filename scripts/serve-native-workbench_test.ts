@@ -2,7 +2,10 @@ import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
-import type { EngineeringProjectStore } from "../src/adapters/engineering-project-store.ts";
+import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
+import { EngineeringProjectCommandService } from "../src/domain/engineering-project-command-service.ts";
+import { validateEngineeringProjectSnapshot } from "../src/domain/engineering-project-validation.ts";
+import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
 import { materializeAttestedMechanicalRun } from "../src/testing/attested-mechanical-run-fixture.ts";
 import { createNativeWorkbenchHandler } from "./serve-native-workbench.ts";
 import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
@@ -31,12 +34,19 @@ Deno.test("native Workbench handler serves the persisted projection without exec
   assertEquals(body.project.project.subjectId, snapshot.subject.id);
   assertEquals(body.thread.source, "observed");
   assertEquals(body.thread.requirements, []);
+  assertEquals(body.capabilities.operatorCommands.enabled, false);
+  assertEquals(body.capabilities.operatorCommands.intents, []);
   assertEquals(store.latestCalls, 1);
   assertEquals(store.saveCalls, 0);
   assertEquals(projectStore.getCalls, 1);
 
   const page = await handler(new Request("http://localhost/"));
   assertStringIncludes(await page.text(), "Workbench");
+  assertStringIncludes(
+    page.headers.get("Content-Security-Policy") ?? "",
+    "frame-ancestors 'none'",
+  );
+  assertEquals(page.headers.get("X-Frame-Options"), "DENY");
   const rejected = await handler(
     new Request("http://localhost/api/thread/workbench", {
       method: "POST",
@@ -81,6 +91,91 @@ Deno.test("native Workbench loads the declared exact baseline when active state 
     status: "aligned",
     projectThreadRevision: baseline.revision,
     currentThreadRevision: baseline.revision,
+  });
+});
+
+Deno.test("native Workbench selects a newer declared exact baseline over stale active state", async () => {
+  const active = await materializeAttestedMechanicalRun(capture());
+  const declared: ThreadSnapshot = {
+    ...structuredClone(active),
+    id: `${active.id}:declared-next`,
+    revision: active.revision + 1,
+    previous: { snapshotId: active.id, revision: active.revision },
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new VersionedReadOnlyStore(active, [active]),
+    projectStore: new ReadOnlyProjectStore(projectSnapshot(declared)),
+    projectSnapshots: new VersionedReadOnlyStore(declared, [declared]),
+    subjectId: declared.subject.id,
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.thread.id, declared.id);
+  assertEquals(body.alignment.currentThreadRevision, declared.revision);
+  assertEquals(body.alignment.status, "aligned");
+});
+
+Deno.test("native Workbench fails closed on divergent ids at one thread revision", async () => {
+  const active = await materializeAttestedMechanicalRun(capture());
+  const declared: ThreadSnapshot = {
+    ...structuredClone(active),
+    id: `${active.id}:divergent`,
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new VersionedReadOnlyStore(active, [active]),
+    projectStore: new ReadOnlyProjectStore(projectSnapshot(declared)),
+    projectSnapshots: new VersionedReadOnlyStore(declared, [declared]),
+    subjectId: declared.subject.id,
+    html: "unused",
+  });
+
+  await assertRejects(
+    () => handler(new Request("http://localhost/api/thread/workbench")),
+    Error,
+    `Ambiguous ThreadSnapshot revision ${active.revision}`,
+  );
+});
+
+Deno.test("native Workbench does not promote a newer parallel active branch", async () => {
+  const declared = await materializeAttestedMechanicalRun(capture());
+  const parallelBase: ThreadSnapshot = {
+    ...structuredClone(declared),
+    id: `${declared.id}:parallel-base`,
+  };
+  const parallelHead: ThreadSnapshot = {
+    ...structuredClone(parallelBase),
+    id: `${declared.id}:parallel-head`,
+    revision: declared.revision + 1,
+    previous: {
+      snapshotId: parallelBase.id,
+      revision: parallelBase.revision,
+    },
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new VersionedReadOnlyStore(parallelHead, [parallelBase, parallelHead]),
+    projectStore: new ReadOnlyProjectStore(projectSnapshot(declared)),
+    projectSnapshots: new VersionedReadOnlyStore(declared, [declared]),
+    subjectId: declared.subject.id,
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.thread.id, declared.id);
+  assertEquals(body.alignment, {
+    status: "aligned",
+    projectThreadRevision: declared.revision,
+    currentThreadRevision: declared.revision,
   });
 });
 
@@ -362,6 +457,264 @@ Deno.test("native Workbench SSE emits a complete replacement when only the proje
   await reader.cancel();
 });
 
+Deno.test("native Workbench applies explicit same-origin operator commands with CAS, replay, and SSE", async () => {
+  const project = validateEngineeringProjectSnapshot(
+    JSON.parse(
+      await Deno.readTextFile(
+        "config/projects/coffee-machine-cm01.project.json",
+      ),
+    ),
+  );
+  const thread = validateThreadSnapshot(
+    JSON.parse(
+      await Deno.readTextFile(
+        "config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
+      ),
+    ),
+  );
+  const projectStore = new ReadOnlyProjectStore(project);
+  const commands = new EngineeringProjectCommandService(
+    projectStore,
+    undefined,
+    () => "2026-08-01T14:00:00.000Z",
+  );
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(thread),
+    projectStore,
+    projectCommands: commands,
+    projectSnapshots: new VersionedReadOnlyStore(thread, [thread]),
+    subjectId: project.project.id,
+    html: "unused",
+    pollIntervalMs: 5,
+  });
+  const command = {
+    schemaVersion: "engineering-project-command/1.0",
+    commandId: "operator-proposal-1",
+    projectId: project.project.id,
+    expectedRevision: 1,
+    issuedAt: "2026-08-01T21:59:58+08:00",
+    actor: { id: "engineer-erwan" },
+    command: {
+      type: "decision.propose",
+      decisionId: "select-material-model",
+      proposal: {
+        summary: "Use the reviewed aluminium material card.",
+        parameters: [{
+          key: "youngs-modulus",
+          label: "Young's modulus",
+          value: 69,
+          unit: "GPa",
+        }],
+      },
+    },
+  };
+
+  const applied = await handler(operatorRequest(command));
+  assertEquals(applied.status, 200);
+  const composite = await applied.json();
+  assertEquals(composite.schemaVersion, "engineering-workbench/0.1");
+  assertEquals(composite.project.revision, 2);
+  assertEquals(
+    composite.project.commandReceipts[0].issuedAt,
+    "2026-08-01T13:59:58.000Z",
+  );
+  assertEquals(composite.capabilities.operatorCommands.expectedRevision, 2);
+  assertEquals(composite.capabilities.operatorCommands.enabled, true);
+  assertEquals(
+    composite.project.decisions.find((item: { id: string }) =>
+      item.id === "select-material-model"
+    ).proposal.parameters[0],
+    {
+      key: "youngs-modulus",
+      label: "Young's modulus",
+      value: 69,
+      unit: "GPa",
+    },
+  );
+
+  const replay = await handler(operatorRequest(command));
+  assertEquals(replay.status, 200);
+  assertEquals((await replay.json()).project.revision, 2);
+
+  const conflict = await handler(operatorRequest({
+    ...command,
+    commandId: "stale-proposal-2",
+  }));
+  assertEquals(conflict.status, 409);
+  assertEquals(await conflict.json(), {
+    error: "stale_revision",
+    message:
+      "Engineering project coffee-machine-cm01 expected revision 1, current revision is 2.",
+    expectedRevision: 1,
+    actualRevision: 2,
+  });
+
+  const commandIdConflict = await handler(operatorRequest({
+    ...command,
+    command: {
+      ...command.command,
+      proposal: {
+        ...command.command.proposal,
+        summary: "A different retry payload.",
+      },
+    },
+  }));
+  assertEquals(commandIdConflict.status, 409);
+  assertEquals((await commandIdConflict.json()).error, "command_id_conflict");
+
+  const missingOrigin = await handler(operatorRequest(command, {
+    Origin: null,
+  }));
+  assertEquals(missingOrigin.status, 403);
+  const reboundHost = await handler(operatorRequest(command, {
+    Origin: "http://evil.example:5173",
+  }, "http://evil.example:5173/api/project/commands"));
+  assertEquals(reboundHost.status, 403);
+  assertEquals((await reboundHost.json()).error, "loopback_host_required");
+  const missingIntent = await handler(operatorRequest(command, {
+    "X-Casys-Operator-Intent": null,
+  }));
+  assertEquals(missingIntent.status, 403);
+  const wrongContentType = await handler(operatorRequest(command, {
+    "Content-Type": "text/plain",
+  }));
+  assertEquals(wrongContentType.status, 415);
+
+  let current = composite;
+  const materialFingerprint = current.project.decisions.find(
+    (item: { id: string }) => item.id === "select-material-model",
+  ).inputFingerprint;
+  current = await applyHumanCommand(
+    "reject-material-1",
+    2,
+    {
+      type: "decision.reject",
+      decisionId: "select-material-model",
+      rationale: "The material card needs a named source before approval.",
+      inputFingerprint: materialFingerprint,
+    },
+  );
+  assertEquals(
+    current.project.decisions.find((item: { id: string }) =>
+      item.id === "select-material-model"
+    ).status,
+    "rejected",
+  );
+
+  current = await proposeAndApprove(
+    "select-material-model",
+    current.project.revision,
+  );
+  for (
+    const decisionId of [
+      "define-mechanical-criterion",
+      "define-supports",
+      "define-reference-load",
+    ]
+  ) {
+    current = await proposeAndApprove(decisionId, current.project.revision);
+  }
+  assertEquals(current.project.revision, 11);
+
+  current = await applyHumanCommand(
+    "queue-mechanical-verification-1",
+    current.project.revision,
+    {
+      type: "agent-run.queue",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue mechanical verification with all reviewed inputs.",
+    },
+  );
+  assertEquals(current.project.revision, 12);
+  assertEquals(current.project.agentRuns.at(-1), {
+    id: "run:queue-mechanical-verification-1",
+    workItemId: "verify-current-mechanical-design",
+    status: "queued",
+    summary: "Queue mechanical verification with all reviewed inputs.",
+    queuedAt: "2026-08-01T14:00:00.000Z",
+    baseSnapshot: project.threadSnapshots[0],
+    inputFingerprint: current.project.agentRuns.at(-1).inputFingerprint,
+    evidenceRefs: [],
+    statusHistory: [{
+      commandId: "queue-mechanical-verification-1",
+      status: "queued",
+      at: "2026-08-01T14:00:00.000Z",
+      actor: { id: "engineer-erwan", origin: "human" },
+      summary: "Queue mechanical verification with all reviewed inputs.",
+    }],
+  });
+  assertEquals(
+    current.project.blockers.every((item: { status: string }) =>
+      item.status === "resolved"
+    ),
+    true,
+  );
+
+  const events = await handler(
+    new Request("http://localhost/api/thread/workbench/events", {
+      headers: { "Last-Event-ID": `1:${thread.revision}:0` },
+    }),
+  );
+  const reader = events.body!.getReader();
+  const event = new TextDecoder().decode((await reader.read()).value);
+  assertStringIncludes(event, `id: 12:${thread.revision}:0`);
+  assertStringIncludes(event, '"commandId":"queue-mechanical-verification-1"');
+  await reader.cancel();
+
+  async function proposeAndApprove(
+    decisionId: string,
+    expectedRevision: number,
+  ) {
+    const proposed = await applyHumanCommand(
+      `propose-${decisionId}-${expectedRevision}`,
+      expectedRevision,
+      {
+        type: "decision.propose",
+        decisionId,
+        proposal: {
+          summary: `Reviewed proposal for ${decisionId}.`,
+          parameters: [{
+            key: "reviewed-value",
+            label: "Reviewed value",
+            value: "Defined in the controlled input record",
+          }],
+        },
+      },
+    );
+    const fingerprint = proposed.project.decisions.find(
+      (item: { id: string }) => item.id === decisionId,
+    ).inputFingerprint;
+    return await applyHumanCommand(
+      `approve-${decisionId}-${proposed.project.revision}`,
+      proposed.project.revision,
+      {
+        type: "decision.approve",
+        decisionId,
+        rationale: "Reviewed against the displayed exact input fingerprint.",
+        inputFingerprint: fingerprint,
+      },
+    );
+  }
+
+  async function applyHumanCommand(
+    commandId: string,
+    expectedRevision: number,
+    humanCommand: Record<string, unknown>,
+  ) {
+    const response = await handler(operatorRequest({
+      schemaVersion: "engineering-project-command/1.0",
+      commandId,
+      projectId: project.project.id,
+      expectedRevision,
+      issuedAt: "2026-08-01T13:59:58.000Z",
+      actor: { id: "engineer-erwan" },
+      command: humanCommand,
+    }));
+    assertEquals(response.status, 200);
+    return await response.json();
+  }
+});
+
 class ReadOnlyStore implements ThreadSnapshotStore {
   latestCalls = 0;
   saveCalls = 0;
@@ -402,17 +755,44 @@ class VersionedReadOnlyStore implements ThreadSnapshotStore {
   }
 }
 
-class ReadOnlyProjectStore implements EngineeringProjectStore {
+class ReadOnlyProjectStore implements EngineeringProjectRevisionStore {
   getCalls = 0;
+  private readonly revisions = new Map<number, EngineeringProjectSnapshot>();
   constructor(
     private project: EngineeringProjectSnapshot | undefined,
-  ) {}
-  get(): Promise<EngineeringProjectSnapshot | undefined> {
+  ) {
+    if (project) this.revisions.set(project.revision, project);
+  }
+  get(_projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
     this.getCalls++;
     return Promise.resolve(this.project);
   }
+  getRevision(
+    _projectId: string,
+    revision: number,
+  ): Promise<EngineeringProjectSnapshot | undefined> {
+    return Promise.resolve(this.revisions.get(revision));
+  }
+  createInitial(
+    project: EngineeringProjectSnapshot,
+  ): Promise<EngineeringProjectSnapshot> {
+    if (this.project) throw new Error("Project already exists.");
+    this.replace(project);
+    return Promise.resolve(project);
+  }
+  commit(
+    project: EngineeringProjectSnapshot,
+    expectedRevision: number,
+  ): Promise<EngineeringProjectSnapshot> {
+    if (this.project?.revision !== expectedRevision) {
+      throw new Error("Project revision conflict.");
+    }
+    this.replace(project);
+    return Promise.resolve(project);
+  }
   replace(project: EngineeringProjectSnapshot | undefined): void {
     this.project = project;
+    if (project) this.revisions.set(project.revision, project);
   }
 }
 
@@ -456,6 +836,28 @@ function projectSnapshot(
     decisions: [],
     approvals: [],
     blockers: [],
+    ...(revision > 1
+      ? {
+        commandReceipts: Array.from({ length: revision - 1 }, (_, index) => {
+          const resultingRevision = index + 2;
+          return {
+            commandId: `fixture-command-r${resultingRevision}`,
+            type: "agent-run.queue" as const,
+            actor: { id: "fixture", origin: "human" as const },
+            issuedAt: "2026-08-01T03:03:48.000Z",
+            appliedAt: "2026-08-01T03:03:48.000Z",
+            requestFingerprint: {
+              algorithm: "sha256" as const,
+              digest: String(resultingRevision).padStart(64, "0"),
+            },
+            resultingSnapshot: {
+              snapshotId: `engineering-project-fixture-r${resultingRevision}`,
+              revision: resultingRevision,
+            },
+          };
+        }),
+      }
+      : {}),
   };
 }
 
@@ -537,4 +939,25 @@ function liveCadNode(freshness: "running" | "fresh") {
     recordedAt: "2026-08-01T10:00:00.000Z",
     selection: { kind: "artifact" as const, id: "coffee-machine-cad-live" },
   };
+}
+
+function operatorRequest(
+  body: unknown,
+  overrides: Record<string, string | null> = {},
+  url = "http://localhost/api/project/commands",
+): Request {
+  const headers = new Headers({
+    Origin: "http://localhost",
+    "Content-Type": "application/json",
+    "X-Casys-Operator-Intent": "explicit",
+  });
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === null) headers.delete(name);
+    else headers.set(name, value);
+  }
+  return new Request(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
 }

@@ -117,8 +117,8 @@ The remaining product boundaries are:
 
 - no public BFF endpoint triggers the executor or persists its resulting
   `ThreadSnapshot`;
-- the native Workbench reads an immutable persisted `ThreadSnapshot` through a read-only
-  BFF; it does not execute this workflow on page load;
+- the native Workbench reads an immutable persisted `ThreadSnapshot` through passive
+  GET/SSE paths; its human project-command POST does not execute this workflow;
 - the current live SysON model has two `RequirementUsage` elements but zero
   `ConstraintUsage` elements;
 - no reviewed whole-machine material/support/load declaration exists yet, so there is

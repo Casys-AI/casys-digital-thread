@@ -56,9 +56,9 @@ full analysis and references. What distinguishes this implementation:
 
 ## Working in this repo
 
-This is the **workspace and its read-only control console**. The engineering servers
-still live in their own repos and run from their published container images — you clone
-only this workspace.
+This is the **workspace, fleet observer, and engineering-project control plane**. The
+engineering servers still live in their own repos and run from their published container
+images — you clone only this workspace.
 
 Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + Node.js
 for rebuilding the console.
@@ -67,7 +67,7 @@ for rebuilding the console.
 # 1. Bring up SysON + the engineering and ERP MCP services
 docker compose up -d          # SysON UI: http://localhost:8180
 
-# 2. Start the read-only Console when you need its MCP App.
+# 2. Start the Console and project-control MCP server.
 npm --prefix src/ui ci
 npm --prefix src/ui run build
 deno task start
@@ -92,11 +92,12 @@ OpenModelica run records for `modelica_run_list` and `modelica_run_get`.
 ## Console and native Workbench
 
 The console exposes one MCP App at `ui://casys-digital-thread/console`. Fleet and Runs
-compare the declared fleet with live MCP and Docker observations; all actions are
-read-only. Runs also discovers persisted Modelica records through its two read-only
-tools; it never reads the sidecar's Docker volume. It shows simulation execution
-separately from a requirement verdict, so a `succeeded` simulation is never displayed as
-a `passed` requirement.
+compare the declared fleet with live MCP and Docker observations; those Console actions
+remain read-only. Runs also discovers persisted Modelica records through its two
+read-only tools; it never reads the sidecar's Docker volume. The same MCP server now
+exposes a separate, revision-bound project-control surface for agents. It can read a
+project, propose a decision, and advance a run which a human already queued; it cannot
+approve, reject, or queue work.
 
 For the exact, version-bound CoffeeMachine nominal run, the console also sends the
 measured temperature to `syson_constraint_evaluate` and displays the live result as a
@@ -121,27 +122,45 @@ The browser host relays the Console's read-only tools to the live MCP server. It
 local MCP Apps test harness, not the product Workbench.
 
 The product is one native Preact cockpit reading an `engineering-workbench/0.1` document
-from a read-only backend-for-frontend. That atomic document combines project intent
+from a Deno backend-for-frontend. That atomic document combines project intent
 (`EngineeringProjectSnapshot`), the current technical projection (`ThreadSnapshot` plus
 provisional live overlay), and an explicit `aligned`/`thread-ahead` signal. The cockpit
 is organized as **Overview**, **Work**, **Product**, **Verification**, and
 **Operations** so project objective, human-agent work, physical structure, technical
 proof, and execution records no longer compete in one lineage screen.
 
-Engineering `tools/call` requests remain backend-only and occur only after an explicit
-execution command; opening or refreshing the UI never launches CAD, FEA, or Modelica.
-`thread:assemble` bootstraps a local CM-01 revision from read-only SysON inventory, one
-persisted Modelica run, and reviewed ERPNext reads. The explicit build runner then adds
-the current SysON-derived CAD artifacts. It is real observed evidence, not a new FEA
-solve and not a closed SysON verification loop. See the
+`GET /api/thread/workbench` and its SSE stream are passive. The same-origin Decision
+Center may send an explicit `POST /api/project/commands` to propose, approve, reject, or
+queue project work. Every command names the expected project revision and writes a new
+immutable revision under `state/local/engineering-projects/`; the displayed local
+operator identity is self-declared and is not authentication. Neither this POST nor an
+MCP project-control command invokes SysON, CAD, FEA, Modelica, or ERPNext by itself.
+Engineering provider `tools/call` requests remain backend-only and require a separately
+orchestrated agent execution.
+
+The browser never receives generic MCP authority. Agents use the Console MCP server's
+project tools to observe the same project, record proposals, and claim or advance only
+human-queued runs. Completion is refused until an exact canonical descendant
+`ThreadSnapshot` exists and its named evidence is new or content-changed from the run's
+exact base. Agents never receive project approval, rejection, or queue authority through
+MCP.
+
+Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
+bootstraps a local CM-01 revision from read-only SysON inventory, one persisted Modelica
+run, and reviewed ERPNext reads. The explicit build runner then adds the current
+SysON-derived CAD artifacts. It is real observed evidence, not a new FEA solve and not a
+closed SysON verification loop. See the
 [native preview how-to](docs/how-to/preview-native-workbench.md) and the
 [ThreadSnapshot reference](docs/reference/thread-snapshot.md).
 
 The tracked project under
 [`config/projects/coffee-machine-cm01.project.json`](config/projects/coffee-machine-cm01.project.json)
 references an exact observed r5 capture under `config/projects/baselines/`. On a fresh
-clone, the BFF can therefore show the reviewed project, thread and exact STL without
-running a provider. Active local snapshots and assets take priority when present, but a
+clone, it seeds active project revision 1 so the BFF can show the reviewed project,
+thread and exact STL without running a provider. That clean CM-01 state still has four
+required mechanical decisions, no approval, and zero agent runs; no values are filled in
+for the sake of a demo. Later commands append immutable active project revisions.
+Technical snapshots and assets also prefer active local state when present, but a
 baseline is accepted only for the same exact ID or filename—never as a substitute for
 `latest` or for missing evidence.
 
@@ -156,13 +175,14 @@ dashboard-layout YAML, iframe host, or presentation-only MCP sits between the ba
 and provider-native MCP tools. See the
 [workflow reference](docs/reference/thread-workflows.md).
 
-The five branches share the system subject only through
+The four observed branches share the system subject only through
 [`config/thread-subjects/coffee-machine-cm01.json`](config/thread-subjects/coffee-machine-cm01.json):
 reviewed SysON project ID, build123d STEP path, Modelica run ID, and ERPNext item code.
-Matching labels never create a join. The current assembly observes `94 degC` maximum
-water temperature, the canonical whole-machine STEP, and ERPNext's active default BOM
-for `CASYS-CM01`; it does not assert that the CAD branch caused the Modelica result, or
-that zero Bin rows means zero inventory.
+Matching labels never create a join. A future CalculiX branch must instead consume and
+attest the exact canonical STEP. The current assembly observes `94 degC` maximum water
+temperature, the canonical whole-machine STEP, and ERPNext's active default BOM for
+`CASYS-CM01`; it does not assert that the CAD branch caused the Modelica result, or that
+zero Bin rows means zero inventory.
 
 The shared visual baseline now lives in `@casys/mcp-view`, extracted from the ERPNext
 BOM palette: restrained cards, compact uppercase titles, dense metrics and tables,
@@ -188,13 +208,14 @@ security boundary.
 | Path                                | Contents                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------ |
 | `docker-compose.yml`                | The full stack: SysON + MCP servers over HTTP                            |
-| `server.ts`, `src/`                 | Console plus native thread contracts and orchestration prototypes        |
+| `server.ts`, `src/`                 | Console, project control plane, thread contracts, and orchestration      |
 | `config/mcp-fleet.json`             | Desired fleet, topology, tools, views, and trust boundaries              |
 | `config/projects/`                  | Versioned project intent plus exact observed baseline captures           |
 | `config/thread-workflows/`          | Reviewed YAML authoring prototypes compiled into typed causal DAGs       |
 | `config/thread-subjects/`           | Reviewed explicit provider-to-product identity bindings                  |
 | `config/verification-plans/`        | Versioned provisional scenario-contract plans                            |
 | `state/fixtures/`                   | Canonical, explicitly labelled console and run fixtures                  |
+| `state/local/engineering-projects/` | Ignored immutable active project revisions and command receipts          |
 | `docs/README.md`                    | Diátaxis documentation map                                               |
 | `docs/tutorials/`                   | End-to-end learning paths, including the real CoffeeMachine run          |
 | `docs/how-to/`                      | Focused operating guides for native workflows and MCP Apps               |

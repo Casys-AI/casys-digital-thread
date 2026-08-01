@@ -62,15 +62,16 @@ or call MCP from the browser.
 ## Live transport boundary
 
 The browser first reads `GET /api/thread/workbench`, then follows
-`GET /api/thread/workbench/events` over SSE. The event ID is the canonical snapshot
-revision. Each event carries a complete validated browser projection, so reconnect and
-replay are deterministic and no half-written graph delta can become visible.
+`GET /api/thread/workbench/events` over SSE. The event ID is
+`<project-revision>:<thread-revision>:<live-sequence>`. Each event carries a complete
+validated browser projection, so reconnect and replay are deterministic and no
+half-written graph delta can become visible.
 
-The current server observes the immutable snapshot store every 500 ms. It never invokes
-an MCP tool. Therefore “live” currently means that an assembler or agent has persisted a
-new canonical revision. A future executor may publish running placeholders, but those
-must remain visibly provisional and must resolve to persisted evidence before supporting
-a verdict.
+The current server observes the immutable thread, project, and live-update stores every
+500 ms. It never invokes an MCP tool. Therefore “live” means that an assembler, an
+explicit human project command, or an agent has persisted a new revision. Provisional
+run events must remain visibly provisional and must resolve to persisted evidence before
+supporting a verdict or project completion.
 
 `ToolInspectorPanel` is read-only by construction. It receives the latest loaded
 `ThreadWorkbenchSnapshot`, the active graph node and its optional richer record,

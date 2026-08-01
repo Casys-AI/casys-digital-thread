@@ -5,11 +5,22 @@ import {
 } from "./src/adapters/docker-observer.ts";
 import { HttpMcpProbe, type McpProbe } from "./src/adapters/http-mcp-probe.ts";
 import { loadFleetManifest } from "./src/adapters/manifest.ts";
+import {
+  isExplicitLoopbackHostname,
+  requestUsesExplicitLoopbackHost,
+} from "./src/adapters/loopback-host.ts";
+import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-store.ts";
+import { createEngineeringProjectCommandRuntime } from "./src/adapters/engineering-project-command-runtime.ts";
+import {
+  FileExactThreadSnapshotDirectory,
+  OrderedExactThreadSnapshotReader,
+} from "./src/adapters/engineering-thread-snapshot-resolver.ts";
 import { ModelicaRunObserver } from "./src/adapters/modelica-run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
 import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verifier.ts";
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
+import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
 import type {
   FleetManifest,
   ObservedRunCatalog,
@@ -19,6 +30,10 @@ import {
   CONSOLE_RESOURCE_URI,
   registerControlPlaneTools,
 } from "./src/tools/register.ts";
+import {
+  type ProjectControlToolDependencies,
+  registerProjectControlTools,
+} from "./src/tools/project-control.ts";
 
 const DEFAULT_PORT = 3020;
 const DEFAULT_HOSTNAME = "127.0.0.1";
@@ -26,6 +41,11 @@ const DEFAULT_MANIFEST_PATH = "config/mcp-fleet.json";
 const DEFAULT_RUN_FIXTURE_PATH = "state/fixtures/runs/bracket-demo.json";
 const DEFAULT_SCENARIO_CONTRACT_PLAN_PATH =
   "config/verification-plans/coffee-machine-nominal-v1.json";
+const DEFAULT_PROJECT_ID = "coffee-machine-cm01";
+const DEFAULT_PROJECT_PATH = "config/projects/coffee-machine-cm01.project.json";
+const DEFAULT_ACTIVE_PROJECT_DIRECTORY = "state/local/engineering-projects";
+const DEFAULT_THREAD_SNAPSHOT_DIRECTORY = "state/local/thread-snapshots";
+const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -39,6 +59,13 @@ export interface CreateConsoleServerOptions {
   monotonicNow?: () => number;
   cacheTtlMs?: number;
   logger?: (message: string) => void;
+  /** `false` is reserved for focused fleet-only tests. */
+  projectControl?: ProjectControlToolDependencies | false;
+  projectId?: string;
+  projectPath?: string;
+  activeProjectDirectory?: string;
+  threadSnapshotDirectory?: string;
+  projectBaselineDirectory?: string;
 }
 
 export async function createConsoleServer(
@@ -68,26 +95,67 @@ export async function createConsoleServer(
     monotonicNow: options.monotonicNow,
     cacheTtlMs: options.cacheTtlMs,
   });
+  const projectControl = options.projectControl === false
+    ? undefined
+    : options.projectControl ?? await createProjectControl(options);
+  const instructions = projectControl
+    ? "Casys engineering control plane. Fleet tools are read-only. project_snapshot reads durable project truth. Agents may propose decisions and advance only human-queued agent runs with explicit revision-bound project tools. Agents cannot approve/reject decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, and unverified evidence must stay explicitly labelled."
+    : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
     name: "casys-digital-thread-console",
-    version: "0.1.0",
+    version: "0.2.0",
     transport: "stateless",
     maxConcurrent: 8,
     backpressureStrategy: "queue",
     validateSchema: true,
-    instructions:
-      "Read-only control plane for the Casys engineering MCP fleet. Unavailable and demo data are explicitly labelled. No lifecycle mutation tools are exposed.",
+    instructions,
     logger: options.logger,
     toolErrorMapper: (error) =>
       error instanceof Error &&
         (error.name === "ControlPlaneNotFoundError" ||
+          error instanceof EngineeringProjectCommandError ||
           error instanceof TypeError)
         ? error.message
         : null,
   });
+  if (projectControl) {
+    app.use(async (context, next) => {
+      if (
+        context.request &&
+        !requestUsesExplicitLoopbackHost(context.request)
+      ) {
+        throw new TypeError(
+          "The engineering MCP control plane accepts project tool calls only through an explicit loopback hostname.",
+        );
+      }
+      return await next();
+    });
+  }
   registerControlPlaneTools(app, controlPlane);
+  if (projectControl) registerProjectControlTools(app, projectControl);
   registerConsoleViewer(app);
   return { app, controlPlane };
+}
+
+async function createProjectControl(
+  options: CreateConsoleServerOptions,
+): Promise<ProjectControlToolDependencies> {
+  const threadSnapshots = new OrderedExactThreadSnapshotReader([
+    new FileThreadSnapshotStore(
+      options.threadSnapshotDirectory ?? DEFAULT_THREAD_SNAPSHOT_DIRECTORY,
+    ),
+    new FileExactThreadSnapshotDirectory(
+      options.projectBaselineDirectory ?? DEFAULT_PROJECT_BASELINE_DIRECTORY,
+    ),
+  ]);
+  const runtime = await createEngineeringProjectCommandRuntime({
+    projectId: options.projectId ?? DEFAULT_PROJECT_ID,
+    trackedManifestPath: options.projectPath ?? DEFAULT_PROJECT_PATH,
+    activeDirectory: options.activeProjectDirectory ??
+      DEFAULT_ACTIVE_PROJECT_DIRECTORY,
+    evidenceSnapshots: threadSnapshots,
+  });
+  return { projects: runtime.projects, commands: runtime.commands };
 }
 
 async function createObservedRunCatalog(
@@ -129,9 +197,12 @@ export function registerConsoleViewer(app: McpApp): boolean {
 
 if (import.meta.main) {
   const cli = parseCli(Deno.args);
-  const { app } = await createConsoleServer();
   const port = cli.port ?? integerEnv("MCP_PORT") ?? DEFAULT_PORT;
   const hostname = cli.hostname ?? env("MCP_HOSTNAME") ?? DEFAULT_HOSTNAME;
+  const projectToolsEnabled = isExplicitLoopbackHostname(hostname);
+  const { app } = await createConsoleServer({
+    projectControl: projectToolsEnabled ? undefined : false,
+  });
   await app.startHttp({
     port,
     hostname,
@@ -140,6 +211,11 @@ if (import.meta.main) {
       console.error(
         `Casys digital-thread console: http://${boundHostname}:${boundPort}/mcp`,
       );
+      if (!projectToolsEnabled) {
+        console.error(
+          "Project mutation tools disabled: non-loopback MCP binding exposes the read-only fleet console only.",
+        );
+      }
     },
   });
 }

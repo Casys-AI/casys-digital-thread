@@ -1,0 +1,635 @@
+import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
+import type { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
+import type {
+  EngineeringProjectSnapshot,
+  EngineeringThreadEntityRef,
+  EngineeringThreadSnapshotRef,
+} from "../domain/engineering-project.ts";
+
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+/**
+ * These commands mutate only the durable EngineeringProject aggregate. They do
+ * not directly execute an external engineering tool and are not safe for
+ * speculative or automatic retries without their durable command id.
+ */
+const PROJECT_MUTATION_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+} as const;
+
+const OBJECT_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: true,
+} as const;
+
+const COMMAND_ID = {
+  type: "string",
+  minLength: 1,
+  maxLength: 160,
+  description:
+    "Stable command id. Reuse it verbatim, with identical arguments, when retrying an uncertain call.",
+} as const;
+
+const PROJECT_ID = {
+  type: "string",
+  minLength: 1,
+  maxLength: 160,
+  description: "Engineering project identity from project_snapshot.",
+} as const;
+
+const EXPECTED_REVISION = {
+  type: "integer",
+  minimum: 1,
+  description:
+    "Optimistic EngineeringProject revision from the latest project_snapshot.",
+} as const;
+
+const ISSUED_AT = {
+  type: "string",
+  description:
+    "Stable ISO timestamp for this command. Preserve it together with commandId on retry.",
+} as const;
+
+const SNAPSHOT_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    snapshotId: { type: "string", minLength: 1 },
+    revision: { type: "integer", minimum: 1 },
+    subjectId: { type: "string", minLength: 1 },
+  },
+  required: ["snapshotId", "revision", "subjectId"],
+  additionalProperties: false,
+} as const;
+
+const EVIDENCE_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    snapshotId: { type: "string", minLength: 1 },
+    snapshotRevision: { type: "integer", minimum: 1 },
+    kind: {
+      type: "string",
+      enum: [
+        "artifact",
+        "consumption",
+        "observation",
+        "requirement",
+        "evaluation",
+        "violation",
+        "change",
+        "action",
+      ],
+    },
+    id: { type: "string", minLength: 1 },
+  },
+  required: ["snapshotId", "snapshotRevision", "kind", "id"],
+  additionalProperties: false,
+} as const;
+
+const COMMON_MUTATION_PROPERTIES = {
+  commandId: COMMAND_ID,
+  projectId: PROJECT_ID,
+  expectedRevision: EXPECTED_REVISION,
+  issuedAt: ISSUED_AT,
+} as const;
+
+export interface EngineeringProjectSnapshotReader {
+  get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
+  getRevision(
+    projectId: string,
+    revision: number,
+  ): Promise<EngineeringProjectSnapshot | undefined>;
+}
+
+export interface ProjectControlToolDependencies {
+  projects: EngineeringProjectSnapshotReader;
+  commands: EngineeringProjectCommandService;
+}
+
+export function registerProjectControlTools(
+  app: McpApp,
+  dependencies: ProjectControlToolDependencies,
+): void {
+  app.registerTool(projectSnapshotTool, async (args) => {
+    const projectId = requiredString(args.projectId, "projectId");
+    const snapshot = await requiredProject(dependencies.projects, projectId);
+    return projectResult(
+      `Project ${snapshot.project.name} is at revision ${snapshot.revision}.`,
+      snapshot,
+    );
+  });
+
+  app.registerTool(projectDecisionProposeTool, async (args, context) => {
+    const common = commonMutation(args);
+    const current = await requiredProjectRevision(
+      dependencies.projects,
+      common.projectId,
+      common.expectedRevision,
+    );
+    const snapshot = await dependencies.commands.proposeDecision(
+      agentOrigin(context),
+      {
+        ...common,
+        decisionId: requiredString(args.decisionId, "decisionId"),
+        proposal: decisionProposal(args.proposal),
+        baseSnapshot: declaredProjectHead(current),
+      },
+    );
+    return projectResult(
+      `Decision ${
+        requiredString(args.decisionId, "decisionId")
+      } now has an agent proposal at project revision ${snapshot.revision}; human approval is still required.`,
+      snapshot,
+    );
+  });
+
+  app.registerTool(projectAgentRunStartTool, async (args, context) => {
+    const common = commonMutation(args);
+    const runId = requiredString(args.runId, "runId");
+    const snapshot = await dependencies.commands.claimRun(
+      agentOrigin(context),
+      { ...common, runId, summary: requiredString(args.summary, "summary") },
+    );
+    return projectResult(
+      `Agent run ${runId} was claimed and started at project revision ${snapshot.revision}.`,
+      snapshot,
+    );
+  });
+
+  app.registerTool(projectAgentRunProgressTool, async (args, context) => {
+    const common = commonMutation(args);
+    const runId = requiredString(args.runId, "runId");
+    const snapshot = await dependencies.commands.progressRun(
+      agentOrigin(context),
+      {
+        ...common,
+        runId,
+        summary: requiredString(args.summary, "summary"),
+      },
+    );
+    return projectResult(
+      `Progress for agent run ${runId} was recorded at project revision ${snapshot.revision}.`,
+      snapshot,
+    );
+  });
+
+  app.registerTool(projectAgentRunPublishTool, async (args, context) => {
+    const common = commonMutation(args);
+    const runId = requiredString(args.runId, "runId");
+    const stage = oneOf(
+      args.stage,
+      ["publishing", "completed"] as const,
+      "stage",
+    );
+    if (
+      stage === "publishing" &&
+      (args.resultSnapshot !== undefined || args.evidenceRefs !== undefined)
+    ) {
+      throw new TypeError(
+        "resultSnapshot and evidenceRefs are valid only for stage=completed",
+      );
+    }
+    const snapshot = stage === "publishing"
+      ? await dependencies.commands.publishRun(agentOrigin(context), {
+        ...common,
+        runId,
+        summary: requiredString(args.summary, "summary"),
+      })
+      : await dependencies.commands.completeRun(agentOrigin(context), {
+        ...common,
+        runId,
+        summary: requiredString(args.summary, "summary"),
+        resultSnapshot: snapshotRef(args.resultSnapshot, "resultSnapshot"),
+        evidenceRefs: evidenceRefs(args.evidenceRefs, "evidenceRefs"),
+      });
+    return projectResult(
+      `Agent run ${runId} is ${stage} at project revision ${snapshot.revision}.`,
+      snapshot,
+    );
+  });
+
+  app.registerTool(projectAgentRunFailTool, async (args, context) => {
+    const common = commonMutation(args);
+    const runId = requiredString(args.runId, "runId");
+    const snapshot = await dependencies.commands.failRun(agentOrigin(context), {
+      ...common,
+      runId,
+      summary: requiredString(args.summary, "summary"),
+      code: requiredString(args.code, "code"),
+      message: requiredString(args.message, "message"),
+    });
+    return projectResult(
+      `Agent run ${runId} failed at project revision ${snapshot.revision}.`,
+      snapshot,
+    );
+  });
+}
+
+const projectSnapshotTool: MCPTool = {
+  name: "project_snapshot",
+  description:
+    "Read the durable EngineeringProject application state: work, decisions, approvals, agent runs, blockers, exact thread references, and command receipts. This does not probe or execute engineering tools.",
+  inputSchema: {
+    type: "object",
+    properties: { projectId: PROJECT_ID },
+    required: ["projectId"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const projectDecisionProposeTool: MCPTool = {
+  name: "project_decision_propose",
+  description:
+    "Record an agent-authored concrete proposal for one required engineering decision. This never approves the proposal; only the human Workbench command channel can approve or reject it.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ...COMMON_MUTATION_PROPERTIES,
+      decisionId: { type: "string", minLength: 1 },
+      proposal: {
+        type: "object",
+        properties: {
+          summary: { type: "string", minLength: 1 },
+          parameters: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              properties: {
+                key: { type: "string", minLength: 1 },
+                label: { type: "string", minLength: 1 },
+                value: { type: ["string", "number", "boolean"] },
+                unit: { type: "string", minLength: 1 },
+              },
+              required: ["key", "label", "value"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["summary", "parameters"],
+        additionalProperties: false,
+      },
+    },
+    required: [
+      "commandId",
+      "projectId",
+      "expectedRevision",
+      "issuedAt",
+      "decisionId",
+      "proposal",
+    ],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_MUTATION_ANNOTATIONS,
+};
+
+const projectAgentRunStartTool: MCPTool = {
+  name: "project_agent_run_start",
+  description:
+    "Claim and start one human-queued EngineeringProject agent run. This cannot create or queue a run.",
+  inputSchema: mutationSchema({
+    runId: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1 },
+  }, ["runId", "summary"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_MUTATION_ANNOTATIONS,
+};
+
+const projectAgentRunProgressTool: MCPTool = {
+  name: "project_agent_run_progress",
+  description:
+    "Record a progress summary and history entry for the exact agent-owned running run. The run remains running; this does not execute an external engineering tool.",
+  inputSchema: mutationSchema({
+    runId: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1 },
+  }, ["runId", "summary"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_MUTATION_ANNOTATIONS,
+};
+
+const projectAgentRunPublishTool: MCPTool = {
+  name: "project_agent_run_publish",
+  description:
+    "Publish a run in two explicit CAS transitions. Use stage=publishing first; after an exact ThreadSnapshot and evidence exist, call again with a new commandId, the new expectedRevision, and stage=completed. This never manufactures technical evidence.",
+  inputSchema: {
+    ...mutationSchema({
+      runId: { type: "string", minLength: 1 },
+      stage: { enum: ["publishing", "completed"] },
+      summary: { type: "string", minLength: 1 },
+      resultSnapshot: SNAPSHOT_REF_SCHEMA,
+      evidenceRefs: {
+        type: "array",
+        items: EVIDENCE_REF_SCHEMA,
+        minItems: 1,
+      },
+    }, ["runId", "stage", "summary"]),
+    oneOf: [
+      {
+        properties: { stage: { const: "publishing" } },
+        required: ["stage"],
+        not: {
+          anyOf: [
+            { required: ["resultSnapshot"] },
+            { required: ["evidenceRefs"] },
+          ],
+        },
+      },
+      {
+        properties: { stage: { const: "completed" } },
+        required: ["stage", "resultSnapshot", "evidenceRefs"],
+      },
+    ],
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_MUTATION_ANNOTATIONS,
+};
+
+const projectAgentRunFailTool: MCPTool = {
+  name: "project_agent_run_fail",
+  description:
+    "Record a terminal failure code and message for one claimed EngineeringProject agent run. This does not delete evidence or invoke an external system.",
+  inputSchema: mutationSchema({
+    runId: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1 },
+    code: { type: "string", minLength: 1 },
+    message: { type: "string", minLength: 1 },
+  }, ["runId", "summary", "code", "message"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_MUTATION_ANNOTATIONS,
+};
+
+function mutationSchema(
+  properties: Record<string, unknown>,
+  required: string[],
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: { ...COMMON_MUTATION_PROPERTIES, ...properties },
+    required: [
+      "commandId",
+      "projectId",
+      "expectedRevision",
+      "issuedAt",
+      ...required,
+    ],
+    additionalProperties: false,
+  };
+}
+
+function commonMutation(args: Record<string, unknown>) {
+  return {
+    commandId: requiredString(args.commandId, "commandId"),
+    projectId: requiredString(args.projectId, "projectId"),
+    expectedRevision: positiveInteger(args.expectedRevision, "expectedRevision"),
+    issuedAt: isoDateTime(args.issuedAt, "issuedAt"),
+  };
+}
+
+function agentOrigin(context?: ToolHandlerContext) {
+  const subject = context?.authInfo?.subject?.trim();
+  if (subject) return { kind: "agent" as const, actorId: subject };
+  const name = context?.clientInfo?.name?.trim();
+  const version = context?.clientInfo?.version?.trim();
+  return {
+    kind: "agent" as const,
+    actorId: name
+      ? `mcp:${name}${version ? `@${version}` : ""}`
+      : "mcp:unidentified-client",
+  };
+}
+
+async function requiredProject(
+  store: EngineeringProjectSnapshotReader,
+  projectId: string,
+): Promise<EngineeringProjectSnapshot> {
+  const snapshot = await store.get(projectId);
+  if (!snapshot) throw new TypeError(`Engineering project not found: ${projectId}.`);
+  return snapshot;
+}
+
+async function requiredProjectRevision(
+  store: EngineeringProjectSnapshotReader,
+  projectId: string,
+  revision: number,
+): Promise<EngineeringProjectSnapshot> {
+  const snapshot = await store.getRevision(projectId, revision);
+  if (!snapshot) {
+    throw new TypeError(
+      `Engineering project revision not found: ${projectId}@${revision}.`,
+    );
+  }
+  return snapshot;
+}
+
+function declaredProjectHead(
+  project: EngineeringProjectSnapshot,
+): EngineeringThreadSnapshotRef {
+  const reference =
+    [...project.threadSnapshots].sort((left, right) =>
+      right.revision - left.revision ||
+      right.snapshotId.localeCompare(left.snapshotId)
+    )[0];
+  if (!reference) {
+    throw new TypeError(
+      `Engineering project ${project.project.id} has no exact thread snapshot.`,
+    );
+  }
+  return structuredClone(reference);
+}
+
+function projectResult(content: string, snapshot: EngineeringProjectSnapshot) {
+  return {
+    content,
+    structuredContent: snapshot as unknown as Record<string, unknown>,
+  };
+}
+
+function decisionProposal(value: unknown): {
+  summary: string;
+  parameters: Array<{
+    key: string;
+    label: string;
+    value: string | number | boolean;
+    unit?: string;
+  }>;
+} {
+  const record = exactRecord(value, "proposal");
+  exactKeys(record, ["summary", "parameters"], [], "proposal");
+  if (!Array.isArray(record.parameters)) {
+    throw new TypeError("proposal.parameters must be an array");
+  }
+  return {
+    summary: requiredString(record.summary, "proposal.summary"),
+    parameters: record.parameters.map((item, index) => {
+      const parameter = exactRecord(item, `proposal.parameters[${index}]`);
+      exactKeys(
+        parameter,
+        ["key", "label", "value"],
+        ["unit"],
+        `proposal.parameters[${index}]`,
+      );
+      const result: {
+        key: string;
+        label: string;
+        value: string | number | boolean;
+        unit?: string;
+      } = {
+        key: requiredString(parameter.key, `proposal.parameters[${index}].key`),
+        label: requiredString(
+          parameter.label,
+          `proposal.parameters[${index}].label`,
+        ),
+        value: scalar(parameter.value, `proposal.parameters[${index}].value`),
+      };
+      if (parameter.unit !== undefined) {
+        if (typeof result.value !== "number") {
+          throw new TypeError(
+            `proposal.parameters[${index}].unit is only valid for a numeric value`,
+          );
+        }
+        result.unit = requiredString(
+          parameter.unit,
+          `proposal.parameters[${index}].unit`,
+        );
+      }
+      return result;
+    }),
+  };
+}
+
+function snapshotRef(value: unknown, name: string): EngineeringThreadSnapshotRef {
+  const record = exactRecord(value, name);
+  exactKeys(record, ["snapshotId", "revision", "subjectId"], [], name);
+  return {
+    snapshotId: requiredString(record.snapshotId, `${name}.snapshotId`),
+    revision: positiveInteger(record.revision, `${name}.revision`),
+    subjectId: requiredString(record.subjectId, `${name}.subjectId`),
+  };
+}
+
+function evidenceRefs(
+  value: unknown,
+  name: string,
+): EngineeringThreadEntityRef[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TypeError(`${name} must be a non-empty array`);
+  }
+  return value.map((item, index) => {
+    const path = `${name}[${index}]`;
+    const record = exactRecord(item, path);
+    exactKeys(record, ["snapshotId", "snapshotRevision", "kind", "id"], [], path);
+    return {
+      snapshotId: requiredString(record.snapshotId, `${path}.snapshotId`),
+      snapshotRevision: positiveInteger(
+        record.snapshotRevision,
+        `${path}.snapshotRevision`,
+      ),
+      kind: oneOf(
+        record.kind,
+        [
+          "artifact",
+          "consumption",
+          "observation",
+          "requirement",
+          "evaluation",
+          "violation",
+          "change",
+          "action",
+        ] as const,
+        `${path}.kind`,
+      ),
+      id: requiredString(record.id, `${path}.id`),
+    };
+  });
+}
+
+function exactRecord(value: unknown, name: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${name} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function exactKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+  name: string,
+): void {
+  const allowed = new Set([...required, ...optional]);
+  const extras = Object.keys(value).filter((key) => !allowed.has(key));
+  if (extras.length > 0) {
+    throw new TypeError(`${name} has unsupported field(s): ${extras.join(", ")}`);
+  }
+  const missing = required.filter((key) => !(key in value));
+  if (missing.length > 0) {
+    throw new TypeError(`${name} is missing field(s): ${missing.join(", ")}`);
+  }
+}
+
+function requiredString(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new TypeError(`${name} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function positiveInteger(value: unknown, name: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new TypeError(`${name} must be a positive safe integer`);
+  }
+  return value as number;
+}
+
+function isoDateTime(value: unknown, name: string): string {
+  const result = requiredString(value, name);
+  const parsed = parseIsoDateTime(result);
+  if (parsed === undefined) {
+    throw new TypeError(`${name} must be an ISO date-time`);
+  }
+  return new Date(parsed).toISOString();
+}
+
+function parseIsoDateTime(value: string): number | undefined {
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/
+      .test(value)
+  ) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function scalar(value: unknown, name: string): string | number | boolean {
+  if (
+    typeof value !== "string" && typeof value !== "number" &&
+    typeof value !== "boolean"
+  ) throw new TypeError(`${name} must be a string, finite number or boolean`);
+  if (typeof value === "string" && value.trim() === "") {
+    throw new TypeError(`${name} must not be empty`);
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new TypeError(`${name} must be finite`);
+  }
+  return value;
+}
+
+function oneOf<const T extends readonly string[]>(
+  value: unknown,
+  choices: T,
+  name: string,
+): T[number] {
+  if (typeof value !== "string" || !choices.includes(value)) {
+    throw new TypeError(`${name} must be one of ${choices.join(", ")}`);
+  }
+  return value as T[number];
+}

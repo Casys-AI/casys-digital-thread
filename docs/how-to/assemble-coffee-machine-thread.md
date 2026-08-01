@@ -92,8 +92,9 @@ deno task preview:thread
 ```
 
 The native Workbench at `http://127.0.0.1:5173/` reads the latest validated CM-01
-snapshot through its read-only BFF. It does not call MCP from the browser and does not
-rerun assembly on refresh.
+snapshot through passive BFF reads. It does not call MCP from the browser and does not
+rerun assembly on refresh. Its separate project commands can record decisions and queue
+work, but do not assemble evidence or invoke a provider.
 
 After bootstrap, the subject contains the thermal and enterprise observations below. The
 explicit SysON-to-CAD run adds build123d evidence in a later immutable revision:

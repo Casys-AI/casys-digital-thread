@@ -7,6 +7,12 @@ import type {
   EngineeringWorkItem,
 } from "../../../domain/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import {
+  OperatorIdentity,
+  type ProjectControlProps,
+  QueueWorkItemControl,
+} from "./control-center.tsx";
+import { canQueueWorkItem } from "./control-model.ts";
 import { buildProjectBrief, workOwnerLabel, workStatusLabel } from "./model.ts";
 
 export function ProjectWorkRibbon({ project }: {
@@ -45,13 +51,36 @@ export function ProjectWorkRibbon({ project }: {
   );
 }
 
-export function ProjectOperations({ project, thread }: {
-  project: EngineeringProjectSnapshot;
+export function ProjectOperations({
+  project,
+  thread,
+  capability,
+  actorId,
+  onActorIdChange,
+  feedback,
+  onCommand,
+}: ProjectControlProps & {
   thread: ThreadWorkbenchSnapshot;
 }): JSX.Element {
   const systems = uniqueSystems(thread);
+  const commandsEnabled = capability?.enabled === true;
   return (
     <div class="project-operations">
+      <section class="project-operations-command-bar">
+        <OperatorIdentity
+          actorId={actorId}
+          onChange={onActorIdChange}
+          enabled={commandsEnabled}
+        />
+        <div class="project-lifecycle-contract">
+          <span>HUMAN BOUNDARY</span>
+          <strong>Queue only</strong>
+          <small>
+            Claim, start, publish and completion belong to the agent control
+            plane.
+          </small>
+        </div>
+      </section>
       <section
         class="project-operations-panel"
         aria-labelledby="project-runs-title"
@@ -74,12 +103,13 @@ export function ProjectOperations({ project, thread }: {
                     <strong>{workTitle(project, run)}</strong>
                     <p>{run.summary}</p>
                     <small>
-                      {formatDateTime(run.startedAt ?? run.queuedAt)} ·{" "}
+                      Queued {formatDateTime(run.queuedAt)} ·{" "}
                       {run.evidenceRefs.length}{" "}
                       published evidence ref{run.evidenceRefs.length === 1
                         ? ""
                         : "s"}
                     </small>
+                    <AgentRunLifecycle run={run} />
                   </div>
                 </li>
               ))}
@@ -131,7 +161,16 @@ export function ProjectOperations({ project, thread }: {
         </header>
         <div class="project-work-item-list">
           {project.workItems.map((item) => (
-            <WorkItemRow key={item.id} item={item} project={project} />
+            <WorkItemRow
+              key={item.id}
+              item={item}
+              project={project}
+              capability={capability}
+              actorId={actorId}
+              onActorIdChange={onActorIdChange}
+              feedback={feedback}
+              onCommand={onCommand}
+            />
           ))}
         </div>
       </section>
@@ -139,22 +178,93 @@ export function ProjectOperations({ project, thread }: {
   );
 }
 
-function WorkItemRow({ item, project }: {
+function WorkItemRow({ item, project, ...control }: ProjectControlProps & {
   item: EngineeringWorkItem;
-  project: EngineeringProjectSnapshot;
 }): JSX.Element {
   const phase = project.phases.find((candidate) =>
     candidate.id === item.phaseId
   );
   return (
-    <article data-state={item.status}>
-      <span>{phase?.name ?? item.phaseId}</span>
-      <div>
-        <strong>{item.title}</strong>
-        <small>{workOwnerLabel(item.owner)} · {item.kind}</small>
+    <article
+      data-state={item.status}
+      data-queueable={canQueueWorkItem(project, item)}
+    >
+      <div class="project-work-item-record">
+        <span>{phase?.name ?? item.phaseId}</span>
+        <div>
+          <strong>{item.title}</strong>
+          <small>{workOwnerLabel(item.owner)} · {item.kind}</small>
+        </div>
+        <b>{workStatusLabel(item.status)}</b>
       </div>
-      <b>{workStatusLabel(item.status)}</b>
+      {canQueueWorkItem(project, item) && (
+        <QueueWorkItemControl
+          {...control}
+          project={project}
+          item={item}
+          compact
+        />
+      )}
     </article>
+  );
+}
+
+function AgentRunLifecycle({ run }: { run: EngineeringAgentRun }): JSX.Element {
+  const history = run.statusHistory?.length ? run.statusHistory : [{
+    commandId: run.id,
+    status: "queued" as const,
+    at: run.queuedAt,
+    actor: { id: "recorded operator", origin: "human" as const },
+    summary: "Run entered the agent queue.",
+  }];
+  return (
+    <details class="project-run-lifecycle">
+      <summary>
+        {history.length} lifecycle transition{history.length === 1 ? "" : "s"}
+      </summary>
+      <ol>
+        {history.map((transition) => (
+          <li
+            key={`${transition.commandId}:${transition.status}`}
+            data-state={transition.status}
+          >
+            <i aria-hidden="true" />
+            <div>
+              <strong>{transition.status.replaceAll("-", " ")}</strong>
+              <span>
+                {transition.actor.origin} · {transition.actor.id} ·{" "}
+                {formatDateTime(transition.at)}
+              </span>
+              <p>{transition.summary}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      {run.claimedBy && (
+        <p class="project-run-detail">
+          Claimed by <code>{run.claimedBy.id}</code>
+          {run.claimedAt ? ` at ${formatDateTime(run.claimedAt)}` : ""}
+        </p>
+      )}
+      {run.waitingForDecisionIds?.length && (
+        <p class="project-run-detail">
+          Waiting for {run.waitingForDecisionIds.join(", ")}
+        </p>
+      )}
+      {run.resultSnapshot && (
+        <p class="project-run-detail">
+          Result{" "}
+          <code>
+            {run.resultSnapshot.snapshotId}@{run.resultSnapshot.revision}
+          </code>
+        </p>
+      )}
+      {run.failure && (
+        <p class="project-run-failure" role="alert">
+          <strong>{run.failure.code}</strong> {run.failure.message}
+        </p>
+      )}
+    </details>
   );
 }
 

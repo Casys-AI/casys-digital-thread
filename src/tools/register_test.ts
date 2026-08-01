@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { DockerObserver } from "../adapters/docker-observer.ts";
 import type { McpProbe } from "../adapters/http-mcp-probe.ts";
 import type { FleetManifest, ObservedContainer, RunDetail } from "../domain/types.ts";
@@ -6,12 +6,16 @@ import { createConsoleServer } from "../../server.ts";
 import { CONSOLE_RESOURCE_URI } from "./register.ts";
 
 Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
+  const activeProjectDirectory = await Deno.makeTempDir({
+    prefix: "casys-project-tools-",
+  });
   const { app } = await createConsoleServer({
     manifest: manifestFixture(),
     runs: [runFixture()],
     probe: healthyProbe(),
     docker: unavailableDocker(),
     logger: () => {},
+    activeProjectDirectory,
   });
   assertEquals(app.getToolNames().sort(), [
     "console_refresh",
@@ -19,6 +23,12 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_run_list",
     "console_server_detail",
     "console_snapshot",
+    "project_agent_run_fail",
+    "project_agent_run_progress",
+    "project_agent_run_publish",
+    "project_agent_run_start",
+    "project_decision_propose",
+    "project_snapshot",
   ]);
   try {
     const built = Deno.statSync("src/ui/dist/console/index.html").isFile;
@@ -51,7 +61,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     assertEquals(discovered.resultType, "complete");
     assertEquals(discovered.serverInfo, {
       name: "casys-digital-thread-console",
-      version: "0.1.0",
+      version: "0.2.0",
     });
     const listed = await client.call("tools/list", {});
     const tools = listed.tools as Array<Record<string, unknown>>;
@@ -60,6 +70,12 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_run_list",
       "console_server_detail",
       "console_snapshot",
+      "project_agent_run_fail",
+      "project_agent_run_progress",
+      "project_agent_run_publish",
+      "project_agent_run_start",
+      "project_decision_propose",
+      "project_snapshot",
     ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");
     assert(snapshotTool);
@@ -76,6 +92,48 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       idempotentHint: true,
       openWorldHint: true,
     });
+    const publishTool = tools.find((tool) =>
+      tool.name === "project_agent_run_publish"
+    )!;
+    assertEquals(
+      (publishTool.inputSchema as Record<string, unknown>).oneOf,
+      [
+        {
+          properties: { stage: { const: "publishing" } },
+          required: ["stage"],
+          not: {
+            anyOf: [
+              { required: ["resultSnapshot"] },
+              { required: ["evidenceRefs"] },
+            ],
+          },
+        },
+        {
+          properties: { stage: { const: "completed" } },
+          required: ["stage", "resultSnapshot", "evidenceRefs"],
+        },
+      ],
+    );
+    const incompleteCompletion = await assertRejects(
+      () =>
+        client.call("tools/call", {
+          name: "project_agent_run_publish",
+          arguments: {
+            commandId: "mcp-incomplete-completion",
+            projectId: "coffee-machine-cm01",
+            expectedRevision: 1,
+            issuedAt: "2026-08-01T14:10:00.000Z",
+            runId: "run:missing",
+            stage: "completed",
+            summary: "This must be rejected by the advertised schema.",
+          },
+        }),
+      Error,
+    );
+    assertStringIncludes(
+      incompleteCompletion.message,
+      "resultSnapshot",
+    );
 
     const result = await client.call("tools/call", {
       name: "console_snapshot",
@@ -87,8 +145,111 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     assert("fleet" in structured);
     assert("runs" in structured);
     assertEquals("workbench" in structured, false);
+
+    const projectSnapshot = await client.call("tools/call", {
+      name: "project_snapshot",
+      arguments: { projectId: "coffee-machine-cm01" },
+    });
+    const project = projectSnapshot.structuredContent as Record<string, unknown>;
+    assertEquals(project.schemaVersion, "1.0");
+    assertEquals(
+      (project.project as Record<string, unknown>).id,
+      "coffee-machine-cm01",
+    );
+    assertEquals(project.revision, 1);
+
+    const proposalArguments = {
+      commandId: "mcp-proposal-material-1",
+      projectId: "coffee-machine-cm01",
+      expectedRevision: 1,
+      issuedAt: "2026-08-01T22:10:00+08:00",
+      decisionId: "select-material-model",
+      proposal: {
+        summary: "Use the reviewed aluminium material card.",
+        parameters: [{
+          key: "youngs-modulus",
+          label: "Young's modulus",
+          value: 69,
+          unit: "GPa",
+        }],
+      },
+    };
+    const proposal = await client.call("tools/call", {
+      name: "project_decision_propose",
+      arguments: proposalArguments,
+    });
+    const proposedProject = proposal.structuredContent as Record<string, unknown>;
+    assertEquals(proposedProject.revision, 2);
+    assertEquals(
+      (proposedProject.commandReceipts as Array<Record<string, unknown>>)[0]
+        .issuedAt,
+      "2026-08-01T14:10:00.000Z",
+    );
+    const proposedDecision = (proposedProject.decisions as Array<
+      Record<string, unknown>
+    >).find((item) => item.id === "select-material-model")!;
+    assertEquals(proposedDecision.status, "proposed");
+    assertEquals(
+      (proposedDecision.proposal as Record<string, unknown>).proposedBy as Record<
+        string,
+        unknown
+      >,
+      { id: "mcp:test@1", origin: "agent" },
+    );
+
+    const replay = await client.call("tools/call", {
+      name: "project_decision_propose",
+      arguments: proposalArguments,
+    });
+    assertEquals(
+      (replay.structuredContent as Record<string, unknown>).revision,
+      2,
+    );
+
+    const stale = await client.call("tools/call", {
+      name: "project_decision_propose",
+      arguments: {
+        ...proposalArguments,
+        commandId: "mcp-stale-proposal-2",
+        decisionId: "define-supports",
+      },
+    });
+    assertEquals(stale.isError, true);
+    assertStringIncludes(
+      (stale.content as Array<Record<string, unknown>>)[0].text as string,
+      "current revision is 2",
+    );
+
+    const projectTools = tools.filter((tool) =>
+      String(tool.name).startsWith("project_")
+    );
+    assertEquals(
+      projectTools.some((tool) =>
+        [
+          "project_decision_approve",
+          "project_decision_reject",
+          "project_agent_run_queue",
+        ]
+          .includes(String(tool.name))
+      ),
+      false,
+    );
+    for (const tool of projectTools) {
+      const annotations = tool.annotations as Record<string, unknown>;
+      assertEquals(annotations.destructiveHint, false);
+      assertEquals(annotations.openWorldHint, false);
+      assertEquals(
+        annotations.readOnlyHint,
+        tool.name === "project_snapshot",
+      );
+      assertEquals(
+        annotations.idempotentHint,
+        tool.name === "project_snapshot",
+      );
+    }
   } finally {
     await http.shutdown();
+    await Deno.remove(activeProjectDirectory, { recursive: true });
   }
 });
 

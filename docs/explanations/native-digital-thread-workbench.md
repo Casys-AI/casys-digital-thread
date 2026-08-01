@@ -1,7 +1,7 @@
 # Native digital-thread Workbench: compose evidence, not applications
 
-**Status: accepted target — first five-provider read-only CM-01 assembly running,
-2026-08-01**
+**Status: accepted target — multi-provider CM-01 baseline plus the first human-agent
+project-control slice, 2026-08-01**
 
 The first Workbench proved that five independent MCP Apps can be discovered,
 capability-bounded, mounted, and synchronized. It also exposed the product limit of that
@@ -50,39 +50,53 @@ been recorded.
 
 The shell must never imply more autonomy than the runtime provides. A live indicator
 means that validated persisted revisions are being followed, not that raw model
-reasoning is being streamed. Browsing and inspection are immediate; an engineering tool
-execution remains an explicit, operator-confirmed command with recorded inputs.
+reasoning is being streamed. Browsing and inspection are immediate. Human decisions and
+queue release are explicit, revision-bound project commands; engineering tool execution
+is a separate agent operation with recorded inputs and evidence.
 
 ## Runtime boundary
 
 ```text
-SysON / build123d / CalculiX / Modelica / ERPNext MCP tools
+native Preact SPA                           agent MCP client
+  | GET + snapshot SSE                       | project snapshot/proposal
+  | human-only POST                          | run lifecycle only
+  v                                          v
+                 immutable EngineeringProject revisions
                               |
-                              | stateless tools/call
+                              | separate orchestration
                               v
                   Digital-thread orchestrator
                   - workflow DAG and bindings
                   - artifact fingerprints
-                  - cache and invalidation
                   - provenance and run state
                   - linked ThreadSnapshot
                               |
-                              | HTTP JSON + snapshot SSE
+                              | stateless tools/call
                               v
-                       native Preact SPA
-                       one shell and state
+       SysON / build123d / CalculiX / Modelica / ERPNext MCP tools
 ```
 
-Opening or refreshing the application reads a persisted `ThreadSnapshot`. It never
-starts CAD, meshing, FEA, or physical simulation. A recomputation is an explicit command
-with an identified change set, durable run state, and provenance.
+Opening or refreshing the application reads persisted project and thread snapshots. It
+never starts CAD, meshing, FEA, or physical simulation. The read and SSE paths remain
+passive. A provider recomputation is a separately orchestrated agent action with an
+identified change set, durable run state, and provenance.
 
-The current read-only BFF implements that load path. It serves the CM-01 snapshot and a
-same-origin SSE stream which announces newer persisted revisions. It is assembled from
-captured SysON inventory, attested build123d → CalculiX evidence, one persisted Modelica
-run, and reviewed ERPNext reads. It has no execution route. The snapshot deliberately
-stops before a requirement verdict because SysON has no approved mechanical
-`ConstraintUsage` for this example yet.
+The current BFF serves the CM-01 snapshot and a same-origin SSE stream which announces
+newer persisted revisions. Its narrow same-origin POST appends only human-authorized
+project commands: propose, approve, reject, and queue. The local actor identity is
+self-declared and unauthenticated, so this remains a loopback prototype rather than a
+multi-user authorization system. The route has no provider-execution authority.
+
+The same project is visible to agents through the Console MCP server. MCP exposes
+snapshot, proposal, and run-lifecycle tools, but deliberately no approval, rejection, or
+queue tool. Human and agent commands converge on one immutable active store with
+optimistic revision checks and durable idempotency receipts.
+
+The technical snapshot is assembled from captured SysON inventory, attested build123d
+evidence, one persisted Modelica run, and reviewed ERPNext reads. It deliberately stops
+before a requirement verdict because SysON has no approved mechanical `ConstraintUsage`
+for this example yet. Completing a project run requires a separately published exact
+`ThreadSnapshot` whose cited evidence can be resolved.
 
 The browser does not call the five MCP endpoints directly. The Deno backend owns service
 endpoints, credentials, workflow execution, and result validation. Provider tools keep
@@ -137,16 +151,17 @@ viewports, or CSS layout.
 ## Current acceptance slice
 
 The first real vertical slice is deliberately narrower than a five-panel cockpit. The
-current assembly groups these observed branches through a reviewed CM-01 identity
-manifest:
+clean baseline groups four observed branches through a reviewed CM-01 identity manifest;
+CalculiX remains absent until a real mechanical case is approved:
 
 1. build123d produces an identified STEP artifact and measurements;
 2. build123d hashes the exported STEP bytes;
-3. CalculiX snapshots its input, recomputes its hash, and refuses a supplied
-   `expected_step_sha256` mismatch before meshing;
-4. the orchestrator accepts the CAD → FEA edge only when producer and consumer hashes
-   are equal;
-5. its observations are normalized with units and source identities;
+3. the future CalculiX admission contract has been proved against a local provider: it
+   snapshots its input, recomputes its hash, and refuses an `expected_step_sha256`
+   mismatch before meshing;
+4. the orchestrator will accept a CAD → FEA edge only when producer and consumer hashes
+   are equal; no such edge is claimed by the clean baseline;
+5. future solver observations must be normalized with units and source identities;
 6. SysON inventory establishes the actual current absence of a mechanical constraint,
    rather than supplying a default;
 7. Modelica contributes one persisted model/scenario run and unit-bearing thermal
@@ -160,14 +175,22 @@ manifest:
     SysON-to-ERP identities and one real build123d geometry, while exposing every
     missing facet;
 11. reloading the shell starts no engineering computation.
+12. the Decision Center records structured proposals, human reviews and queue release as
+    immutable project revisions without filling missing engineering values;
+13. agents can advance only an already queued run, and cannot grant themselves approval
+    or queue authority;
+14. run completion fails closed until an exact descendant snapshot contains evidence
+    that is new or content-changed from the run base.
 
-This is an evidence assembly, not a causal merger. CAD → FEA is an attested edge.
-Modelica's scenario and ERPNext's provider reads are independent branches until an
-explicit transformation or requirement trace links them. In particular, zero ERP Bin
-rows is not a stock conclusion, and a successful Modelica run is not a compliance
-verdict.
+This is an evidence assembly, not a causal merger. CAD → FEA becomes an attested edge
+only after a solver run consumes the exact STEP and its result is canonically published;
+the clean baseline has no such edge. Modelica's scenario and ERPNext's provider reads
+are independent branches until an explicit transformation or requirement trace links
+them. In particular, zero ERP Bin rows is not a stock conclusion, and a successful
+Modelica run is not a compliance verdict.
 
 ## Product rule
 
-Product behavior targets the linked model and native shell. Do not add an iframe panel
-or a presentation-only MCP to compensate for missing orchestration.
+Product behavior targets the linked model and native shell. Do not add an iframe panel,
+a presentation-only MCP, or a browser-to-provider escape hatch to compensate for missing
+orchestration.

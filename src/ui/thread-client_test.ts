@@ -2,7 +2,9 @@ import { assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
 import {
   createThreadWorkbenchClient,
   HttpThreadWorkbenchClient,
+  ProjectCommandConflictError,
 } from "./src/thread/client.ts";
+import { createProjectCommandRequest } from "./src/project/command-contract.ts";
 import { COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
@@ -125,6 +127,112 @@ Deno.test("HTTP Workbench client rejects a naked thread projection", async () =>
   );
 
   await assertRejects(() => client.load(), Error, "unsupported contract");
+});
+
+Deno.test("HTTP Workbench client posts one explicit, revision-bound operator command", async () => {
+  const enabled = {
+    ...structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE),
+    capabilities: {
+      operatorCommands: {
+        enabled: true,
+        endpoint: "/api/project/commands",
+        intents: ["decision.propose"],
+        explicitIntentHeader: "X-Casys-Operator-Intent",
+        expectedRevision:
+          COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE.project.revision,
+      },
+    },
+  };
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  const client = new HttpThreadWorkbenchClient(
+    "/api/thread/workbench",
+    (input, init) => {
+      requests.push({ input: String(input), init });
+      return Promise.resolve(Response.json(enabled));
+    },
+  );
+  await client.load();
+  const request = createProjectCommandRequest({
+    commandId: "command-01",
+    projectId: enabled.project.project.id,
+    expectedRevision: enabled.project.revision,
+    issuedAt: "2026-08-01T12:00:00.000Z",
+    actorId: "operator-erwan",
+    command: {
+      type: "decision.propose",
+      decisionId: "decision-mechanical-inputs",
+      proposal: {
+        summary: "Reviewed reference case",
+        parameters: [{ key: "case", label: "Case", value: "reviewed" }],
+      },
+    },
+  });
+
+  await client.command(request);
+
+  assertEquals(requests.length, 2);
+  assertEquals(requests[1]?.input, "/api/project/commands");
+  assertEquals(requests[1]?.init?.method, "POST");
+  assertEquals(
+    new Headers(requests[1]?.init?.headers).get("X-Casys-Operator-Intent"),
+    "explicit",
+  );
+  assertEquals(
+    JSON.parse(String(requests[1]?.init?.body)),
+    request,
+  );
+});
+
+Deno.test("HTTP Workbench client exposes revision conflicts for a UI refresh", async () => {
+  const enabled = {
+    ...structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE),
+    capabilities: {
+      operatorCommands: {
+        enabled: true,
+        endpoint: "/api/project/commands",
+        intents: ["agent-run.queue"],
+        explicitIntentHeader: "X-Casys-Operator-Intent",
+        expectedRevision:
+          COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE.project.revision,
+      },
+    },
+  };
+  let reads = 0;
+  const client = new HttpThreadWorkbenchClient(
+    "/api/thread/workbench",
+    (_input, init) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(Response.json({
+          error: "project_revision_conflict",
+          expectedRevision: 1,
+          actualRevision: 2,
+        }, { status: 409 }));
+      }
+      reads += 1;
+      return Promise.resolve(Response.json(enabled));
+    },
+  );
+  await client.load();
+
+  try {
+    await client.command(createProjectCommandRequest({
+      commandId: "command-conflict",
+      projectId: enabled.project.project.id,
+      expectedRevision: 1,
+      issuedAt: "2026-08-01T12:00:00.000Z",
+      actorId: "operator-erwan",
+      command: {
+        type: "agent-run.queue",
+        workItemId: "work-simulate",
+        summary: "Run reviewed work",
+      },
+    }));
+    throw new Error("Expected the command to conflict.");
+  } catch (error) {
+    assertEquals(error instanceof ProjectCommandConflictError, true);
+    assertEquals((error as ProjectCommandConflictError).actualRevision, 2);
+  }
+  assertEquals(reads, 1);
 });
 
 Deno.test("native Workbench has no nested document or direct MCP tool call", async () => {

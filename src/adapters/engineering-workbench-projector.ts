@@ -9,6 +9,27 @@ export interface EngineeringWorkbenchSnapshot {
   project: EngineeringProjectSnapshot;
   thread: LiveThreadWorkbenchSnapshot;
   alignment: EngineeringWorkbenchAlignment;
+  capabilities: EngineeringWorkbenchCapabilities;
+}
+
+export const ENGINEERING_OPERATOR_COMMAND_ENDPOINT = "/api/project/commands" as const;
+export const ENGINEERING_OPERATOR_INTENT_HEADER = "X-Casys-Operator-Intent" as const;
+
+export const ENGINEERING_OPERATOR_COMMAND_INTENTS = [
+  "decision.propose",
+  "decision.approve",
+  "decision.reject",
+  "agent-run.queue",
+] as const;
+
+export interface EngineeringWorkbenchCapabilities {
+  operatorCommands: {
+    enabled: boolean;
+    endpoint: typeof ENGINEERING_OPERATOR_COMMAND_ENDPOINT;
+    intents: readonly (typeof ENGINEERING_OPERATOR_COMMAND_INTENTS)[number][];
+    explicitIntentHeader: typeof ENGINEERING_OPERATOR_INTENT_HEADER;
+    expectedRevision: number;
+  };
 }
 
 export interface EngineeringWorkbenchAlignment {
@@ -25,6 +46,7 @@ export function projectEngineeringWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
   thread: LiveThreadWorkbenchSnapshot,
   currentThreadRevision: number,
+  options: { operatorCommandsEnabled?: boolean } = {},
 ): EngineeringWorkbenchSnapshot {
   if (project.project.subjectId !== thread.subject.id) {
     throw new Error(
@@ -55,6 +77,17 @@ export function projectEngineeringWorkbenchSnapshot(
         : "thread-ahead",
       projectThreadRevision,
       currentThreadRevision,
+    },
+    capabilities: {
+      operatorCommands: {
+        enabled: options.operatorCommandsEnabled === true,
+        endpoint: ENGINEERING_OPERATOR_COMMAND_ENDPOINT,
+        intents: options.operatorCommandsEnabled === true
+          ? ENGINEERING_OPERATOR_COMMAND_INTENTS
+          : [],
+        explicitIntentHeader: ENGINEERING_OPERATOR_INTENT_HEADER,
+        expectedRevision: project.revision,
+      },
     },
   };
 }

@@ -25,3 +25,17 @@ Deno.test("browser project contract rejects a half-defined input anchor", () => 
   invalid.decisions[0]!.baseSnapshot = valid.threadSnapshots[0];
   assertEquals(isEngineeringProjectSnapshot(invalid), false);
 });
+
+Deno.test("project brief keeps a rejected decision actionable", () => {
+  const rejected = {
+    ...structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE),
+    decisions: COFFEE_MACHINE_PROJECT_FIXTURE.decisions.map((decision, index) =>
+      index === 0 ? { ...decision, status: "rejected" as const } : decision
+    ),
+  };
+
+  const brief = buildProjectBrief(rejected);
+
+  assertEquals(brief.pendingDecisions[0]?.id, rejected.decisions[0]!.id);
+  assertEquals(brief.pendingDecisions[0]?.status, "rejected");
+});

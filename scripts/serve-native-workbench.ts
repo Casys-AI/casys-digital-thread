@@ -1,18 +1,28 @@
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
+import {
+  EngineeringProjectCommandError,
+  type EngineeringProjectCommandService,
+  type EngineeringProjectRevisionStore,
+} from "../src/domain/engineering-project-command-service.ts";
 import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
 import {
-  type EngineeringProjectStore,
-  FileEngineeringProjectStore,
-} from "../src/adapters/engineering-project-store.ts";
+  executeOperatorProjectCommand,
+  ProjectCommandHttpError,
+  type ProjectOperatorCommandRequest,
+  readOperatorProjectCommand,
+} from "../src/adapters/engineering-project-command-http.ts";
+import { isExplicitLoopbackHostname } from "../src/adapters/loopback-host.ts";
 import { projectEngineeringWorkbenchSnapshot } from "../src/adapters/engineering-workbench-projector.ts";
 import {
   type ExactThreadSnapshotReader,
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
 } from "../src/adapters/engineering-thread-snapshot-resolver.ts";
+import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -32,7 +42,10 @@ import {
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
-  projectStore: EngineeringProjectStore;
+  projectStore: EngineeringProjectRevisionStore;
+  projectCommands?: EngineeringProjectCommandService;
+  /** EngineeringProject identity; defaults to subjectId only for CM-01 compatibility. */
+  projectId?: string;
   /** Active store plus optional exact, versioned project baselines. */
   projectSnapshots?: ExactThreadSnapshotReader;
   subjectId: string;
@@ -58,15 +71,21 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, options);
     }
+    if (url.pathname === "/api/project/commands") {
+      if (request.method !== "POST") return methodNotAllowed("POST");
+      if (!options.projectCommands) {
+        return json({
+          error: "operator_commands_disabled",
+          message: "Operator commands are disabled for this Workbench.",
+        }, 404);
+      }
+      return await handleOperatorCommand(request, options);
+    }
     if (url.pathname === "/api/thread/workbench") {
       if (request.method !== "GET") return methodNotAllowed();
-      const [project, activeSnapshot] = await Promise.all([
-        options.projectStore.get(),
-        options.store.latest(options.subjectId),
-      ]);
-      if (!project) return projectNotFound(options.subjectId);
-      const snapshot = activeSnapshot ??
-        await resolveDeclaredProjectHead(project, options);
+      const project = await options.projectStore.get(configuredProjectId(options));
+      if (!project) return projectNotFound(configuredProjectId(options));
+      const snapshot = await resolveCurrentThreadSnapshot(project, options);
       if (!snapshot) {
         return json({
           error: "thread_snapshot_not_found",
@@ -95,8 +114,9 @@ export function createNativeWorkbenchHandler(
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
           "Content-Security-Policy":
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
           "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
         },
       });
     }
@@ -108,8 +128,10 @@ async function snapshotEventStream(
   request: Request,
   options: NativeWorkbenchHandlerOptions,
 ): Promise<Response> {
-  const initialProject = await options.projectStore.get();
-  if (!initialProject) return projectNotFound(options.subjectId);
+  const initialProject = await options.projectStore.get(
+    configuredProjectId(options),
+  );
+  if (!initialProject) return projectNotFound(configuredProjectId(options));
   let project = initialProject;
   const encoder = new TextEncoder();
   const pollIntervalMs = options.pollIntervalMs ?? 500;
@@ -124,16 +146,14 @@ async function snapshotEventStream(
         // return, even while a streaming response is still open. Stream
         // cancellation is the reliable browser-disconnect signal here.
         while (!cancelled) {
-          const [activeSnapshot, latestProject, liveUpdates] = await Promise.all([
-            options.store.latest(options.subjectId),
-            options.projectStore.get(),
+          const [latestProject, liveUpdates] = await Promise.all([
+            options.projectStore.get(configuredProjectId(options)),
             options.liveUpdates?.list(options.subjectId) ?? [],
           ]);
           // A manifest removed during an established stream cannot revoke the
           // last valid event. A reconnect will receive an explicit 404.
           if (latestProject) project = latestProject;
-          const snapshot = activeSnapshot ??
-            await resolveDeclaredProjectHead(project, options);
+          const snapshot = await resolveCurrentThreadSnapshot(project, options);
           const liveVersion = liveUpdates.at(-1)?.sequence ?? 0;
           const eventId = snapshot
             ? `${project.revision}:${snapshot.revision}:${liveVersion}`
@@ -188,6 +208,73 @@ async function snapshotEventStream(
   });
 }
 
+async function handleOperatorCommand(
+  request: Request,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  let command: ProjectOperatorCommandRequest | undefined;
+  try {
+    command = await readOperatorProjectCommand(request);
+    if (command.projectId !== configuredProjectId(options)) {
+      return json({
+        error: "invalid_project_command",
+        message:
+          `Command project ${command.projectId} does not match this Workbench project ${
+            configuredProjectId(options)
+          }.`,
+      }, 422);
+    }
+    const project = await executeOperatorProjectCommand(
+      options.projectCommands!,
+      options.projectStore,
+      command,
+    );
+    const snapshot = await resolveCurrentThreadSnapshot(project, options);
+    if (!snapshot) {
+      return json({
+        error: "thread_snapshot_not_found",
+        subjectId: options.subjectId,
+      }, 404);
+    }
+    const projection = await projectWorkbenchSnapshot(
+      project,
+      snapshot,
+      options,
+    );
+    return json(projection, 200, {
+      "X-Casys-Data-Source": projection.thread.live.active.length
+        ? "canonical-thread-snapshot+live-updates"
+        : "canonical-thread-snapshot",
+    });
+  } catch (error) {
+    if (error instanceof ProjectCommandHttpError) {
+      return json({ error: error.code, message: error.message }, error.status);
+    }
+    if (error instanceof EngineeringProjectCommandError) {
+      const status = error.code === "entity_not_found" ? 422 : error.httpStatus;
+      const body: Record<string, unknown> = {
+        error: error.code,
+        message: error.message,
+      };
+      if (error.code === "stale_revision" && command) {
+        body.expectedRevision = command.expectedRevision;
+        body.actualRevision = (await options.projectStore.get(command.projectId))
+          ?.revision;
+      }
+      return json(body, status);
+    }
+    console.error(
+      `Operator command failed unexpectedly: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return json({
+      error: "operator_command_failed",
+      message: "The operator command could not be applied.",
+    }, 500);
+  }
+}
+
 async function projectWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
   snapshot: ThreadSnapshot,
@@ -212,6 +299,7 @@ async function projectWorkbenchSnapshot(
     validatedProject,
     await projectThreadSnapshot(snapshot, options, liveUpdates),
     snapshot.revision,
+    { operatorCommandsEnabled: options.projectCommands !== undefined },
   );
 }
 
@@ -225,9 +313,49 @@ async function resolveDeclaredProjectHead(
       right.snapshotId.localeCompare(left.snapshotId)
     )[0];
   if (!reference) return undefined;
-  return await (options.projectSnapshots ?? options.store).get(
+  const snapshot = await (options.projectSnapshots ?? options.store).get(
     reference.snapshotId,
   );
+  if (
+    snapshot &&
+    (snapshot.id !== reference.snapshotId ||
+      snapshot.revision !== reference.revision ||
+      snapshot.subject.id !== reference.subjectId)
+  ) {
+    throw new Error(
+      `Declared ThreadSnapshot ${reference.snapshotId}@${reference.revision} resolved to a different snapshot.`,
+    );
+  }
+  return snapshot;
+}
+
+async function resolveCurrentThreadSnapshot(
+  project: EngineeringProjectSnapshot,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<ThreadSnapshot | undefined> {
+  const [active, declared] = await Promise.all([
+    options.store.latest(options.subjectId),
+    resolveDeclaredProjectHead(project, options),
+  ]);
+  if (!active) return declared;
+  if (!declared) return active;
+  if (active.revision === declared.revision && active.id !== declared.id) {
+    throw new Error(
+      `Ambiguous ThreadSnapshot revision ${active.revision}: active ${active.id} conflicts with declared ${declared.id}.`,
+    );
+  }
+  if (active.revision <= declared.revision) return declared;
+  const lineageSnapshots = new OrderedExactThreadSnapshotReader([
+    options.store,
+    ...(options.projectSnapshots ? [options.projectSnapshots] : []),
+  ]);
+  return await threadSnapshotDescendsFrom(
+      active,
+      declared,
+      lineageSnapshots,
+    )
+    ? active
+    : declared;
 }
 
 async function projectThreadSnapshot(
@@ -280,12 +408,16 @@ function waitForPoll(milliseconds: number): Promise<void> {
 
 if (import.meta.main) {
   const hostname = argument("host") ?? "127.0.0.1";
+  const operatorCommandsEnabled = isExplicitLoopbackHostname(hostname);
   const port = integerArgument("port") ?? 5173;
   const snapshotDirectory = argument("snapshot-dir") ??
     "state/local/thread-snapshots";
   const subjectId = argument("subject") ?? "coffee-machine-cm01";
+  const projectId = argument("project-id") ?? subjectId;
   const projectPath = argument("project") ??
-    `config/projects/${subjectId}.project.json`;
+    `config/projects/${projectId}.project.json`;
+  const activeProjectDirectory = argument("active-project-dir") ??
+    "state/local/engineering-projects";
   const projectBaselineDirectory = argument("project-baseline-dir") ??
     "config/projects/baselines";
   const projectBaselineAssetDirectory = argument("project-baseline-asset-dir") ??
@@ -302,17 +434,26 @@ if (import.meta.main) {
     JSON.parse(await Deno.readTextFile(componentCatalogPath)),
   );
   const store = new FileThreadSnapshotStore(snapshotDirectory);
+  const projectSnapshots = new OrderedExactThreadSnapshotReader([
+    store,
+    new FileExactThreadSnapshotDirectory(projectBaselineDirectory),
+  ]);
+  const projectRuntime = await createEngineeringProjectCommandRuntime({
+    projectId,
+    trackedManifestPath: projectPath,
+    activeDirectory: activeProjectDirectory,
+    evidenceSnapshots: projectSnapshots,
+  });
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(assetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
   const handler = createNativeWorkbenchHandler({
     store,
-    projectStore: new FileEngineeringProjectStore(projectPath),
-    projectSnapshots: new OrderedExactThreadSnapshotReader([
-      store,
-      new FileExactThreadSnapshotDirectory(projectBaselineDirectory),
-    ]),
+    projectStore: projectRuntime.projects,
+    projectCommands: operatorCommandsEnabled ? projectRuntime.commands : undefined,
+    projectId,
+    projectSnapshots,
     subjectId,
     html,
     componentCatalog,
@@ -326,14 +467,20 @@ if (import.meta.main) {
     onListen: ({ hostname, port }) => {
       console.log(`Native Workbench: http://${hostname}:${port}/`);
       console.log(`Snapshot subject: ${subjectId}`);
+      console.log(`Engineering project id: ${projectId}`);
       console.log(`Engineering project: ${projectPath}`);
+      console.log(`Active project revisions: ${activeProjectDirectory}`);
       console.log(`Versioned project baselines: ${projectBaselineDirectory}`);
       console.log(
         `Versioned presentation baselines: ${projectBaselineAssetDirectory}`,
       );
       console.log(`Component identities: ${componentCatalogPath}`);
       console.log(`Live activity journal: ${liveUpdateDirectory}`);
-      console.log("Read-only: page loads never execute an engineering tool.");
+      console.log(
+        operatorCommandsEnabled
+          ? "Page loads are read-only; explicit same-origin operator commands mutate only EngineeringProject revisions."
+          : "Read-only Workbench: operator commands are disabled on a non-loopback binding.",
+      );
     },
   }, handler);
 }
@@ -352,18 +499,22 @@ function json(
   });
 }
 
-function methodNotAllowed(): Response {
+function methodNotAllowed(allow = "GET"): Response {
   return new Response("Method not allowed", {
     status: 405,
-    headers: { Allow: "GET" },
+    headers: { Allow: allow },
   });
 }
 
-function projectNotFound(subjectId: string): Response {
+function projectNotFound(projectId: string): Response {
   return json({
     error: "engineering_project_not_found",
-    subjectId,
+    projectId,
   }, 404);
+}
+
+function configuredProjectId(options: NativeWorkbenchHandlerOptions): string {
+  return options.projectId ?? options.subjectId;
 }
 
 function argument(name: string): string | undefined {

@@ -28,7 +28,8 @@ render(
         <strong>Native Digital Thread Workbench</strong>
       </div>
       <p>
-        Validated snapshot stream · read-only UI · no implicit solver execution
+        Validated snapshot stream · explicit human controls when granted · no
+        implicit solver execution
       </p>
     </header>
     <ThreadWorkbench client={client} />

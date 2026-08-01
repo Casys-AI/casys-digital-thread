@@ -50,7 +50,7 @@ per-component bindings.
 
 A component may also declare a same-origin STL `preview`. This mesh is presentation only
 and carries its own SHA-256. The authoritative engineering identity remains the
-referenced STEP artifact and its canonical fingerprint. The read-only BFF serves only
+referenced STEP artifact and its canonical fingerprint. The BFF read path serves only
 strict `.stl` filenames below `/api/thread/assets/`; it does not expose arbitrary local
 paths.
 

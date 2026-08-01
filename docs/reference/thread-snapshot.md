@@ -108,9 +108,10 @@ read crosses the canonical validator again.
 `deno task thread:assemble` materializes the declared CoffeeMachine CM-01 subject into
 that store. It starts from a captured SysON inventory, reads the declared persisted
 Modelica run, and reads the reviewed ERPNext BOM and Bin projections. Explicit build and
-future FEA runners publish later immutable revisions. The read-only BFF projects the
-latest validated subject snapshot into the deliberately smaller browser contract. The
-projection is never promoted back into the canonical domain model.
+future FEA runners publish later immutable revisions. The BFF's passive read path
+projects the latest validated subject snapshot into the deliberately smaller browser
+contract. The projection is never promoted back into the canonical domain model, and
+project commands cannot create thread evidence.
 
 The browser projection includes a required `graph` with typed nodes and edges. Canonical
 `provenance` links retain their relation and rationale. Exact `inputArtifactIds` and
@@ -125,11 +126,13 @@ verification, observation capture, evaluation, or violation detection. It only o
 the activity feed. The projector does not invent a timestamp for a proposed action whose
 canonical contract has none.
 
-The read-only BFF also exposes `/api/thread/workbench/events` as an SSE stream. Its
-event ID is `<ThreadSnapshot.revision>:<live-sequence>` and its data is the complete
-validated Workbench projection. Full replacement snapshots are intentional: the browser
-never has to apply an unvalidated partial lineage patch, reconnection is idempotent, and
-observing the stream cannot execute an engineering tool.
+The BFF also exposes `/api/thread/workbench/events` as a passive SSE stream. Its event
+ID is `<project-revision>:<thread-revision>:<live-sequence>` and its data is the
+complete validated Workbench projection. Full replacement snapshots are intentional: the
+browser never has to apply an unvalidated partial lineage patch, reconnection is
+idempotent, and observing the stream cannot execute an engineering tool. Project
+commands may cause a new full replacement, but completion is accepted only after the
+cited exact technical snapshot and its entities already exist.
 
 A clean CM-01 bootstrap contains SysON, Modelica, and ERPNext evidence; explicit runs
 add build123d and later CalculiX revisions. None is a solver run performed on UI load.

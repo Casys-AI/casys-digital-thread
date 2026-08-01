@@ -14,7 +14,8 @@ categories deliberately answer different questions.
 
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
   assembles the observed CM-01 branches, starts the single-shell Preact product surface,
-  and explains why the page itself performs no provider call or solve.
+  uses the human Decision Center, and explains why project commands are distinct from
+  provider calls and solves.
 - [Assemble the CoffeeMachine CM-01 thread](how-to/assemble-coffee-machine-thread.md)
   bootstraps the reviewed SysON, Modelica, and ERPNext branches; explicit runners add
   CAD and future FEA revisions without manufacturing cross-branch cause.
@@ -36,7 +37,7 @@ categories deliberately answer different questions.
 ## Reference — look up exact contracts and locations
 
 - [MCP console reference](console.md) documents the console resource, tools, evidence
-  model, and safety boundary.
+  model, agent project-control tools, and authority boundary.
 - [Workspace map and local ports](reference/workspace-map.md) identifies the workflow,
   scenario-contract plan, observers, UI sources, generated bundle, harness, volumes, and
   every local endpoint.
@@ -49,7 +50,8 @@ categories deliberately answer different questions.
   boundary.
 - [EngineeringProjectSnapshot contract](reference/engineering-project.md) defines
   project intent, derived phases, human-agent work, decisions and approvals, blockers,
-  execution runs, and exact references into immutable thread evidence.
+  execution runs, immutable revisions, command receipts, authority, and exact references
+  into immutable thread evidence.
 - [Cross-tool component identity](reference/thread-components.md) defines the reviewed
   SysON PartUsage, build123d artifact, and ERPNext Item bindings used by the native
   **Parts** workspace, including visible trace gaps.

@@ -1,0 +1,115 @@
+import {
+  EngineeringProjectCommandError,
+  type EngineeringProjectCompletionEvidenceValidator,
+} from "../domain/engineering-project-command-service.ts";
+import type {
+  EngineeringThreadEntityRef,
+  EngineeringThreadSnapshotRef,
+} from "../domain/engineering-project.ts";
+import type { ThreadSnapshot } from "../domain/thread-snapshot.ts";
+import { deterministicJson } from "../domain/deterministic-json.ts";
+import type { ExactThreadSnapshotReader } from "./engineering-thread-snapshot-resolver.ts";
+import { threadSnapshotDescendsFrom } from "./thread-snapshot-lineage.ts";
+
+/** Fail-closed bridge from run completion to exact canonical thread evidence. */
+export class ExactThreadCompletionEvidenceValidator
+  implements EngineeringProjectCompletionEvidenceValidator {
+  constructor(private readonly snapshots: ExactThreadSnapshotReader) {}
+
+  async validate(
+    baseReference: EngineeringThreadSnapshotRef,
+    resultReference: EngineeringThreadSnapshotRef,
+    evidenceRefs: readonly EngineeringThreadEntityRef[],
+  ): Promise<void> {
+    const [baseSnapshot, resultSnapshot] = await Promise.all([
+      this.exactSnapshot("Base", baseReference),
+      this.exactSnapshot("Result", resultReference),
+    ]);
+    if (
+      !await threadSnapshotDescendsFrom(
+        resultSnapshot,
+        baseSnapshot,
+        this.snapshots,
+      )
+    ) {
+      invalidEvidence(
+        `Result ThreadSnapshot ${resultReference.snapshotId}@${resultReference.revision} does not descend from exact run base ${baseReference.snapshotId}@${baseReference.revision}.`,
+      );
+    }
+    for (const evidence of evidenceRefs) {
+      if (
+        evidence.snapshotId !== resultReference.snapshotId ||
+        evidence.snapshotRevision !== resultReference.revision
+      ) {
+        invalidEvidence(
+          `Completion evidence ${evidence.kind}:${evidence.id} is not bound to exact result ${resultReference.snapshotId}@${resultReference.revision}.`,
+        );
+      }
+      const resultEntity = threadEntity(resultSnapshot, evidence);
+      if (resultEntity === undefined) {
+        invalidEvidence(
+          `Completion evidence ${evidence.kind}:${evidence.id} does not exist in exact ThreadSnapshot ${resultReference.snapshotId}@${resultReference.revision}.`,
+        );
+      }
+      const baseEntity = threadEntity(baseSnapshot, evidence);
+      if (
+        baseEntity !== undefined &&
+        deterministicJson(baseEntity) === deterministicJson(resultEntity)
+      ) {
+        invalidEvidence(
+          `Completion evidence ${evidence.kind}:${evidence.id} is unchanged from run base ${baseReference.snapshotId}@${baseReference.revision}.`,
+        );
+      }
+    }
+  }
+
+  private async exactSnapshot(
+    label: "Base" | "Result",
+    reference: EngineeringThreadSnapshotRef,
+  ): Promise<ThreadSnapshot> {
+    const snapshot = await this.snapshots.get(reference.snapshotId);
+    if (!snapshot) {
+      invalidEvidence(
+        `${label} ThreadSnapshot ${reference.snapshotId}@${reference.revision} is not readable from the exact snapshot stores.`,
+      );
+    }
+    if (
+      snapshot.id !== reference.snapshotId ||
+      snapshot.revision !== reference.revision ||
+      snapshot.subject.id !== reference.subjectId
+    ) {
+      invalidEvidence(
+        `${label} ThreadSnapshot ${reference.snapshotId} does not match revision ${reference.revision} and subject ${reference.subjectId}.`,
+      );
+    }
+    return snapshot;
+  }
+}
+
+function threadEntity(
+  snapshot: ThreadSnapshot,
+  reference: EngineeringThreadEntityRef,
+): unknown | undefined {
+  switch (reference.kind) {
+    case "artifact":
+      return snapshot.artifacts.find((item) => item.id === reference.id);
+    case "consumption":
+      return snapshot.consumptions.find((item) => item.id === reference.id);
+    case "observation":
+      return snapshot.observations.find((item) => item.id === reference.id);
+    case "requirement":
+      return snapshot.requirements.find((item) => item.id === reference.id);
+    case "evaluation":
+      return snapshot.evaluations.find((item) => item.id === reference.id);
+    case "violation":
+      return snapshot.violations.find((item) => item.id === reference.id);
+    case "change":
+      return snapshot.changeSet.changes.find((item) => item.id === reference.id);
+    case "action":
+      return snapshot.proposedActions.find((item) => item.id === reference.id);
+  }
+}
+
+function invalidEvidence(message: string): never {
+  throw new EngineeringProjectCommandError("invalid_input", message);
+}

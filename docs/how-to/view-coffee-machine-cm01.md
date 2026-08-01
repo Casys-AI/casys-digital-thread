@@ -61,7 +61,8 @@ the chain green. Before product verification, model or reference:
 
 There is intentionally no public `thread:run-mechanical` command until that
 analysis-case declaration and its snapshot materializer are reviewed. Opening the
-Workbench remains read-only.
+Workbench remains passive. Recording or approving a project decision changes only the
+immutable project revision; queueing work still does not execute CalculiX.
 
 ## Preview the product surface
 

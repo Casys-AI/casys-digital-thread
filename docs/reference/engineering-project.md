@@ -21,11 +21,12 @@ missing decision or engineering input.
 | **Thread**  | Versioned artifacts, exact-byte consumption, observations with units, traced requirements, evaluations, violations, provenance, freshness, and proposed engineering actions | Project intent, human approval, or unpersisted execution progress     |
 | **Live**    | Append-only progress and result notifications used to refresh the activity feed while work is occurring                                                                     | Canonical evidence, completion, approval, or a pass/fail verdict      |
 
-The read-only BFF composes these boundaries for presentation. Its browser contract is an
+The BFF composes these boundaries for presentation. Its browser contract is an
 `engineering-workbench/0.1` object containing `project`, the projected `thread` (whose
-`live` field contains current activity), and an `alignment` status. Composition creates
-a read model only; it does not promote live events into thread evidence or project
-truth.
+`live` field contains current activity), `alignment`, and explicit capabilities. `GET`
+and SSE create only a read model; they do not promote live events into thread evidence
+or project truth. A separate, narrow command route can append project revisions, but it
+cannot manufacture thread evidence or execute a provider.
 
 ## Root fields
 
@@ -42,6 +43,7 @@ truth.
 | `decisions`       | Questions or proposals requiring project authority                         |
 | `approvals`       | Auditable responses bound to the exact inputs approved                     |
 | `blockers`        | Open or resolved conditions overlaid on affected work and phases           |
+| `commandReceipts` | Optional durable idempotency and audit ledger after the first command      |
 
 The project revision and the referenced thread revision are independent counters. For
 example, project snapshot revision 1 may cite thread snapshot revision 5.
@@ -129,10 +131,21 @@ ready for approval. `proposed` requires a pending approval. Approved or rejected
 decisions require a matching approved or rejected approval; a superseded decision must
 be named by its replacement.
 
+A concrete proposal has a non-empty summary and one or more typed parameters. Each
+parameter has a stable key, a label, and a string, finite number, or boolean value. A
+unit is allowed only with a numeric value. The command service stamps the authoritative
+proposal time and actor and computes the exact SHA-256 input fingerprint; clients do not
+choose those audit fields.
+
 An approval is `pending`, `approved`, `rejected`, or `revoked`. A pending approval has
 no decision timestamp, actor, or rationale. Every decided approval requires all three.
 Its evidence references, base snapshot, and input fingerprint must match the decision
 exactly, so approval cannot silently survive changed inputs.
+
+Approval and rejection are human-only operations. They require a rationale and the exact
+proposal fingerprint presented to the operator. An approval resolves only the blockers
+whose linked decisions are all approved. A work item becomes `ready` only when all of
+its decisions, blockers, and work-item dependencies are satisfied.
 
 ### Blockers
 
@@ -148,6 +161,55 @@ Agent runs expose execution state, not private reasoning. Their lifecycle is `qu
 Timestamps must follow that lifecycle, and a completed run must cite exact thread
 evidence. A run may bind its normalized inputs to an exact base snapshot and SHA-256
 fingerprint using the same atomic pair as decisions.
+
+Queueing is a human command over a `ready` work item. It creates a durable `queued` run;
+it does not execute a tool. An agent may claim it, append public progress summaries,
+enter `publishing`, and then complete or fail it. `statusHistory` records these public
+lifecycle facts and summaries, not chain-of-thought. Completion requires a non-`latest`
+result snapshot whose revision advances the run's exact base snapshot and whose complete
+`previous` chain reaches that base, plus at least one unique entity reference from that
+result. The completion validator resolves the base, result, intervening ancestors, and
+every cited entity, then requires each cited entity to be new or content-changed relative
+to the base before the project may cite it. A newer parallel branch is rejected.
+
+## Command and authority surfaces
+
+Every mutation carries `commandId`, `projectId`, `expectedRevision`, and `issuedAt`.
+`expectedRevision` is optimistic concurrency control: stale commands fail with a
+conflict instead of overwriting newer work. The durable receipt binds a command ID to
+its full request fingerprint and resulting immutable snapshot. An identical retry
+returns the original result; reusing the ID with different arguments is an error.
+
+The transports grant different fixed capabilities:
+
+| Surface               | Allowed project operations                                          | Explicitly absent                    |
+| --------------------- | ------------------------------------------------------------------- | ------------------------------------ |
+| Passive browser reads | `GET /api/thread/workbench` and snapshot SSE                        | Every mutation and provider call     |
+| Human browser command | Propose, approve, reject, and queue                                 | Claim, run lifecycle, provider calls |
+| Agent MCP tools       | Snapshot, propose, claim/start, progress, publish/complete, fail | Approve, reject, queue               |
+
+The human route is `POST /api/project/commands`. It accepts only exact same-origin JSON
+requests carrying `X-Casys-Operator-Intent: explicit`; the request body cannot upgrade
+its authority. Its local actor ID is self-declared and recorded for audit, but this
+prototype does **not** authenticate that identity. Do not expose the loopback service as
+an authenticated multi-user control plane.
+
+Agent mutation receipts use the authenticated MCP subject when one is available.
+Otherwise `claimedBy` is derived from the client's self-declared MCP name and version;
+it is an audit label, not proof of identity. Project mutation tools are therefore a
+loopback-only prototype surface until transport authentication is required.
+
+The agent surface is on the Console MCP server and exposes these tools:
+`project_snapshot`, `project_decision_propose`, `project_agent_run_start`,
+`project_agent_run_progress`, `project_agent_run_publish`, and `project_agent_run_fail`.
+There is intentionally no MCP approval, rejection, or queue tool. Conversely, there is
+no browser command for claiming or completing a run.
+
+Project commands only mutate `EngineeringProjectSnapshot`. An agent still has to call
+the reviewed provider tools, validate their results, publish a canonical
+`ThreadSnapshot`, and then cite that exact evidence when completing the run. A browser
+queue command and an MCP run-lifecycle command are therefore not indirect CAD, FEA,
+Modelica, SysON, or ERPNext execution endpoints.
 
 ## CM-01 baseline
 
@@ -174,9 +236,10 @@ The project honestly derives these phase states:
 | Industrialization | `completed` | Exact ERPNext BOM-detail artifact                                                      |
 
 The four missing mechanical inputs are four `required` decisions and four open blockers.
-There are no approvals and no claimed mechanical run. The Modelica scenario observation
-does not become a product requirement, and the project snapshot invents no stress,
-temperature, material, support, or load threshold.
+There are no approvals and zero agent runs. This is still the clean state seeded on a
+fresh active store; real operator or agent commands may create later local revisions.
+The Modelica scenario observation does not become a product requirement, and the project
+snapshot invents no stress, temperature, material, support, or load threshold.
 
 ## Validation and persistence
 
@@ -186,7 +249,16 @@ links, dependency cycles, inconsistent lifecycle timestamps, contradictory
 decision/approval states, undeclared snapshot revisions, and mismatched execution
 inputs.
 
-[`FileEngineeringProjectStore`](../../src/adapters/engineering-project-store.ts) is a
-read-only adapter. Every read validates the declarative project snapshot again. It has
-no write or execution method, so loading the Workbench cannot approve a decision,
-resolve a blocker, advance project revision, or invoke an engineering provider.
+[`FileEngineeringProjectStore`](../../src/adapters/engineering-project-store.ts) remains
+the validated tracked-manifest loader. At runtime it seeds revision 1 only when no
+active project exists.
+[`FileEngineeringProjectRevisionStore`](../../src/adapters/engineering-project-store.ts)
+then owns append-only active state under `state/local/engineering-projects/<project>/`.
+Each numbered revision is deterministic JSON; an exclusive claim file is the
+cross-process compare-and-swap boundary. A later active revision always wins over the
+tracked seed, and a claimed but unpublished head fails closed.
+
+Every read validates again. Every write extends the exact current `id` and revision,
+records `previous`, and passes the full domain validator before publication. Loading or
+following the Workbench is still passive; only an explicit authorized command can
+advance project state, and no project-store method invokes an engineering provider.
