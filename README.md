@@ -125,6 +125,12 @@ ERPNext BOM, and Modelica heat-up run in one 2×2 layout. The YAML stores layout
 calls; it does not freeze their results. See
 [View the CoffeeMachine CM-01 digital thread](docs/how-to/view-coffee-machine-cm01.md).
 
+The first product dashboard is now a separate saved recipe: `deno task compose:cm01`
+renders the live SysON internal structure, interactive build123d GLB assembly, submitted
+ERPNext BOM, and Modelica heat-up run in one 2×2 layout. The YAML stores layout and
+calls; it does not freeze their results. See
+[View the CoffeeMachine CM-01 digital thread](docs/how-to/view-coffee-machine-cm01.md).
+
 When the engineering services are stopped, the console reports them as unavailable and
 keeps the checked-in bracket run explicitly labelled as demo. The documentation is
 organized with [Diátaxis](https://diataxis.fr/): start at the
