@@ -4,8 +4,12 @@ import {
   INSPECTION_DRONE_ARCHITECTURE_SYSML,
   InspectionDroneArchitectureReadbackError,
   inspectionDroneArchitectureSysmlFingerprint,
+  materializeInspectionDroneArchitecture,
   validateInspectionDroneArchitectureReadback,
 } from "./inspection-drone-architecture.ts";
+import { materializeSysonModelSeed } from "./syson-model-seed.ts";
+import type { ThreadSnapshot } from "./thread-snapshot.ts";
+import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
 
 Deno.test("inspection-drone architecture accepts only the reviewed SysML acknowledgement and readback", async () => {
   const result = await validateInspectionDroneArchitectureReadback(happyPath());
@@ -17,7 +21,7 @@ Deno.test("inspection-drone architecture accepts only the reviewed SysML acknowl
   });
   assertEquals(result.architecturePackage, {
     id: "architecture-package-123",
-    kind: "Package",
+    kind: "sysml::Package",
     label: "InspectionDroneArchitecture",
   });
   assertEquals(
@@ -65,10 +69,110 @@ Deno.test("inspection-drone architecture rejects ambiguous or incomplete post-wr
   );
 });
 
+Deno.test("inspection-drone architecture requires reviewed SysML semantic kinds", async () => {
+  const wrongRequirementKind = happyPath();
+  const requirement = (wrongRequirementKind.architectureChildrenResult as {
+    children: Array<{ label: string; kind: string }>;
+  }).children.find((child) => child.label === "Requirements")!;
+  requirement.kind = "siriusComponents://semantic?domain=sysml&entity=RequirementUsage";
+
+  await assertRejects(
+    () => validateInspectionDroneArchitectureReadback(wrongRequirementKind),
+    InspectionDroneArchitectureReadbackError,
+    "must identify a SysML Package",
+  );
+});
+
+Deno.test("inspection-drone architecture accepts SysON Sirius semantic URIs", async () => {
+  const input = happyPath();
+  (input.rootChildrenResult as {
+    children: Array<{ kind: string }>;
+  }).children[0]!.kind = "siriusComponents://semantic?domain=sysml&entity=Package";
+  (input.architectureChildrenResult as {
+    children: Array<{ label: string; kind: string }>;
+  }).children.forEach((child) => {
+    child.kind = `siriusComponents://semantic?domain=sysml&entity=${
+      child.label === "Requirements" ? "Package" : "PartDefinition"
+    }`;
+  });
+
+  const result = await validateInspectionDroneArchitectureReadback(input);
+  assertEquals(
+    result.declarations.length,
+    INSPECTION_DRONE_ARCHITECTURE_DECLARATIONS.length,
+  );
+});
+
+Deno.test("inspection-drone architecture materializes only normalized r3 evidence from exact r2", async () => {
+  const seed = await seededR2();
+  const input = happyPath();
+  const readback = await validateInspectionDroneArchitectureReadback(input);
+  const result = await materializeInspectionDroneArchitecture({
+    base: seed.snapshot,
+    seedCapture: seed.capture,
+    trustedRunId: "run:author-inspection-drone",
+    capturedAt: "2026-08-03T08:00:00.000Z",
+    insertion: readback.insertion,
+    rootChildrenResult: input.rootChildrenResult,
+    architectureChildrenResult: input.architectureChildrenResult,
+  });
+
+  const artifact = result.snapshot.artifacts.at(-1)!;
+  assertEquals(result.snapshot.revision, 3);
+  assertEquals(result.snapshot.previous, {
+    snapshotId: seed.snapshot.id,
+    revision: 2,
+  });
+  assertEquals(artifact.kind, "sysml-model");
+  assertEquals(artifact.inputArtifactIds, [seed.snapshot.artifacts.at(-1)!.id]);
+  assertEquals(result.snapshot.consumptions.length, 1);
+  assertEquals(
+    result.snapshot.provenance.some((link) => link.relation === "derived_from"),
+    true,
+  );
+  assertEquals(result.capture.insertion, readback.insertion);
+  assertEquals(result.text.includes(INSPECTION_DRONE_ARCHITECTURE_SYSML), false);
+  assertEquals(result.snapshot.requirements, []);
+  assertEquals(result.snapshot.evaluations, []);
+  assertEquals(result.snapshot.violations, []);
+  assertEquals(result.snapshot.proposedActions, []);
+});
+
+Deno.test("inspection-drone architecture materializer rejects a seed capture that does not match r2", async () => {
+  const seed = await seededR2();
+  const input = happyPath();
+  const readback = await validateInspectionDroneArchitectureReadback(input);
+  const mismatchedSeed = {
+    ...structuredClone(seed.capture),
+    normalizedResults: {
+      ...seed.capture.normalizedResults,
+      rootPackage: {
+        ...seed.capture.normalizedResults.rootPackage,
+        id: "other-root",
+      },
+    },
+  };
+
+  await assertRejects(
+    () =>
+      materializeInspectionDroneArchitecture({
+        base: seed.snapshot,
+        seedCapture: mismatchedSeed,
+        trustedRunId: "run:author-inspection-drone",
+        capturedAt: "2026-08-03T08:00:00.000Z",
+        insertion: readback.insertion,
+        rootChildrenResult: input.rootChildrenResult,
+        architectureChildrenResult: input.architectureChildrenResult,
+      }),
+    Error,
+    "does not exactly match",
+  );
+});
+
 function happyPath() {
   const architecturePackage = {
     id: "architecture-package-123",
-    kind: "Package",
+    kind: "sysml::Package",
     label: "InspectionDroneArchitecture",
   };
   return {
@@ -87,10 +191,107 @@ function happyPath() {
       parentId: architecturePackage.id,
       children: INSPECTION_DRONE_ARCHITECTURE_DECLARATIONS.map((label, index) => ({
         id: `declaration-${index}`,
-        kind: label === "Requirements" ? "Package" : "PartDefinition",
+        kind: label === "Requirements" ? "sysml::Package" : "sysml::PartDefinition",
         label,
       })),
       count: INSPECTION_DRONE_ARCHITECTURE_DECLARATIONS.length,
     },
   };
+}
+
+async function seededR2() {
+  return await materializeSysonModelSeed({
+    base: documentaryBaseline(),
+    trustedRunId: "run:seed-syson-model",
+    capturedAt: "2026-08-02T12:10:00.000Z",
+    projectCreateResult: {
+      id: "project-123",
+      name: "Drone concept",
+      editingContextId: "editing-context-456",
+    },
+    modelCreateResult: {
+      documentId: "document-789",
+      documentName: "Drone system model",
+      documentKind: "Document",
+      rootPackageId: "root-package-012",
+      rootPackageLabel: "Drone system model",
+    },
+    rootPackageGetResult: {
+      id: "root-package-012",
+      kind: "sysml::Package",
+      label: "Drone system model",
+    },
+  });
+}
+
+function documentaryBaseline(): ThreadSnapshot {
+  const digest = "a".repeat(64);
+  const artifactId = `approved-discovery-document-${digest}`;
+  const changeSetId = `approved-discovery-baseline-${digest}`;
+  const changeId = `${changeSetId}:record-document`;
+  return validateThreadSnapshot({
+    schemaVersion: "1.0",
+    id: `project:drone-concept:r1:${changeSetId}`,
+    revision: 1,
+    generatedAt: "2026-08-02T12:00:00.000Z",
+    subject: {
+      id: "project:drone-concept",
+      name: "Drone concept",
+      kind: "system",
+      version: digest,
+      modelArtifactId: artifactId,
+    },
+    freshness: {
+      status: "fresh",
+      changedAt: "2026-08-02T12:00:00.000Z",
+      invalidatedByChangeIds: [],
+    },
+    changeSet: {
+      id: changeSetId,
+      name: "Record approved discovery documentary baseline",
+      status: "applied",
+      createdAt: "2026-08-02T12:00:00.000Z",
+      appliedAt: "2026-08-02T12:00:00.000Z",
+      changes: [{
+        id: changeId,
+        kind: "created",
+        target: { kind: "artifact", id: artifactId },
+        summary: "Recorded documentary baseline.",
+        afterFingerprint: { algorithm: "sha256", digest },
+      }],
+    },
+    artifacts: [{
+      id: artifactId,
+      name: "Approved discovery documentary baseline (pre-technical)",
+      kind: "document",
+      version: digest,
+      fingerprint: { algorithm: "sha256", digest },
+      uri: `casys://approved-discovery-capture/sha256/${digest}`,
+      mediaType: "application/json",
+      producer: {
+        serverId: "casys-digital-thread",
+        tool: "baseline_from_approved_discovery",
+        runId: "run:approved-discovery-baseline",
+      },
+      inputArtifactIds: [],
+      freshness: {
+        status: "fresh",
+        changedAt: "2026-08-02T12:00:00.000Z",
+        invalidatedByChangeIds: [],
+      },
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [{
+      id: `${changeSetId}:changes:${artifactId}`,
+      relation: "changes",
+      from: { kind: "change", id: changeId },
+      to: { kind: "artifact", id: artifactId },
+      rationale: "This records the documentary pre-technical baseline.",
+    }],
+    proposedActions: [],
+  });
 }
