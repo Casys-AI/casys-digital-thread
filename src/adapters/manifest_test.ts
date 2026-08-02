@@ -1,9 +1,11 @@
 import {
+  assert,
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
 } from "@std/assert";
+import { parse as parseYaml } from "@std/yaml";
 import { loadFleetManifest, ManifestError, validateFleetManifest } from "./manifest.ts";
 
 Deno.test("loadFleetManifest accepts the workspace manifest and preserves posture", async () => {
@@ -35,6 +37,30 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
   ]);
   assertEquals(erpnext?.trust?.level, "first-party-local-privileged");
   assertEquals(erpnext?.trust?.executesArbitraryCode, false);
+});
+
+Deno.test("toolchain Compose defaults remain in parity with fleet desired images", async () => {
+  const [manifest, composeSource] = await Promise.all([
+    loadFleetManifest("config/mcp-fleet.json"),
+    Deno.readTextFile("docker-compose.yml"),
+  ]);
+  const compose = record(parseYaml(composeSource), "docker-compose.yml");
+  const services = record(compose.services, "docker-compose.yml.services");
+
+  for (const serverId of ["syson", "build123d", "calculix"]) {
+    const server = manifest.servers.find((candidate) => candidate.id === serverId);
+    assert(server, `fleet manifest is missing ${serverId}`);
+
+    const service = record(
+      services[server.serviceName],
+      `docker-compose.yml.services.${server.serviceName}`,
+    );
+    assertEquals(
+      toolchainDefaultImage(service.image, server.serviceName),
+      server.image,
+      `${server.serviceName} Compose default must match ${serverId} fleet image`,
+    );
+  }
 });
 
 Deno.test("validateFleetManifest ignores documentation extensions", () => {
@@ -84,4 +110,25 @@ function serverFixture() {
     required: true,
     expectedTools: ["test_read"],
   };
+}
+
+function record(value: unknown, path: string): Record<string, unknown> {
+  assert(
+    typeof value === "object" && value !== null && !Array.isArray(value),
+    `${path} must be an object`,
+  );
+  return value as Record<string, unknown>;
+}
+
+function toolchainDefaultImage(image: unknown, serviceName: string): string {
+  assert(
+    typeof image === "string",
+    `${serviceName}.image must be a string`,
+  );
+  const match = /^\$\{TOOLCHAIN_IMAGE:-(.+)\}$/.exec(image);
+  assert(
+    match,
+    `${serviceName}.image must use TOOLCHAIN_IMAGE with a committed default`,
+  );
+  return match[1];
 }
