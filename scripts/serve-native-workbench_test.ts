@@ -17,6 +17,7 @@ import {
   FileLiveThreadUpdateStore,
   LiveThreadUpdateStore,
 } from "../src/adapters/live-thread-update-store.ts";
+import { HttpThreadWorkbenchClient } from "../src/ui/src/thread/client.ts";
 
 Deno.test("native Workbench resolves a project-only V2 launch from the persisted project subject", async () => {
   const projectId = "drone-documentary-fixture-project";
@@ -166,6 +167,96 @@ Deno.test("native Workbench serves a V2 documentary baseline without exposing an
       false,
       `${forbidden} must not cross the documentary HTTP boundary`,
     );
+  }
+});
+
+Deno.test("native Workbench V2 documentary BFF round-trips through the browser HTTP client", async () => {
+  const projectId = "drone-documentary-fixture-project";
+  const thread = documentaryThreadSnapshot(`project:${projectId}`);
+  const project = documentaryProjectSnapshot(thread);
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(thread),
+    projectStore: new ReadOnlyProjectStore(project),
+    projectId: project.project.id,
+    subjectId: thread.subject.id,
+    html: "unused",
+  });
+  const server = Deno.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    onListen: () => {},
+  }, handler);
+
+  try {
+    const address = server.addr as Deno.NetAddr;
+    const client = new HttpThreadWorkbenchClient(
+      `http://127.0.0.1:${address.port}/api/thread/workbench`,
+    );
+    const workbench = await client.load();
+
+    assertEquals(client.source, "http");
+    assertEquals(workbench.surface, "documentary");
+    if (workbench.surface !== "documentary") {
+      throw new Error("Expected the V2 project to render as documentary provenance.");
+    }
+    assertEquals(workbench.project.schemaVersion, "2.0");
+    assertEquals(
+      workbench.project.plan?.basis.kind,
+      "approved-discovery",
+    );
+    assertEquals(
+      workbench.project.discoveryHandoff?.approvedBy.origin,
+      "human",
+    );
+    assertEquals(workbench.documentary.record.snapshotId, thread.id);
+    assertEquals(workbench.documentary.technicalEvidence.status, "not-recorded");
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("native Workbench V2 planning BFF round-trips through the browser HTTP client", async () => {
+  const projectId = "drone-documentary-fixture-project";
+  const subjectId = `project:${projectId}`;
+  const project = v2PlanningProjectSnapshot(subjectId);
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(undefined),
+    projectStore: new ReadOnlyProjectStore(project),
+    projectId: project.project.id,
+    subjectId,
+    html: "unused",
+  });
+  const server = Deno.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    onListen: () => {},
+  }, handler);
+
+  try {
+    const address = server.addr as Deno.NetAddr;
+    const client = new HttpThreadWorkbenchClient(
+      `http://127.0.0.1:${address.port}/api/thread/workbench`,
+    );
+    const workbench = await client.load();
+
+    assertEquals(client.source, "http");
+    assertEquals(workbench.surface, "planning");
+    if (workbench.surface !== "planning") {
+      throw new Error("Expected the V2 project to render as planning intent.");
+    }
+    assertEquals(workbench.project.schemaVersion, "2.0");
+    assertEquals(workbench.project.threadSnapshots, []);
+    assertEquals(
+      workbench.project.plan?.basis.kind,
+      "approved-discovery",
+    );
+    assertEquals(
+      workbench.project.discoveryHandoff?.approvedBy.origin,
+      "human",
+    );
+    assertEquals(workbench.planning.technicalBaseline.status, "not-created");
+  } finally {
+    await server.shutdown();
   }
 });
 
@@ -1190,6 +1281,32 @@ function planningProjectSnapshot(
     approvals: [],
     blockers: [],
   };
+}
+
+/**
+ * A real V2 project after its agent-published plan, before its first
+ * documentary baseline. It deliberately has no ThreadSnapshot to prove the
+ * browser accepts planning intent without borrowing technical evidence.
+ */
+function v2PlanningProjectSnapshot(
+  subjectId: string,
+): EngineeringProjectSnapshot {
+  const documentaryProject = documentaryProjectSnapshot(
+    documentaryThreadSnapshot(subjectId),
+  );
+  return validateEngineeringProjectSnapshot({
+    ...structuredClone(documentaryProject),
+    threadSnapshots: [],
+    phases: documentaryProject.phases.map((phase) => ({
+      ...phase,
+      evidenceRefs: [],
+    })),
+    workItems: documentaryProject.workItems.map((item) => ({
+      ...item,
+      status: "ready",
+      evidenceRefs: [],
+    })),
+  });
 }
 
 function planningProjectWithBaselineRun(

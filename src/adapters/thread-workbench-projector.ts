@@ -32,7 +32,7 @@ import type {
   ThreadRequirement,
   ThreadViolation,
   ThreadWorkbenchSnapshot,
-} from "../ui/src/thread/types.ts";
+} from "../contracts/thread-workbench.ts";
 
 /**
  * Pure presentation projection of a canonical digital-thread snapshot.

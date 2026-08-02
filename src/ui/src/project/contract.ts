@@ -1,9 +1,15 @@
 import type {
   EngineeringAgentRunStatus,
   EngineeringApprovalStatus,
+  EngineeringApprovedDiscoveryBasis,
+  EngineeringBasisRef,
   EngineeringBlockerStatus,
   EngineeringDecisionStatus,
+  EngineeringProjectDiscoveryHandoff,
+  EngineeringProjectPlan,
+  EngineeringProjectSchemaVersion,
   EngineeringProjectSnapshot,
+  EngineeringThreadSnapshotRef,
   EngineeringWorkItemStatus,
 } from "../../../domain/engineering-project.ts";
 
@@ -68,8 +74,10 @@ export function isEngineeringProjectSnapshot(
   value: unknown,
 ): value is EngineeringProjectSnapshot {
   if (!isRecord(value)) return false;
+  const schemaVersion = value.schemaVersion;
   if (
-    value.schemaVersion !== "1.0" || typeof value.id !== "string" ||
+    !isEngineeringProjectSchemaVersion(schemaVersion) ||
+    typeof value.id !== "string" ||
     typeof value.revision !== "number" || typeof value.generatedAt !== "string"
   ) return false;
   if (!isRecord(value.project) || !isRecord(value.project.objective)) {
@@ -85,9 +93,7 @@ export function isEngineeringProjectSnapshot(
 
   return isArrayOf(
     value.threadSnapshots,
-    (item) =>
-      isRecord(item) && typeof item.snapshotId === "string" &&
-      typeof item.revision === "number" && typeof item.subjectId === "string",
+    isThreadSnapshotRef,
   ) &&
     isArrayOf(
       value.phases,
@@ -122,7 +128,8 @@ export function isEngineeringProjectSnapshot(
         typeof item.summary === "string" &&
         typeof item.queuedAt === "string" &&
         AGENT_RUN_STATUSES.includes(item.status as EngineeringAgentRunStatus) &&
-        Array.isArray(item.evidenceRefs) && hasValidInputAnchor(item) &&
+        Array.isArray(item.evidenceRefs) &&
+        hasValidAgentRunInputAnchor(item, schemaVersion, value) &&
         (item.claimedBy === undefined || isCommandActor(item.claimedBy)) &&
         (item.waitingForDecisionIds === undefined ||
           isStringArray(item.waitingForDecisionIds)) &&
@@ -168,7 +175,64 @@ export function isEngineeringProjectSnapshot(
         BLOCKER_STATUSES.includes(item.status as EngineeringBlockerStatus) &&
         isStringArray(item.workItemIds) && isStringArray(item.decisionIds),
     ) &&
-    (value.plan === undefined || isEngineeringProjectPlan(value.plan));
+    hasValidProjectProvenance(value, schemaVersion);
+}
+
+function isEngineeringProjectSchemaVersion(
+  value: unknown,
+): value is EngineeringProjectSchemaVersion {
+  return value === "1.0" || value === "2.0";
+}
+
+/**
+ * V2 starts from one human-approved discovery handoff. A plan, when present,
+ * must retain that exact basis; it is never inferred from a V1 snapshot.
+ */
+function hasValidProjectProvenance(
+  project: Record<string, unknown>,
+  schemaVersion: EngineeringProjectSchemaVersion,
+): boolean {
+  const handoff = project.discoveryHandoff;
+  const plan = project.plan;
+  if (handoff !== undefined && !isDiscoveryHandoff(handoff)) return false;
+  if (schemaVersion === "2.0" && !isDiscoveryHandoff(handoff)) return false;
+
+  if (plan === undefined) return true;
+  if (!isEngineeringProjectPlan(plan)) return false;
+  if (!isDiscoveryHandoff(handoff)) {
+    return false;
+  }
+  return sameApprovedDiscoveryBasis(plan.basis, handoff);
+}
+
+function isDiscoveryHandoff(
+  value: unknown,
+): value is EngineeringProjectDiscoveryHandoff {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "discoveryId",
+      "snapshotId",
+      "revision",
+      "briefId",
+      "approvedBriefFingerprint",
+      "approvedAt",
+      "approvedBy",
+    ])
+  ) {
+    return false;
+  }
+  return isNonEmptyString(value.discoveryId) &&
+    isNonEmptyString(value.snapshotId) &&
+    isPositiveInteger(value.revision) &&
+    isNonEmptyString(value.briefId) &&
+    isSha256Fingerprint(value.approvedBriefFingerprint) &&
+    isIsoDateTime(value.approvedAt) &&
+    isHumanCommandActor(value.approvedBy);
+}
+
+function isHumanCommandActor(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["id", "origin"]) &&
+    isNonEmptyString(value.id) && value.origin === "human";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -187,7 +251,9 @@ function isArrayOf(
   return Array.isArray(value) && value.every(predicate);
 }
 
-function isEngineeringProjectPlan(value: unknown): boolean {
+function isEngineeringProjectPlan(
+  value: unknown,
+): value is EngineeringProjectPlan {
   if (
     !isRecord(value) || !hasExactKeys(value, [
       "startingPoint",
@@ -206,7 +272,9 @@ function isEngineeringProjectPlan(value: unknown): boolean {
     isPlanPublisher(value.publishedBy);
 }
 
-function isApprovedDiscoveryBasis(value: unknown): boolean {
+function isApprovedDiscoveryBasis(
+  value: unknown,
+): value is EngineeringApprovedDiscoveryBasis {
   if (
     !isRecord(value) || !hasExactKeys(value, [
       "kind",
@@ -225,6 +293,26 @@ function isApprovedDiscoveryBasis(value: unknown): boolean {
     isPositiveInteger(value.revision) &&
     isNonEmptyString(value.briefId) &&
     isSha256Fingerprint(value.approvedBriefFingerprint);
+}
+
+function sameApprovedDiscoveryBasis(
+  left: EngineeringApprovedDiscoveryBasis,
+  right: Pick<
+    EngineeringApprovedDiscoveryBasis,
+    | "discoveryId"
+    | "snapshotId"
+    | "revision"
+    | "briefId"
+    | "approvedBriefFingerprint"
+  >,
+): boolean {
+  return left.discoveryId === right.discoveryId &&
+    left.snapshotId === right.snapshotId &&
+    left.revision === right.revision && left.briefId === right.briefId &&
+    left.approvedBriefFingerprint.algorithm ===
+      right.approvedBriefFingerprint.algorithm &&
+    left.approvedBriefFingerprint.digest ===
+      right.approvedBriefFingerprint.digest;
 }
 
 function isPlanPublisher(value: unknown): boolean {
@@ -321,23 +409,87 @@ function isSha256Fingerprint(value: unknown): boolean {
     /^[a-f0-9]{64}$/i.test(value.digest);
 }
 
+/** Decisions and approvals keep their exact technical snapshot anchor in both schemas. */
 function hasValidInputAnchor(value: Record<string, unknown>): boolean {
   const hasBase = value.baseSnapshot !== undefined;
   const hasFingerprint = value.inputFingerprint !== undefined;
   if (hasBase !== hasFingerprint) return false;
   if (!hasBase) return true;
-  return isRecord(value.baseSnapshot) &&
-    typeof value.baseSnapshot.snapshotId === "string" &&
-    typeof value.baseSnapshot.revision === "number" &&
-    typeof value.baseSnapshot.subjectId === "string" &&
-    isRecord(value.inputFingerprint) &&
-    value.inputFingerprint.algorithm === "sha256" &&
-    typeof value.inputFingerprint.digest === "string";
+  return isThreadSnapshotRef(value.baseSnapshot) &&
+    isSha256Fingerprint(value.inputFingerprint);
 }
 
-function isThreadSnapshotRef(value: unknown): boolean {
-  return isRecord(value) && typeof value.snapshotId === "string" &&
-    typeof value.revision === "number" && typeof value.subjectId === "string";
+/**
+ * Agent-run execution bindings are schema-discriminated: V1 retains the
+ * historic baseSnapshot pair, while V2 must name a typed basis instead.
+ */
+function hasValidAgentRunInputAnchor(
+  value: Record<string, unknown>,
+  schemaVersion: EngineeringProjectSchemaVersion,
+  project: Record<string, unknown>,
+): boolean {
+  if (schemaVersion === "1.0") {
+    return value.basis === undefined && hasValidInputAnchor(value);
+  }
+
+  if (
+    value.baseSnapshot !== undefined || value.basis === undefined ||
+    value.inputFingerprint === undefined ||
+    !isEngineeringBasis(value.basis) ||
+    !isSha256Fingerprint(value.inputFingerprint)
+  ) {
+    return false;
+  }
+
+  if (value.basis.kind === "approved-discovery") {
+    const plan = project.plan;
+    return plan !== undefined && isEngineeringProjectPlan(plan) &&
+      sameApprovedDiscoveryBasis(value.basis, plan.basis);
+  }
+
+  return isDeclaredProjectThreadSnapshot(value.basis, project);
+}
+
+function isEngineeringBasis(value: unknown): value is EngineeringBasisRef {
+  return isApprovedDiscoveryBasis(value) || isThreadSnapshotBasis(value);
+}
+
+function isThreadSnapshotBasis(
+  value: unknown,
+): value is Extract<EngineeringBasisRef, { readonly kind: "thread-snapshot" }> {
+  return isRecord(value) && hasExactKeys(value, [
+    "kind",
+    "snapshotId",
+    "revision",
+    "subjectId",
+  ]) && value.kind === "thread-snapshot" &&
+    isNonEmptyString(value.snapshotId) && isPositiveInteger(value.revision) &&
+    isNonEmptyString(value.subjectId);
+}
+
+function isDeclaredProjectThreadSnapshot(
+  basis: Extract<EngineeringBasisRef, { readonly kind: "thread-snapshot" }>,
+  project: Record<string, unknown>,
+): boolean {
+  if (!isThreadSnapshotRef(basis) || !Array.isArray(project.threadSnapshots)) {
+    return false;
+  }
+  return project.threadSnapshots.some((snapshot) =>
+    isThreadSnapshotRef(snapshot) && snapshot.snapshotId === basis.snapshotId &&
+    snapshot.revision === basis.revision &&
+    snapshot.subjectId === basis.subjectId
+  );
+}
+
+function isThreadSnapshotRef(
+  value: unknown,
+): value is EngineeringThreadSnapshotRef {
+  return isRecord(value) && hasExactKeys(value, [
+    "snapshotId",
+    "revision",
+    "subjectId",
+  ]) && isNonEmptyString(value.snapshotId) &&
+    isPositiveInteger(value.revision) && isNonEmptyString(value.subjectId);
 }
 
 function isCommandActor(value: unknown): boolean {

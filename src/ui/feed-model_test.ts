@@ -1,8 +1,5 @@
 import { assertEquals } from "@std/assert";
-import {
-  activityFeedNodes,
-  traceThreadLineage,
-} from "./src/thread/feed-model.ts";
+import { activityFeedNodes, traceThreadLineage } from "./src/thread/feed-model.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,

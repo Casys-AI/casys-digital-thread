@@ -21,26 +21,22 @@ const DISCOVERY: ProjectDiscoverySnapshot = {
     {
       id: "usage",
       prompt: "Where and how will the drone be used?",
-      whyItMatters:
-        "The mission shapes range, payload and the evidence needed later.",
+      whyItMatters: "The mission shapes range, payload and the evidence needed later.",
       recommendation: {
         value: "inspection",
-        rationale:
-          "Inspection is a bounded first mission that can be tested safely.",
+        rationale: "Inspection is a bounded first mission that can be tested safely.",
         confidence: "medium",
       },
       options: [
         {
           value: "inspection",
           label: "Outdoor inspection",
-          consequences:
-            "Prioritises stability, range and a useful camera payload.",
+          consequences: "Prioritises stability, range and a useful camera payload.",
         },
         {
           value: "indoor",
           label: "Indoor operation",
-          consequences:
-            "Prioritises compact dimensions and obstacle tolerance.",
+          consequences: "Prioritises compact dimensions and obstacle tolerance.",
         },
       ],
       allowUnknown: true,
@@ -55,8 +51,7 @@ const DISCOVERY: ProjectDiscoverySnapshot = {
       whyItMatters: "Volume changes manufacturing choices and cost confidence.",
       recommendation: {
         value: "prototype",
-        rationale:
-          "A prototype batch exposes unknowns before committing tooling.",
+        rationale: "A prototype batch exposes unknowns before committing tooling.",
         confidence: "high",
       },
       options: [

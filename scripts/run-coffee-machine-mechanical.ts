@@ -31,7 +31,10 @@ import { validateEngineeringProjectSnapshot } from "../src/domain/engineering-pr
 import { type WorkflowExecution, WorkflowExecutor } from "../src/workflow/executor.ts";
 import { InternalThreadToolClient } from "../src/workflow/internal-thread-tools.ts";
 import { loadAndCompileThreadWorkflow } from "../src/workflow/loader.ts";
-import type { ThreadGraphNode, ThreadGraphRef } from "../src/ui/src/thread/types.ts";
+import type {
+  ThreadGraphNode,
+  ThreadGraphRef,
+} from "../src/contracts/thread-workbench.ts";
 import type {
   CompiledBinding,
   CompiledThreadWorkflow,

@@ -11,6 +11,7 @@
 | [`config/verification-plans/`](../../config/verification-plans/)                                                                               | Provisional scenario comparisons                                  |
 | [`config/projects/`](../../config/projects/)                                                                                                   | Versioned engineering intent, work and decisions                  |
 | [`config/mechanical-proof-cases/`](../../config/mechanical-proof-cases/)                                                                       | Candidate mechanical declarations; not execution receipts         |
+| [`src/contracts/thread-workbench.ts`](../../src/contracts/thread-workbench.ts)                                                                 | Browser-safe thread presentation DTOs shared by backend and UI    |
 | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                         | Canonical linked product state                                    |
 | [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                                                 | Immutable project intent and execution-state contract             |
 | [`src/domain/mechanical-proof-case.ts`](../../src/domain/mechanical-proof-case.ts)                                                             | Declaration validation and limited identity matching              |
@@ -31,7 +32,7 @@
 | [`src/adapters/engineering-project-command-http.ts`](../../src/adapters/engineering-project-command-http.ts)                                   | Same-origin human command contract                                |
 | [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                     |
 | [`src/adapters/thread-snapshot-lineage.ts`](../../src/adapters/thread-snapshot-lineage.ts)                                                     | Exact `previous`-chain ancestry proof                             |
-| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP project planning and bounded-execution tools            |
+| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP planning plus V2 documentary-baseline execution         |
 | [`src/adapters/engineering-workbench-projector.ts`](../../src/adapters/engineering-workbench-projector.ts)                                     | Project/thread presentation composition and alignment             |
 | [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)                                               | Canonical-state to Workbench projection                           |
 | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                               | Native lineage feed, graph, inspectors, SSE and command client    |
@@ -119,9 +120,11 @@ append only a human proposal, approval, rejection, or queue transition. It never
 a provider tool.
 
 `deno task start` exposes the complementary MCP project surface. Agents can inspect the
-same active project, propose an input, and claim or advance a human-queued run. They
-cannot approve, reject, or queue work. Provider execution remains a separate tool
-orchestration step, and completion requires exact canonical result evidence.
+same active project, propose an input, and execute only the exact human-queued V2
+`baseline.from-approved-discovery@1` operation. They cannot approve, reject, or queue
+work. The server-owned executor creates an immutable documentary, pre-technical
+baseline from the approved discovery and reviewed plan; it is not a generic project-run
+lifecycle or provider-execution surface.
 
 ## Runtime ownership
 
@@ -132,7 +135,7 @@ orchestration step, and completion requires exact canonical result evidence.
 | Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`                      |
 | ERP data                     | External ERPNext database   | Provider-native MCP from backend only                     |
 | Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench              |
-| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus agent run lifecycle; CAS revisions        |
+| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus V2 documentary baseline executor; CAS revisions |
 | `ProjectDiscoverySnapshot`   | Immutable active file store | Agent-authored discovery plus human review; CAS revisions |
 | Live engineering activity    | Append-only local JSONL     | SSE projection; never canonical authority                 |
 

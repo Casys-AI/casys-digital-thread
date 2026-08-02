@@ -1,8 +1,5 @@
 import { assertEquals } from "@std/assert";
-import {
-  canvasComponentRowWidth,
-  graphViewport,
-} from "./src/thread/graph-viewport.ts";
+import { canvasComponentRowWidth, graphViewport } from "./src/thread/graph-viewport.ts";
 import type { ThreadGraphRef } from "./src/thread/types.ts";
 
 Deno.test("graph viewport fits the complete thread and bounds a focused zoom", () => {

@@ -116,9 +116,7 @@ Deno.test("queue gate only opens for ready, approved and unblocked work", () => 
     })),
     agentRuns: [],
   };
-  const item = project.workItems.find((candidate) =>
-    candidate.id === "work-simulate"
-  )!;
+  const item = project.workItems.find((candidate) => candidate.id === "work-simulate")!;
 
   assertEquals(canQueueWorkItem(project, item), true);
   const withRun = {
