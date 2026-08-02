@@ -53,10 +53,19 @@ produit/SysON ; les 900 s sont seulement la provenance du scénario.
 Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.1` :
 un `EngineeringProjectSnapshot` immuable pour l'intention, le travail, les décisions et
 les blocages ; un `ThreadSnapshot` lié pour la preuve technique ; et un état explicite
-`aligned` ou `thread-ahead`. Les cinq espaces sont `Overview`, `Work`, `Product`,
-`Verification` et `Operations`. Le feed live appartient à `Work`, le graphe à
-`Verification`, les facettes composants à `Product`, et les runs et outils à
-`Operations`.
+`aligned` ou `thread-ahead`. Les cinq espaces sont `Project`, `Activity`, `Product`,
+`Evidence` et `Execution`. Le feed live appartient à `Activity`, le graphe à `Evidence`,
+les facettes composants à `Product`, et les runs et outils à `Execution`.
+
+Une idée qui n'est pas encore un projet technique vit séparément dans un
+`ProjectDiscoverySnapshot` immuable. L'agent utilise les tools `project_discovery_*`
+pour préparer une seule question bornée à la fois et proposer un brief ; l'humain mène
+l'échange normal avec l'agent, tandis que le Workbench loopback `5174` reflète le dossier
+partagé, permet la revue et ne propose une correction directe qu'en recours explicite. Aucun
+`EngineeringProjectSnapshot`, modèle SysON ou `ThreadSnapshot` vide n'est créé avant
+cette approbation. L'UE UAS est le premier exemple de conformité documenté ; il n'existe
+pas encore de moteur réglementaire mondial ni de passage automatique du brief approuvé
+au premier projet technique.
 
 Le backend compose les données par un DAG explicite sous `config/thread-workflows/` ; la
 YAML ne décrit ni layout ni composant. Ouvrir la page ne lance aucun solver. Les MCP
@@ -93,7 +102,8 @@ ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service 
 ## État et prochaine étape
 
 Chaîne complète publiée le 2026-07-30 (voir `docs/positioning.md` pour le SOTA). **Le
-prochain chantier produit** est le cas mécanique CM-01 : déclarer un matériau, des
+prochains chantiers produit** sont le passage explicite d'un brief Discovery approuvé au
+premier projet/SysON exact, puis le cas mécanique CM-01 : déclarer un matériau, des
 appuis, une charge et un critère réellement revus, puis publier CalculiX → observations
 → évaluation SysON dans le feed. `experiments/oracle/` reste ensuite le benchmark de
 correction agent avec et sans oracle.

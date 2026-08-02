@@ -18,32 +18,32 @@ const PROJECT_VIEWS: readonly {
   {
     id: "overview",
     index: "01",
-    label: "Overview",
-    description: "Intent & progress",
+    label: "Project",
+    description: "Start here: mission & reviews",
   },
   {
     id: "work",
     index: "02",
-    label: "Work",
-    description: "Human + agent",
+    label: "Activity",
+    description: "See what the agent changes",
   },
   {
     id: "product",
     index: "03",
     label: "Product",
-    description: "Parts & facets",
+    description: "Explore the system and its parts",
   },
   {
     id: "verification",
     index: "04",
-    label: "Verification",
-    description: "Evidence & impact",
+    label: "Evidence",
+    description: "Check why a result can be trusted",
   },
   {
     id: "operations",
     index: "05",
-    label: "Operations",
-    description: "Runs & tools",
+    label: "Execution",
+    description: "Review runs, plans and connected tools",
   },
 ] as const;
 

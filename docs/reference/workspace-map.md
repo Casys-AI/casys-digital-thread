@@ -2,56 +2,61 @@
 
 ## Source map
 
-| Location                                                                                                       | Owns                                                           |
-| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`docker-compose.yml`](../../docker-compose.yml)                                                               | Provider containers, networks, volumes and loopback ports      |
-| [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                         | Desired MCP endpoints, tools, views and trust posture          |
-| [`config/thread-workflows/`](../../config/thread-workflows/)                                                   | Reviewed typed causal DAGs                                     |
-| [`config/thread-subjects/`](../../config/thread-subjects/)                                                     | Reviewed provider-to-product identity bindings                 |
-| [`config/verification-plans/`](../../config/verification-plans/)                                               | Provisional scenario comparisons                               |
-| [`config/projects/`](../../config/projects/)                                                                   | Versioned engineering intent, work and decisions               |
-| [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                         | Canonical linked product state                                 |
-| [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                 | Immutable project intent and execution-state contract          |
-| [`src/domain/engineering-project-validation.ts`](../../src/domain/engineering-project-validation.ts)           | Strict project and exact thread-reference validation           |
-| [`src/workflow/`](../../src/workflow/)                                                                         | Validation, compilation, execution and normalization           |
-| [`src/adapters/http-mcp-tool-client.ts`](../../src/adapters/http-mcp-tool-client.ts)                           | Backend-only provider calls                                    |
-| [`src/adapters/live-thread-update-store.ts`](../../src/adapters/live-thread-update-store.ts)                   | Cross-process append-only live activity journal                |
-| [`src/adapters/recording-mcp-tool-client.ts`](../../src/adapters/recording-mcp-tool-client.ts)                 | Browser-safe running/fresh/failed MCP projections              |
-| [`src/adapters/file-thread-snapshot-store.ts`](../../src/adapters/file-thread-snapshot-store.ts)               | Immutable local snapshot persistence                           |
-| [`src/adapters/engineering-project-store.ts`](../../src/adapters/engineering-project-store.ts)                 | Tracked seed plus immutable active project revision store      |
-| [`src/domain/engineering-project-command-service.ts`](../../src/domain/engineering-project-command-service.ts) | Project transitions, authority, CAS and receipts               |
-| [`src/adapters/engineering-project-command-runtime.ts`](../../src/adapters/engineering-project-command-runtime.ts) | Shared BFF/MCP command runtime and exact evidence readers    |
-| [`src/adapters/engineering-project-command-http.ts`](../../src/adapters/engineering-project-command-http.ts)   | Same-origin human command contract                             |
-| [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate |
-| [`src/adapters/thread-snapshot-lineage.ts`](../../src/adapters/thread-snapshot-lineage.ts)                     | Exact `previous`-chain ancestry proof                          |
-| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                           | Agent MCP project and run-lifecycle tools                      |
-| [`src/adapters/engineering-workbench-projector.ts`](../../src/adapters/engineering-workbench-projector.ts)     | Project/thread presentation composition and alignment          |
-| [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)               | Canonical-state to Workbench projection                        |
-| [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                               | Native lineage feed, graph, inspectors, SSE and command client |
-| [`src/ui/src/project/`](../../src/ui/src/project/)                                                             | Project cockpit, Decision Center, approval and run journal     |
-| [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                       | Generated Console MCP App bundle                               |
-| [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                               | Loopback Console preview                                       |
-| [`scripts/serve-native-workbench.ts`](../../scripts/serve-native-workbench.ts)                                 | Passive reads/SSE plus bounded human project command BFF       |
-| [`scripts/materialize-coffee-machine-thread.ts`](../../scripts/materialize-coffee-machine-thread.ts)           | Read-only CM-01 branch assembler                               |
-| [`scripts/run-coffee-machine-build.ts`](../../scripts/run-coffee-machine-build.ts)                             | Explicit SysON to build123d MCP runner                         |
-| [`scripts/attach-coffee-machine-build-run.ts`](../../scripts/attach-coffee-machine-build-run.ts)               | Capture validation, canonical publication and reconciliation   |
-| [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)                   | Explicit read-only SysON inventory capture                     |
-| [`state/fixtures/`](../../state/fixtures/)                                                                     | Explicitly labelled demo evidence                              |
-| `state/local/engineering-projects/`                                                                            | Ignored immutable active project revisions and CAS claims      |
+| Location                                                                                                                                       | Owns                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [`docker-compose.yml`](../../docker-compose.yml)                                                                                               | Provider containers, networks, volumes and loopback ports      |
+| [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                                                         | Desired MCP endpoints, tools, views and trust posture          |
+| [`config/thread-workflows/`](../../config/thread-workflows/)                                                                                   | Reviewed typed causal DAGs                                     |
+| [`config/thread-subjects/`](../../config/thread-subjects/)                                                                                     | Reviewed provider-to-product identity bindings                 |
+| [`config/verification-plans/`](../../config/verification-plans/)                                                                               | Provisional scenario comparisons                               |
+| [`config/projects/`](../../config/projects/)                                                                                                   | Versioned engineering intent, work and decisions               |
+| [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                         | Canonical linked product state                                 |
+| [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                                                 | Immutable project intent and execution-state contract          |
+| [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts)                                                                     | Immutable pre-project discovery and review contract            |
+| [`src/adapters/project-discovery-store.ts`](../../src/adapters/project-discovery-store.ts)                                                     | Immutable discovery revision store                             |
+| [`src/tools/project-discovery.ts`](../../src/tools/project-discovery.ts)                                                                       | Agent MCP discovery-authoring tools                            |
+| [`src/domain/engineering-project-validation.ts`](../../src/domain/engineering-project-validation.ts)                                           | Strict project and exact thread-reference validation           |
+| [`src/workflow/`](../../src/workflow/)                                                                                                         | Validation, compilation, execution and normalization           |
+| [`src/adapters/http-mcp-tool-client.ts`](../../src/adapters/http-mcp-tool-client.ts)                                                           | Backend-only provider calls                                    |
+| [`src/adapters/live-thread-update-store.ts`](../../src/adapters/live-thread-update-store.ts)                                                   | Cross-process append-only live activity journal                |
+| [`src/adapters/recording-mcp-tool-client.ts`](../../src/adapters/recording-mcp-tool-client.ts)                                                 | Browser-safe running/fresh/failed MCP projections              |
+| [`src/adapters/file-thread-snapshot-store.ts`](../../src/adapters/file-thread-snapshot-store.ts)                                               | Immutable local snapshot persistence                           |
+| [`src/adapters/engineering-project-store.ts`](../../src/adapters/engineering-project-store.ts)                                                 | Tracked seed plus immutable active project revision store      |
+| [`src/domain/engineering-project-command-service.ts`](../../src/domain/engineering-project-command-service.ts)                                 | Project transitions, authority, CAS and receipts               |
+| [`src/adapters/engineering-project-command-runtime.ts`](../../src/adapters/engineering-project-command-runtime.ts)                             | Shared BFF/MCP command runtime and exact evidence readers      |
+| [`src/adapters/engineering-project-command-http.ts`](../../src/adapters/engineering-project-command-http.ts)                                   | Same-origin human command contract                             |
+| [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                  |
+| [`src/adapters/thread-snapshot-lineage.ts`](../../src/adapters/thread-snapshot-lineage.ts)                                                     | Exact `previous`-chain ancestry proof                          |
+| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP project and run-lifecycle tools                      |
+| [`src/adapters/engineering-workbench-projector.ts`](../../src/adapters/engineering-workbench-projector.ts)                                     | Project/thread presentation composition and alignment          |
+| [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)                                               | Canonical-state to Workbench projection                        |
+| [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                               | Native lineage feed, graph, inspectors, SSE and command client |
+| [`src/ui/src/project/`](../../src/ui/src/project/)                                                                                             | Project cockpit, review notifications, approval and run journal |
+| [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                                                       | Generated Console MCP App bundle                               |
+| [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                                                               | Loopback Console preview                                       |
+| [`scripts/serve-native-workbench.ts`](../../scripts/serve-native-workbench.ts)                                                                 | Passive reads/SSE plus bounded human project command BFF       |
+| [`scripts/serve-discovery-workbench.ts`](../../scripts/serve-discovery-workbench.ts)                                                           | Discovery reads/SSE plus bounded human review BFF              |
+| [`scripts/materialize-coffee-machine-thread.ts`](../../scripts/materialize-coffee-machine-thread.ts)                                           | Read-only CM-01 branch assembler                               |
+| [`scripts/run-coffee-machine-build.ts`](../../scripts/run-coffee-machine-build.ts)                                                             | Explicit SysON to build123d MCP runner                         |
+| [`scripts/attach-coffee-machine-build-run.ts`](../../scripts/attach-coffee-machine-build-run.ts)                                               | Capture validation, canonical publication and reconciliation   |
+| [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)                                                   | Explicit read-only SysON inventory capture                     |
+| [`state/fixtures/`](../../state/fixtures/)                                                                                                     | Explicitly labelled demo evidence                              |
+| `state/local/engineering-projects/`                                                                                                            | Ignored immutable active project revisions and CAS claims      |
 
 ## Local endpoints
 
-| Endpoint                    | Owner                       | Purpose                                           |
-| --------------------------- | --------------------------- | ------------------------------------------------- |
-| `http://127.0.0.1:8180`     | SysON                       | SysML web modeler                                 |
-| `http://127.0.0.1:3009/mcp` | `mcp-syson`                 | Model, constraints and evaluations                |
-| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`               | Provider-native ERP data                          |
-| `http://127.0.0.1:3014/mcp` | `mcp-build123d`             | CAD execution and exports                         |
-| `http://127.0.0.1:3015/mcp` | `mcp-calculix`              | Meshing and static FEA                            |
-| `http://127.0.0.1:3016/mcp` | `mcp-modelica`              | Approved simulations and run records              |
-| `http://127.0.0.1:3020/mcp` | `deno task start`           | Fleet reads plus agent project control            |
-| `http://127.0.0.1:3021/`    | `deno task preview:browser` | Console MCP App browser harness                   |
-| `http://127.0.0.1:5173/`    | `deno task preview:thread`  | Native cockpit, passive reads/SSE, human commands |
+| Endpoint                    | Owner                         | Purpose                                           |
+| --------------------------- | ----------------------------- | ------------------------------------------------- |
+| `http://127.0.0.1:8180`     | SysON                         | SysML web modeler                                 |
+| `http://127.0.0.1:3009/mcp` | `mcp-syson`                   | Model, constraints and evaluations                |
+| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`                 | Provider-native ERP data                          |
+| `http://127.0.0.1:3014/mcp` | `mcp-build123d`               | CAD execution and exports                         |
+| `http://127.0.0.1:3015/mcp` | `mcp-calculix`                | Meshing and static FEA                            |
+| `http://127.0.0.1:3016/mcp` | `mcp-modelica`                | Approved simulations and run records              |
+| `http://127.0.0.1:3020/mcp` | `deno task start`             | Fleet reads plus agent project control            |
+| `http://127.0.0.1:3021/`    | `deno task preview:browser`   | Console MCP App browser harness                   |
+| `http://127.0.0.1:5173/`    | `deno task preview:thread`    | Native cockpit, passive reads/SSE, human commands |
+| `http://127.0.0.1:5174/`    | `deno task preview:discovery` | Guided discovery, live snapshots, human review    |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
@@ -84,15 +89,16 @@ orchestration step, and completion requires exact canonical result evidence.
 
 ## Runtime ownership
 
-| Data                         | Owner                       | Workspace access                                   |
-| ---------------------------- | --------------------------- | -------------------------------------------------- |
-| SysML and requirements       | SysON                       | Provider MCP; no automatic mutation                |
-| CAD exports                  | `exports` volume            | Hash-attested build123d to CalculiX exchange       |
-| Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`               |
-| ERP data                     | External ERPNext database   | Provider-native MCP from backend only              |
-| Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench       |
-| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus agent run lifecycle; CAS revisions |
-| Live engineering activity    | Append-only local JSONL     | SSE projection; never canonical authority          |
+| Data                         | Owner                       | Workspace access                                          |
+| ---------------------------- | --------------------------- | --------------------------------------------------------- |
+| SysML and requirements       | SysON                       | Provider MCP; no automatic mutation                       |
+| CAD exports                  | `exports` volume            | Hash-attested build123d to CalculiX exchange              |
+| Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`                      |
+| ERP data                     | External ERPNext database   | Provider-native MCP from backend only                     |
+| Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench              |
+| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus agent run lifecycle; CAS revisions        |
+| `ProjectDiscoverySnapshot`   | Immutable active file store | Agent-authored discovery plus human review; CAS revisions |
+| Live engineering activity    | Append-only local JSONL     | SSE projection; never canonical authority                 |
 
 The Console browser harness forwards only reviewed Console tools. It is not a generic
 MCP proxy. The native browser receives ordinary linked JSON and no MCP credentials.

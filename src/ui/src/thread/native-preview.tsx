@@ -24,12 +24,12 @@ render(
         <span>DT</span>
       </div>
       <div>
-        <small>CASYS / PRODUCT PROTOTYPE</small>
-        <strong>Native Digital Thread Workbench</strong>
+        <small>CASYS / INDUSTRIAL PROJECT</small>
+        <strong>Project review cockpit</strong>
       </div>
       <p>
-        Validated snapshot stream · explicit human controls when granted · no
-        implicit solver execution
+        The agent prepares the work · you review decisions · evidence stays
+        traceable
       </p>
     </header>
     <ThreadWorkbench client={client} />

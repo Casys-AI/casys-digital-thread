@@ -12,10 +12,13 @@ categories deliberately answer different questions.
 
 ## How-to guides — achieve a focused task
 
+- [Preview a guided project discovery](how-to/preview-project-discovery.md) starts the
+  MCP-authored pre-project conversation, opens the calm live review surface, and
+  explains the human answer and brief-approval boundary.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
   assembles the observed CM-01 branches, starts the single-shell Preact product surface,
-  uses the human Decision Center, and explains why project commands are distinct from
-  provider calls and solves.
+  follows review notifications into live evidence and SysON context, and explains why
+  project commands are distinct from provider calls and solves.
 - [Assemble the CoffeeMachine CM-01 thread](how-to/assemble-coffee-machine-thread.md)
   bootstraps the reviewed SysON, Modelica, and ERPNext branches; explicit runners add
   CAD and future FEA revisions without manufacturing cross-branch cause.
@@ -52,6 +55,9 @@ categories deliberately answer different questions.
   project intent, derived phases, human-agent work, decisions and approvals, blockers,
   execution runs, immutable revisions, command receipts, authority, and exact references
   into immutable thread evidence.
+- [ProjectDiscoverySnapshot contract](reference/project-discovery.md) defines the
+  separate pre-project intent, guided questions, sourced answers, proposed brief,
+  immutable revisions, MCP authoring surface, and human-only review commands.
 - [Cross-tool component identity](reference/thread-components.md) defines the reviewed
   SysON PartUsage, build123d artifact, and ERPNext Item bindings used by the native
   **Parts** workspace, including visible trace gaps.
@@ -73,6 +79,10 @@ categories deliberately answer different questions.
 - [Lineage-feed Workbench UX](explanations/graph-workbench-ux.md) defines the live feed
   as the primary propagation view, the complete topology as a secondary view, and the
   five providers as contextual tool facets in one drawer.
+- [Compliance evidence cases](explanations/compliance-evidence-cases.md) explains the
+  target multi-jurisdiction architecture for versioned official sources, licensed
+  standards, evidence reuse, and external certification boundaries, using EU UAS as the
+  first sourced example.
 
 ## Read the status labels literally
 

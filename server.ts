@@ -10,6 +10,7 @@ import {
   requestUsesExplicitLoopbackHost,
 } from "./src/adapters/loopback-host.ts";
 import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-store.ts";
+import { FileProjectDiscoveryRevisionStore } from "./src/adapters/project-discovery-store.ts";
 import { createEngineeringProjectCommandRuntime } from "./src/adapters/engineering-project-command-runtime.ts";
 import {
   FileExactThreadSnapshotDirectory,
@@ -21,6 +22,10 @@ import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verif
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
+import {
+  ProjectDiscoveryCommandError,
+  ProjectDiscoveryCommandService,
+} from "./src/domain/project-discovery-command-service.ts";
 import type {
   FleetManifest,
   ObservedRunCatalog,
@@ -34,6 +39,10 @@ import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
 } from "./src/tools/project-control.ts";
+import {
+  type ProjectDiscoveryToolDependencies,
+  registerProjectDiscoveryTools,
+} from "./src/tools/project-discovery.ts";
 
 const DEFAULT_PORT = 3020;
 const DEFAULT_HOSTNAME = "127.0.0.1";
@@ -44,6 +53,7 @@ const DEFAULT_SCENARIO_CONTRACT_PLAN_PATH =
 const DEFAULT_PROJECT_ID = "coffee-machine-cm01";
 const DEFAULT_PROJECT_PATH = "config/projects/coffee-machine-cm01.project.json";
 const DEFAULT_ACTIVE_PROJECT_DIRECTORY = "state/local/engineering-projects";
+const DEFAULT_PROJECT_DISCOVERY_DIRECTORY = "state/local/project-discoveries";
 const DEFAULT_THREAD_SNAPSHOT_DIRECTORY = "state/local/thread-snapshots";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
 
@@ -61,9 +71,12 @@ export interface CreateConsoleServerOptions {
   logger?: (message: string) => void;
   /** `false` is reserved for focused fleet-only tests. */
   projectControl?: ProjectControlToolDependencies | false;
+  /** Defaults to the same loopback-only trust boundary as project control. */
+  projectDiscovery?: ProjectDiscoveryToolDependencies | false;
   projectId?: string;
   projectPath?: string;
   activeProjectDirectory?: string;
+  projectDiscoveryDirectory?: string;
   threadSnapshotDirectory?: string;
   projectBaselineDirectory?: string;
 }
@@ -98,8 +111,12 @@ export async function createConsoleServer(
   const projectControl = options.projectControl === false
     ? undefined
     : options.projectControl ?? await createProjectControl(options);
-  const instructions = projectControl
-    ? "Casys engineering control plane. Fleet tools are read-only. project_snapshot reads durable project truth. Agents may propose decisions and advance only human-queued agent runs with explicit revision-bound project tools. Agents cannot approve/reject decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, and unverified evidence must stay explicitly labelled."
+  const projectDiscovery = options.projectDiscovery === false ||
+      (options.projectControl === false && options.projectDiscovery === undefined)
+    ? undefined
+    : options.projectDiscovery ?? createProjectDiscovery(options);
+  const instructions = projectControl || projectDiscovery
+    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. Agents may propose decisions and advance only human-queued agent runs with explicit revision-bound project tools. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -114,11 +131,12 @@ export async function createConsoleServer(
       error instanceof Error &&
         (error.name === "ControlPlaneNotFoundError" ||
           error instanceof EngineeringProjectCommandError ||
+          error instanceof ProjectDiscoveryCommandError ||
           error instanceof TypeError)
         ? error.message
         : null,
   });
-  if (projectControl) {
+  if (projectControl || projectDiscovery) {
     app.use(async (context, next) => {
       if (
         context.request &&
@@ -133,6 +151,7 @@ export async function createConsoleServer(
   }
   registerControlPlaneTools(app, controlPlane);
   if (projectControl) registerProjectControlTools(app, projectControl);
+  if (projectDiscovery) registerProjectDiscoveryTools(app, projectDiscovery);
   registerConsoleViewer(app);
   return { app, controlPlane };
 }
@@ -156,6 +175,18 @@ async function createProjectControl(
     evidenceSnapshots: threadSnapshots,
   });
   return { projects: runtime.projects, commands: runtime.commands };
+}
+
+function createProjectDiscovery(
+  options: CreateConsoleServerOptions,
+): ProjectDiscoveryToolDependencies {
+  const discoveries = new FileProjectDiscoveryRevisionStore(
+    options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
+  );
+  return {
+    discoveries,
+    commands: new ProjectDiscoveryCommandService(discoveries),
+  };
 }
 
 async function createObservedRunCatalog(

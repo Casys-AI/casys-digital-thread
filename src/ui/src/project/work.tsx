@@ -13,14 +13,24 @@ import {
   QueueWorkItemControl,
 } from "./control-center.tsx";
 import { canQueueWorkItem } from "./control-model.ts";
-import { buildProjectBrief, workOwnerLabel, workStatusLabel } from "./model.ts";
+import {
+  agentRunSummary,
+  buildProjectBrief,
+  workOwnerLabel,
+  workStatusLabel,
+} from "./model.ts";
 
 export function ProjectWorkRibbon({ project }: {
   project: EngineeringProjectSnapshot;
 }): JSX.Element {
   const brief = buildProjectBrief(project);
   const activeRun = brief.activeRuns[0];
-  const decision = brief.pendingDecisions[0];
+  const decisionToReview = project.decisions.find((decision) =>
+    decision.status === "proposed"
+  );
+  const decisionBeingPrepared = project.decisions.find((decision) =>
+    decision.status === "required" || decision.status === "rejected"
+  );
   const blocker = brief.openBlockers[0];
   return (
     <section class="project-work-ribbon" aria-label="Shared work plan">
@@ -30,16 +40,24 @@ export function ProjectWorkRibbon({ project }: {
           {activeRun ? workTitle(project, activeRun) : "No active run"}
         </strong>
         <small>
-          {activeRun?.summary ??
-            "The project records no current agent execution."}
+          {activeRun
+            ? agentRunSummary(project, activeRun)
+            : "The project records no current agent execution."}
         </small>
       </div>
       <div class="project-work-ribbon-cell is-human">
-        <span>HUMAN INPUT</span>
-        <strong>{decision?.title ?? "No decision waiting"}</strong>
+        <span>{decisionToReview ? "YOUR REVIEW" : "REVIEW STATUS"}</span>
+        <strong>
+          {decisionToReview?.title ??
+            (decisionBeingPrepared
+              ? "Agent proposal in preparation"
+              : "Nothing needs your review")}
+        </strong>
         <small>
-          {decision?.question ??
-            "No required or proposed decision is recorded."}
+          {decisionToReview?.question ??
+            (decisionBeingPrepared
+              ? `The agent still owes you a concrete proposal for ${decisionBeingPrepared.title}.`
+              : "You can monitor progress while the agent continues the approved plan.")}
         </small>
       </div>
       <div class="project-work-ribbon-cell is-blocker">
@@ -74,10 +92,10 @@ export function ProjectOperations({
         />
         <div class="project-lifecycle-contract">
           <span>HUMAN BOUNDARY</span>
-          <strong>Queue only</strong>
+          <strong>Review and authorize</strong>
           <small>
-            Claim, start, publish and completion belong to the agent control
-            plane.
+            The agent owns execution and publication. You approve its proposals
+            and release only bounded work.
           </small>
         </div>
       </section>
@@ -101,7 +119,7 @@ export function ProjectOperations({
                   <div>
                     <span>{run.status.replaceAll("-", " ")}</span>
                     <strong>{workTitle(project, run)}</strong>
-                    <p>{run.summary}</p>
+                    <p>{agentRunSummary(project, run)}</p>
                     <small>
                       Queued {formatDateTime(run.queuedAt)} ·{" "}
                       {run.evidenceRefs.length}{" "}

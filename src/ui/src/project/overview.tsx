@@ -11,8 +11,9 @@ import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { DecisionCenter, type ProjectControlProps } from "./control-center.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
+  agentRunSummary,
   buildProjectBrief,
-  projectStatusLabel,
+  projectBriefStatusLabel,
   projectStatusTone,
   workOwnerLabel,
   workStatusLabel,
@@ -32,6 +33,8 @@ export function ProjectOverview({
   onActorIdChange,
   feedback,
   onCommand,
+  onOpenActivity,
+  onOpenSpecification,
 }: ProjectOverviewProps): JSX.Element {
   const brief = buildProjectBrief(project);
   const leadRun = brief.activeRuns[0];
@@ -57,16 +60,27 @@ export function ProjectOverview({
         <div
           class="project-status-seal"
           data-tone={projectStatusTone(brief.status)}
-          aria-label={`Project status: ${projectStatusLabel(brief.status)}`}
+          aria-label={`Project status: ${projectBriefStatusLabel(brief)}`}
         >
           <i aria-hidden="true" />
           <span>PROJECT STATE</span>
-          <strong>{projectStatusLabel(brief.status)}</strong>
+          <strong>{projectBriefStatusLabel(brief)}</strong>
           <small>
             {brief.completedPhases}/{brief.phases.length} phase gates satisfied
           </small>
         </div>
       </section>
+
+      <DecisionCenter
+        project={project}
+        capability={capability}
+        actorId={actorId}
+        onActorIdChange={onActorIdChange}
+        feedback={feedback}
+        onCommand={onCommand}
+        onOpenActivity={onOpenActivity}
+        onOpenSpecification={onOpenSpecification}
+      />
 
       <section
         class="project-phase-section"
@@ -120,11 +134,11 @@ export function ProjectOverview({
       >
         <ProjectControlPanel
           className="is-now"
-          index="NOW"
-          title="What is happening"
+          index="AGENT"
+          title="What the agent is doing"
           empty="No active work or agent run is recorded."
           onOpen={() => onNavigate("work")}
-          actionLabel="Open work"
+          actionLabel="Open activity"
         >
           {leadRun
             ? <AgentRunSummary run={leadRun} project={project} />
@@ -136,10 +150,10 @@ export function ProjectOverview({
         <ProjectControlPanel
           className="is-next"
           index="NEXT"
-          title="Ready to advance"
+          title="Ready after approval"
           empty="No work item is explicitly marked ready."
           onOpen={() => onNavigate("work")}
-          actionLabel="Review plan"
+          actionLabel="Review agent plan"
         >
           {brief.nextWork[0]
             ? <WorkItemSummary item={brief.nextWork[0]} />
@@ -157,15 +171,6 @@ export function ProjectOverview({
           {openBlocker ? <BlockerSummary blocker={openBlocker} /> : null}
         </ProjectControlPanel>
       </section>
-
-      <DecisionCenter
-        project={project}
-        capability={capability}
-        actorId={actorId}
-        onActorIdChange={onActorIdChange}
-        feedback={feedback}
-        onCommand={onCommand}
-      />
 
       <section
         class="project-evidence-overview"
@@ -274,7 +279,7 @@ function AgentRunSummary({ run, project }: {
     <div class="project-control-record" data-state={run.status}>
       <span>{run.status.replaceAll("-", " ")}</span>
       <strong>{workItem?.title ?? run.workItemId}</strong>
-      <p>{run.summary}</p>
+      <p>{agentRunSummary(project, run)}</p>
       <small>
         Agent run · {formatShortTime(run.startedAt ?? run.queuedAt)}
       </small>

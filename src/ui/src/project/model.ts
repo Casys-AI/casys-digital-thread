@@ -96,6 +96,25 @@ export function projectStatusLabel(status: EngineeringProjectStatus): string {
   return "Planned";
 }
 
+export function projectBriefStatusLabel(brief: ProjectBrief): string {
+  if (brief.status !== "attention-required") {
+    return projectStatusLabel(brief.status);
+  }
+  if (
+    brief.pendingDecisions.some((decision) => decision.status === "proposed")
+  ) {
+    return "Review required";
+  }
+  if (
+    brief.pendingDecisions.some((decision) =>
+      decision.status === "required" || decision.status === "rejected"
+    )
+  ) {
+    return "Agent preparing proposal";
+  }
+  return "Attention required";
+}
+
 export function projectStatusTone(
   status: EngineeringProjectStatus,
 ): "neutral" | "active" | "attention" | "blocked" | "complete" {
@@ -107,10 +126,39 @@ export function projectStatusTone(
 }
 
 export function workOwnerLabel(owner: EngineeringWorkItem["owner"]): string {
-  if (owner === "shared") return "Human + agent";
-  return owner === "human" ? "Human" : "Agent";
+  if (owner === "shared") return "Agent + human review";
+  return owner === "human" ? "Human review" : "Agent";
 }
 
 export function workStatusLabel(status: EngineeringWorkItem["status"]): string {
   return status.replaceAll("-", " ");
+}
+
+/**
+ * Run summaries come from an agent-facing command surface. The cockpit is not
+ * an audit-log dump: a short token or an accidental pasted fragment should not
+ * become the most prominent explanation of current work. Exact records remain
+ * available in the execution history.
+ */
+export function agentRunSummary(
+  snapshot: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+): string {
+  const summary = run.summary.trim();
+  if (isReadableRunSummary(summary)) return summary;
+
+  const workItem = snapshot.workItems.find((item) =>
+    item.id === run.workItemId
+  );
+  return workItem
+    ? `Working on: ${workItem.title}`
+    : "The agent is working on a recorded engineering task.";
+}
+
+function isReadableRunSummary(value: string): boolean {
+  // A useful status sentence has enough context to be understood without
+  // opening the technical record. This deliberately treats terse placeholders
+  // such as "dsadsadas" as malformed UI content, not engineering truth.
+  return value.length >= 12 && /\s/.test(value) &&
+    /[A-Za-zÀ-ÖØ-öø-ÿ]{3}/.test(value);
 }

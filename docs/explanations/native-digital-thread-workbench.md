@@ -21,7 +21,8 @@ answer three questions at the same time:
 
 1. What did the agent just produce or change?
 2. What does that fact affect across the engineering chain, and why?
-3. What can the operator inspect, prepare, approve, or reject now?
+3. Which prepared recommendation needs the operator to review, challenge, approve, or
+   return now?
 
 The primary UI object is therefore a change and its propagation, not an MCP server or a
 dashboard panel. The activity feed is the chronological backbone of the cockpit, not the
@@ -53,6 +54,19 @@ means that validated persisted revisions are being followed, not that raw model
 reasoning is being streamed. Browsing and inspection are immediate. Human decisions and
 queue release are explicit, revision-bound project commands; engineering tool execution
 is a separate agent operation with recorded inputs and evidence.
+
+The default human role is reviewer, not technical payload author. Decision states have
+different owners in the UI: `required` means the agent is preparing a recommendation,
+`proposed` means the human has a review action, and `rejected` means the agent owes a
+revision. Only `proposed` contributes to the human review counter. **Project** exposes a
+lightweight review-notification inbox: it signals what needs attention and leads the
+reviewer to the relevant context; it is not a second technical authoring surface.
+**Activity** is where the reviewer follows the live evidence and lineage behind a
+recommendation. Inspection and any correction request start with the affected
+SysON/specification context in **Product** and the paired agent conversation, never in a
+generic decision card. Activity may record one exact-bound request for a revised
+recommendation; it never collects replacement technical values. Exact hashes and snapshot
+IDs remain available as audit context.
 
 ## Runtime boundary
 
@@ -175,8 +189,10 @@ CalculiX remains absent until a real mechanical case is approved:
     SysON-to-ERP identities and one real build123d geometry, while exposing every
     missing facet;
 11. reloading the shell starts no engineering computation.
-12. the Decision Center records structured proposals, human reviews and queue release as
-    immutable project revisions without filling missing engineering values;
+12. **Project** exposes a lightweight review-notification inbox, **Activity** supplies
+    the live evidence and lineage for review, and **Product** routes specification
+    inspection and any correction request to the affected SysON context; explicit human approval,
+    rejection, and bounded work authorization still append immutable project revisions;
 13. agents can advance only an already queued run, and cannot grant themselves approval
     or queue authority;
 14. run completion fails closed until an exact descendant snapshot contains evidence

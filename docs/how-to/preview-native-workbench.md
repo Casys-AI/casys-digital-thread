@@ -9,8 +9,8 @@ surfaces:
   revisions under `state/local/thread-snapshots/`.
 
 The backend-for-frontend (BFF) joins both surfaces. Its `GET` and SSE paths are passive;
-opening the page never starts an engineering tool. Its separate Decision Center command
-path may append project revisions, but it still never calls an engineering provider.
+opening the page never starts an engineering tool. Its separate human-only command path
+may append project revisions, but it still never calls an engineering provider.
 
 ## Prepare the clean CM-01 baseline
 
@@ -160,22 +160,29 @@ The projection must show:
   after their explicit runs are published;
 - zero requirements and an unavailable verdict, not a successful one.
 
-## Use the Decision Center
+## Follow a review notification
 
-Open **Overview**, then the **Decision Center**. On a clean CM-01 active store it shows
-four required decisions and zero agent runs. The forms deliberately contain no material,
-support, load, or criterion default.
+Open **Project**. Its review-notification inbox is deliberately a light signal and a
+route into the relevant work, not a form for entering technical payloads. On a clean
+CM-01 active store it reports four decisions under **Agent preparing** and zero agent
+runs. `required` is not a request for the operator to invent material, support, load, or
+criterion values: it means the agent still owes a concrete, evidence-bound
+recommendation.
 
-1. Enter a local operator ID. It is written to the audit record, but it is self-declared
-   and this prototype does not authenticate it.
-2. Open one required decision and record a structured proposal: summary plus at least
-   one typed parameter. Units are accepted only for numeric parameters.
-3. Review the server-computed input fingerprint and exact base snapshot. Approve or
-   reject with a rationale only if that displayed scope is the one you reviewed.
-4. Repeat for the linked required decisions. Work becomes ready only after every linked
-   decision is approved and every blocker and dependency is resolved.
-5. Queue the ready work item. This creates a durable `queued` agent run; it does not
-   launch an engineering tool.
+1. When a decision becomes **Needs your review**, follow its notification to
+   **Activity**. The feed is the review context: follow the event, its upstream evidence,
+   and its downstream impact before judging the recommendation.
+2. Use the contextual record and the exact audit details only when the identifiers,
+   fingerprints, or snapshots are needed to establish scope.
+3. If the technical intent needs inspection or correction, open the affected
+   **Product**/**SysON** specification context and continue the paired agent
+   conversation. Do not capture replacement technical values in the notification inbox.
+4. When the prepared recommendation remains appropriate, identify the local reviewer and
+   issue the explicit approval. If it must change, use **Request revised recommendation**
+   in Activity after the specification review; the agent can then return an evidence-bound
+   replacement while the prior project revision remains auditable.
+5. Once all gates are satisfied, authorize the already bounded work item. This creates a
+   durable `queued` run; it does not itself launch an engineering tool.
 
 Each submit is a same-origin JSON `POST /api/project/commands` carrying
 `X-Casys-Operator-Intent: explicit` and the project revision displayed in the current
@@ -183,9 +190,10 @@ Workbench capability. A concurrent update returns a conflict; the cockpit reload
 new state instead of overwriting it. Static or injected preview fixtures do not expose
 the command capability and remain read-only.
 
-The browser is authorized only for `decision.propose`, `decision.approve`,
-`decision.reject`, and `agent-run.queue`. It cannot claim, publish, complete, or fail a
-run, and it receives no generic MCP endpoint or provider credential. The Console MCP
+The browser command contract is limited to `decision.propose`, `decision.approve`,
+`decision.reject`, and `agent-run.queue`. That transport capability does not turn the
+Project inbox into a manual proposal editor: it cannot claim, publish, complete, or fail
+a run, and it receives no generic MCP endpoint or provider credential. The Console MCP
 server gives agents the complementary project snapshot, proposal, and run-lifecycle
 tools, but never approval, rejection, or queue authority.
 
@@ -195,24 +203,25 @@ exact result revision. Completion fails closed if the snapshot or any evidence r
 does not exist. The resulting project revisions and run journal arrive over the same SSE
 stream.
 
-The page opens on **Overview**, which answers what CM-01 is trying to achieve, where the
-project is, what is happening now, what can happen next, and what needs a human
-decision. The five product sections have distinct jobs:
+The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
+attention, and where to go next. The five product sections have distinct jobs:
 
-- **Overview** — objective, derived phase gates, current work, next work, blocker,
-  decision and routes into technical proof;
-- **Work** — shared human-agent plan plus the live lineage feed. The feed exposes
-  actions and outcomes, never private chain-of-thought;
+- **Project** — objective, a lightweight review-notification inbox, derived phase gates,
+  current work, next work, blockers, and routes into the relevant context;
+- **Activity** — agent work plus the live lineage feed: the primary evidence and impact
+  context for a review, never private chain-of-thought;
 - **Product** — one physical component traversed across its SysON, build123d and ERPNext
-  identities;
-- **Verification** — full evidence graph, causal impact, requirements, verdicts and
-  named violations;
-- **Operations** — agent-run journal, declared work items and engineering systems that
+  identities, including the SysON/specification context in which a follow-up correction
+  can be scoped with the agent;
+- **Evidence** — full graph, causal impact, requirements, verdicts and named violations;
+- **Execution** — agent-run journal, declared work items and engineering systems that
   contributed evidence.
 
-In **Work**:
+In **Activity**:
 
 - leave **Follow live** enabled so a newly persisted fact becomes active automatically;
+- when a review notification arrives, trace the recommendation through its linked
+  evidence and downstream impact before issuing a human approval or revision request;
 - read the active card's complete inline subgraph as upstream evidence → selected fact →
   downstream impact;
 - pause following or select an older card only when revisiting history;
@@ -225,6 +234,8 @@ In **Work**:
 Use **Product** when navigation starts from a physical component instead of a thread
 event:
 
+- use the affected SysON/specification context to inspect or refine technical intent;
+  do not turn the Project review notification into a substitute technical editor;
 - select a PartUsage in the SysON structure, then switch to ERPNext without losing the
   selected component;
 - read the exact provider IDs in the trace strip and open their canonical evidence in

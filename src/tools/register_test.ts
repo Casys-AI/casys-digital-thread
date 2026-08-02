@@ -16,6 +16,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     docker: unavailableDocker(),
     logger: () => {},
     activeProjectDirectory,
+    projectDiscoveryDirectory: `${activeProjectDirectory}/discoveries`,
   });
   assertEquals(app.getToolNames().sort(), [
     "console_refresh",
@@ -28,6 +29,11 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_agent_run_publish",
     "project_agent_run_start",
     "project_decision_propose",
+    "project_discovery_answer_record",
+    "project_discovery_brief_propose",
+    "project_discovery_question_propose",
+    "project_discovery_snapshot",
+    "project_discovery_start",
     "project_snapshot",
   ]);
   try {
@@ -75,6 +81,11 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_agent_run_publish",
       "project_agent_run_start",
       "project_decision_propose",
+      "project_discovery_answer_record",
+      "project_discovery_brief_propose",
+      "project_discovery_question_propose",
+      "project_discovery_snapshot",
+      "project_discovery_start",
       "project_snapshot",
     ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");
@@ -221,7 +232,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     );
 
     const projectTools = tools.filter((tool) =>
-      String(tool.name).startsWith("project_")
+      String(tool.name).startsWith("project_") &&
+      !String(tool.name).startsWith("project_discovery_")
     );
     assertEquals(
       projectTools.some((tool) =>
@@ -245,6 +257,19 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(
         annotations.idempotentHint,
         tool.name === "project_snapshot",
+      );
+    }
+    const discoveryTools = tools.filter((tool) =>
+      String(tool.name).startsWith("project_discovery_")
+    );
+    for (const tool of discoveryTools) {
+      const annotations = tool.annotations as Record<string, unknown>;
+      assertEquals(annotations.destructiveHint, false);
+      assertEquals(annotations.openWorldHint, false);
+      assertEquals(annotations.idempotentHint, true);
+      assertEquals(
+        annotations.readOnlyHint,
+        tool.name === "project_discovery_snapshot",
       );
     }
   } finally {

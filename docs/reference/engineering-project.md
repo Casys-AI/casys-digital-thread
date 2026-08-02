@@ -147,6 +147,15 @@ proposal fingerprint presented to the operator. An approval resolves only the bl
 whose linked decisions are all approved. A work item becomes `ready` only when all of
 its decisions, blockers, and work-item dependencies are satisfied.
 
+The native cockpit interprets these states by owner rather than grouping them into one
+generic pending bucket: `required` and `rejected` wait on agent preparation; `proposed`
+waits on human review. Only a proposed decision is counted as a human action. The
+presentation rule is intentionally narrower than the command contract: **Project** only
+shows a lightweight review notification; **Activity** supplies the evidence and lineage
+for review; and **Product** is the SysON/specification inspection context from which a
+correction can be scoped with the agent. The Workbench exposes no general manual proposal
+or fallback data-entry form in that inbox.
+
 ### Blockers
 
 A blocker is `open` or `resolved` and has one of four explicit kinds: `required-input`,
@@ -162,8 +171,9 @@ Timestamps must follow that lifecycle, and a completed run must cite exact threa
 evidence. A run may bind its normalized inputs to an exact base snapshot and SHA-256
 fingerprint using the same atomic pair as decisions.
 
-Queueing is a human command over a `ready` work item. It creates a durable `queued` run;
-it does not execute a tool. An agent may claim it, append public progress summaries,
+Queueing is a human authorization over an already bounded `ready` work item. The command
+creates a durable `queued` run; it does not execute a tool. An agent may claim it, append
+public progress summaries,
 enter `publishing`, and then complete or fail it. `statusHistory` records these public
 lifecycle facts and summaries, not chain-of-thought. Completion requires a non-`latest`
 result snapshot whose revision advances the run's exact base snapshot and whose complete
@@ -187,6 +197,13 @@ The transports grant different fixed capabilities:
 | Passive browser reads | `GET /api/thread/workbench` and snapshot SSE                        | Every mutation and provider call     |
 | Human browser command | Propose, approve, reject, and queue                                 | Claim, run lifecycle, provider calls |
 | Agent MCP tools       | Snapshot, propose, claim/start, progress, publish/complete, fail | Approve, reject, queue               |
+
+`decision.propose` is a narrow command capability, not a promise of a generic browser
+data-entry workflow. The Project review inbox does not expose manual technical proposal
+or fallback controls; it directs the reviewer to Activity and, when technical work needs
+to change, to the relevant Product/SysON specification context. Approval, rejection, and
+queue authorization remain explicit human-only boundaries even when the agent prepared
+the recommendation.
 
 The human route is `POST /api/project/commands`. It accepts only exact same-origin JSON
 requests carrying `X-Casys-Operator-Intent: explicit`; the request body cannot upgrade

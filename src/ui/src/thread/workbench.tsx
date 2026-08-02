@@ -20,12 +20,13 @@ import {
   type ProjectOperatorCommand,
 } from "../project/command-contract.ts";
 import {
-  DecisionCenter,
   type ProjectCommandFeedback,
+  ReviewNotifications,
 } from "../project/control-center.tsx";
 import {
+  agentRunSummary,
   buildProjectBrief,
-  projectStatusLabel,
+  projectBriefStatusLabel,
   projectStatusTone,
 } from "../project/model.ts";
 import {
@@ -103,6 +104,7 @@ export function ThreadWorkbench({
     client.subscribe ? "connecting" : "snapshot",
   );
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [prepared, setPrepared] = useState<PreparedAction>();
   const [operatorId, setOperatorId] = useState("");
   const [commandFeedback, setCommandFeedback] = useState<
@@ -283,6 +285,58 @@ export function ThreadWorkbench({
     });
   };
 
+  const changeView = (next: ProjectWorkspaceView) => {
+    setActiveView(next);
+    // A selected record can belong to another tool surface. Keep the main
+    // workspace calm when changing context; explicit inspection reopens this.
+    setInspectorOpen(false);
+  };
+
+  const currentDecisionEvidence = (decisionId?: string) => {
+    const decision = decisionId
+      ? project.decisions.find((candidate) => candidate.id === decisionId)
+      : undefined;
+    if (!decision) return undefined;
+    return decision.inputEvidenceRefs.find((reference) =>
+      reference.snapshotId === snapshot.id &&
+      reference.snapshotRevision === workbench.alignment.currentThreadRevision
+    );
+  };
+
+  const focusDecisionEvidence = (decisionId?: string) => {
+    const reference = currentDecisionEvidence(decisionId);
+    if (!reference) return;
+    const node = snapshot.graph.nodes.find((candidate) =>
+      candidate.ref.kind === reference.kind &&
+      candidate.ref.id === reference.id
+    );
+    if (!node) return;
+    setLineageFocus(node.ref);
+    setGraphSelection({ kind: "node", ref: node.ref });
+    if (node.selection) setSelection(node.selection);
+  };
+
+  const openDecisionActivity = (decisionId?: string) => {
+    focusDecisionEvidence(decisionId);
+    changeView("work");
+  };
+
+  const openDecisionSpecification = (decisionId?: string) => {
+    const reference = currentDecisionEvidence(decisionId);
+    const component = reference
+      ? snapshot.components.components.find((candidate) =>
+        candidate.bindings.some((binding) =>
+          binding.provider === "syson" &&
+          binding.selection?.kind === reference.kind &&
+          binding.selection.id === reference.id
+        )
+      )
+      : undefined;
+    if (component) setSelectedComponentId(component.id);
+    setActiveComponentProvider("syson");
+    changeView("product");
+  };
+
   const selectThreadElement = (next: ThreadRef) => {
     setSelection(next);
     const graphNode = graphNodeForSelection(snapshot, next);
@@ -302,7 +356,10 @@ export function ThreadWorkbench({
     }
     setLineageFocus(node.ref);
     setGraphSelection({ kind: "node", ref: node.ref });
-    if (options.inspect !== false) setDrawerMode("tool");
+    if (options.inspect !== false) {
+      setDrawerMode("tool");
+      setInspectorOpen(true);
+    }
     if (node.selection) {
       setSelection(node.selection);
     }
@@ -318,6 +375,7 @@ export function ThreadWorkbench({
 
   const selectComponent = (component: ThreadComponent) => {
     setSelectedComponentId(component.id);
+    setInspectorOpen(false);
     const binding = component.bindings.find((item) =>
       item.provider === activeComponentProvider && item.status === "verified"
     );
@@ -328,10 +386,12 @@ export function ThreadWorkbench({
     if (!binding.selection) return;
     selectThreadElement(binding.selection);
     setDrawerMode("tool");
+    setInspectorOpen(true);
   };
 
   const changeComponentProvider = (provider: ThreadComponentProvider) => {
     setActiveComponentProvider(provider);
+    setInspectorOpen(false);
     const component = snapshot.components.components.find((candidate) =>
       candidate.id === selectedComponentId
     );
@@ -366,7 +426,7 @@ export function ThreadWorkbench({
         )
       );
     if (component) setSelectedComponentId(component.id);
-    setActiveView("product");
+    changeView("product");
   };
 
   const selectedEdge = graphSelection?.kind === "edge"
@@ -382,6 +442,7 @@ export function ThreadWorkbench({
 
   const inspector = (
     <aside
+      id="thread-tool-inspector"
       class="thread-tool-drawer"
       aria-label="Active engineering tool workspace"
     >
@@ -483,22 +544,24 @@ export function ThreadWorkbench({
           >
             <i aria-hidden="true" />
             <div>
-              <small>EVIDENCE CHANNEL</small>
+              <small>LIVE PROJECT FEED</small>
               <strong>{streamStatusLabel(streamStatus, followLive)}</strong>
             </div>
           </div>
           <div class="thread-session-change">
-            <small>NOW</small>
+            <small>AGENT NOW</small>
             <strong>
-              {projectBrief.activeRuns[0]?.summary ??
-                projectBrief.currentWork[0]?.title ?? "No active work recorded"}
+              {projectBrief.activeRuns[0]
+                ? agentRunSummary(project, projectBrief.activeRuns[0])
+                : projectBrief.currentWork[0]?.title ??
+                  "No active work recorded"}
             </strong>
           </div>
           <dl class="thread-session-facts">
             <div>
               <dt>Project</dt>
               <dd data-project-tone={projectStatusTone(projectBrief.status)}>
-                {projectStatusLabel(projectBrief.status)}
+                {projectBriefStatusLabel(projectBrief)}
               </dd>
             </div>
             <div>
@@ -511,7 +574,7 @@ export function ThreadWorkbench({
 
       <ProjectNavigation
         activeView={activeView}
-        onChange={setActiveView}
+        onChange={changeView}
       />
 
       {workbench.alignment.status === "thread-ahead" && (
@@ -534,7 +597,9 @@ export function ThreadWorkbench({
           <ProjectOverview
             project={project}
             thread={snapshot}
-            onNavigate={setActiveView}
+            onNavigate={changeView}
+            onOpenActivity={openDecisionActivity}
+            onOpenSpecification={openDecisionSpecification}
             capability={commandCapability}
             actorId={operatorId}
             onActorIdChange={setOperatorId}
@@ -558,6 +623,15 @@ export function ThreadWorkbench({
                   {projectViewLabel(activeView)} ·{" "}
                   {formatTime(snapshot.generatedAt)}
                 </span>
+                <button
+                  type="button"
+                  class="thread-inspector-toggle"
+                  aria-expanded={inspectorOpen}
+                  aria-controls="thread-tool-inspector"
+                  onClick={() => setInspectorOpen((open) => !open)}
+                >
+                  {inspectorOpen ? "Close details" : "Inspect selection"}
+                </button>
               </div>
             </div>
             <div class="thread-workspace-meta">
@@ -573,32 +647,24 @@ export function ThreadWorkbench({
                   {followLive ? "Following activity" : "Reviewing history"}
                 </span>
                 <span>
-                  <b>CONTROL</b> executions require operator confirmation
+                  <b>YOUR ROLE</b> review proposals and authorize bounded work
                 </span>
               </div>
             </div>
             {activeView === "work" && (
               <>
                 <ProjectWorkRibbon project={project} />
-                <details class="project-work-decision-drawer">
-                  <summary>
-                    <span>DECISION CENTER</span>
-                    <strong>
-                      {project.decisions.filter((decision) =>
-                        decision.status === "approved"
-                      ).length}/{project.decisions.length} approved
-                    </strong>
-                    <small>Review inputs and release work</small>
-                  </summary>
-                  <DecisionCenter
-                    project={project}
-                    capability={commandCapability}
-                    actorId={operatorId}
-                    onActorIdChange={setOperatorId}
-                    feedback={commandFeedback}
-                    onCommand={executeProjectCommand}
-                  />
-                </details>
+                <ReviewNotifications
+                  surface="activity"
+                  project={project}
+                  capability={commandCapability}
+                  actorId={operatorId}
+                  onActorIdChange={setOperatorId}
+                  feedback={commandFeedback}
+                  onCommand={executeProjectCommand}
+                  onOpenActivity={openDecisionActivity}
+                  onOpenSpecification={openDecisionSpecification}
+                />
               </>
             )}
             {activeView === "verification" && (
@@ -632,11 +698,13 @@ export function ThreadWorkbench({
                       onSelectEdge={(edge) => {
                         setGraphSelection({ kind: "edge", id: edge.id });
                         setDrawerMode("tool");
+                        setInspectorOpen(true);
                       }}
                       onInspect={(next, node) => {
                         setSelection(next);
                         setLineageFocus(node.ref);
                         setDrawerMode("tool");
+                        setInspectorOpen(true);
                       }}
                     />
                   )
@@ -654,12 +722,16 @@ export function ThreadWorkbench({
                           return;
                         }
                         setGraphSelection(next);
-                        if (next?.kind === "edge") setDrawerMode("tool");
+                        if (next?.kind === "edge") {
+                          setDrawerMode("tool");
+                          setInspectorOpen(true);
+                        }
                       }}
                       onInspect={(next, node) => {
                         setSelection(next);
                         setLineageFocus(node.ref);
                         setDrawerMode("tool");
+                        setInspectorOpen(true);
                       }}
                     />
                   )
@@ -686,7 +758,7 @@ export function ThreadWorkbench({
                     />
                   )}
               </div>
-              {inspector}
+              {inspectorOpen && inspector}
             </div>
           </section>
         )}
@@ -723,34 +795,34 @@ function createCommandId(): string {
 function workspaceEyebrow(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
-  if (view === "work") return "HUMAN + AGENT WORKSPACE";
-  if (view === "product") return "PRODUCT DEFINITION";
-  if (view === "verification") return "TRACEABLE VERIFICATION";
-  return "EXECUTION CONTROL";
+  if (view === "work") return "AGENT ACTIVITY · HUMAN REVIEW";
+  if (view === "product") return "PRODUCT EXPLORER";
+  if (view === "verification") return "EVIDENCE & IMPACT";
+  return "EXECUTION HISTORY";
 }
 
 function workspaceTitle(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
-  if (view === "work") return "Live engineering activity";
-  if (view === "product") return "Product structure across tools";
-  if (view === "verification") return "Evidence, impact and verdicts";
-  return "Runs, work plan and tool surfaces";
+  if (view === "work") return "Follow the work as it happens";
+  if (view === "product") return "Explore one product across its tools";
+  if (view === "verification") return "Understand evidence and impact";
+  return "Review execution history and the work plan";
 }
 
 function workspaceDescription(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
   if (view === "work") {
-    return "Validated results appear as the agent works. The feed exposes actions and outcomes, never private chain-of-thought.";
+    return "Validated results appear here as the agent works. The feed explains what changed and what it affects; it never exposes private reasoning.";
   }
   if (view === "product") {
-    return "Select one physical component, then move across its exact SysON, build123d and ERPNext identities without leaving the project.";
+    return "Choose a component to see its matching system, CAD and ERP records without leaving the project.";
   }
   if (view === "verification") {
-    return "Follow recorded evidence from source to consequence. Shared subject identity is visible, but only explicit relations are treated as causal.";
+    return "Follow a recorded result back to its sources and forward to its consequences. Only recorded links are treated as cause and effect.";
   }
-  return "Review declared work, agent run states and the engineering tools which contributed evidence to this project.";
+  return "See what the agent ran, what is planned next, and which tools contributed evidence to this project.";
 }
 
 function GraphEdgeInspector({ snapshot, edge, onSelectGraphNode }: {

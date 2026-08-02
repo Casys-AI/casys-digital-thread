@@ -114,6 +114,8 @@ deno task start                  # http://127.0.0.1:3020/mcp
 deno task preview:browser        # http://127.0.0.1:3021/
 # The native shell can open the checked-in observed CM-01 baseline directly.
 deno task preview:thread
+# A separate calm surface guides a new idea before a technical project exists.
+deno task preview:discovery       # http://127.0.0.1:5174/?discovery=drone-concept
 # Reassemble only when deliberately producing new local evidence:
 deno task thread:assemble
 ```
@@ -125,9 +127,9 @@ The product is one native Preact cockpit reading an `engineering-workbench/0.1` 
 from a Deno backend-for-frontend. That atomic document combines project intent
 (`EngineeringProjectSnapshot`), the current technical projection (`ThreadSnapshot` plus
 provisional live overlay), and an explicit `aligned`/`thread-ahead` signal. The cockpit
-is organized as **Overview**, **Work**, **Product**, **Verification**, and
-**Operations** so project objective, human-agent work, physical structure, technical
-proof, and execution records no longer compete in one lineage screen.
+is organized as **Project**, **Activity**, **Product**, **Evidence**, and **Execution** so
+project objective and review, agent activity, physical structure, technical proof, and
+execution records no longer compete in one lineage screen.
 
 `GET /api/thread/workbench` and its SSE stream are passive. The same-origin Decision
 Center may send an explicit `POST /api/project/commands` to propose, approve, reject, or
@@ -144,6 +146,15 @@ human-queued runs. Completion is refused until an exact canonical descendant
 `ThreadSnapshot` exists and its named evidence is new or content-changed from the run's
 exact base. Agents never receive project approval, rejection, or queue authority through
 MCP.
+
+New product ideas begin in a separate immutable `ProjectDiscoverySnapshot`, not in an
+empty engineering project. Agents can start a discovery, prepare one bounded question at
+a time, record a sourced answer, and propose a brief through `project_discovery_*` MCP
+tools. The normal exchange happens in the paired agent conversation; the loopback
+Discovery Workbench receives the resulting snapshots live as the shared project record.
+Direct browser correction is a deliberate recovery path, while brief approval or revision
+remains a human review action. Approval does not yet fabricate
+the first SysON model or `ThreadSnapshot`; that explicit handoff remains a later slice.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
 bootstraps a local CM-01 revision from read-only SysON inventory, one persisted Modelica
