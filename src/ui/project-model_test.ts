@@ -49,6 +49,61 @@ Deno.test("browser project contract rejects a half-defined input anchor", () => 
   assertEquals(isEngineeringProjectSnapshot(invalid), false);
 });
 
+Deno.test("browser project contract accepts a planning envelope and rejects malformed operation provenance", () => {
+  const valid = planningProjectEnvelope();
+  assertEquals(isEngineeringProjectSnapshot(valid), true);
+
+  const malformedBasis = structuredClone(valid) as Record<string, unknown>;
+  (
+    (malformedBasis.plan as Record<string, unknown>).basis as Record<
+      string,
+      unknown
+    >
+  ).approvedBriefFingerprint = {
+    algorithm: "sha256",
+    digest: "not-a-content-fingerprint",
+  };
+  assertEquals(isEngineeringProjectSnapshot(malformedBasis), false);
+
+  const malformedPublisher = structuredClone(valid) as Record<string, unknown>;
+  (malformedPublisher.plan as Record<string, unknown>).publishedBy = {
+    id: "engineering-agent",
+    origin: "human",
+  };
+  assertEquals(isEngineeringProjectSnapshot(malformedPublisher), false);
+
+  const rawProviderEscape = structuredClone(valid) as Record<string, unknown>;
+  const rawOperation = (
+    rawProviderEscape.workItems as Array<Record<string, unknown>>
+  )[0]!.operation as Record<string, unknown>;
+  (rawOperation.bindings as Array<Record<string, unknown>>)[0]!.source = {
+    kind: "approved-discovery",
+    provider: "untrusted-direct-call",
+  };
+  assertEquals(isEngineeringProjectSnapshot(rawProviderEscape), false);
+
+  const malformedThreadBinding = structuredClone(valid) as Record<
+    string,
+    unknown
+  >;
+  const threadOperation = (
+    malformedThreadBinding.workItems as Array<Record<string, unknown>>
+  )[0]!.operation as Record<string, unknown>;
+  threadOperation.bindings = [{
+    name: "existingPart",
+    source: {
+      kind: "thread-entity",
+      reference: {
+        snapshotId: "thread-cm01",
+        snapshotRevision: 0,
+        kind: "artifact",
+        id: "ART-CAD-018",
+      },
+    },
+  }];
+  assertEquals(isEngineeringProjectSnapshot(malformedThreadBinding), false);
+});
+
 Deno.test("project brief keeps a rejected decision actionable", () => {
   const rejected = {
     ...structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE),
@@ -72,3 +127,42 @@ Deno.test("cockpit falls back to a named work item for an accidental run summary
     "Working on: Prepare mechanical verification inputs",
   );
 });
+
+function planningProjectEnvelope(): Record<string, unknown> {
+  const project = structuredClone(
+    COFFEE_MACHINE_PROJECT_FIXTURE,
+  ) as unknown as Record<string, unknown>;
+  project.threadSnapshots = [];
+  project.agentRuns = [];
+  project.decisions = [];
+  project.approvals = [];
+  project.blockers = [];
+  project.plan = {
+    startingPoint: "idea-or-spec",
+    basis: {
+      kind: "approved-discovery",
+      discoveryId: "discovery-cm01",
+      snapshotId: "discovery-snapshot-cm01-r3",
+      revision: 3,
+      briefId: "brief-cm01",
+      approvedBriefFingerprint: {
+        algorithm: "sha256",
+        digest: "a".repeat(64),
+      },
+    },
+    publishedAt: "2026-08-02T12:00:00.000Z",
+    publishedBy: { id: "engineering-agent", origin: "agent" },
+  };
+  const firstWorkItem = (
+    project.workItems as Array<Record<string, unknown>>
+  )[0]!;
+  firstWorkItem.operation = {
+    id: "baseline.from-approved-discovery",
+    version: "1",
+    bindings: [{
+      name: "approvedDiscovery",
+      source: { kind: "approved-discovery" },
+    }],
+  };
+  return project;
+}

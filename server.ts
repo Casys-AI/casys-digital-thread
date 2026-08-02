@@ -22,6 +22,7 @@ import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verif
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import {
   ProjectDiscoveryCommandError,
   ProjectDiscoveryCommandService,
@@ -116,7 +117,7 @@ export async function createConsoleServer(
     ? undefined
     : options.projectDiscovery ?? createProjectDiscovery(options);
   const instructions = projectControl || projectDiscovery
-    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. Agents may propose decisions and advance only human-queued agent runs with explicit revision-bound project tools. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
+    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery, but every work item must cite a reviewed server-side operation and the call cannot execute a provider, approve a decision, queue work or create evidence. Agents may propose decisions and advance only human-queued agent runs with explicit revision-bound project tools. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -173,6 +174,12 @@ async function createProjectControl(
     activeDirectory: options.activeProjectDirectory ??
       DEFAULT_ACTIVE_PROJECT_DIRECTORY,
     evidenceSnapshots: threadSnapshots,
+    planning: {
+      discoveries: new FileProjectDiscoveryRevisionStore(
+        options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
+      ),
+      operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+    },
   });
   return { projects: runtime.projects, commands: runtime.commands };
 }

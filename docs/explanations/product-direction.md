@@ -28,6 +28,13 @@ agent owns preparation and orchestration. The interface should not ask a beginne
 invent solver payloads, legal categories, material properties, mesh controls, or
 acceptance limits when tools or sourced guidance can prepare them for review.
 
+Traceability is not the product's end state. It gives the agent a reliable feedback
+surface: observe what a change affects, evaluate named requirements, propose the
+smallest bounded correction, request recomputation, and bring only the consequential
+impact back to the person for review. The agent is therefore useful because it can work
+through bounded feedback loops; the durable trace makes those loops inspectable,
+repeatable, and safe.
+
 ## Three entry points, one engineering loop
 
 V1 should accept three starting conditions without becoming three separate products:
@@ -47,7 +54,8 @@ imported model editable, complete, manufacturable, or legally reusable.
 The same loop follows every entry point: identify the current truth, propose the
 smallest change, derive or import exact artifacts, run the relevant physics, evaluate
 named requirements with units and margins, expose downstream impact, and ask the human
-only for the review that matters.
+only for the review that matters. A published project path is the first durable input to
+that loop, not proof that a provider has run or that a technical conclusion is true.
 
 ## Beginner-first interface contract
 
@@ -87,8 +95,8 @@ does not claim that every commercial authoring capability has already been repla
 
 | Horizon               | Honest scope                                                                                                                                                                                                        |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Verified now**      | One native engineering cockpit plus a separate guided Discovery Workbench with a live human handoff; exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence; one approved CM-01 DripTray mechanical proof loop. |
-| **V1 product target** | A beginner can move from idea or imported product evidence to a reviewable project, agent-orchestrated proof cases, visible change impact, correction proposals, and inspectable BOM/cost evidence.                 |
+| **Verified now**      | One native engineering cockpit plus a separate guided Discovery Workbench with a live human handoff; an agent can publish or revise a bounded, unexecuted project path from the exact approved brief using reviewed intake-operation references; exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence; one approved CM-01 DripTray mechanical proof loop. |
+| **V1 product target** | A beginner can move from idea or imported product evidence to a reviewable project, agent-orchestrated proof cases, visible change impact, bounded correction/recompute loops, and inspectable BOM/cost evidence.                 |
 | **V2 candidate**      | Operational digital-twin instances fed by real telemetry, time-series storage, state estimation, model calibration, contextual scenario testing, and service-life decisions.                                        |
 
 The current Modelica branch is design-time simulation evidence. `syson_value_set` and
@@ -96,6 +104,12 @@ constraint tools are useful primitives, but they do not constitute telemetry ing
 an operational asset identity, calibration, or a Digital Twin Instance. Operational twin
 claims remain out of V1 until those boundaries exist and are demonstrated with measured
 data.
+
+The new planning slice deliberately stops before the first generic run: it does not
+approve decisions, queue work, invoke providers, or create technical evidence. The next
+control-plane work is exact first-run authorization from an approved-discovery basis and
+a trusted executor that turns only an authorized, registered operation into canonical
+evidence. That gap must remain visible rather than being hidden behind a plausible UI.
 
 ## Demo criterion
 

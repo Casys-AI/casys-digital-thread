@@ -10365,7 +10365,170 @@ button.erp-bom-row {
   max-height: none;
 }
 
+/* Discovery-to-engineering handoff --------------------------------------
+
+   Planning is a first-class native surface, not an empty version of the
+   evidence graph. Keep the visual grammar familiar while making the absence
+   of technical proof immediately legible. */
+
+.planning-baseline-notice {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--thread-border);
+  border-left: 3px solid var(--thread-orange);
+  background: #fff7ed;
+}
+
+.planning-baseline-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #d6a47b;
+  color: #8d4d20;
+  background: #fce8d5;
+  font: 700 0.55rem/1 var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.planning-baseline-notice p,
+.planning-next-step p:first-child {
+  margin: 0 0 0.36rem;
+  color: var(--thread-orange);
+  font: 700 0.5rem/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.planning-baseline-notice h3,
+.planning-next-step h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(1rem, 1.8vw, 1.36rem)/1.12 "Iowan Old Style", "Baskerville",
+    Georgia,
+    serif;
+}
+
+.planning-baseline-notice span {
+  display: block;
+  max-width: 780px;
+  margin-top: 0.43rem;
+  color: var(--thread-muted);
+  font-size: 0.67rem;
+  line-height: 1.55;
+}
+
+.planning-phase-rail {
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+}
+
+.planning-empty-path {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--thread-border-strong);
+  color: var(--thread-muted);
+  background: var(--thread-panel);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.planning-work-plan {
+  padding: 0;
+}
+
+.planning-work-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planning-work-list li {
+  display: grid;
+  grid-template-columns: minmax(105px, 0.3fr) minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: start;
+  padding: 0.95rem 1.1rem;
+  border-top: 1px solid var(--thread-border);
+}
+
+.planning-work-list li > span,
+.planning-work-list li > b {
+  padding-top: 0.1rem;
+  color: var(--thread-muted);
+  font: 700 0.48rem/1.25 var(--mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.planning-work-list li > b {
+  color: var(--thread-orange);
+  font-weight: 650;
+  text-align: right;
+}
+
+.planning-work-list li > div {
+  min-width: 0;
+}
+
+.planning-work-list li strong {
+  display: block;
+  color: var(--thread-ink);
+  font-size: 0.74rem;
+}
+
+.planning-work-list li p {
+  margin: 0.32rem 0 0;
+  color: var(--thread-muted);
+  font-size: 0.64rem;
+  line-height: 1.45;
+}
+
+.planning-work-list li small {
+  display: block;
+  margin-top: 0.38rem;
+  color: var(--thread-muted);
+  font: 650 0.48rem/1.3 var(--mono);
+}
+
+.planning-next-step {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+  padding: 1.15rem;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+
+.planning-next-step > p:last-child {
+  margin: 0;
+  color: var(--thread-muted);
+  font-size: 0.69rem;
+  line-height: 1.55;
+}
+
+.planning-provenance {
+  margin-top: -0.35rem;
+}
+
 @media (max-width: 720px) {
+  .planning-baseline-notice,
+  .planning-next-step {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planning-work-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .planning-work-list li > span {
+    grid-column: 1 / -1;
+  }
+
   .thread-workbench .project-navigation {
     justify-content: flex-start;
     overflow-x: auto;
@@ -10426,6 +10589,15 @@ button.erp-bom-row {
 }
 
 @media (max-width: 540px) {
+  .planning-work-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .planning-work-list li > b {
+    text-align: left;
+  }
+
   .project-activity-brief > summary {
     grid-template-columns: minmax(0, 1fr) auto;
   }

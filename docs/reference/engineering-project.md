@@ -9,6 +9,11 @@ project is trying to accomplish and how the human-agent team intends to advance 
 does not replace `ThreadSnapshot`: project state cites technical evidence but never
 owns, rewrites, or manufactures that evidence.
 
+Its trace is a control substrate, not merely an audit log: the paired agent can use
+proven impact to observe, evaluate, propose a bounded correction, and request a
+recomputation. The human reviews and authorizes consequential changes. This reference
+does not claim that the generic executor for that feedback loop exists yet.
+
 The current schema version is `1.0`. Every value is JSON-compatible. Validation clones
 and recursively freezes the accepted value, rejects unknown fields, and never fills in a
 missing decision or engineering input.
@@ -22,10 +27,11 @@ missing decision or engineering input.
 | **Live**    | Append-only progress and result notifications used to refresh the activity feed while work is occurring                                                                     | Canonical evidence, completion, approval, or a pass/fail verdict      |
 
 The BFF composes these boundaries for presentation. Its browser contract is an
-`engineering-workbench/0.1` object containing `project`, the projected `thread` (whose
-`live` field contains current activity), `alignment`, and explicit capabilities. `GET`
-and SSE create only a read model; they do not promote live events into thread evidence
-or project truth. A separate, narrow command route can append project revisions, but it
+`engineering-workbench/0.2` object with an explicit surface: `planning` contains only
+the durable `project` plus `technicalBaseline: not-created`; `evidence` contains the
+project, projected `thread` (whose `live` field contains current activity), `alignment`,
+and explicit capabilities. `GET` and SSE create only a read model; they do not promote
+live events into thread evidence or project truth. A separate, narrow command route can append project revisions, but it
 cannot manufacture thread evidence or execute a provider.
 
 ## Root fields
@@ -37,6 +43,7 @@ cannot manufacture thread evidence or execute a provider.
 | `generatedAt`      | ISO 8601 UTC materialization timestamp                                                                             |
 | `project`          | Stable project ID, display name, thread subject ID, and explicit objective                                         |
 | `discoveryHandoff` | Optional exact approved-discovery provenance; only valid for a human-created initial project                       |
+| `plan`             | Optional agent-published, unexecuted path grounded in that exact approved discovery                                |
 | `threadSnapshots`  | Exact declared `ThreadSnapshot` revisions; may be empty only while a valid discovery handoff has no technical work |
 | `phases`           | Ordered project phases; phase status is deliberately absent                                                        |
 | `workItems`        | Human, agent, or shared work and its explicit lifecycle state                                                      |
@@ -56,10 +63,42 @@ brief ID and fingerprint, approval time, and human approver. The first command r
 is `project.create-from-discovery`. The create operation is atomic and idempotent; a
 different request cannot reuse its command ID or existing project ID.
 
-This is planning provenance, not engineering evidence. A handoff project may begin with
-empty phases, work, decisions, runs, approvals, blockers, and `threadSnapshots`. Its
-derived status is `planned`, never a fabricated completion. SysON modeling and the first
-technical `ThreadSnapshot` require later agent work and their own evidence.
+This is planning provenance, not engineering evidence. The initial handoff revision may
+have empty phases, work, decisions, runs, approvals, blockers, and `threadSnapshots`.
+Its derived status is `planned`, never a fabricated completion. An agent may later publish
+an unexecuted project path from this exact handoff; SysON modeling and the first technical
+`ThreadSnapshot` still require later authorized work and their own evidence.
+
+## Agent-published plan and reviewed operations
+
+`plan` is present only after the agent-only `project_plan_publish` command. It records
+the starting point, the exact approved-discovery basis copied from `discoveryHandoff`,
+and server-stamped agent publisher/time. It is durable planning state, not a whole-plan
+approval, provider invocation, run authorization, or technical result.
+
+Each work item created by that command has an `operation` reference with an exact ID,
+version, and state-reference bindings. The code-owned registry accepts only its reviewed
+operation revisions and declared binding names/source kinds; it also supplies the durable
+work title, description, and classification shown to the reviewer. The initial registry contains:
+
+| Starting point | Exact operation reference |
+| --- | --- |
+| Idea or specification | `baseline.from-approved-discovery@1` |
+| Existing CAD | `baseline.capture-existing-cad@1` |
+| Existing product | `baseline.capture-existing-product@1` |
+
+For this intake-only V1 surface, bindings may refer only to the approved discovery itself
+or to a current provided answer in that same exact discovery. Later operation revisions
+may introduce decision or thread-entity bindings only together with their reviewed
+executor contract; they are not accepted by `project_plan_publish` today.
+
+These references deliberately expose no provider, tool name, raw input, workflow, or
+evidence payload. Publishing rejects unknown revisions, wrong starting points,
+undeclared bindings, and discovery-answer bindings that are absent, no longer current, or
+not provided in the exact approved discovery revision. An agent may revise planning only
+while no technical evidence, run, approval, blocker, concrete decision proposal, or
+completed/cancelled work exists. It cannot use a plan revision to erase execution or
+review history.
 
 ## Exact thread references
 
@@ -133,6 +172,11 @@ Every work item belongs to exactly one phase and declares:
 - acyclic dependencies on other work items;
 - evidence, decision, and blocker references.
 
+An optional `operation` is a reviewed planning reference, not an executable request. It
+is present on work created by `project_plan_publish`; older immutable revisions may lack
+it and are never promoted into the new execution path by implication. The registry-backed
+executor that will resolve these references is not implemented in this contract yet.
+
 `waiting-for-decision` requires at least one linked unresolved decision. A phase lists
 all work items assigned to it, exactly once.
 
@@ -187,6 +231,10 @@ fingerprint using the same atomic pair as decisions.
 Queueing is a human authorization over an already bounded `ready` work item. The command
 creates a durable `queued` run; it does not execute a tool. An agent may claim it,
 append public progress summaries, enter `publishing`, and then complete or fail it.
+The generic first-run route remains incomplete: its current decision and queue contract
+requires a `ThreadSnapshot` basis, while an intake plan is grounded in an approved
+discovery before such a snapshot exists. A future exact-basis migration and trusted
+executor must close that gap; a published plan does not bypass it.
 `statusHistory` records these public lifecycle facts and summaries, not
 chain-of-thought. Completion requires a non-`latest` result snapshot whose revision
 advances the run's exact base snapshot and whose complete `previous` chain reaches that
@@ -208,8 +256,8 @@ The transports grant different fixed capabilities:
 | Surface               | Allowed project operations                                       | Explicitly absent                    |
 | --------------------- | ---------------------------------------------------------------- | ------------------------------------ |
 | Passive browser reads | `GET /api/thread/workbench` and snapshot SSE                     | Every mutation and provider call     |
-| Human browser command | Propose, approve, reject, and queue                              | Claim, run lifecycle, provider calls |
-| Agent MCP tools       | Snapshot, propose, claim/start, progress, publish/complete, fail | Approve, reject, queue               |
+| Human browser command | Propose, approve, reject, and queue                              | Publish a path, claim, run lifecycle, provider calls |
+| Agent MCP tools       | Snapshot, publish/revise an unexecuted plan, propose, claim/start, progress, publish/complete, fail | Approve, reject, queue, provider calls |
 
 `decision.propose` is a narrow command capability, not a promise of a generic browser
 data-entry workflow. The Project review inbox does not expose manual technical proposal
@@ -230,16 +278,21 @@ it is an audit label, not proof of identity. Project mutation tools are therefor
 loopback-only prototype surface until transport authentication is required.
 
 The agent surface is on the Console MCP server and exposes these tools:
-`project_snapshot`, `project_decision_propose`, `project_agent_run_start`,
-`project_agent_run_progress`, `project_agent_run_publish`, and `project_agent_run_fail`.
-There is intentionally no MCP approval, rejection, or queue tool. Conversely, there is
-no browser command for claiming or completing a run.
+`project_snapshot`, `project_plan_publish`, `project_decision_propose`,
+`project_agent_run_start`, `project_agent_run_progress`, `project_agent_run_publish`,
+and `project_agent_run_fail`. `project_plan_publish` is limited to the safe planning
+contract described above. There is intentionally no MCP approval, rejection, queue, or
+generic provider-execution tool. Conversely, there is no browser command for publishing
+an agent path, claiming, or completing a run.
 
-Project commands only mutate `EngineeringProjectSnapshot`. An agent still has to call
-the reviewed provider tools, validate their results, publish a canonical
-`ThreadSnapshot`, and then cite that exact evidence when completing the run. A browser
-queue command and an MCP run-lifecycle command are therefore not indirect CAD, FEA,
-Modelica, SysON, or ERPNext execution endpoints.
+Project commands only mutate `EngineeringProjectSnapshot`. The new planning command
+adds no provider authority: a direct provider result is not canonical evidence, and no
+generic control-plane executor currently materializes a planned intake operation. The
+future trusted executor must resolve the exact authorized run and reviewed operation,
+validate and materialize a canonical `ThreadSnapshot`, then cite exact evidence on
+completion. A browser queue command, an MCP planning command, and an MCP run-lifecycle
+command are therefore not indirect CAD, FEA, Modelica, SysON, or ERPNext execution
+endpoints.
 
 ## CM-01 baseline
 

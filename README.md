@@ -134,11 +134,12 @@ The browser host relays the Console's read-only tools to the live MCP server. It
 local MCP Apps test harness, not the product Workbench.
 
 The main engineering surface is one native Preact cockpit reading an
-`engineering-workbench/0.1` document from a Deno backend-for-frontend. Guided discovery
+`engineering-workbench/0.2` document from a Deno backend-for-frontend. Guided discovery
 remains a separate loopback Preact surface that hands an approved brief into an empty
-project shell. The cockpit's atomic document combines project intent
-(`EngineeringProjectSnapshot`), the current technical projection (`ThreadSnapshot` plus
-provisional live overlay), and an explicit `aligned`/`thread-ahead` signal. The cockpit
+project shell. The cockpit's atomic document has an explicit surface: `planning` carries
+durable project intent before any technical baseline exists, while `evidence` combines
+that intent with the current technical projection (`ThreadSnapshot` plus provisional live
+overlay) and an explicit `aligned`/`thread-ahead` signal. The cockpit
 is organized as **Project**, **Activity**, **Product**, **Evidence**, and **Execution**
 so project objective and review, agent activity, physical structure, technical proof,
 and execution records no longer compete in one lineage screen.

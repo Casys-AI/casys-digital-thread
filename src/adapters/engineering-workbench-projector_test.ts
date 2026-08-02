@@ -3,6 +3,7 @@ import type { EngineeringProjectSnapshot } from "../domain/engineering-project.t
 import type { LiveThreadWorkbenchSnapshot } from "./live-thread-update-store.ts";
 import {
   ENGINEERING_WORKBENCH_SCHEMA,
+  projectEngineeringPlanningWorkbenchSnapshot,
   projectEngineeringWorkbenchSnapshot,
 } from "./engineering-workbench-projector.ts";
 
@@ -13,6 +14,7 @@ Deno.test("engineering Workbench projection composes intent and observed proof w
   const result = projectEngineeringWorkbenchSnapshot(project, thread, 1);
 
   assertEquals(result.schemaVersion, ENGINEERING_WORKBENCH_SCHEMA);
+  assertEquals(result.surface, "evidence");
   assertEquals(result.project, project);
   assertEquals(result.thread, thread);
   assertEquals(result.alignment, {
@@ -22,6 +24,57 @@ Deno.test("engineering Workbench projection composes intent and observed proof w
   });
   assertEquals(result.project === project, false);
   assertEquals(result.thread === thread, false);
+});
+
+Deno.test("engineering Workbench projects a discovery plan without inventing a technical thread", () => {
+  const project = projectFixture("drone-concept");
+  const planningProject: EngineeringProjectSnapshot = {
+    ...project,
+    project: {
+      ...project.project,
+      subjectId: "drone-concept",
+      name: "Drone concept",
+    },
+    threadSnapshots: [],
+    phases: [{
+      id: "define",
+      name: "Define",
+      order: 1,
+      description: "Turn the approved intent into a bounded first path.",
+      workItemIds: ["work-define"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "work-define",
+      phaseId: "define",
+      title: "Prepare the first system definition",
+      description: "Record the initial planning scope.",
+      kind: "define",
+      status: "planned",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+  };
+
+  const result = projectEngineeringPlanningWorkbenchSnapshot(planningProject);
+
+  assertEquals(result.surface, "planning");
+  assertEquals(result.project.threadSnapshots, []);
+  assertEquals(result.planning.technicalBaseline.status, "not-created");
+  assertEquals(result.planning.technicalBaseline.message.includes("not created"), true);
+  assertEquals("thread" in result, false);
+});
+
+Deno.test("planning-only Workbench projection refuses a project with technical references", () => {
+  assertThrows(
+    () => projectEngineeringPlanningWorkbenchSnapshot(projectFixture("CM-01")),
+    Error,
+    "cannot include a technical thread snapshot",
+  );
 });
 
 Deno.test("engineering Workbench projection rejects cross-subject composition", () => {

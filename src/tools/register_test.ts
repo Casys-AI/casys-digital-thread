@@ -34,6 +34,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_discovery_question_propose",
     "project_discovery_snapshot",
     "project_discovery_start",
+    "project_plan_publish",
     "project_snapshot",
   ]);
   try {
@@ -86,6 +87,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_discovery_question_propose",
       "project_discovery_snapshot",
       "project_discovery_start",
+      "project_plan_publish",
       "project_snapshot",
     ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");

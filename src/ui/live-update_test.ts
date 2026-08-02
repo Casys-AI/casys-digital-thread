@@ -5,7 +5,7 @@ import {
   nextLiveFocusNode,
   shouldAcceptWorkbenchUpdate,
 } from "./src/thread/live-update.ts";
-import type { EngineeringWorkbenchSnapshot } from "./src/thread/types.ts";
+import type { EngineeringEvidenceWorkbenchSnapshot } from "./src/thread/types.ts";
 
 Deno.test("same-id projection focuses a genuinely new feed node", () => {
   const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
@@ -66,14 +66,14 @@ Deno.test("equal project revision accepts a newer thread or live sequence only",
 });
 
 function withLiveVersion(
-  snapshot: EngineeringWorkbenchSnapshot,
+  snapshot: EngineeringEvidenceWorkbenchSnapshot,
   version: number,
-): EngineeringWorkbenchSnapshot {
+): EngineeringEvidenceWorkbenchSnapshot {
   return {
     ...snapshot,
     thread: {
       ...snapshot.thread,
       live: { version, active: [], schemaVersion: "live-thread-overlay/1.0" },
-    } as EngineeringWorkbenchSnapshot["thread"],
+    } as EngineeringEvidenceWorkbenchSnapshot["thread"],
   };
 }

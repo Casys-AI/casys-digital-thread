@@ -16,7 +16,11 @@ import {
   readOperatorProjectCommand,
 } from "../src/adapters/engineering-project-command-http.ts";
 import { isExplicitLoopbackHostname } from "../src/adapters/loopback-host.ts";
-import { projectEngineeringWorkbenchSnapshot } from "../src/adapters/engineering-workbench-projector.ts";
+import {
+  type EngineeringWorkbenchSnapshot,
+  projectEngineeringPlanningWorkbenchSnapshot,
+  projectEngineeringWorkbenchSnapshot,
+} from "../src/adapters/engineering-workbench-projector.ts";
 import {
   type ExactThreadSnapshotReader,
   FileExactThreadSnapshotDirectory,
@@ -86,7 +90,7 @@ export function createNativeWorkbenchHandler(
       const project = await options.projectStore.get(configuredProjectId(options));
       if (!project) return projectNotFound(configuredProjectId(options));
       const snapshot = await resolveCurrentThreadSnapshot(project, options);
-      if (!snapshot) {
+      if (!snapshot && project.threadSnapshots.length > 0) {
         return json({
           error: "thread_snapshot_not_found",
           subjectId: options.subjectId,
@@ -101,9 +105,7 @@ export function createNativeWorkbenchHandler(
         projection,
         200,
         {
-          "X-Casys-Data-Source": projection.thread.live.active.length
-            ? "canonical-thread-snapshot+live-updates"
-            : "canonical-thread-snapshot",
+          "X-Casys-Data-Source": workbenchDataSource(projection),
         },
       );
     }
@@ -157,8 +159,8 @@ async function snapshotEventStream(
           const liveVersion = liveUpdates.at(-1)?.sequence ?? 0;
           const eventId = snapshot
             ? `${project.revision}:${snapshot.revision}:${liveVersion}`
-            : "";
-          if (snapshot && eventId !== lastEventId) {
+            : `planning:${project.revision}`;
+          if (eventId !== lastEventId) {
             const projection = await projectWorkbenchSnapshot(
               project,
               snapshot,
@@ -166,7 +168,7 @@ async function snapshotEventStream(
               liveUpdates,
             );
             controller.enqueue(encoder.encode(
-              `id: ${eventId}\nevent: thread-snapshot\ndata: ${
+              `id: ${eventId}\nevent: workbench-snapshot\ndata: ${
                 JSON.stringify(projection)
               }\n\n`,
             ));
@@ -230,7 +232,7 @@ async function handleOperatorCommand(
       command,
     );
     const snapshot = await resolveCurrentThreadSnapshot(project, options);
-    if (!snapshot) {
+    if (!snapshot && project.threadSnapshots.length > 0) {
       return json({
         error: "thread_snapshot_not_found",
         subjectId: options.subjectId,
@@ -242,9 +244,7 @@ async function handleOperatorCommand(
       options,
     );
     return json(projection, 200, {
-      "X-Casys-Data-Source": projection.thread.live.active.length
-        ? "canonical-thread-snapshot+live-updates"
-        : "canonical-thread-snapshot",
+      "X-Casys-Data-Source": workbenchDataSource(projection),
     });
   } catch (error) {
     if (error instanceof ProjectCommandHttpError) {
@@ -277,10 +277,23 @@ async function handleOperatorCommand(
 
 async function projectWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
-  snapshot: ThreadSnapshot,
+  snapshot: ThreadSnapshot | undefined,
   options: NativeWorkbenchHandlerOptions,
   liveUpdates?: LiveThreadUpdate[],
-) {
+): Promise<EngineeringWorkbenchSnapshot> {
+  if (!snapshot) {
+    if (project.threadSnapshots.length > 0) {
+      throw new Error(
+        "A declared technical baseline could not be resolved for this project.",
+      );
+    }
+    if (project.project.subjectId !== options.subjectId) {
+      throw new Error(
+        `Engineering project subject ${project.project.subjectId} does not match configured subject ${options.subjectId}.`,
+      );
+    }
+    return projectEngineeringPlanningWorkbenchSnapshot(project);
+  }
   const declaredSnapshots = await Promise.all(
     project.threadSnapshots.map((reference) =>
       reference.snapshotId === snapshot.id &&
@@ -333,6 +346,11 @@ async function resolveCurrentThreadSnapshot(
   project: EngineeringProjectSnapshot,
   options: NativeWorkbenchHandlerOptions,
 ): Promise<ThreadSnapshot | undefined> {
+  // A project created from approved discovery is intentionally not allowed to
+  // borrow whatever happens to be the current subject head. Before the first
+  // deterministic operation publishes a declared baseline, it is planning
+  // provenance only.
+  if (project.threadSnapshots.length === 0) return undefined;
   const [active, declared] = await Promise.all([
     options.store.latest(options.subjectId),
     resolveDeclaredProjectHead(project, options),
@@ -356,6 +374,15 @@ async function resolveCurrentThreadSnapshot(
     )
     ? active
     : declared;
+}
+
+function workbenchDataSource(projection: EngineeringWorkbenchSnapshot): string {
+  if (projection.surface === "planning") {
+    return "engineering-project-plan";
+  }
+  return projection.thread.live.active.length
+    ? "canonical-thread-snapshot+live-updates"
+    : "canonical-thread-snapshot";
 }
 
 async function projectThreadSnapshot(

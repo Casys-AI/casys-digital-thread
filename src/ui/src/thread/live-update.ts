@@ -31,6 +31,15 @@ export function shouldAcceptWorkbenchUpdate(
   if (incoming.project.revision !== current.project.revision) {
     return incoming.project.revision > current.project.revision;
   }
+  if (incoming.surface !== current.surface) {
+    // A project revision normally changes when it gains its first declared
+    // baseline. At equal revision, a surface replacement is still safer than
+    // retaining a stale technical view for an intent-only project.
+    return true;
+  }
+  if (incoming.surface === "planning" || current.surface === "planning") {
+    return false;
+  }
   if (
     incoming.alignment.currentThreadRevision !==
       current.alignment.currentThreadRevision

@@ -143,7 +143,7 @@ export class HttpThreadWorkbenchClient implements ThreadWorkbenchClient {
     onStatus?.("connecting");
     const source = new EventSource(this.eventsEndpoint);
     source.addEventListener("open", () => onStatus?.("live"));
-    source.addEventListener("thread-snapshot", (event) => {
+    source.addEventListener("workbench-snapshot", (event) => {
       try {
         const value: unknown = JSON.parse((event as MessageEvent<string>).data);
         if (!isEngineeringWorkbenchSnapshot(value)) return;

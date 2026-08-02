@@ -6,15 +6,23 @@ import {
   type EngineeringCommandOriginKind,
   type EngineeringDecision,
   type EngineeringDecisionProposalParameter,
+  type EngineeringOperationInputBinding,
+  type EngineeringOperationRef,
   type EngineeringProjectCommandName,
+  type EngineeringProjectPhase,
+  type EngineeringProjectPlan,
   type EngineeringProjectSnapshot,
+  type EngineeringProjectStartingPoint,
   type EngineeringThreadEntityRef,
   type EngineeringThreadSnapshotRef,
   type EngineeringWorkItem,
+  type EngineeringWorkOwner,
 } from "./engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
 import { fingerprintsEqual, sha256Fingerprint } from "./deterministic-json.ts";
 import type { ContentFingerprint } from "./thread-snapshot.ts";
+import type { ProjectDiscoveryRevisionStore } from "./project-discovery-command-service.ts";
+import type { ProjectDiscoverySnapshot } from "./project-discovery.ts";
 
 export interface EngineeringProjectRevisionStore {
   get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
@@ -120,6 +128,63 @@ export interface FailRunCommand extends RunCommand {
   readonly message: string;
 }
 
+export interface PublishProjectPlanCommand extends EngineeringProjectCommandInput {
+  readonly startingPoint: EngineeringProjectStartingPoint;
+  readonly phases: readonly PlannedEngineeringProjectPhase[];
+  readonly workItems: readonly PlannedEngineeringWorkItem[];
+  readonly requiredDecisions: readonly PlannedEngineeringDecision[];
+}
+
+/** The agent declares only structure; the service derives membership and order. */
+export interface PlannedEngineeringProjectPhase {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+/** A safe operation reference, not a provider/tool invocation. */
+export interface PlannedEngineeringWorkItem {
+  readonly id: string;
+  readonly phaseId: string;
+  readonly owner: EngineeringWorkOwner;
+  readonly dependsOnWorkItemIds: readonly string[];
+  readonly decisionIds: readonly string[];
+  readonly operation: EngineeringOperationRef;
+}
+
+export interface PlannedEngineeringDecision {
+  readonly id: string;
+  readonly phaseId: string;
+  readonly title: string;
+  readonly question: string;
+}
+
+/**
+ * Narrow adapter over the code-owned operation registry. The plan service
+ * cannot receive provider names, tool arguments or executable workflows.
+ */
+export interface EngineeringProjectPlanOperationRegistry {
+  validate(input: {
+    readonly operation: EngineeringOperationRef;
+    readonly basisKind: "approved-discovery";
+  }): {
+    readonly operation: {
+      readonly id: string;
+      readonly version: string;
+      readonly startingPoint: EngineeringProjectStartingPoint;
+      readonly title: string;
+      readonly description: string;
+      readonly workItemKind: EngineeringWorkItem["kind"];
+    };
+    readonly bindings: readonly EngineeringOperationInputBinding[];
+  };
+}
+
+export interface EngineeringProjectPlanningDependencies {
+  readonly discoveries: Pick<ProjectDiscoveryRevisionStore, "getRevision">;
+  readonly operations: EngineeringProjectPlanOperationRegistry;
+}
+
 export interface EngineeringProjectCompletionEvidenceValidator {
   validate(
     baseSnapshot: EngineeringThreadSnapshotRef,
@@ -136,6 +201,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
     "agent-run.queue",
   ],
   agent: [
+    "project.plan-publish",
     "decision.propose",
     "agent-run.claim",
     "agent-run.progress",
@@ -159,7 +225,145 @@ export class EngineeringProjectCommandService {
     private readonly store: EngineeringProjectRevisionStore,
     private readonly evidenceValidator?: EngineeringProjectCompletionEvidenceValidator,
     private readonly now: Clock = () => new Date().toISOString(),
+    private readonly planning?: EngineeringProjectPlanningDependencies,
   ) {}
+
+  /**
+   * Persist a bounded, agent-authored project path after an exact approved
+   * discovery handoff. This is planning only: it neither approves anything,
+   * queues a run, calls a provider nor manufactures technical evidence.
+   */
+  publishPlan(
+    origin: EngineeringProjectCommandOrigin,
+    command: PublishProjectPlanCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    return this.apply(
+      origin,
+      "project.plan-publish",
+      command,
+      async (draft, appliedAt) => {
+        const planning = this.planning;
+        if (!planning) {
+          invalidInput(
+            "Project-plan publication is unavailable because no reviewed operation registry is configured.",
+          );
+        }
+        assertPlanningCanChange(draft);
+        validatePlanCommand(command);
+        const handoff = draft.discoveryHandoff;
+        if (!handoff) {
+          invalidTransition(
+            "Only a project created from an approved discovery can receive an initial agent plan.",
+          );
+        }
+        const discovery = await planning.discoveries.getRevision(
+          handoff.discoveryId,
+          handoff.revision,
+        );
+        const exactDiscovery = assertExactApprovedDiscoveryHandoff(draft, discovery);
+
+        const phaseIds = new Set(command.phases.map((phase) => phase.id));
+        const workItemIds = new Set(command.workItems.map((workItem) => workItem.id));
+        const decisionsById = new Map(
+          command.requiredDecisions.map((decision) => [decision.id, decision]),
+        );
+        const decisionIds = new Set(
+          command.requiredDecisions.map((decision) => decision.id),
+        );
+        const resolvedWorkItems = command.workItems.map((item) => {
+          const resolved = resolvePlanOperation(planning.operations, item.operation);
+          if (resolved.operation.startingPoint !== command.startingPoint) {
+            invalidInput(
+              `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${command.startingPoint}.`,
+            );
+          }
+          assertPlanBindingsResolveToDiscovery(resolved.bindings, exactDiscovery);
+          assertPlanWorkItemReferences(
+            item,
+            phaseIds,
+            workItemIds,
+            decisionIds,
+            decisionsById,
+          );
+          return {
+            ...item,
+            title: resolved.operation.title,
+            description: resolved.operation.description,
+            kind: resolved.operation.workItemKind,
+            operation: {
+              id: resolved.operation.id,
+              version: resolved.operation.version,
+              bindings: structuredClone(resolved.bindings) as Mutable<
+                EngineeringOperationInputBinding
+              >[],
+            },
+          };
+        });
+        assertPlanDependenciesAreAcyclic(resolvedWorkItems);
+
+        const decisions = command.requiredDecisions.map((decision) => ({
+          id: decision.id,
+          phaseId: decision.phaseId,
+          title: decision.title,
+          question: decision.question,
+          status: "required" as const,
+          requestedAt: appliedAt,
+          inputEvidenceRefs: [],
+          approvalIds: [],
+        }));
+        const workItems = resolvedWorkItems.map((item) => ({
+          id: item.id,
+          phaseId: item.phaseId,
+          title: item.title,
+          description: item.description,
+          kind: item.kind,
+          operation: item.operation,
+          status: item.decisionIds.length
+            ? "waiting-for-decision" as const
+            : "planned" as const,
+          owner: item.owner,
+          dependsOnWorkItemIds: [...item.dependsOnWorkItemIds],
+          evidenceRefs: [],
+          decisionIds: [...item.decisionIds],
+          blockerIds: [],
+        }));
+        const phases = command.phases.map((phase, index) => ({
+          id: phase.id,
+          name: phase.name,
+          order: index + 1,
+          description: phase.description,
+          workItemIds: workItems.filter((item) => item.phaseId === phase.id).map((
+            item,
+          ) => item.id),
+          requiredDecisionIds: decisions.filter((item) => item.phaseId === phase.id)
+            .map((item) => item.id),
+          evidenceRefs: [],
+        }));
+        assertEveryPhaseHasWork(phases);
+
+        const plan: EngineeringProjectPlan = {
+          startingPoint: command.startingPoint,
+          basis: {
+            kind: "approved-discovery",
+            discoveryId: handoff.discoveryId,
+            snapshotId: handoff.snapshotId,
+            revision: handoff.revision,
+            briefId: handoff.briefId,
+            approvedBriefFingerprint: structuredClone(handoff.approvedBriefFingerprint),
+          },
+          publishedAt: appliedAt,
+          publishedBy: actor(origin),
+        };
+        draft.plan = plan;
+        draft.phases = phases;
+        draft.workItems = workItems;
+        draft.decisions = decisions;
+        draft.approvals = [];
+        draft.blockers = [];
+        draft.agentRuns = [];
+      },
+    );
+  }
 
   proposeDecision(
     origin: EngineeringProjectCommandOrigin,
@@ -564,6 +768,226 @@ export class EngineeringProjectCommandService {
     }
     return result;
   }
+}
+
+function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
+  if (!draft.discoveryHandoff) {
+    invalidTransition(
+      "Only a project created from an approved discovery can receive an initial agent plan.",
+    );
+  }
+  if (draft.threadSnapshots.length > 0) {
+    invalidTransition(
+      "A project plan cannot be replaced after technical evidence exists; publish a new reviewed change instead.",
+    );
+  }
+  if (
+    draft.agentRuns.length > 0 || draft.approvals.length > 0 ||
+    draft.blockers.length > 0
+  ) {
+    invalidTransition(
+      "A project plan cannot be replaced after run, approval or blocker state exists.",
+    );
+  }
+  if (
+    draft.workItems.some((item) =>
+      item.status === "in-progress" || item.status === "completed" ||
+      item.status === "cancelled" || item.evidenceRefs.length > 0
+    ) ||
+    draft.phases.some((phase) => phase.evidenceRefs.length > 0) ||
+    draft.decisions.some((decision) => decision.status !== "required")
+  ) {
+    invalidTransition(
+      "A project plan cannot be replaced after work, evidence or a concrete decision proposal exists.",
+    );
+  }
+}
+
+function validatePlanCommand(command: PublishProjectPlanCommand): void {
+  if (
+    command.startingPoint !== "idea-or-spec" &&
+    command.startingPoint !== "existing-cad" &&
+    command.startingPoint !== "existing-product"
+  ) {
+    invalidInput("startingPoint must be an approved project entry path.");
+  }
+  if (!Array.isArray(command.phases) || command.phases.length === 0) {
+    invalidInput("phases must contain at least one declared project phase.");
+  }
+  if (!Array.isArray(command.workItems) || command.workItems.length === 0) {
+    invalidInput("workItems must contain at least one bounded operation.");
+  }
+  if (!Array.isArray(command.requiredDecisions)) {
+    invalidInput("requiredDecisions must be an array.");
+  }
+  uniquePlanIds(command.phases.map((phase) => phase.id), "phase");
+  uniquePlanIds(command.workItems.map((item) => item.id), "work item");
+  uniquePlanIds(command.requiredDecisions.map((decision) => decision.id), "decision");
+  for (const [index, phase] of command.phases.entries()) {
+    nonEmpty(phase.id, `phases[${index}].id`);
+    nonEmpty(phase.name, `phases[${index}].name`);
+    nonEmpty(phase.description, `phases[${index}].description`);
+  }
+  for (const [index, item] of command.workItems.entries()) {
+    nonEmpty(item.id, `workItems[${index}].id`);
+    nonEmpty(item.phaseId, `workItems[${index}].phaseId`);
+    if (!isEngineeringWorkOwner(item.owner)) {
+      invalidInput(`workItems[${index}].owner must be human, agent or shared.`);
+    }
+    if (!Array.isArray(item.dependsOnWorkItemIds) || !Array.isArray(item.decisionIds)) {
+      invalidInput(
+        `workItems[${index}].dependsOnWorkItemIds and decisionIds must be arrays.`,
+      );
+    }
+    uniquePlanIds(item.dependsOnWorkItemIds, `workItems[${index}] dependency`);
+    uniquePlanIds(item.decisionIds, `workItems[${index}] decision`);
+  }
+  for (const [index, decision] of command.requiredDecisions.entries()) {
+    nonEmpty(decision.id, `requiredDecisions[${index}].id`);
+    nonEmpty(decision.phaseId, `requiredDecisions[${index}].phaseId`);
+    nonEmpty(decision.title, `requiredDecisions[${index}].title`);
+    nonEmpty(decision.question, `requiredDecisions[${index}].question`);
+  }
+}
+
+function assertExactApprovedDiscoveryHandoff(
+  project: EngineeringProjectSnapshot,
+  discovery: ProjectDiscoverySnapshot | undefined,
+): ProjectDiscoverySnapshot {
+  const handoff = project.discoveryHandoff!;
+  if (
+    !discovery || discovery.discoveryId !== handoff.discoveryId ||
+    discovery.id !== handoff.snapshotId || discovery.revision !== handoff.revision
+  ) {
+    invalidInput(
+      "The exact discovery revision recorded by this project handoff is unavailable.",
+    );
+  }
+  if (
+    discovery.status !== "approved" || !discovery.brief || !discovery.review ||
+    discovery.brief.id !== handoff.briefId ||
+    discovery.review.status !== "approved" ||
+    discovery.review.briefId !== handoff.briefId ||
+    discovery.review.decidedAt !== handoff.approvedAt ||
+    discovery.review.decidedBy?.origin !== "human" ||
+    discovery.review.decidedBy?.id !== handoff.approvedBy.id ||
+    !fingerprintsEqual(
+      discovery.review.inputFingerprint,
+      handoff.approvedBriefFingerprint,
+    )
+  ) {
+    invalidInput(
+      "The recorded discovery handoff no longer resolves to the exact human-approved brief.",
+    );
+  }
+  return discovery;
+}
+
+function resolvePlanOperation(
+  operations: EngineeringProjectPlanOperationRegistry,
+  operation: EngineeringOperationRef,
+): ReturnType<EngineeringProjectPlanOperationRegistry["validate"]> {
+  try {
+    return operations.validate({ operation, basisKind: "approved-discovery" });
+  } catch (error) {
+    invalidInput(
+      error instanceof Error
+        ? `Project operation is not accepted by the reviewed registry: ${error.message}`
+        : "Project operation is not accepted by the reviewed registry.",
+    );
+  }
+}
+
+function assertPlanBindingsResolveToDiscovery(
+  bindings: readonly EngineeringOperationInputBinding[],
+  discovery: ProjectDiscoverySnapshot,
+): void {
+  for (const binding of bindings) {
+    if (binding.source.kind !== "discovery-answer") continue;
+    const answerId = binding.source.answerId;
+    const answer = discovery.answers.find((item) => item.id === answerId);
+    if (
+      !answer || answer.kind !== "provided" ||
+      discovery.answers.some((item) => item.supersedesAnswerId === answer.id)
+    ) {
+      invalidInput(
+        `Operation binding ${binding.name} must reference one current provided answer from the approved discovery.`,
+      );
+    }
+  }
+}
+
+function assertPlanWorkItemReferences(
+  item: PlannedEngineeringWorkItem,
+  phaseIds: ReadonlySet<string>,
+  workItemIds: ReadonlySet<string>,
+  decisionIds: ReadonlySet<string>,
+  decisionsById: ReadonlyMap<string, PlannedEngineeringDecision>,
+): void {
+  if (!phaseIds.has(item.phaseId)) {
+    invalidInput(`Work item ${item.id} references an unknown phase ${item.phaseId}.`);
+  }
+  for (const dependencyId of item.dependsOnWorkItemIds) {
+    if (dependencyId === item.id || !workItemIds.has(dependencyId)) {
+      invalidInput(
+        `Work item ${item.id} must depend only on another declared work item.`,
+      );
+    }
+  }
+  for (const decisionId of item.decisionIds) {
+    const decision = decisionsById.get(decisionId);
+    if (
+      !decisionIds.has(decisionId) || !decision || decision.phaseId !== item.phaseId
+    ) {
+      invalidInput(
+        `Work item ${item.id} must reference a declared decision in the same phase.`,
+      );
+    }
+  }
+}
+
+function assertPlanDependenciesAreAcyclic(
+  workItems: readonly Pick<PlannedEngineeringWorkItem, "id" | "dependsOnWorkItemIds">[],
+): void {
+  const byId = new Map(workItems.map((item) => [item.id, item]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (id: string): void => {
+    if (visited.has(id)) return;
+    if (visiting.has(id)) {
+      invalidInput(`Project plan dependency cycle includes work item ${id}.`);
+    }
+    visiting.add(id);
+    for (const dependencyId of byId.get(id)?.dependsOnWorkItemIds ?? []) {
+      visit(dependencyId);
+    }
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const item of workItems) visit(item.id);
+}
+
+function assertEveryPhaseHasWork(
+  phases: readonly Pick<EngineeringProjectPhase, "id" | "workItemIds">[],
+): void {
+  for (const phase of phases) {
+    if (phase.workItemIds.length === 0) {
+      invalidInput(`Project phase ${phase.id} must contain at least one work item.`);
+    }
+  }
+}
+
+function uniquePlanIds(values: readonly string[], label: string): void {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== "string" || !value.trim()) continue;
+    if (seen.has(value)) invalidInput(`${label} id ${value} is duplicated.`);
+    seen.add(value);
+  }
+}
+
+function isEngineeringWorkOwner(value: unknown): value is EngineeringWorkOwner {
+  return value === "human" || value === "agent" || value === "shared";
 }
 
 function transition(

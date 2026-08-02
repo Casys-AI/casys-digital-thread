@@ -252,13 +252,19 @@ export interface ThreadWorkbenchSnapshot {
   actions: ThreadAction[];
 }
 
-/** Project intent and linked technical proof delivered as one atomic BFF read. */
-export interface EngineeringWorkbenchSnapshot {
-  readonly schemaVersion: "engineering-workbench/0.1";
+/** Common BFF fields for a native project surface. */
+export interface EngineeringWorkbenchBaseSnapshot {
+  readonly schemaVersion: "engineering-workbench/0.2";
   readonly project: EngineeringProjectSnapshot;
-  readonly thread: ThreadWorkbenchSnapshot;
   /** Absent means read-only. Mutation is never inferred from HTTP availability. */
   readonly capabilities?: EngineeringWorkbenchCapabilities;
+}
+
+/** Project intent and linked technical proof delivered as one atomic BFF read. */
+export interface EngineeringEvidenceWorkbenchSnapshot
+  extends EngineeringWorkbenchBaseSnapshot {
+  readonly surface: "evidence";
+  readonly thread: ThreadWorkbenchSnapshot;
   readonly alignment: {
     readonly status: "aligned" | "thread-ahead";
     readonly projectThreadRevision: number;
@@ -266,24 +272,64 @@ export interface EngineeringWorkbenchSnapshot {
   };
 }
 
+/**
+ * Discovery-derived project intent before any technical baseline exists.
+ * This is deliberately not an empty technical thread.
+ */
+export interface EngineeringPlanningWorkbenchSnapshot
+  extends EngineeringWorkbenchBaseSnapshot {
+  readonly surface: "planning";
+  readonly planning: {
+    readonly technicalBaseline: {
+      readonly status: "not-created";
+      readonly message: string;
+    };
+  };
+}
+
+export type EngineeringWorkbenchSnapshot =
+  | EngineeringEvidenceWorkbenchSnapshot
+  | EngineeringPlanningWorkbenchSnapshot;
+
 export function isEngineeringWorkbenchSnapshot(
   value: unknown,
 ): value is EngineeringWorkbenchSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<EngineeringWorkbenchSnapshot>;
-  return candidate.schemaVersion === "engineering-workbench/0.1" &&
-    isEngineeringProjectSnapshot(candidate.project) &&
-    isThreadWorkbenchSnapshot(candidate.thread) &&
-    (candidate.capabilities === undefined ||
-      (!!candidate.capabilities &&
-        isOperatorCommandCapabilities(
+  if (
+    !(candidate.schemaVersion === "engineering-workbench/0.2") ||
+    !isEngineeringProjectSnapshot(candidate.project) ||
+    (candidate.capabilities !== undefined &&
+      (!candidate.capabilities ||
+        !isOperatorCommandCapabilities(
           candidate.capabilities.operatorCommands,
-        ))) &&
+        )))
+  ) {
+    return false;
+  }
+  if (candidate.surface === "planning") {
+    return candidate.project.threadSnapshots.length === 0 &&
+      isPlanningWorkbenchProjection(candidate.planning);
+  }
+  return candidate.surface === "evidence" &&
+    isThreadWorkbenchSnapshot(candidate.thread) &&
     !!candidate.alignment &&
     (candidate.alignment.status === "aligned" ||
       candidate.alignment.status === "thread-ahead") &&
     typeof candidate.alignment.projectThreadRevision === "number" &&
     typeof candidate.alignment.currentThreadRevision === "number";
+}
+
+function isPlanningWorkbenchProjection(
+  value: unknown,
+): value is EngineeringPlanningWorkbenchSnapshot["planning"] {
+  if (!value || typeof value !== "object") return false;
+  const planning = value as Partial<
+    EngineeringPlanningWorkbenchSnapshot["planning"]
+  >;
+  return !!planning.technicalBaseline &&
+    planning.technicalBaseline.status === "not-created" &&
+    typeof planning.technicalBaseline.message === "string";
 }
 
 export function isThreadWorkbenchSnapshot(

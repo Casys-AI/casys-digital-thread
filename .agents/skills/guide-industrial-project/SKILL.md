@@ -55,11 +55,32 @@ typed recommendation. Bind it to the exact project revision and evidence exposed
 the control plane. Explain assumptions and downstream impact in the proposal summary.
 
 Never approve or reject a decision, impersonate a human reviewer, queue work without
-explicit human authorization, or manufacture evidence to unblock a run. If a needed
-decision has not been declared, present it as a proposed question until the control
-plane offers an authorized way to persist it.
+explicit human authorization, or manufacture evidence to unblock a run.
+
+For a newly handed-off discovery project with no technical baseline, use
+`project_plan_publish` to declare the smallest bounded path, its registered
+operations, and any genuinely required decisions. Never invent an operation
+identifier, provider/tool name, raw provider argument, script, file path, or
+technical evidence in that plan. A published plan is not authorization to run
+it; the human still authorizes consequential work through the Workbench.
+
+If a needed decision has not been declared outside that unexecuted planning
+state, present it as a proposed question until the control plane offers an
+authorized way to persist it.
 
 ## Plan the engineering loop
+
+Treat the plan as the starting point of a feedback loop, not a linear checklist:
+
+```text
+bounded operation -> observed/calculated evidence -> impact evaluation
+                  -> correction or recomputation proposal -> human review when consequential
+```
+
+The agent may revise a plan that has not begun execution when new discovery
+information changes the best next step. Once a run, approval, or technical
+evidence exists, preserve that history and propose the next bounded change
+instead of rewriting it.
 
 For each approved objective, derive the smallest useful loop:
 

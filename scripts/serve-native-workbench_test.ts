@@ -30,7 +30,7 @@ Deno.test("native Workbench handler serves the persisted projection without exec
     "canonical-thread-snapshot",
   );
   const body = await response.json();
-  assertEquals(body.schemaVersion, "engineering-workbench/0.1");
+  assertEquals(body.schemaVersion, "engineering-workbench/0.2");
   assertEquals(body.project.project.subjectId, snapshot.subject.id);
   assertEquals(body.thread.source, "observed");
   assertEquals(body.thread.requirements, []);
@@ -56,18 +56,31 @@ Deno.test("native Workbench handler serves the persisted projection without exec
   assertEquals(rejected.headers.get("Allow"), "GET");
 });
 
-Deno.test("native Workbench handler reports a missing persisted subject", async () => {
+Deno.test("native Workbench serves a planning-only project without borrowing the current thread", async () => {
+  const active = await materializeAttestedMechanicalRun(capture());
+  const store = new ReadOnlyStore(active);
   const handler = createNativeWorkbenchHandler({
-    store: new ReadOnlyStore(undefined),
-    projectStore: new ReadOnlyProjectStore(projectSnapshot()),
-    subjectId: "missing",
+    store,
+    projectStore: new ReadOnlyProjectStore(
+      planningProjectSnapshot(active.subject.id),
+    ),
+    subjectId: active.subject.id,
     html: "unused",
   });
   const response = await handler(
     new Request("http://localhost/api/thread/workbench"),
   );
-  assertEquals(response.status, 404);
-  assertEquals((await response.json()).error, "thread_snapshot_not_found");
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(response.headers.get("X-Casys-Data-Source"), "engineering-project-plan");
+  assertEquals(body.surface, "planning");
+  assertEquals(body.project.threadSnapshots, []);
+  assertEquals(body.planning.technicalBaseline.status, "not-created");
+  assertEquals("thread" in body, false);
+  assertEquals(body.capabilities.operatorCommands.enabled, false);
+  assertEquals(body.capabilities.operatorCommands.intents, []);
+  assertEquals(store.latestCalls, 0);
 });
 
 Deno.test("native Workbench loads the declared exact baseline when active state is empty", async () => {
@@ -332,10 +345,44 @@ Deno.test("native Workbench streams persisted snapshot revisions as SSE", async 
   await reader.cancel();
 
   assertStringIncludes(event, `id: 1:${snapshot.revision}:0`);
-  assertStringIncludes(event, "event: thread-snapshot");
-  assertStringIncludes(event, '"schemaVersion":"engineering-workbench/0.1"');
+  assertStringIncludes(event, "event: workbench-snapshot");
+  assertStringIncludes(event, '"schemaVersion":"engineering-workbench/0.2"');
   assertStringIncludes(event, '"schemaVersion":"thread-workbench/0.1"');
   assertStringIncludes(event, `"subjectId":"${snapshot.subject.id}"`);
+});
+
+Deno.test("native Workbench SSE publishes a complete planning replacement before a technical baseline exists", async () => {
+  const active = await materializeAttestedMechanicalRun(capture());
+  const store = new ReadOnlyStore(active);
+  const projectStore = new ReadOnlyProjectStore(
+    planningProjectSnapshot(active.subject.id),
+  );
+  const handler = createNativeWorkbenchHandler({
+    store,
+    projectStore,
+    subjectId: active.subject.id,
+    html: "unused",
+    pollIntervalMs: 5,
+  });
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench/events"),
+  );
+  const reader = response.body!.getReader();
+  const initial = new TextDecoder().decode((await reader.read()).value);
+
+  assertStringIncludes(initial, "id: planning:1");
+  assertStringIncludes(initial, "event: workbench-snapshot");
+  assertStringIncludes(initial, '"surface":"planning"');
+  assertStringIncludes(initial, '"status":"not-created"');
+  assertEquals(initial.includes('"thread"'), false);
+  assertEquals(store.latestCalls, 0);
+
+  projectStore.replace(planningProjectSnapshot(active.subject.id, 2));
+  const replacement = new TextDecoder().decode((await reader.read()).value);
+  assertStringIncludes(replacement, "id: planning:2");
+  assertStringIncludes(replacement, '"revision":2');
+  assertStringIncludes(replacement, '"surface":"planning"');
+  await reader.cancel();
 });
 
 Deno.test("native Workbench SSE starts from the declared baseline without active state", async () => {
@@ -451,7 +498,7 @@ Deno.test("native Workbench SSE emits a complete replacement when only the proje
   const event = new TextDecoder().decode((await reader.read()).value);
 
   assertStringIncludes(event, `id: 2:${snapshot.revision}:0`);
-  assertStringIncludes(event, '"schemaVersion":"engineering-workbench/0.1"');
+  assertStringIncludes(event, '"schemaVersion":"engineering-workbench/0.2"');
   assertStringIncludes(event, '"revision":2');
   assertStringIncludes(event, `"id":"${snapshot.id}"`);
   await reader.cancel();
@@ -512,7 +559,7 @@ Deno.test("native Workbench applies explicit same-origin operator commands with 
   const applied = await handler(operatorRequest(command));
   assertEquals(applied.status, 200);
   const composite = await applied.json();
-  assertEquals(composite.schemaVersion, "engineering-workbench/0.1");
+  assertEquals(composite.schemaVersion, "engineering-workbench/0.2");
   assertEquals(composite.project.revision, 2);
   assertEquals(
     composite.project.commandReceipts[0].issuedAt,
@@ -849,6 +896,96 @@ function projectSnapshot(
         }),
       }
       : {}),
+  };
+}
+
+function planningProjectSnapshot(
+  subjectId: string,
+  revision = 1,
+): EngineeringProjectSnapshot {
+  return {
+    schemaVersion: "1.0",
+    id: `engineering-project-planning-r${revision}`,
+    revision,
+    ...(revision > 1
+      ? {
+        previous: {
+          snapshotId: `engineering-project-planning-r${revision - 1}`,
+          revision: revision - 1,
+        },
+      }
+      : {}),
+    generatedAt: "2026-08-01T03:03:48.000Z",
+    project: {
+      id: "engineering-project-planning",
+      name: "Discovery planning fixture",
+      subjectId,
+      objective: {
+        title: "Build a reviewable first engineering path",
+        statement:
+          "Keep the discovery intent durable before any technical evidence exists.",
+      },
+    },
+    discoveryHandoff: {
+      discoveryId: "drone-concept",
+      snapshotId: "discovery-snapshot-r3",
+      revision: 3,
+      briefId: "brief-drone-concept",
+      approvedBriefFingerprint: {
+        algorithm: "sha256",
+        digest: "d".repeat(64),
+      },
+      approvedAt: "2026-08-01T03:00:00.000Z",
+      approvedBy: { id: "engineer-erwan", origin: "human" },
+    },
+    plan: {
+      startingPoint: "idea-or-spec",
+      basis: {
+        kind: "approved-discovery",
+        discoveryId: "drone-concept",
+        snapshotId: "discovery-snapshot-r3",
+        revision: 3,
+        briefId: "brief-drone-concept",
+        approvedBriefFingerprint: {
+          algorithm: "sha256",
+          digest: "d".repeat(64),
+        },
+      },
+      publishedAt: "2026-08-01T03:03:48.000Z",
+      publishedBy: { id: "engineering-agent", origin: "agent" },
+    },
+    threadSnapshots: [],
+    phases: [{
+      id: "define",
+      name: "Define",
+      order: 1,
+      description: "Turn approved discovery into an explicit first system scope.",
+      workItemIds: ["work-define"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "work-define",
+      phaseId: "define",
+      title: "Prepare the first system definition",
+      description: "Publish the bounded definition the human will review.",
+      kind: "define",
+      operation: {
+        id: "intake.idea-or-spec",
+        version: "1",
+        bindings: [{ name: "brief", source: { kind: "approved-discovery" } }],
+      },
+      status: "planned",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
   };
 }
 

@@ -35,6 +35,7 @@ import {
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
+import { PlanningWorkbench } from "../project/planning-workbench.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
 import {
   ProjectCommandConflictError,
@@ -127,20 +128,28 @@ export function ThreadWorkbench({
     client.load(controller.signal).then((next) => {
       snapshotRef.current = next;
       setWorkbench(next);
-      const thread = next.thread;
-      setSelectedComponentId(thread.components.components[0]?.id);
-      const liveNode = activityFeedNodes(thread.graph.nodes)[0];
-      const initialSelection: ThreadRef = liveNode?.selection ??
-        (thread.violations[0]
-          ? { kind: "violation", id: thread.violations[0].id }
-          : { kind: "change", id: thread.change.id });
-      setSelection(initialSelection);
-      const initialNode = liveNode ??
-        graphNodeForSelection(thread, initialSelection);
-      setLineageFocus(initialNode?.ref);
-      setGraphSelection(
-        initialNode ? { kind: "node", ref: initialNode.ref } : undefined,
-      );
+      if (next.surface === "planning") {
+        setSelectedComponentId(undefined);
+        setSelection(undefined);
+        setLineageFocus(undefined);
+        setGraphSelection(undefined);
+        setInspectorOpen(false);
+      } else {
+        const thread = next.thread;
+        setSelectedComponentId(thread.components.components[0]?.id);
+        const liveNode = activityFeedNodes(thread.graph.nodes)[0];
+        const initialSelection: ThreadRef = liveNode?.selection ??
+          (thread.violations[0]
+            ? { kind: "violation", id: thread.violations[0].id }
+            : { kind: "change", id: thread.change.id });
+        setSelection(initialSelection);
+        const initialNode = liveNode ??
+          graphNodeForSelection(thread, initialSelection);
+        setLineageFocus(initialNode?.ref);
+        setGraphSelection(
+          initialNode ? { kind: "node", ref: initialNode.ref } : undefined,
+        );
+      }
       if (client.subscribe) {
         unsubscribe = client.subscribe((incoming) => {
           const previous = snapshotRef.current;
@@ -149,8 +158,36 @@ export function ThreadWorkbench({
           }
           snapshotRef.current = incoming;
           setWorkbench(incoming);
+          if (incoming.surface === "planning") {
+            setSelectedComponentId(undefined);
+            setSelection(undefined);
+            setLineageFocus(undefined);
+            setGraphSelection(undefined);
+            setInspectorOpen(false);
+            return;
+          }
+          if (previous?.surface !== "evidence") {
+            const thread = incoming.thread;
+            setSelectedComponentId(thread.components.components[0]?.id);
+            const liveNode = activityFeedNodes(thread.graph.nodes)[0];
+            const initialSelection: ThreadRef = liveNode?.selection ??
+              (thread.violations[0]
+                ? { kind: "violation", id: thread.violations[0].id }
+                : { kind: "change", id: thread.change.id });
+            setSelection(initialSelection);
+            const initialNode = liveNode ??
+              graphNodeForSelection(thread, initialSelection);
+            setLineageFocus(initialNode?.ref);
+            setGraphSelection(
+              initialNode ? { kind: "node", ref: initialNode.ref } : undefined,
+            );
+            return;
+          }
           if (!followLiveRef.current) return;
-          const liveNode = nextLiveFocusNode(previous?.thread, incoming.thread);
+          const liveNode = nextLiveFocusNode(
+            previous?.surface === "evidence" ? previous.thread : undefined,
+            incoming.thread,
+          );
           if (!liveNode) return;
           setLineageFocus(liveNode.ref);
           setGraphSelection({ kind: "node", ref: liveNode.ref });
@@ -210,7 +247,7 @@ export function ThreadWorkbench({
       </StateMessage>
     );
   }
-  if (!workbench || !selection) {
+  if (!workbench || (workbench.surface === "evidence" && !selection)) {
     return (
       <div class="thread-loading" aria-busy="true">
         <span class="thread-loading-mark" aria-hidden="true" />
@@ -219,6 +256,15 @@ export function ThreadWorkbench({
           <small>No engineering tool is being executed.</small>
         </div>
       </div>
+    );
+  }
+
+  if (workbench.surface === "planning") {
+    return (
+      <PlanningWorkbench
+        workbench={workbench}
+        streamStatus={streamStatus}
+      />
     );
   }
 

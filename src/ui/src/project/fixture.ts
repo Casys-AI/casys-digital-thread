@@ -1,6 +1,6 @@
 import type { EngineeringProjectSnapshot } from "../../../domain/engineering-project.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "../thread/fixture.ts";
-import type { EngineeringWorkbenchSnapshot } from "../thread/types.ts";
+import type { EngineeringEvidenceWorkbenchSnapshot } from "../thread/types.ts";
 
 /** Labelled UI fallback. It demonstrates project control, never production truth. */
 export const COFFEE_MACHINE_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
@@ -147,8 +147,9 @@ export const COFFEE_MACHINE_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
 };
 
 export const COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE:
-  EngineeringWorkbenchSnapshot = {
-    schemaVersion: "engineering-workbench/0.1",
+  EngineeringEvidenceWorkbenchSnapshot = {
+    schemaVersion: "engineering-workbench/0.2",
+    surface: "evidence",
     project: COFFEE_MACHINE_PROJECT_FIXTURE,
     thread: COFFEE_MACHINE_THREAD_FIXTURE,
     alignment: {

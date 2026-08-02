@@ -1,13 +1,14 @@
 # RFC: Minimal agent orchestration and the operational-twin boundary
 
-Status: **Proposed**\
+Status: **Partially implemented — bounded planning landed; execution remains proposed**\
 Scope: one beginner journey from initial intent or existing product material to
 reviewable engineering evidence\
 Decision horizon: V1 orchestration now; operational Digital Twin only in V2
 
 Truth basis: source tree inspected on 2026-08-02. Current-state claims include the
-loopback Discovery handoff implemented in this worktree; the planning command, operation
-registry, and trusted generic executor remain proposed.
+loopback Discovery handoff, the agent planning command, and the code-owned intake
+operation registry implemented in this worktree. Exact initial-run authorization, a
+trusted generic executor, and operational Digital Twin capabilities remain proposed.
 
 ## Decision
 
@@ -24,6 +25,11 @@ All three entry points converge on the same value loop:
 ```text
 change -> affected requirements and artefacts -> new proofs -> human review
 ```
+
+Traceability is the substrate for that loop, not its final purpose. It lets the agent
+observe the affected state, evaluate it against named requirements, propose the smallest
+bounded correction, and request a recomputation. The person reviews the consequences and
+authorizes consequential work; neither a dashboard nor a language model is the verifier.
 
 The agent guides the conversation, proposes the project path, and executes only reviewed
 operations. The person answers understandable questions, approves the brief and
@@ -53,8 +59,9 @@ The beginner-facing journey is deliberately short:
 2. **Review the brief.** The agent turns sourced answers and explicit unknowns into a
    brief. The person approves it or asks for a revision.
 3. **Open the project and see its proposed path.** The person creates the empty project
-   shell from the exact approved brief. The agent then publishes a proposed sequence of
-   work. Both are planning state, not technical evidence.
+   shell from the exact approved brief. The agent can then publish or revise an
+   unexecuted sequence of work, each item bound to a reviewed operation reference. Both
+   are planning state, not technical evidence or an authorization to run.
 4. **Authorize consequential work.** The agent proposes decisions with consequences. The
    person approves or rejects them, then authorizes the exact next run. There is no
    technical data-entry form in the main path.
@@ -106,11 +113,14 @@ tool families:
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Fleet     | `console_snapshot`, `console_server_detail`, `console_run_list`, `console_run_detail`                                                                               | Read provider availability and recorded console runs              |
 | Discovery | `project_discovery_snapshot`, `project_discovery_start`, `project_discovery_question_propose`, `project_discovery_answer_record`, `project_discovery_brief_propose` | Build an immutable pre-project conversation and proposed brief    |
-| Project   | `project_snapshot`, `project_decision_propose`, `project_agent_run_start`, `project_agent_run_progress`, `project_agent_run_publish`, `project_agent_run_fail`      | Read project truth and record an already-authorized run lifecycle |
+| Project   | `project_snapshot`, `project_plan_publish`, `project_decision_propose`, `project_agent_run_start`, `project_agent_run_progress`, `project_agent_run_publish`, `project_agent_run_fail` | Read project truth, publish bounded unexecuted planning state, and record an already-authorized run lifecycle |
 
-The project tools do **not** create a project, declare a plan, bind a work item to an
-executable operation, call a provider, or materialize technical evidence. The run tools
-are lifecycle bookkeeping around a run that the human already queued.
+`project_plan_publish` can create or revise an unexecuted plan from the exact approved
+Discovery handoff. It records only code-validated operation references and state
+bindings; it does **not** call a provider, approve a decision, queue a run, or
+materialize technical evidence. No work item is executable merely because it names an
+operation. The existing run tools remain lifecycle bookkeeping around a run that a human
+already queued.
 
 The loopback Discovery BFF now exposes a human-only
 `POST /api/project-discoveries/:id/handoff` action. It creates immutable project
@@ -178,20 +188,22 @@ does not prove what produced the cited evidence.
 
 ## Confirmed orchestration gaps
 
-The durable shell now exists. The path from that shell to proof still has three breaks:
+The durable shell and bounded planning path now exist. The path from that plan to proof
+still has two consequential breaks:
 
 ```text
 approved discovery
   ---> durable project shell                 implemented human handoff
-  -/-> executable project path               no agent plan command
-  -/-> reviewed operation                    work items have no operation binding
+  ---> reviewed, unexecuted project path     implemented agent plan + registry
+  -/-> initial authorization / exact basis   bootstrap basis migration pending
   -/-> trusted provider execution/evidence   no generic control-plane executor
 ```
 
-There is also a bootstrap mismatch in the current project contract: queueing and
-decision proposals require an exact base `ThreadSnapshot`, while a legitimate new
-project must exist before its first technical snapshot. Creating an empty or fabricated
-technical snapshot would hide the gap rather than solve it.
+There is still a bootstrap mismatch in the current project contract: queueing and
+decision proposals require an exact base `ThreadSnapshot`, while the first planned
+operation is grounded in an approved discovery before its first technical snapshot.
+Creating an empty or fabricated technical snapshot would hide the gap rather than solve
+it.
 
 ## Minimal target contract
 
@@ -216,9 +228,9 @@ The UI phrases this as **Start engineering project**. It is an explicit human ac
 not a technical form. The first-party surface binds the project ID to the discovery ID
 and the project name to the approved objective.
 
-### 2. Give the agent one planning command
+### 2. Implemented: give the agent one planning command
 
-Add one agent-only MCP mutation:
+The Console MCP server now exposes one agent-only mutation:
 
 ```text
 project_plan_publish
@@ -279,22 +291,38 @@ type EngineeringOperationInputBinding =
   };
 ```
 
-The command may create or revise only unexecuted planning state. It cannot approve a
-decision, queue a run, call a provider, or attach evidence. The plan is visible to the
-human, but a separate whole-plan approval is unnecessary in V1: the human authorization
-of each consequential run is bound to the exact plan slice, operation, decisions, and
-basis.
+The command may create or revise only unexecuted planning state. It records a `plan`
+whose basis is the exact approved discovery handoff, and stamps its agent publisher and
+publication time. Each published work item carries the exact registry ID, version, and
+approved state-reference bindings. The V1 intake surface accepts only
+`approved-discovery` and `discovery-answer` bindings; the broader domain binding union
+is reserved for a reviewed later operation/executor contract. Its displayed title,
+description, and work kind are derived from the registered operation rather than supplied
+by the agent. The command rejects unknown operation revisions,
+wrong entry points, undeclared bindings, and stale or superseded discovery answers.
+It cannot approve a decision, queue a run, call a provider, or attach evidence. Once a
+run, approval, blocker, non-required decision, technical evidence, or completed work
+exists, this planning command cannot replace the path.
 
-The first operation registry should contain only three bounded intake operations, one
-for each starting point. Later entries can cover CAD generation, simulation,
-verification, and industrialization. An operation registry entry owns provider tool
-selection, typed inputs, output validation, materialization, and redacted live
-projection. The agent never supplies raw provider tool names at execution time.
-Existing-CAD and existing-product intake must resolve their supplied files or source
-records through exact discovery-answer bindings. The intake operation fingerprints the
-bytes; a path or label alone never becomes evidence.
+The registry currently contains these three bounded intake operations:
 
-### 3. Use one exact basis type before and after the first proof
+| Starting point | Registered operation |
+| --- | --- |
+| Idea or specification | `baseline.from-approved-discovery@1` |
+| Existing CAD | `baseline.capture-existing-cad@1` |
+| Existing product | `baseline.capture-existing-product@1` |
+
+The registry is intentionally a safe planning descriptor today. It exposes no provider
+selection, provider tool name, raw tool arguments, workflow definition, or evidence
+payload. A future trusted executor will use the same reviewed operation revision to own
+typed input resolution, provider selection, output validation, materialization, and
+redacted live projection. The agent never supplies raw provider tool names at execution
+time.
+At execution, existing-CAD and existing-product intake must resolve their supplied files
+or source records through exact discovery-answer bindings. The future intake executor
+must fingerprint the bytes; a path or label alone never becomes evidence.
+
+### 3. Still pending: use one exact basis type before and after the first proof
 
 Replace the bootstrap-only assumption that every action already has a base thread with
 an exact discriminated basis:
@@ -330,7 +358,7 @@ thread-snapshot basis. A queue fingerprint must cover:
 This should be a clean schema revision, not parallel `baseSnapshot` and `basis` fields
 with fallback behaviour.
 
-### 4. Give the agent one trusted execution tool
+### 4. Still pending: give the agent one trusted execution tool
 
 Add one agent-only MCP tool:
 
@@ -405,9 +433,22 @@ observable run from an approved brief:
 6. change one reviewed input, show affected state, recompute one proof, and review the
    new evidence.
 
-Implement the idea/spec intake first to prove the contract. Before calling the product
-V1, add the existing-CAD and existing-product intake entries to the same registry and
-same journey. They are operation variants, not separate applications or domain models.
+The current landing point reaches steps 1 and 2: an exact approved-discovery handoff can
+receive a visible, agent-published plan bound to one of the three intake operations. It
+does not yet reach human authorization, execution, technical evidence, or recomputation
+through this generic control-plane path. The existing CM-01 CLI flow remains a separate,
+product-specific demonstration of linked evidence.
+
+Implement the idea/spec intake executor first to prove the full contract. Existing-CAD
+and existing-product already have planning registry entries; before calling the product
+V1, they need the same safe execution, evidence, and review journey. They are operation
+variants, not separate applications or domain models.
+
+The resulting goal is a bounded feedback loop, not a static audit trail: observe the
+current proven state, evaluate a named consequence, propose a scoped correction,
+authorize it when consequential, recompute the affected proof, and review the changed
+lineage. Traceability makes that loop inspectable and safe; it does not replace the
+agent's engineering work.
 
 ## Digital Twin boundary
 
@@ -493,15 +534,15 @@ Operational V2 must not delay or complicate the V1 beginner journey.
 
 ## Implementation map
 
-The human handoff slice is implemented. Likely implementation locations for the
-remaining slices are:
+The human handoff and bounded planning slices are implemented. Likely implementation
+locations for the remaining slices are:
 
 | Slice                                       | Likely files                                                                                                                             |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Human handoff                               | Implemented in the domain service, HTTP adapter, Discovery BFF, browser client/UI, validation, and focused tests                         |
-| Exact bootstrap basis and operation binding | `src/domain/engineering-project.ts`, `src/domain/engineering-project-validation.ts`, `src/domain/engineering-project-command-service.ts` |
-| Agent planning MCP tool                     | A focused domain plan service plus `src/tools/project-control.ts` and `server.ts` registration                                           |
-| Reviewed operation registry                 | New code under `src/orchestration/`, reusing `src/workflow/` and backend MCP clients                                                     |
+| Bounded plan + operation binding            | Implemented in `src/domain/engineering-project.ts`, validation, plan command service, `src/tools/project-control.ts`, and `server.ts`  |
+| Reviewed intake operation registry          | Implemented as safe planning descriptors under `src/orchestration/operations/`; it does not execute providers                            |
+| Exact bootstrap basis migration             | `src/domain/engineering-project.ts`, `src/domain/engineering-project-validation.ts`, `src/domain/engineering-project-command-service.ts` |
 | Trusted run executor                        | New orchestration service using `RecordingMcpToolClient`, the thread materializer/store, and existing project command service            |
 | Cockpit projection                          | Existing passive BFF/projector after the domain contract is stable; no provider calls in UI code                                         |
 | Operational V2                              | Separate operational domain/binding/store adapters plus one bounded evaluator; no raw telemetry fields in `ThreadSnapshot`               |
@@ -521,10 +562,14 @@ project runtime, while preserving loopback and authority checks.
 - a project shell may have no thread only before technical publication and cannot claim
   completed work or evidence;
 - the agent can publish planning state but cannot approve or queue it;
+- planning is grounded in the exact approved-discovery handoff and accepts only the
+  matching registered intake operation revision and declared bindings;
+- an unknown operation, wrong entry point, undeclared binding, stale discovery answer,
+  or changed command-ID replay fails closed before the plan is persisted;
 - the initial run accepts only an exact approved-discovery basis;
 - every later run requires an exact declared thread basis;
 - queue fingerprints include operation version and decision fingerprints;
-- no unknown or unregistered operation can be queued or executed.
+- no unknown or unregistered operation can enter a plan, be queued, or be executed.
 
 ### Trusted execution
 

@@ -102,7 +102,8 @@ The JSON document is one atomic browser read model:
 
 ```json
 {
-  "schemaVersion": "engineering-workbench/0.1",
+  "schemaVersion": "engineering-workbench/0.2",
+  "surface": "evidence",
   "project": {
     "schemaVersion": "1.0",
     "project": { "id": "coffee-machine-cm01" },
@@ -136,6 +137,12 @@ validated project and technical projection. `alignment.status` is:
   The cockpit shows the descendant evidence and names the lag; it never promotes a
   parallel branch or pretends that existing decisions were made against the newer state.
 
+A project created from approved discovery can instead return `"surface": "planning"`.
+That variant contains the durable project path and
+`planning.technicalBaseline.status: "not-created"`; it has no `thread` or `alignment`
+field and returns `X-Casys-Data-Source: engineering-project-plan`. The BFF does not use
+the current subject head as a substitute for that missing baseline.
+
 Before serving either state, the BFF resolves every declared project snapshot by exact
 ID and validates its entity references. A missing exact snapshot fails closed; it is
 never replaced by the latest available document.
@@ -146,12 +153,15 @@ The live read path is:
 curl -N http://127.0.0.1:5173/api/thread/workbench/events
 ```
 
-It emits a complete `engineering-workbench/0.1` replacement as `event: thread-snapshot`.
-Event IDs are:
+It emits a complete `engineering-workbench/0.2` replacement as `event: workbench-snapshot`.
+Evidence-surface event IDs are:
 
 ```text
 <project-revision>:<thread-revision>:<live-sequence>
 ```
+
+Planning-surface event IDs are `planning:<project-revision>` because no technical
+revision exists yet.
 
 This means a persisted project decision, a canonical technical publication, or a
 provisional MCP result can each update the cockpit. Canonical publication replaces the

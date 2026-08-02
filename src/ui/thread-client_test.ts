@@ -15,6 +15,12 @@ import {
 Deno.test("native Workbench fallback is an explicitly labelled product fixture", async () => {
   const client = createThreadWorkbenchClient();
   const workbench = await client.load();
+  assertEquals(workbench.surface, "evidence");
+  if (workbench.surface !== "evidence") {
+    throw new Error(
+      "Expected the labelled fallback to contain technical evidence.",
+    );
+  }
   const snapshot = workbench.thread;
 
   assertEquals(client.source, "fixture");
@@ -48,6 +54,31 @@ Deno.test("injected Workbench projection is preserved without a transport call",
     COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
   );
   assertEquals(isEngineeringWorkbenchSnapshot(await client.load()), true);
+});
+
+Deno.test("Workbench contract accepts a planning surface only when no technical baseline is declared", () => {
+  const planning = structuredClone(
+    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as Record<string, unknown>;
+  planning.surface = "planning";
+  delete planning.thread;
+  delete planning.alignment;
+  (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
+  planning.planning = {
+    technicalBaseline: {
+      status: "not-created",
+      message: "Technical baseline not created yet.",
+    },
+  };
+
+  assertEquals(isEngineeringWorkbenchSnapshot(planning), true);
+
+  (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [{
+    snapshotId: "thread-r1",
+    revision: 1,
+    subjectId: "CM-01",
+  }];
+  assertEquals(isEngineeringWorkbenchSnapshot(planning), false);
 });
 
 Deno.test("the Workbench contract requires explicit flow dependencies", () => {
@@ -109,6 +140,10 @@ Deno.test("HTTP Workbench client performs one uncached read-only JSON GET", asyn
 
   const snapshot = await client.load();
 
+  assertEquals(snapshot.surface, "evidence");
+  if (snapshot.surface !== "evidence") {
+    throw new Error("Expected the HTTP fixture to contain technical evidence.");
+  }
   assertEquals(snapshot.thread.id, COFFEE_MACHINE_THREAD_FIXTURE.id);
   assertEquals(
     snapshot.project.project.subjectId,
@@ -123,6 +158,34 @@ Deno.test("HTTP Workbench client rejects an unsupported contract", async () => {
   const client = new HttpThreadWorkbenchClient(
     "/api/thread/workbench",
     () => Promise.resolve(Response.json({ schemaVersion: "unknown" })),
+  );
+
+  await assertRejects(() => client.load(), Error, "unsupported contract");
+});
+
+Deno.test("HTTP Workbench client rejects malformed planning provenance", async () => {
+  const malformed = structuredClone(
+    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as Record<string, unknown>;
+  malformed.surface = "planning";
+  delete malformed.thread;
+  delete malformed.alignment;
+  (malformed.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
+  (malformed.project as Record<string, unknown>).plan = {
+    startingPoint: "idea-or-spec",
+    basis: null,
+    publishedAt: "2026-08-02T12:00:00.000Z",
+    publishedBy: { id: "agent:planner", origin: "agent" },
+  };
+  malformed.planning = {
+    technicalBaseline: {
+      status: "not-created",
+      message: "Technical baseline not created yet.",
+    },
+  };
+  const client = new HttpThreadWorkbenchClient(
+    "/api/thread/workbench",
+    () => Promise.resolve(Response.json(malformed)),
   );
 
   await assertRejects(() => client.load(), Error, "unsupported contract");

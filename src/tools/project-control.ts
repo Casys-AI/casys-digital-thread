@@ -1,9 +1,13 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import type { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
 import type {
+  EngineeringOperationInputBinding,
+  EngineeringOperationRef,
   EngineeringProjectSnapshot,
+  EngineeringProjectStartingPoint,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
+  EngineeringWorkOwner,
 } from "../domain/engineering-project.ts";
 
 const READ_ONLY_ANNOTATIONS = {
@@ -93,6 +97,48 @@ const EVIDENCE_REF_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const OPERATION_BINDING_SCHEMA = {
+  type: "object",
+  properties: {
+    name: { type: "string", minLength: 1 },
+    source: {
+      oneOf: [
+        {
+          type: "object",
+          properties: { kind: { const: "approved-discovery" } },
+          required: ["kind"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            kind: { const: "discovery-answer" },
+            answerId: { type: "string", minLength: 1 },
+          },
+          required: ["kind", "answerId"],
+          additionalProperties: false,
+        },
+      ],
+    },
+  },
+  required: ["name", "source"],
+  additionalProperties: false,
+} as const;
+
+const OPERATION_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    id: { type: "string", minLength: 1 },
+    version: { type: "string", minLength: 1 },
+    bindings: {
+      type: "array",
+      items: OPERATION_BINDING_SCHEMA,
+    },
+  },
+  required: ["id", "version", "bindings"],
+  additionalProperties: false,
+} as const;
+
 const COMMON_MUTATION_PROPERTIES = {
   commandId: COMMAND_ID,
   projectId: PROJECT_ID,
@@ -122,6 +168,21 @@ export function registerProjectControlTools(
     const snapshot = await requiredProject(dependencies.projects, projectId);
     return projectResult(
       `Project ${snapshot.project.name} is at revision ${snapshot.revision}.`,
+      snapshot,
+    );
+  });
+
+  app.registerTool(projectPlanPublishTool, async (args, context) => {
+    const common = commonMutation(args);
+    const snapshot = await dependencies.commands.publishPlan(agentOrigin(context), {
+      ...common,
+      startingPoint: planStartingPoint(args.startingPoint),
+      phases: planPhases(args.phases),
+      workItems: planWorkItems(args.workItems),
+      requiredDecisions: planDecisions(args.requiredDecisions),
+    });
+    return projectResult(
+      `The agent-published project path is recorded at revision ${snapshot.revision}. It is planning state only: no engineering operation was executed.`,
       snapshot,
     );
   });
@@ -244,6 +305,78 @@ const projectSnapshotTool: MCPTool = {
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const projectPlanPublishTool: MCPTool = {
+  name: "project_plan_publish",
+  description:
+    "Publish or revise an unexecuted engineering path from this project's exact human-approved discovery brief. Each work item must cite a reviewed registered operation and state-reference bindings; its displayed title, description and kind are derived from that reviewed operation. This never calls a provider, approves a decision, queues work, or creates technical evidence.",
+  inputSchema: mutationSchema({
+    startingPoint: {
+      type: "string",
+      enum: ["idea-or-spec", "existing-cad", "existing-product"],
+    },
+    phases: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", minLength: 1 },
+          name: { type: "string", minLength: 1 },
+          description: { type: "string", minLength: 1 },
+        },
+        required: ["id", "name", "description"],
+        additionalProperties: false,
+      },
+    },
+    workItems: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", minLength: 1 },
+          phaseId: { type: "string", minLength: 1 },
+          owner: { type: "string", enum: ["human", "agent", "shared"] },
+          dependsOnWorkItemIds: {
+            type: "array",
+            items: { type: "string", minLength: 1 },
+          },
+          decisionIds: {
+            type: "array",
+            items: { type: "string", minLength: 1 },
+          },
+          operation: OPERATION_REF_SCHEMA,
+        },
+        required: [
+          "id",
+          "phaseId",
+          "owner",
+          "dependsOnWorkItemIds",
+          "decisionIds",
+          "operation",
+        ],
+        additionalProperties: false,
+      },
+    },
+    requiredDecisions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", minLength: 1 },
+          phaseId: { type: "string", minLength: 1 },
+          title: { type: "string", minLength: 1 },
+          question: { type: "string", minLength: 1 },
+        },
+        required: ["id", "phaseId", "title", "question"],
+        additionalProperties: false,
+      },
+    },
+  }, ["startingPoint", "phases", "workItems", "requiredDecisions"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_MUTATION_ANNOTATIONS,
 };
 
 const projectDecisionProposeTool: MCPTool = {
@@ -505,6 +638,148 @@ function decisionProposal(value: unknown): {
       return result;
     }),
   };
+}
+
+function planStartingPoint(value: unknown): EngineeringProjectStartingPoint {
+  return oneOf(
+    value,
+    ["idea-or-spec", "existing-cad", "existing-product"] as const,
+    "startingPoint",
+  );
+}
+
+function planPhases(value: unknown): Array<{
+  id: string;
+  name: string;
+  description: string;
+}> {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TypeError("phases must be a non-empty array");
+  }
+  return value.map((item, index) => {
+    const path = `phases[${index}]`;
+    const record = exactRecord(item, path);
+    exactKeys(record, ["id", "name", "description"], [], path);
+    return {
+      id: requiredString(record.id, `${path}.id`),
+      name: requiredString(record.name, `${path}.name`),
+      description: requiredString(record.description, `${path}.description`),
+    };
+  });
+}
+
+function planWorkItems(value: unknown): Array<{
+  id: string;
+  phaseId: string;
+  owner: EngineeringWorkOwner;
+  dependsOnWorkItemIds: string[];
+  decisionIds: string[];
+  operation: EngineeringOperationRef;
+}> {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TypeError("workItems must be a non-empty array");
+  }
+  return value.map((item, index) => {
+    const path = `workItems[${index}]`;
+    const record = exactRecord(item, path);
+    exactKeys(
+      record,
+      [
+        "id",
+        "phaseId",
+        "owner",
+        "dependsOnWorkItemIds",
+        "decisionIds",
+        "operation",
+      ],
+      [],
+      path,
+    );
+    return {
+      id: requiredString(record.id, `${path}.id`),
+      phaseId: requiredString(record.phaseId, `${path}.phaseId`),
+      owner: oneOf(
+        record.owner,
+        ["human", "agent", "shared"] as const,
+        `${path}.owner`,
+      ),
+      dependsOnWorkItemIds: stringList(
+        record.dependsOnWorkItemIds,
+        `${path}.dependsOnWorkItemIds`,
+      ),
+      decisionIds: stringList(record.decisionIds, `${path}.decisionIds`),
+      operation: planOperation(record.operation, `${path}.operation`),
+    };
+  });
+}
+
+function planDecisions(value: unknown): Array<{
+  id: string;
+  phaseId: string;
+  title: string;
+  question: string;
+}> {
+  if (!Array.isArray(value)) throw new TypeError("requiredDecisions must be an array");
+  return value.map((item, index) => {
+    const path = `requiredDecisions[${index}]`;
+    const record = exactRecord(item, path);
+    exactKeys(record, ["id", "phaseId", "title", "question"], [], path);
+    return {
+      id: requiredString(record.id, `${path}.id`),
+      phaseId: requiredString(record.phaseId, `${path}.phaseId`),
+      title: requiredString(record.title, `${path}.title`),
+      question: requiredString(record.question, `${path}.question`),
+    };
+  });
+}
+
+function planOperation(value: unknown, path: string): EngineeringOperationRef {
+  const record = exactRecord(value, path);
+  exactKeys(record, ["id", "version", "bindings"], [], path);
+  if (!Array.isArray(record.bindings)) {
+    throw new TypeError(`${path}.bindings must be an array`);
+  }
+  return {
+    id: requiredString(record.id, `${path}.id`),
+    version: requiredString(record.version, `${path}.version`),
+    bindings: record.bindings.map((binding, index) =>
+      planOperationBinding(binding, `${path}.bindings[${index}]`)
+    ),
+  };
+}
+
+function planOperationBinding(
+  value: unknown,
+  path: string,
+): EngineeringOperationInputBinding {
+  const record = exactRecord(value, path);
+  exactKeys(record, ["name", "source"], [], path);
+  const name = requiredString(record.name, `${path}.name`);
+  const source = exactRecord(record.source, `${path}.source`);
+  const kind = requiredString(source.kind, `${path}.source.kind`);
+  switch (kind) {
+    case "approved-discovery":
+      exactKeys(source, ["kind"], [], `${path}.source`);
+      return { name, source: { kind } };
+    case "discovery-answer":
+      exactKeys(source, ["kind", "answerId"], [], `${path}.source`);
+      return {
+        name,
+        source: {
+          kind,
+          answerId: requiredString(source.answerId, `${path}.source.answerId`),
+        },
+      };
+    default:
+      throw new TypeError(
+        `${path}.source.kind must be approved-discovery or discovery-answer in V1 planning`,
+      );
+  }
+}
+
+function stringList(value: unknown, name: string): string[] {
+  if (!Array.isArray(value)) throw new TypeError(`${name} must be an array`);
+  return value.map((item, index) => requiredString(item, `${name}[${index}]`));
 }
 
 function snapshotRef(value: unknown, name: string): EngineeringThreadSnapshotRef {

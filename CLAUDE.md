@@ -50,9 +50,9 @@ provisoire `config/verification-plans/coffee-machine-nominal-v1.json` :
 `syson_constraint_evaluate` et lié aux hashes modèle/scénario. Ce n'est pas une exigence
 produit/SysON ; les 900 s sont seulement la provenance du scénario.
 
-Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.1` :
-un `EngineeringProjectSnapshot` immuable pour l'intention, le travail, les décisions et
-les blocages ; un `ThreadSnapshot` lié pour la preuve technique ; et un état explicite
+Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.2` :
+la surface `planning` porte un `EngineeringProjectSnapshot` immuable avant toute preuve
+technique ; la surface `evidence` y ajoute un `ThreadSnapshot` lié et l'état explicite
 `aligned` ou `thread-ahead`. Les cinq espaces sont `Project`, `Activity`, `Product`,
 `Evidence` et `Execution`. Le feed live appartient à `Activity`, le graphe à `Evidence`,
 les facettes composants à `Product`, et les runs et outils à `Execution`.

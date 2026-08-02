@@ -30,6 +30,7 @@ export type EngineeringCommandOriginKind = "human" | "agent";
 
 export type EngineeringProjectCommandName =
   | "project.create-from-discovery"
+  | "project.plan-publish"
   | "decision.propose"
   | "decision.approve"
   | "decision.reject"
@@ -94,6 +95,76 @@ export interface EngineeringThreadEntityRef {
   readonly id: string;
 }
 
+/** How the project entered the engineering journey before a technical baseline exists. */
+export type EngineeringProjectStartingPoint =
+  | "idea-or-spec"
+  | "existing-cad"
+  | "existing-product";
+
+/**
+ * Exact planning basis for the first bounded operation. This is deliberately
+ * distinct from an execution run's technical snapshot anchor: a discovery
+ * handoff is planning provenance, never fabricated engineering evidence.
+ */
+export interface EngineeringApprovedDiscoveryBasis {
+  readonly kind: "approved-discovery";
+  readonly discoveryId: string;
+  readonly snapshotId: string;
+  readonly revision: number;
+  readonly briefId: string;
+  readonly approvedBriefFingerprint: ContentFingerprint;
+}
+
+/**
+ * A reviewed source slot for an operation. Provider endpoints, tool names,
+ * paths, scripts and raw tool outputs are intentionally not representable.
+ */
+export type EngineeringOperationInputBinding =
+  | {
+    readonly name: string;
+    readonly source: { readonly kind: "approved-discovery" };
+  }
+  | {
+    readonly name: string;
+    readonly source: {
+      readonly kind: "discovery-answer";
+      readonly answerId: string;
+    };
+  }
+  | {
+    readonly name: string;
+    readonly source: {
+      readonly kind: "decision-parameter";
+      readonly decisionId: string;
+      readonly key: string;
+    };
+  }
+  | {
+    readonly name: string;
+    readonly source: {
+      readonly kind: "thread-entity";
+      readonly reference: EngineeringThreadEntityRef;
+    };
+  };
+
+/** A versioned, server-registered operation reference; never an executable tool call. */
+export interface EngineeringOperationRef {
+  readonly id: string;
+  readonly version: string;
+  readonly bindings: readonly EngineeringOperationInputBinding[];
+}
+
+/**
+ * Agent-published planning metadata. It names the exact approved discovery
+ * that grounded the path and carries no technical evidence or authorization.
+ */
+export interface EngineeringProjectPlan {
+  readonly startingPoint: EngineeringProjectStartingPoint;
+  readonly basis: EngineeringApprovedDiscoveryBasis;
+  readonly publishedAt: IsoDateTime;
+  readonly publishedBy: EngineeringCommandActor;
+}
+
 export interface EngineeringProjectPhase {
   readonly id: string;
   readonly name: string;
@@ -129,6 +200,12 @@ export interface EngineeringWorkItem {
   readonly title: string;
   readonly description: string;
   readonly kind: EngineeringWorkItemKind;
+  /**
+   * Present for agent-published work. Earlier immutable project revisions may
+   * predate operation declarations; they are never treated as executable by
+   * the new planning path.
+   */
+  readonly operation?: EngineeringOperationRef;
   readonly status: EngineeringWorkItemStatus;
   readonly owner: EngineeringWorkOwner;
   readonly dependsOnWorkItemIds: readonly string[];
@@ -270,6 +347,8 @@ export interface EngineeringProjectSnapshot {
    * Existing projects retain their own independently established provenance.
    */
   readonly discoveryHandoff?: EngineeringProjectDiscoveryHandoff;
+  /** Present once an agent publishes a bounded path from an approved discovery. */
+  readonly plan?: EngineeringProjectPlan;
   readonly threadSnapshots: readonly EngineeringThreadSnapshotRef[];
   readonly phases: readonly EngineeringProjectPhase[];
   readonly workItems: readonly EngineeringWorkItem[];

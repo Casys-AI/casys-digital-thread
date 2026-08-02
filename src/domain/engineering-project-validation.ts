@@ -69,7 +69,7 @@ export function collectEngineeringProjectIssues(
       "approvals",
       "blockers",
     ],
-    ["previous", "commandReceipts", "discoveryHandoff"],
+    ["previous", "commandReceipts", "discoveryHandoff", "plan"],
     issues,
   );
   if (!root) return issues;
@@ -84,6 +84,9 @@ export function collectEngineeringProjectIssues(
   validateProjectIdentity(root.project, "$.project", issues);
   if (root.discoveryHandoff !== undefined) {
     validateDiscoveryHandoff(root.discoveryHandoff, "$.discoveryHandoff", issues);
+  }
+  if (root.plan !== undefined) {
+    validateProjectPlan(root.plan, "$.plan", issues);
   }
   validateArray(root.threadSnapshots, "$.threadSnapshots", issues, validateSnapshotRef);
   validateArray(root.phases, "$.phases", issues, validatePhase);
@@ -249,6 +252,62 @@ function validateDiscoveryHandoff(
   validateCommandActor(input.approvedBy, `${path}.approvedBy`, issues);
 }
 
+function validateProjectPlan(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["startingPoint", "basis", "publishedAt", "publishedBy"],
+    [],
+    issues,
+  );
+  if (!input) return;
+  oneOf(
+    input.startingPoint,
+    ["idea-or-spec", "existing-cad", "existing-product"],
+    `${path}.startingPoint`,
+    issues,
+  );
+  validateApprovedDiscoveryBasis(input.basis, `${path}.basis`, issues);
+  isoDateTime(input.publishedAt, `${path}.publishedAt`, issues);
+  validateCommandActor(input.publishedBy, `${path}.publishedBy`, issues);
+}
+
+function validateApprovedDiscoveryBasis(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "kind",
+      "discoveryId",
+      "snapshotId",
+      "revision",
+      "briefId",
+      "approvedBriefFingerprint",
+    ],
+    [],
+    issues,
+  );
+  if (!input) return;
+  literal(input.kind, "approved-discovery", `${path}.kind`, issues);
+  nonEmptyString(input.discoveryId, `${path}.discoveryId`, issues);
+  nonEmptyString(input.snapshotId, `${path}.snapshotId`, issues);
+  positiveInteger(input.revision, `${path}.revision`, issues);
+  nonEmptyString(input.briefId, `${path}.briefId`, issues);
+  validateFingerprint(
+    input.approvedBriefFingerprint,
+    `${path}.approvedBriefFingerprint`,
+    issues,
+  );
+}
+
 function validateSnapshotRef(
   value: unknown,
   path: string,
@@ -356,7 +415,7 @@ function validateWorkItem(
       "decisionIds",
       "blockerIds",
     ],
-    [],
+    ["operation"],
     issues,
   );
   if (!input) return;
@@ -384,6 +443,9 @@ function validateWorkItem(
     issues,
   );
   oneOf(input.owner, ["human", "agent", "shared"], `${path}.owner`, issues);
+  if (input.operation !== undefined) {
+    validateOperationRef(input.operation, `${path}.operation`, issues);
+  }
   stringArray(input.dependsOnWorkItemIds, `${path}.dependsOnWorkItemIds`, issues);
   validateArray(
     input.evidenceRefs,
@@ -393,6 +455,108 @@ function validateWorkItem(
   );
   stringArray(input.decisionIds, `${path}.decisionIds`, issues);
   stringArray(input.blockerIds, `${path}.blockerIds`, issues);
+}
+
+function validateOperationRef(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(value, path, ["id", "version", "bindings"], [], issues);
+  if (!input) return;
+  nonEmptyString(input.id, `${path}.id`, issues);
+  nonEmptyString(input.version, `${path}.version`, issues);
+  validateArray(
+    input.bindings,
+    `${path}.bindings`,
+    issues,
+    validateOperationBinding,
+  );
+  if (Array.isArray(input.bindings)) {
+    uniqueStrings(
+      input.bindings.flatMap((binding) =>
+        binding && typeof binding === "object" && !Array.isArray(binding) &&
+          typeof (binding as Record<string, unknown>).name === "string"
+          ? [(binding as Record<string, unknown>).name as string]
+          : []
+      ),
+      `${path}.bindings`,
+      issues,
+    );
+  }
+}
+
+function validateOperationBinding(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(value, path, ["name", "source"], [], issues);
+  if (!input) return;
+  nonEmptyString(input.name, `${path}.name`, issues);
+  const source = exactRecord(
+    input.source,
+    `${path}.source`,
+    ["kind"],
+    ["answerId", "decisionId", "key", "reference"],
+    issues,
+  );
+  if (!source) return;
+  switch (source.kind) {
+    case "approved-discovery":
+      return;
+    case "discovery-answer": {
+      const withAnswer = exactRecord(
+        input.source,
+        `${path}.source`,
+        ["kind", "answerId"],
+        [],
+        issues,
+      );
+      if (withAnswer) {
+        nonEmptyString(withAnswer.answerId, `${path}.source.answerId`, issues);
+      }
+      return;
+    }
+    case "decision-parameter": {
+      const withDecision = exactRecord(
+        input.source,
+        `${path}.source`,
+        ["kind", "decisionId", "key"],
+        [],
+        issues,
+      );
+      if (withDecision) {
+        nonEmptyString(withDecision.decisionId, `${path}.source.decisionId`, issues);
+        nonEmptyString(withDecision.key, `${path}.source.key`, issues);
+      }
+      return;
+    }
+    case "thread-entity": {
+      const withReference = exactRecord(
+        input.source,
+        `${path}.source`,
+        ["kind", "reference"],
+        [],
+        issues,
+      );
+      if (withReference) {
+        validateEvidenceRef(
+          withReference.reference,
+          `${path}.source.reference`,
+          issues,
+        );
+      }
+      return;
+    }
+    default:
+      issue(
+        issues,
+        "invalid_enum",
+        `${path}.source.kind`,
+        "must be approved-discovery, discovery-answer, decision-parameter or thread-entity",
+      );
+  }
 }
 
 function validateAgentRun(
@@ -720,6 +884,7 @@ function validateCommandReceipt(
     input.type,
     [
       "project.create-from-discovery",
+      "project.plan-publish",
       "decision.propose",
       "decision.approve",
       "decision.reject",
@@ -932,6 +1097,7 @@ function validateInvariants(
       );
     }
   }
+  validatePlanInvariants(project, issues);
   project.threadSnapshots.forEach((reference, index) => {
     if (reference.subjectId !== project.project.subjectId) {
       issue(
@@ -979,6 +1145,20 @@ function validateInvariants(
   );
 
   allEvidenceRefs(project).forEach(({ reference, path }) => {
+    if (
+      !declaredSnapshots.has(
+        snapshotKey(reference.snapshotId, reference.snapshotRevision),
+      )
+    ) {
+      issue(
+        issues,
+        "unknown_thread_snapshot",
+        path,
+        "references an undeclared ThreadSnapshot revision",
+      );
+    }
+  });
+  operationThreadEntityRefs(project).forEach(({ reference, path }) => {
     if (
       !declaredSnapshots.has(
         snapshotKey(reference.snapshotId, reference.snapshotRevision),
@@ -1100,6 +1280,28 @@ function validateInvariants(
         );
       }
     });
+    item.operation?.bindings.forEach((binding, bindingIndex) => {
+      const bindingPath = `${path}.operation.bindings[${bindingIndex}].source`;
+      if (binding.source.kind === "approved-discovery" && !project.plan) {
+        issue(
+          issues,
+          "missing_reference",
+          bindingPath,
+          "approved-discovery input is valid only for a project with an agent-published plan",
+        );
+      }
+      if (binding.source.kind === "decision-parameter") {
+        const decision = decisionById.get(binding.source.decisionId);
+        if (!decision || !item.decisionIds.includes(decision.id)) {
+          issue(
+            issues,
+            "missing_reference",
+            bindingPath,
+            "must reference a decision bound to the same work item",
+          );
+        }
+      }
+    });
     item.blockerIds.forEach((id, blockerIndex) => {
       const blocker = blockerById.get(id);
       if (
@@ -1181,6 +1383,88 @@ function validateInvariants(
   (project.commandReceipts ?? []).forEach((receipt, index) =>
     validateCommandReceiptInvariant(receipt, index, project, issues)
   );
+}
+
+function validatePlanInvariants(
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const plan = project.plan;
+  const path = "$.plan";
+  if (!plan) return;
+  if (!project.discoveryHandoff) {
+    issue(
+      issues,
+      "missing_reference",
+      path,
+      "an agent-published plan requires an approved discovery handoff",
+    );
+    return;
+  }
+  const handoff = project.discoveryHandoff;
+  if (
+    plan.basis.discoveryId !== handoff.discoveryId ||
+    plan.basis.snapshotId !== handoff.snapshotId ||
+    plan.basis.revision !== handoff.revision ||
+    plan.basis.briefId !== handoff.briefId ||
+    fingerprintKey(plan.basis.approvedBriefFingerprint) !==
+      fingerprintKey(handoff.approvedBriefFingerprint)
+  ) {
+    issue(
+      issues,
+      "approval_scope_mismatch",
+      `${path}.basis`,
+      "must exactly match the immutable approved discovery handoff",
+    );
+  }
+  if (plan.publishedBy.origin !== "agent") {
+    issue(
+      issues,
+      "command_authority_mismatch",
+      `${path}.publishedBy.origin`,
+      "only an agent may publish a project path",
+    );
+  }
+  if (Date.parse(plan.publishedAt) > Date.parse(project.generatedAt)) {
+    issue(
+      issues,
+      "invalid_chronology",
+      `${path}.publishedAt`,
+      "cannot be later than the project snapshot generation time",
+    );
+  }
+  if (project.phases.length === 0 || project.workItems.length === 0) {
+    issue(
+      issues,
+      "missing_plan_content",
+      path,
+      "must declare at least one phase and one work item",
+    );
+  }
+  project.workItems.forEach((item, index) => {
+    if (!item.operation) {
+      issue(
+        issues,
+        "missing_operation",
+        `$.workItems[${index}].operation`,
+        "agent-published work must reference a registered operation",
+      );
+    }
+  });
+  const matchingReceipt = project.commandReceipts?.some((receipt) =>
+    receipt.type === "project.plan-publish" &&
+    receipt.actor.id === plan.publishedBy.id &&
+    receipt.actor.origin === plan.publishedBy.origin &&
+    Date.parse(receipt.appliedAt) === Date.parse(plan.publishedAt)
+  );
+  if (!matchingReceipt) {
+    issue(
+      issues,
+      "missing_plan_receipt",
+      path,
+      "must be anchored by an agent project.plan-publish receipt",
+    );
+  }
 }
 
 function validateRunInvariant(
@@ -1613,6 +1897,14 @@ function validateCommandReceiptInvariant(
       "project.create-from-discovery is valid only as the first receipt of a discovery handoff",
     );
   }
+  if (receipt.type === "project.plan-publish" && receipt.actor.origin !== "agent") {
+    issue(
+      issues,
+      "command_authority_mismatch",
+      `${path}.actor.origin`,
+      "project.plan-publish requires agent authority",
+    );
+  }
   if (
     isDiscoveryHandoffCreation && project.discoveryHandoff &&
     Date.parse(receipt.appliedAt) < Date.parse(project.discoveryHandoff.approvedAt)
@@ -1754,6 +2046,23 @@ function allEvidenceRefs(
   project.approvals.forEach((item, index) =>
     add(item.inputEvidenceRefs, `$.approvals[${index}].inputEvidenceRefs`)
   );
+  return result;
+}
+
+function operationThreadEntityRefs(
+  project: EngineeringProjectSnapshot,
+): Array<{ reference: EngineeringThreadEntityRef; path: string }> {
+  const result: Array<{ reference: EngineeringThreadEntityRef; path: string }> = [];
+  project.workItems.forEach((item, workItemIndex) => {
+    item.operation?.bindings.forEach((binding, bindingIndex) => {
+      if (binding.source.kind !== "thread-entity") return;
+      result.push({
+        reference: binding.source.reference,
+        path:
+          `$.workItems[${workItemIndex}].operation.bindings[${bindingIndex}].source.reference`,
+      });
+    });
+  });
   return result;
 }
 
