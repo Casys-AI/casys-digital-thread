@@ -215,6 +215,54 @@ Deno.test("native Workbench V2 documentary BFF round-trips through the browser H
   }
 });
 
+Deno.test("native Workbench holds an unpublished SysON seed r2 behind documentary r1", async () => {
+  const r1 = documentaryThreadSnapshot("drone-documentary-fixture");
+  const unpublishedR2 = unpublishedSeedThreadSnapshot(r1);
+  const project = documentaryProjectWithPublishingSeed(r1);
+  const liveUpdates = new LiveThreadUpdateStore();
+  await liveUpdates.append({
+    subjectId: r1.subject.id,
+    runId: "run-seed-syson",
+    operationId: "architecture.seed-syson-model:syson_element_get",
+    baseRevision: 1,
+    state: "fresh",
+    recordedAt: "2026-08-02T12:11:30.000Z",
+    graph: {
+      nodes: [{
+        id: "private-provider-result",
+        ref: { kind: "artifact", id: "private-provider-result" },
+        entityKind: "artifact",
+        label: "provider raw result must not cross",
+        system: "private",
+        freshness: "fresh",
+        summary: "private",
+      }],
+      edges: [],
+    },
+  });
+  const handler = createNativeWorkbenchHandler({
+    store: new VersionedReadOnlyStore(unpublishedR2, [r1, unpublishedR2]),
+    projectStore: new ReadOnlyProjectStore(project),
+    subjectId: r1.subject.id,
+    html: "unused",
+    liveUpdates,
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+  const payload = JSON.stringify(body);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.surface, "documentary");
+  assertEquals(body.documentary.record.snapshotId, r1.id);
+  assertEquals(body.documentary.technicalStart.state, "publishing");
+  assertEquals("thread" in body, false);
+  assertEquals(payload.includes(unpublishedR2.id), false);
+  assertEquals(payload.includes("provider raw result must not cross"), false);
+});
+
 Deno.test("native Workbench V2 planning BFF round-trips through the browser HTTP client", async () => {
   const projectId = "drone-documentary-fixture-project";
   const subjectId = `project:${projectId}`;
@@ -1468,6 +1516,115 @@ function documentaryProjectSnapshot(
   });
 }
 
+/** A seed that has read r2 but has not yet attached it to the project. */
+function documentaryProjectWithPublishingSeed(
+  thread: ThreadSnapshot,
+): EngineeringProjectSnapshot {
+  const baseline = documentaryProjectSnapshot(thread);
+  return validateEngineeringProjectSnapshot({
+    ...structuredClone(baseline),
+    id: `${baseline.project.id}:r3:seed-publishing`,
+    revision: 3,
+    previous: { snapshotId: baseline.id, revision: baseline.revision },
+    generatedAt: "2026-08-02T12:11:00.000Z",
+    phases: [
+      ...baseline.phases,
+      {
+        id: "architecture",
+        name: "System model",
+        order: 2,
+        description: "Create the first empty editable model container.",
+        workItemIds: ["seed-syson-model"],
+        requiredDecisionIds: [],
+        evidenceRefs: [],
+      },
+    ],
+    workItems: [
+      ...baseline.workItems,
+      {
+        id: "seed-syson-model",
+        phaseId: "architecture",
+        title: "Create the first editable system model",
+        description: "Create and read back only an empty SysON model container.",
+        kind: "architect",
+        status: "in-progress",
+        owner: "agent",
+        dependsOnWorkItemIds: ["record-approved-discovery"],
+        evidenceRefs: [],
+        decisionIds: [],
+        blockerIds: [],
+        operation: {
+          id: "architecture.seed-syson-model",
+          version: "1",
+          bindings: [{
+            name: "approvedDiscovery",
+            source: { kind: "approved-discovery" },
+          }],
+        },
+      },
+    ],
+    agentRuns: [{
+      id: "run-seed-syson",
+      workItemId: "seed-syson-model",
+      status: "publishing",
+      summary: "Safe fixture summary.",
+      queuedAt: "2026-08-02T12:10:00.000Z",
+      startedAt: "2026-08-02T12:10:10.000Z",
+      claimedAt: "2026-08-02T12:10:10.000Z",
+      claimedBy: { id: "agent:fixture", origin: "agent" },
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: thread.id,
+        revision: thread.revision,
+        subjectId: thread.subject.id,
+      },
+      inputFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+      evidenceRefs: [],
+      statusHistory: [{
+        commandId: "fixture-queue-seed",
+        status: "queued",
+        at: "2026-08-02T12:10:00.000Z",
+        actor: { id: "human:fixture", origin: "human" },
+        summary: "Queued.",
+      }, {
+        commandId: "fixture-claim-seed",
+        status: "running",
+        at: "2026-08-02T12:10:10.000Z",
+        actor: { id: "agent:fixture", origin: "agent" },
+        summary: "Running.",
+      }, {
+        commandId: "fixture-publish-seed",
+        status: "publishing",
+        at: "2026-08-02T12:11:00.000Z",
+        actor: { id: "agent:fixture", origin: "agent" },
+        summary: "Persisting r2.",
+      }],
+    }],
+    commandReceipts: [
+      ...(baseline.commandReceipts ?? []),
+      projectReceipt(
+        "fixture-publish-seed",
+        "agent-run.publish",
+        { id: "agent:fixture", origin: "agent" },
+        "2026-08-02T12:10:59.000Z",
+        "2026-08-02T12:11:00.000Z",
+        `${baseline.project.id}:r3:seed-publishing`,
+        3,
+      ),
+    ],
+  });
+}
+
+function unpublishedSeedThreadSnapshot(r1: ThreadSnapshot): ThreadSnapshot {
+  return validateThreadSnapshot({
+    ...structuredClone(r1),
+    id: `${r1.id}:unattached-r2`,
+    revision: 2,
+    generatedAt: "2026-08-02T12:11:20.000Z",
+    previous: { snapshotId: r1.id, revision: r1.revision },
+  });
+}
+
 function documentaryThreadSnapshot(subjectId: string): ThreadSnapshot {
   const digest = "d".repeat(64);
   const fingerprint = { algorithm: "sha256", digest };
@@ -1545,7 +1702,10 @@ function documentaryThreadSnapshot(subjectId: string): ThreadSnapshot {
 
 function projectReceipt(
   commandId: string,
-  type: "project.create-from-discovery" | "project.plan-publish",
+  type:
+    | "project.create-from-discovery"
+    | "project.plan-publish"
+    | "agent-run.publish",
   actor: { id: string; origin: "human" | "agent" },
   issuedAt: string,
   appliedAt: string,

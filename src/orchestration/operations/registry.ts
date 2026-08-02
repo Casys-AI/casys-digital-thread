@@ -16,6 +16,15 @@ export type EngineeringOperationBasisKind =
   | "approved-discovery"
   | "thread-snapshot";
 
+/**
+ * Publishing a plan checks the reviewed descriptor and its declared state
+ * bindings. Queueing additionally checks the concrete immutable basis that
+ * the run will consume. Keeping those two moments explicit prevents a later
+ * operation from inheriting the discovery basis merely because its plan was
+ * authored from discovery.
+ */
+export type EngineeringOperationValidationStage = "planning" | "queue";
+
 export type EngineeringOperationRiskClass = "low" | "consequential";
 
 export type EngineeringOperationBindingSourceKind =
@@ -41,15 +50,23 @@ export interface RegisteredEngineeringOperation {
   readonly bindings: readonly RegisteredEngineeringOperationBinding[];
 }
 
-/** Input which a plan publisher must resolve against this code-owned registry. */
-export interface RegisteredEngineeringOperationInput {
-  readonly operation: EngineeringOperationRef;
-  readonly basisKind: EngineeringOperationBasisKind;
-}
+/** Input which a plan publisher or queue gate resolves against the registry. */
+export type RegisteredEngineeringOperationInput =
+  | {
+    readonly operation: EngineeringOperationRef;
+    readonly stage: "planning";
+  }
+  | {
+    readonly operation: EngineeringOperationRef;
+    readonly stage: "queue";
+    readonly basisKind: EngineeringOperationBasisKind;
+  };
 
 export interface ValidatedRegisteredEngineeringOperationInput {
   readonly operation: RegisteredEngineeringOperation;
-  readonly basisKind: EngineeringOperationBasisKind;
+  readonly stage: EngineeringOperationValidationStage;
+  /** Present only when a concrete run is being queued. */
+  readonly basisKind?: EngineeringOperationBasisKind;
   readonly bindings: readonly EngineeringOperationInputBinding[];
 }
 
@@ -96,6 +113,23 @@ const OPERATIONS = [
     description:
       "Create the first reviewable engineering baseline from the approved discovery brief.",
     workItemKind: "define",
+    riskClass: "consequential",
+    bindings: [{
+      name: "approvedDiscovery",
+      allowedSourceKinds: ["approved-discovery"],
+    }],
+  },
+  {
+    id: "architecture.seed-syson-model",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    // The plan may be authored from discovery, but execution begins only
+    // from the exact documentary ThreadSnapshot created by the first run.
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Create the first editable system model",
+    description:
+      "Create a traceable SysML system-model container after the approved discovery has been recorded.",
+    workItemKind: "architect",
     riskClass: "consequential",
     bindings: [{
       name: "approvedDiscovery",
@@ -195,9 +229,11 @@ export function getRegisteredIntakeOperation(
 export function validateRegisteredEngineeringOperationInput(
   value: unknown,
 ): ValidatedRegisteredEngineeringOperationInput {
+  const rawInput = object(value, "operation input");
+  const stage = validationStageValue(rawInput.stage, "operation input.stage");
   const input = exactRecord(
-    value,
-    ["operation", "basisKind"],
+    rawInput,
+    stage === "planning" ? ["operation", "stage"] : ["operation", "stage", "basisKind"],
     "operation input",
   );
   const referenceRecord = exactRecord(
@@ -212,11 +248,13 @@ export function validateRegisteredEngineeringOperationInput(
       "operation input.operation.version",
     ),
   };
-  const basisKind = basisKindValue(input.basisKind, "operation input.basisKind");
   const bindings = bindingsValue(referenceRecord.bindings);
   const operation = requireRegisteredEngineeringOperation(reference);
+  const basisKind = stage === "queue"
+    ? basisKindValue(input.basisKind, "operation input.basisKind")
+    : undefined;
 
-  if (!operation.allowedBasisKinds.includes(basisKind)) {
+  if (basisKind && !operation.allowedBasisKinds.includes(basisKind)) {
     throw new EngineeringOperationRegistryError(
       "unsupported_basis",
       `${operationLabel(reference)} does not accept a ${basisKind} basis`,
@@ -226,7 +264,8 @@ export function validateRegisteredEngineeringOperationInput(
 
   return {
     operation,
-    basisKind,
+    stage,
+    ...(basisKind ? { basisKind } : {}),
     bindings: bindings.map(copyInputBinding),
   };
 }
@@ -309,6 +348,14 @@ function bindingValue(
 function basisKindValue(value: unknown, path: string): EngineeringOperationBasisKind {
   if (value === "approved-discovery" || value === "thread-snapshot") return value;
   invalidInput(`${path} must be an approved basis kind`);
+}
+
+function validationStageValue(
+  value: unknown,
+  path: string,
+): EngineeringOperationValidationStage {
+  if (value === "planning" || value === "queue") return value;
+  invalidInput(`${path} must be planning or queue`);
 }
 
 function exactRecord(

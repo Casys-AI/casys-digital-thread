@@ -92,6 +92,31 @@ The in-process `digital-thread` provider currently owns only
 `thread_observations_normalize`. It preserves provider-native tool contracts while
 normalizing unit-bearing evidence and refusing a producer/consumer hash mismatch.
 
+## Fixed V2 SysON container seed (not workflow YAML)
+
+`architecture.seed-syson-model@1` is not authored as a workflow and does not accept a
+YAML graph, provider selection, tool name, arguments, SysML text, or result from the
+agent. It is the one implemented provider-backed V2 operation after the documentary
+`baseline.from-approved-discovery@1` has published its exact root `ThreadSnapshot` r1.
+
+The server owns the complete fixed sequence:
+
+```text
+exact documentary r1
+  -> create blank SysON project container
+  -> create blank SysML document + root package
+  -> read back root package
+  -> normalize identities + persist capture
+  -> publish descendant ThreadSnapshot r2
+```
+
+The r2 capture contains only normalized project, document, and root-package identities.
+It does not add a system architecture, requirements, CAD, simulation, measurement, or
+verification verdict. Before each non-idempotent SysON creation, the executor persists a
+write-ahead attempt record. If the provider outcome is unknown, it stops for explicit
+review instead of blindly retrying a possibly successful creation. This control flow is a
+closed executor contract, not a reusable YAML-node pattern.
+
 ## First mechanical slice
 
 [`coffee-machine-mechanical-v1.yaml`](../../config/thread-workflows/coffee-machine-mechanical-v1.yaml)

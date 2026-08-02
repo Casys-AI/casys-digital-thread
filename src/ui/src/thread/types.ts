@@ -100,7 +100,38 @@ export interface EngineeringDocumentaryWorkbenchSnapshot
       readonly status: "not-recorded";
       readonly message: string;
     };
+    /**
+     * Browser-safe live context for the one bounded SysON container seed. It
+     * deliberately contains no generic thread graph, provider identities,
+     * tool arguments, or raw structured results.
+     */
+    readonly technicalStart?: EngineeringDocumentaryTechnicalStart;
   };
+}
+
+export type EngineeringDocumentaryTechnicalStartState =
+  | "queued"
+  | "running"
+  | "publishing"
+  | "failed";
+
+export interface EngineeringDocumentaryTechnicalStart {
+  readonly kind: "sysml-container-seed";
+  readonly state: EngineeringDocumentaryTechnicalStartState;
+  readonly message: string;
+  readonly activity: {
+    readonly version: number;
+    readonly steps: readonly EngineeringDocumentaryTechnicalStartStep[];
+  };
+}
+
+export interface EngineeringDocumentaryTechnicalStartStep {
+  readonly id: "project-container" | "sysml-document" | "root-package";
+  readonly state: "running" | "fresh" | "failed";
+  readonly label: string;
+  readonly summary: string;
+  readonly recordedAt: string;
+  readonly predecessor?: "project-container" | "sysml-document";
 }
 
 /**
@@ -226,20 +257,100 @@ function isDocumentaryWorkbenchProjection(
     EngineeringDocumentaryWorkbenchSnapshot["documentary"]
   >;
   if (
-    !hasExactKeys(documentary, [
+    !hasAllowedKeys(documentary, [
       "status",
       "message",
       "record",
       "technicalEvidence",
+      "technicalStart",
     ]) ||
     documentary.status !== "recorded" ||
     typeof documentary.message !== "string" ||
     !isDocumentaryRecord(documentary.record) ||
-    !isDocumentaryTechnicalEvidence(documentary.technicalEvidence)
+    !isDocumentaryTechnicalEvidence(documentary.technicalEvidence) ||
+    (documentary.technicalStart !== undefined &&
+      !isDocumentaryTechnicalStart(documentary.technicalStart))
   ) {
     return false;
   }
   return true;
+}
+
+function isDocumentaryTechnicalStart(
+  value: unknown,
+): value is EngineeringDocumentaryTechnicalStart {
+  if (!value || typeof value !== "object") return false;
+  const start = value as Partial<EngineeringDocumentaryTechnicalStart>;
+  return hasExactKeys(start, ["kind", "state", "message", "activity"]) &&
+    start.kind === "sysml-container-seed" &&
+    isDocumentaryTechnicalStartState(start.state) &&
+    typeof start.message === "string" &&
+    isDocumentaryTechnicalStartActivity(start.activity);
+}
+
+function isDocumentaryTechnicalStartState(
+  value: unknown,
+): value is EngineeringDocumentaryTechnicalStartState {
+  return value === "queued" || value === "running" ||
+    value === "publishing" || value === "failed";
+}
+
+function isDocumentaryTechnicalStartActivity(
+  value: unknown,
+): value is EngineeringDocumentaryTechnicalStart["activity"] {
+  if (!value || typeof value !== "object") return false;
+  const activity = value as Partial<
+    EngineeringDocumentaryTechnicalStart["activity"]
+  >;
+  return hasExactKeys(activity, ["version", "steps"]) &&
+    typeof activity.version === "number" &&
+    Number.isSafeInteger(activity.version) && activity.version >= 0 &&
+    Array.isArray(activity.steps) &&
+    activity.steps.every(isDocumentaryTechnicalStartStep) &&
+    new Set(activity.steps.map((step) => step.id)).size ===
+      activity.steps.length;
+}
+
+function isDocumentaryTechnicalStartStep(
+  value: unknown,
+): value is EngineeringDocumentaryTechnicalStartStep {
+  if (!value || typeof value !== "object") return false;
+  const step = value as Partial<EngineeringDocumentaryTechnicalStartStep>;
+  if (
+    !hasAllowedKeys(step, [
+      "id",
+      "state",
+      "label",
+      "summary",
+      "recordedAt",
+      "predecessor",
+    ]) ||
+    !isDocumentaryTechnicalStartStepId(step.id) ||
+    !isDocumentaryTechnicalStartStepState(step.state) ||
+    typeof step.label !== "string" ||
+    typeof step.summary !== "string" ||
+    typeof step.recordedAt !== "string"
+  ) {
+    return false;
+  }
+  return step.id === "project-container"
+    ? step.predecessor === undefined
+    : step.id === "sysml-document"
+    ? step.predecessor === "project-container"
+    : step.predecessor === "sysml-document";
+}
+
+function isDocumentaryTechnicalStartStepId(
+  value: unknown,
+): value is EngineeringDocumentaryTechnicalStartStep["id"] {
+  return value === "project-container" || value === "sysml-document" ||
+    value === "root-package";
+}
+
+function isDocumentaryTechnicalStartStepState(
+  value: unknown,
+): value is EngineeringDocumentaryTechnicalStartStep["state"] {
+  return value === "running" || value === "fresh" || value === "failed";
 }
 
 function isDocumentaryRecord(

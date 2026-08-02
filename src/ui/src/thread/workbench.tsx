@@ -305,7 +305,7 @@ export function ThreadWorkbench({
         state: "success",
         commandKey,
         message:
-          "Authorization recorded. Your agent can now run the bounded documentary baseline.",
+          "Authorization recorded. Your agent can now run the reviewed bounded operation.",
       });
     } catch (reason: unknown) {
       if (reason instanceof ProjectCommandConflictError) {
@@ -363,6 +363,11 @@ export function ThreadWorkbench({
       <DocumentaryBaselineWorkbench
         workbench={workbench}
         streamStatus={streamStatus}
+        capability={workbench.capabilities?.operatorCommands}
+        actorId={operatorId}
+        onActorIdChange={setOperatorId}
+        feedback={commandFeedback}
+        onCommand={executePlanningCommand}
       />
     );
   }

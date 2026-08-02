@@ -18,9 +18,10 @@ deno task start
 ```
 
 The provider MCPs listen on ports `3009`, `3014`, and `3015`. The Console MCP server on
-port `3020` exposes bounded planning and documentary-baseline controls, not a generic
-CM-01 lifecycle. Docker Compose only starts providers; it neither executes the proof nor
-advances a project lifecycle.
+port `3020` exposes bounded planning plus two narrowly registered V2 controls: the
+provider-free documentary r1 and the r1-to-r2 blank SysON container seed. Neither is a
+generic CM-01 lifecycle. Docker Compose only starts providers; it neither executes the
+proof nor advances a project lifecycle.
 
 The native cockpit is optional during execution, but useful for watching the recorded
 operations arrive in Activity:
@@ -79,9 +80,14 @@ deno task thread:run-coffee-machine-mechanical \
 ```
 
 This is not an MCP execution endpoint and is not a way to create or complete a new
-project run. A future technical operation needs its own reviewed registered executor;
-the only current public V2 executor materializes the provider-free documentary baseline
-from an approved discovery.
+project run. The public V2 control plane can first materialize the provider-free
+documentary r1 from an approved discovery, then execute
+`architecture.seed-syson-model@1` only from that exact r1. That fixed server-owned seed
+creates a blank SysON project, document, and root package; reads the root back; and
+records normalized identities as r2. It accepts no arbitrary provider arguments or
+SysML text, refuses to blindly retry an uncertain creation, and creates no CM-01
+architecture, requirements, CAD, simulation, measurement, or verdict. Any CM-01
+technical operation still needs its own reviewed registered executor.
 
 The command executes this backend-only chain:
 

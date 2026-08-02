@@ -48,7 +48,7 @@ Workbench projection.
 | `project_snapshot`          | Read                     | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts               |
 | `project_plan_publish`      | Agent mutation           | Publish or revise an unexecuted plan from the exact approved discovery                               |
 | `project_decision_propose`  | Agent mutation           | Record a concrete typed proposal; human approval remains required                                    |
-| `project_agent_run_execute` | Bounded server execution | Materialize only the exact human-queued V2 documentary baseline; no provider arguments or proof data |
+| `project_agent_run_execute` | Bounded server execution | Dispatch the exact human-queued registered V2 run; no provider, argument, file, or result payload |
 
 Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
 identical command ID and payload returns its immutable result; changing the request
@@ -70,9 +70,20 @@ The proposal and planning commands append validated immutable revisions under
 `state/local/engineering-projects/`; they do not execute a workflow or a provider.
 `project_agent_run_execute` is deliberately different from a generic lifecycle command:
 it dispatches one registered, server-owned V2 operation after a human has queued that
-exact run. The currently implemented operation creates only an immutable documentary,
-pre-technical starting record from the approved discovery. It invokes no provider and
-does not create CAD, SysML, simulation, measurement, verification, or compliance proof.
+exact run. Two operations are implemented for the idea/spec path:
+
+1. `baseline.from-approved-discovery@1` records the exact approved discovery and plan as
+   the provider-free documentary `ThreadSnapshot` r1.
+2. `architecture.seed-syson-model@1` requires that exact r1, uses fixed server-owned
+   SysON calls to create a blank project container, blank SysML document, and root
+   package, reads the root back, normalizes its identities, and publishes r2.
+
+Neither caller can choose a provider, tool, argument, file, SysML text, or result.
+Before either non-idempotent SysON creation is dispatched, the executor writes a durable
+attempt record. An unknown provider outcome fails closed for review; it is never blindly
+retried. The resulting r2 records only an editable container identity, not a system
+architecture, requirement, CAD artifact, simulation, measurement, verification result,
+or compliance claim.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from SysON,
 build123d, Modelica, and ERPNext through an explicit identity manifest. Its captured
@@ -95,10 +106,12 @@ Provider-facing work belongs inside a registered bounded executor, not in public
 lifecycle calls. Such an executor owns the reviewed provider calls, canonical capture,
 snapshot persistence and read-back, attachment, validation, and its internal lifecycle
 transitions. A caller cannot supply a provider/tool name, raw arguments, result snapshot,
-or evidence payload to make that happen. The public V2 baseline executor does not make
-provider calls; a future technical operation needs its own reviewed executor and output
-contract. CM-01's mechanical r6 remains valuable historical evidence of a bounded loop,
-not a public CM-01 execution endpoint.
+or evidence payload to make that happen. The public V2 baseline executor makes no
+provider call; the one public provider-backed seed has the closed container-only contract
+above. Any architecture, requirements, CAD, simulation, measurement, or verification
+operation still needs its own reviewed executor and output contract. CM-01's mechanical
+r6 remains valuable historical evidence of a bounded loop, not a public CM-01 execution
+endpoint.
 
 ## Verification
 

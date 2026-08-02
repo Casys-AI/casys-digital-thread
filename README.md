@@ -104,11 +104,10 @@ and `modelica_run_get`.
 The console exposes one MCP App at `ui://casys-digital-thread/console`. Fleet and Runs
 compare the declared fleet with live MCP and Docker observations; those Console actions
 remain read-only. Runs also discovers persisted Modelica records through its two
-read-only tools; it never reads the sidecar's Docker volume. The same MCP server now
-exposes a separate, revision-bound project-control surface for agents. It can read a
-project, publish its bounded path, propose a decision, and execute the one already
-human-authorized documentary-baseline operation; it cannot approve, reject, or queue
-work.
+read-only tools; it never reads the sidecar's Docker volume. The same MCP server exposes
+a separate, revision-bound project-control surface for agents. It can read a project,
+publish its bounded path, propose a decision, and execute one already human-authorized
+registered operation; it cannot approve, reject, or queue work.
 
 For the exact, version-bound CoffeeMachine nominal run, the console also sends the
 measured temperature to `syson_constraint_evaluate` and displays the live result as a
@@ -173,12 +172,22 @@ local Discovery Workbench exposes that handoff as one explicit same-origin human
 For an idea/specification project, the first ready work item is the reviewed
 `baseline.from-approved-discovery@1` operation. A human authorizes that exact run; the
 backend captures the exact approved discovery and reviewed plan as an immutable,
-SHA-256-addressed document, then records the resulting root `ThreadSnapshot`. This is a
+SHA-256-addressed document, then records the root `ThreadSnapshot` r1. This is a
 **documentary, pre-technical baseline**: it proves the handoff and plan provenance, not
 a SysML model, CAD geometry, FEA result, measurement, requirement verdict, conformity,
-or certification. No generic technical executor is implied by this first capture.
-SysML, CAD, physics, measurement, and verification loops need their own later reviewed
-operations, provider evidence, and exact bindings.
+or certification.
+
+The next implemented operation is `architecture.seed-syson-model@1`. It accepts only
+that exact documentary r1 and uses a server-fixed SysON sequence to create a blank
+project container, blank SysML document, and root package, then reads the root package
+back. It captures only normalized provider identities and publishes their
+SHA-256-addressed record as descendant `ThreadSnapshot` r2. The caller supplies no
+provider name, tool name, arguments, SysML text, or result. Non-idempotent SysON writes
+are journaled before dispatch; an unknown outcome stops for review rather than blindly
+retrying. This r2 is an editable container identity, **not** a drone architecture,
+requirement, CAD artifact, simulation, measurement, or verdict. CAD, physics,
+measurement, and verification loops still need their own later reviewed operations,
+provider evidence, and exact bindings.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
 bootstraps a local CM-01 revision from read-only SysON inventory, one persisted Modelica

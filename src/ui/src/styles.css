@@ -10851,6 +10851,291 @@ button.erp-bom-row {
   line-height: 1.55;
 }
 
+/* A compact live feed for the bounded r1 -> r2 SysON container transition.
+   It intentionally sits beside the documentary record rather than turning
+   that record into a generic technical evidence dashboard. */
+.documentary-technical-start {
+  overflow: hidden;
+  border: 1px solid var(--thread-border);
+  border-left: 3px solid #5788a8;
+  background: #f5f9fc;
+}
+
+.documentary-technical-start[data-state="failed"] {
+  border-left-color: var(--thread-orange);
+  background: #fffaf4;
+}
+
+.documentary-technical-start > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.95rem 1.1rem 0.75rem;
+  border-bottom: 1px solid rgba(103, 134, 155, 0.24);
+}
+
+.documentary-technical-start > header p,
+.documentary-technical-start article small,
+.documentary-technical-start footer {
+  margin: 0 0 0.36rem;
+  color: #477593;
+  font: 700 0.5rem/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.documentary-technical-start > header h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(0.98rem, 1.6vw, 1.22rem)/1.13 "Iowan Old Style",
+    "Baskerville", Georgia, serif;
+}
+
+.documentary-technical-start-state {
+  flex: 0 0 auto;
+  padding: 0.33rem 0.48rem;
+  border: 1px solid #8baec3;
+  color: #285a7a;
+  background: #e8f2f8;
+  font: 700 0.47rem/1 var(--mono);
+  letter-spacing: 0.07em;
+}
+
+.documentary-technical-start[data-state="failed"] .documentary-technical-start-state {
+  border-color: #d7a16f;
+  color: #8a4a1f;
+  background: #fff0df;
+}
+
+.documentary-technical-start-message,
+.documentary-technical-start-empty {
+  margin: 0;
+  padding: 0.76rem 1.1rem;
+  color: var(--thread-muted);
+  font-size: 0.68rem;
+  line-height: 1.55;
+}
+
+.documentary-technical-start-feed {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0.1rem 1.1rem 0.8rem;
+  list-style: none;
+}
+
+.documentary-technical-start-feed > li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.documentary-technical-start-rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.documentary-technical-start-rail::before {
+  position: absolute;
+  top: 0;
+  bottom: -0.9rem;
+  width: 1px;
+  background: #b8ccda;
+  content: "";
+}
+
+.documentary-technical-start-feed > li:last-child .documentary-technical-start-rail::before {
+  bottom: 50%;
+}
+
+.documentary-technical-start-rail i {
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 1.12rem;
+  border: 2px solid #6e98b2;
+  border-radius: 999px;
+  background: #f5f9fc;
+}
+
+.documentary-technical-start-feed > li[data-state="running"] .documentary-technical-start-rail i {
+  border-color: #2b6c97;
+  background: #2b6c97;
+  box-shadow: 0 0 0 4px rgba(43, 108, 151, 0.12);
+}
+
+.documentary-technical-start-feed > li[data-state="failed"] .documentary-technical-start-rail i {
+  border-color: var(--thread-orange);
+  background: var(--thread-orange);
+}
+
+.documentary-technical-start article {
+  min-width: 0;
+  margin: 0.45rem 0;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid rgba(103, 134, 155, 0.25);
+  background: var(--thread-panel);
+}
+
+.documentary-technical-start article > header {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  gap: 0.58rem;
+  align-items: center;
+}
+
+.documentary-technical-start-provider {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: #285a7a;
+  background: #e5f0f7;
+  font: 750 0.5rem/1 var(--mono);
+  letter-spacing: 0.04em;
+}
+
+.documentary-technical-start article small {
+  display: block;
+  margin-bottom: 0.16rem;
+  color: #477593;
+  font-size: 0.44rem;
+}
+
+.documentary-technical-start article strong {
+  display: block;
+  overflow: hidden;
+  color: var(--thread-ink);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentary-technical-start article time {
+  color: var(--thread-muted);
+  font: 600 0.53rem/1 var(--mono);
+  white-space: nowrap;
+}
+
+.documentary-technical-start article > p {
+  margin: 0.52rem 0 0 31px;
+  color: var(--thread-muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.documentary-technical-start article > p.documentary-technical-start-relation {
+  margin-top: 0.48rem;
+  color: #477593;
+  font: 600 0.5rem/1.35 var(--mono);
+}
+
+.documentary-technical-start footer {
+  display: block;
+  margin: 0;
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid rgba(103, 134, 155, 0.22);
+  color: var(--thread-muted);
+  font: 500 0.57rem/1.5 var(--mono);
+  letter-spacing: 0.015em;
+}
+
+.documentary-technical-start-authorization {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.42fr) auto;
+  gap: 0.9rem 1.1rem;
+  align-items: end;
+  padding: 1.1rem;
+  border: 1px solid #9db8c9;
+  border-left: 3px solid #5788a8;
+  background: #f3f8fb;
+}
+
+.documentary-technical-start-authorization p {
+  margin: 0 0 0.36rem;
+  color: #477593;
+  font: 700 0.5rem/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.documentary-technical-start-authorization h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(0.96rem, 1.55vw, 1.2rem)/1.15 "Iowan Old Style",
+    "Baskerville", Georgia, serif;
+}
+
+.documentary-technical-start-authorization > div > span {
+  display: block;
+  margin-top: 0.36rem;
+  color: var(--thread-muted);
+  font-size: 0.66rem;
+  line-height: 1.5;
+}
+
+.documentary-technical-start-authorization label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--thread-muted);
+  font: 650 0.48rem/1.25 var(--mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.documentary-technical-start-authorization input {
+  min-width: 0;
+  padding: 0.58rem 0.65rem;
+  border: 1px solid #8baec3;
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+  font: 600 0.67rem/1.2 var(--mono);
+}
+
+.documentary-technical-start-authorization input:focus-visible {
+  outline: 2px solid #5788a8;
+  outline-offset: 2px;
+}
+
+.documentary-technical-start-authorize-button {
+  min-height: 2.25rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #285a7a;
+  color: #fff;
+  background: #2b6c97;
+  font: 700 0.58rem/1 var(--mono);
+  letter-spacing: 0.035em;
+  cursor: pointer;
+}
+
+.documentary-technical-start-authorize-button:hover:not(:disabled) {
+  background: #245b7e;
+}
+
+.documentary-technical-start-authorize-button:disabled {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-muted);
+  background: #e6edf1;
+  cursor: not-allowed;
+}
+
+.documentary-technical-start-command-feedback {
+  grid-column: 1 / -1;
+  color: var(--thread-muted);
+  font-size: 0.61rem;
+  line-height: 1.4;
+}
+
+.documentary-technical-start-command-feedback[data-state="error"],
+.documentary-technical-start-command-feedback[data-state="conflict"] {
+  color: #9a3a2a;
+}
+
+.documentary-technical-start-command-feedback[data-state="success"] {
+  color: #35745f;
+}
+
 .documentary-record-card {
   border: 1px solid var(--thread-border);
   background: var(--thread-panel);
@@ -10997,6 +11282,7 @@ button.erp-bom-row {
   .planning-next-step,
   .planning-baseline-authorization,
   .documentary-baseline-notice,
+  .documentary-technical-start-authorization,
   .documentary-next-step {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -11037,6 +11323,19 @@ button.erp-bom-row {
 
   .documentary-record-facts > div:last-child {
     border-bottom: 0;
+  }
+
+  .documentary-technical-start > header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .documentary-technical-start article > header {
+    grid-template-columns: 25px minmax(0, 1fr);
+  }
+
+  .documentary-technical-start article time {
+    grid-column: 2;
   }
 
   .thread-workbench .project-navigation {

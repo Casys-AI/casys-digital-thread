@@ -286,6 +286,7 @@ function verifyExactApprovedDiscoveryPlan(
   try {
     const registered = validateRegisteredEngineeringOperationInput({
       operation: workItem.operation,
+      stage: "queue",
       basisKind: "approved-discovery",
     });
     if (

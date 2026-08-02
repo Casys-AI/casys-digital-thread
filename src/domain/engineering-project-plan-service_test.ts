@@ -269,58 +269,145 @@ Deno.test("V2 initial completion uses a dedicated validator instead of a fabrica
   );
 });
 
-Deno.test("a subsequent V2 thread basis still requires a true descendant result", async () => {
-  const { discovery, project: initialProject } = await completedInitialProject();
-  const laterProject = structuredClone(initialProject) as Mutable<
-    EngineeringProjectSnapshot
-  >;
-  const phase = laterProject.phases[0];
-  phase.workItemIds.push("refine-after-baseline");
-  laterProject.workItems.push({
-    id: "refine-after-baseline",
-    phaseId: phase.id,
-    title: "Refine the established baseline",
-    description: "A later reviewed operation anchored to the exact baseline.",
-    kind: "design",
-    operation: {
-      id: "test.refine-after-baseline",
-      version: "1",
-      bindings: [],
-    },
-    status: "ready",
-    owner: "agent",
-    dependsOnWorkItemIds: [],
-    evidenceRefs: [],
-    decisionIds: [],
-    blockerIds: [],
-  });
-  const store = new MemoryProjectStore(
-    validateEngineeringProjectSnapshot(laterProject),
+Deno.test("a SysON seed can be planned but cannot be queued from discovery", async () => {
+  const discovery = discoveryFixture();
+  const service = planService(
+    new MemoryProjectStore(projectShell()),
+    discovery,
   );
+  const unsequenced = stagedPlanCommand(1);
+  const project = await service.publishPlan(AGENT, {
+    ...unsequenced,
+    commandId: "publish-unsequenced-seed-plan",
+    workItems: unsequenced.workItems.map((item) =>
+      item.id === "seed-syson-model" ? { ...item, dependsOnWorkItemIds: [] } : item
+    ),
+  });
+
+  assertEquals(
+    project.workItems.find((item) => item.id === "seed-syson-model")?.status,
+    "ready",
+  );
+  await assertCommandError(
+    () =>
+      service.queueRun(HUMAN, {
+        ...common(project.revision, "queue-unsequenced-seed-from-discovery"),
+        runId: "run:unsequenced-seed-from-discovery",
+        workItemId: "seed-syson-model",
+        summary: "A SysON seed cannot consume the discovery basis directly.",
+        basis: project.plan!.basis,
+      }),
+    "invalid_transition",
+  );
+});
+
+Deno.test("a staged V2 plan unlocks the SysON seed only after its documentary baseline", async () => {
+  const discovery = discoveryFixture();
+  const store = new MemoryProjectStore(projectShell());
+  const initialValidator = new RecordingInitialEvidenceValidator();
   const descendantValidator = new RecordingThreadEvidenceValidator();
   const service = planService(
     store,
     discovery,
-    undefined,
+    initialValidator,
     descendantValidator,
   );
-  const base = initialProject.threadSnapshots[0];
-  let project = await service.queueRun(HUMAN, {
-    ...common(initialProject.revision, "queue-thread-basis"),
-    runId: "run:refine-after-baseline",
-    workItemId: "refine-after-baseline",
-    summary: "Queue an exact post-baseline refinement.",
+  let project = await service.publishPlan(AGENT, stagedPlanCommand(1));
+  assertEquals(project.workItems.map((item) => [item.id, item.status]), [
+    ["establish-baseline", "ready"],
+    ["seed-syson-model", "planned"],
+  ]);
+  assertEquals(project.workItems[1].dependsOnWorkItemIds, ["establish-baseline"]);
+  assertEquals(project.workItems[1].operation, {
+    id: "architecture.seed-syson-model",
+    version: "1",
+    bindings: [{
+      name: "approvedDiscovery",
+      source: { kind: "approved-discovery" },
+    }],
+  });
+
+  project = await service.queueRun(HUMAN, {
+    ...common(project.revision, "queue-staged-initial-baseline"),
+    runId: "run:staged-initial-baseline",
+    workItemId: "establish-baseline",
+    summary: "Queue the documentary baseline that authorizes later model work.",
+    basis: project.plan!.basis,
+  });
+  project = await service.claimRun(AGENT, {
+    ...common(project.revision, "claim-staged-initial-baseline"),
+    runId: "run:staged-initial-baseline",
+    summary: "Agent starts the bounded documentary baseline.",
+  });
+  project = await service.publishRun(AGENT, {
+    ...common(project.revision, "publish-staged-initial-baseline"),
+    runId: "run:staged-initial-baseline",
+    summary: "The documentary baseline is ready for validation.",
+  });
+  const base = {
+    snapshotId: `${PROJECT_ID}:thread:r1:staged-initial`,
+    revision: 1,
+    subjectId: `project:${PROJECT_ID}`,
+  };
+  project = await service.completeRun(AGENT, {
+    ...common(project.revision, "complete-staged-initial-baseline"),
+    runId: "run:staged-initial-baseline",
+    summary: "Complete the documentary baseline before the system-model seed.",
+    resultSnapshot: base,
+    evidenceRefs: [{
+      snapshotId: base.snapshotId,
+      snapshotRevision: base.revision,
+      kind: "artifact",
+      id: "staged-initial-baseline-manifest",
+    }],
+  });
+
+  assertEquals(initialValidator.calls, 1);
+  assertEquals(project.threadSnapshots, [base]);
+  assertEquals(project.workItems.map((item) => [item.id, item.status]), [
+    ["establish-baseline", "completed"],
+    ["seed-syson-model", "ready"],
+  ]);
+
+  await assertCommandError(
+    () =>
+      service.queueRun(HUMAN, {
+        ...common(project.revision, "queue-seed-with-discovery-basis"),
+        runId: "run:seed-with-discovery-basis",
+        workItemId: "seed-syson-model",
+        summary: "A later operation cannot reuse the discovery basis.",
+        basis: project.plan!.basis,
+      }),
+    "invalid_transition",
+  );
+  await assertCommandError(
+    () =>
+      service.queueRun(HUMAN, {
+        ...common(project.revision, "queue-seed-with-forged-thread-basis"),
+        runId: "run:seed-with-forged-thread-basis",
+        workItemId: "seed-syson-model",
+        summary: "A later operation cannot use an undeclared ThreadSnapshot.",
+        basis: { kind: "thread-snapshot", ...base, snapshotId: "other:r1" },
+      }),
+    "invalid_input",
+  );
+
+  project = await service.queueRun(HUMAN, {
+    ...common(project.revision, "queue-syson-seed"),
+    runId: "run:seed-syson-model",
+    workItemId: "seed-syson-model",
+    summary: "Queue the exact post-baseline system-model seed.",
     basis: { kind: "thread-snapshot", ...base },
   });
   project = await service.claimRun(AGENT, {
-    ...common(project.revision, "claim-thread-basis"),
-    runId: "run:refine-after-baseline",
-    summary: "Agent claims the post-baseline refinement.",
+    ...common(project.revision, "claim-syson-seed"),
+    runId: "run:seed-syson-model",
+    summary: "Agent claims the post-baseline system-model seed.",
   });
   project = await service.publishRun(AGENT, {
-    ...common(project.revision, "publish-thread-basis"),
-    runId: "run:refine-after-baseline",
-    summary: "The refinement result is ready for validation.",
+    ...common(project.revision, "publish-syson-seed"),
+    runId: "run:seed-syson-model",
+    summary: "The system-model result is ready for validation.",
   });
   const evidenceRefs = [{
     snapshotId: `${PROJECT_ID}:thread:r2:refined`,
@@ -331,9 +418,9 @@ Deno.test("a subsequent V2 thread basis still requires a true descendant result"
   await assertCommandError(
     () =>
       service.completeRun(AGENT, {
-        ...common(project.revision, "complete-thread-basis-same-id"),
-        runId: "run:refine-after-baseline",
-        summary: "Attempt to publish a non-descendant result.",
+        ...common(project.revision, "complete-syson-seed-same-id"),
+        runId: "run:seed-syson-model",
+        summary: "Attempt to publish a non-descendant system-model result.",
         resultSnapshot: {
           snapshotId: base.snapshotId,
           revision: base.revision + 1,
@@ -346,9 +433,9 @@ Deno.test("a subsequent V2 thread basis still requires a true descendant result"
   assertEquals(descendantValidator.calls, 0);
 
   project = await service.completeRun(AGENT, {
-    ...common(project.revision, "complete-thread-basis"),
-    runId: "run:refine-after-baseline",
-    summary: "Publish a true descendant refinement result.",
+    ...common(project.revision, "complete-syson-seed"),
+    runId: "run:seed-syson-model",
+    summary: "Publish a true descendant system-model result.",
     resultSnapshot: {
       snapshotId: `${PROJECT_ID}:thread:r2:refined`,
       revision: 2,
@@ -362,6 +449,60 @@ Deno.test("a subsequent V2 thread basis still requires a true descendant result"
     kind: "thread-snapshot",
     ...base,
   });
+});
+
+Deno.test("V2 queue revalidates a persisted post-baseline operation against its concrete basis", async () => {
+  const { discovery, project: initialProject } = await completedInitialProject();
+  const alteredProject = structuredClone(initialProject) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const phase = alteredProject.phases[0];
+  phase.workItemIds.push("capture-existing-cad-after-baseline");
+  alteredProject.workItems.push({
+    id: "capture-existing-cad-after-baseline",
+    phaseId: phase.id,
+    title: "Capture an existing CAD baseline",
+    description: "A deliberately altered persisted operation for queue-boundary proof.",
+    kind: "define",
+    operation: {
+      id: "baseline.capture-existing-cad",
+      version: "1",
+      bindings: [
+        {
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        },
+        {
+          name: "cadSource",
+          source: { kind: "discovery-answer", answerId: "stored-cad-source" },
+        },
+      ],
+    },
+    status: "ready",
+    owner: "agent",
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: [],
+    blockerIds: [],
+  });
+  const store = new MemoryProjectStore(
+    validateEngineeringProjectSnapshot(alteredProject),
+  );
+  const service = planService(store, discovery);
+  const base = initialProject.threadSnapshots[0];
+
+  await assertCommandError(
+    () =>
+      service.queueRun(HUMAN, {
+        ...common(initialProject.revision, "queue-unsupported-post-baseline-operation"),
+        runId: "run:unsupported-post-baseline-operation",
+        workItemId: "capture-existing-cad-after-baseline",
+        summary: "Refuse a post-baseline operation that accepts no ThreadSnapshot.",
+        basis: { kind: "thread-snapshot", ...base },
+      }),
+    "invalid_input",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, initialProject.revision);
 });
 
 Deno.test("an unexecuted plan can be revised, which lets the agent adapt before a consequential run", async () => {
@@ -553,6 +694,41 @@ function planCommand(expectedRevision: number): PublishProjectPlanCommand {
       },
     }],
     requiredDecisions: [],
+  };
+}
+
+function stagedPlanCommand(expectedRevision: number): PublishProjectPlanCommand {
+  const baseline = planCommand(expectedRevision);
+  return {
+    ...baseline,
+    commandId: "publish-drone-staged-plan",
+    phases: [
+      ...baseline.phases,
+      {
+        id: "architecture",
+        name: "System model",
+        description:
+          "Create the first traceable system-model container after the documentary baseline.",
+      },
+    ],
+    workItems: [
+      ...baseline.workItems,
+      {
+        id: "seed-syson-model",
+        phaseId: "architecture",
+        owner: "agent",
+        dependsOnWorkItemIds: ["establish-baseline"],
+        decisionIds: [],
+        operation: {
+          id: "architecture.seed-syson-model",
+          version: "1",
+          bindings: [{
+            name: "approvedDiscovery",
+            source: { kind: "approved-discovery" },
+          }],
+        },
+      },
+    ],
   };
 }
 

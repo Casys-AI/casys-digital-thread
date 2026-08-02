@@ -4,6 +4,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
 import type {
   LiveThreadUpdate,
   LiveThreadUpdateState,
@@ -62,7 +63,45 @@ export interface EngineeringDocumentaryWorkbenchSnapshot
       status: "not-recorded";
       message: string;
     };
+    /**
+     * The one bounded technical operation that may run while r1 remains the
+     * only canonical snapshot. This is a browser-safe progress projection,
+     * never a provider result or a second, invented technical graph.
+     */
+    technicalStart?: EngineeringDocumentaryTechnicalStart;
   };
+}
+
+export type EngineeringDocumentaryTechnicalStartState =
+  | "queued"
+  | "running"
+  | "publishing"
+  | "failed";
+
+/**
+ * A deliberately closed projection for the SysON container seed. The server
+ * derives each step from a known run and known live-milestone IDs; neither
+ * provider IDs, tool arguments nor raw results cross this BFF boundary.
+ */
+export interface EngineeringDocumentaryTechnicalStart {
+  readonly kind: "sysml-container-seed";
+  readonly state: EngineeringDocumentaryTechnicalStartState;
+  readonly message: string;
+  readonly activity: {
+    /** Latest relevant live-journal sequence, not a thread revision. */
+    readonly version: number;
+    readonly steps: readonly EngineeringDocumentaryTechnicalStartStep[];
+  };
+}
+
+export interface EngineeringDocumentaryTechnicalStartStep {
+  readonly id: "project-container" | "sysml-document" | "root-package";
+  readonly state: "running" | "fresh" | "failed";
+  readonly label: string;
+  readonly summary: string;
+  readonly recordedAt: string;
+  /** The declared containment relation to the preceding visible step. */
+  readonly predecessor?: "project-container" | "sysml-document";
 }
 
 /**
@@ -170,7 +209,10 @@ export function projectEngineeringWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
   thread: LiveThreadWorkbenchSnapshot,
   currentThreadRevision: number,
-  options: { operatorCommandsEnabled?: boolean } = {},
+  options: {
+    operatorCommandsEnabled?: boolean;
+    liveUpdates?: readonly LiveThreadUpdate[];
+  } = {},
 ): EngineeringEvidenceWorkbenchSnapshot | EngineeringDocumentaryWorkbenchSnapshot {
   if (project.project.subjectId !== thread.subject.id) {
     throw new Error(
@@ -199,6 +241,10 @@ export function projectEngineeringWorkbenchSnapshot(
     )
   ) {
     const document = thread.artifacts[0]!;
+    const technicalStart = projectDocumentaryTechnicalStart(
+      project,
+      options.liveUpdates ?? [],
+    );
     return {
       schemaVersion: ENGINEERING_WORKBENCH_SCHEMA,
       surface: "documentary",
@@ -225,8 +271,12 @@ export function projectEngineeringWorkbenchSnapshot(
           message:
             "No CAD, SysML, simulation, measurement, requirement evaluation or compliance proof is recorded yet.",
         },
+        ...(technicalStart ? { technicalStart } : {}),
       },
-      capabilities: noOperatorCommands(project),
+      capabilities: documentaryOperatorCommands(
+        project,
+        options.operatorCommandsEnabled === true,
+      ),
     };
   }
   return {
@@ -243,6 +293,159 @@ export function projectEngineeringWorkbenchSnapshot(
     },
     capabilities: operatorCommands(project, options.operatorCommandsEnabled === true),
   };
+}
+
+const SYSON_MODEL_SEED_LIVE_STEPS = [
+  {
+    operationId: `${SYSON_MODEL_SEED_OPERATION.id}:syson_project_create`,
+    id: "project-container",
+    label: "SysON project container",
+    predecessor: undefined,
+  },
+  {
+    operationId: `${SYSON_MODEL_SEED_OPERATION.id}:syson_model_create`,
+    id: "sysml-document",
+    label: "Editable SysML document",
+    predecessor: "project-container",
+  },
+  {
+    operationId: `${SYSON_MODEL_SEED_OPERATION.id}:syson_element_get`,
+    id: "root-package",
+    label: "SysML root package",
+    predecessor: "sysml-document",
+  },
+] as const;
+
+/**
+ * Preserve the calm documentary surface while the first fixed technical run
+ * is in progress. The projection intentionally reconstructs a tiny allowed
+ * sequence from journal metadata instead of forwarding graph patches, which
+ * prevents a future arbitrary journal entry from becoming a browser tool view.
+ */
+function projectDocumentaryTechnicalStart(
+  project: EngineeringProjectSnapshot,
+  liveUpdates: readonly LiveThreadUpdate[],
+): EngineeringDocumentaryTechnicalStart | undefined {
+  const workItems = new Map(project.workItems.map((item) => [item.id, item]));
+  const candidates = project.agentRuns.flatMap((run) => {
+    const workItem = workItems.get(run.workItemId);
+    return workItem && isSysonModelSeedOperation(workItem) ? [{ run, workItem }] : [];
+  });
+  if (candidates.length === 0) return undefined;
+  const run = latestPlanningRun(candidates).run;
+  const runState = documentaryTechnicalStartState(run.status);
+  if (!runState) return undefined;
+
+  const reconciliationSequence = liveUpdates.reduce(
+    (latest, update) =>
+      update.runId === run.id && update.state === "reconciled"
+        ? Math.max(latest, update.sequence)
+        : latest,
+    0,
+  );
+  const visibleUpdates = liveUpdates.filter(
+    (update): update is LiveThreadUpdate & {
+      state: EngineeringDocumentaryTechnicalStartStep["state"];
+    } =>
+      update.runId === run.id &&
+      update.baseRevision === 1 &&
+      update.sequence > reconciliationSequence &&
+      (update.state === "running" || update.state === "fresh" ||
+        update.state === "failed") &&
+      SYSON_MODEL_SEED_LIVE_STEPS.some((step) =>
+        step.operationId === update.operationId
+      ),
+  );
+  const latestByOperation = new Map(
+    visibleUpdates.map((update) => [update.operationId, update]),
+  );
+  const steps = SYSON_MODEL_SEED_LIVE_STEPS.flatMap((step) => {
+    const update = latestByOperation.get(step.operationId);
+    if (!update) return [];
+    return [{
+      id: step.id,
+      state: update.state,
+      label: step.label,
+      summary: documentaryTechnicalStartStepSummary(step.id, update.state),
+      recordedAt: update.recordedAt,
+      ...(step.predecessor ? { predecessor: step.predecessor } : {}),
+    }];
+  });
+  const version = Math.max(
+    reconciliationSequence,
+    ...visibleUpdates.map((update) => update.sequence),
+  );
+  // A write-ahead record intentionally keeps the authoritative run running
+  // when a provider creation outcome is unknown: that state prevents an
+  // automatic retry. The latest public failed milestone must nevertheless
+  // win in the cockpit so a person sees `needs review`, not a falsely live
+  // operation. A later fresh milestone can supersede it only if an explicit
+  // reviewed recovery has produced one.
+  const latestMilestone = visibleUpdates.reduce<LiveThreadUpdate | undefined>(
+    (latest, update) => !latest || update.sequence > latest.sequence ? update : latest,
+    undefined,
+  );
+  const state = latestMilestone?.state === "failed" ? "failed" : runState;
+  return {
+    kind: "sysml-container-seed",
+    state,
+    message: documentaryTechnicalStartMessage(state),
+    activity: { version, steps },
+  };
+}
+
+function documentaryTechnicalStartState(
+  status: EngineeringAgentRunStatus,
+): EngineeringDocumentaryTechnicalStartState | undefined {
+  if (status === "queued") return "queued";
+  if (status === "running" || status === "waiting-for-decision") {
+    return "running";
+  }
+  if (status === "publishing") return "publishing";
+  if (status === "failed") return "failed";
+  return undefined;
+}
+
+function documentaryTechnicalStartMessage(
+  state: EngineeringDocumentaryTechnicalStartState,
+): string {
+  if (state === "queued") {
+    return "A reviewed technical start is queued. It can create only an empty SysON project, document, and root package after the agent begins the authorized run.";
+  }
+  if (state === "running") {
+    return "The agent is creating and reading back the first empty SysON model container. These live steps orient the review; they are not canonical engineering evidence yet.";
+  }
+  if (state === "publishing") {
+    return "The read-back container identity is being persisted as the next exact thread revision. The live sequence remains provisional until that publication completes.";
+  }
+  return "The technical start did not publish a model-container record. It is not retried automatically; this early slice exposes no recovery action in the cockpit.";
+}
+
+function documentaryTechnicalStartStepSummary(
+  id: EngineeringDocumentaryTechnicalStartStep["id"],
+  state: EngineeringDocumentaryTechnicalStartStep["state"],
+): string {
+  const subject = id === "project-container"
+    ? "empty project container"
+    : id === "sysml-document"
+    ? "document and empty root package"
+    : "root package identity";
+  if (state === "running") return `Reading or creating the ${subject}.`;
+  if (state === "failed") {
+    return "This step did not complete. The provider state is kept for review and is not retried automatically.";
+  }
+  if (id === "project-container") {
+    return "Container created. It does not yet contain a system architecture.";
+  }
+  if (id === "sysml-document") {
+    return "Document created. No drone architecture, requirement, or verification claim has been added.";
+  }
+  return "Identity read back from SysON; a later reviewed operation may add model semantics.";
+}
+
+function isSysonModelSeedOperation(workItem: EngineeringWorkItem): boolean {
+  return workItem.operation?.id === SYSON_MODEL_SEED_OPERATION.id &&
+    workItem.operation.version === SYSON_MODEL_SEED_OPERATION.version;
 }
 
 /**
@@ -289,22 +492,34 @@ function isApprovedDiscoveryDocumentaryBaseline(
 function operatorCommands(
   project: EngineeringProjectSnapshot,
   enabled: boolean,
+  intents: readonly (typeof ENGINEERING_OPERATOR_COMMAND_INTENTS)[number][] =
+    ENGINEERING_OPERATOR_COMMAND_INTENTS,
 ): EngineeringWorkbenchCapabilities {
   return {
     operatorCommands: {
       enabled,
       endpoint: ENGINEERING_OPERATOR_COMMAND_ENDPOINT,
-      intents: enabled ? ENGINEERING_OPERATOR_COMMAND_INTENTS : [],
+      intents: enabled ? intents : [],
       explicitIntentHeader: ENGINEERING_OPERATOR_INTENT_HEADER,
       expectedRevision: project.revision,
     },
   };
 }
 
-function noOperatorCommands(
+/**
+ * Once r1 is durable, a reviewer may authorize only the exact ready seed
+ * work item. The browser still receives neither its basis nor any provider
+ * input; the command service derives both from immutable project state.
+ */
+function documentaryOperatorCommands(
   project: EngineeringProjectSnapshot,
+  enabled: boolean,
 ): EngineeringWorkbenchCapabilities {
-  return operatorCommands(project, false);
+  const canQueueSeed = enabled &&
+    project.workItems.some((item) =>
+      item.status === "ready" && isSysonModelSeedOperation(item)
+    );
+  return operatorCommands(project, canQueueSeed, ["agent-run.queue"]);
 }
 
 /**
@@ -466,35 +681,42 @@ function projectPlanningActivity(
  * The project aggregate remains a revision/audit read model for the local
  * reviewer. Before evidence exists, replace agent-provided run prose and
  * provider failure text with bounded, presentation-owned wording. The
- * dedicated `planning.baselineRun` field is the small display model: it omits
- * command ids, actor ids and free-text history by construction.
+ * project aggregate drops its command receipts and execution anchors; the
+ * dedicated `planning.baselineRun` field is the small display model for the
+ * first baseline attempt and omits command ids, actor ids and free-text
+ * history by construction.
  */
 function publicPlanningProjectSnapshot(
   project: EngineeringProjectSnapshot,
 ): EngineeringProjectSnapshot {
   const workItems = new Map(project.workItems.map((item) => [item.id, item]));
+  const { commandReceipts: _commandReceipts, ...publicProject } = structuredClone(
+    project,
+  );
   return {
-    ...structuredClone(project),
+    ...publicProject,
     agentRuns: project.agentRuns.map((run) => {
       const workItem = workItems.get(run.workItemId);
       const label = workItem?.title ?? "a recorded engineering task";
       return {
-        ...structuredClone(run),
+        // Keep only the status fields that this pre-evidence surface actually
+        // renders. In particular, command receipts, actors, exact bases,
+        // fingerprints, result references and free-text transition history do
+        // not cross the browser boundary here.
+        id: run.id,
+        workItemId: run.workItemId,
+        status: run.status,
         summary: publicRunSummary(run.status, label),
+        queuedAt: run.queuedAt,
+        ...(run.startedAt ? { startedAt: run.startedAt } : {}),
+        ...(run.completedAt ? { completedAt: run.completedAt } : {}),
+        evidenceRefs: [],
         ...(run.failure
           ? {
             failure: {
-              code: "baseline-run-failed",
-              message: "The run stopped before it published a documentary baseline.",
+              code: "agent-run-failed",
+              message: "The agent run stopped before it published its bounded result.",
             },
-          }
-          : {}),
-        ...(run.statusHistory
-          ? {
-            statusHistory: run.statusHistory.map((transition) => ({
-              ...structuredClone(transition),
-              summary: publicRunSummary(transition.status, label),
-            })),
           }
           : {}),
       };
@@ -504,10 +726,10 @@ function publicPlanningProjectSnapshot(
 
 function publicRunSummary(status: EngineeringAgentRunStatus, label: string): string {
   if (status === "failed") {
-    return `The baseline run for ${label} stopped before publishing a documentary baseline.`;
+    return `The agent run for ${label} stopped before publishing its bounded result.`;
   }
   if (status === "cancelled") {
-    return `The baseline run for ${label} was cancelled before publishing a documentary baseline.`;
+    return `The agent run for ${label} was cancelled before publishing its bounded result.`;
   }
-  return `Recorded baseline run for ${label}: ${status}.`;
+  return `Recorded agent run for ${label}: ${status}.`;
 }

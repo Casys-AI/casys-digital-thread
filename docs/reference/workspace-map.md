@@ -14,6 +14,7 @@
 | [`src/contracts/thread-workbench.ts`](../../src/contracts/thread-workbench.ts)                                                                 | Browser-safe thread presentation DTOs shared by backend and UI    |
 | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                         | Canonical linked product state                                    |
 | [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                                                 | Immutable project intent and execution-state contract             |
+| [`src/domain/syson-model-seed.ts`](../../src/domain/syson-model-seed.ts)                                                                         | Closed r1-to-r2 SysON container identity capture and materializer |
 | [`src/domain/mechanical-proof-case.ts`](../../src/domain/mechanical-proof-case.ts)                                                             | Declaration validation and limited identity matching              |
 | [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts)                                                                     | Immutable pre-project discovery and review contract               |
 | [`src/adapters/project-discovery-store.ts`](../../src/adapters/project-discovery-store.ts)                                                     | Immutable discovery revision store                                |
@@ -31,8 +32,12 @@
 | [`src/adapters/engineering-project-command-runtime.ts`](../../src/adapters/engineering-project-command-runtime.ts)                             | Shared BFF/MCP command runtime and exact evidence readers         |
 | [`src/adapters/engineering-project-command-http.ts`](../../src/adapters/engineering-project-command-http.ts)                                   | Same-origin human command contract                                |
 | [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                     |
+| [`src/adapters/registered-project-run-executor.ts`](../../src/adapters/registered-project-run-executor.ts)                                     | Server-owned dispatch for exact reviewed V2 operations            |
+| [`src/adapters/syson-model-seed-run-executor.ts`](../../src/adapters/syson-model-seed-run-executor.ts)                                         | Fixed SysON project/document/root-package seed executor           |
+| [`src/adapters/file-syson-model-seed-capture-store.ts`](../../src/adapters/file-syson-model-seed-capture-store.ts)                             | Content-addressed normalized SysON container capture              |
+| [`src/adapters/file-syson-model-seed-attempt-store.ts`](../../src/adapters/file-syson-model-seed-attempt-store.ts)                             | Write-ahead no-blind-retry state for non-idempotent SysON writes  |
 | [`src/adapters/thread-snapshot-lineage.ts`](../../src/adapters/thread-snapshot-lineage.ts)                                                     | Exact `previous`-chain ancestry proof                             |
-| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP planning plus V2 documentary-baseline execution         |
+| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP planning plus registered V2 baseline/seed execution     |
 | [`src/adapters/engineering-workbench-projector.ts`](../../src/adapters/engineering-workbench-projector.ts)                                     | Project/thread presentation composition and alignment             |
 | [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)                                               | Canonical-state to Workbench projection                           |
 | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                               | Native lineage feed, graph, inspectors, SSE and command client    |
@@ -51,6 +56,8 @@
 | [`state/fixtures/`](../../state/fixtures/)                                                                                                     | Explicitly labelled demo evidence                                 |
 | `state/local/engineering-projects/`                                                                                                            | Ignored immutable active project revisions and CAS claims         |
 | `state/local/engineering-project-run-leases/`                                                                                                  | Empty local OS lock targets for one trusted V2 run; not evidence  |
+| `state/local/syson-model-seed-captures/`                                                                                                       | Content-addressed normalized r2 container captures                |
+| `state/local/syson-model-seed-attempts/`                                                                                                       | Recovery control state for uncertain SysON writes; not evidence   |
 
 ## Local endpoints
 
@@ -120,11 +127,14 @@ append only a human proposal, approval, rejection, or queue transition. It never
 a provider tool.
 
 `deno task start` exposes the complementary MCP project surface. Agents can inspect the
-same active project, propose an input, and execute only the exact human-queued V2
-`baseline.from-approved-discovery@1` operation. They cannot approve, reject, or queue
-work. The server-owned executor creates an immutable documentary, pre-technical
-baseline from the approved discovery and reviewed plan; it is not a generic project-run
-lifecycle or provider-execution surface.
+same active project, propose an input, and execute only an exact human-queued registered
+V2 operation. They cannot approve, reject, or queue work. The server-owned baseline
+executor creates the immutable, pre-technical approved-discovery r1. The next registered
+executor, `architecture.seed-syson-model@1`, accepts only that exact r1 and uses fixed
+SysON calls to create a blank project, document, and root package; it reads the root
+back, normalizes its identities, and publishes r2. Callers supply no arbitrary arguments
+or SysML text; uncertain writes are not blindly retried. r2 is a container identity, not
+an architecture, requirements, CAD, simulation, measurement, or verdict.
 
 ## Runtime ownership
 
@@ -135,7 +145,7 @@ lifecycle or provider-execution surface.
 | Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`                      |
 | ERP data                     | External ERPNext database   | Provider-native MCP from backend only                     |
 | Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench              |
-| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus V2 documentary baseline executor; CAS revisions |
+| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus bounded V2 r1 baseline and r2 SysON seed; CAS revisions |
 | `ProjectDiscoverySnapshot`   | Immutable active file store | Agent-authored discovery plus human review; CAS revisions |
 | Live engineering activity    | Append-only local JSONL     | SSE projection; never canonical authority                 |
 

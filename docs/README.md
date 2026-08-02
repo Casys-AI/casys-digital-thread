@@ -56,8 +56,9 @@ categories deliberately answer different questions.
   boundary.
 - [EngineeringProjectSnapshot contract](reference/engineering-project.md) defines
   project intent, derived phases, human-agent work, decisions and approvals, blockers,
-  execution runs, immutable revisions, command receipts, authority, and exact references
-  into immutable thread evidence.
+  execution runs, documentary bootstrap, the first bounded SysON model seed, immutable
+  revisions, command receipts, authority, and exact references into immutable thread
+  evidence.
 - [ProjectDiscoverySnapshot contract](reference/project-discovery.md) defines the
   separate pre-project intent, guided questions, sourced answers, proposed brief,
   immutable revisions, MCP authoring surface, and human-only review and project-shell
@@ -77,8 +78,8 @@ categories deliberately answer different questions.
   canonical product compass: beginner-first human-agent work, idea/CAD/product entry
   points, vendor independence, and the verified-now/V1/V2 boundary.
 - [Agent orchestration and operational-twin boundary](rfcs/agent-orchestration-and-operational-twin-boundary.md)
-  is the proposed technical path from the implemented project shell to agent-authored
-  plans and trusted execution, while keeping an operational twin in V2.
+  records the proposed technical path beyond the implemented documentary bootstrap and
+  first bounded SysON seed, while keeping an operational twin in V2.
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.

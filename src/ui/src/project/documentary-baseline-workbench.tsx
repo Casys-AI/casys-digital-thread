@@ -3,8 +3,15 @@
 import type { JSX } from "preact";
 import type { ThreadStreamStatus } from "../thread/client.ts";
 import type { EngineeringDocumentaryWorkbenchSnapshot } from "../thread/types.ts";
+import { DocumentaryTechnicalStartActivity } from "./documentary-technical-start-activity.tsx";
+import type {
+  OperatorCommandCapabilities,
+  ProjectOperatorCommand,
+} from "./command-contract.ts";
+import type { ProjectCommandFeedback } from "./control-center.tsx";
 import {
   buildProjectBrief,
+  type ProjectBrief,
   projectBriefStatusLabel,
   projectStatusTone,
 } from "./model.ts";
@@ -17,14 +24,36 @@ import {
 export function DocumentaryBaselineWorkbench({
   workbench,
   streamStatus,
+  capability,
+  actorId,
+  onActorIdChange,
+  feedback,
+  onCommand,
 }: {
   workbench: EngineeringDocumentaryWorkbenchSnapshot;
   streamStatus: ThreadStreamStatus | "snapshot";
+  capability?: OperatorCommandCapabilities;
+  actorId: string;
+  onActorIdChange: (value: string) => void;
+  feedback: ProjectCommandFeedback;
+  onCommand: (
+    commandKey: string,
+    command: ProjectOperatorCommand,
+  ) => Promise<void>;
 }): JSX.Element {
   const project = workbench.project;
   const brief = buildProjectBrief(project);
   const { documentary } = workbench;
   const { record } = documentary;
+  const technicalStart = documentary.technicalStart;
+  const statusSeal = documentaryProjectStatusSeal(brief, technicalStart);
+  const readySeed = project.workItems.find((item) =>
+    item.status === "ready" &&
+    item.operation?.id === "architecture.seed-syson-model" &&
+    item.operation.version === "1"
+  );
+  const canAuthorizeSeed = capability?.enabled === true &&
+    capability.intents.includes("agent-run.queue") && readySeed !== undefined;
 
   return (
     <div class="thread-workbench mcp-view-surface documentary-baseline-workbench">
@@ -88,18 +117,78 @@ export function DocumentaryBaselineWorkbench({
           </div>
           <div
             class="project-status-seal"
-            data-tone={projectStatusTone(brief.status)}
-            aria-label={`Project status: ${projectBriefStatusLabel(brief)}`}
+            data-tone={statusSeal.tone}
+            aria-label={`Project status: ${statusSeal.label}`}
           >
             <i aria-hidden="true" />
             <span>PROJECT STATE</span>
-            <strong>{projectBriefStatusLabel(brief)}</strong>
+            <strong>{statusSeal.label}</strong>
             <small>
               {brief.completedPhases}/{brief.phases.length}{" "}
               phase gates satisfied
             </small>
           </div>
         </section>
+
+        {technicalStart && (
+          <DocumentaryTechnicalStartActivity technicalStart={technicalStart} />
+        )}
+
+        {canAuthorizeSeed && readySeed && (
+          <section
+            class="documentary-technical-start-authorization"
+            aria-labelledby="documentary-technical-start-authorization-title"
+          >
+            <div>
+              <p>READY FOR YOUR REVIEW</p>
+              <h3 id="documentary-technical-start-authorization-title">
+                Authorize the first editable system-model container
+              </h3>
+              <span>
+                The agent can only create and read back a blank SysON project,
+                document, and root package. It will not add a drone
+                architecture, requirement, CAD model, simulation, or verdict.
+              </span>
+            </div>
+            <label>
+              <span>Reviewer identity</span>
+              <input
+                value={actorId}
+                onInput={(event) =>
+                  onActorIdChange(
+                    (event.currentTarget as HTMLInputElement).value,
+                  )}
+                placeholder="Your name or review ID"
+                autocomplete="name"
+              />
+            </label>
+            <button
+              type="button"
+              class="documentary-technical-start-authorize-button"
+              disabled={!actorId.trim() || feedback.state === "submitting"}
+              onClick={() =>
+                onCommand(`queue:${readySeed.id}`, {
+                  type: "agent-run.queue",
+                  workItemId: readySeed.id,
+                  summary:
+                    "Human authorized the bounded SysON model-container seed.",
+                })}
+            >
+              {feedback.state === "submitting"
+                ? "Recording authorization…"
+                : "Authorize model-container start"}
+            </button>
+            {feedback.state !== "idle" && feedback.message && (
+              <small
+                class="documentary-technical-start-command-feedback"
+                data-state={feedback.state}
+                role={feedback.state === "error" ? "alert" : "status"}
+              >
+                {feedback.message}
+              </small>
+            )}
+          </section>
+        )}
 
         <section
           class="documentary-baseline-notice"
@@ -180,13 +269,21 @@ export function DocumentaryBaselineWorkbench({
           <div>
             <p>NEXT WITH YOUR AGENT</p>
             <h3 id="documentary-next-step-title">
-              Choose the first bounded technical operation
+              {technicalStart
+                ? "Follow the bounded technical start"
+                : "Choose the first bounded technical operation"}
             </h3>
           </div>
           <p>
-            {documentary.technicalEvidence.message}{" "}
-            Ask the agent to propose a concrete model, CAD or analysis step,
-            then review its scope before authorizing it.
+            {technicalStart
+              ? "The activity above is the only live view of this narrow operation. It remains provisional until a read-back, hash-addressed record becomes the next thread revision."
+              : (
+                <>
+                  {documentary.technicalEvidence.message}{" "}
+                  Ask the agent to propose a concrete model, CAD or analysis
+                  step, then review its scope before authorizing it.
+                </>
+              )}
           </p>
         </section>
 
@@ -228,6 +325,29 @@ export function DocumentaryBaselineWorkbench({
       </main>
     </div>
   );
+}
+
+/**
+ * A live technical-start failure is a narrower, more immediate review signal
+ * than the aggregate project status. Keep the domain run unchanged: this is
+ * only the documentary surface refusing to present an active seal while its
+ * one visible operation needs human attention.
+ */
+function documentaryProjectStatusSeal(
+  brief: ProjectBrief,
+  technicalStart:
+    EngineeringDocumentaryWorkbenchSnapshot["documentary"]["technicalStart"],
+): {
+  readonly tone: ReturnType<typeof projectStatusTone>;
+  readonly label: string;
+} {
+  if (technicalStart?.state === "failed") {
+    return { tone: "attention", label: "Review required" };
+  }
+  return {
+    tone: projectStatusTone(brief.status),
+    label: projectBriefStatusLabel(brief),
+  };
 }
 
 function documentaryStreamLabel(

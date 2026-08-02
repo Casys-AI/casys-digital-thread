@@ -98,6 +98,62 @@ Deno.test("a documentary record has no live evidence overlay to compare", () => 
   assertEquals(shouldAcceptWorkbenchUpdate(current, duplicate), false);
 });
 
+Deno.test("a documentary record accepts a newer closed technical-start feed", () => {
+  const fixture = COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE;
+  const current: EngineeringDocumentaryWorkbenchSnapshot = {
+    schemaVersion: "engineering-workbench/0.2",
+    surface: "documentary",
+    project: fixture.project,
+    documentary: {
+      status: "recorded",
+      message: "Durable provenance only.",
+      record: {
+        origin: "approved-discovery",
+        snapshotId: fixture.project.threadSnapshots[0]!.snapshotId,
+        snapshotRevision: 1,
+        artifactId: "approved-discovery-document",
+        label: "Approved discovery documentary baseline (pre-technical)",
+        fingerprint: "sha256:documentary-record",
+        recordedAt: "2026-08-02T12:00:00.000Z",
+      },
+      technicalEvidence: {
+        status: "not-recorded",
+        message: "No technical proof is recorded.",
+      },
+      technicalStart: technicalStart(4),
+    },
+    capabilities: fixture.capabilities,
+  };
+  const newer = {
+    ...current,
+    documentary: {
+      ...current.documentary,
+      technicalStart: technicalStart(5),
+    },
+  };
+
+  assertEquals(shouldAcceptWorkbenchUpdate(current, newer), true);
+  assertEquals(shouldAcceptWorkbenchUpdate(newer, current), false);
+});
+
+function technicalStart(version: number) {
+  return {
+    kind: "sysml-container-seed" as const,
+    state: "running" as const,
+    message: "Creating the first empty SysON model container.",
+    activity: {
+      version,
+      steps: [{
+        id: "project-container" as const,
+        state: "fresh" as const,
+        label: "SysON project container",
+        summary: "Created.",
+        recordedAt: "2026-08-02T12:00:00.000Z",
+      }],
+    },
+  };
+}
+
 function withLiveVersion(
   snapshot: EngineeringEvidenceWorkbenchSnapshot,
   version: number,

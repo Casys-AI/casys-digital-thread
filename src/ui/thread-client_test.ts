@@ -169,6 +169,76 @@ Deno.test("Workbench contract keeps a documentary baseline separate from an evid
   );
 });
 
+Deno.test("Workbench contract accepts only the closed live SysON seed sequence on documentary r1", () => {
+  const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
+  const documentary = {
+    schemaVersion: "engineering-workbench/0.2",
+    surface: "documentary",
+    project: fixture.project,
+    documentary: {
+      status: "recorded",
+      message: "One durable pre-technical record is available.",
+      record: {
+        origin: "approved-discovery",
+        snapshotId: fixture.project.threadSnapshots[0]!.snapshotId,
+        snapshotRevision: fixture.project.threadSnapshots[0]!.revision,
+        artifactId: "approved-discovery-document",
+        label: "Approved discovery documentary baseline (pre-technical)",
+        fingerprint: "sha256:documentary-record",
+        recordedAt: "2026-08-02T12:00:00.000Z",
+      },
+      technicalEvidence: {
+        status: "not-recorded",
+        message: "No technical proof is recorded.",
+      },
+      technicalStart: {
+        kind: "sysml-container-seed",
+        state: "running",
+        message: "The first SysON container is being read back.",
+        activity: {
+          version: 3,
+          steps: [{
+            id: "project-container",
+            state: "fresh",
+            label: "SysON project container",
+            summary: "Created.",
+            recordedAt: "2026-08-02T12:00:01.000Z",
+          }, {
+            id: "sysml-document",
+            state: "running",
+            label: "Editable SysML document",
+            summary: "Creating.",
+            recordedAt: "2026-08-02T12:00:02.000Z",
+            predecessor: "project-container",
+          }],
+        },
+      },
+    },
+    capabilities: fixture.capabilities,
+  } as const;
+
+  assertEquals(isEngineeringWorkbenchSnapshot(documentary), true);
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...documentary,
+      documentary: {
+        ...documentary.documentary,
+        technicalStart: {
+          ...documentary.documentary.technicalStart,
+          activity: {
+            ...documentary.documentary.technicalStart.activity,
+            steps: [{
+              ...documentary.documentary.technicalStart.activity.steps[0]!,
+              providerResult: "must not be accepted",
+            }],
+          },
+        },
+      },
+    }),
+    false,
+  );
+});
+
 Deno.test("the Workbench contract requires explicit flow dependencies", () => {
   const missingDependencies = JSON.parse(
     JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),

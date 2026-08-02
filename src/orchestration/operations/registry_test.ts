@@ -71,7 +71,23 @@ Deno.test("operation declarations cannot mutate the code-owned registry", () => 
   assertEquals(second.bindings[0].allowedSourceKinds, ["approved-discovery"]);
 });
 
-Deno.test("registered operations accept only their declared basis", () => {
+Deno.test("a reviewed operation can enter a plan before its execution basis exists", () => {
+  const architecture = validateRegisteredEngineeringOperationInput({
+    operation: {
+      id: "architecture.seed-syson-model",
+      version: "1",
+      bindings: [{
+        name: "approvedDiscovery",
+        source: { kind: "approved-discovery" },
+      }],
+    },
+    stage: "planning",
+  });
+  assertEquals(architecture.operation.id, "architecture.seed-syson-model");
+  assertEquals(architecture.basisKind, undefined);
+});
+
+Deno.test("registered operations accept only their declared queue basis", () => {
   const error = assertThrows(
     () =>
       validateRegisteredEngineeringOperationInput({
@@ -83,11 +99,44 @@ Deno.test("registered operations accept only their declared basis", () => {
             source: { kind: "approved-discovery" },
           }],
         },
+        stage: "queue",
         basisKind: "thread-snapshot",
       }),
     EngineeringOperationRegistryError,
   );
   assertEquals(error.code, "unsupported_basis");
+
+  const architecture = validateRegisteredEngineeringOperationInput({
+    operation: {
+      id: "architecture.seed-syson-model",
+      version: "1",
+      bindings: [{
+        name: "approvedDiscovery",
+        source: { kind: "approved-discovery" },
+      }],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(architecture.operation.id, "architecture.seed-syson-model");
+
+  const seedFromDiscovery = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          id: "architecture.seed-syson-model",
+          version: "1",
+          bindings: [{
+            name: "approvedDiscovery",
+            source: { kind: "approved-discovery" },
+          }],
+        },
+        stage: "queue",
+        basisKind: "approved-discovery",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(seedFromDiscovery.code, "unsupported_basis");
 });
 
 Deno.test("registered operations accept only exact declared state-reference inputs", () => {
@@ -106,6 +155,7 @@ Deno.test("registered operations accept only exact declared state-reference inpu
         },
       ],
     },
+    stage: "queue",
     basisKind: "approved-discovery",
   });
   assertEquals(validated.operation.id, "baseline.capture-existing-cad");
@@ -125,6 +175,7 @@ Deno.test("registered operations accept only exact declared state-reference inpu
             source: { kind: "approved-discovery" },
           }],
         },
+        stage: "queue",
         basisKind: "approved-discovery",
       }),
     EngineeringOperationRegistryError,
@@ -142,6 +193,7 @@ Deno.test("registered operations accept only exact declared state-reference inpu
             source: { kind: "approved-discovery" },
           }],
         },
+        stage: "queue",
         basisKind: "approved-discovery",
       }),
     EngineeringOperationRegistryError,
@@ -165,6 +217,7 @@ Deno.test("registered operations accept only exact declared state-reference inpu
             },
           ],
         },
+        stage: "queue",
         basisKind: "approved-discovery",
       }),
     EngineeringOperationRegistryError,

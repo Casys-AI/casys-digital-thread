@@ -5,8 +5,9 @@ surfaces it can render:
 
 - the project objective, phases, work, decisions and blockers declared by an immutable
   `EngineeringProjectSnapshot` under `config/projects/`;
-- for a new V2 project, the immutable documentary record of its exact approved discovery
-  and reviewed path, once the first bounded operation has recorded it;
+- for a new V2 project, the immutable documentary r1 of its exact approved discovery and
+  reviewed path, then the narrow r2 record of a read-back SysON container when that
+  separately authorized seed has completed;
 - the persisted technical evidence projected from exact canonical `ThreadSnapshot`
   revisions under `state/local/thread-snapshots/`.
 
@@ -174,9 +175,13 @@ It answers “what approved project did we start from?”, not “what has engin
 proved?”
 
 The standard technical `"surface": "evidence"` is used only once a later operation has
-created and validated technical evidence. The three surfaces are mutually exclusive: V1
-CM-01 records remain historic/readable, and neither direction receives an automatic
-schema conversion or thread-head fallback.
+created and validated technical evidence. The first such V2 result currently supported
+is `architecture.seed-syson-model@1`: it adds r2 with normalized identities for one
+blank, read-back SysON project container, SysML document, and root package. That record
+does not make an architecture, requirement, CAD model, simulation, measurement, or
+verdict appear. The three surfaces are mutually exclusive: V1 CM-01 records remain
+historic/readable, and neither direction receives an automatic schema conversion or
+thread-head fallback.
 
 Before serving planning, documentary, or evidence state, the BFF resolves every declared
 project snapshot by exact ID and validates its entity references. A missing exact
@@ -213,26 +218,37 @@ On the **documentary** surface, the page instead shows the durable starting reco
 plain-language boundary: technical proof is not recorded yet. It must not show an empty
 graph as if it were a technical model, nor reuse CM-01 component or evidence panels.
 
-## Review the first V2 starting record
+## Review the first two V2 records
 
-For an idea/specification project, the human and agent have a deliberately small first
-interaction:
+For an idea/specification project, the human and agent have a deliberately small,
+ordered interaction:
 
 1. The agent prepares a bounded project path from the exact approved discovery; this is
    planning, not an engineering result.
-2. The reviewer sees one explicit authorization for the known documentary baseline. It
-   records the approved discovery and reviewed path; it does not ask the reviewer to
+2. The reviewer authorizes the documentary `baseline.from-approved-discovery@1` record.
+   It records the approved discovery and reviewed path; it does not ask the reviewer to
    enter CAD, solver, material, legal, or requirement values.
 3. The agent executes that already-authorized, server-owned recording operation. The
    activity area can show its public queued/running/publishing milestones, but no
    provider payload or technical result because no provider is involved.
-4. Once the immutable capture and its root record are durable, the planning page becomes
-   the documentary record. The reviewer can inspect the exact fingerprint and then ask
-   the agent to propose the first genuine technical operation.
+4. Once the immutable capture and root r1 are durable, the planning page becomes the
+   documentary record. The reviewer can inspect the exact fingerprint.
+5. The agent can then propose the separately reviewed `architecture.seed-syson-model@1`
+   run. Once the reviewer authorizes it, the server uses its fixed SysON sequence to
+   create a blank project container, document, and root package, then reads the root
+   back. The caller provides no provider/tool selection, arguments, SysML text, or
+   output.
+6. The executor normalizes those identities, persists and reads back its capture and r2,
+   then attaches that exact r2 reference to the project before it completes the run.
+   Until that attachment, the Workbench keeps showing documentary r1 plus provisional
+   live activity; it does not promote the persisted-but-unattached record to an evidence
+   surface. Its durable write-ahead record means an uncertain SysON creation is held for
+   review, not blindly retried. r2 is only an editable container identity, not a system
+   architecture, requirements, CAD, simulation, measurement, or verdict.
 
-If that recording attempt stops before publication, the project remains a planning
-surface. The UI must not claim a baseline, model, or evidence merely because an
-authorization or a live milestone exists.
+If the technical seed stops before attachment, the project remains on its documentary r1
+surface. The UI must not claim an r2 model or evidence merely because a provider write,
+authorization, or live milestone exists.
 
 ## Follow a review notification
 
@@ -274,17 +290,21 @@ The browser command contract is limited to `decision.propose`, `decision.approve
 Project inbox into a manual proposal editor: it cannot claim, publish, complete, or fail
 a run, and it receives no generic MCP endpoint or provider credential. The Console MCP
 server gives agents the complementary project snapshot, proposal, and one bounded
-`project_agent_run_execute` operation for an exactly human-queued V2 documentary
-baseline. It never gives an agent approval, rejection, queue, generic run-lifecycle, or
-arbitrary provider-execution authority.
+`project_agent_run_execute` operation. For an exactly human-queued V2 run, it dispatches
+either the documentary baseline or, from its exact documentary r1, the fixed SysON
+container seed. It never gives an agent approval, rejection, queue, generic
+run-lifecycle, or arbitrary provider-execution authority.
 
 The V2 executor resolves its operation, basis, bindings, capture, root snapshot, and
 completion evidence from server-owned state; callers cannot submit a tool name, raw tool
-arguments, result snapshot, or evidence payload. It records only the approved-discovery
-documentary baseline. A future technical operation must bring its own reviewed executor,
-output validator, materializer, and evidence contract. The historic CM-01 technical
-proof is reviewed in this Workbench as existing evidence; it is not a generic agent
-lifecycle recipe.
+arguments, result snapshot, or evidence payload. It can record the approved-discovery
+documentary baseline or, from its exact r1, the fixed SysON container seed. The latter
+creates and reads back only a project/document/root-package identity, persists
+normalized values, and refuses an uncertain non-idempotent write instead of retrying it
+blindly. Any later architecture, requirements, CAD, simulation, measurement, or
+verification step still needs its own reviewed executor, output validator, materializer,
+and evidence contract. The historic CM-01 technical proof is reviewed in this Workbench
+as existing evidence; it is not a generic agent lifecycle recipe.
 
 The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
 attention, and where to go next. The five product sections have distinct jobs:
@@ -344,15 +364,18 @@ the target environment.
 It proves durable project and canonical-thread validation, exact project-to-evidence
 references, explicit provider-to-subject and component identity, persisted Modelica
 observations and ERPNext BOM detail, passive read/SSE paths, a revision-bound human
-command gate, the bounded V2 documentary starting-record flow, and one coherent native
-UI with shared selection and no nested Apps. The published r6 branch also proves exact
-DripTray CAD consumption and the two model-owned SysON comparisons.
+command gate, the bounded V2 documentary r1 flow, and the fixed r1-to-r2 SysON container
+seed with read-back normalized identities and no blind retry. It also proves one
+coherent native UI with shared selection and no nested Apps. The published r6 branch
+also proves exact DripTray CAD consumption and the two model-owned SysON comparisons.
 
 It does **not** prove:
 
 - a new solve at preview time;
 - a SysML model, CAD geometry, simulation, measurement, requirement verdict, or
   compliance conclusion merely because a V2 documentary record exists;
+- a system architecture, requirement, CAD model, simulation, measurement, or verdict
+  merely because the V2 SysON container seed has recorded r2;
 - a whole-machine mechanical or compliance verdict;
 - a production-material, fabrication-release, certification, or automatic correction
   claim;

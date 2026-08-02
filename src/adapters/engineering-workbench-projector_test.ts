@@ -73,6 +73,127 @@ Deno.test("engineering Workbench projects the exact V2 documentary baseline with
   assertEquals(result.capabilities.operatorCommands.enabled, false);
 });
 
+Deno.test("documentary Workbench exposes only the safe live SysON seed sequence", () => {
+  const thread = documentaryThreadFixture("drone-concept");
+  const project = documentaryProjectWithRunningSeed(thread);
+  const updates: LiveThreadUpdate[] = [
+    liveSeedUpdate(
+      4,
+      "syson_project_create",
+      "fresh",
+      "2026-08-02T12:01:00.000Z",
+    ),
+    liveSeedUpdate(
+      5,
+      "syson_model_create",
+      "running",
+      "2026-08-02T12:01:05.000Z",
+    ),
+    {
+      ...liveSeedUpdate(
+        6,
+        "unrelated_tool",
+        "fresh",
+        "2026-08-02T12:01:10.000Z",
+      ),
+      operationId: "unrelated-provider-operation",
+    },
+  ];
+
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
+    liveUpdates: updates,
+  });
+
+  assertEquals(result.surface, "documentary");
+  if (result.surface !== "documentary") {
+    throw new Error("Expected the r1 project to retain its documentary surface.");
+  }
+  assertEquals(result.documentary.technicalStart, {
+    kind: "sysml-container-seed",
+    state: "running",
+    message:
+      "The agent is creating and reading back the first empty SysON model container. These live steps orient the review; they are not canonical engineering evidence yet.",
+    activity: {
+      version: 5,
+      steps: [
+        {
+          id: "project-container",
+          state: "fresh",
+          label: "SysON project container",
+          summary: "Container created. It does not yet contain a system architecture.",
+          recordedAt: "2026-08-02T12:01:00.000Z",
+        },
+        {
+          id: "sysml-document",
+          state: "running",
+          label: "Editable SysML document",
+          summary: "Reading or creating the document and empty root package.",
+          recordedAt: "2026-08-02T12:01:05.000Z",
+          predecessor: "project-container",
+        },
+      ],
+    },
+  });
+  const payload = JSON.stringify(result);
+  assertEquals(payload.includes("provider-secret"), false);
+  assertEquals(payload.includes("private provider structured content"), false);
+  assertEquals("thread" in result, false);
+});
+
+Deno.test("a failed seed milestone makes the documentary cockpit require review", () => {
+  const thread = documentaryThreadFixture("drone-concept");
+  const project = documentaryProjectWithRunningSeed(thread);
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
+    liveUpdates: [
+      liveSeedUpdate(
+        4,
+        "syson_project_create",
+        "failed",
+        "2026-08-02T12:01:00.000Z",
+      ),
+    ],
+  });
+
+  if (result.surface !== "documentary") {
+    throw new Error("Expected the r1 project to retain its documentary surface.");
+  }
+  assertEquals(result.documentary.technicalStart?.state, "failed");
+  assertEquals(
+    result.documentary.technicalStart?.message,
+    "The technical start did not publish a model-container record. It is not retried automatically; this early slice exposes no recovery action in the cockpit.",
+  );
+  assertEquals(result.documentary.technicalStart?.activity.steps[0]?.state, "failed");
+});
+
+Deno.test("documentary Workbench exposes only a ready SysON seed queue capability", () => {
+  const thread = documentaryThreadFixture("drone-concept");
+  const runningProject = documentaryProjectWithRunningSeed(thread);
+  const project: EngineeringProjectSnapshot = {
+    ...runningProject,
+    agentRuns: [],
+    workItems: runningProject.workItems.map((item) =>
+      item.id === "seed-syson-model" ? { ...item, status: "ready" } : item
+    ),
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
+    operatorCommandsEnabled: true,
+  });
+
+  assertEquals(result.surface, "documentary");
+  assertEquals(result.capabilities.operatorCommands, {
+    enabled: true,
+    endpoint: "/api/project/commands",
+    intents: ["agent-run.queue"],
+    explicitIntentHeader: "X-Casys-Operator-Intent",
+    expectedRevision: project.revision,
+  });
+  if (result.surface !== "documentary") {
+    throw new Error("Expected the r1 project to retain its documentary surface.");
+  }
+  assertEquals(result.documentary.technicalStart, undefined);
+});
+
 Deno.test("only the exact approved-discovery documentary root bypasses the evidence surface", () => {
   const thread = documentaryThreadFixture("drone-concept");
   const project: EngineeringProjectSnapshot = {
@@ -216,6 +337,10 @@ Deno.test("planning Workbench projects only public status milestones for the fir
   assertEquals(browserPayload.includes("not-the-baseline"), false);
   assertEquals(browserPayload.includes("provider failure detail"), false);
   assertEquals(browserPayload.includes("provider raw run summary"), false);
+  assertEquals(browserPayload.includes("queue-baseline"), false);
+  assertEquals(browserPayload.includes("claim-baseline"), false);
+  assertEquals(browserPayload.includes("private-run-basis"), false);
+  assertEquals(browserPayload.includes("private-agent"), false);
 });
 
 Deno.test("planning Workbench maps terminal pre-evidence runs without claiming a baseline", () => {
@@ -359,6 +484,13 @@ function planningProjectWithRun(
       summary: "provider raw run summary",
       queuedAt: "2026-08-01T12:00:00.000Z",
       startedAt: "2026-08-01T12:01:00.000Z",
+      claimedBy: { id: "private-agent", origin: "agent" },
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: "private-run-basis",
+        revision: 1,
+        subjectId: "drone-concept",
+      },
       ...(status !== "running" ? { completedAt: "2026-08-01T12:04:00.000Z" } : {}),
       evidenceRefs: [],
       ...(status === "failed"
@@ -383,6 +515,137 @@ function planningProjectWithRun(
         summary: "provider raw run summary",
       }],
     }],
+  };
+}
+
+function documentaryProjectWithRunningSeed(
+  thread: LiveThreadWorkbenchSnapshot,
+): EngineeringProjectSnapshot {
+  const project = projectFixture(thread.subject.id);
+  return {
+    ...project,
+    schemaVersion: "2.0",
+    project: {
+      ...project.project,
+      id: "drone-concept",
+      name: "Drone concept",
+      subjectId: thread.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: thread.id,
+      revision: 1,
+      subjectId: thread.subject.id,
+    }],
+    phases: [{
+      id: "baseline",
+      name: "Starting record",
+      order: 1,
+      description: "Record the approved discovery.",
+      workItemIds: ["record-approved-discovery"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }, {
+      id: "architecture",
+      name: "System model",
+      order: 2,
+      description: "Create an editable system-model container.",
+      workItemIds: ["seed-syson-model"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "record-approved-discovery",
+      phaseId: "baseline",
+      title: "Record approved discovery",
+      description: "Create documentary r1.",
+      kind: "define",
+      status: "completed",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+      operation: {
+        id: "baseline.from-approved-discovery",
+        version: "1",
+        bindings: [{
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        }],
+      },
+    }, {
+      id: "seed-syson-model",
+      phaseId: "architecture",
+      title: "Create the first editable system model",
+      description: "Create only a blank SysON model container.",
+      kind: "architect",
+      status: "in-progress",
+      owner: "agent",
+      dependsOnWorkItemIds: ["record-approved-discovery"],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+      operation: {
+        id: "architecture.seed-syson-model",
+        version: "1",
+        bindings: [{
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        }],
+      },
+    }],
+    agentRuns: [{
+      id: "run-seed",
+      workItemId: "seed-syson-model",
+      status: "running",
+      summary: "Provider detail must not reach the browser.",
+      queuedAt: "2026-08-02T12:00:00.000Z",
+      startedAt: "2026-08-02T12:00:10.000Z",
+      evidenceRefs: [],
+      statusHistory: [{
+        commandId: "queue-seed",
+        status: "queued",
+        at: "2026-08-02T12:00:00.000Z",
+        actor: { id: "reviewer", origin: "human" },
+        summary: "Queued.",
+      }, {
+        commandId: "claim-seed",
+        status: "running",
+        at: "2026-08-02T12:00:10.000Z",
+        actor: { id: "agent", origin: "agent" },
+        summary: "Running.",
+      }],
+    }],
+  };
+}
+
+function liveSeedUpdate(
+  sequence: number,
+  tool: string,
+  state: "running" | "fresh" | "failed",
+  recordedAt: string,
+): LiveThreadUpdate {
+  return {
+    schemaVersion: "live-thread-update/1.0",
+    sequence,
+    subjectId: "drone-concept",
+    runId: "run-seed",
+    operationId: `architecture.seed-syson-model:${tool}`,
+    baseRevision: 1,
+    state,
+    recordedAt,
+    graph: {
+      nodes: [{
+        id: `private-${tool}`,
+        ref: { kind: "artifact", id: "provider-secret" },
+        entityKind: "artifact",
+        label: "private provider structured content",
+        system: "private-provider",
+        freshness: state,
+        summary: "provider-secret",
+      }],
+      edges: [],
+    },
   };
 }
 

@@ -31,6 +31,7 @@ import {
 } from "../src/adapters/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -350,11 +351,16 @@ async function projectWorkbenchSnapshot(
       (candidate): candidate is ThreadSnapshot => candidate !== undefined,
     ),
   );
+  const updates = liveUpdates ??
+    (await options.liveUpdates?.list(options.subjectId) ?? []);
   return projectEngineeringWorkbenchSnapshot(
     validatedProject,
-    await projectThreadSnapshot(snapshot, options, liveUpdates),
+    await projectThreadSnapshot(snapshot, options, updates),
     snapshot.revision,
-    { operatorCommandsEnabled: options.projectCommands !== undefined },
+    {
+      operatorCommandsEnabled: options.projectCommands !== undefined,
+      liveUpdates: updates,
+    },
   );
 }
 
@@ -405,6 +411,13 @@ async function resolveCurrentThreadSnapshot(
     );
   }
   if (active.revision <= declared.revision) return declared;
+  // `SysonModelSeedRunExecutor` makes r2 durable before attaching it to the
+  // project, so a crash can leave an active descendant that the project has
+  // not accepted as its result. Keep the declared documentary r1 on screen
+  // during that bounded run and render only its safe live activity. The r2
+  // evidence surface becomes eligible only after completeRun records its
+  // exact reference in the immutable project state.
+  if (hasUnattachedSysonModelSeed(project)) return declared;
   const lineageSnapshots = new OrderedExactThreadSnapshotReader([
     options.store,
     ...(options.projectSnapshots ? [options.projectSnapshots] : []),
@@ -416,6 +429,24 @@ async function resolveCurrentThreadSnapshot(
     )
     ? active
     : declared;
+}
+
+function hasUnattachedSysonModelSeed(project: EngineeringProjectSnapshot): boolean {
+  const workItems = new Map(project.workItems.map((item) => [item.id, item]));
+  return project.agentRuns.some((run) => {
+    if (
+      ![
+        "running",
+        "waiting-for-decision",
+        "publishing",
+      ].includes(run.status)
+    ) {
+      return false;
+    }
+    const operation = workItems.get(run.workItemId)?.operation;
+    return operation?.id === SYSON_MODEL_SEED_OPERATION.id &&
+      operation.version === SYSON_MODEL_SEED_OPERATION.version;
+  });
 }
 
 function workbenchDataSource(projection: EngineeringWorkbenchSnapshot): string {

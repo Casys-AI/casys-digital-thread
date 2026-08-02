@@ -1,14 +1,15 @@
 # RFC: Minimal agent orchestration and the operational-twin boundary
 
-Status: **Partially implemented — V2 documentary first baseline landed; technical execution remains proposed**\
+Status: **Partially implemented — V2 documentary r1 and bounded SysON container r2 landed; architecture and proof execution remain proposed**\
 Scope: one beginner journey from initial intent or existing product material to
 reviewable engineering evidence\
 Decision horizon: V1 orchestration now; operational Digital Twin only in V2
 
 Truth basis: source tree inspected on 2026-08-02. Current-state claims include the
-loopback Discovery handoff, V2 planning and exact basis, the code-owned intake operation
-registry, and the first provider-free documentary-baseline executor. Generic SysML, CAD,
-FEA, simulation, measurement, and operational Digital Twin execution remain proposed.
+loopback Discovery handoff, V2 planning and exact basis, the code-owned operation
+registry, the provider-free documentary-baseline executor, and one fixed provider-backed
+SysON container seed. Generic SysML architecture, requirements, CAD, FEA, simulation,
+measurement, and operational Digital Twin execution remain proposed.
 
 ## Decision
 
@@ -66,9 +67,9 @@ The beginner-facing journey is deliberately short:
    person approves or rejects them, then authorizes the exact next run. There is no
    technical data-entry form in the main path.
 5. **Watch work and review its record.** The activity feed shows bounded operations as
-   they run. The first idea/spec run produces only a canonical documentary baseline;
-   technical evidence appears only after a later technical operation has captured it.
-   Failures and unresolved questions stay visible.
+   they run. The first idea/spec run produces only the canonical documentary r1. The
+   next supported run records only a read-back, editable SysON container as r2; it is not
+   an architecture or proof. Failures and unresolved questions stay visible.
 6. **Change and repeat.** A change invalidates affected evidence, the agent proposes
    recomputation, and the person reviews the new proof and impact chain.
 
@@ -82,6 +83,12 @@ The three entries affect only the first reviewed operation:
 
 After that first baseline, all projects use the same project, decision, run, evidence,
 impact, and review contracts.
+
+For the idea/spec path, the first implemented follow-on is
+`architecture.seed-syson-model@1`. It may run only from exact documentary r1 and creates
+only a blank SysON project container, blank SysML document, and root package. Its r2
+record is deliberately narrower than an architecture, requirements, CAD, simulation,
+measurement, or verdict.
 
 ## Current source-backed truth
 
@@ -114,15 +121,27 @@ tool families:
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Fleet     | `console_snapshot`, `console_server_detail`, `console_run_list`, `console_run_detail`                                                                               | Read provider availability and recorded console runs              |
 | Discovery | `project_discovery_snapshot`, `project_discovery_start`, `project_discovery_question_propose`, `project_discovery_answer_record`, `project_discovery_brief_propose` | Build an immutable pre-project conversation and proposed brief    |
-| Project   | `project_snapshot`, `project_plan_publish`, `project_decision_propose`, `project_agent_run_execute` | Read project truth, publish bounded unexecuted planning state, and materialize the exact human-authorized documentary baseline |
+| Project   | `project_snapshot`, `project_plan_publish`, `project_decision_propose`, `project_agent_run_execute` | Read project truth, publish bounded unexecuted planning state, and dispatch an exact human-authorized registered V2 run |
 
 `project_plan_publish` can create or revise an unexecuted plan from the exact approved
 Discovery handoff. It records only code-validated operation references and state
 bindings; it does **not** call a provider, approve a decision, queue a run, or
 materialize technical evidence. Human queueing is still the authorization boundary.
 `project_agent_run_execute` then resolves only that durable queued run; it accepts no
-provider/tool/argument/result/evidence payload from its caller. In this slice it may run
-only `baseline.from-approved-discovery@1` and calls no provider.
+provider/tool/argument/result/evidence payload from its caller. It can dispatch exactly
+two reviewed idea/spec operations:
+
+1. `baseline.from-approved-discovery@1`, which calls no provider and materializes the
+   approved-discovery documentary r1; and
+2. `architecture.seed-syson-model@1`, which requires exact r1 and runs a fixed
+   server-owned SysON sequence: blank project container, blank SysML document, root
+   package, then root-package read-back and normalized identity capture into r2.
+
+The second executor has no arbitrary SysML text, provider argument, or output input. It
+persists a write-ahead attempt before each non-idempotent creation. If an outcome is
+unknown, it fails closed for review rather than blindly retrying a possibly successful
+SysON write. r2 captures container identity only; it is not an architecture,
+requirements, CAD, simulation, measurement, verification, or compliance result.
 
 The loopback Discovery BFF now exposes a human-only
 `POST /api/project-discoveries/:id/handoff` action. It creates immutable project
@@ -187,9 +206,9 @@ That provider path is real but product-specific and CLI-driven. Calling provider
 directly still bypasses the trusted recorder/materializer; updating a run lifecycle later
 does not prove what produced the cited evidence.
 
-## Implemented V2 bootstrap boundary
+## Implemented V2 r1-to-r2 boundary
 
-The generic control plane now closes only the first-run contract:
+The generic control plane now closes the first two bounded contracts:
 
 ```text
 exact approved discovery + reviewed plan
@@ -197,13 +216,17 @@ exact approved discovery + reviewed plan
   ---> explicit human queue authorization
   ---> provider-free immutable documentary capture (SHA-256)
   ---> persisted/read-back root ThreadSnapshot r1
+  ---> exact thread-snapshot basis + explicit human queue authorization
+  ---> fixed SysON project/document/root-package creation + root read-back
+  ---> normalized identity capture + persisted/read-back ThreadSnapshot r2
 ```
 
-This avoids fabricating an empty technical snapshot. It deliberately stops before
-SysML, CAD, FEA, simulation, measurements, or verification. The root document is
-provenance for the project starting point, not evidence that an engineering tool ran.
-The remaining gap is a generic **technical** operation/executor contract, not the
-initial authorization or basis contract.
+This avoids fabricating an empty technical snapshot. r1 is provenance for the project
+starting point, not evidence that an engineering tool ran. r2 is the read-back identity
+of a blank editable SysON container, not a system architecture, requirements, CAD, FEA,
+simulation, measurements, or verification. The remaining gap is an architecture and
+proof **technical** operation/executor contract, not the initial authorization, basis, or
+minimal container contract.
 
 ## Minimal target contract
 
@@ -304,23 +327,28 @@ It cannot approve a decision, queue a run, call a provider, or attach evidence. 
 run, approval, blocker, non-required decision, technical evidence, or completed work
 exists, this planning command cannot replace the path.
 
-The registry currently contains these three bounded intake operations:
+The registry currently contains three bounded intake operations and one bounded
+idea/spec follow-on:
 
-| Starting point | Registered operation |
+| Starting point or basis | Registered operation |
 | --- | --- |
 | Idea or specification | `baseline.from-approved-discovery@1` |
+| Exact documentary r1 | `architecture.seed-syson-model@1` |
 | Existing CAD | `baseline.capture-existing-cad@1` |
 | Existing product | `baseline.capture-existing-product@1` |
 
 The registry is intentionally a safe planning descriptor. It exposes no provider
 selection, provider tool name, raw tool arguments, workflow definition, or evidence
-payload. The implemented first executor uses the exact reviewed operation revision for a
-provider-free documentary capture. A later technical executor must separately own typed
-input resolution, provider selection, output validation, materialization, and redacted
-live projection. The agent never supplies raw provider tool names at execution time.
+payload. The implemented baseline executor uses the exact reviewed operation revision
+for a provider-free documentary capture. The implemented SysON seed executor separately
+owns its fixed provider sequence, normalized output projection, materialization, and
+redacted live projection; the agent never supplies raw provider tool names or arguments.
+Its non-idempotent writes are never blindly retried after an unknown outcome. Any later
+architecture, requirements, CAD, simulation, or verification executor must still own its
+own typed input resolution, output validation, materialization, and interruption rules.
 At execution, existing-CAD and existing-product intake must resolve their supplied files
-or source records through exact discovery-answer bindings. The future intake executor
-must fingerprint the bytes; a path or label alone never becomes evidence.
+or source records through exact discovery-answer bindings. Their future executors must
+fingerprint the bytes; a path or label alone never becomes evidence.
 
 ### 3. Implemented: use one exact basis type before and after the first record
 
@@ -358,7 +386,7 @@ A queue fingerprint covers:
 This is a clean schema revision: V2 runs use `basis` and reject `baseSnapshot`; V1
 history remains readable but cannot fall back into the V2 path.
 
-### 4. Implemented: one trusted documentary execution tool
+### 4. Implemented: one trusted execution tool with two closed operations
 
 The agent-only MCP tool is:
 
@@ -383,11 +411,23 @@ server-side operation registry. For `baseline.from-approved-discovery@1` it vali
 exact V2 discovery basis and operation, claims the run, produces deterministic canonical
 JSON for the approved discovery and plan, SHA-256 fingerprints and persists that document,
 creates and reads back root `ThreadSnapshot` r1, validates the cited artifact, then
-completes the run. Redacted lifecycle updates may appear in the feed while it runs.
+completes the run. Redacted lifecycle updates may appear in the feed while it runs. It
+calls no provider.
 
-It calls no provider. It is not a generic workflow upload endpoint and is not a generic
-technical executor. A later provider-backed operation must enforce its own no-retry,
-input-consumption, output-validation, persistence, and interruption rules.
+For `architecture.seed-syson-model@1`, it validates exact r1 and the reviewed operation,
+then executes only this server-fixed sequence: create a blank SysON project container,
+create a blank SysML document with root package, and read that root package back. The
+executor normalizes the returned identities, persists their SHA-256-addressed capture,
+creates and reads back descendant r2, then completes the run. It accepts no caller
+provider/tool choice, arguments, SysML text, file, result, or evidence payload. A durable
+write-ahead attempt precedes each non-idempotent SysON write; an unknown outcome is held
+for review and is never blindly retried.
+
+The tool is not a generic workflow upload endpoint or generic technical executor. r2 is
+only a container identity; it does not add an architecture, requirements, CAD,
+simulation, measurement, verification, or compliance claim. Later provider-backed
+operations must enforce their own input-consumption, output-validation, persistence, and
+interruption rules.
 
 ### 5. Keep authority simple
 
@@ -406,26 +446,34 @@ input-consumption, output-validation, persistence, and interruption rules.
 | Create canonical evidence                   | Trusted backend operation |               No | Observe only |
 | Approve a technical verdict or release      |                        No |              Yes |      Observe |
 
-## V2 documentary-baseline acceptance slice
+## V2 documentary-to-container acceptance slice
 
-The smallest implemented vertical slice is not another dashboard panel. It is one
-complete, observable, **pre-technical** run from an approved brief:
+The smallest implemented vertical slice is not another dashboard panel. It is two
+complete, observable, deliberately bounded runs from an approved brief:
 
 1. use the registered discovery-to-project handoff to create the exact empty project
    shell;
 2. let the agent publish a minimal project path whose first work item is bound to one
    reviewed intake operation;
 3. let the human authorize that exact run;
-4. let `project_agent_run_execute` create the first root `ThreadSnapshot` while the
+4. let `project_agent_run_execute` create the first root `ThreadSnapshot` r1 while the
    existing feed updates live;
-5. show the immutable document and its provenance after completion.
+5. show the immutable document and its provenance after completion;
+6. once r1 completes its declared dependency, let the human authorize the already
+   reviewed `architecture.seed-syson-model@1` work item from exact r1;
+7. let the fixed server executor create and read back only a blank SysON
+   project/document/root-package container, normalize its identities, and publish r2.
 
-The path reaches those five steps for the idea/spec starting point. Its successful result
-is deliberately not technical evidence: it contains no provider output, technical model,
-geometry, calculation, measurement, requirement evaluation, or compliance conclusion.
-The next product increment is one separately reviewed technical operation that can attach
-that kind of evidence to the now-explicit source baseline. The existing CM-01 CLI flow
-remains a separate, product-specific demonstration of linked technical evidence.
+The path reaches those seven steps for the idea/spec starting point. r1 is deliberately
+not technical evidence: it contains no provider output, technical model, geometry,
+calculation, measurement, requirement evaluation, or compliance conclusion. r2 captures
+the read-back identity of a blank editable container, but still contains no architecture,
+requirements, CAD, simulation, measurement, or verdict. Its no-arbitrary-arguments and
+no-blind-retry boundaries make it a safe first provider-backed operation, not a generic
+SysON authoring surface. The next product increment is a separately reviewed operation
+that can attach actual model semantics or proof to that now-explicit source baseline. The
+existing CM-01 CLI flow remains a separate, product-specific demonstration of linked
+technical evidence.
 
 Existing-CAD and existing-product already have planning registry entries; they need their
 own safe source-capture and technical-evidence contracts before they can execute. They
@@ -521,18 +569,19 @@ Operational V2 must not delay or complicate the V1 beginner journey.
 
 ## Implementation map
 
-The human handoff, bounded planning, exact V2 basis, and first documentary-baseline
-slice are implemented. The remaining slices are deliberately separate:
+The human handoff, bounded planning, exact V2 basis, documentary r1, and fixed SysON
+container r2 are implemented. The remaining slices are deliberately separate:
 
 | Slice                                       | Likely files                                                                                                                             |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Human handoff                               | Implemented in the domain service, HTTP adapter, Discovery BFF, browser client/UI, validation, and focused tests                         |
 | Bounded plan + operation binding            | Implemented in `src/domain/engineering-project.ts`, validation, plan command service, `src/tools/project-control.ts`, and `server.ts`  |
-| Reviewed intake operation registry          | Implemented under `src/orchestration/operations/`; only the approved-discovery document operation is executable                         |
+| Reviewed operation registry                 | Implemented under `src/orchestration/operations/`; baseline and exact-r1 SysON container seed are executable                            |
 | Exact bootstrap basis migration             | Implemented in `src/domain/engineering-project.ts`, validation, handoff, and command service                                              |
 | Documentary baseline executor               | Implemented with immutable capture storage, root-snapshot materialization/read-back, project command service, and narrow MCP tool        |
-| Generic technical run executor              | Future reviewed operations with provider clients, output validators, materializers, and no-retry semantics                               |
-| Cockpit projection                          | Passive BFF/projector exposes planning status and redacted live milestones; no provider calls in UI code                                  |
+| Fixed SysON container seed executor         | Implemented with server-fixed calls, root read-back, normalized capture, durable write-ahead attempts, r1-to-r2 materialization, and narrow MCP dispatch |
+| Architecture and proof executors            | Future reviewed operations with provider clients, output validators, materializers, and no-retry semantics                               |
+| Cockpit projection                          | Passive BFF/projector exposes planning/documentary/evidence state and redacted seed milestones; no provider calls in UI code              |
 | Operational V2                              | Separate operational domain/binding/store adapters plus one bounded evaluator; no raw telemetry fields in `ThreadSnapshot`               |
 
 The current `server.ts` also resolves a single tracked CM-01 project. A real new-product
@@ -558,6 +607,10 @@ project runtime, while preserving loopback and authority checks.
 - every later run requires an exact declared thread basis;
 - queue fingerprints include operation version and decision fingerprints;
 - no unknown or unregistered operation can enter a plan, be queued, or be executed.
+- a plan may declare the documentary baseline followed by the SysON seed, but the seed
+  becomes ready only when baseline completion has published exact r1;
+- the seed queue rejects the approved-discovery basis, a forged thread reference, and an
+  operation whose reviewed contract does not accept `thread-snapshot`.
 
 ### Documentary first-run execution
 
@@ -571,7 +624,20 @@ project runtime, while preserving loopback and authority checks.
 - started/completed/failed live updates are redacted and ordered;
 - reconnecting SSE or retrying the MCP command cannot repeat the operation.
 
-### Future technical execution
+### Fixed SysON container-seed execution
+
+- only `architecture.seed-syson-model@1` with exact documentary r1 may reach its
+  provider client;
+- the executor accepts no provider/tool name, arguments, SysML text, result snapshot, or
+  evidence payload from the MCP caller;
+- project creation, document/root-package creation, and root read-back are the only
+  allowed sequence; returned identities are normalized before capture;
+- capture and r2 are persisted and read back before completion;
+- a durable `dispatched` write attempt prevents automatic replay after an unknown
+  non-idempotent provider outcome;
+- r2 records no architecture, requirements, CAD, simulation, measurement, or verdict.
+
+### Future architecture and proof execution
 
 - each provider node must be called at most once;
 - provider failure must produce no canonical evidence;

@@ -169,10 +169,20 @@ export interface PlannedEngineeringDecision {
  * cannot receive provider names, tool arguments or executable workflows.
  */
 export interface EngineeringProjectPlanOperationRegistry {
-  validate(input: {
-    readonly operation: EngineeringOperationRef;
-    readonly basisKind: "approved-discovery";
-  }): {
+  validate(
+    input:
+      | {
+        readonly operation: EngineeringOperationRef;
+        /** Plan publication validates only the reviewed descriptor and bindings. */
+        readonly stage: "planning";
+      }
+      | {
+        readonly operation: EngineeringOperationRef;
+        /** Queueing must validate the exact durable basis a run will consume. */
+        readonly stage: "queue";
+        readonly basisKind: EngineeringBasisRef["kind"];
+      },
+  ): {
     readonly operation: {
       readonly id: string;
       readonly version: string;
@@ -493,6 +503,7 @@ export class EngineeringProjectCommandService {
           decisionBindings,
           appliedAt,
           origin,
+          this.planning,
         )
         : await queueV1Run(
           draft,
@@ -939,6 +950,7 @@ async function queueV2Run(
   approvedDecisions: readonly ApprovedDecisionBinding[],
   appliedAt: string,
   origin: EngineeringProjectCommandOrigin,
+  planning: EngineeringProjectPlanningDependencies | undefined,
 ): Promise<Mutable<EngineeringAgentRun>> {
   if (command.baseSnapshot !== undefined) {
     invalidInput("A V2 run must use basis and cannot accept baseSnapshot.");
@@ -948,6 +960,7 @@ async function queueV2Run(
   if (!operation) {
     invalidInput("A V2 run requires a registered operation on its work item.");
   }
+  assertRegisteredQueueOperation(planning, operation, basis.kind);
   const inputFingerprint = await sha256Fingerprint({
     workItemId: workItem.id,
     basis,
@@ -969,6 +982,32 @@ async function queueV2Run(
     evidenceRefs: [],
     statusHistory: [transition(command, origin, "queued", appliedAt)],
   };
+}
+
+/**
+ * A plan is deliberately checked against approved discovery when it is
+ * published. That alone is insufficient once a later work item is queued:
+ * the reviewed operation must also explicitly accept the concrete run basis.
+ */
+function assertRegisteredQueueOperation(
+  planning: EngineeringProjectPlanningDependencies | undefined,
+  operation: EngineeringOperationRef,
+  basisKind: EngineeringBasisRef["kind"],
+): void {
+  if (!planning) {
+    invalidInput(
+      "V2 run queueing is unavailable because no reviewed operation registry is configured.",
+    );
+  }
+  try {
+    planning.operations.validate({ operation, stage: "queue", basisKind });
+  } catch (error) {
+    invalidInput(
+      error instanceof Error
+        ? `Queued operation is not accepted by the reviewed registry: ${error.message}`
+        : "Queued operation is not accepted by the reviewed registry.",
+    );
+  }
 }
 
 function assertV2QueueBasis(
@@ -1157,7 +1196,7 @@ function resolvePlanOperation(
   operation: EngineeringOperationRef,
 ): ReturnType<EngineeringProjectPlanOperationRegistry["validate"]> {
   try {
-    return operations.validate({ operation, basisKind: "approved-discovery" });
+    return operations.validate({ operation, stage: "planning" });
   } catch (error) {
     invalidInput(
       error instanceof Error

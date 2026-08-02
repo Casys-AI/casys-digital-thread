@@ -37,12 +37,12 @@ export function shouldAcceptWorkbenchUpdate(
     // retaining a stale technical view for an intent-only project.
     return true;
   }
-  if (
-    incoming.surface === "planning" || current.surface === "planning" ||
-    incoming.surface === "documentary" || current.surface === "documentary"
-  ) {
+  if (incoming.surface === "documentary" && current.surface === "documentary") {
+    return documentaryActivityVersion(incoming) >
+      documentaryActivityVersion(current);
+  }
+  if (incoming.surface !== "evidence" || current.surface !== "evidence") {
     // Planning accepts its own narrow activity comparator at the caller.
-    // A documentary record has no live graph or thread overlay to compare.
     return false;
   }
   if (
@@ -54,6 +54,12 @@ export function shouldAcceptWorkbenchUpdate(
   }
   return liveOverlayVersion(incoming.thread) >
     liveOverlayVersion(current.thread);
+}
+
+function documentaryActivityVersion(
+  snapshot: Extract<EngineeringWorkbenchSnapshot, { surface: "documentary" }>,
+): number {
+  return snapshot.documentary.technicalStart?.activity.version ?? 0;
 }
 
 function liveOverlayVersion(snapshot: ThreadWorkbenchSnapshot): number {

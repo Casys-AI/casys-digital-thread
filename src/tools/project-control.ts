@@ -1,5 +1,5 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
-import type { ApprovedDiscoveryBaselineRunExecutor } from "../adapters/approved-discovery-baseline-run-executor.ts";
+import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
 import type {
   EngineeringOperationInputBinding,
@@ -130,8 +130,8 @@ export interface EngineeringProjectSnapshotReader {
 export interface ProjectControlToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
-  /** Optional so focused read-only tests need not construct an executor. */
-  baselineExecutor?: Pick<ApprovedDiscoveryBaselineRunExecutor, "execute">;
+  /** Optional so focused read-only tests need not construct a trusted executor. */
+  runExecutor?: Pick<RegisteredProjectRunExecutor, "execute">;
 }
 
 export function registerProjectControlTools(
@@ -162,16 +162,16 @@ export function registerProjectControlTools(
     );
   });
 
-  if (dependencies.baselineExecutor) {
+  if (dependencies.runExecutor) {
     app.registerTool(projectAgentRunExecuteTool, async (args, context) => {
       const common = commonMutation(args);
       const runId = requiredString(args.runId, "runId");
-      const snapshot = await dependencies.baselineExecutor!.execute(
+      const snapshot = await dependencies.runExecutor!.execute(
         agentOrigin(context),
         { ...common, runId },
       );
       return projectResult(
-        `Agent run ${runId} recorded its durable approved-discovery documentary baseline at project revision ${snapshot.revision}. No technical tool evidence was created by this operation.`,
+        `Agent run ${runId} completed through its registered server-owned executor at project revision ${snapshot.revision}.`,
         snapshot,
       );
     });
@@ -338,7 +338,7 @@ const projectDecisionProposeTool: MCPTool = {
 const projectAgentRunExecuteTool: MCPTool = {
   name: "project_agent_run_execute",
   description:
-    "Execute one human-queued V2 baseline.from-approved-discovery@1 run through the server-owned local executor. The call accepts no provider, tool arguments, files or result payload. It records an immutable documentary pre-technical baseline from the exact approved discovery and reviewed plan; it does not create CAD, SysML, simulation, measurement, verification or compliance evidence. Reuse the same commandId unchanged to resume an interrupted call safely.",
+    "Execute one human-queued V2 run through its exact server-owned registered executor. The call accepts no provider, tool arguments, files or result payload. Registered work may record the approved-discovery documentary baseline or create only a blank, read-back SysON project/document/root-package container; it cannot add arbitrary SysML, CAD, simulation, measurements, verification or compliance claims. Reuse the same commandId unchanged to resume an interrupted call safely.",
   inputSchema: mutationSchema({
     runId: { type: "string", minLength: 1 },
   }, ["runId"]),

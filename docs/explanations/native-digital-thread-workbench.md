@@ -1,7 +1,7 @@
 # Native digital-thread Workbench: compose evidence, not applications
 
-**Status: accepted target — multi-provider CM-01 baseline plus the first human-agent
-project-control slice, 2026-08-01**
+**Status: accepted target — multi-provider CM-01 baseline plus the first two bounded
+human-agent V2 operations, 2026-08-02**
 
 The first Workbench proved that five independent MCP Apps can be discovered,
 capability-bounded, mounted, and synchronized. It also exposed the product limit of that
@@ -80,7 +80,7 @@ snapshot IDs remain available as audit context.
 ```text
 native Preact SPA                           agent MCP client
   | GET + snapshot SSE                       | project snapshot/proposal
-  | human-only POST                          | exact queued baseline execution
+  | human-only POST                          | exact queued registered execution
   v                                          v
                  immutable EngineeringProject revisions
                               |
@@ -109,18 +109,28 @@ self-declared and unauthenticated, so this remains a loopback prototype rather t
 multi-user authorization system. The route has no provider-execution authority.
 
 The same project is visible to agents through the Console MCP server. MCP exposes
-snapshot, proposal, and the narrow execution of an exact human-queued V2 baseline run,
-but deliberately no approval, rejection, or queue tool. Human and agent commands
+snapshot, proposal, and the narrow execution of an exact human-queued registered V2
+run, but deliberately no approval, rejection, or queue tool. Human and agent commands
 converge on one immutable active store with optimistic revision checks and durable
 idempotency receipts.
 
-For a new idea/specification project, that first V2 run creates a SHA-256-addressed,
-immutable document of the exact approved discovery and reviewed plan. The cockpit can
-show its queue, redacted live milestones, and resulting provenance without presenting it
-as a technical graph. This documentary baseline is deliberately pre-technical: it is not
-a SysML model, CAD artifact, FEA/simulation result, measurement, requirement verdict, or
-conformity claim. Technical tool facets remain empty until a later reviewed operation
-produces their own evidence.
+For a new idea/specification project, the first V2 run creates a SHA-256-addressed,
+immutable document of the exact approved discovery and reviewed plan: documentary
+`ThreadSnapshot` r1. The cockpit can show its queue, redacted live milestones, and
+resulting provenance without presenting it as a technical graph. This documentary
+baseline is deliberately pre-technical: it is not a SysML model, CAD artifact,
+FEA/simulation result, measurement, requirement verdict, or conformity claim.
+
+The next implemented V2 run, `architecture.seed-syson-model@1`, is intentionally just
+as narrow. From exact r1, a server-fixed executor creates a blank SysON project
+container, blank SysML document, and root package, then reads the root package back.
+Only normalized provider identities are captured before the immutable r2 descendant is
+published. The live activity is a small closed sequence, not a generic SysON viewer;
+the agent cannot supply a provider, tool, arguments, SysML text, or result. Each
+non-idempotent creation is durably recorded before dispatch, so an unknown outcome stops
+for review instead of being blindly retried. r2 proves only the editable container
+identity: it is not a system architecture, requirements, CAD, simulation, measurement,
+or a verdict.
 
 The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
 build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It

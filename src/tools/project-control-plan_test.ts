@@ -5,6 +5,7 @@ import { FileProjectDiscoveryRevisionStore } from "../adapters/project-discovery
 import { FileThreadSnapshotStore } from "../adapters/file-thread-snapshot-store.ts";
 import type { McpProbe } from "../adapters/http-mcp-probe.ts";
 import { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
 import type { FleetManifest, ObservedContainer, RunDetail } from "../domain/types.ts";
 import { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
 import { ProjectDiscoveryCommandService } from "../domain/project-discovery-command-service.ts";
@@ -18,6 +19,13 @@ const AGENT = { kind: "agent" as const, actorId: "agent:planner" };
 Deno.test("project_plan_publish exposes an agent-only bounded plan contract", async () => {
   await withApprovedProjectShell(async ({ directory }) => {
     const { app } = await createProjectControlTestServer(directory);
+    // Server startup still seeds its ordinary CM-01 manifest, but every tool
+    // call below must resolve the pre-existing V2 shell by its supplied id.
+    assertExists(
+      await new FileEngineeringProjectRevisionStore(`${directory}/projects`).get(
+        "coffee-machine-cm01",
+      ),
+    );
 
     assertEquals(app.getToolNames().includes("project_plan_publish"), true);
 
@@ -290,7 +298,17 @@ Deno.test(
         const project = await projects.get(PROJECT_ID);
         assertExists(project);
         assertExists(project.plan);
-        const queued = await new EngineeringProjectCommandService(projects).queueRun(
+        const queued = await new EngineeringProjectCommandService(
+          projects,
+          undefined,
+          undefined,
+          {
+            discoveries: new FileProjectDiscoveryRevisionStore(
+              `${directory}/discoveries`,
+            ),
+            operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+          },
+        ).queueRun(
           HUMAN,
           {
             commandId: "human-authorize-documentary-baseline",
@@ -390,8 +408,6 @@ async function createProjectControlTestServer(directory: string) {
     probe: healthyProbe(),
     docker: unavailableDocker(),
     logger: () => {},
-    projectId: PROJECT_ID,
-    projectPath: `${directory}/unused-tracked-project.json`,
     activeProjectDirectory: `${directory}/projects`,
     projectDiscoveryDirectory: `${directory}/discoveries`,
     threadSnapshotDirectory: `${directory}/thread-snapshots`,
