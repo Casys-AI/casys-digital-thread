@@ -36,9 +36,23 @@ export const INSPECTION_DRONE_ARCHITECTURE_LIVE_STEPS = [
 type InspectionDroneArchitectureLiveStep =
   (typeof INSPECTION_DRONE_ARCHITECTURE_LIVE_STEPS)[number];
 
+/**
+ * A retry after the durable insertion acknowledgement must resume at a
+ * read-back. Replaying the preflight/insertion presentation would misstate
+ * the provider lifecycle just as replaying the actual insertion would.
+ */
+export type InspectionDroneArchitectureLiveStartStep =
+  | "root-preflight"
+  | "root-readback";
+
 interface ActiveCall {
   operationId: string;
+  allocation: InspectionDroneArchitectureLiveAllocation;
+}
+
+interface InspectionDroneArchitectureLiveAllocation {
   step: InspectionDroneArchitectureLiveStep;
+  predecessor: InspectionDroneArchitectureLiveStep | undefined;
 }
 
 /**
@@ -54,27 +68,38 @@ interface ActiveCall {
  */
 export function createInspectionDroneArchitectureLiveProjector(
   runId: string,
+  options: { readonly startAt?: InspectionDroneArchitectureLiveStartStep } = {},
 ): (event: RecordingMcpToolEvent) => LiveThreadGraphPatch {
-  let nextStepIndex = 0;
+  const startAt = options.startAt ?? "root-preflight";
+  const startIndex = INSPECTION_DRONE_ARCHITECTURE_LIVE_STEPS.findIndex((step) =>
+    step.id === startAt
+  );
+  if (startIndex < 0) {
+    throw new TypeError(`Unknown inspection-drone architecture live start: ${startAt}`);
+  }
+  let nextStepIndex = startIndex;
   const activeCalls: ActiveCall[] = [];
+  let mostRecentStep: InspectionDroneArchitectureLiveStep | undefined;
 
   return (event) => {
     if (event.runId !== runId) return emptyPatch();
-    const step = stepForEvent(event, activeCalls, () => {
+    const allocation = stepForEvent(event, activeCalls, () => {
       const candidate = INSPECTION_DRONE_ARCHITECTURE_LIVE_STEPS[nextStepIndex];
       if (!candidate || candidate.toolName !== event.toolName) return undefined;
       nextStepIndex++;
-      return candidate;
+      const allocation = { step: candidate, predecessor: mostRecentStep };
+      mostRecentStep = candidate;
+      return allocation;
     });
-    if (!step) return emptyPatch();
+    if (!allocation) return emptyPatch();
 
     return {
       // Emit only the current milestone. LiveThreadUpdateStore assigns the
       // lifecycle state to every node in a patch; returning earlier milestones
       // here would incorrectly make a completed preflight look running again
       // when a later read-back starts.
-      nodes: [milestoneNode(runId, step, event.phase, event.recordedAt)],
-      edges: predecessorEdge(runId, step),
+      nodes: [milestoneNode(runId, allocation.step, event.phase, event.recordedAt)],
+      edges: predecessorEdge(runId, allocation.predecessor, allocation.step),
     };
   };
 }
@@ -82,24 +107,24 @@ export function createInspectionDroneArchitectureLiveProjector(
 function stepForEvent(
   event: RecordingMcpToolEvent,
   activeCalls: ActiveCall[],
-  allocateNext: () => InspectionDroneArchitectureLiveStep | undefined,
-): InspectionDroneArchitectureLiveStep | undefined {
+  allocateNext: () => InspectionDroneArchitectureLiveAllocation | undefined,
+): InspectionDroneArchitectureLiveAllocation | undefined {
   const activeIndex = activeCalls.findLastIndex((candidate) =>
     candidate.operationId === event.operationId &&
-    candidate.step.toolName === event.toolName
+    candidate.allocation.step.toolName === event.toolName
   );
   if (activeIndex >= 0) {
     const active = activeCalls[activeIndex]!;
     if (event.phase !== "started") activeCalls.splice(activeIndex, 1);
-    return active.step;
+    return active.allocation;
   }
 
-  const step = allocateNext();
-  if (!step) return undefined;
+  const allocation = allocateNext();
+  if (!allocation) return undefined;
   if (event.phase === "started") {
-    activeCalls.push({ operationId: event.operationId, step });
+    activeCalls.push({ operationId: event.operationId, allocation });
   }
-  return step;
+  return allocation;
 }
 
 function milestoneNode(
@@ -127,12 +152,9 @@ function milestoneNode(
 
 function predecessorEdge(
   runId: string,
+  predecessor: InspectionDroneArchitectureLiveStep | undefined,
   step: InspectionDroneArchitectureLiveStep,
 ): ThreadGraphEdge[] {
-  const index = INSPECTION_DRONE_ARCHITECTURE_LIVE_STEPS.findIndex((candidate) =>
-    candidate.id === step.id
-  );
-  const predecessor = INSPECTION_DRONE_ARCHITECTURE_LIVE_STEPS[index - 1];
   if (!predecessor) return [];
   return [{
     id: `${runId}:${predecessor.id}-to-${step.id}`,

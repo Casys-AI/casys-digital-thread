@@ -139,6 +139,35 @@ Deno.test("inspection-drone architecture live projector ignores an out-of-order 
   );
 });
 
+Deno.test("inspection-drone architecture live projector resumes after a durable insertion at read-back", () => {
+  const project = createInspectionDroneArchitectureLiveProjector(RUN_ID, {
+    startAt: "root-readback",
+  });
+
+  const rootReadback = project(event(
+    "syson_element_children",
+    "started",
+    "resumed-root-readback",
+  ));
+  assertEquals(rootReadback.nodes.map((node) => node.ref.id), [
+    `${RUN_ID}:root-readback`,
+  ]);
+  assertEquals(rootReadback.edges, []);
+
+  project(event("syson_element_children", "completed", "resumed-root-readback"));
+  const packageReadback = project(event(
+    "syson_element_children",
+    "started",
+    "resumed-package-readback",
+  ));
+  assertEquals(packageReadback.nodes.map((node) => node.ref.id), [
+    `${RUN_ID}:package-readback`,
+  ]);
+  assertEquals(packageReadback.edges.map((edge) => edge.id), [
+    `${RUN_ID}:root-readback-to-package-readback`,
+  ]);
+});
+
 function event(
   toolName: string,
   phase: RecordingMcpToolEvent["phase"],
