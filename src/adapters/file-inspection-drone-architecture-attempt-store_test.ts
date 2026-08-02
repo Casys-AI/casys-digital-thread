@@ -113,6 +113,10 @@ Deno.test("r3 architecture write journal fsyncs the complete dispatched record b
     directorySync > close,
     "the parent directory must sync after the new dispatched record is durable",
   );
+  assert(
+    fileSystem.operations.indexOf("sync-directory:.") > directorySync,
+    "a newly created attempt directory must also have its parent synced",
+  );
   assertEquals(
     JSON.parse(new TextDecoder().decode(fileSystem.files.get(path)!)).status,
     "dispatched",
@@ -148,6 +152,10 @@ Deno.test("r3 architecture write journal atomically replaces a dispatched record
   assert(
     directorySync > renameIndex,
     "the parent directory must sync after the completed record is renamed",
+  );
+  assert(
+    operations.indexOf("sync-directory:.") > directorySync,
+    "the attempt directory parent must remain durable after an atomic replacement",
   );
   assertEquals(
     JSON.parse(new TextDecoder().decode(fileSystem.files.get(path)!)).status,

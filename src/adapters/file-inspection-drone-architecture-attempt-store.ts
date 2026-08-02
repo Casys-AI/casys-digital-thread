@@ -217,14 +217,14 @@ export class FileInspectionDroneArchitectureAttemptStore {
 
   private async writeNewDurably(path: string, text: string): Promise<void> {
     await this.writeDurably(path, text, { createNew: true, write: true });
-    await this.syncDirectory();
+    await this.syncDirectoryChain();
   }
 
   private async replaceDurably(path: string, text: string): Promise<void> {
     const temporaryPath = `${path}.${crypto.randomUUID()}.tmp`;
     await this.writeDurably(temporaryPath, text, { createNew: true, write: true });
     await this.fileSystem.rename(temporaryPath, path);
-    await this.syncDirectory();
+    await this.syncDirectoryChain();
   }
 
   private async writeDurably(
@@ -251,14 +251,43 @@ export class FileInspectionDroneArchitectureAttemptStore {
     }
   }
 
-  private async syncDirectory(): Promise<void> {
-    const directory = await this.fileSystem.open(this.directory, { read: true });
-    try {
-      await directory.sync();
-    } finally {
-      directory.close();
+  /**
+   * A new attempt directory is itself a filesystem mutation. Syncing only the
+   * child directory would not necessarily make its entry durable in a newly
+   * created parent after power loss, which could erase the sole `dispatched`
+   * marker and make a second insert look safe. Sync the directory and every
+   * ancestor through the stable process working directory.
+   */
+  private async syncDirectoryChain(): Promise<void> {
+    for (const directoryPath of directoryChain(this.directory)) {
+      const directory = await this.fileSystem.open(directoryPath, { read: true });
+      try {
+        await directory.sync();
+      } finally {
+        directory.close();
+      }
     }
   }
+}
+
+function directoryChain(path: string): string[] {
+  const result: string[] = [];
+  let current = path.replace(/\/+$/, "") || ".";
+  while (!result.includes(current)) {
+    result.push(current);
+    const parent = parentDirectory(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return result;
+}
+
+function parentDirectory(path: string): string {
+  if (path === "." || path === "/") return path;
+  const slash = path.lastIndexOf("/");
+  if (slash < 0) return ".";
+  if (slash === 0) return "/";
+  return path.slice(0, slash);
 }
 
 function validateBegin(input: BeginInspectionDroneArchitectureWrite): void {
