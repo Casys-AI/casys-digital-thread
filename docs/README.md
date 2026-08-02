@@ -80,6 +80,9 @@ categories deliberately answer different questions.
 - [Agent orchestration and operational-twin boundary](rfcs/agent-orchestration-and-operational-twin-boundary.md)
   records the proposed technical path beyond the implemented documentary bootstrap and
   first bounded SysON seed, while keeping an operational twin in V2.
+- [Bounded inspection-drone SysON architecture slice](rfcs/inspection-drone-syson-architecture-slice.md)
+  records the proposed r3 model fragment, exact one-write executor boundary, fake-client
+  test recipe, and remaining SysON textual-syntax conformance gate.
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.
