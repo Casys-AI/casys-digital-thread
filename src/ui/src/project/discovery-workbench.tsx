@@ -345,6 +345,23 @@ function ActiveDiscoveryQuestion({
           {recommendedOption?.label ?? question.recommendation.value}
         </strong>
         <p>{question.recommendation.rationale}</p>
+        <section
+          class="discovery-agent-starter"
+          aria-label={`Suggested reply for: ${question.prompt}`}
+        >
+          <span>START WITH THIS REPLY</span>
+          <p>
+            “I&rsquo;m leaning toward{" "}
+            <strong>
+              {recommendedOption?.label ?? question.recommendation.value}
+            </strong>{" "}
+            for this question. Can you explain the trade-offs before we record
+            it?”
+          </p>
+          <small>
+            Send it to the paired agent, or ask it to explain first.
+          </small>
+        </section>
       </aside>
 
       <section

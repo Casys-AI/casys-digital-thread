@@ -69,6 +69,8 @@ The page should show:
 - exactly one read-only active question to discuss with the agent;
 - why the answer matters;
 - an agent recommendation, bounded alternatives, and their consequences;
+- one short reply starter the reviewer can send to the paired agent or use to ask
+  for an explanation before anything is recorded;
 - a visible `I don't know` path to discuss with the agent;
 - a folded working brief instead of a technical dashboard.
 

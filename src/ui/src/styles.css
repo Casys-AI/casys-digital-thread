@@ -7860,6 +7860,38 @@ button.erp-bom-row {
   line-height: 1.55;
 }
 
+.discovery-agent-starter {
+  display: grid;
+  gap: 0.28rem;
+  max-width: 680px;
+  margin-top: 0.25rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(159, 196, 90, 0.2);
+}
+
+.discovery-agent-starter > span {
+  color: var(--discovery-green);
+  font: 700 0.5rem/1.25 var(--mono);
+  letter-spacing: 0.11em;
+}
+
+.discovery-agent-starter > p {
+  margin: 0;
+  color: #c2c9c2;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.discovery-agent-starter > p strong {
+  color: #e1ded6;
+}
+
+.discovery-agent-starter > small {
+  color: #959b95;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
 .discovery-options {
   min-width: 0;
   padding: 0;
@@ -9014,6 +9046,22 @@ button.erp-bom-row {
 .discovery-recommendation {
   border-color: rgba(54, 117, 83, 0.32);
   background: #edf6ee;
+}
+
+.discovery-agent-starter {
+  border-color: rgba(54, 117, 83, 0.2);
+}
+
+.discovery-agent-starter > p {
+  color: #41554b;
+}
+
+.discovery-agent-starter > p strong {
+  color: var(--discovery-ink);
+}
+
+.discovery-agent-starter > small {
+  color: #587067;
 }
 
 .discovery-workbench .discovery-option.mcp-view-button,

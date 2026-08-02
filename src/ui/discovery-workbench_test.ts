@@ -13,6 +13,15 @@ Deno.test("Discovery Workbench stays a calm one-question review surface", async 
   assertStringIncludes(source, "ANSWER WITH YOUR AGENT");
   assertStringIncludes(source, "Why this matters");
   assertStringIncludes(source, "AGENT RECOMMENDATION");
+  assertStringIncludes(source, "START WITH THIS REPLY");
+  assertStringIncludes(
+    source,
+    "Can you explain the trade-offs before",
+  );
+  assertStringIncludes(
+    source,
+    "Send it to the paired agent, or ask it to explain first.",
+  );
   assertStringIncludes(source, "Possible directions to discuss");
   assertStringIncludes(source, "I don&rsquo;t know yet");
   assertStringIncludes(source, "Correct from cockpit");
@@ -27,7 +36,10 @@ Deno.test("Discovery Workbench stays a calm one-question review surface", async 
   assertStringIncludes(source, "Start engineering project");
   assertStringIncludes(source, "Your framing is approved");
   assertStringIncludes(source, "Initial project shell recorded");
-  assertStringIncludes(source, "This receipt describes the initial handoff only");
+  assertStringIncludes(
+    source,
+    "This receipt describes the initial handoff only",
+  );
   assertStringIncludes(source, "Project ID already occupied");
   assertStringIncludes(
     source,
@@ -43,6 +55,7 @@ Deno.test("Discovery Workbench stays a calm one-question review surface", async 
   assertEquals(source.includes("discovery.questions.map"), false);
   assertEquals(source.includes("Question ${"), false);
   assertEquals(source.includes("<progress"), false);
+  assertEquals(source.includes("<textarea"), false);
 
   const correctionStart = source.indexOf(
     '<details class="discovery-cockpit-correction">',
