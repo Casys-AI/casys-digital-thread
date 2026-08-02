@@ -29,12 +29,14 @@ CAD → FEA branch.
 
 The target chain answers, continuously and in minutes, the question that today takes
 weeks between requirement freeze and design review: **does this design hold every
-requirement it traces to — with computed proof?** The repository currently proves the
-individual transports, computations, artifact attestation, and presentation concepts.
-The clean CoffeeMachine CM-01 baseline aggregates observed SysON, Modelica, ERPNext and
-whole-machine build123d evidence. CalculiX is deliberately absent until a mechanical
-case and SysON criterion are reviewed; the closed verification and correction loop
-therefore remains under construction.
+requirement it traces to — with computed proof?** The clean, tracked CoffeeMachine CM-01
+baseline aggregates observed SysON, Modelica, ERPNext and whole-machine build123d
+evidence at revision 5, before any mechanical criterion exists. The first approved
+component loop has now also run end to end: approved, SysON-owned `1 mm` / `20 MPa`
+DripTray constraints, a content-addressed build123d STEP, CalculiX evidence, unit
+normalization, and SysON verdicts were published as canonical thread revision 6. That is
+a concept proof for one isolated DripTray, not whole-machine, release, manufacturing, or
+certification evidence.
 
 ## Positioning
 
@@ -158,9 +160,10 @@ the first SysON model or `ThreadSnapshot`; that explicit handoff remains a later
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
 bootstraps a local CM-01 revision from read-only SysON inventory, one persisted Modelica
-run, and reviewed ERPNext reads. The explicit build runner then adds the current
-SysON-derived CAD artifacts. It is real observed evidence, not a new FEA solve and not a
-closed SysON verification loop. See the
+run, and reviewed ERPNext reads. The explicit build runner adds the current SysON-derived
+CAD artifacts. A separately human-approved and agent-claimed mechanical runner can then
+add exact DripTray CAD, CalculiX observations, and SysON evaluations. Provider execution,
+canonical attachment, and project completion remain separate operations. See the
 [native preview how-to](docs/how-to/preview-native-workbench.md) and the
 [ThreadSnapshot reference](docs/reference/thread-snapshot.md).
 
@@ -176,22 +179,25 @@ Technical snapshots and assets also prefer active local state when present, but 
 baseline is accepted only for the same exact ID or filename—never as a substitute for
 `latest` or for missing evidence.
 
-The current live CoffeeMachine model contains two `RequirementUsage` elements but zero
-`ConstraintUsage` elements. The mechanical DAG may produce evidence only after an
-explicit material/support/load case is reviewed; with no extracted constraint it
-produces no product verdict. Adding a model-owned criterion is a domain step, not a UI
-workaround.
+The tracked r5 SysON inventory contains two `RequirementUsage` elements and zero
+mechanical `ConstraintUsage` elements, so the clean baseline honestly has no mechanical
+verdict. The approved CM-01 runner may add only the two proposal-derived DripTray limits
+(`1 mm` and `20 MPa`) to SysON, then re-extract and evaluate them. The completed
+reference run published both passing evaluations in r6 and completed the bound work item
+and agent run in active project revision 10. Adding those model-owned criteria is an
+explicit domain mutation authorized by the reviewed case, never a UI workaround.
 
 [`config/thread-workflows/`](config/thread-workflows/) describes typed causal DAGs. No
 dashboard-layout YAML, iframe host, or presentation-only MCP sits between the backend
 and provider-native MCP tools. See the
 [workflow reference](docs/reference/thread-workflows.md).
 
-The four observed branches share the system subject only through
+The four tracked r5 branches share the system subject only through
 [`config/thread-subjects/coffee-machine-cm01.json`](config/thread-subjects/coffee-machine-cm01.json):
 reviewed SysON project ID, build123d STEP path, Modelica run ID, and ERPNext item code.
-Matching labels never create a join. A future CalculiX branch must instead consume and
-attest the exact canonical STEP. The current assembly observes `94 degC` maximum water
+Matching labels never create a join. The r6 mechanical branch consumes and attests its
+exact content-addressed DripTray STEP; it does not claim that the historical
+whole-machine r5 STEP was solved. The current assembly observes `94 degC` maximum water
 temperature, the canonical whole-machine STEP, and ERPNext's active default BOM for
 `CASYS-CM01`; it does not assert that the CAD branch caused the Modelica result, or that
 zero Bin rows means zero inventory.

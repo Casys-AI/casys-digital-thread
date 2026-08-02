@@ -85,6 +85,39 @@ exports. Explicit consumption attestations prove source-to-plan, plan-to-script,
 script-to-export identity. The Workbench receives that new revision over SSE without a
 page reload.
 
+## Run the separately approved mechanical branch
+
+Assembly and the whole-machine CAD build do not authorize a solve. After the
+`review-mechanical-proof-case` proposal has been approved by a human, its work item has
+been queued by a human, and the resulting run has been claimed by an agent, execute the
+exact run ID:
+
+```bash
+deno task thread:run-coffee-machine-mechanical \
+  --run-id=<human-queued-and-agent-claimed-run-id>
+```
+
+The runner adds or validates only the approved DripTray `1 mm` and `20 MPa` constraints,
+generates a content-addressed DripTray STEP with build123d, solves that exact SHA-256
+with CalculiX, normalizes the observations, and asks SysON for the verdicts. It persists
+a capture but does not publish canonical evidence or complete the project run.
+
+The project lifecycle must enter `publishing` through `project_agent_run_publish`
+before attachment. Then publish the capture:
+
+```bash
+deno task thread:attach-coffee-machine-mechanical \
+  --run-id=<same-run-id>
+```
+
+Use the attach command's exact `resultSnapshot` and `evidenceRefs` in a second
+`project_agent_run_publish` call with `stage: "completed"`. The required ordering is
+therefore **publishing → attach → completed**. The attach command saves and reads back
+the immutable snapshot before removing the run's provisional feed entries; it never
+advances the project lifecycle itself. See the
+[mechanical workflow how-to](view-coffee-machine-cm01.md) for authorization and safe
+resume rules.
+
 ## Inspect the assembled state
 
 ```bash
@@ -106,10 +139,16 @@ explicit SysON-to-CAD run adds build123d evidence in a later immutable revision:
 
 ## Read the limits literally
 
-This snapshot does **not** produce a product verdict. The captured SysON inventory
-contains two `RequirementUsage` elements and no `ConstraintUsage`, so there is no
-model-owned mechanical criterion to evaluate. No `120 MPa` or other limit is inserted by
-the assembler.
+The tracked r5 baseline does **not** produce a mechanical product verdict. Its captured
+SysON inventory contains two `RequirementUsage` elements and no mechanical
+`ConstraintUsage`; the assembler inserts no `120 MPa` or other convenient limit.
+
+The separately approved reference runner is a deliberate later mutation. It writes the
+reviewed DripTray limits (`1 mm` displacement and `20 MPa` von Mises), publishes exact
+CAD/FEA/evaluation evidence as r6, and records two passing verdicts. Those verdicts apply
+only to the isolated `190 x 135 x 28 mm` concept DripTray under its provisional ABS-like
+material and `100 N` service case. They do not verify the whole CoffeeMachine and are not
+fabrication-release or certification evidence.
 
 The branches share one declared product subject, but their provenance remains bounded.
 The Modelica run is an independent versioned system scenario and the ERP observations

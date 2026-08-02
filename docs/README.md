@@ -21,7 +21,8 @@ categories deliberately answer different questions.
   project commands are distinct from provider calls and solves.
 - [Assemble the CoffeeMachine CM-01 thread](how-to/assemble-coffee-machine-thread.md)
   bootstraps the reviewed SysON, Modelica, and ERPNext branches; explicit runners add
-  CAD and future FEA revisions without manufacturing cross-branch cause.
+  CAD and the approved DripTray mechanical revision without manufacturing unrelated
+  cross-branch cause.
 - [Preview the MCP console in a local browser](how-to/preview-console.md) explains the
   `127.0.0.1:3021` harness, how to confirm that it is live, and what it intentionally
   does not do.
@@ -29,8 +30,9 @@ categories deliberately answer different questions.
   explains the ERPNext-derived visual baseline, Preact default, and component-only
   palette rule.
 - [Run the CoffeeMachine mechanical workflow](how-to/view-coffee-machine-cm01.md)
-  validates the canonical STEP → FEA → SysON graph and lists the reviewed analysis-case
-  inputs required before a real mechanical runner can exist.
+  executes the human-approved SysON → build123d → CalculiX → normalization → SysON
+  loop, publishes its exact evidence, and documents bounded safe resume and lifecycle
+  ordering.
 - [Attach a persisted Modelica branch](how-to/attach-observed-modelica-branch.md)
   imports one exact, already-persisted thermal run as evidence only: the model,
   scenario, metrics, and hashes are retained, without inventing a verdict.
@@ -87,9 +89,11 @@ categories deliberately answer different questions.
 ## Read the status labels literally
 
 `succeeded` means that a simulation completed. `passed` or `failed` means a comparison
-has been attached. The current CoffeeMachine comparison is a versioned **provisional
+has been attached. The CoffeeMachine thermal comparison is a versioned **provisional
 scenario contract** with one condition, `water_temperature_max >= 90 degC`; it is
-neither a product requirement nor a requirement stored in a SysON project. The assembled
-CM-01 product snapshot has no model-owned mechanical criterion and therefore no product
-verdict. A demo fixture is always labelled demo, and `unavailable`, `unresolved`, and
-`error` are evidence states, not hidden successes.
+neither a product requirement nor a requirement stored in a SysON project. The tracked
+r5 CM-01 baseline has no model-owned mechanical criterion and therefore no product
+verdict. The approved r6 DripTray extension instead contains two model-owned criteria and
+two passing evaluations, bounded to that concept case. A demo fixture is always labelled
+demo, and `unavailable`, `unresolved`, and `error` are evidence states, not hidden
+successes.

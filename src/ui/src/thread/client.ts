@@ -66,6 +66,7 @@ export class HttpThreadWorkbenchClient implements ThreadWorkbenchClient {
   async load(signal?: AbortSignal): Promise<EngineeringWorkbenchSnapshot> {
     const response = await this.fetcher(this.endpoint, {
       method: "GET",
+      cache: "no-store",
       headers: { Accept: "application/json" },
       signal,
     });

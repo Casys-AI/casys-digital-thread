@@ -106,11 +106,12 @@ snapshot, proposal, and run-lifecycle tools, but deliberately no approval, rejec
 queue tool. Human and agent commands converge on one immutable active store with
 optimistic revision checks and durable idempotency receipts.
 
-The technical snapshot is assembled from captured SysON inventory, attested build123d
-evidence, one persisted Modelica run, and reviewed ERPNext reads. It deliberately stops
-before a requirement verdict because SysON has no approved mechanical `ConstraintUsage`
-for this example yet. Completing a project run requires a separately published exact
-`ThreadSnapshot` whose cited evidence can be resolved.
+The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
+build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It
+deliberately stops before a mechanical verdict because that historical inventory has no
+mechanical `ConstraintUsage`. The approved DripTray runner later adds the exact reviewed
+constraints, provider evidence, and evaluations as r6. Completing its project run still
+requires that separately published exact `ThreadSnapshot` and resolvable cited evidence.
 
 The browser does not call the five MCP endpoints directly. The Deno backend owns service
 endpoints, credentials, workflow execution, and result validation. Provider tools keep
@@ -165,19 +166,21 @@ viewports, or CSS layout.
 ## Current acceptance slice
 
 The first real vertical slice is deliberately narrower than a five-panel cockpit. The
-clean baseline groups four observed branches through a reviewed CM-01 identity manifest;
-CalculiX remains absent until a real mechanical case is approved:
+clean r5 baseline groups four observed branches through a reviewed CM-01 identity
+manifest. The approved reference run extends it with one bounded DripTray mechanical
+branch:
 
 1. build123d produces an identified STEP artifact and measurements;
 2. build123d hashes the exported STEP bytes;
-3. the future CalculiX admission contract has been proved against a local provider: it
-   snapshots its input, recomputes its hash, and refuses an `expected_step_sha256`
-   mismatch before meshing;
-4. the orchestrator will accept a CAD → FEA edge only when producer and consumer hashes
-   are equal; no such edge is claimed by the clean baseline;
-5. future solver observations must be normalized with units and source identities;
-6. SysON inventory establishes the actual current absence of a mechanical constraint,
-   rather than supplying a default;
+3. CalculiX snapshots its input, recomputes its hash, and refuses an
+   `expected_step_sha256` mismatch before meshing;
+4. the r6 CAD → FEA edge is accepted only because the produced and consumed DripTray
+   STEP hashes are equal; no such edge is claimed by the clean r5 baseline;
+5. solver observations are normalized with units and source identities before SysON
+   evaluates them;
+6. the r5 SysON inventory establishes the historical absence of a mechanical constraint;
+   the runner adds only the human-approved `1 mm` and `20 MPa` DripTray limits and
+   re-extracts them before continuing;
 7. Modelica contributes one persisted model/scenario run and unit-bearing thermal
    observations;
 8. ERPNext contributes one active default BOM observation and the exact number of Bin
@@ -196,14 +199,18 @@ CalculiX remains absent until a real mechanical case is approved:
 13. agents can advance only an already queued run, and cannot grant themselves approval
     or queue authority;
 14. run completion fails closed until an exact descendant snapshot contains evidence
-    that is new or content-changed from the run base.
+    that is new or content-changed from the run base;
+15. the completed r6/r10 reference path keeps provider execution, canonical attachment,
+    and project lifecycle transitions distinct: `publishing` → attach → `completed`.
 
 This is an evidence assembly, not a causal merger. CAD → FEA becomes an attested edge
 only after a solver run consumes the exact STEP and its result is canonically published;
-the clean baseline has no such edge. Modelica's scenario and ERPNext's provider reads
+r6 contains that edge for the isolated concept DripTray, while the clean r5 baseline does
+not. Modelica's scenario and ERPNext's provider reads
 are independent branches until an explicit transformation or requirement trace links
 them. In particular, zero ERP Bin rows is not a stock conclusion, and a successful
-Modelica run is not a compliance verdict.
+Modelica run is not a compliance verdict. The passing DripTray evaluations are likewise
+not whole-machine, fabrication-release, or certification evidence.
 
 ## Product rule
 

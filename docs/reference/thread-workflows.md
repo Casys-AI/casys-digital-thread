@@ -95,34 +95,50 @@ normalizing unit-bearing evidence and refusing a producer/consumer hash mismatch
 ## First mechanical slice
 
 [`coffee-machine-mechanical-v1.yaml`](../../config/thread-workflows/coffee-machine-mechanical-v1.yaml)
-declares this sequence:
+declares the solve/normalize/evaluate DAG. The CM-01 product runner surrounds it with the
+approved SysON preflight and build123d generation:
 
 ```text
-requirements ─────────────────────────────────────┐
-                                                  ▼
-canonical STEP ──▶ mechanical ──▶ observations ──▶ evaluation
+SysON preflight ──▶ build123d STEP ──▶ CalculiX ──▶ normalization ──▶ SysON evaluation
+       └──────────────── extracted constraints ────────────────────────────┘
 ```
 
-The caller resolves `cad_step_path` and `cad_step_sha256` from the latest canonical
-build artifact. CalculiX accepts `expected_step_sha256`, recomputes
+The runner supplies `cad_step_path` and `cad_step_sha256` from the exact
+content-attested DripTray export it just generated. It accepts only CalculiX
+`static-solve` structured content schema `2.0`, whose required `inputArtifact`
+records the consumed bytes. CalculiX accepts
+`expected_step_sha256`, recomputes
 `inputArtifact.sha256`, and rejects a mismatch before solving. Material, meshing,
 support boxes, load boxes, and force components are required workflow inputs with no
 defaults.
 
-Constraint extraction may honestly return an empty array. That no longer prevents an
-explicitly reviewed analysis case from producing physical evidence, but evaluation with
-zero constraints creates no product verdict.
+Constraint extraction may honestly return an empty array. The generic workflow preserves
+that state: an empty evaluation is not a pass. The CM-01 product runner adds a stricter
+preflight around this DAG. It accepts only the exact human-approved DripTray proposal;
+when the tracked r5 model has no mechanical constraints, it inserts the proposal-derived
+`1 mm` displacement and `20 MPa` von Mises limits, re-extracts them, and refuses to
+continue unless the exact pair is present.
 
-The remaining product boundaries are:
+The product boundaries are:
 
-- no public BFF endpoint triggers the executor or persists its resulting
-  `ThreadSnapshot`;
+- no public BFF endpoint triggers the executor; the explicit CLI runner persists a
+  capture and the separate attach task persists its resulting `ThreadSnapshot`;
 - the native Workbench reads an immutable persisted `ThreadSnapshot` through passive
   GET/SSE paths; its human project-command POST does not execute this workflow;
-- the current live SysON model has two `RequirementUsage` elements but zero
-  `ConstraintUsage` elements;
-- no reviewed whole-machine material/support/load declaration exists yet, so there is
-  deliberately no public mechanical runner.
+- the tracked r5 inventory has two `RequirementUsage` elements but zero mechanical
+  `ConstraintUsage` elements; the approved runner's bounded SysON mutation is later
+  evidence, not a rewrite of that baseline;
+- the published r6 result covers one isolated DripTray concept only. No reviewed
+  whole-machine material/support/load declaration or certification case exists;
+- project lifecycle is separate: an agent enters `publishing`, the attach task saves and
+  reads back canonical evidence, and only then may the agent complete against the exact
+  returned references.
+
+The completed reference run published the exact CalculiX-consumed STEP and both passing
+SysON evaluations in
+`coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechanical-run-v1-extension`.
+Active project revision 10 records the bound run and verification work item as
+`completed`.
 
 ## Presentation separation
 

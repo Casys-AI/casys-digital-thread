@@ -97,12 +97,26 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
       );
     }
     await this.claimRevision(validated);
-    await this.io.writeTextFile(
-      this.pathFor(validated.id),
-      `${JSON.stringify(validated, null, 2)}\n`,
-    );
+    const fileName = `${encodeURIComponent(validated.id)}.json`;
+    try {
+      await this.io.writeTextFile(
+        this.pathFor(validated.id),
+        `${JSON.stringify(validated, null, 2)}\n`,
+      );
+    } catch (error) {
+      if (!isAlreadyExists(error)) throw error;
+
+      // Another store instance may have won the createNew race after both
+      // writers observed the id as absent. Bypass this instance's cache: the
+      // file on disk is the authoritative value for the idempotency check.
+      const written = await this.readSnapshotFileFresh(fileName);
+      if (canonicalJson(written) === canonicalJson(validated)) return;
+      throw new Error(
+        `ThreadSnapshot ${validated.id} already exists with different content.`,
+      );
+    }
     this.#snapshotByFileName.set(
-      `${encodeURIComponent(validated.id)}.json`,
+      fileName,
       validated,
     );
   }
@@ -135,6 +149,10 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
   private async readSnapshotFile(name: string): Promise<ThreadSnapshot> {
     const cached = this.#snapshotByFileName.get(name);
     if (cached) return structuredClone(cached);
+    return await this.readSnapshotFileFresh(name);
+  }
+
+  private async readSnapshotFileFresh(name: string): Promise<ThreadSnapshot> {
     const snapshot = validateThreadSnapshot(
       JSON.parse(await this.io.readTextFile(joinPath(this.directory, name))),
     );

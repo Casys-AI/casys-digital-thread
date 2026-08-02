@@ -38,7 +38,7 @@ coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-ext
 It contains CM-01 SysON, Modelica, ERPNext and whole-machine CAD evidence. It contains
 no legacy support-bracket attachment and no claimed CalculiX result. It reports
 `requirements: 0` and `verdict: unavailable-no-model-owned-mechanical-criterion`; this
-is expected because the live CoffeeMachine model has no approved mechanical
+is expected because the SysON inventory captured in r5 has no mechanical
 `ConstraintUsage`.
 
 [`config/projects/coffee-machine-cm01.project.json`](../../config/projects/coffee-machine-cm01.project.json)
@@ -52,6 +52,13 @@ The capture itself and its lossless STL transport live under
 fixture and not proof that any provider is currently online. Active local snapshots and
 assets have read priority; the checked baseline is used only when the requested exact ID
 or filename is absent locally.
+
+The completed 2026-08-02 local reference path advances the technical thread to r6 and
+the active engineering project to r10. It adds an isolated DripTray STEP, exact CalculiX
+consumption, `0.10363294359363535 mm` displacement,
+`0.5309183805726515 MPa` von Mises stress, and two passing SysON evaluations against
+the approved `1 mm` / `20 MPa` limits. This is later local evidence; it neither rewrites
+the tracked r5 baseline nor proves the whole machine, release readiness, or certification.
 
 ## Start the Workbench BFF
 
@@ -158,7 +165,9 @@ The projection must show:
 - the canonical whole-machine STEP after an explicit build run is attached;
 - SysON, Modelica, and ERPNext bootstrap branches, plus build123d and CalculiX only
   after their explicit runs are published;
-- zero requirements and an unavailable verdict, not a successful one.
+- on the clean r5 head, zero mechanical requirements and an unavailable verdict;
+- on the published r6 head, the two DripTray requirements and their `pass` evaluations,
+  with an empty reconciled live overlay.
 
 ## Follow a review notification
 
@@ -201,7 +210,11 @@ After queueing, an agent must claim the named run, call the reviewed provider MC
 separate operation, publish a canonical `ThreadSnapshot`, and cite entities from that
 exact result revision. Completion fails closed if the snapshot or any evidence reference
 does not exist. The resulting project revisions and run journal arrive over the same SSE
-stream.
+stream. For the CM-01 proof, the required publication order is
+`project_agent_run_publish(stage=publishing)` →
+`thread:attach-coffee-machine-mechanical` →
+`project_agent_run_publish(stage=completed)`. See the
+[mechanical workflow how-to](view-coffee-machine-cm01.md).
 
 The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
 attention, and where to go next. The five product sections have distinct jobs:
@@ -262,20 +275,22 @@ It proves durable project and canonical-thread validation, exact project-to-evid
 references, explicit provider-to-subject and component identity, persisted Modelica
 observations and ERPNext BOM detail, passive read/SSE paths, a revision-bound human
 command gate, complementary agent run controls, and one coherent native UI with shared
-selection and no nested Apps. When a FEA branch exists, its exact CAD consumption must
-be attested before projection.
+selection and no nested Apps. The published r6 branch also proves exact DripTray CAD
+consumption and the two model-owned SysON comparisons.
 
 It does **not** prove:
 
 - a new solve at preview time;
-- a model-owned mechanical requirement or compliance verdict;
-- the SysON evaluation and correction loop;
+- a whole-machine mechanical or compliance verdict;
+- a production-material, fabrication-release, certification, or automatic correction
+  claim;
 - a browser provider-execution API. The browser command route mutates only project
   state; explicit backend runners or agents still own provider MCP calls and canonical
   publication.
 
 The assembly groups independent branches under a reviewed CM-01 identity; it does not
-manufacture causal links between the CAD, thermal, ERP, or future FEA branches.
+manufacture causal links between the historical whole-machine CAD, thermal, ERP, or the
+separately generated DripTray FEA branch.
 
 ## Compare the preview paths
 

@@ -87,12 +87,20 @@ Deno.test("the Workbench contract requires evidence-backed component facets", ()
   assertEquals(isThreadWorkbenchSnapshot(fuzzyBinding), false);
 });
 
-Deno.test("HTTP Workbench client performs one read-only JSON GET", async () => {
-  const requests: Array<{ input: string; method?: string }> = [];
+Deno.test("HTTP Workbench client performs one uncached read-only JSON GET", async () => {
+  const requests: Array<{
+    input: string;
+    method?: string;
+    cache?: RequestCache;
+  }> = [];
   const client = new HttpThreadWorkbenchClient(
     "/api/thread/workbench",
     (input, init) => {
-      requests.push({ input: String(input), method: init?.method });
+      requests.push({
+        input: String(input),
+        method: init?.method,
+        cache: init?.cache,
+      });
       return Promise.resolve(
         Response.json(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE),
       );
@@ -107,7 +115,7 @@ Deno.test("HTTP Workbench client performs one read-only JSON GET", async () => {
     COFFEE_MACHINE_THREAD_FIXTURE.subject.id,
   );
   assertEquals(requests, [
-    { input: "/api/thread/workbench", method: "GET" },
+    { input: "/api/thread/workbench", method: "GET", cache: "no-store" },
   ]);
 });
 

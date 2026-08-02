@@ -2,10 +2,14 @@
 
 **Statut : accepté — 2026-07-30**
 
-**Mise à jour 2026-08-01 :** l'architecture de calcul reste acceptée, et le
-shell produit est le Workbench natif sur `ThreadSnapshot`. Le modèle
-CoffeeMachine live contient actuellement deux `RequirementUsage` et zéro
-`ConstraintUsage` : la boucle produit n'est donc pas encore fermée.
+**Mise à jour 2026-08-02 :** l'architecture de calcul reste acceptée, et le
+shell produit est le Workbench natif sur `ThreadSnapshot`. La baseline trackée
+r5 contient deux `RequirementUsage` et zéro `ConstraintUsage` mécanique. Un run
+humainement approuvé a ensuite ajouté les limites DripTray `1 mm` / `20 MPa`,
+exécuté SysON → build123d → CalculiX → normalisation → SysON, puis publié deux
+verdicts `pass` en r6 et terminé le lifecycle projet en r10. Cette boucle est
+fermée pour le DripTray concept isolé, pas pour la machine complète, la release
+de fabrication ou la certification.
 
 Cette décision fixe les responsabilités de calcul de la chaîne et le premier cas
 multi-physique, `CoffeeMachine`.

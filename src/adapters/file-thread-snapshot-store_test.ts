@@ -73,6 +73,48 @@ Deno.test("FileThreadSnapshotStore claims one subject revision before writing a 
   assertEquals((await store.latest(base.subject.id))?.revision, 8);
 });
 
+Deno.test("concurrent store instances idempotently save the same snapshot", async () => {
+  const io = new BarrierMemoryFileIo();
+  const firstStore = new FileThreadSnapshotStore("snapshots", io);
+  const secondStore = new FileThreadSnapshotStore("snapshots", io);
+  const snapshot = validSnapshot();
+
+  const results = await Promise.allSettled([
+    firstStore.save(structuredClone(snapshot)),
+    secondStore.save(structuredClone(snapshot)),
+  ]);
+
+  assertEquals(results.map((result) => result.status), ["fulfilled", "fulfilled"]);
+  assertEquals(await firstStore.get(snapshot.id), snapshot);
+  assertEquals(await secondStore.get(snapshot.id), snapshot);
+});
+
+Deno.test("concurrent store instances reject different content for the same snapshot id", async () => {
+  const io = new BarrierMemoryFileIo();
+  const firstStore = new FileThreadSnapshotStore("snapshots", io);
+  const secondStore = new FileThreadSnapshotStore("snapshots", io);
+  const first = validSnapshot();
+  const competing: ThreadSnapshot = {
+    ...structuredClone(first),
+    generatedAt: "2026-08-01T04:00:00.000Z",
+  };
+
+  const results = await Promise.allSettled([
+    firstStore.save(first),
+    secondStore.save(competing),
+  ]);
+
+  assertEquals(results.filter((result) => result.status === "fulfilled").length, 1);
+  const rejected = results.find((result) => result.status === "rejected");
+  assertEquals(rejected?.status, "rejected");
+  if (rejected?.status === "rejected") {
+    assertEquals(
+      rejected.reason.message,
+      `ThreadSnapshot ${first.id} already exists with different content.`,
+    );
+  }
+});
+
 Deno.test("FileThreadSnapshotStore rejects invalid JSON at its read boundary", async () => {
   const io = new MemoryFileIo();
   const store = new FileThreadSnapshotStore("snapshots", io);
@@ -127,6 +169,23 @@ class MemoryFileIo implements ThreadSnapshotFileIo {
         yield { name: name.slice(prefix.length), isFile: true };
       }
     }
+  }
+}
+
+class BarrierMemoryFileIo extends MemoryFileIo {
+  #snapshotWriterCount = 0;
+  #releaseSnapshotWriters!: () => void;
+  readonly #snapshotWritersReady = new Promise<void>((resolve) => {
+    this.#releaseSnapshotWriters = resolve;
+  });
+
+  override async writeTextFile(path: string, contents: string): Promise<void> {
+    if (path.endsWith(".json")) {
+      this.#snapshotWriterCount++;
+      if (this.#snapshotWriterCount === 2) this.#releaseSnapshotWriters();
+      await this.#snapshotWritersReady;
+    }
+    await super.writeTextFile(path, contents);
   }
 }
 

@@ -70,11 +70,18 @@ run and receives no generic MCP authority.
 
 Both browser and MCP project commands append validated immutable revisions under
 `state/local/engineering-projects/`. They do not execute the workflow or a provider. The
-current CM-01 document assembles captured or read-only observed branches from SysON,
-build123d, Modelica, and ERPNext through an explicit identity manifest. The live
-CoffeeMachine model still has no mechanical `ConstraintUsage`, so no model-owned stress
-verdict or CalculiX branch exists in the clean baseline. Assembly does not claim that
+tracked r5 CM-01 baseline assembles captured or read-only observed branches from SysON,
+build123d, Modelica, and ERPNext through an explicit identity manifest. Its captured
+SysON inventory has no mechanical `ConstraintUsage`, so no mechanical verdict or
+CalculiX branch exists **in that clean baseline**. Assembly does not claim that
 independent thermal or ERP evidence was caused by the CAD branch.
+
+The separately authorized 2026-08-02 reference run added the exact reviewed DripTray
+`1 mm` and `20 MPa` constraints to SysON, generated a content-addressed build123d STEP,
+verified its CalculiX consumption, normalized the observations, and published two passing
+SysON evaluations in r6. Active project revision 10 records that run and its work item as
+completed. This later local evidence does not turn the r5 baseline into a mechanical
+baseline and does not establish whole-machine, release, or certification proof.
 
 ERPNext remains one provider-native MCP on port `3012`. The backend selects reviewed
 read tools and projects their results; the browser receives neither ERP credentials nor

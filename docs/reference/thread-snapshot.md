@@ -89,12 +89,17 @@ An evaluation has one of `pass`, `fail`, `unresolved`, or `error`. A failed eval
 may create a named violation linked to its requirement, observations, and evidence.
 `unresolved` and `error` remain visible outcomes; they are not optimistic passes.
 
-The current live CoffeeMachine SysON model contains two `RequirementUsage` elements but
-zero `ConstraintUsage` elements. It therefore does not yet provide model-owned criteria
-for a mechanical verdict. The existing `90 degC` comparison is a separate provisional
-scenario contract, not proof of this product-requirement loop. An empty extracted list
-remains explicit: a reviewed analysis case may still create FEA evidence, but it cannot
-create a pass or fail.
+The tracked r5 CoffeeMachine inventory contains two `RequirementUsage` elements and zero
+mechanical `ConstraintUsage` elements. It therefore provides no mechanical verdict in
+the clean baseline. An empty extracted list always remains explicit; it is never treated
+as a pass.
+
+The approved CM-01 runner is a bounded later mutation. It writes and re-extracts exactly
+the reviewed DripTray limits (`assembly_max_displacement <= 1 mm` and
+`assembly_max_von_mises <= 20 MPa`), then publishes their evaluations only after exact
+CAD consumption and unit normalization have been validated. The 2026-08-02 reference
+run published both as `pass` in r6. The existing `90 degC` comparison remains a separate
+provisional scenario contract, not proof of either mechanical criterion.
 
 ## Persistence and UI status
 
@@ -108,7 +113,8 @@ read crosses the canonical validator again.
 `deno task thread:assemble` materializes the declared CoffeeMachine CM-01 subject into
 that store. It starts from a captured SysON inventory, reads the declared persisted
 Modelica run, and reads the reviewed ERPNext BOM and Bin projections. Explicit build and
-future FEA runners publish later immutable revisions. The BFF's passive read path
+mechanical runners publish later immutable revisions through separate attach tasks. The
+BFF's passive read path
 projects the latest validated subject snapshot into the deliberately smaller browser
 contract. The projection is never promoted back into the canonical domain model, and
 project commands cannot create thread evidence.
@@ -134,10 +140,13 @@ idempotent, and observing the stream cannot execute an engineering tool. Project
 commands may cause a new full replacement, but completion is accepted only after the
 cited exact technical snapshot and its entities already exist.
 
-A clean CM-01 bootstrap contains SysON, Modelica, and ERPNext evidence; explicit runs
-add build123d and later CalculiX revisions. None is a solver run performed on UI load.
-With zero model-owned criteria, evaluations, and violations, the UI says “verdict
-unavailable” instead of treating the absence of a violation as success.
+A clean CM-01 bootstrap contains SysON, Modelica, and ERPNext evidence; the tracked r5
+baseline additionally contains the whole-machine build123d branch and still has zero
+mechanical criteria. In that state the UI says “verdict unavailable” instead of treating
+the absence of a violation as success. The approved r6 extension adds a separate
+content-addressed DripTray STEP, its verified CalculiX consumption, two observations,
+two model-owned requirements, and two passing evaluations. Neither state performs a
+solver run on UI load.
 
 Per-component identity is deliberately declared in the separate reviewed
 [`ThreadComponentCatalog`](thread-components.md). Its bindings cite artifacts in this

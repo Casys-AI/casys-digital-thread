@@ -258,6 +258,27 @@ on a fresh active store; real operator or agent commands may create later local 
 The Modelica scenario observation does not become a product requirement, and the project
 snapshot invents no stress, temperature, material, support, or load threshold.
 
+## Completed CM-01 reference lifecycle
+
+The 2026-08-02 local reference execution demonstrates the intended immutable progression
+without changing the tracked revision-1 seed. A human approved the exact
+`review-mechanical-proof-case` proposal and queued
+`run:erwan-authorize-cm01-mechanical-run-v1`; an agent claimed it, ran the providers,
+entered `publishing`, attached canonical technical evidence, and then completed it.
+
+Active project revision 10 records both that agent run and
+`verify-current-mechanical-design` as `completed`. Their exact result is:
+
+```text
+coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechanical-run-v1-extension
+```
+
+That snapshot contains exact DripTray STEP consumption, two unit-bearing CalculiX
+observations, the approved `1 mm` / `20 MPa` SysON requirements, and two passing
+evaluations. The evidence boundary remains the isolated ABS-like concept DripTray under
+the reviewed `100 N` case. Project completion does not imply whole-machine verification,
+fabrication release, or certification.
+
 ## Validation and persistence
 
 [`engineering-project-validation.ts`](../../src/domain/engineering-project-validation.ts)

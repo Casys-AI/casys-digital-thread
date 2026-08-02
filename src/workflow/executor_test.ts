@@ -241,7 +241,7 @@ Deno.test("coffee workflow blocks SysON evaluation when CalculiX attests differe
       "syson",
       client("syson", calls, {
         text: "Constraints extracted",
-        structuredContent: { constraints: [{}] },
+        structuredContent: { constraints: [{}, {}] },
       }),
     ],
   ]);

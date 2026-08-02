@@ -64,7 +64,7 @@ services:
     networks: [chain]
 
   mcp-syson:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
     command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
@@ -76,7 +76,7 @@ services:
     networks: [chain]
 
   mcp-build123d:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
     command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3014:3014"
@@ -85,7 +85,7 @@ services:
     networks: [chain]
 
   mcp-calculix:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:52cb62d700bd277765902af06e6ea81ae661edb5b0f6bbf83a9a4cb88b8274b3}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
     command: ["calculix", "--port=3015", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3015:3015"

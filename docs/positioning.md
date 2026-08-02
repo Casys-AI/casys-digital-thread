@@ -2,11 +2,13 @@
 
 _Written 2026-07-30, the day the chain shipped._
 
-> **Status update, 2026-08-01.** The provider tools and protocol path shipped;
-> the native linked product loop did not. The accepted shell now renders a
-> persisted `ThreadSnapshot`. The current live SysON model still has no
-> `ConstraintUsage`, so it cannot yet produce the model-owned closed-loop
-> verdict described below.
+> **Status update, 2026-08-02.** The native shell renders persisted
+> `ThreadSnapshot` revisions, and the first approved component loop has now run:
+> SysON constraints → build123d DripTray STEP → CalculiX → unit normalization →
+> SysON verdicts. Its two passing criteria were published in r6 and the bound
+> project run completed in r10. This proves one isolated concept DripTray only;
+> the tracked r5 baseline still has no mechanical `ConstraintUsage`, and no
+> whole-machine, release, or certification claim follows from the component run.
 
 This is explanatory context, not an operating guide. Start from the
 [documentation map](README.md) when you need a tutorial, a focused how-to, or an

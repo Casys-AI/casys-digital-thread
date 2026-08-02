@@ -67,7 +67,8 @@ nodes:
       constraints:
         select: constraints
         type: array
-        description: Constraint ASTs extracted from the model, possibly empty.
+        minItems: 2
+        description: The two reviewed ConstraintUsage ASTs extracted from the model.
 
   mechanical:
     description: Solve the exact canonical STEP under the reviewed analysis case.

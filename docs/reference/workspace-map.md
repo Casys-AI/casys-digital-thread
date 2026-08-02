@@ -2,46 +2,49 @@
 
 ## Source map
 
-| Location                                                                                                                                       | Owns                                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`docker-compose.yml`](../../docker-compose.yml)                                                                                               | Provider containers, networks, volumes and loopback ports      |
-| [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                                                         | Desired MCP endpoints, tools, views and trust posture          |
-| [`config/thread-workflows/`](../../config/thread-workflows/)                                                                                   | Reviewed typed causal DAGs                                     |
-| [`config/thread-subjects/`](../../config/thread-subjects/)                                                                                     | Reviewed provider-to-product identity bindings                 |
-| [`config/verification-plans/`](../../config/verification-plans/)                                                                               | Provisional scenario comparisons                               |
-| [`config/projects/`](../../config/projects/)                                                                                                   | Versioned engineering intent, work and decisions               |
-| [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                         | Canonical linked product state                                 |
-| [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                                                 | Immutable project intent and execution-state contract          |
-| [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts)                                                                     | Immutable pre-project discovery and review contract            |
-| [`src/adapters/project-discovery-store.ts`](../../src/adapters/project-discovery-store.ts)                                                     | Immutable discovery revision store                             |
-| [`src/tools/project-discovery.ts`](../../src/tools/project-discovery.ts)                                                                       | Agent MCP discovery-authoring tools                            |
-| [`src/domain/engineering-project-validation.ts`](../../src/domain/engineering-project-validation.ts)                                           | Strict project and exact thread-reference validation           |
-| [`src/workflow/`](../../src/workflow/)                                                                                                         | Validation, compilation, execution and normalization           |
-| [`src/adapters/http-mcp-tool-client.ts`](../../src/adapters/http-mcp-tool-client.ts)                                                           | Backend-only provider calls                                    |
-| [`src/adapters/live-thread-update-store.ts`](../../src/adapters/live-thread-update-store.ts)                                                   | Cross-process append-only live activity journal                |
-| [`src/adapters/recording-mcp-tool-client.ts`](../../src/adapters/recording-mcp-tool-client.ts)                                                 | Browser-safe running/fresh/failed MCP projections              |
-| [`src/adapters/file-thread-snapshot-store.ts`](../../src/adapters/file-thread-snapshot-store.ts)                                               | Immutable local snapshot persistence                           |
-| [`src/adapters/engineering-project-store.ts`](../../src/adapters/engineering-project-store.ts)                                                 | Tracked seed plus immutable active project revision store      |
-| [`src/domain/engineering-project-command-service.ts`](../../src/domain/engineering-project-command-service.ts)                                 | Project transitions, authority, CAS and receipts               |
-| [`src/adapters/engineering-project-command-runtime.ts`](../../src/adapters/engineering-project-command-runtime.ts)                             | Shared BFF/MCP command runtime and exact evidence readers      |
-| [`src/adapters/engineering-project-command-http.ts`](../../src/adapters/engineering-project-command-http.ts)                                   | Same-origin human command contract                             |
-| [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                  |
-| [`src/adapters/thread-snapshot-lineage.ts`](../../src/adapters/thread-snapshot-lineage.ts)                                                     | Exact `previous`-chain ancestry proof                          |
-| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP project and run-lifecycle tools                      |
-| [`src/adapters/engineering-workbench-projector.ts`](../../src/adapters/engineering-workbench-projector.ts)                                     | Project/thread presentation composition and alignment          |
-| [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)                                               | Canonical-state to Workbench projection                        |
-| [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                               | Native lineage feed, graph, inspectors, SSE and command client |
+| Location                                                                                                                                       | Owns                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`docker-compose.yml`](../../docker-compose.yml)                                                                                               | Provider containers, networks, volumes and loopback ports       |
+| [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                                                         | Desired MCP endpoints, tools, views and trust posture           |
+| [`config/thread-workflows/`](../../config/thread-workflows/)                                                                                   | Reviewed typed causal DAGs                                      |
+| [`config/thread-subjects/`](../../config/thread-subjects/)                                                                                     | Reviewed provider-to-product identity bindings                  |
+| [`config/verification-plans/`](../../config/verification-plans/)                                                                               | Provisional scenario comparisons                                |
+| [`config/projects/`](../../config/projects/)                                                                                                   | Versioned engineering intent, work and decisions                |
+| [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                         | Canonical linked product state                                  |
+| [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                                                 | Immutable project intent and execution-state contract           |
+| [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts)                                                                     | Immutable pre-project discovery and review contract             |
+| [`src/adapters/project-discovery-store.ts`](../../src/adapters/project-discovery-store.ts)                                                     | Immutable discovery revision store                              |
+| [`src/tools/project-discovery.ts`](../../src/tools/project-discovery.ts)                                                                       | Agent MCP discovery-authoring tools                             |
+| [`src/domain/engineering-project-validation.ts`](../../src/domain/engineering-project-validation.ts)                                           | Strict project and exact thread-reference validation            |
+| [`src/workflow/`](../../src/workflow/)                                                                                                         | Validation, compilation, execution and normalization            |
+| [`src/adapters/http-mcp-tool-client.ts`](../../src/adapters/http-mcp-tool-client.ts)                                                           | Backend-only provider calls                                     |
+| [`src/adapters/live-thread-update-store.ts`](../../src/adapters/live-thread-update-store.ts)                                                   | Cross-process append-only live activity journal                 |
+| [`src/adapters/recording-mcp-tool-client.ts`](../../src/adapters/recording-mcp-tool-client.ts)                                                 | Browser-safe running/fresh/failed MCP projections               |
+| [`src/adapters/file-thread-snapshot-store.ts`](../../src/adapters/file-thread-snapshot-store.ts)                                               | Immutable local snapshot persistence                            |
+| [`src/adapters/engineering-project-store.ts`](../../src/adapters/engineering-project-store.ts)                                                 | Tracked seed plus immutable active project revision store       |
+| [`src/domain/engineering-project-command-service.ts`](../../src/domain/engineering-project-command-service.ts)                                 | Project transitions, authority, CAS and receipts                |
+| [`src/adapters/engineering-project-command-runtime.ts`](../../src/adapters/engineering-project-command-runtime.ts)                             | Shared BFF/MCP command runtime and exact evidence readers       |
+| [`src/adapters/engineering-project-command-http.ts`](../../src/adapters/engineering-project-command-http.ts)                                   | Same-origin human command contract                              |
+| [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                   |
+| [`src/adapters/thread-snapshot-lineage.ts`](../../src/adapters/thread-snapshot-lineage.ts)                                                     | Exact `previous`-chain ancestry proof                           |
+| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP project and run-lifecycle tools                       |
+| [`src/adapters/engineering-workbench-projector.ts`](../../src/adapters/engineering-workbench-projector.ts)                                     | Project/thread presentation composition and alignment           |
+| [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)                                               | Canonical-state to Workbench projection                         |
+| [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                               | Native lineage feed, graph, inspectors, SSE and command client  |
 | [`src/ui/src/project/`](../../src/ui/src/project/)                                                                                             | Project cockpit, review notifications, approval and run journal |
-| [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                                                       | Generated Console MCP App bundle                               |
-| [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                                                               | Loopback Console preview                                       |
-| [`scripts/serve-native-workbench.ts`](../../scripts/serve-native-workbench.ts)                                                                 | Passive reads/SSE plus bounded human project command BFF       |
-| [`scripts/serve-discovery-workbench.ts`](../../scripts/serve-discovery-workbench.ts)                                                           | Discovery reads/SSE plus bounded human review BFF              |
-| [`scripts/materialize-coffee-machine-thread.ts`](../../scripts/materialize-coffee-machine-thread.ts)                                           | Read-only CM-01 branch assembler                               |
-| [`scripts/run-coffee-machine-build.ts`](../../scripts/run-coffee-machine-build.ts)                                                             | Explicit SysON to build123d MCP runner                         |
-| [`scripts/attach-coffee-machine-build-run.ts`](../../scripts/attach-coffee-machine-build-run.ts)                                               | Capture validation, canonical publication and reconciliation   |
-| [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)                                                   | Explicit read-only SysON inventory capture                     |
-| [`state/fixtures/`](../../state/fixtures/)                                                                                                     | Explicitly labelled demo evidence                              |
-| `state/local/engineering-projects/`                                                                                                            | Ignored immutable active project revisions and CAS claims      |
+| [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                                                       | Generated Console MCP App bundle                                |
+| [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                                                               | Loopback Console preview                                        |
+| [`scripts/serve-native-workbench.ts`](../../scripts/serve-native-workbench.ts)                                                                 | Passive reads/SSE plus bounded human project command BFF        |
+| [`scripts/serve-discovery-workbench.ts`](../../scripts/serve-discovery-workbench.ts)                                                           | Discovery reads/SSE plus bounded human review BFF               |
+| [`scripts/materialize-coffee-machine-thread.ts`](../../scripts/materialize-coffee-machine-thread.ts)                                           | Read-only CM-01 branch assembler                                |
+| [`scripts/run-coffee-machine-build.ts`](../../scripts/run-coffee-machine-build.ts)                                                             | Explicit SysON to build123d MCP runner                          |
+| [`scripts/attach-coffee-machine-build-run.ts`](../../scripts/attach-coffee-machine-build-run.ts)                                               | Capture validation, canonical publication and reconciliation    |
+| [`scripts/run-coffee-machine-mechanical.ts`](../../scripts/run-coffee-machine-mechanical.ts)                                                   | Human-authorized SysON to CAD to FEA verification runner        |
+| [`src/adapters/coffee-machine-mechanical-run-extension.ts`](../../src/adapters/coffee-machine-mechanical-run-extension.ts)                     | Strict mechanical capture to canonical evidence projection      |
+| [`scripts/attach-coffee-machine-mechanical-run.ts`](../../scripts/attach-coffee-machine-mechanical-run.ts)                                     | Durable mechanical publication and live-feed reconciliation     |
+| [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)                                                   | Explicit read-only SysON inventory capture                      |
+| [`state/fixtures/`](../../state/fixtures/)                                                                                                     | Explicitly labelled demo evidence                               |
+| `state/local/engineering-projects/`                                                                                                            | Ignored immutable active project revisions and CAS claims       |
 
 ## Local endpoints
 
@@ -75,6 +78,29 @@ SysON and build123d through backend MCP clients and appends redacted progress to
 `state/local/live-thread-updates/`. `deno task thread:attach-coffee-machine-build`
 validates the persisted capture, publishes the next immutable snapshot, then reconciles
 that run's provisional feed nodes.
+
+`deno task thread:run-coffee-machine-mechanical --run-id=<id>` executes only an exact
+CM-01 run already queued by a human and claimed by an agent. It derives geometry,
+material, mesh, load, and limits from the approved proposal, ensures the two model-owned
+DripTray constraints exist, generates a content-addressed STEP, then runs the reviewed
+CalculiX-to-SysON workflow through recorded backend clients. Its deterministic capture
+is written under `state/local/coffee-machine-mechanical-runs/`. A same-ID retry is
+allowed only when prior live activity is limited to the exact SysON constraint preflight
+for the same base revision; any CAD, FEA, normalization, evaluation, reconciliation,
+unknown operation, or existing capture fails closed. After the project run
+has explicitly entered `publishing`, use
+`deno task thread:attach-coffee-machine-mechanical --run-id=<id>`. That command
+fail-closes on authorization, effective arguments, constraints, provider results and the
+exact STEP consumption hash; saves the immutable canonical snapshot; reads it back; and
+only then reconciles the run's provisional feed nodes. It returns the exact result
+snapshot and entity references needed for the separate MCP `completed` transition, but
+never mutates the project lifecycle itself.
+
+The completed local reference path publishes thread r6
+`coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechanical-run-v1-extension`;
+active project r10 records the same run and verification work item as `completed`. Its
+proof boundary is the isolated concept DripTray, not the whole machine, a fabrication
+release, or certification.
 
 `deno task preview:thread` seeds the tracked CM-01 project as active revision 1 only
 when `state/local/engineering-projects/coffee-machine-cm01/` is absent. Browser GET and
