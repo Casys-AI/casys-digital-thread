@@ -23,7 +23,7 @@ Deno.test("project command runtimes share active revisions and use the tracked m
         projectId: initial.project.id,
         expectedRevision: initial.revision,
         issuedAt: "2026-08-01T14:30:00.000Z",
-        decisionId: "select-material-model",
+        decisionId: "review-mechanical-proof-case",
         proposal: {
           summary: "Use the reviewed aluminium material card.",
           parameters: [{

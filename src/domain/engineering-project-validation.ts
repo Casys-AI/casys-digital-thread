@@ -1051,7 +1051,8 @@ function validateInvariants(
       item.status === "waiting-for-decision" &&
       !item.decisionIds.some((id) => {
         const decision = decisionById.get(id);
-        return decision?.status === "required" || decision?.status === "proposed";
+        return decision?.status === "required" || decision?.status === "proposed" ||
+          decision?.status === "rejected";
       })
     ) {
       issue(

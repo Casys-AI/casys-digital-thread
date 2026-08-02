@@ -249,12 +249,12 @@ The project honestly derives these phase states:
 | Architecture      | `completed` | Exact observed SysON architecture artifact                                             |
 | Design            | `completed` | Exact whole-machine STEP artifact                                                      |
 | Simulation        | `completed` | Exact observed Modelica result artifact                                                |
-| Verification      | `blocked`   | No mechanical criterion, material model, supports, or reference load has been reviewed |
+| Verification      | `blocked`   | The bundled mechanical proof case has not been reviewed                                |
 | Industrialization | `completed` | Exact ERPNext BOM-detail artifact                                                      |
 
-The four missing mechanical inputs are four `required` decisions and four open blockers.
-There are no approvals and zero agent runs. This is still the clean state seeded on a
-fresh active store; real operator or agent commands may create later local revisions.
+The missing mechanical inputs form one `required` proof-case decision and one open
+blocker. There are no approvals and zero agent runs. This is still the clean state seeded
+on a fresh active store; real operator or agent commands may create later local revisions.
 The Modelica scenario observation does not become a product requirement, and the project
 snapshot invents no stress, temperature, material, support, or load threshold.
 

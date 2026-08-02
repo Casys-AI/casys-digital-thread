@@ -164,10 +164,10 @@ The projection must show:
 
 Open **Project**. Its review-notification inbox is deliberately a light signal and a
 route into the relevant work, not a form for entering technical payloads. On a clean
-CM-01 active store it reports four decisions under **Agent preparing** and zero agent
-runs. `required` is not a request for the operator to invent material, support, load, or
-criterion values: it means the agent still owes a concrete, evidence-bound
-recommendation.
+CM-01 active store it reports one bundled proof-case decision under **Agent preparing**
+and zero agent runs. `required` is not a request for the operator to invent material,
+support, load, or criterion values: it means the agent still owes one concrete,
+evidence-bound recommendation that covers the complete analysis case.
 
 1. When a decision becomes **Needs your review**, follow its notification to
    **Activity**. The feed is the review context: follow the event, its upstream evidence,
@@ -181,7 +181,7 @@ recommendation.
    issue the explicit approval. If it must change, use **Request revised recommendation**
    in Activity after the specification review; the agent can then return an evidence-bound
    replacement while the prior project revision remains auditable.
-5. Once all gates are satisfied, authorize the already bounded work item. This creates a
+5. Once that meaningful gate is satisfied, authorize the already bounded work item. This creates a
    durable `queued` run; it does not itself launch an engineering tool.
 
 Each submit is a same-origin JSON `POST /api/project/commands` carrying

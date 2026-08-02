@@ -38,7 +38,7 @@ Deno.test("CM-01 project reports observed phases and an honest blocked verificat
   );
   assertEquals(
     project.decisions.map((decision) => decision.status),
-    ["required", "required", "required", "required"],
+    ["required"],
   );
   assertEquals(project.approvals, []);
   assertEquals(project.blockers.every((blocker) => blocker.status === "open"), true);

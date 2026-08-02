@@ -496,7 +496,7 @@ Deno.test("native Workbench applies explicit same-origin operator commands with 
     actor: { id: "engineer-erwan" },
     command: {
       type: "decision.propose",
-      decisionId: "select-material-model",
+      decisionId: "review-mechanical-proof-case",
       proposal: {
         summary: "Use the reviewed aluminium material card.",
         parameters: [{
@@ -522,7 +522,7 @@ Deno.test("native Workbench applies explicit same-origin operator commands with 
   assertEquals(composite.capabilities.operatorCommands.enabled, true);
   assertEquals(
     composite.project.decisions.find((item: { id: string }) =>
-      item.id === "select-material-model"
+      item.id === "review-mechanical-proof-case"
     ).proposal.parameters[0],
     {
       key: "youngs-modulus",
@@ -582,39 +582,30 @@ Deno.test("native Workbench applies explicit same-origin operator commands with 
 
   let current = composite;
   const materialFingerprint = current.project.decisions.find(
-    (item: { id: string }) => item.id === "select-material-model",
+    (item: { id: string }) => item.id === "review-mechanical-proof-case",
   ).inputFingerprint;
   current = await applyHumanCommand(
     "reject-material-1",
     2,
     {
       type: "decision.reject",
-      decisionId: "select-material-model",
+      decisionId: "review-mechanical-proof-case",
       rationale: "The material card needs a named source before approval.",
       inputFingerprint: materialFingerprint,
     },
   );
   assertEquals(
     current.project.decisions.find((item: { id: string }) =>
-      item.id === "select-material-model"
+      item.id === "review-mechanical-proof-case"
     ).status,
     "rejected",
   );
 
   current = await proposeAndApprove(
-    "select-material-model",
+    "review-mechanical-proof-case",
     current.project.revision,
   );
-  for (
-    const decisionId of [
-      "define-mechanical-criterion",
-      "define-supports",
-      "define-reference-load",
-    ]
-  ) {
-    current = await proposeAndApprove(decisionId, current.project.revision);
-  }
-  assertEquals(current.project.revision, 11);
+  assertEquals(current.project.revision, 5);
 
   current = await applyHumanCommand(
     "queue-mechanical-verification-1",
@@ -625,7 +616,7 @@ Deno.test("native Workbench applies explicit same-origin operator commands with 
       summary: "Queue mechanical verification with all reviewed inputs.",
     },
   );
-  assertEquals(current.project.revision, 12);
+  assertEquals(current.project.revision, 6);
   assertEquals(current.project.agentRuns.at(-1), {
     id: "run:queue-mechanical-verification-1",
     workItemId: "verify-current-mechanical-design",
@@ -657,7 +648,7 @@ Deno.test("native Workbench applies explicit same-origin operator commands with 
   );
   const reader = events.body!.getReader();
   const event = new TextDecoder().decode((await reader.read()).value);
-  assertStringIncludes(event, `id: 12:${thread.revision}:0`);
+  assertStringIncludes(event, `id: 6:${thread.revision}:0`);
   assertStringIncludes(event, '"commandId":"queue-mechanical-verification-1"');
   await reader.cancel();
 

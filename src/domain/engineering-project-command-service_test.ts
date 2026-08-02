@@ -28,7 +28,7 @@ Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent",
   const command = {
     ...context("propose-criterion", 1),
     issuedAt: "2026-08-01T18:59:00+08:00",
-    decisionId: "define-mechanical-criterion",
+    decisionId: "review-mechanical-proof-case",
     proposal: proposal("criterion"),
     baseSnapshot: baseSnapshot(await store.get(PROJECT_ID)),
   };
@@ -66,17 +66,17 @@ Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent",
 Deno.test("stale revision and approval scope mismatch fail without mutation", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);
-  const proposed = await propose(service, store, "define-mechanical-criterion", 1, 1);
+  const proposed = await propose(service, store, "review-mechanical-proof-case", 1, 1);
 
   await assertCommandError(
-    () => propose(service, store, "select-material-model", 1, 2),
+    () => propose(service, store, "review-mechanical-proof-case", 1, 2),
     "stale_revision",
   );
   await assertCommandError(
     () =>
       service.approveDecision(HUMAN, {
         ...context("approve-wrong-scope", proposed.revision),
-        decisionId: "define-mechanical-criterion",
+        decisionId: "review-mechanical-proof-case",
         rationale: "Reviewed in the test.",
         inputFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
       }),
@@ -91,11 +91,11 @@ Deno.test("rejected proposal can be replaced without rewriting historical approv
   let project = await propose(
     service,
     store,
-    "define-mechanical-criterion",
+    "review-mechanical-proof-case",
     1,
     1,
   );
-  const firstDecision = findDecision(project, "define-mechanical-criterion");
+  const firstDecision = findDecision(project, "review-mechanical-proof-case");
   project = await service.rejectDecision(HUMAN, {
     ...context("reject-first-scope", project.revision),
     decisionId: firstDecision.id,

@@ -101,10 +101,7 @@
         "verify-current-mechanical-design"
       ],
       "requiredDecisionIds": [
-        "define-mechanical-criterion",
-        "select-material-model",
-        "define-supports",
-        "define-reference-load"
+        "review-mechanical-proof-case"
       ],
       "evidenceRefs": []
     },
@@ -218,7 +215,7 @@
       "id": "verify-current-mechanical-design",
       "phaseId": "verification",
       "title": "Verify the current mechanical design",
-      "description": "Run CalculiX only after the mechanical criterion, material, supports, and reference load are explicitly reviewed.",
+      "description": "Run the first component-level CalculiX proof only after its scope, provisional material, supports, load, and acceptance limits are reviewed together.",
       "kind": "verify",
       "status": "waiting-for-decision",
       "owner": "shared",
@@ -227,16 +224,10 @@
       ],
       "evidenceRefs": [],
       "decisionIds": [
-        "define-mechanical-criterion",
-        "select-material-model",
-        "define-supports",
-        "define-reference-load"
+        "review-mechanical-proof-case"
       ],
       "blockerIds": [
-        "missing-mechanical-criterion",
-        "missing-material-model",
-        "missing-support-definition",
-        "missing-reference-load"
+        "missing-reviewed-mechanical-proof-case"
       ]
     },
     {
@@ -265,10 +256,10 @@
   "agentRuns": [],
   "decisions": [
     {
-      "id": "define-mechanical-criterion",
+      "id": "review-mechanical-proof-case",
       "phaseId": "verification",
-      "title": "Define the mechanical acceptance criterion",
-      "question": "Which traced SysON requirement and quantitative criterion should the mechanical result be evaluated against?",
+      "title": "Review the first mechanical proof case",
+      "question": "May the agent run this bounded preliminary proof case with the proposed part, material, supports, load, and acceptance limits?",
       "status": "required",
       "requestedAt": "2026-08-01T10:36:58.345Z",
       "inputEvidenceRefs": [
@@ -286,66 +277,15 @@
         }
       ],
       "approvalIds": []
-    },
-    {
-      "id": "select-material-model",
-      "phaseId": "verification",
-      "title": "Select the material model",
-      "question": "Which reviewed material properties apply to the current CM-01 mechanical analysis?",
-      "status": "required",
-      "requestedAt": "2026-08-01T10:36:58.345Z",
-      "inputEvidenceRefs": [
-        {
-          "snapshotId": "coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension",
-          "snapshotRevision": 5,
-          "kind": "artifact",
-          "id": "coffee-machine-build-coffee-machine-cm01-cad-baseline-step"
-        }
-      ],
-      "approvalIds": []
-    },
-    {
-      "id": "define-supports",
-      "phaseId": "verification",
-      "title": "Define the support conditions",
-      "question": "Which regions and degrees of freedom should constrain the current CM-01 analysis?",
-      "status": "required",
-      "requestedAt": "2026-08-01T10:36:58.345Z",
-      "inputEvidenceRefs": [
-        {
-          "snapshotId": "coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension",
-          "snapshotRevision": 5,
-          "kind": "artifact",
-          "id": "coffee-machine-build-coffee-machine-cm01-cad-baseline-step"
-        }
-      ],
-      "approvalIds": []
-    },
-    {
-      "id": "define-reference-load",
-      "phaseId": "verification",
-      "title": "Define the reference load",
-      "question": "Which reviewed load case should be applied to the current CM-01 analysis?",
-      "status": "required",
-      "requestedAt": "2026-08-01T10:36:58.345Z",
-      "inputEvidenceRefs": [
-        {
-          "snapshotId": "coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension",
-          "snapshotRevision": 5,
-          "kind": "artifact",
-          "id": "coffee-machine-build-coffee-machine-cm01-cad-baseline-step"
-        }
-      ],
-      "approvalIds": []
     }
   ],
   "approvals": [],
   "blockers": [
     {
-      "id": "missing-mechanical-criterion",
+      "id": "missing-reviewed-mechanical-proof-case",
       "phaseId": "verification",
-      "title": "Mechanical criterion is not defined in SysON",
-      "description": "No traced SysON acceptance criterion currently authorizes a mechanical verdict.",
+      "title": "The first mechanical proof case needs review",
+      "description": "The agent still owes one evidence-bound proposal covering the component scope, provisional material, supports, load, and model-owned acceptance limits.",
       "kind": "required-input",
       "status": "open",
       "openedAt": "2026-08-01T10:36:58.345Z",
@@ -353,52 +293,7 @@
         "verify-current-mechanical-design"
       ],
       "decisionIds": [
-        "define-mechanical-criterion"
-      ]
-    },
-    {
-      "id": "missing-material-model",
-      "phaseId": "verification",
-      "title": "Material model is not reviewed",
-      "description": "The mechanical workflow has no approved material properties for CM-01.",
-      "kind": "required-input",
-      "status": "open",
-      "openedAt": "2026-08-01T10:36:58.345Z",
-      "workItemIds": [
-        "verify-current-mechanical-design"
-      ],
-      "decisionIds": [
-        "select-material-model"
-      ]
-    },
-    {
-      "id": "missing-support-definition",
-      "phaseId": "verification",
-      "title": "Support conditions are not reviewed",
-      "description": "The mechanical workflow has no approved constrained regions or degrees of freedom.",
-      "kind": "required-input",
-      "status": "open",
-      "openedAt": "2026-08-01T10:36:58.345Z",
-      "workItemIds": [
-        "verify-current-mechanical-design"
-      ],
-      "decisionIds": [
-        "define-supports"
-      ]
-    },
-    {
-      "id": "missing-reference-load",
-      "phaseId": "verification",
-      "title": "Reference load is not reviewed",
-      "description": "The mechanical workflow has no approved load case for CM-01.",
-      "kind": "required-input",
-      "status": "open",
-      "openedAt": "2026-08-01T10:36:58.345Z",
-      "workItemIds": [
-        "verify-current-mechanical-design"
-      ],
-      "decisionIds": [
-        "define-reference-load"
+        "review-mechanical-proof-case"
       ]
     }
   ]

@@ -96,11 +96,11 @@ Deno.test("cross-process createNew CAS admits only one command at the same expec
     const results = await Promise.allSettled([
       first.proposeDecision(
         HUMAN,
-        proposalCommand(initial, "command-a", "define-mechanical-criterion"),
+        proposalCommand(initial, "command-a", "review-mechanical-proof-case"),
       ),
       second.proposeDecision(
         HUMAN,
-        proposalCommand(initial, "command-b", "select-material-model"),
+        proposalCommand(initial, "command-b", "review-mechanical-proof-case"),
       ),
     ]);
 
@@ -126,7 +126,7 @@ Deno.test("same command id racing across stores is idempotent", async () => {
     const command = proposalCommand(
       initial,
       "same-command",
-      "define-mechanical-criterion",
+      "review-mechanical-proof-case",
     );
     const [left, right] = await Promise.all([
       commandService(firstStore, "2026-08-01T11:00:01.000Z").proposeDecision(

@@ -174,7 +174,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       projectId: "coffee-machine-cm01",
       expectedRevision: 1,
       issuedAt: "2026-08-01T22:10:00+08:00",
-      decisionId: "select-material-model",
+      decisionId: "review-mechanical-proof-case",
       proposal: {
         summary: "Use the reviewed aluminium material card.",
         parameters: [{
@@ -198,7 +198,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     );
     const proposedDecision = (proposedProject.decisions as Array<
       Record<string, unknown>
-    >).find((item) => item.id === "select-material-model")!;
+    >).find((item) => item.id === "review-mechanical-proof-case")!;
     assertEquals(proposedDecision.status, "proposed");
     assertEquals(
       (proposedDecision.proposal as Record<string, unknown>).proposedBy as Record<
@@ -222,7 +222,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       arguments: {
         ...proposalArguments,
         commandId: "mcp-stale-proposal-2",
-        decisionId: "define-supports",
+        decisionId: "review-mechanical-proof-case",
       },
     });
     assertEquals(stale.isError, true);

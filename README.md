@@ -168,9 +168,10 @@ The tracked project under
 [`config/projects/coffee-machine-cm01.project.json`](config/projects/coffee-machine-cm01.project.json)
 references an exact observed r5 capture under `config/projects/baselines/`. On a fresh
 clone, it seeds active project revision 1 so the BFF can show the reviewed project,
-thread and exact STL without running a provider. That clean CM-01 state still has four
-required mechanical decisions, no approval, and zero agent runs; no values are filled in
-for the sake of a demo. Later commands append immutable active project revisions.
+thread and exact STL without running a provider. That clean CM-01 state has one bundled
+mechanical proof-case decision, no approval, and zero agent runs; the agent must prepare
+its part, material, support, load, and acceptance proposal instead of asking the operator
+to invent those values. Later commands append immutable active project revisions.
 Technical snapshots and assets also prefer active local state when present, but a
 baseline is accepted only for the same exact ID or filename—never as a substitute for
 `latest` or for missing evidence.
