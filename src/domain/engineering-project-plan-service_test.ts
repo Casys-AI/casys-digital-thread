@@ -11,6 +11,7 @@ import {
   type EngineeringProjectCompletionEvidenceValidator,
   type EngineeringProjectInitialCompletionEvidenceValidator,
   type EngineeringProjectPlanningDependencies,
+  type EngineeringProjectPlanOperationRegistry,
   type EngineeringProjectRevisionStore,
   type PublishProjectPlanCommand,
 } from "./engineering-project-command-service.ts";
@@ -153,6 +154,46 @@ Deno.test("V2 queues only the exact published discovery basis and fingerprints i
       }),
     "invalid_input",
   );
+});
+
+Deno.test("V2 queue refuses a planning-only operation before it mutates the project", async () => {
+  const discovery = discoveryFixture();
+  const store = new MemoryProjectStore(projectShell());
+  const planningOnlyRegistry: EngineeringProjectPlanOperationRegistry = {
+    validate(input) {
+      const registered = REGISTERED_ENGINEERING_OPERATION_REGISTRY.validate(input);
+      return {
+        ...registered,
+        operation: {
+          ...registered.operation,
+          execution: "planning-only",
+        },
+      };
+    },
+  };
+  const service = planService(
+    store,
+    discovery,
+    undefined,
+    undefined,
+    planningOnlyRegistry,
+  );
+  const published = await service.publishPlan(AGENT, planCommand(1));
+  const before = await store.get(PROJECT_ID);
+
+  await assertCommandError(
+    () =>
+      service.queueRun(HUMAN, {
+        ...common(published.revision, "queue-planning-only-operation"),
+        runId: "run:planning-only-operation",
+        workItemId: "establish-baseline",
+        summary: "A planning descriptor cannot create an executable run.",
+        basis: published.plan!.basis,
+      }),
+    "invalid_transition",
+  );
+
+  assertEquals(await store.get(PROJECT_ID), before);
 });
 
 Deno.test("a readable V1 discovery snapshot is not a fallback route into V2 planning", async () => {
@@ -795,6 +836,8 @@ function planService(
   discovery: ProjectDiscoverySnapshot,
   initialEvidenceValidator?: EngineeringProjectInitialCompletionEvidenceValidator,
   evidenceValidator?: EngineeringProjectCompletionEvidenceValidator,
+  operations: EngineeringProjectPlanOperationRegistry =
+    REGISTERED_ENGINEERING_OPERATION_REGISTRY,
 ): EngineeringProjectCommandService {
   const planning: EngineeringProjectPlanningDependencies = {
     discoveries: {
@@ -805,7 +848,7 @@ function planService(
             : undefined,
         ),
     },
-    operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+    operations,
   };
   return new EngineeringProjectCommandService(
     store,

@@ -21,7 +21,10 @@ Deno.test("the V1 intake registry exposes exactly reviewed operation revisions",
   );
   assertEquals(idea.allowedBasisKinds, ["approved-discovery"]);
   assertEquals(idea.workItemKind, "define");
+  assertEquals(idea.execution, "trusted");
   assertEquals(idea.title, "Create the engineering baseline");
+  assertEquals(cad.execution, "planning-only");
+  assertEquals(product.execution, "planning-only");
   assertEquals(cad.bindings, [
     {
       name: "approvedDiscovery",
@@ -84,6 +87,7 @@ Deno.test("a reviewed operation can enter a plan before its execution basis exis
     stage: "planning",
   });
   assertEquals(architecture.operation.id, "architecture.seed-syson-model");
+  assertEquals(architecture.operation.execution, "trusted");
   assertEquals(architecture.basisKind, undefined);
 });
 
@@ -159,6 +163,7 @@ Deno.test("registered operations accept only exact declared state-reference inpu
     basisKind: "approved-discovery",
   });
   assertEquals(validated.operation.id, "baseline.capture-existing-cad");
+  assertEquals(validated.operation.execution, "planning-only");
   assertEquals(validated.bindings[1], {
     name: "cadSource",
     source: { kind: "discovery-answer", answerId: "source-cad-file" },

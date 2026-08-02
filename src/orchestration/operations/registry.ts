@@ -27,6 +27,14 @@ export type EngineeringOperationValidationStage = "planning" | "queue";
 
 export type EngineeringOperationRiskClass = "low" | "consequential";
 
+/**
+ * Whether this reviewed descriptor is backed by a trusted server-owned
+ * executor. Planning-only operations may appear in a reviewed plan, but they
+ * must never become an agent run until a concrete executor is added and the
+ * descriptor is promoted deliberately.
+ */
+export type EngineeringOperationExecution = "trusted" | "planning-only";
+
 export type EngineeringOperationBindingSourceKind =
   EngineeringOperationInputBinding["source"]["kind"];
 
@@ -47,6 +55,7 @@ export interface RegisteredEngineeringOperation {
   /** Human-facing work classification derived from the reviewed operation. */
   readonly workItemKind: EngineeringWorkItemKind;
   readonly riskClass: EngineeringOperationRiskClass;
+  readonly execution: EngineeringOperationExecution;
   readonly bindings: readonly RegisteredEngineeringOperationBinding[];
 }
 
@@ -114,6 +123,7 @@ const OPERATIONS = [
       "Create the first reviewable engineering baseline from the approved discovery brief.",
     workItemKind: "define",
     riskClass: "consequential",
+    execution: "trusted",
     bindings: [{
       name: "approvedDiscovery",
       allowedSourceKinds: ["approved-discovery"],
@@ -131,6 +141,7 @@ const OPERATIONS = [
       "Create a traceable SysML system-model container after the approved discovery has been recorded.",
     workItemKind: "architect",
     riskClass: "consequential",
+    execution: "trusted",
     bindings: [{
       name: "approvedDiscovery",
       allowedSourceKinds: ["approved-discovery"],
@@ -146,6 +157,7 @@ const OPERATIONS = [
       "Resolve and fingerprint the CAD source referenced by the approved discovery.",
     workItemKind: "define",
     riskClass: "consequential",
+    execution: "planning-only",
     bindings: [
       {
         name: "approvedDiscovery",
@@ -167,6 +179,7 @@ const OPERATIONS = [
       "Resolve and fingerprint the product source referenced by the approved discovery.",
     workItemKind: "define",
     riskClass: "consequential",
+    execution: "planning-only",
     bindings: [
       {
         name: "approvedDiscovery",

@@ -190,6 +190,8 @@ export interface EngineeringProjectPlanOperationRegistry {
       readonly title: string;
       readonly description: string;
       readonly workItemKind: EngineeringWorkItem["kind"];
+      /** A queueable run requires a concrete trusted executor. */
+      readonly execution: "trusted" | "planning-only";
     };
     readonly bindings: readonly EngineeringOperationInputBinding[];
   };
@@ -999,13 +1001,19 @@ function assertRegisteredQueueOperation(
       "V2 run queueing is unavailable because no reviewed operation registry is configured.",
     );
   }
+  let registered: ReturnType<EngineeringProjectPlanOperationRegistry["validate"]>;
   try {
-    planning.operations.validate({ operation, stage: "queue", basisKind });
+    registered = planning.operations.validate({ operation, stage: "queue", basisKind });
   } catch (error) {
     invalidInput(
       error instanceof Error
         ? `Queued operation is not accepted by the reviewed registry: ${error.message}`
         : "Queued operation is not accepted by the reviewed registry.",
+    );
+  }
+  if (registered.operation.execution !== "trusted") {
+    invalidTransition(
+      `Queued operation ${registered.operation.id}@${registered.operation.version} is planning-only and is not backed by a trusted executor.`,
     );
   }
 }
