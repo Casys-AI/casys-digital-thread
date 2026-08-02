@@ -47,6 +47,11 @@ import {
 import { FileInspectionDroneArchitectureCaptureStore } from "./file-inspection-drone-architecture-capture-store.ts";
 import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
 import type { McpToolClient, McpToolResult } from "./http-mcp-tool-client.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
+import {
+  createInspectionDroneArchitectureLiveProjector,
+  type InspectionDroneArchitectureLiveStartStep,
+} from "./inspection-drone-architecture-live-projector.ts";
 
 type ExactSnapshotPresence = "exact" | "absent" | "unknown";
 
@@ -74,6 +79,8 @@ export interface InspectionDroneArchitectureRunExecutorDependencies {
   /** Server-owned fixed SysON client; no caller controls its URL or tool surface. */
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
+  /** UI-only milestones; their failure never changes canonical execution. */
+  readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly now?: () => string;
 }
 
@@ -119,6 +126,7 @@ export class InspectionDroneArchitectureRunExecutor {
   readonly #attempts: FileInspectionDroneArchitectureAttemptStore;
   readonly #syson: McpToolClient;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #now: () => string;
 
   constructor(dependencies: InspectionDroneArchitectureRunExecutorDependencies) {
@@ -131,6 +139,7 @@ export class InspectionDroneArchitectureRunExecutor {
     this.#attempts = dependencies.attempts;
     this.#syson = dependencies.syson;
     this.#lease = dependencies.lease;
+    this.#liveUpdates = dependencies.liveUpdates;
     this.#now = dependencies.now ?? (() => new Date().toISOString());
   }
 
@@ -185,6 +194,7 @@ export class InspectionDroneArchitectureRunExecutor {
       requireInspectionDroneArchitectureRun(project, run, origin);
       if (run.status === "completed") {
         assertCompletedByThisExecution(project, command.commandId, command.runId);
+        await this.reconcileLive(project.project.subjectId, command.runId);
         return project;
       }
       if (run.status === "failed" || run.status === "cancelled") {
@@ -202,6 +212,12 @@ export class InspectionDroneArchitectureRunExecutor {
         project.project.id,
         run.id,
       );
+      const live = this.liveRecorder(
+        project,
+        run,
+        requireThreadBasis(run),
+        existingAttempt?.status === "completed" ? "root-readback" : "root-preflight",
+      );
       if (existingAttempt?.status === "completed") {
         // A durable acknowledgement proves that the only insertion has already
         // been sent. In a resume, skip both root preflight and write: only the
@@ -214,7 +230,12 @@ export class InspectionDroneArchitectureRunExecutor {
             "architecture-insert",
           );
         }
-        const rootPreflight = await this.childrenRead(inputs.seed, rootPackageId);
+        const rootPreflight = await this.childrenRead(
+          inputs.seed,
+          rootPackageId,
+          "root-preflight",
+          live,
+        );
         requireEmptyInspectionDroneArchitectureRoot({
           rootPackageId,
           rootChildrenResult: rootPreflight.structuredContent,
@@ -224,11 +245,17 @@ export class InspectionDroneArchitectureRunExecutor {
           runId: run.id,
           capturedAt,
           seed: inputs.seed,
+          live,
         });
         providerStateRecorded = true;
       }
 
-      const rootReadback = await this.childrenRead(inputs.seed, rootPackageId);
+      const rootReadback = await this.childrenRead(
+        inputs.seed,
+        rootPackageId,
+        "root-readback",
+        live,
+      );
       const architecturePackage = requireInspectionDroneArchitecturePackage({
         rootPackageId,
         rootChildrenResult: rootReadback.structuredContent,
@@ -236,6 +263,8 @@ export class InspectionDroneArchitectureRunExecutor {
       const packageReadback = await this.childrenRead(
         inputs.seed,
         architecturePackage.id,
+        "package-readback",
+        live,
       );
 
       materialized = await this.materialize(
@@ -285,6 +314,7 @@ export class InspectionDroneArchitectureRunExecutor {
 
       const completed = await this.requiredProject(command.projectId);
       assertCompletedByThisExecution(completed, command.commandId, command.runId);
+      await this.reconcileLive(completed.project.subjectId, command.runId);
       return completed;
     } catch (error) {
       const snapshotPresence = !snapshotPersisted && materialized
@@ -295,7 +325,10 @@ export class InspectionDroneArchitectureRunExecutor {
       if (snapshotPresence === "exact") snapshotPersisted = true;
       if (snapshotPersisted) {
         const completed = await this.completedProjectForThisExecution(command);
-        if (completed) return completed;
+        if (completed) {
+          await this.reconcileLive(completed.project.subjectId, command.runId);
+          return completed;
+        }
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "The inspection-drone architecture evidence is durable, but project attachment did not finish. Retry the same execution command; it will not insert a second architecture package.",
@@ -341,6 +374,7 @@ export class InspectionDroneArchitectureRunExecutor {
     runId: string;
     capturedAt: string;
     seed: InspectionDroneArchitectureSeed;
+    live: LiveRecorder;
   }): Promise<InspectionDroneArchitectureInsertion> {
     let begun: Awaited<
       ReturnType<FileInspectionDroneArchitectureAttemptStore["begin"]>
@@ -370,6 +404,7 @@ export class InspectionDroneArchitectureRunExecutor {
     }
 
     try {
+      await input.live("architecture-insert", "started");
       const response = await this.#syson.callTool({
         name: "syson_element_insert_sysml",
         arguments: {
@@ -390,8 +425,10 @@ export class InspectionDroneArchitectureRunExecutor {
         completedAt: safeNow(this.#now),
         result: attemptResult(insertion),
       });
+      await input.live("architecture-insert", "completed");
       return insertion;
     } catch {
+      await input.live("architecture-insert", "failed");
       // The journal's dispatched marker is durable before this call. Any
       // timeout, malformed acknowledgement or durability error leaves the
       // provider outcome unknown rather than risking a second insertion.
@@ -402,14 +439,25 @@ export class InspectionDroneArchitectureRunExecutor {
   private async childrenRead(
     seed: InspectionDroneArchitectureSeed,
     elementId: string,
+    step: InspectionDroneArchitectureLiveStep,
+    live: LiveRecorder,
   ): Promise<McpToolResult> {
-    return await this.#syson.callTool({
+    const call = {
       name: "syson_element_children",
       arguments: {
         editing_context_id: seed.normalizedResults.project.editingContextId,
         element_id: elementId,
       },
-    });
+    };
+    await live(step, "started");
+    try {
+      const result = await this.#syson.callTool(call);
+      await live(step, "completed");
+      return result;
+    } catch (error) {
+      await live(step, "failed");
+      throw error;
+    }
   }
 
   private async requiredInputs(
@@ -497,6 +545,65 @@ export class InspectionDroneArchitectureRunExecutor {
         : "unknown";
     } catch {
       return "unknown";
+    }
+  }
+
+  private liveRecorder(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    basis: EngineeringThreadSnapshotBasis,
+    startAt: InspectionDroneArchitectureLiveStartStep,
+  ): LiveRecorder {
+    const projector = createInspectionDroneArchitectureLiveProjector(run.id, {
+      startAt,
+    });
+    return async (step, phase) => {
+      if (!this.#liveUpdates) return;
+      const toolName = liveToolName(step);
+      const operationId = `${INSPECTION_DRONE_ARCHITECTURE_OPERATION.id}:${step}`;
+      const recordedAt = safeNow(this.#now);
+      try {
+        await this.#liveUpdates.appendOnce({
+          subjectId: project.project.subjectId,
+          runId: run.id,
+          operationId,
+          baseRevision: basis.revision,
+          state: phase === "started"
+            ? "running"
+            : phase === "completed"
+            ? "fresh"
+            : "failed",
+          recordedAt,
+          graph: projector({
+            phase,
+            subjectId: project.project.subjectId,
+            runId: run.id,
+            operationId,
+            serverId: "syson",
+            toolName,
+            recordedAt,
+            // Presentation projection deliberately receives no provider
+            // arguments, results, or error text.
+            call: { name: toolName },
+          }),
+        });
+      } catch {
+        // Live activity is a presentation aid. A journal problem must never
+        // retry, invalidate, or otherwise alter the guarded provider path.
+      }
+    };
+  }
+
+  private async reconcileLive(subjectId: string, runId: string): Promise<void> {
+    if (!this.#liveUpdates) return;
+    try {
+      await this.#liveUpdates.reconcileRunOnce(
+        subjectId,
+        runId,
+        safeNow(this.#now),
+      );
+    } catch {
+      // Canonical evidence already completed; the feed is optional.
     }
   }
 
@@ -726,6 +833,23 @@ class ProviderWriteOutcomeUnknownError extends Error {
     super(`SysON ${step} may have changed provider state without a durable response.`);
     this.name = "ProviderWriteOutcomeUnknownError";
   }
+}
+
+type InspectionDroneArchitectureLiveStep =
+  | "root-preflight"
+  | "architecture-insert"
+  | "root-readback"
+  | "package-readback";
+
+type LiveRecorder = (
+  step: InspectionDroneArchitectureLiveStep,
+  phase: "started" | "completed" | "failed",
+) => Promise<void>;
+
+function liveToolName(step: InspectionDroneArchitectureLiveStep): string {
+  return step === "architecture-insert"
+    ? "syson_element_insert_sysml"
+    : "syson_element_children";
 }
 
 function requireRun(

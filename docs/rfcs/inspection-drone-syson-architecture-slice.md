@@ -1,7 +1,8 @@
 # RFC: bounded inspection-drone SysON architecture slice
 
-Status: **Proposed — no provider call or technical evidence has been made**\
-Scope: the next reviewed V2 operation after `architecture.seed-syson-model@1`\
+Status: **Implemented in source — not released or run against real SysON**\
+Evidence: **No r3 provider evidence exists**\
+Scope: guarded V2 operation after `architecture.seed-syson-model@1`\
 Target: a controlled visual-inspection drone carrying a light inspection camera
 
 This is deliberately not a generic “write SysML” capability. It specifies one immutable
@@ -32,7 +33,7 @@ verified behaviour.
 
 ## Exact eligibility
 
-The proposed operation is `architecture.author-inspection-drone@1`. It may be queued
+The implemented source operation is `architecture.author-inspection-drone@1`. It may be queued
 only after all of the following are true:
 
 1. Its exact basis is the subject's r2 `ThreadSnapshot`, produced by
@@ -43,16 +44,18 @@ only after all of the following are true:
 3. The same human-approved discovery unambiguously selects
    `primary-mission = inspection-controlled` **and**
    `payload-class = light-inspection-camera`. A recommendation alone is not enough.
-4. A human has queued this exact run. The agent can prepare and execute it, but cannot
+4. Its work item was included in the initial reviewed plan, before r1. The plan cannot
+   be revised to add r3 after documentary or technical execution has begun.
+5. A human has queued this exact run. The agent can prepare and execute it, but cannot
    approve the choice or queue it itself.
-5. A read of the seed root package shows no direct children. A non-empty root is not a
+6. A read of the seed root package shows no direct children. A non-empty root is not a
    harmless collision: this narrowly scoped executor stops for review rather than
    merging with manual or future model content.
 
 The current local discovery has the first answer, but not the second approved answer or
 an approved brief. It therefore cannot reach this operation yet.
 
-The registry entry should have `thread-snapshot` as its only queue basis and retain the
+Its registry entry has `thread-snapshot` as its only queue basis and retains the
 existing `approvedDiscovery` binding, so the executor can re-read the exact approved
 discovery capture behind the r1/r2 lineage. Do not add a project decision merely to
 duplicate those approved discovery answers; a different future architecture profile
@@ -122,7 +125,7 @@ been accepted and read back by the exact deployed SysON image. See the
 
 ## Server-owned call sequence
 
-The proposed executor uses one write and three reads. The browser and the agent see only
+The source executor uses one write and three reads. The browser and the agent see only
 the reviewed operation/run identity; they never see this payload as an editable form.
 
 ```text
@@ -170,11 +173,11 @@ and never auto-retry the insertion. If the insertion result was recorded but lat
 read-back/persistence fails, a retry of the same command may resume only the reads and
 publication; it must not insert a second copy.
 
-## Proposed r3 capture boundary
+## Implemented r3 capture boundary
 
-Introduce a small pure domain materializer, for example
-`src/domain/inspection-drone-architecture.ts`, and a matching content-addressed capture
-store. Its normalized capture should contain only:
+The source implementation has the pure materializer in
+`src/domain/inspection-drone-architecture.ts`, a matching content-addressed capture
+store, and a separate write-ahead attempt store. Its normalized capture contains only:
 
 - operation identity/version, trusted run ID, and capture time;
 - exact r2 seed artifact fingerprint and the normalized SysON project/document/root
@@ -185,7 +188,7 @@ store. Its normalized capture should contain only:
   declarations;
 - no raw GraphQL payload, request ID, credentials, agent text, or provider-only UI data.
 
-The materializer then creates the r3 descendant with a `sysml-model` architecture
+The materializer creates the r3 descendant with a `sysml-model` architecture
 artifact that depends on the r2 container artifact. It may expose the named model
 artifact and its source hash in the cockpit. It must leave canonical
 `ThreadSnapshot.requirements`, evaluations, violations, observations, and proposed
@@ -194,8 +197,8 @@ digital-thread verdict.
 
 ## Test and mock recipe for review
 
-The first implementation should be test-first with a `FakeSysonClient` implementing the
-existing `McpToolClient` port. No test starts Docker or contacts a provider.
+The source implementation is tested with a `FakeSysonClient` implementing the existing
+`McpToolClient` port. No normal test starts Docker or contacts a provider.
 
 | Test                        | Fake response / assertion                                                                                                                                                 | Safety property                                                                      |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -229,17 +232,22 @@ the package, five part definitions/usages, and four `RequirementUsage` elements 
 read-back. It is intentionally not a normal test-suite step: it mutates a real provider
 and is the only reliable answer to the current parser/translator uncertainty.
 
-## Implementation order
+## Implementation state and remaining gates
 
-1. Finish and deploy the source-side `mcp-syson` structured-result correction required
-   by the r2 seed; do not relax `HttpMcpToolClient` to parse JSON from text.
-2. Let discovery reach an approved brief with an explicit `payload-class` answer, then
-   create the human-owned project/plan and execute r1/r2 under their existing gates.
-3. Review this recipe and add the operation registry entry, pure capture/materializer,
-   dedicated write-ahead journal, executor, live projector, and fake-client tests as one
-   vertical slice.
-4. Run the disposable SysON parser conformance check only with explicit authorization.
-5. Only after r3 is durable, review a separate CAD-frame operation; do not smuggle CAD
+The reviewed vertical source slice now includes the registry entry, pure
+capture/materializer, dedicated write-ahead journal, executor, queue gate, live
+projector, and fake-client coverage. This does not release the capability or make a
+provider claim. The remaining gates are:
+
+1. Release and deploy the source-side `mcp-syson` structured-result correction required
+   by the closed client contract; do not relax `HttpMcpToolClient` to parse JSON from
+   text.
+2. Let discovery reach an approved brief with the exact `payload-class` answer, then
+   create the human-owned initial plan and execute r1/r2 under their existing gates.
+3. Run the disposable SysON parser conformance check only with explicit authorization.
+   It is required before an r3 provider mutation because it is the first real test of
+   this exact fragment against the deployed parser/translator.
+4. Only after r3 is durable, review a separate CAD-frame operation; do not smuggle CAD
    or CalculiX work into architecture authoring.
 
 The first future physical loop remains deliberately narrow: a camera-carrying frame

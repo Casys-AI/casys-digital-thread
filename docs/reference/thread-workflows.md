@@ -96,7 +96,7 @@ normalizing unit-bearing evidence and refusing a producer/consumer hash mismatch
 
 `architecture.seed-syson-model@1` is not authored as a workflow and does not accept a
 YAML graph, provider selection, tool name, arguments, SysML text, or result from the
-agent. It is the one implemented provider-backed V2 operation after the documentary
+agent. It is the first implemented provider-backed V2 operation after the documentary
 `baseline.from-approved-discovery@1` has published its exact root `ThreadSnapshot` r1.
 
 The server owns the complete fixed sequence:
@@ -116,6 +116,27 @@ verification verdict. Before each non-idempotent SysON creation, the executor pe
 write-ahead attempt record. If the provider outcome is unknown, it stops for explicit
 review instead of blindly retrying a possibly successful creation. This control flow is a
 closed executor contract, not a reusable YAML-node pattern.
+
+## Guarded inspection-drone architecture r3 (not workflow YAML)
+
+`architecture.author-inspection-drone@1` is another closed, server-owned operation,
+not a YAML graph or a generic SysML writer. It must be included in the initial reviewed
+idea/specification plan because plans cannot be revised after r1. Its runtime basis is
+instead the exact r2 produced by `architecture.seed-syson-model@1`, whose seed capture
+must re-read and validate by hash.
+
+The source implementation also re-reads the exact approved discovery behind that r1/r2
+lineage and requires both `primary-mission = inspection-controlled` and
+`payload-class = light-inspection-camera`. It first requires an empty root package,
+inserts one fixed high-level SysML fragment once, and verifies only the named package and
+direct declarations through readback. The caller cannot alter the SysML, provider,
+arguments, or result. A write-ahead record prevents an unknown write outcome from being
+replayed.
+
+This is code-only: it has not been released into the running SysON toolchain or exercised
+against a real SysON instance. The fragment is neither CAD nor an assembly, physical or
+flight simulation, cost, compliance, or a requirement verdict. It remains a closed
+executor contract rather than a reusable YAML-node pattern.
 
 ## First mechanical slice
 

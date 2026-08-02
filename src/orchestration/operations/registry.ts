@@ -4,6 +4,9 @@ import type {
   EngineeringProjectStartingPoint,
   EngineeringWorkItemKind,
 } from "../../domain/engineering-project.ts";
+import {
+  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+} from "../../domain/inspection-drone-architecture.ts";
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -139,6 +142,24 @@ const OPERATIONS = [
     title: "Create the first editable system model",
     description:
       "Create a traceable SysML system-model container after the approved discovery has been recorded.",
+    workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedDiscovery",
+      allowedSourceKinds: ["approved-discovery"],
+    }],
+  },
+  {
+    id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+    version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    // The reviewed plan is published from discovery, while this guarded
+    // mutation is bound only to the exact r2 SysON model-container snapshot.
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Author the bounded inspection-drone architecture",
+    description:
+      "Insert one reviewed high-level inspection-drone SysML architecture into an empty, traceable SysON model container.",
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",

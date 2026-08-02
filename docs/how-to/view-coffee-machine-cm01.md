@@ -18,10 +18,11 @@ deno task start
 ```
 
 The provider MCPs listen on ports `3009`, `3014`, and `3015`. The Console MCP server on
-port `3020` exposes bounded planning plus two narrowly registered V2 controls: the
-provider-free documentary r1 and the r1-to-r2 blank SysON container seed. Neither is a
-generic CM-01 lifecycle. Docker Compose only starts providers; it neither executes the
-proof nor advances a project lifecycle.
+port `3020` exposes bounded planning plus two deployed end-to-end V2 controls: the
+provider-free documentary r1 and the r1-to-r2 blank SysON container seed. A guarded
+inspection-drone r3 exists in source but is not released or proven against real SysON.
+None is a generic CM-01 lifecycle. Docker Compose only starts providers; it neither
+executes the proof nor advances a project lifecycle.
 
 The native cockpit is optional during execution, but useful for watching the recorded
 operations arrive in Activity:
@@ -88,6 +89,12 @@ records normalized identities as r2. It accepts no arbitrary provider arguments 
 SysML text, refuses to blindly retry an uncertain creation, and creates no CM-01
 architecture, requirements, CAD, simulation, measurement, or verdict. Any CM-01
 technical operation still needs its own reviewed registered executor.
+
+The source tree also has a later guarded r3 inspection-drone operation, but it is not a
+CM-01 path: it requires an exact r2 seed, exact approved inspection-drone discovery
+answers, and an empty SysON root. It is not released or exercised against a real SysON
+instance and creates no CM-01 or general CAD, physics, flight, cost, compliance, or
+verification evidence.
 
 The command executes this backend-only chain:
 

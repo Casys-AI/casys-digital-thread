@@ -95,7 +95,7 @@ does not claim that every commercial authoring capability has already been repla
 
 | Horizon               | Honest scope                                                                                                                                                                                                        |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Verified now**      | One native engineering cockpit plus a separate guided Discovery Workbench with a live human handoff; a reviewer can authorize two exact V2 operations: documentary r1 from approved discovery, then a fixed SysON project/document/root-package seed recorded as r2. The seed is an editable container identity, not a design. Exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence remain demonstrated separately by the CM-01 reference path, including one approved DripTray mechanical proof loop. |
+| **Verified now**      | One native engineering cockpit plus a separate guided Discovery Workbench with a live human handoff; a reviewer can authorize the documentary r1 operation from approved discovery, then the fixed SysON project/document/root-package seed recorded as r2. The seed is an editable container identity, not a design. The source tree additionally contains the guarded r3 inspection-drone architecture operation, but it is not released or exercised against real SysON. Exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence remain demonstrated separately by the CM-01 reference path, including one approved DripTray mechanical proof loop. |
 | **V1 product target** | A beginner can move from idea or imported product evidence to a reviewable project, agent-orchestrated proof cases, visible change impact, bounded correction/recompute loops, and inspectable BOM/cost evidence.                 |
 | **V2 candidate**      | Operational digital-twin instances fed by real telemetry, time-series storage, state estimation, model calibration, contextual scenario testing, and service-life decisions.                                        |
 
@@ -112,14 +112,23 @@ step; the agent runs it and the cockpit follows its public milestones. It is use
 provenance, not technical evidence: it creates no SysML model, CAD geometry, simulation,
 measurement, requirement result, compliance conclusion, or certification claim.
 
-The next implemented V2 operation, `architecture.seed-syson-model@1`, accepts only that
-exact r1. Its server-fixed sequence creates a blank SysON project container, blank SysML
+The first implemented provider-backed V2 operation, `architecture.seed-syson-model@1`,
+accepts only that exact r1. Its server-fixed sequence creates a blank SysON project container, blank SysML
 document, and root package, reads the root back, normalizes the identities, and records
 the SHA-256-addressed r2 descendant. The agent cannot choose provider calls, arguments,
 SysML text, or output; an uncertain non-idempotent write is held for review rather than
 blindly retried. r2 is not a drone architecture, requirement, CAD model, simulation,
 measurement, verification result, or certification claim. Those operations still need
 their own inputs, output validators, and evidence contracts.
+
+The source-only `architecture.author-inspection-drone@1` continuation must be present in
+the initial reviewed plan because that plan cannot be revised after r1. At execution it
+requires the exact r2 seed, an empty root, and the same approved discovery's explicit
+`primary-mission = inspection-controlled` and
+`payload-class = light-inspection-camera` answers. It can insert only one fixed
+high-level SysML fragment and has not been released or tested against a real SysON
+instance. It therefore creates no current architecture evidence, CAD, physics, flight,
+cost, compliance, or verified verdict.
 
 Historic V1 projects such as CM-01 remain readable technical references. They are not
 silently converted into V2 projects, and a V2 project never borrows a convenient existing

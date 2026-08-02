@@ -7,8 +7,12 @@ import type { EngineeringProjectSnapshot } from "../domain/engineering-project.t
 import {
   APPROVED_DISCOVERY_BASELINE_OPERATION,
 } from "../orchestration/operations/approved-discovery-baseline.ts";
+import {
+  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+} from "../domain/inspection-drone-architecture.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
 import type { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
+import type { InspectionDroneArchitectureRunExecutor } from "./inspection-drone-architecture-run-executor.ts";
 import type { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 /** Stable command shared by the one agent-visible execution tool. */
@@ -25,6 +29,11 @@ export interface RegisteredProjectRunExecutorDependencies {
   readonly baseline: Pick<ApprovedDiscoveryBaselineRunExecutor, "execute">;
   /** Omit only when SysON is intentionally unavailable on this server. */
   readonly sysonModelSeed?: Pick<SysonModelSeedRunExecutor, "execute">;
+  /** Omit only when the guarded SysON architecture executor is unavailable. */
+  readonly inspectionDroneArchitecture?: Pick<
+    InspectionDroneArchitectureRunExecutor,
+    "execute"
+  >;
 }
 
 /**
@@ -38,11 +47,18 @@ export class RegisteredProjectRunExecutor {
   readonly #projects: Pick<EngineeringProjectRevisionStore, "get">;
   readonly #baseline: Pick<ApprovedDiscoveryBaselineRunExecutor, "execute">;
   readonly #sysonModelSeed: Pick<SysonModelSeedRunExecutor, "execute"> | undefined;
+  readonly #inspectionDroneArchitecture:
+    | Pick<
+      InspectionDroneArchitectureRunExecutor,
+      "execute"
+    >
+    | undefined;
 
   constructor(dependencies: RegisteredProjectRunExecutorDependencies) {
     this.#projects = dependencies.projects;
     this.#baseline = dependencies.baseline;
     this.#sysonModelSeed = dependencies.sysonModelSeed;
+    this.#inspectionDroneArchitecture = dependencies.inspectionDroneArchitecture;
   }
 
   async execute(
@@ -78,6 +94,15 @@ export class RegisteredProjectRunExecutor {
         );
       }
       return await this.#sysonModelSeed.execute(origin, command);
+    }
+    if (sameOperation(operation, INSPECTION_DRONE_ARCHITECTURE_OPERATION)) {
+      if (!this.#inspectionDroneArchitecture) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "The server has no trusted inspection-drone architecture executor configured for this run.",
+        );
+      }
+      return await this.#inspectionDroneArchitecture.execute(origin, command);
     }
     throw new EngineeringProjectCommandError(
       "invalid_transition",

@@ -1,4 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
+import {
+  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+} from "../domain/inspection-drone-architecture.ts";
 import { RegisteredProjectRunExecutor } from "./registered-project-run-executor.ts";
 import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
 
@@ -59,6 +62,38 @@ Deno.test("registered run executor rejects an unreviewed operation before any ex
     "not backed by a trusted registered executor",
   );
   assertEquals(calls, []);
+});
+
+Deno.test("registered run executor dispatches the guarded drone architecture only to its exact executor", async () => {
+  const calls: string[] = [];
+  const project = projectFixture(
+    INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+    INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+  );
+  const executor = new RegisteredProjectRunExecutor({
+    projects: { get: () => Promise.resolve(project) },
+    baseline: {
+      execute: () => {
+        calls.push("baseline");
+        return Promise.resolve(project);
+      },
+    },
+    sysonModelSeed: {
+      execute: () => {
+        calls.push("seed");
+        return Promise.resolve(project);
+      },
+    },
+    inspectionDroneArchitecture: {
+      execute: () => {
+        calls.push("architecture");
+        return Promise.resolve(project);
+      },
+    },
+  });
+
+  assertEquals(await executor.execute(AGENT, COMMAND), project);
+  assertEquals(calls, ["architecture"]);
 });
 
 function projectFixture(operationId: string, operationVersion: string) {

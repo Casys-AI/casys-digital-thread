@@ -175,13 +175,19 @@ It answers “what approved project did we start from?”, not “what has engin
 proved?”
 
 The standard technical `"surface": "evidence"` is used only once a later operation has
-created and validated technical evidence. The first such V2 result currently supported
-is `architecture.seed-syson-model@1`: it adds r2 with normalized identities for one
-blank, read-back SysON project container, SysML document, and root package. That record
-does not make an architecture, requirement, CAD model, simulation, measurement, or
-verdict appear. The three surfaces are mutually exclusive: V1 CM-01 records remain
-historic/readable, and neither direction receives an automatic schema conversion or
-thread-head fallback.
+created and validated technical evidence. The first provider-backed V2 result
+demonstrated by this preview is `architecture.seed-syson-model@1`: it adds r2 with
+normalized identities for one blank, read-back SysON project container, SysML document,
+and root package. That record does not make an architecture, requirement, CAD model,
+simulation, measurement, or verdict appear. The three surfaces are mutually exclusive:
+V1 CM-01 records remain historic/readable, and neither direction receives an automatic
+schema conversion or thread-head fallback.
+
+The source tree also contains a guarded r3 inspection-drone operation. It needs the
+exact r2 seed, an initial plan that already contains r3, an empty root, and the exact
+approved discovery choices `inspection-controlled` and `light-inspection-camera`. It is
+not released or run against a real SysON instance, so this preview does not demonstrate
+an r3 model, feed, or evidence surface.
 
 Before serving planning, documentary, or evidence state, the BFF resolves every declared
 project snapshot by exact ID and validates its entity references. A missing exact
@@ -218,7 +224,7 @@ On the **documentary** surface, the page instead shows the durable starting reco
 plain-language boundary: technical proof is not recorded yet. It must not show an empty
 graph as if it were a technical model, nor reuse CM-01 component or evidence panels.
 
-## Review the first two V2 records
+## Review the initial V2 sequence
 
 For an idea/specification project, the human and agent have a deliberately small,
 ordered interaction:
@@ -245,6 +251,12 @@ ordered interaction:
    surface. Its durable write-ahead record means an uncertain SysON creation is held for
    review, not blindly retried. r2 is only an editable container identity, not a system
    architecture, requirements, CAD, simulation, measurement, or verdict.
+
+The source-only r3 operation is deliberately outside this live preview until it is
+released and separately conformance-tested against SysON. If later authorized, it can
+only follow the exact r2 above and the initial-plan/discovery gates; it never turns the
+preview into a generic SysML editor or a CAD, physics, flight, cost, compliance, or
+verification workflow.
 
 If the technical seed stops before attachment, the project remains on its documentary r1
 surface. The UI must not claim an r2 model or evidence merely because a provider write,

@@ -1,7 +1,7 @@
 # Native digital-thread Workbench: compose evidence, not applications
 
-**Status: accepted target — multi-provider CM-01 baseline plus the first two bounded
-human-agent V2 operations, 2026-08-02**
+**Status: accepted target — multi-provider CM-01 baseline plus two deployed bounded V2
+operations and one guarded source-only r3 operation, 2026-08-02**
 
 The first Workbench proved that five independent MCP Apps can be discovered,
 capability-bounded, mounted, and synchronized. It also exposed the product limit of that
@@ -121,8 +121,8 @@ resulting provenance without presenting it as a technical graph. This documentar
 baseline is deliberately pre-technical: it is not a SysML model, CAD artifact,
 FEA/simulation result, measurement, requirement verdict, or conformity claim.
 
-The next implemented V2 run, `architecture.seed-syson-model@1`, is intentionally just
-as narrow. From exact r1, a server-fixed executor creates a blank SysON project
+The first implemented provider-backed V2 run, `architecture.seed-syson-model@1`, is
+intentionally just as narrow. From exact r1, a server-fixed executor creates a blank SysON project
 container, blank SysML document, and root package, then reads the root package back.
 Only normalized provider identities are captured before the immutable r2 descendant is
 published. The live activity is a small closed sequence, not a generic SysON viewer;
@@ -131,6 +131,15 @@ non-idempotent creation is durably recorded before dispatch, so an unknown outco
 for review instead of being blindly retried. r2 proves only the editable container
 identity: it is not a system architecture, requirements, CAD, simulation, measurement,
 or a verdict.
+
+The source tree also contains the guarded r3
+`architecture.author-inspection-drone@1` executor. It requires that exact r2 seed, the
+same approved discovery's `primary-mission = inspection-controlled` and
+`payload-class = light-inspection-camera` choices, and an empty root before inserting
+one fixed high-level SysML fragment. It must be included in the initial plan because
+planning becomes immutable after r1. This r3 path has not been released or run against a
+real SysON instance, so it supplies no current SysON, CAD, physics, flight, cost,
+compliance, or verification evidence.
 
 The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
 build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It

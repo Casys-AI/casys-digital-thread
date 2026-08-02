@@ -129,12 +129,17 @@ a provider tool.
 `deno task start` exposes the complementary MCP project surface. Agents can inspect the
 same active project, propose an input, and execute only an exact human-queued registered
 V2 operation. They cannot approve, reject, or queue work. The server-owned baseline
-executor creates the immutable, pre-technical approved-discovery r1. The next registered
-executor, `architecture.seed-syson-model@1`, accepts only that exact r1 and uses fixed
-SysON calls to create a blank project, document, and root package; it reads the root
-back, normalizes its identities, and publishes r2. Callers supply no arbitrary arguments
-or SysML text; uncertain writes are not blindly retried. r2 is a container identity, not
-an architecture, requirements, CAD, simulation, measurement, or verdict.
+executor creates the immutable, pre-technical approved-discovery r1. The first
+provider-backed executor, `architecture.seed-syson-model@1`, accepts only that exact r1
+and uses fixed SysON calls to create a blank project, document, and root package; it
+reads the root back, normalizes its identities, and publishes r2. Callers supply no
+arbitrary arguments or SysML text; uncertain writes are not blindly retried. r2 is a
+container identity, not an architecture, requirements, CAD, simulation, measurement, or
+verdict. The source tree also contains the guarded r3
+`architecture.author-inspection-drone@1` operation: it requires exact r2, an empty root,
+and exact approved inspection-drone discovery choices. It must be in the initial plan,
+is not released or run against real SysON, and makes no CAD, physics, flight, cost,
+compliance, or verified-requirement claim.
 
 ## Runtime ownership
 
@@ -145,7 +150,7 @@ an architecture, requirements, CAD, simulation, measurement, or verdict.
 | Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`                      |
 | ERP data                     | External ERPNext database   | Provider-native MCP from backend only                     |
 | Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench              |
-| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus bounded V2 r1 baseline and r2 SysON seed; CAS revisions |
+| `EngineeringProjectSnapshot` | Immutable active file store | Human gate plus bounded V2 r1 baseline, r2 SysON seed, and source-only guarded r3 architecture; CAS revisions |
 | `ProjectDiscoverySnapshot`   | Immutable active file store | Agent-authored discovery plus human review; CAS revisions |
 | Live engineering activity    | Append-only local JSONL     | SSE projection; never canonical authority                 |
 

@@ -177,8 +177,9 @@ SHA-256-addressed document, then records the root `ThreadSnapshot` r1. This is a
 a SysML model, CAD geometry, FEA result, measurement, requirement verdict, conformity,
 or certification.
 
-The next implemented operation is `architecture.seed-syson-model@1`. It accepts only
-that exact documentary r1 and uses a server-fixed SysON sequence to create a blank
+The first implemented provider-backed operation is
+`architecture.seed-syson-model@1`. It accepts only that exact documentary r1 and uses a
+server-fixed SysON sequence to create a blank
 project container, blank SysML document, and root package, then reads the root package
 back. It captures only normalized provider identities and publishes their
 SHA-256-addressed record as descendant `ThreadSnapshot` r2. The caller supplies no
@@ -188,6 +189,17 @@ retrying. This r2 is an editable container identity, **not** a drone architectur
 requirement, CAD artifact, simulation, measurement, or verdict. CAD, physics,
 measurement, and verification loops still need their own later reviewed operations,
 provider evidence, and exact bindings.
+
+The source tree also implements the next guarded operation,
+`architecture.author-inspection-drone@1`. It can insert one fixed, high-level
+inspection-drone SysML fragment into the exact empty r2 container only when the same
+approved discovery explicitly says `primary-mission = inspection-controlled` and
+`payload-class = light-inspection-camera`. The operation must be present in the initial
+reviewed plan: planning becomes immutable once r1 exists, while its execution basis is
+the exact r2 snapshot. It records an insertion attestation and narrow read-back before
+it could publish r3. This is code-only at present: it has not been released into the
+running SysON toolchain or exercised against a real SysON instance. It creates neither
+CAD, physics, flight behaviour, cost, compliance, nor a verified requirement verdict.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
 bootstraps a local CM-01 revision from read-only SysON inventory, one persisted Modelica

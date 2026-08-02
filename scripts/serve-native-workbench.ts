@@ -9,6 +9,8 @@ import {
 import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
 import { FileApprovedDiscoveryBaselineCaptureStore } from "../src/adapters/file-approved-discovery-baseline-capture-store.ts";
+import { FileSysonModelSeedCaptureStore } from "../src/adapters/file-syson-model-seed-capture-store.ts";
+import { InspectionDroneArchitectureQueueEligibility } from "../src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
@@ -548,6 +550,9 @@ if (import.meta.main) {
   const approvedDiscoveryCaptureDirectory = argument(
     "approved-discovery-capture-dir",
   ) ?? "state/local/approved-discovery-captures";
+  const sysonModelSeedCaptureDirectory = argument(
+    "syson-model-seed-capture-dir",
+  ) ?? "state/local/syson-model-seed-captures";
   const html = await Deno.readTextFile(htmlPath);
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
@@ -560,12 +565,23 @@ if (import.meta.main) {
   const captures = new FileApprovedDiscoveryBaselineCaptureStore(
     approvedDiscoveryCaptureDirectory,
   );
+  const sysonModelSeedCaptures = new FileSysonModelSeedCaptureStore(
+    sysonModelSeedCaptureDirectory,
+  );
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
     trackedManifestPath: projectPath,
     activeDirectory: activeProjectDirectory,
     evidenceSnapshots: projectSnapshots,
-    planning: { discoveries, operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    planning: {
+      discoveries,
+      operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+      queueEligibility: new InspectionDroneArchitectureQueueEligibility({
+        snapshots: projectSnapshots,
+        approvedDiscoveryCaptures: captures,
+        seedCaptures: sysonModelSeedCaptures,
+      }),
+    },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       store,
       captures,

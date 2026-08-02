@@ -17,9 +17,16 @@ import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-disco
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import { FileInspectionDroneArchitectureAttemptStore } from "./file-inspection-drone-architecture-attempt-store.ts";
 import { FileInspectionDroneArchitectureCaptureStore } from "./file-inspection-drone-architecture-capture-store.ts";
+import { InspectionDroneArchitectureQueueEligibility } from "./inspection-drone-architecture-queue-eligibility.ts";
 import { FileSysonModelSeedAttemptStore } from "./file-syson-model-seed-attempt-store.ts";
 import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
+import {
+  type AppendLiveThreadUpdate,
+  FileLiveThreadUpdateStore,
+  type LiveThreadUpdate,
+  type LiveThreadUpdateMilestoneJournal,
+} from "./live-thread-update-store.ts";
 import type {
   McpToolCall,
   McpToolClient,
@@ -77,10 +84,55 @@ Deno.test("r3 authoring inserts only the fixed architecture after exact r1/r2 ga
     const capture = await fixture.captures.read(artifact.fingerprint);
     assertExists(capture);
     assertEquals(capture.includes(INSPECTION_DRONE_ARCHITECTURE_SYSML), false);
+    assertEquals(
+      (await fixture.liveUpdates.list(completed.project.subjectId)).map((update) => [
+        update.operationId,
+        update.state,
+      ]),
+      [
+        [
+          "architecture.author-inspection-drone:root-preflight",
+          "running",
+        ],
+        [
+          "architecture.author-inspection-drone:root-preflight",
+          "fresh",
+        ],
+        [
+          "architecture.author-inspection-drone:architecture-insert",
+          "running",
+        ],
+        [
+          "architecture.author-inspection-drone:architecture-insert",
+          "fresh",
+        ],
+        [
+          "architecture.author-inspection-drone:root-readback",
+          "running",
+        ],
+        [
+          "architecture.author-inspection-drone:root-readback",
+          "fresh",
+        ],
+        [
+          "architecture.author-inspection-drone:package-readback",
+          "running",
+        ],
+        [
+          "architecture.author-inspection-drone:package-readback",
+          "fresh",
+        ],
+        ["$reconcile", "reconciled"],
+      ],
+    );
 
     const replay = await executor.execute(AGENT, command);
     assertEquals(replay.revision, completed.revision);
     assertEquals(syson.calls.length, 4);
+    assertEquals(
+      (await fixture.liveUpdates.list(completed.project.subjectId)).length,
+      9,
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -124,6 +176,98 @@ Deno.test("r3 resume after a completed write journal skips preflight and never i
       syson.calls.some((call) => call.name === "syson_element_insert_sysml"),
       false,
     );
+    assertEquals(
+      (await fixture.liveUpdates.list(fixture.queued.project.subjectId)).map(
+        (update) => [update.operationId, update.state],
+      ),
+      [
+        [
+          "architecture.author-inspection-drone:root-readback",
+          "running",
+        ],
+        [
+          "architecture.author-inspection-drone:root-readback",
+          "fresh",
+        ],
+        [
+          "architecture.author-inspection-drone:package-readback",
+          "running",
+        ],
+        [
+          "architecture.author-inspection-drone:package-readback",
+          "fresh",
+        ],
+        ["$reconcile", "reconciled"],
+      ],
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("r3 marks a failed guarded provider read without exposing or retrying it", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-r3-architecture-live-fail-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const syson = new ArchitectureSyson({ preflightFailure: true });
+
+    await assertRejects(
+      () =>
+        architectureExecutor(fixture, syson).execute(
+          AGENT,
+          executionCommand(fixture.queued),
+        ),
+      Error,
+      "root package unavailable",
+    );
+
+    assertEquals(syson.calls.map((call) => call.name), ["syson_element_children"]);
+    assertEquals(
+      (await fixture.liveUpdates.list(fixture.queued.project.subjectId)).map(
+        (update) => [update.operationId, update.state],
+      ),
+      [
+        [
+          "architecture.author-inspection-drone:root-preflight",
+          "running",
+        ],
+        [
+          "architecture.author-inspection-drone:root-preflight",
+          "failed",
+        ],
+      ],
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("r3 completes canonical work once when its optional live journal is unavailable", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-r3-architecture-live-optional-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const syson = new ArchitectureSyson();
+    const unavailableFeed = new UnavailableLiveUpdates();
+
+    const completed = await architectureExecutor(fixture, syson, unavailableFeed)
+      .execute(
+        AGENT,
+        executionCommand(fixture.queued),
+      );
+
+    assertEquals(completed.agentRuns.at(-1)?.status, "completed");
+    assertEquals(syson.calls.map((call) => call.name), [
+      "syson_element_children",
+      "syson_element_insert_sysml",
+      "syson_element_children",
+      "syson_element_children",
+    ]);
+    assertEquals(unavailableFeed.appendOnceCalls, 8);
+    assertEquals(unavailableFeed.reconcileRunOnceCalls, 1);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -321,7 +465,10 @@ Deno.test("r3 requires the exact approved payload choice before it calls SysON",
     prefix: "casys-r3-architecture-payload-",
   });
   try {
-    const fixture = await queuedArchitecture(directory, { payload: "flight-only" });
+    const fixture = await queuedArchitecture(directory, {
+      payload: "flight-only",
+      queueEligibility: false,
+    });
     const syson = new ArchitectureSyson();
     const executor = architectureExecutor(fixture, syson);
 
@@ -333,6 +480,39 @@ Deno.test("r3 requires the exact approved payload choice before it calls SysON",
     assertEquals(syson.calls, []);
     const current = await fixture.projects.get(fixture.queued.project.id);
     assertEquals(current?.agentRuns.at(-1)?.status, "queued");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("r3 queue eligibility refuses an unapproved payload before it creates a run", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-r3-architecture-queue-eligibility-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory, {
+      payload: "flight-only",
+      queueArchitecture: false,
+    });
+    const r2 = fixture.queued.threadSnapshots.at(-1)!;
+    const before = await fixture.projects.get(fixture.queued.project.id);
+
+    await assertRejects(
+      () =>
+        fixture.commands.queueRun(HUMAN, {
+          commandId: "human-authorize-unapproved-inspection-drone-architecture",
+          projectId: fixture.queued.project.id,
+          expectedRevision: fixture.queued.revision,
+          issuedAt: "2026-08-03T12:03:30.000Z",
+          runId: "run:author-unapproved-inspection-drone",
+          workItemId: "author-inspection-drone",
+          summary: "Do not queue an architecture outside the reviewed scope.",
+          basis: { kind: "thread-snapshot", ...r2 },
+        }),
+      Error,
+      "payload-class=light-inspection-camera",
+    );
+    assertEquals(await fixture.projects.get(fixture.queued.project.id), before);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -367,6 +547,7 @@ Deno.test("r3 rejects a corrupt r2 seed capture before it calls SysON", async ()
 function architectureExecutor(
   fixture: Awaited<ReturnType<typeof queuedArchitecture>>,
   syson: McpToolClient,
+  liveUpdates: LiveThreadUpdateMilestoneJournal = fixture.liveUpdates,
 ) {
   return new InspectionDroneArchitectureRunExecutor({
     projects: fixture.projects,
@@ -378,6 +559,7 @@ function architectureExecutor(
     attempts: fixture.attempts,
     syson,
     lease: new FileEngineeringProjectRunLease(`${fixture.directory}/r3-leases`),
+    liveUpdates,
     now: () => "2026-08-03T12:10:00.000Z",
   });
 }
@@ -406,7 +588,11 @@ function executionCommand(
 
 async function queuedArchitecture(
   directory: string,
-  options: { payload?: "light-inspection-camera" | "flight-only" } = {},
+  options: {
+    payload?: "light-inspection-camera" | "flight-only";
+    queueEligibility?: boolean;
+    queueArchitecture?: boolean;
+  } = {},
 ) {
   const discoveries = new FileProjectDiscoveryRevisionStore(`${directory}/discoveries`);
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
@@ -422,6 +608,7 @@ async function queuedArchitecture(
   const attempts = new FileInspectionDroneArchitectureAttemptStore(
     `${directory}/r3-attempts`,
   );
+  const liveUpdates = new FileLiveThreadUpdateStore(`${directory}/live-updates`);
   const discovery = await approvedDroneDiscovery(
     discoveries,
     options.payload ?? "light-inspection-camera",
@@ -439,13 +626,24 @@ async function queuedArchitecture(
     projectName: "Build a reviewable controlled inspection drone demonstrator.",
   });
   let tick = 0;
+  const queueEligibility = options.queueEligibility === false
+    ? undefined
+    : new InspectionDroneArchitectureQueueEligibility({
+      snapshots,
+      approvedDiscoveryCaptures: baselineCaptures,
+      seedCaptures,
+    });
   const commands = new EngineeringProjectCommandService(
     projects,
     new ExactThreadCompletionEvidenceValidator(snapshots),
     () =>
       new Date(Date.parse("2026-08-03T12:01:00.000Z") + ++tick * 1_000)
         .toISOString(),
-    { discoveries, operations: testOperationRegistry() },
+    {
+      discoveries,
+      operations: testOperationRegistry(),
+      ...(queueEligibility ? { queueEligibility } : {}),
+    },
     new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
   );
   const planned = await commands.publishPlan(AGENT, stagedPlanCommand(handoff));
@@ -504,22 +702,25 @@ async function queuedArchitecture(
     runId: "run:seed-syson-model",
   });
   const r2 = seedCompleted.threadSnapshots.at(-1)!;
-  const queued = await commands.queueRun(HUMAN, {
-    commandId: "human-authorize-inspection-drone-architecture",
-    projectId: seedCompleted.project.id,
-    expectedRevision: seedCompleted.revision,
-    issuedAt: "2026-08-03T12:03:30.000Z",
-    runId: "run:author-inspection-drone",
-    workItemId: "author-inspection-drone",
-    summary: "Human authorized the bounded inspection-drone architecture.",
-    basis: { kind: "thread-snapshot", ...r2 },
-  });
+  const queued = options.queueArchitecture === false
+    ? seedCompleted
+    : await commands.queueRun(HUMAN, {
+      commandId: "human-authorize-inspection-drone-architecture",
+      projectId: seedCompleted.project.id,
+      expectedRevision: seedCompleted.revision,
+      issuedAt: "2026-08-03T12:03:30.000Z",
+      runId: "run:author-inspection-drone",
+      workItemId: "author-inspection-drone",
+      summary: "Human authorized the bounded inspection-drone architecture.",
+      basis: { kind: "thread-snapshot", ...r2 },
+    });
   return {
     directory,
     attempts,
     baselineCaptures,
     captures,
     commands,
+    liveUpdates,
     projects,
     queued,
     seedCaptures,
@@ -774,6 +975,45 @@ class SeedSyson implements McpToolClient {
   }
 }
 
+class UnavailableLiveUpdates implements LiveThreadUpdateMilestoneJournal {
+  appendOnceCalls = 0;
+  reconcileRunOnceCalls = 0;
+
+  append(_input: AppendLiveThreadUpdate): Promise<LiveThreadUpdate> {
+    return Promise.reject(new Error("live feed unavailable"));
+  }
+
+  appendOnce(_input: AppendLiveThreadUpdate): Promise<LiveThreadUpdate> {
+    this.appendOnceCalls++;
+    return Promise.reject(new Error("live feed unavailable"));
+  }
+
+  reconcileRun(
+    _subjectId: string,
+    _runId: string,
+    _recordedAt?: string,
+  ): Promise<LiveThreadUpdate> {
+    return Promise.reject(new Error("live feed unavailable"));
+  }
+
+  reconcileRunOnce(
+    _subjectId: string,
+    _runId: string,
+    _recordedAt?: string,
+  ): Promise<LiveThreadUpdate> {
+    this.reconcileRunOnceCalls++;
+    return Promise.reject(new Error("live feed unavailable"));
+  }
+
+  list(_subjectId: string): Promise<LiveThreadUpdate[]> {
+    return Promise.resolve([]);
+  }
+
+  version(_subjectId: string): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
+
 class ArchitectureSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
   #childrenCall = 0;
@@ -786,6 +1026,7 @@ class ArchitectureSyson implements McpToolClient {
       insertionTextMismatch?: boolean;
       ambiguousRootReadback?: boolean;
       requirementUsage?: boolean;
+      preflightFailure?: boolean;
     } = {},
   ) {}
 
@@ -813,6 +1054,9 @@ class ArchitectureSyson implements McpToolClient {
     }
     const callIndex = ++this.#childrenCall;
     const parentId = call.arguments?.element_id;
+    if (!this.options.resumed && callIndex === 1 && this.options.preflightFailure) {
+      return Promise.reject(new Error("root package unavailable"));
+    }
     if (!this.options.resumed && callIndex === 1) {
       return Promise.resolve({
         text: "preflight",

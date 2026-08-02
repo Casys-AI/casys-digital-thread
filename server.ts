@@ -14,9 +14,13 @@ import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-sto
 import { FileApprovedDiscoveryBaselineCaptureStore } from "./src/adapters/file-approved-discovery-baseline-capture-store.ts";
 import { FileSysonModelSeedCaptureStore } from "./src/adapters/file-syson-model-seed-capture-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
+import { FileInspectionDroneArchitectureCaptureStore } from "./src/adapters/file-inspection-drone-architecture-capture-store.ts";
+import { FileInspectionDroneArchitectureAttemptStore } from "./src/adapters/file-inspection-drone-architecture-attempt-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedDiscoveryBaselineRunExecutor } from "./src/adapters/approved-discovery-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/syson-model-seed-run-executor.ts";
+import { InspectionDroneArchitectureRunExecutor } from "./src/adapters/inspection-drone-architecture-run-executor.ts";
+import { InspectionDroneArchitectureQueueEligibility } from "./src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/live-thread-update-store.ts";
@@ -73,6 +77,10 @@ const DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY =
   "state/local/syson-model-seed-captures";
 const DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY =
   "state/local/syson-model-seed-attempts";
+const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_CAPTURE_DIRECTORY =
+  "state/local/inspection-drone-architecture-captures";
+const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_ATTEMPT_DIRECTORY =
+  "state/local/inspection-drone-architecture-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
@@ -102,6 +110,8 @@ export interface CreateConsoleServerOptions {
   approvedDiscoveryCaptureDirectory?: string;
   sysonModelSeedCaptureDirectory?: string;
   sysonModelSeedAttemptDirectory?: string;
+  inspectionDroneArchitectureCaptureDirectory?: string;
+  inspectionDroneArchitectureAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
 }
@@ -141,7 +151,7 @@ export async function createConsoleServer(
     ? undefined
     : options.projectDiscovery ?? createProjectDiscovery(options);
   const instructions = projectControl || projectDiscovery
-    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery, but every work item must cite a reviewed server-side operation and the call cannot execute a provider, approve a decision, queue work or create evidence. project_agent_run_execute can only advance a human-queued, registered V2 run through a server-owned fixed executor; it accepts no provider arguments and can record either the immutable documentary baseline or a blank, read-back SysON project/document/root-package identity. It cannot add arbitrary SysML, CAD, simulation, measurement, verification or compliance proof. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
+    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery, but every work item must cite a reviewed server-side operation and the call cannot execute a provider, approve a decision, queue work or create evidence. project_agent_run_execute can only advance a human-queued, registered V2 run through a server-owned fixed executor; it accepts no provider arguments and can record only the immutable documentary baseline, a blank read-back SysON project/document/root-package identity, or one fixed high-level inspection-drone architecture in that exact empty container. It cannot add arbitrary SysML, CAD, simulation, measurement, verification or compliance proof. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -205,6 +215,11 @@ async function createProjectControl(
     options.sysonModelSeedCaptureDirectory ??
       DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY,
   );
+  const inspectionDroneArchitectureCaptures =
+    new FileInspectionDroneArchitectureCaptureStore(
+      options.inspectionDroneArchitectureCaptureDirectory ??
+        DEFAULT_INSPECTION_DRONE_ARCHITECTURE_CAPTURE_DIRECTORY,
+    );
   const liveUpdates = new FileLiveThreadUpdateStore(
     options.liveThreadUpdateDirectory ?? DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY,
   );
@@ -221,6 +236,11 @@ async function createProjectControl(
     planning: {
       discoveries,
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+      queueEligibility: new InspectionDroneArchitectureQueueEligibility({
+        snapshots: activeThreadSnapshots,
+        approvedDiscoveryCaptures: captures,
+        seedCaptures: sysonModelSeedCaptures,
+      }),
     },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       activeThreadSnapshots,
@@ -251,6 +271,23 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const inspectionDroneArchitecture = sysonMcpUrl
+    ? new InspectionDroneArchitectureRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      approvedDiscoveryCaptures: captures,
+      seedCaptures: sysonModelSeedCaptures,
+      captures: inspectionDroneArchitectureCaptures,
+      attempts: new FileInspectionDroneArchitectureAttemptStore(
+        options.inspectionDroneArchitectureAttemptDirectory ??
+          DEFAULT_INSPECTION_DRONE_ARCHITECTURE_ATTEMPT_DIRECTORY,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   return {
     projects: runtime.projects,
     commands: runtime.commands,
@@ -258,6 +295,7 @@ async function createProjectControl(
       projects: runtime.projects,
       baseline,
       sysonModelSeed,
+      inspectionDroneArchitecture,
     }),
   };
 }

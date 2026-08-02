@@ -1,15 +1,16 @@
 # RFC: Minimal agent orchestration and the operational-twin boundary
 
-Status: **Partially implemented — V2 documentary r1 and bounded SysON container r2 landed; architecture and proof execution remain proposed**\
+Status: **Partially implemented — V2 documentary r1 and bounded SysON container r2 landed; one guarded inspection-drone r3 exists in source but awaits release and real SysON conformance; generic architecture and proof execution remain proposed**\
 Scope: one beginner journey from initial intent or existing product material to
 reviewable engineering evidence\
 Decision horizon: V1 orchestration now; operational Digital Twin only in V2
 
 Truth basis: source tree inspected on 2026-08-02. Current-state claims include the
 loopback Discovery handoff, V2 planning and exact basis, the code-owned operation
-registry, the provider-free documentary-baseline executor, and one fixed provider-backed
-SysON container seed. Generic SysML architecture, requirements, CAD, FEA, simulation,
-measurement, and operational Digital Twin execution remain proposed.
+registry, the provider-free documentary-baseline executor, one fixed provider-backed
+SysON container seed, and one source-only guarded inspection-drone r3 executor. Generic
+SysML architecture, requirements, CAD, FEA, simulation, measurement, and operational
+Digital Twin execution remain proposed.
 
 ## Decision
 
@@ -128,14 +129,17 @@ Discovery handoff. It records only code-validated operation references and state
 bindings; it does **not** call a provider, approve a decision, queue a run, or
 materialize technical evidence. Human queueing is still the authorization boundary.
 `project_agent_run_execute` then resolves only that durable queued run; it accepts no
-provider/tool/argument/result/evidence payload from its caller. It can dispatch exactly
-two reviewed idea/spec operations:
+provider/tool/argument/result/evidence payload from its caller. The source tree can
+dispatch three reviewed idea/spec operations:
 
 1. `baseline.from-approved-discovery@1`, which calls no provider and materializes the
    approved-discovery documentary r1; and
 2. `architecture.seed-syson-model@1`, which requires exact r1 and runs a fixed
    server-owned SysON sequence: blank project container, blank SysML document, root
    package, then root-package read-back and normalized identity capture into r2.
+3. `architecture.author-inspection-drone@1`, source-only pending release and real SysON
+   conformance, which requires the exact empty r2 plus the same approved discovery's
+   controlled-inspection and light-camera answers before one fixed high-level insert.
 
 The second executor has no arbitrary SysML text, provider argument, or output input. It
 persists a write-ahead attempt before each non-idempotent creation. If an outcome is
@@ -208,7 +212,8 @@ does not prove what produced the cited evidence.
 
 ## Implemented V2 r1-to-r2 boundary
 
-The generic control plane now closes the first two bounded contracts:
+The generic control plane closes the first two deployed bounded contracts; the guarded
+r3 follow-on is documented separately in the inspection-drone RFC:
 
 ```text
 exact approved discovery + reviewed plan
@@ -224,9 +229,9 @@ exact approved discovery + reviewed plan
 This avoids fabricating an empty technical snapshot. r1 is provenance for the project
 starting point, not evidence that an engineering tool ran. r2 is the read-back identity
 of a blank editable SysON container, not a system architecture, requirements, CAD, FEA,
-simulation, measurements, or verification. The remaining gap is an architecture and
-proof **technical** operation/executor contract, not the initial authorization, basis, or
-minimal container contract.
+simulation, measurements, or verification. The remaining gap is a generic architecture
+and proof **technical** operation/executor contract, not the initial authorization,
+basis, or minimal container contract.
 
 ## Minimal target contract
 
@@ -386,7 +391,7 @@ A queue fingerprint covers:
 This is a clean schema revision: V2 runs use `basis` and reject `baseSnapshot`; V1
 history remains readable but cannot fall back into the V2 path.
 
-### 4. Implemented: one trusted execution tool with two closed operations
+### 4. Implemented: one trusted execution tool with three closed source operations
 
 The agent-only MCP tool is:
 
@@ -429,6 +434,13 @@ simulation, measurement, verification, or compliance claim. Later provider-backe
 operations must enforce their own input-consumption, output-validation, persistence, and
 interruption rules.
 
+The third source operation is deliberately not a generic architecture endpoint. It can
+insert only the reviewed inspection-drone fragment into an exact empty r2 root, after
+re-reading the hash-valid seed and exact human-approved discovery answers. Its separate
+write-ahead record prevents a second insert when the provider outcome is unknown. It has
+not been released or conformance-tested against a real SysON instance, and establishes no
+CAD, physics, flight, cost, compliance, or verified-requirement evidence.
+
 ### 5. Keep authority simple
 
 | Action                                      |                     Agent |            Human |  SSE/cockpit |
@@ -448,7 +460,7 @@ interruption rules.
 
 ## V2 documentary-to-container acceptance slice
 
-The smallest implemented vertical slice is not another dashboard panel. It is two
+The initial deployed vertical slice is not another dashboard panel. It is two
 complete, observable, deliberately bounded runs from an approved brief:
 
 1. use the registered discovery-to-project handoff to create the exact empty project

@@ -70,20 +70,31 @@ The proposal and planning commands append validated immutable revisions under
 `state/local/engineering-projects/`; they do not execute a workflow or a provider.
 `project_agent_run_execute` is deliberately different from a generic lifecycle command:
 it dispatches one registered, server-owned V2 operation after a human has queued that
-exact run. Two operations are implemented for the idea/spec path:
+exact run. The source tree implements three guarded operations for the idea/spec path:
 
 1. `baseline.from-approved-discovery@1` records the exact approved discovery and plan as
    the provider-free documentary `ThreadSnapshot` r1.
 2. `architecture.seed-syson-model@1` requires that exact r1, uses fixed server-owned
    SysON calls to create a blank project container, blank SysML document, and root
    package, reads the root back, normalizes its identities, and publishes r2.
+3. `architecture.author-inspection-drone@1` requires the exact r2 seed and the same
+   approved discovery's explicit `primary-mission = inspection-controlled` and
+   `payload-class = light-inspection-camera` answers. It can insert one fixed,
+   high-level architecture only into an empty root, then attests and reads it back
+   before it could publish r3.
 
 Neither caller can choose a provider, tool, argument, file, SysML text, or result.
-Before either non-idempotent SysON creation is dispatched, the executor writes a durable
+Before every non-idempotent SysON write is dispatched, the executor writes a durable
 attempt record. An unknown provider outcome fails closed for review; it is never blindly
-retried. The resulting r2 records only an editable container identity, not a system
+retried. The r2 result records only an editable container identity, not a system
 architecture, requirement, CAD artifact, simulation, measurement, verification result,
 or compliance claim.
+
+The r3 implementation is source-only at present: it has not been released into the
+running SysON toolchain or exercised against a real SysON instance. It makes no CAD,
+physics, flight, cost, compliance, or verified-requirement claim. It must be included in
+the initial reviewed plan because planning becomes immutable after r1, even though its
+execution basis is r2.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from SysON,
 build123d, Modelica, and ERPNext through an explicit identity manifest. Its captured
@@ -107,11 +118,11 @@ lifecycle calls. Such an executor owns the reviewed provider calls, canonical ca
 snapshot persistence and read-back, attachment, validation, and its internal lifecycle
 transitions. A caller cannot supply a provider/tool name, raw arguments, result snapshot,
 or evidence payload to make that happen. The public V2 baseline executor makes no
-provider call; the one public provider-backed seed has the closed container-only contract
-above. Any architecture, requirements, CAD, simulation, measurement, or verification
-operation still needs its own reviewed executor and output contract. CM-01's mechanical
-r6 remains valuable historical evidence of a bounded loop, not a public CM-01 execution
-endpoint.
+provider call; the provider-backed seed and the source-only r3 inspection-drone
+architecture operation have the closed contracts above. Any other architecture,
+requirements, CAD, simulation, measurement, or verification operation still needs its
+own reviewed executor and output contract. CM-01's mechanical r6 remains valuable
+historical evidence of a bounded loop, not a public CM-01 execution endpoint.
 
 ## Verification
 

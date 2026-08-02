@@ -7,6 +7,9 @@ import {
   requireRegisteredEngineeringOperation,
   validateRegisteredEngineeringOperationInput,
 } from "./registry.ts";
+import {
+  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+} from "../../domain/inspection-drone-architecture.ts";
 
 Deno.test("the V1 intake registry exposes exactly reviewed operation revisions", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
@@ -89,6 +92,23 @@ Deno.test("a reviewed operation can enter a plan before its execution basis exis
   assertEquals(architecture.operation.id, "architecture.seed-syson-model");
   assertEquals(architecture.operation.execution, "trusted");
   assertEquals(architecture.basisKind, undefined);
+
+  const boundedDroneArchitecture = validateRegisteredEngineeringOperationInput({
+    operation: {
+      id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+      version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+      bindings: [{
+        name: "approvedDiscovery",
+        source: { kind: "approved-discovery" },
+      }],
+    },
+    stage: "planning",
+  });
+  assertEquals(
+    boundedDroneArchitecture.operation.id,
+    INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+  );
+  assertEquals(boundedDroneArchitecture.operation.execution, "trusted");
 });
 
 Deno.test("registered operations accept only their declared queue basis", () => {
@@ -141,6 +161,23 @@ Deno.test("registered operations accept only their declared queue basis", () => 
     EngineeringOperationRegistryError,
   );
   assertEquals(seedFromDiscovery.code, "unsupported_basis");
+
+  const boundedDroneArchitecture = validateRegisteredEngineeringOperationInput({
+    operation: {
+      id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+      version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+      bindings: [{
+        name: "approvedDiscovery",
+        source: { kind: "approved-discovery" },
+      }],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(
+    boundedDroneArchitecture.operation.id,
+    INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+  );
 });
 
 Deno.test("registered operations accept only exact declared state-reference inputs", () => {
