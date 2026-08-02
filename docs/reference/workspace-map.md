@@ -31,7 +31,7 @@
 | [`src/adapters/engineering-project-command-http.ts`](../../src/adapters/engineering-project-command-http.ts)                                   | Same-origin human command contract                                |
 | [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                     |
 | [`src/adapters/thread-snapshot-lineage.ts`](../../src/adapters/thread-snapshot-lineage.ts)                                                     | Exact `previous`-chain ancestry proof                             |
-| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP project and run-lifecycle tools                         |
+| [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                           | Agent MCP project planning and bounded-execution tools            |
 | [`src/adapters/engineering-workbench-projector.ts`](../../src/adapters/engineering-workbench-projector.ts)                                     | Project/thread presentation composition and alignment             |
 | [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)                                               | Canonical-state to Workbench projection                           |
 | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                               | Native lineage feed, graph, inspectors, SSE and command client    |
@@ -49,6 +49,7 @@
 | [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)                                                   | Explicit read-only SysON inventory capture                        |
 | [`state/fixtures/`](../../state/fixtures/)                                                                                                     | Explicitly labelled demo evidence                                 |
 | `state/local/engineering-projects/`                                                                                                            | Ignored immutable active project revisions and CAS claims         |
+| `state/local/engineering-project-run-leases/`                                                                                                  | Empty local OS lock targets for one trusted V2 run; not evidence  |
 
 ## Local endpoints
 

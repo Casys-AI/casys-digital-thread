@@ -8,6 +8,9 @@ import {
 } from "../src/domain/engineering-project-command-service.ts";
 import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileApprovedDiscoveryBaselineCaptureStore } from "../src/adapters/file-approved-discovery-baseline-capture-store.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
+import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
 import {
   executeOperatorProjectCommand,
@@ -27,6 +30,7 @@ import {
   OrderedExactThreadSnapshotReader,
 } from "../src/adapters/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -60,6 +64,40 @@ export interface NativeWorkbenchHandlerOptions {
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
   /** Polling only observes persisted snapshots; it never executes a tool. */
   pollIntervalMs?: number;
+}
+
+/**
+ * CM-01 remains the no-argument preview, but a caller that names a project
+ * must not also have to know the project's internal thread-subject identity.
+ */
+export const NATIVE_WORKBENCH_LEGACY_PROJECT_ID = "coffee-machine-cm01";
+
+export function resolveNativeWorkbenchProjectId(
+  explicitProjectId: string | undefined,
+  explicitSubjectId: string | undefined,
+): string {
+  return explicitProjectId ?? explicitSubjectId ??
+    NATIVE_WORKBENCH_LEGACY_PROJECT_ID;
+}
+
+/**
+ * An explicitly supplied subject remains an operator override. Otherwise the
+ * persisted project is authoritative: V2 discovery projects intentionally use
+ * `project:<projectId>` rather than the historic CM-01 subject convention.
+ */
+export async function resolveNativeWorkbenchSubjectId(
+  projectId: string,
+  explicitSubjectId: string | undefined,
+  projectStore: Pick<EngineeringProjectRevisionStore, "get">,
+): Promise<string> {
+  if (explicitSubjectId !== undefined) return explicitSubjectId;
+  const project = await projectStore.get(projectId);
+  if (!project) {
+    throw new Error(
+      `Engineering project ${projectId} was not found while resolving its Workbench subject.`,
+    );
+  }
+  return project.project.subjectId;
 }
 
 export function createNativeWorkbenchHandler(
@@ -159,7 +197,7 @@ async function snapshotEventStream(
           const liveVersion = liveUpdates.at(-1)?.sequence ?? 0;
           const eventId = snapshot
             ? `${project.revision}:${snapshot.revision}:${liveVersion}`
-            : `planning:${project.revision}`;
+            : `planning:${project.revision}:${liveVersion}`;
           if (eventId !== lastEventId) {
             const projection = await projectWorkbenchSnapshot(
               project,
@@ -292,7 +330,11 @@ async function projectWorkbenchSnapshot(
         `Engineering project subject ${project.project.subjectId} does not match configured subject ${options.subjectId}.`,
       );
     }
-    return projectEngineeringPlanningWorkbenchSnapshot(project);
+    return projectEngineeringPlanningWorkbenchSnapshot(
+      project,
+      liveUpdates ?? (await options.liveUpdates?.list(options.subjectId) ?? []),
+      { operatorCommandsEnabled: options.projectCommands !== undefined },
+    );
   }
   const declaredSnapshots = await Promise.all(
     project.threadSnapshots.map((reference) =>
@@ -380,6 +422,9 @@ function workbenchDataSource(projection: EngineeringWorkbenchSnapshot): string {
   if (projection.surface === "planning") {
     return "engineering-project-plan";
   }
+  if (projection.surface === "documentary") {
+    return "engineering-project-documentary-baseline";
+  }
   return projection.thread.live.active.length
     ? "canonical-thread-snapshot+live-updates"
     : "canonical-thread-snapshot";
@@ -439,8 +484,11 @@ if (import.meta.main) {
   const port = integerArgument("port") ?? 5173;
   const snapshotDirectory = argument("snapshot-dir") ??
     "state/local/thread-snapshots";
-  const subjectId = argument("subject") ?? "coffee-machine-cm01";
-  const projectId = argument("project-id") ?? subjectId;
+  const explicitSubjectId = argument("subject");
+  const projectId = resolveNativeWorkbenchProjectId(
+    argument("project-id"),
+    explicitSubjectId,
+  );
   const projectPath = argument("project") ??
     `config/projects/${projectId}.project.json`;
   const activeProjectDirectory = argument("active-project-dir") ??
@@ -451,30 +499,50 @@ if (import.meta.main) {
     `${projectBaselineDirectory}/assets`;
   const htmlPath = argument("html") ??
     "src/ui/dist/thread/native-workbench.html";
-  const componentCatalogPath = argument("component-catalog") ??
-    `config/thread-subjects/${subjectId}.components.json`;
   const assetDirectory = argument("asset-dir") ?? "state/local/thread-assets";
   const liveUpdateDirectory = argument("live-update-dir") ??
     "state/local/live-thread-updates";
+  const projectDiscoveryDirectory = argument("project-discovery-dir") ??
+    "state/local/project-discoveries";
+  const approvedDiscoveryCaptureDirectory = argument(
+    "approved-discovery-capture-dir",
+  ) ?? "state/local/approved-discovery-captures";
   const html = await Deno.readTextFile(htmlPath);
-  const componentCatalog = validateThreadComponentCatalog(
-    JSON.parse(await Deno.readTextFile(componentCatalogPath)),
-  );
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
     store,
     new FileExactThreadSnapshotDirectory(projectBaselineDirectory),
   ]);
+  const discoveries = new FileProjectDiscoveryRevisionStore(
+    projectDiscoveryDirectory,
+  );
+  const captures = new FileApprovedDiscoveryBaselineCaptureStore(
+    approvedDiscoveryCaptureDirectory,
+  );
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
     trackedManifestPath: projectPath,
     activeDirectory: activeProjectDirectory,
     evidenceSnapshots: projectSnapshots,
+    planning: { discoveries, operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
+      store,
+      captures,
+    ),
   });
+  const subjectId = await resolveNativeWorkbenchSubjectId(
+    projectId,
+    explicitSubjectId,
+    projectRuntime.projects,
+  );
+  const componentCatalogPath = argument("component-catalog") ??
+    `config/thread-subjects/${subjectId}.components.json`;
+  const componentCatalog = await readOptionalComponentCatalog(componentCatalogPath);
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(assetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
+  const liveUpdates = new FileLiveThreadUpdateStore(liveUpdateDirectory);
   const handler = createNativeWorkbenchHandler({
     store,
     projectStore: projectRuntime.projects,
@@ -484,7 +552,7 @@ if (import.meta.main) {
     subjectId,
     html,
     componentCatalog,
-    liveUpdates: new FileLiveThreadUpdateStore(liveUpdateDirectory),
+    liveUpdates,
     assetReader: (filename) => assetReader.read(filename),
   });
 
@@ -503,6 +571,8 @@ if (import.meta.main) {
       );
       console.log(`Component identities: ${componentCatalogPath}`);
       console.log(`Live activity journal: ${liveUpdateDirectory}`);
+      console.log(`Discovery revisions: ${projectDiscoveryDirectory}`);
+      console.log(`Documentary captures: ${approvedDiscoveryCaptureDirectory}`);
       console.log(
         operatorCommandsEnabled
           ? "Page loads are read-only; explicit same-origin operator commands mutate only EngineeringProject revisions."
@@ -510,6 +580,17 @@ if (import.meta.main) {
       );
     },
   }, handler);
+}
+
+async function readOptionalComponentCatalog(
+  path: string,
+): Promise<ThreadComponentCatalog | undefined> {
+  try {
+    return validateThreadComponentCatalog(JSON.parse(await Deno.readTextFile(path)));
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return undefined;
+    throw error;
+  }
 }
 
 function json(

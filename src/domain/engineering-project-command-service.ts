@@ -2,6 +2,8 @@ import {
   type EngineeringAgentRun,
   type EngineeringAgentRunStatus,
   type EngineeringApproval,
+  type EngineeringApprovedDiscoveryBasis,
+  type EngineeringBasisRef,
   type EngineeringCommandActor,
   type EngineeringCommandOriginKind,
   type EngineeringDecision,
@@ -110,7 +112,10 @@ export interface QueueRunCommand extends EngineeringProjectCommandInput {
   readonly runId: string;
   readonly workItemId: string;
   readonly summary: string;
-  readonly baseSnapshot: EngineeringThreadSnapshotRef;
+  /** V1-only queue anchor; V2 rejects this field. */
+  readonly baseSnapshot?: EngineeringThreadSnapshotRef;
+  /** V2-only queue anchor; V1 rejects this field. */
+  readonly basis?: EngineeringBasisRef;
 }
 
 export interface RunCommand extends EngineeringProjectCommandInput {
@@ -193,6 +198,21 @@ export interface EngineeringProjectCompletionEvidenceValidator {
   ): Promise<void>;
 }
 
+/**
+ * Dedicated trust boundary for the one initial result created from an approved
+ * discovery. It intentionally receives no fabricated base ThreadSnapshot and
+ * must not validate it as a descendant.
+ */
+export interface EngineeringProjectInitialCompletionEvidenceValidator {
+  validateInitial(
+    runId: string,
+    basis: EngineeringApprovedDiscoveryBasis,
+    operation: EngineeringOperationRef,
+    resultSnapshot: EngineeringThreadSnapshotRef,
+    evidenceRefs: readonly EngineeringThreadEntityRef[],
+  ): Promise<void>;
+}
+
 export const ENGINEERING_PROJECT_COMMAND_POLICY = {
   human: [
     "decision.propose",
@@ -226,6 +246,8 @@ export class EngineeringProjectCommandService {
     private readonly evidenceValidator?: EngineeringProjectCompletionEvidenceValidator,
     private readonly now: Clock = () => new Date().toISOString(),
     private readonly planning?: EngineeringProjectPlanningDependencies,
+    private readonly initialEvidenceValidator?:
+      EngineeringProjectInitialCompletionEvidenceValidator,
   ) {}
 
   /**
@@ -248,6 +270,7 @@ export class EngineeringProjectCommandService {
             "Project-plan publication is unavailable because no reviewed operation registry is configured.",
           );
         }
+        assertV2DiscoveryPlanningProject(draft);
         assertPlanningCanChange(draft);
         validatePlanCommand(command);
         const handoff = draft.discoveryHandoff;
@@ -361,6 +384,10 @@ export class EngineeringProjectCommandService {
         draft.approvals = [];
         draft.blockers = [];
         draft.agentRuns = [];
+        // A bounded first-baseline operation without dependencies or decisions
+        // is ready for explicit human queueing immediately. Planning never
+        // queues it itself.
+        recomputeWorkReadiness(draft);
       },
     );
   }
@@ -448,30 +475,33 @@ export class EngineeringProjectCommandService {
       ) {
         invalidTransition(`Work item ${workItem.id} already has an active run.`);
       }
-      assertDeclaredSnapshot(draft, command.baseSnapshot);
       const decisionBindings = workItem.decisionIds.map((id) => {
         const decision = findDecision(draft, id);
         if (!decision || decision.status !== "approved" || !decision.inputFingerprint) {
           invalidTransition(`Work item decision ${id} is not approved.`);
         }
-        return { id, inputFingerprint: decision.inputFingerprint };
+        return {
+          id,
+          inputFingerprint: structuredClone(decision.inputFingerprint),
+        };
       });
-      const inputFingerprint = await sha256Fingerprint({
-        workItemId: workItem.id,
-        baseSnapshot: command.baseSnapshot,
-        decisionBindings,
-      });
-      const queued: Mutable<EngineeringAgentRun> = {
-        id: command.runId,
-        workItemId: workItem.id,
-        status: "queued",
-        summary: command.summary,
-        queuedAt: appliedAt,
-        baseSnapshot: structuredClone(command.baseSnapshot),
-        inputFingerprint,
-        evidenceRefs: [],
-        statusHistory: [transition(command, origin, "queued", appliedAt)],
-      };
+      const queued = draft.schemaVersion === "2.0"
+        ? await queueV2Run(
+          draft,
+          command,
+          workItem,
+          decisionBindings,
+          appliedAt,
+          origin,
+        )
+        : await queueV1Run(
+          draft,
+          command,
+          workItem,
+          decisionBindings,
+          appliedAt,
+          origin,
+        );
       draft.agentRuns.push(queued);
       workItem.status = "in-progress";
     });
@@ -532,23 +562,61 @@ export class EngineeringProjectCommandService {
       ["publishing"],
       "completed",
       async (run, appliedAt, draft) => {
-        if (!run.baseSnapshot) {
-          invalidInput(
-            `Agent run ${run.id} has no exact base snapshot; completion is unsafe.`,
-          );
-        }
-        assertResultAdvancesBase(run.baseSnapshot, command.resultSnapshot);
         assertExactResultEvidence(draft, command.resultSnapshot, command.evidenceRefs);
-        if (!this.evidenceValidator) {
-          invalidInput(
-            "Completion evidence validation is unavailable; refusing to publish unverified refs.",
+        if (draft.schemaVersion === "2.0") {
+          const basis = run.basis;
+          if (!basis) {
+            invalidInput(
+              `V2 agent run ${run.id} has no exact basis; completion is unsafe.`,
+            );
+          }
+          const workItem = findWorkItem(draft, run.workItemId)!;
+          if (basis.kind === "approved-discovery") {
+            assertInitialV2CompletionBasis(draft, workItem, basis);
+            if (!this.initialEvidenceValidator) {
+              invalidInput(
+                "Initial completion validation is unavailable; refusing to publish a discovery-derived documentary baseline.",
+              );
+            }
+            await this.initialEvidenceValidator.validateInitial(
+              run.id,
+              basis,
+              workItem.operation!,
+              command.resultSnapshot,
+              command.evidenceRefs,
+            );
+          } else {
+            const baseSnapshot = threadSnapshotReference(basis);
+            assertResultAdvancesBase(baseSnapshot, command.resultSnapshot);
+            if (!this.evidenceValidator) {
+              invalidInput(
+                "Completion evidence validation is unavailable; refusing to publish unverified refs.",
+              );
+            }
+            await this.evidenceValidator.validate(
+              baseSnapshot,
+              command.resultSnapshot,
+              command.evidenceRefs,
+            );
+          }
+        } else {
+          if (!run.baseSnapshot) {
+            invalidInput(
+              `Agent run ${run.id} has no exact base snapshot; completion is unsafe.`,
+            );
+          }
+          assertResultAdvancesBase(run.baseSnapshot, command.resultSnapshot);
+          if (!this.evidenceValidator) {
+            invalidInput(
+              "Completion evidence validation is unavailable; refusing to publish unverified refs.",
+            );
+          }
+          await this.evidenceValidator.validate(
+            run.baseSnapshot,
+            command.resultSnapshot,
+            command.evidenceRefs,
           );
         }
-        await this.evidenceValidator.validate(
-          run.baseSnapshot,
-          command.resultSnapshot,
-          command.evidenceRefs,
-        );
         addThreadSnapshot(draft, command.resultSnapshot);
         run.completedAt = appliedAt;
         run.resultSnapshot = structuredClone(command.resultSnapshot);
@@ -799,6 +867,207 @@ function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
   ) {
     invalidTransition(
       "A project plan cannot be replaced after work, evidence or a concrete decision proposal exists.",
+    );
+  }
+}
+
+function assertV2DiscoveryPlanningProject(
+  draft: EngineeringProjectSnapshot,
+): void {
+  if (draft.schemaVersion !== "2.0") {
+    invalidTransition(
+      "V1 project history is read-only for discovery planning; create a new V2 project from an approved discovery instead.",
+    );
+  }
+  if (!draft.discoveryHandoff) {
+    invalidTransition(
+      "A V2 project plan requires an approved discovery handoff.",
+    );
+  }
+}
+
+interface ApprovedDecisionBinding {
+  readonly id: string;
+  readonly inputFingerprint: ContentFingerprint;
+}
+
+async function queueV1Run(
+  draft: EngineeringProjectSnapshot,
+  command: QueueRunCommand,
+  workItem: EngineeringWorkItem,
+  approvedDecisions: readonly ApprovedDecisionBinding[],
+  appliedAt: string,
+  origin: EngineeringProjectCommandOrigin,
+): Promise<Mutable<EngineeringAgentRun>> {
+  if (command.basis !== undefined) {
+    invalidInput("V1 runs cannot accept a V2 execution basis.");
+  }
+  // A V1 discovery plan may be retained as immutable history, but it is not a
+  // compatibility route into the V2 first-baseline executor.
+  if (draft.plan) {
+    invalidTransition(
+      "A V1 discovery plan is historical-only and cannot be queued for V2 execution.",
+    );
+  }
+  const baseSnapshot = command.baseSnapshot;
+  if (!baseSnapshot) {
+    invalidInput("A V1 run requires an exact baseSnapshot.");
+  }
+  assertDeclaredSnapshot(draft, baseSnapshot);
+  const inputFingerprint = await sha256Fingerprint({
+    workItemId: workItem.id,
+    baseSnapshot,
+    decisionBindings: approvedDecisions,
+  });
+  return {
+    id: command.runId,
+    workItemId: workItem.id,
+    status: "queued",
+    summary: command.summary,
+    queuedAt: appliedAt,
+    baseSnapshot: structuredClone(baseSnapshot),
+    inputFingerprint,
+    evidenceRefs: [],
+    statusHistory: [transition(command, origin, "queued", appliedAt)],
+  };
+}
+
+async function queueV2Run(
+  draft: EngineeringProjectSnapshot,
+  command: QueueRunCommand,
+  workItem: EngineeringWorkItem,
+  approvedDecisions: readonly ApprovedDecisionBinding[],
+  appliedAt: string,
+  origin: EngineeringProjectCommandOrigin,
+): Promise<Mutable<EngineeringAgentRun>> {
+  if (command.baseSnapshot !== undefined) {
+    invalidInput("A V2 run must use basis and cannot accept baseSnapshot.");
+  }
+  const basis = assertV2QueueBasis(draft, workItem, command.basis);
+  const operation = workItem.operation;
+  if (!operation) {
+    invalidInput("A V2 run requires a registered operation on its work item.");
+  }
+  const inputFingerprint = await sha256Fingerprint({
+    workItemId: workItem.id,
+    basis,
+    operation: {
+      id: operation.id,
+      version: operation.version,
+      bindings: operation.bindings,
+    },
+    approvedDecisions,
+  });
+  return {
+    id: command.runId,
+    workItemId: workItem.id,
+    status: "queued",
+    summary: command.summary,
+    queuedAt: appliedAt,
+    basis: structuredClone(basis),
+    inputFingerprint,
+    evidenceRefs: [],
+    statusHistory: [transition(command, origin, "queued", appliedAt)],
+  };
+}
+
+function assertV2QueueBasis(
+  draft: EngineeringProjectSnapshot,
+  workItem: EngineeringWorkItem,
+  basis: EngineeringBasisRef | undefined,
+): EngineeringBasisRef {
+  if (!basis || typeof basis !== "object") {
+    invalidInput("A V2 run requires an exact basis.");
+  }
+  if (basis.kind === "approved-discovery") {
+    const plan = draft.plan;
+    if (!plan || !sameApprovedDiscoveryBasis(basis, plan.basis)) {
+      invalidInput(
+        "The approved-discovery run basis must exactly match the published project plan basis.",
+      );
+    }
+    if (
+      workItem.operation?.id !== "baseline.from-approved-discovery" ||
+      workItem.operation.version !== "1"
+    ) {
+      invalidTransition(
+        "An approved-discovery basis is valid only for baseline.from-approved-discovery@1.",
+      );
+    }
+    if (draft.threadSnapshots.length !== 0) {
+      invalidTransition(
+        "An approved-discovery basis is valid only before the first documentary ThreadSnapshot exists.",
+      );
+    }
+    return structuredClone(basis);
+  }
+  if (basis.kind === "thread-snapshot") {
+    assertThreadSnapshotBasisInput(basis);
+    if (
+      workItem.operation?.id === "baseline.from-approved-discovery" &&
+      workItem.operation.version === "1"
+    ) {
+      invalidTransition(
+        "baseline.from-approved-discovery@1 must use the exact approved discovery basis.",
+      );
+    }
+    assertDeclaredSnapshot(draft, basis);
+    return structuredClone(basis);
+  }
+  invalidInput("basis.kind must be approved-discovery or thread-snapshot.");
+}
+
+function assertThreadSnapshotBasisInput(
+  basis: Extract<EngineeringBasisRef, { kind: "thread-snapshot" }>,
+): void {
+  if (
+    typeof basis.snapshotId !== "string" || !basis.snapshotId.trim() ||
+    basis.snapshotId.toLowerCase() === "latest" ||
+    !Number.isInteger(basis.revision) || basis.revision < 1 ||
+    typeof basis.subjectId !== "string" || !basis.subjectId.trim()
+  ) {
+    invalidInput("A thread-snapshot basis must be an exact non-latest reference.");
+  }
+}
+
+function threadSnapshotReference(
+  basis: Extract<EngineeringBasisRef, { kind: "thread-snapshot" }>,
+): EngineeringThreadSnapshotRef {
+  return {
+    snapshotId: basis.snapshotId,
+    revision: basis.revision,
+    subjectId: basis.subjectId,
+  };
+}
+
+function sameApprovedDiscoveryBasis(
+  left: EngineeringApprovedDiscoveryBasis,
+  right: EngineeringApprovedDiscoveryBasis,
+): boolean {
+  return left.discoveryId === right.discoveryId &&
+    left.snapshotId === right.snapshotId &&
+    left.revision === right.revision &&
+    left.briefId === right.briefId &&
+    fingerprintsEqual(left.approvedBriefFingerprint, right.approvedBriefFingerprint);
+}
+
+function assertInitialV2CompletionBasis(
+  draft: EngineeringProjectSnapshot,
+  workItem: EngineeringWorkItem,
+  basis: EngineeringApprovedDiscoveryBasis,
+): void {
+  if (
+    !draft.plan || !sameApprovedDiscoveryBasis(basis, draft.plan.basis) ||
+    workItem.operation?.id !== "baseline.from-approved-discovery" ||
+    workItem.operation.version !== "1"
+  ) {
+    invalidInput(
+      "A discovery-derived initial result must complete the exact published baseline.from-approved-discovery@1 operation.",
+    );
+  }
+  if (draft.threadSnapshots.length !== 0) {
+    invalidTransition(
+      "A discovery-derived initial result cannot be published after a documentary ThreadSnapshot exists.",
     );
   }
 }

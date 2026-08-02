@@ -67,10 +67,29 @@ export interface LiveThreadUpdateJournal {
 }
 
 /**
+ * Optional stronger contract for executors whose lifecycle milestones must be
+ * idempotent across concurrent attempts. Generic journals stay append-only.
+ */
+export interface LiveThreadUpdateMilestoneJournal extends LiveThreadUpdateJournal {
+  /**
+   * Atomically record one lifecycle milestone for a run. The idempotency
+   * identity is subjectId + runId + operationId + state; regular append()
+   * intentionally remains fully append-only for callers that need each event.
+   */
+  appendOnce(input: AppendLiveThreadUpdate): Promise<LiveThreadUpdate>;
+  /** Atomically append at most one reconciliation tombstone for a run. */
+  reconcileRunOnce(
+    subjectId: string,
+    runId: string,
+    recordedAt?: string,
+  ): Promise<LiveThreadUpdate>;
+}
+
+/**
  * Process-local, append-only activity journal. It has no tool execution method
  * and cannot mutate a canonical ThreadSnapshot.
  */
-export class LiveThreadUpdateStore implements LiveThreadUpdateJournal {
+export class LiveThreadUpdateStore implements LiveThreadUpdateMilestoneJournal {
   #nextSequence = 1;
   readonly #updatesBySubject = new Map<string, LiveThreadUpdate[]>();
 
@@ -91,6 +110,15 @@ export class LiveThreadUpdateStore implements LiveThreadUpdateJournal {
     journal.push(update);
     this.#updatesBySubject.set(input.subjectId, journal);
     return Promise.resolve(structuredClone(update));
+  }
+
+  appendOnce(input: AppendLiveThreadUpdate): Promise<LiveThreadUpdate> {
+    validateUpdateInput(input);
+    const existing = this.#updatesBySubject.get(input.subjectId)?.find((update) =>
+      sameLifecycleMilestone(update, input)
+    );
+    if (existing) return Promise.resolve(structuredClone(existing));
+    return this.append(input);
   }
 
   reconcileRun(
@@ -120,6 +148,23 @@ export class LiveThreadUpdateStore implements LiveThreadUpdateJournal {
     return Promise.resolve(structuredClone(update));
   }
 
+  reconcileRunOnce(
+    subjectId: string,
+    runId: string,
+    recordedAt = new Date().toISOString(),
+  ): Promise<LiveThreadUpdate> {
+    validateSubjectId(subjectId);
+    nonEmpty(runId, "runId");
+    if (Number.isNaN(Date.parse(recordedAt))) {
+      throw new TypeError("recordedAt must be an ISO timestamp");
+    }
+    const existing = this.#updatesBySubject.get(subjectId)?.find((update) =>
+      isRunReconciliation(update, runId)
+    );
+    if (existing) return Promise.resolve(structuredClone(existing));
+    return this.reconcileRun(subjectId, runId, recordedAt);
+  }
+
   list(subjectId: string): Promise<LiveThreadUpdate[]> {
     return Promise.resolve(
       structuredClone(this.#updatesBySubject.get(subjectId) ?? []),
@@ -137,7 +182,7 @@ export class LiveThreadUpdateStore implements LiveThreadUpdateJournal {
  * Cross-process JSONL journal used by the runner (writer) and Workbench BFF
  * (reader). Every append is a complete immutable line; readers fold the lines.
  */
-export class FileLiveThreadUpdateStore implements LiveThreadUpdateJournal {
+export class FileLiveThreadUpdateStore implements LiveThreadUpdateMilestoneJournal {
   readonly #directory: string;
 
   constructor(directory: string) {
@@ -158,6 +203,25 @@ export class FileLiveThreadUpdateStore implements LiveThreadUpdateJournal {
       recordedAt: input.recordedAt,
       graph: normalizePatch(input.graph, input.state, input.recordedAt),
     }));
+  }
+
+  appendOnce(input: AppendLiveThreadUpdate): Promise<LiveThreadUpdate> {
+    validateUpdateInput(input);
+    return this.#appendLocked(
+      input.subjectId,
+      (sequence) => ({
+        schemaVersion: LIVE_THREAD_UPDATE_SCHEMA,
+        sequence,
+        subjectId: input.subjectId,
+        runId: input.runId,
+        operationId: input.operationId,
+        baseRevision: input.baseRevision,
+        state: input.state,
+        recordedAt: input.recordedAt,
+        graph: normalizePatch(input.graph, input.state, input.recordedAt),
+      }),
+      (existing) => existing.find((update) => sameLifecycleMilestone(update, input)),
+    );
   }
 
   reconcileRun(
@@ -181,6 +245,33 @@ export class FileLiveThreadUpdateStore implements LiveThreadUpdateJournal {
       recordedAt,
       graph: { nodes: [], edges: [] },
     }));
+  }
+
+  reconcileRunOnce(
+    subjectId: string,
+    runId: string,
+    recordedAt = new Date().toISOString(),
+  ): Promise<LiveThreadUpdate> {
+    validateSubjectId(subjectId);
+    nonEmpty(runId, "runId");
+    if (Number.isNaN(Date.parse(recordedAt))) {
+      throw new TypeError("recordedAt must be an ISO timestamp");
+    }
+    return this.#appendLocked(
+      subjectId,
+      (sequence) => ({
+        schemaVersion: LIVE_THREAD_UPDATE_SCHEMA,
+        sequence,
+        subjectId,
+        runId,
+        operationId: "$reconcile",
+        baseRevision: 0,
+        state: "reconciled",
+        recordedAt,
+        graph: { nodes: [], edges: [] },
+      }),
+      (existing) => existing.find((update) => isRunReconciliation(update, runId)),
+    );
   }
 
   async list(subjectId: string): Promise<LiveThreadUpdate[]> {
@@ -208,6 +299,9 @@ export class FileLiveThreadUpdateStore implements LiveThreadUpdateJournal {
   async #appendLocked(
     subjectId: string,
     create: (sequence: number) => LiveThreadUpdate,
+    existingMatch?: (
+      existing: readonly LiveThreadUpdate[],
+    ) => LiveThreadUpdate | undefined,
   ): Promise<LiveThreadUpdate> {
     await Deno.mkdir(this.#directory, { recursive: true });
     const file = await Deno.open(this.#path(subjectId), {
@@ -219,6 +313,8 @@ export class FileLiveThreadUpdateStore implements LiveThreadUpdateJournal {
     await file.lock(true);
     try {
       const existing = await this.#readUnlocked(subjectId);
+      const prior = existingMatch?.(existing);
+      if (prior) return structuredClone(prior);
       const update = create((existing.at(-1)?.sequence ?? 0) + 1);
       const bytes = new TextEncoder().encode(`${JSON.stringify(update)}\n`);
       let written = 0;
@@ -387,6 +483,21 @@ interface Candidate<T> {
 }
 
 type ActiveLiveThreadUpdate = LiveThreadUpdate & { state: LiveThreadGraphState };
+
+function sameLifecycleMilestone(
+  update: LiveThreadUpdate,
+  input: AppendLiveThreadUpdate,
+): boolean {
+  return update.runId === input.runId &&
+    update.operationId === input.operationId &&
+    update.state === input.state;
+}
+
+function isRunReconciliation(update: LiveThreadUpdate, runId: string): boolean {
+  return update.runId === runId &&
+    update.operationId === "$reconcile" &&
+    update.state === "reconciled";
+}
 
 function latestActiveUpdates(
   updates: readonly ActiveLiveThreadUpdate[],

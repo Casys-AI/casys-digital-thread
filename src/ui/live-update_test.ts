@@ -5,7 +5,10 @@ import {
   nextLiveFocusNode,
   shouldAcceptWorkbenchUpdate,
 } from "./src/thread/live-update.ts";
-import type { EngineeringEvidenceWorkbenchSnapshot } from "./src/thread/types.ts";
+import type {
+  EngineeringDocumentaryWorkbenchSnapshot,
+  EngineeringEvidenceWorkbenchSnapshot,
+} from "./src/thread/types.ts";
 
 Deno.test("same-id projection focuses a genuinely new feed node", () => {
   const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
@@ -62,6 +65,36 @@ Deno.test("equal project revision accepts a newer thread or live sequence only",
 
   assertEquals(shouldAcceptWorkbenchUpdate(current, newerLive), true);
   assertEquals(shouldAcceptWorkbenchUpdate(current, newerThread), true);
+  assertEquals(shouldAcceptWorkbenchUpdate(current, duplicate), false);
+});
+
+Deno.test("a documentary record has no live evidence overlay to compare", () => {
+  const fixture = COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE;
+  const current: EngineeringDocumentaryWorkbenchSnapshot = {
+    schemaVersion: "engineering-workbench/0.2",
+    surface: "documentary",
+    project: fixture.project,
+    documentary: {
+      status: "recorded",
+      message: "Durable provenance only.",
+      record: {
+        origin: "approved-discovery",
+        snapshotId: fixture.project.threadSnapshots[0]!.snapshotId,
+        snapshotRevision: 1,
+        artifactId: "approved-discovery-document",
+        label: "Approved discovery documentary baseline (pre-technical)",
+        fingerprint: "sha256:documentary-record",
+        recordedAt: "2026-08-02T12:00:00.000Z",
+      },
+      technicalEvidence: {
+        status: "not-recorded",
+        message: "No technical proof is recorded.",
+      },
+    },
+    capabilities: fixture.capabilities,
+  };
+  const duplicate = structuredClone(current);
+
   assertEquals(shouldAcceptWorkbenchUpdate(current, duplicate), false);
 });
 

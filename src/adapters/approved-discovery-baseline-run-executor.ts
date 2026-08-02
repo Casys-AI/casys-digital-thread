@@ -1,0 +1,549 @@
+import {
+  EngineeringProjectCommandError,
+  type EngineeringProjectCommandOrigin,
+  type EngineeringProjectCommandService,
+  type EngineeringProjectRevisionStore,
+} from "../domain/engineering-project-command-service.ts";
+import type {
+  EngineeringAgentRun,
+  EngineeringApprovedDiscoveryBasis,
+  EngineeringProjectSnapshot,
+  EngineeringThreadEntityRef,
+  EngineeringThreadSnapshotRef,
+  EngineeringWorkItem,
+} from "../domain/engineering-project.ts";
+import { deterministicJson } from "../domain/deterministic-json.ts";
+import type { ProjectDiscoveryRevisionStore } from "../domain/project-discovery-command-service.ts";
+import type { ThreadSnapshotStore } from "../domain/thread-snapshot-store.ts";
+import {
+  APPROVED_DISCOVERY_BASELINE_OPERATION,
+  materializeApprovedDiscoveryBaseline,
+} from "../orchestration/operations/approved-discovery-baseline.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
+import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-discovery-baseline-capture-store.ts";
+import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
+
+type ApprovedDiscoveryBaselineMaterialization = Awaited<
+  ReturnType<typeof materializeApprovedDiscoveryBaseline>
+>;
+type ExactSnapshotPresence = "exact" | "absent" | "unknown";
+
+export interface ApprovedDiscoveryBaselineRunExecutorCommand {
+  readonly commandId: string;
+  readonly projectId: string;
+  readonly expectedRevision: number;
+  readonly issuedAt: string;
+  readonly runId: string;
+}
+
+export interface ApprovedDiscoveryBaselineRunExecutorDependencies {
+  readonly projects: EngineeringProjectRevisionStore;
+  readonly commands: EngineeringProjectCommandService;
+  readonly discoveries: Pick<ProjectDiscoveryRevisionStore, "getRevision">;
+  readonly captures: FileApprovedDiscoveryBaselineCaptureStore;
+  readonly snapshots: ThreadSnapshotStore;
+  /** Cross-process ownership for the exact project/run execution. */
+  readonly lease: EngineeringProjectRunLease;
+  /** UI-only journal; a journal failure must not invalidate durable evidence. */
+  readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
+  readonly now?: () => string;
+}
+
+/**
+ * Trusted local executor for the sole provider-less V2 bootstrap operation.
+ *
+ * It never accepts provider arguments or raw result content. The server reads
+ * the exact queued basis, creates a content-addressed documentary capture,
+ * persists and re-reads the root ThreadSnapshot, then attaches it through the
+ * normal command service. Replaying the same command id is safe at every
+ * durable transition.
+ */
+export class ApprovedDiscoveryBaselineRunExecutor {
+  readonly #projects: EngineeringProjectRevisionStore;
+  readonly #commands: EngineeringProjectCommandService;
+  readonly #discoveries: Pick<ProjectDiscoveryRevisionStore, "getRevision">;
+  readonly #captures: FileApprovedDiscoveryBaselineCaptureStore;
+  readonly #snapshots: ThreadSnapshotStore;
+  readonly #lease: EngineeringProjectRunLease;
+  readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
+  readonly #now: () => string;
+
+  constructor(dependencies: ApprovedDiscoveryBaselineRunExecutorDependencies) {
+    this.#projects = dependencies.projects;
+    this.#commands = dependencies.commands;
+    this.#discoveries = dependencies.discoveries;
+    this.#captures = dependencies.captures;
+    this.#snapshots = dependencies.snapshots;
+    this.#lease = dependencies.lease;
+    this.#liveUpdates = dependencies.liveUpdates;
+    this.#now = dependencies.now ?? (() => new Date().toISOString());
+  }
+
+  async execute(
+    origin: EngineeringProjectCommandOrigin,
+    command: ApprovedDiscoveryBaselineRunExecutorCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    if (origin.kind !== "agent") {
+      throw new EngineeringProjectCommandError(
+        "permission_denied",
+        "Only an authenticated agent can execute a human-queued baseline run.",
+      );
+    }
+    const preflight = await this.requiredProject(command.projectId);
+    requireApprovedDiscoveryBaselineShape(
+      preflight,
+      requireRun(preflight, command.runId),
+    );
+    return await this.#lease.withLease(
+      command.projectId,
+      command.runId,
+      () => this.executeLeased(origin, command),
+    );
+  }
+
+  private async executeLeased(
+    origin: EngineeringProjectCommandOrigin,
+    command: ApprovedDiscoveryBaselineRunExecutorCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    let snapshotPersisted = false;
+    let claimSucceeded = false;
+    let materialized: ApprovedDiscoveryBaselineMaterialization | undefined;
+    try {
+      // Reject an ineligible run before claiming it.  Claiming first would
+      // mutate an arbitrary queued run (including a readable V1 project)
+      // merely to discover that this dedicated executor cannot perform it.
+      const beforeClaim = await this.requiredProject(command.projectId);
+      requireApprovedDiscoveryBaselineShape(
+        beforeClaim,
+        requireRun(beforeClaim, command.runId),
+      );
+      await this.#commands.claimRun(origin, {
+        ...command,
+        commandId: stepCommandId(command.commandId, "claim"),
+        summary: "Started the approved-discovery documentary baseline.",
+      });
+      claimSucceeded = true;
+      let project = await this.requiredProject(command.projectId);
+      let run = requireRun(project, command.runId);
+      const workItem = requireApprovedDiscoveryBaselineRun(project, run, origin);
+
+      await this.recordLiveOnce({
+        subjectId: project.project.subjectId,
+        runId: run.id,
+        state: "running",
+        recordedAt: requiredRunStart(run),
+        label: "Recording approved discovery baseline",
+        summary:
+          "The agent is recording the reviewed discovery and project path as a durable pre-technical document.",
+      });
+
+      if (run.status === "completed") {
+        assertCompletedByThisExecution(project, command.commandId, command.runId);
+        await this.reconcileLive(project.project.subjectId, command.runId);
+        return project;
+      }
+      if (run.status === "failed" || run.status === "cancelled") {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `Baseline run ${run.id} is ${run.status}; a human must review and queue a new attempt.`,
+        );
+      }
+
+      const capturedAt = requiredRunStart(run);
+      materialized = await this.materialize(project, run, workItem, capturedAt);
+      await this.#captures.save(materialized.sha256, materialized.text);
+      await this.#snapshots.save(materialized.snapshot);
+      // From this exact point the root snapshot may be durable even if a
+      // subsequent read/attachment fails. Never mark the run failed after it.
+      snapshotPersisted = true;
+      await this.assertExactPersistedSnapshot(materialized);
+      await this.recordLiveOnce({
+        subjectId: project.project.subjectId,
+        runId: run.id,
+        state: "fresh",
+        recordedAt: materialized.snapshot.generatedAt,
+        label: "Recorded approved discovery baseline",
+        summary:
+          "A durable pre-technical document was recorded. No CAD, SysML, simulation, measurement, or verification result exists yet.",
+      });
+
+      project = await this.requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
+      if (run.status === "running") {
+        await this.#commands.publishRun(origin, {
+          ...command,
+          commandId: stepCommandId(command.commandId, "publish"),
+          expectedRevision: project.revision,
+          summary: "Publishing the durable approved-discovery documentary baseline.",
+        });
+      } else if (run.status !== "publishing" && run.status !== "completed") {
+        throw unexpectedRunStatus(run, "publishing");
+      }
+
+      project = await this.requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
+      if (run.status === "publishing") {
+        const resultSnapshot = snapshotReference(materialized.snapshot);
+        await this.#commands.completeRun(origin, {
+          ...command,
+          commandId: stepCommandId(command.commandId, "complete"),
+          expectedRevision: project.revision,
+          summary: "Recorded the approved-discovery documentary baseline.",
+          resultSnapshot,
+          evidenceRefs: [documentEvidenceReference(materialized.snapshot)],
+        });
+      } else if (run.status !== "completed") {
+        throw unexpectedRunStatus(run, "completed");
+      }
+
+      const completed = await this.requiredProject(command.projectId);
+      assertCompletedByThisExecution(completed, command.commandId, command.runId);
+      await this.reconcileLive(completed.project.subjectId, command.runId);
+      return completed;
+    } catch (error) {
+      const snapshotPresence = !snapshotPersisted && materialized
+        ? await this.exactPersistedSnapshotPresence(materialized)
+        : snapshotPersisted
+        ? "exact"
+        : "unknown";
+      if (snapshotPresence === "exact") snapshotPersisted = true;
+      if (
+        !snapshotPersisted &&
+        claimSucceeded &&
+        snapshotPresence === "absent" &&
+        materialized
+      ) {
+        await this.recordFailureIfOwned(origin, command, materialized);
+      }
+      if (snapshotPersisted) {
+        const completed = await this.completedProjectForThisExecution(command);
+        if (completed) {
+          await this.reconcileLive(completed.project.subjectId, command.runId);
+          return completed;
+        }
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "The documentary baseline is durable, but its project attachment did not finish. Retry the same execution command to resume without recreating evidence.",
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async materialize(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+    workItem: EngineeringWorkItem,
+    capturedAt: string,
+  ) {
+    const basis = run.basis as EngineeringApprovedDiscoveryBasis;
+    const discovery = await this.#discoveries.getRevision(
+      basis.discoveryId,
+      basis.revision,
+    );
+    if (!discovery) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The exact approved discovery required by this baseline run is no longer readable.",
+      );
+    }
+    const first = await materializeApprovedDiscoveryBaseline({
+      project,
+      discovery,
+      runId: run.id,
+      capturedAt,
+    });
+    const result = await materializeApprovedDiscoveryBaseline({
+      project,
+      discovery,
+      runId: run.id,
+      capturedAt,
+      captureUri: this.#captures.uriFor(first.sha256),
+    });
+    if (
+      deterministicJson(first.capture) !== deterministicJson(result.capture) ||
+      deterministicJson(first.sha256) !== deterministicJson(result.sha256) ||
+      workItem.id !== result.capture.workItemId
+    ) {
+      throw new Error("Approved-discovery baseline materialization was not stable.");
+    }
+    return result;
+  }
+
+  private async assertExactPersistedSnapshot(
+    materialized: ApprovedDiscoveryBaselineMaterialization,
+  ): Promise<void> {
+    if ((await this.exactPersistedSnapshotPresence(materialized)) !== "exact") {
+      throw new Error(
+        `Documentary ThreadSnapshot ${materialized.snapshot.id} was not durably readable after save.`,
+      );
+    }
+  }
+
+  private async exactPersistedSnapshotPresence(
+    materialized: ApprovedDiscoveryBaselineMaterialization,
+  ): Promise<ExactSnapshotPresence> {
+    try {
+      const persisted = await this.#snapshots.get(materialized.snapshot.id);
+      if (!persisted) return "absent";
+      return deterministicJson(persisted) === deterministicJson(materialized.snapshot)
+        ? "exact"
+        : "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  private async recordFailureIfOwned(
+    origin: EngineeringProjectCommandOrigin,
+    command: ApprovedDiscoveryBaselineRunExecutorCommand,
+    materialized: ApprovedDiscoveryBaselineMaterialization,
+  ): Promise<void> {
+    try {
+      if ((await this.exactPersistedSnapshotPresence(materialized)) !== "absent") {
+        return;
+      }
+      const project = await this.requiredProject(command.projectId);
+      const run = project.agentRuns.find((candidate) => candidate.id === command.runId);
+      if (
+        !run ||
+        !project.commandReceipts?.some((receipt) =>
+          receipt.commandId === stepCommandId(command.commandId, "claim")
+        ) ||
+        !["running", "waiting-for-decision", "publishing"].includes(run.status) ||
+        run.claimedBy?.origin !== origin.kind ||
+        run.claimedBy.id !== origin.actorId
+      ) return;
+      if ((await this.exactPersistedSnapshotPresence(materialized)) !== "absent") {
+        return;
+      }
+      await this.#commands.failRun(origin, {
+        ...command,
+        commandId: stepCommandId(command.commandId, "fail"),
+        expectedRevision: project.revision,
+        summary:
+          "The documentary baseline stopped before a durable snapshot was published.",
+        code: "approved-discovery-baseline-not-published",
+        message:
+          "The initial documentary baseline could not be durably published. No technical evidence was created.",
+      });
+      await this.recordLiveOnce({
+        subjectId: project.project.subjectId,
+        runId: command.runId,
+        state: "failed",
+        recordedAt: safeNow(this.#now),
+        label: "Documentary baseline stopped",
+        summary:
+          "The run stopped before a durable documentary baseline was published. No technical evidence was created.",
+      });
+    } catch {
+      // Failure recording is an audit best effort. Never replace the original
+      // execution error or claim that an unrecorded failure was resolved.
+    }
+  }
+
+  private async recordLiveOnce(input: {
+    subjectId: string;
+    runId: string;
+    state: "running" | "fresh" | "failed";
+    recordedAt: string;
+    label: string;
+    summary: string;
+  }): Promise<void> {
+    if (!this.#liveUpdates) return;
+    try {
+      await this.#liveUpdates.appendOnce({
+        subjectId: input.subjectId,
+        runId: input.runId,
+        operationId: "baseline.from-approved-discovery",
+        baseRevision: 0,
+        state: input.state,
+        recordedAt: input.recordedAt,
+        graph: {
+          nodes: [{
+            id: `${input.runId}:approved-discovery-document`,
+            ref: { kind: "artifact", id: `${input.runId}:approved-discovery-document` },
+            entityKind: "artifact",
+            artifactKind: "document",
+            label: input.label,
+            system: "casys-digital-thread",
+            freshness: input.state,
+            summary: input.summary,
+            recordedAt: input.recordedAt,
+          }],
+          edges: [],
+        },
+      });
+    } catch {
+      // The journal is a live presentation aid, never the source of durable
+      // project or evidence truth. A temporary UI journal problem must not
+      // cause a second capture or roll back a persisted one.
+    }
+  }
+
+  private async reconcileLive(subjectId: string, runId: string): Promise<void> {
+    if (!this.#liveUpdates) return;
+    try {
+      await this.#liveUpdates.reconcileRunOnce(
+        subjectId,
+        runId,
+        safeNow(this.#now),
+      );
+    } catch {
+      // See recordLiveOnce: persistence already succeeded and remains true.
+    }
+  }
+
+  private async completedProjectForThisExecution(
+    command: ApprovedDiscoveryBaselineRunExecutorCommand,
+  ): Promise<EngineeringProjectSnapshot | undefined> {
+    try {
+      const project = await this.requiredProject(command.projectId);
+      assertCompletedByThisExecution(project, command.commandId, command.runId);
+      return project;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async requiredProject(
+    projectId: string,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#projects.get(projectId);
+    if (!project) {
+      throw new EngineeringProjectCommandError(
+        "project_not_found",
+        `Engineering project ${projectId} does not exist.`,
+      );
+    }
+    return project;
+  }
+}
+
+function requireRun(
+  project: EngineeringProjectSnapshot,
+  runId: string,
+): EngineeringAgentRun {
+  const run = project.agentRuns.find((candidate) => candidate.id === runId);
+  if (!run) {
+    throw new EngineeringProjectCommandError(
+      "entity_not_found",
+      `Agent run ${runId} does not exist in project ${project.project.id}.`,
+    );
+  }
+  return run;
+}
+
+function requireApprovedDiscoveryBaselineRun(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+  origin: EngineeringProjectCommandOrigin,
+): EngineeringWorkItem {
+  const workItem = requireApprovedDiscoveryBaselineShape(project, run);
+  if (
+    run.claimedBy?.origin !== origin.kind ||
+    run.claimedBy.id !== origin.actorId
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "This executor may run only the exact human-queued V2 approved-discovery baseline it claimed.",
+    );
+  }
+  return workItem;
+}
+
+function requireApprovedDiscoveryBaselineShape(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+): EngineeringWorkItem {
+  const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  if (
+    project.schemaVersion !== "2.0" ||
+    run.basis?.kind !== "approved-discovery" ||
+    !workItem ||
+    workItem.operation?.id !== APPROVED_DISCOVERY_BASELINE_OPERATION.id ||
+    workItem.operation.version !== APPROVED_DISCOVERY_BASELINE_OPERATION.version
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "This executor may run only the exact human-queued V2 approved-discovery baseline.",
+    );
+  }
+  return workItem;
+}
+
+function requiredRunStart(run: EngineeringAgentRun): string {
+  if (!run.startedAt || Number.isNaN(Date.parse(run.startedAt))) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Baseline run ${run.id} has no durable start timestamp.`,
+    );
+  }
+  return run.startedAt;
+}
+
+function snapshotReference(
+  snapshot: Awaited<
+    ReturnType<typeof materializeApprovedDiscoveryBaseline>
+  >["snapshot"],
+): EngineeringThreadSnapshotRef {
+  return {
+    snapshotId: snapshot.id,
+    revision: snapshot.revision,
+    subjectId: snapshot.subject.id,
+  };
+}
+
+function documentEvidenceReference(
+  snapshot: Awaited<
+    ReturnType<typeof materializeApprovedDiscoveryBaseline>
+  >["snapshot"],
+): EngineeringThreadEntityRef {
+  const document = snapshot.artifacts[0];
+  if (!document) throw new Error("Documentary baseline has no document artifact.");
+  return {
+    snapshotId: snapshot.id,
+    snapshotRevision: snapshot.revision,
+    kind: "artifact",
+    id: document.id,
+  };
+}
+
+function assertCompletedByThisExecution(
+  project: EngineeringProjectSnapshot,
+  commandId: string,
+  runId: string,
+): void {
+  const run = requireRun(project, runId);
+  if (
+    run.status !== "completed" ||
+    !run.resultSnapshot ||
+    !project.commandReceipts?.some((receipt) =>
+      receipt.commandId === stepCommandId(commandId, "complete")
+    )
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Baseline run ${runId} did not complete through this exact execution command.`,
+    );
+  }
+}
+
+function unexpectedRunStatus(
+  run: EngineeringAgentRun,
+  expected: "publishing" | "completed",
+): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError(
+    "invalid_transition",
+    `Baseline run ${run.id} is ${run.status}; expected ${expected} while resuming this exact execution command.`,
+  );
+}
+
+function stepCommandId(commandId: string, step: string): string {
+  return `${commandId}:approved-discovery-baseline:${step}`;
+}
+
+function safeNow(now: () => string): string {
+  const value = now();
+  return Number.isNaN(Date.parse(value)) ? new Date().toISOString() : value;
+}

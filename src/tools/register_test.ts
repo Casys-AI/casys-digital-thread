@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import type { DockerObserver } from "../adapters/docker-observer.ts";
 import type { McpProbe } from "../adapters/http-mcp-probe.ts";
 import type { FleetManifest, ObservedContainer, RunDetail } from "../domain/types.ts";
@@ -24,10 +24,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_run_list",
     "console_server_detail",
     "console_snapshot",
-    "project_agent_run_fail",
-    "project_agent_run_progress",
-    "project_agent_run_publish",
-    "project_agent_run_start",
+    "project_agent_run_execute",
     "project_decision_propose",
     "project_discovery_answer_record",
     "project_discovery_brief_propose",
@@ -77,10 +74,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_run_list",
       "console_server_detail",
       "console_snapshot",
-      "project_agent_run_fail",
-      "project_agent_run_progress",
-      "project_agent_run_publish",
-      "project_agent_run_start",
+      "project_agent_run_execute",
       "project_decision_propose",
       "project_discovery_answer_record",
       "project_discovery_brief_propose",
@@ -105,48 +99,64 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       idempotentHint: true,
       openWorldHint: true,
     });
-    const publishTool = tools.find((tool) =>
-      tool.name === "project_agent_run_publish"
-    )!;
+    const executeTool = tools.find((tool) => tool.name === "project_agent_run_execute");
+    assert(executeTool);
     assertEquals(
-      (publishTool.inputSchema as Record<string, unknown>).oneOf,
+      executeTool.annotations,
+      {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    );
+    const executeSchema = executeTool.inputSchema as Record<string, unknown>;
+    const executeProperties = executeSchema.properties as Record<string, unknown>;
+    assertEquals(
+      Object.keys(executeProperties).sort(),
       [
-        {
-          properties: { stage: { const: "publishing" } },
-          required: ["stage"],
-          not: {
-            anyOf: [
-              { required: ["resultSnapshot"] },
-              { required: ["evidenceRefs"] },
-            ],
-          },
-        },
-        {
-          properties: { stage: { const: "completed" } },
-          required: ["stage", "resultSnapshot", "evidenceRefs"],
-        },
+        "commandId",
+        "expectedRevision",
+        "issuedAt",
+        "projectId",
+        "runId",
       ],
     );
-    const incompleteCompletion = await assertRejects(
-      () =>
-        client.call("tools/call", {
-          name: "project_agent_run_publish",
-          arguments: {
-            commandId: "mcp-incomplete-completion",
-            projectId: "coffee-machine-cm01",
-            expectedRevision: 1,
-            issuedAt: "2026-08-01T14:10:00.000Z",
-            runId: "run:missing",
-            stage: "completed",
-            summary: "This must be rejected by the advertised schema.",
-          },
-        }),
-      Error,
-    );
-    assertStringIncludes(
-      incompleteCompletion.message,
-      "resultSnapshot",
-    );
+    assertEquals(executeSchema.required, [
+      "commandId",
+      "projectId",
+      "expectedRevision",
+      "issuedAt",
+      "runId",
+    ]);
+    assertEquals(executeSchema.additionalProperties, false);
+    for (
+      const forbiddenProperty of [
+        "provider",
+        "providerArguments",
+        "providerTool",
+        "toolName",
+        "toolArguments",
+        "mcpUrl",
+        "resultSnapshot",
+        "evidenceRefs",
+      ]
+    ) {
+      assertEquals(forbiddenProperty in executeProperties, false);
+    }
+    for (
+      const retiredToolName of [
+        "project_agent_run_start",
+        "project_agent_run_progress",
+        "project_agent_run_publish",
+        "project_agent_run_fail",
+      ]
+    ) {
+      assertEquals(
+        tools.some((tool) => tool.name === retiredToolName),
+        false,
+      );
+    }
 
     const result = await client.call("tools/call", {
       name: "console_snapshot",
@@ -258,7 +268,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       );
       assertEquals(
         annotations.idempotentHint,
-        tool.name === "project_snapshot",
+        tool.name === "project_snapshot" ||
+          tool.name === "project_agent_run_execute",
       );
     }
     const discoveryTools = tools.filter((tool) =>

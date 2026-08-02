@@ -85,38 +85,47 @@ exports. Explicit consumption attestations prove source-to-plan, plan-to-script,
 script-to-export identity. The Workbench receives that new revision over SSE without a
 page reload.
 
-## Run the separately approved mechanical branch
+## Inspect the historical mechanical reference path
 
-Assembly and the whole-machine CAD build do not authorize a solve. After the
-`review-mechanical-proof-case` proposal has been approved by a human, its work item has
-been queued by a human, and the resulting run has been claimed by an agent, execute the
-exact run ID:
+Assembly and the whole-machine CAD build do not authorize a solve. The separately
+approved CM-01 mechanical path is retained as an exact historical reference: it proves
+what the bounded DripTray loop captured, not an executable public project-control recipe.
+The Console MCP server has no public `start`, `progress`, `publish`, or `fail` lifecycle
+tools, and it does not currently expose a CM-01 technical executor.
+
+For a local maintainer auditing an already prepared historical run, the underlying
+command-side runner accepts its exact recorded run ID:
 
 ```bash
 deno task thread:run-coffee-machine-mechanical \
-  --run-id=<human-queued-and-agent-claimed-run-id>
+  --run-id=<recorded-historical-run-id>
 ```
 
 The runner adds or validates only the approved DripTray `1 mm` and `20 MPa` constraints,
 generates a content-addressed DripTray STEP with build123d, solves that exact SHA-256
 with CalculiX, normalizes the observations, and asks SysON for the verdicts. It persists
-a capture but does not publish canonical evidence or complete the project run.
+a capture but is not a public MCP execution endpoint and does not authorize or complete a
+new project run.
 
-The project lifecycle must enter `publishing` through `project_agent_run_publish`
-before attachment. Then publish the capture:
+The corresponding historical attachment command validates and materializes that capture:
 
 ```bash
 deno task thread:attach-coffee-machine-mechanical \
   --run-id=<same-run-id>
 ```
 
-Use the attach command's exact `resultSnapshot` and `evidenceRefs` in a second
-`project_agent_run_publish` call with `stage: "completed"`. The required ordering is
-therefore **publishing → attach → completed**. The attach command saves and reads back
-the immutable snapshot before removing the run's provisional feed entries; it never
-advances the project lifecycle itself. See the
-[mechanical workflow how-to](view-coffee-machine-cm01.md) for authorization and safe
-resume rules.
+It saves and reads back the immutable snapshot before removing the run's provisional feed
+entries; it does not advance a project lifecycle itself. The public control plane no
+longer offers a separate MCP call to move a run into `publishing` or `completed`. Do not
+try to recreate the r6 reference by supplying a capture or evidence payload through MCP.
+
+For a future technical operation, the human first queues an exact reviewed work item.
+Its registered server-owned executor must then own the provider calls, capture,
+snapshot/attachment, output validation, and internal lifecycle transitions. Until that
+executor exists, CM-01 r6 is reviewed as existing evidence rather than offered as a
+re-runnable agent workflow. See the
+[mechanical workflow reference](view-coffee-machine-cm01.md) for the recorded case and
+its safe-resume boundary.
 
 ## Inspect the assembled state
 

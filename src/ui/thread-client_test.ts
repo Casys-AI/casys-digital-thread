@@ -66,8 +66,33 @@ Deno.test("Workbench contract accepts a planning surface only when no technical 
   (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
   planning.planning = {
     technicalBaseline: {
-      status: "not-created",
-      message: "Technical baseline not created yet.",
+      status: "running",
+      message: "The agent is preparing the first documentary baseline.",
+    },
+    baselineRun: {
+      id: "run-first-baseline",
+      status: "running",
+      workItem: {
+        id: "work-define",
+        title: "Prepare the first system definition",
+        kind: "define",
+      },
+      queuedAt: "2026-08-02T12:00:00.000Z",
+      statusHistory: [{
+        status: "queued",
+        at: "2026-08-02T12:00:00.000Z",
+      }, {
+        status: "running",
+        at: "2026-08-02T12:00:05.000Z",
+      }],
+    },
+    activity: {
+      version: 4,
+      milestones: [{
+        sequence: 4,
+        state: "running",
+        recordedAt: "2026-08-02T12:00:06.000Z",
+      }],
     },
   };
 
@@ -79,6 +104,69 @@ Deno.test("Workbench contract accepts a planning surface only when no technical 
     subjectId: "CM-01",
   }];
   assertEquals(isEngineeringWorkbenchSnapshot(planning), false);
+});
+
+Deno.test("Workbench contract rejects a planning activity that carries graph or provider payload", () => {
+  const planning = structuredClone(
+    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as Record<string, unknown>;
+  planning.surface = "planning";
+  delete planning.thread;
+  delete planning.alignment;
+  (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
+  planning.planning = {
+    technicalBaseline: {
+      status: "queued",
+      message: "A reviewed first run is queued.",
+    },
+    activity: {
+      version: 1,
+      milestones: [{
+        sequence: 1,
+        state: "running",
+        recordedAt: "2026-08-02T12:00:00.000Z",
+        graph: { nodes: [], edges: [] },
+      }],
+    },
+  };
+
+  assertEquals(isEngineeringWorkbenchSnapshot(planning), false);
+});
+
+Deno.test("Workbench contract keeps a documentary baseline separate from an evidence thread", () => {
+  const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
+  const documentary = {
+    schemaVersion: "engineering-workbench/0.2",
+    surface: "documentary",
+    project: fixture.project,
+    documentary: {
+      status: "recorded",
+      message: "One durable pre-technical record is available.",
+      record: {
+        origin: "approved-discovery",
+        snapshotId: fixture.project.threadSnapshots[0]!.snapshotId,
+        snapshotRevision: fixture.project.threadSnapshots[0]!.revision,
+        artifactId: "approved-discovery-document",
+        label: "Approved discovery documentary baseline (pre-technical)",
+        fingerprint: "sha256:documentary-record",
+        recordedAt: "2026-08-02T12:00:00.000Z",
+      },
+      technicalEvidence: {
+        status: "not-recorded",
+        message: "No CAD, SysML, simulation or compliance proof is recorded.",
+      },
+    },
+    capabilities: fixture.capabilities,
+  };
+
+  assertEquals(isEngineeringWorkbenchSnapshot(documentary), true);
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...documentary,
+      thread: fixture.thread,
+    }),
+    false,
+  );
 });
 
 Deno.test("the Workbench contract requires explicit flow dependencies", () => {
@@ -182,6 +270,7 @@ Deno.test("HTTP Workbench client rejects malformed planning provenance", async (
       status: "not-created",
       message: "Technical baseline not created yet.",
     },
+    activity: { version: 0, milestones: [] },
   };
   const client = new HttpThreadWorkbenchClient(
     "/api/thread/workbench",
@@ -209,8 +298,7 @@ Deno.test("HTTP Workbench client posts one explicit, revision-bound operator com
         endpoint: "/api/project/commands",
         intents: ["decision.propose"],
         explicitIntentHeader: "X-Casys-Operator-Intent",
-        expectedRevision:
-          COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE.project.revision,
+        expectedRevision: COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE.project.revision,
       },
     },
   };
@@ -263,8 +351,7 @@ Deno.test("HTTP Workbench client exposes revision conflicts for a UI refresh", a
         endpoint: "/api/project/commands",
         intents: ["agent-run.queue"],
         explicitIntentHeader: "X-Casys-Operator-Intent",
-        expectedRevision:
-          COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE.project.revision,
+        expectedRevision: COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE.project.revision,
       },
     },
   };

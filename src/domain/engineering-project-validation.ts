@@ -1,10 +1,12 @@
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
+  EngineeringApprovedDiscoveryBasis,
   EngineeringBlocker,
   EngineeringDecision,
   EngineeringProjectCommandReceipt,
   EngineeringProjectPhase,
+  EngineeringProjectSchemaVersion,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
@@ -74,7 +76,11 @@ export function collectEngineeringProjectIssues(
   );
   if (!root) return issues;
 
-  literal(root.schemaVersion, "1.0", "$.schemaVersion", issues);
+  const schemaVersion = engineeringProjectSchemaVersion(
+    root.schemaVersion,
+    "$.schemaVersion",
+    issues,
+  );
   nonEmptyString(root.id, "$.id", issues);
   positiveInteger(root.revision, "$.revision", issues);
   isoDateTime(root.generatedAt, "$.generatedAt", issues);
@@ -91,7 +97,12 @@ export function collectEngineeringProjectIssues(
   validateArray(root.threadSnapshots, "$.threadSnapshots", issues, validateSnapshotRef);
   validateArray(root.phases, "$.phases", issues, validatePhase);
   validateArray(root.workItems, "$.workItems", issues, validateWorkItem);
-  validateArray(root.agentRuns, "$.agentRuns", issues, validateAgentRun);
+  validateArray(
+    root.agentRuns,
+    "$.agentRuns",
+    issues,
+    (item, path) => validateAgentRun(item, path, issues, schemaVersion),
+  );
   validateArray(root.decisions, "$.decisions", issues, validateDecision);
   validateArray(root.approvals, "$.approvals", issues, validateApproval);
   validateArray(root.blockers, "$.blockers", issues, validateBlocker);
@@ -188,6 +199,16 @@ function validatePrevious(
   if (!input) return;
   nonEmptyString(input.snapshotId, `${path}.snapshotId`, issues);
   positiveInteger(input.revision, `${path}.revision`, issues);
+}
+
+function engineeringProjectSchemaVersion(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): EngineeringProjectSchemaVersion | undefined {
+  if (value === "1.0" || value === "2.0") return value;
+  issue(issues, "invalid_enum", path, "must be 1.0 or 2.0");
+  return undefined;
 }
 
 function validateProjectIdentity(
@@ -563,6 +584,7 @@ function validateAgentRun(
   value: unknown,
   path: string,
   issues: EngineeringProjectValidationIssue[],
+  schemaVersion: EngineeringProjectSchemaVersion | undefined,
 ): void {
   const input = exactRecord(
     value,
@@ -573,6 +595,7 @@ function validateAgentRun(
       "completedAt",
       "claimedAt",
       "claimedBy",
+      "basis",
       "baseSnapshot",
       "inputFingerprint",
       "waitingForDecisionIds",
@@ -607,7 +630,7 @@ function validateAgentRun(
   if (input.claimedBy !== undefined) {
     validateCommandActor(input.claimedBy, `${path}.claimedBy`, issues);
   }
-  validateExecutionBinding(input, path, issues);
+  validateRunExecutionBinding(input, path, issues, schemaVersion);
   validateArray(
     input.evidenceRefs,
     `${path}.evidenceRefs`,
@@ -971,6 +994,102 @@ function validateExecutionBinding(
   }
 }
 
+/**
+ * V1 run state is deliberately read as-is for CM-01 history. V2 rejects that
+ * field rather than silently treating it as a new execution basis.
+ */
+function validateRunExecutionBinding(
+  input: Record<string, unknown>,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+  schemaVersion: EngineeringProjectSchemaVersion | undefined,
+): void {
+  if (!schemaVersion) return;
+  const hasBasis = input.basis !== undefined;
+  const hasBase = input.baseSnapshot !== undefined;
+  const hasFingerprint = input.inputFingerprint !== undefined;
+
+  if (schemaVersion === "1.0") {
+    if (hasBasis) {
+      issue(
+        issues,
+        "schema_version_mismatch",
+        `${path}.basis`,
+        "is a V2 execution field and cannot appear in a V1 run",
+      );
+    }
+    validateExecutionBinding(input, path, issues);
+    return;
+  }
+
+  if (hasBase) {
+    issue(
+      issues,
+      "schema_version_mismatch",
+      `${path}.baseSnapshot`,
+      "is a V1 execution field and cannot appear in a V2 run",
+    );
+  }
+  if (!hasBasis || !hasFingerprint) {
+    issue(
+      issues,
+      "incomplete_execution_binding",
+      path,
+      "a V2 run requires both basis and inputFingerprint",
+    );
+  }
+  if (hasBasis) validateEngineeringBasis(input.basis, `${path}.basis`, issues);
+  if (hasFingerprint) {
+    validateFingerprint(input.inputFingerprint, `${path}.inputFingerprint`, issues);
+  }
+}
+
+function validateEngineeringBasis(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["kind"],
+    [
+      "discoveryId",
+      "snapshotId",
+      "revision",
+      "briefId",
+      "approvedBriefFingerprint",
+      "subjectId",
+    ],
+    issues,
+  );
+  if (!input) return;
+  if (input.kind === "approved-discovery") {
+    validateApprovedDiscoveryBasis(value, path, issues);
+    return;
+  }
+  if (input.kind === "thread-snapshot") {
+    const threadBasis = exactRecord(
+      value,
+      path,
+      ["kind", "snapshotId", "revision", "subjectId"],
+      [],
+      issues,
+    );
+    if (!threadBasis) return;
+    nonEmptyString(threadBasis.snapshotId, `${path}.snapshotId`, issues);
+    positiveInteger(threadBasis.revision, `${path}.revision`, issues);
+    nonEmptyString(threadBasis.subjectId, `${path}.subjectId`, issues);
+    return;
+  }
+  issue(
+    issues,
+    "invalid_enum",
+    `${path}.kind`,
+    "must be approved-discovery or thread-snapshot",
+  );
+}
+
 function validateFingerprint(
   value: unknown,
   path: string,
@@ -1060,6 +1179,14 @@ function validateInvariants(
       "missing_thread_snapshot",
       "$.threadSnapshots",
       "must declare at least one exact ThreadSnapshot revision",
+    );
+  }
+  if (project.schemaVersion === "2.0" && !project.discoveryHandoff) {
+    issue(
+      issues,
+      "missing_reference",
+      "$.discoveryHandoff",
+      "a V2 project must retain the approved discovery handoff that anchors its first run",
     );
   }
   if (project.discoveryHandoff) {
@@ -1362,7 +1489,7 @@ function validateInvariants(
   detectWorkCycles(project.workItems, issues);
 
   project.agentRuns.forEach((run, index) =>
-    validateRunInvariant(run, index, workById, issues)
+    validateRunInvariant(run, index, workById, project, issues)
   );
   project.decisions.forEach((decision, index) =>
     validateDecisionInvariant(
@@ -1467,10 +1594,68 @@ function validatePlanInvariants(
   }
 }
 
+function validateRunBasisInvariant(
+  run: EngineeringAgentRun,
+  index: number,
+  workById: ReadonlyMap<string, EngineeringWorkItem>,
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  if (project.schemaVersion === "1.0") return;
+  const path = `$.agentRuns[${index}]`;
+  const basis = run.basis;
+  if (!basis) return;
+  if (basis.kind !== "approved-discovery") return;
+
+  const plan = project.plan;
+  if (!plan || !sameApprovedDiscoveryBasis(basis, plan.basis)) {
+    issue(
+      issues,
+      "approval_scope_mismatch",
+      `${path}.basis`,
+      "an approved-discovery run must use the exact published plan basis",
+    );
+  }
+  const workItem = workById.get(run.workItemId);
+  if (
+    !workItem?.operation ||
+    workItem.operation.id !== "baseline.from-approved-discovery" ||
+    workItem.operation.version !== "1"
+  ) {
+    issue(
+      issues,
+      "invalid_transition",
+      `${path}.workItemId`,
+      "an approved-discovery basis is valid only for baseline.from-approved-discovery@1",
+    );
+  }
+  if (!run.resultSnapshot && project.threadSnapshots.length > 0) {
+    issue(
+      issues,
+      "invalid_transition",
+      `${path}.basis`,
+      "an approved-discovery run cannot remain active after a documentary ThreadSnapshot exists",
+    );
+  }
+}
+
+function sameApprovedDiscoveryBasis(
+  left: EngineeringApprovedDiscoveryBasis,
+  right: EngineeringApprovedDiscoveryBasis,
+): boolean {
+  return left.discoveryId === right.discoveryId &&
+    left.snapshotId === right.snapshotId &&
+    left.revision === right.revision &&
+    left.briefId === right.briefId &&
+    fingerprintKey(left.approvedBriefFingerprint) ===
+      fingerprintKey(right.approvedBriefFingerprint);
+}
+
 function validateRunInvariant(
   run: EngineeringAgentRun,
   index: number,
   workById: ReadonlyMap<string, EngineeringWorkItem>,
+  project: EngineeringProjectSnapshot,
   issues: EngineeringProjectValidationIssue[],
 ): void {
   const path = `$.agentRuns[${index}]`;
@@ -1482,6 +1667,7 @@ function validateRunInvariant(
       "does not reference a work item",
     );
   }
+  validateRunBasisInvariant(run, index, workById, project, issues);
   uniqueEvidence(run.evidenceRefs, `${path}.evidenceRefs`, issues);
   uniqueStrings(
     run.waitingForDecisionIds ?? [],
@@ -2076,6 +2262,12 @@ function executionBindings(
       result.push({
         baseSnapshot: item.baseSnapshot,
         path: `$.agentRuns[${index}].baseSnapshot`,
+      });
+    }
+    if (item.basis?.kind === "thread-snapshot") {
+      result.push({
+        baseSnapshot: item.basis,
+        path: `$.agentRuns[${index}].basis`,
       });
     }
   });

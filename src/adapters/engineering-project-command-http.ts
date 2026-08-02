@@ -4,6 +4,7 @@ import {
   type EngineeringProjectRevisionStore,
 } from "../domain/engineering-project-command-service.ts";
 import type {
+  EngineeringBasisRef,
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
@@ -203,10 +204,54 @@ export async function executeOperatorProjectCommand(
         runId: `run:${request.commandId}`,
         workItemId: request.command.workItemId,
         summary: request.command.summary,
-        baseSnapshot: declaredProjectHead(project),
+        ...queueExecutionBasis(project, request.command.workItemId),
       });
     }
   }
+}
+
+/**
+ * Browser commands never select an execution basis. V2 first runs are bound
+ * to the exact approved discovery already carried by the published plan; all
+ * later V2 work is bound to the declared exact thread head. V1 stays readable
+ * through its historical baseSnapshot contract only.
+ */
+function queueExecutionBasis(
+  project: EngineeringProjectSnapshot,
+  workItemId: string,
+): { readonly baseSnapshot: EngineeringThreadSnapshotRef } | {
+  readonly basis: EngineeringBasisRef;
+} {
+  if (project.schemaVersion === "1.0") {
+    return { baseSnapshot: declaredProjectHead(project) };
+  }
+  const workItem = project.workItems.find((item) => item.id === workItemId);
+  if (!workItem?.operation) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      `V2 work item ${workItemId} has no registered operation.`,
+    );
+  }
+  if (project.threadSnapshots.length === 0) {
+    if (
+      !project.plan ||
+      workItem.operation.id !== "baseline.from-approved-discovery" ||
+      workItem.operation.version !== "1"
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Before a documentary baseline exists, V2 can queue only the exact published approved-discovery baseline operation.",
+      );
+    }
+    return { basis: structuredClone(project.plan.basis) };
+  }
+  const head = declaredProjectHead(project);
+  return {
+    basis: {
+      kind: "thread-snapshot",
+      ...head,
+    },
+  };
 }
 
 function parseCommand(value: unknown): ProjectOperatorCommand {

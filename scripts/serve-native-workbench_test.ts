@@ -7,8 +7,49 @@ import { EngineeringProjectCommandService } from "../src/domain/engineering-proj
 import { validateEngineeringProjectSnapshot } from "../src/domain/engineering-project-validation.ts";
 import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
 import { materializeAttestedMechanicalRun } from "../src/testing/attested-mechanical-run-fixture.ts";
-import { createNativeWorkbenchHandler } from "./serve-native-workbench.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
+import {
+  createNativeWorkbenchHandler,
+  NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
+  resolveNativeWorkbenchProjectId,
+  resolveNativeWorkbenchSubjectId,
+} from "./serve-native-workbench.ts";
+import {
+  FileLiveThreadUpdateStore,
+  LiveThreadUpdateStore,
+} from "../src/adapters/live-thread-update-store.ts";
+
+Deno.test("native Workbench resolves a project-only V2 launch from the persisted project subject", async () => {
+  const projectId = "drone-documentary-fixture-project";
+  const project = documentaryProjectSnapshot(
+    documentaryThreadSnapshot(`project:${projectId}`),
+  );
+  const projectStore = new ReadOnlyProjectStore(project);
+
+  assertEquals(
+    resolveNativeWorkbenchProjectId(undefined, undefined),
+    NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
+  );
+  assertEquals(
+    resolveNativeWorkbenchProjectId(undefined, "operator-selected-subject"),
+    "operator-selected-subject",
+  );
+  assertEquals(
+    resolveNativeWorkbenchProjectId(projectId, "operator-selected-subject"),
+    projectId,
+  );
+  assertEquals(
+    await resolveNativeWorkbenchSubjectId(projectId, undefined, projectStore),
+    `project:${projectId}`,
+  );
+  assertEquals(
+    await resolveNativeWorkbenchSubjectId(
+      projectId,
+      "operator-selected-subject",
+      projectStore,
+    ),
+    "operator-selected-subject",
+  );
+});
 
 Deno.test("native Workbench handler serves the persisted projection without executing tools", async () => {
   const snapshot = await materializeAttestedMechanicalRun(capture());
@@ -81,6 +122,118 @@ Deno.test("native Workbench serves a planning-only project without borrowing the
   assertEquals(body.capabilities.operatorCommands.enabled, false);
   assertEquals(body.capabilities.operatorCommands.intents, []);
   assertEquals(store.latestCalls, 0);
+});
+
+Deno.test("native Workbench serves a V2 documentary baseline without exposing an evidence graph or provider detail", async () => {
+  const thread = documentaryThreadSnapshot("drone-documentary-fixture");
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(thread),
+    projectStore: new ReadOnlyProjectStore(documentaryProjectSnapshot(thread)),
+    subjectId: thread.subject.id,
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+  const payload = JSON.stringify(body).toLowerCase();
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    response.headers.get("X-Casys-Data-Source"),
+    "engineering-project-documentary-baseline",
+  );
+  assertEquals(body.surface, "documentary");
+  assertEquals(body.documentary.status, "recorded");
+  assertEquals(body.documentary.record.origin, "approved-discovery");
+  assertEquals(body.documentary.record.snapshotId, thread.id);
+  assertEquals(body.documentary.record.snapshotRevision, 1);
+  assertEquals(body.documentary.technicalEvidence.status, "not-recorded");
+  assertEquals("thread" in body, false);
+  assertEquals("alignment" in body, false);
+  for (
+    const forbidden of [
+      "provider",
+      "build123d",
+      "calculix",
+      "syson",
+      "mcp://",
+    ]
+  ) {
+    assertEquals(
+      payload.includes(forbidden),
+      false,
+      `${forbidden} must not cross the documentary HTTP boundary`,
+    );
+  }
+});
+
+Deno.test("native Workbench projects only filtered baseline activity before evidence exists", async () => {
+  const active = await materializeAttestedMechanicalRun(capture());
+  const liveUpdates = new LiveThreadUpdateStore();
+  await liveUpdates.append({
+    subjectId: active.subject.id,
+    runId: "run-first-baseline",
+    operationId: "never-sent-to-browser",
+    baseRevision: 0,
+    state: "running",
+    recordedAt: "2026-08-01T12:01:00.000Z",
+    graph: {
+      nodes: [{
+        id: "graph:provider-secret",
+        ref: { kind: "artifact", id: "provider-secret" },
+        entityKind: "artifact",
+        label: "provider structured output",
+        system: "provider-private",
+        freshness: "running",
+        summary: "raw provider data",
+      }],
+      edges: [],
+    },
+  });
+  await liveUpdates.append({
+    subjectId: active.subject.id,
+    runId: "other-run",
+    operationId: "not-the-baseline",
+    baseRevision: 0,
+    state: "failed",
+    recordedAt: "2026-08-01T12:02:00.000Z",
+    graph: { nodes: [], edges: [] },
+  });
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(active),
+    projectStore: new ReadOnlyProjectStore(
+      planningProjectWithBaselineRun(active.subject.id),
+    ),
+    subjectId: active.subject.id,
+    html: "unused",
+    liveUpdates,
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+  const payload = JSON.stringify(body);
+
+  assertEquals(body.surface, "planning");
+  assertEquals(body.planning.technicalBaseline.status, "running");
+  assertEquals(body.planning.baselineRun.status, "running");
+  assertEquals(body.planning.activity, {
+    version: 2,
+    milestones: [{
+      sequence: 1,
+      state: "running",
+      recordedAt: "2026-08-01T12:01:00.000Z",
+    }],
+  });
+  assertEquals(payload.includes("provider structured output"), false);
+  assertEquals(payload.includes("provider-secret"), false);
+  assertEquals(payload.includes("raw provider data"), false);
+  assertEquals(payload.includes("provider raw summary that must not be shown"), false);
+  assertEquals(payload.includes("not-the-baseline"), false);
+  assertEquals("thread" in body, false);
 });
 
 Deno.test("native Workbench loads the declared exact baseline when active state is empty", async () => {
@@ -370,7 +523,7 @@ Deno.test("native Workbench SSE publishes a complete planning replacement before
   const reader = response.body!.getReader();
   const initial = new TextDecoder().decode((await reader.read()).value);
 
-  assertStringIncludes(initial, "id: planning:1");
+  assertStringIncludes(initial, "id: planning:1:0");
   assertStringIncludes(initial, "event: workbench-snapshot");
   assertStringIncludes(initial, '"surface":"planning"');
   assertStringIncludes(initial, '"status":"not-created"');
@@ -379,9 +532,59 @@ Deno.test("native Workbench SSE publishes a complete planning replacement before
 
   projectStore.replace(planningProjectSnapshot(active.subject.id, 2));
   const replacement = new TextDecoder().decode((await reader.read()).value);
-  assertStringIncludes(replacement, "id: planning:2");
+  assertStringIncludes(replacement, "id: planning:2:0");
   assertStringIncludes(replacement, '"revision":2');
   assertStringIncludes(replacement, '"surface":"planning"');
+  await reader.cancel();
+});
+
+Deno.test("native Workbench SSE refreshes planning activity without a project revision", async () => {
+  const active = await materializeAttestedMechanicalRun(capture());
+  const liveUpdates = new LiveThreadUpdateStore();
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(active),
+    projectStore: new ReadOnlyProjectStore(
+      planningProjectWithBaselineRun(active.subject.id),
+    ),
+    subjectId: active.subject.id,
+    html: "unused",
+    liveUpdates,
+    pollIntervalMs: 5,
+  });
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench/events"),
+  );
+  const reader = response.body!.getReader();
+
+  const initial = new TextDecoder().decode((await reader.read()).value);
+  assertStringIncludes(initial, "id: planning:1:0");
+  assertStringIncludes(initial, '"milestones":[]');
+
+  await liveUpdates.append({
+    subjectId: active.subject.id,
+    runId: "run-first-baseline",
+    operationId: "hidden-operation",
+    baseRevision: 0,
+    state: "running",
+    recordedAt: "2026-08-01T12:01:00.000Z",
+    graph: {
+      nodes: [{
+        id: "provider-node",
+        ref: { kind: "artifact", id: "private" },
+        entityKind: "artifact",
+        label: "must not cross planning boundary",
+        system: "private",
+        freshness: "running",
+        summary: "private",
+      }],
+      edges: [],
+    },
+  });
+  const update = new TextDecoder().decode((await reader.read()).value);
+  assertStringIncludes(update, "id: planning:1:1");
+  assertStringIncludes(update, '"sequence":1');
+  assertEquals(update.includes("must not cross planning boundary"), false);
+  assertEquals(update.includes("hidden-operation"), false);
   await reader.cancel();
 });
 
@@ -986,6 +1189,263 @@ function planningProjectSnapshot(
     decisions: [],
     approvals: [],
     blockers: [],
+  };
+}
+
+function planningProjectWithBaselineRun(
+  subjectId: string,
+): EngineeringProjectSnapshot {
+  const project = planningProjectSnapshot(subjectId);
+  return {
+    ...project,
+    workItems: project.workItems.map((item) => ({
+      ...item,
+      status: item.id === "work-define" ? "in-progress" : item.status,
+    })),
+    agentRuns: [{
+      id: "run-first-baseline",
+      workItemId: "work-define",
+      status: "running",
+      summary: "provider raw summary that must not be shown",
+      queuedAt: "2026-08-01T12:00:00.000Z",
+      startedAt: "2026-08-01T12:00:30.000Z",
+      evidenceRefs: [],
+      statusHistory: [{
+        commandId: "queue-first-baseline",
+        status: "queued",
+        at: "2026-08-01T12:00:00.000Z",
+        actor: { id: "operator", origin: "human" },
+        summary: "provider raw summary that must not be shown",
+      }, {
+        commandId: "claim-first-baseline",
+        status: "running",
+        at: "2026-08-01T12:00:30.000Z",
+        actor: { id: "agent", origin: "agent" },
+        summary: "provider raw summary that must not be shown",
+      }],
+    }],
+  };
+}
+
+/**
+ * The root V2 record is structurally valid but deliberately contains only a
+ * documentary capture. It must not borrow an observed CAD/SysML/solver graph
+ * merely so this HTTP test can exercise the normal handler path.
+ */
+function documentaryProjectSnapshot(
+  thread: ThreadSnapshot,
+): EngineeringProjectSnapshot {
+  const fingerprint = {
+    algorithm: "sha256" as const,
+    digest: "d".repeat(64),
+  };
+  const projectId = "drone-documentary-fixture-project";
+  const initialSnapshotId = `${projectId}:r1:created-from-discovery`;
+  const currentSnapshotId = `${projectId}:r2:reviewed-plan`;
+  const artifactId = thread.artifacts[0]!.id;
+  const evidenceRef = {
+    snapshotId: thread.id,
+    snapshotRevision: thread.revision,
+    kind: "artifact" as const,
+    id: artifactId,
+  };
+  const basis = {
+    kind: "approved-discovery" as const,
+    discoveryId: "drone-documentary-discovery",
+    snapshotId: "drone-documentary-discovery:r3:approved",
+    revision: 3,
+    briefId: "drone-documentary-brief-v1",
+    approvedBriefFingerprint: fingerprint,
+  };
+  return validateEngineeringProjectSnapshot({
+    schemaVersion: "2.0",
+    id: currentSnapshotId,
+    revision: 2,
+    previous: { snapshotId: initialSnapshotId, revision: 1 },
+    generatedAt: "2026-08-02T12:05:00.000Z",
+    project: {
+      id: projectId,
+      name: "Reviewable drone documentary fixture",
+      subjectId: thread.subject.id,
+      objective: {
+        title: "Record a reviewable project basis",
+        statement:
+          "Keep the human-approved discovery and project path durable before technical work starts.",
+      },
+    },
+    discoveryHandoff: {
+      discoveryId: basis.discoveryId,
+      snapshotId: basis.snapshotId,
+      revision: basis.revision,
+      briefId: basis.briefId,
+      approvedBriefFingerprint: basis.approvedBriefFingerprint,
+      approvedAt: "2026-08-02T12:00:00.000Z",
+      approvedBy: { id: "human:reviewer", origin: "human" },
+    },
+    plan: {
+      startingPoint: "idea-or-spec",
+      basis,
+      publishedAt: "2026-08-02T12:02:00.000Z",
+      publishedBy: { id: "agent:planner", origin: "agent" },
+    },
+    threadSnapshots: [{
+      snapshotId: thread.id,
+      revision: thread.revision,
+      subjectId: thread.subject.id,
+    }],
+    phases: [{
+      id: "baseline",
+      name: "Documentary baseline",
+      order: 1,
+      description: "Record the reviewed starting point without technical claims.",
+      workItemIds: ["record-approved-discovery"],
+      requiredDecisionIds: [],
+      evidenceRefs: [evidenceRef],
+    }],
+    workItems: [{
+      id: "record-approved-discovery",
+      phaseId: "baseline",
+      title: "Record the approved discovery",
+      description:
+        "Create the durable documentary pre-technical baseline from the approved discovery.",
+      kind: "define",
+      operation: {
+        id: "baseline.from-approved-discovery",
+        version: "1",
+        bindings: [{
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        }],
+      },
+      status: "completed",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [evidenceRef],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+    commandReceipts: [
+      projectReceipt(
+        "fixture-create-from-discovery",
+        "project.create-from-discovery",
+        { id: "human:reviewer", origin: "human" },
+        "2026-08-02T12:00:30.000Z",
+        "2026-08-02T12:01:00.000Z",
+        initialSnapshotId,
+        1,
+      ),
+      projectReceipt(
+        "fixture-publish-plan",
+        "project.plan-publish",
+        { id: "agent:planner", origin: "agent" },
+        "2026-08-02T12:01:30.000Z",
+        "2026-08-02T12:02:00.000Z",
+        currentSnapshotId,
+        2,
+      ),
+    ],
+  });
+}
+
+function documentaryThreadSnapshot(subjectId: string): ThreadSnapshot {
+  const digest = "d".repeat(64);
+  const fingerprint = { algorithm: "sha256", digest };
+  const artifactId = "approved-discovery-document-fixture";
+  const changeId = "approved-discovery-documentary-change-fixture";
+  const capturedAt = "2026-08-02T12:04:00.000Z";
+  return validateThreadSnapshot({
+    schemaVersion: "1.0",
+    id: `${subjectId}:r1:approved-discovery-documentary-baseline`,
+    revision: 1,
+    generatedAt: capturedAt,
+    subject: {
+      id: subjectId,
+      name: "Drone documentary fixture",
+      kind: "system",
+      version: digest,
+      modelArtifactId: artifactId,
+    },
+    freshness: {
+      status: "fresh",
+      changedAt: capturedAt,
+      invalidatedByChangeIds: [],
+    },
+    changeSet: {
+      id: "approved-discovery-documentary-baseline-fixture",
+      name: "Record approved discovery documentary baseline",
+      status: "applied",
+      createdAt: capturedAt,
+      appliedAt: capturedAt,
+      changes: [{
+        id: changeId,
+        kind: "created",
+        target: { kind: "artifact", id: artifactId },
+        summary:
+          "Recorded the approved discovery as a documentary pre-technical baseline.",
+        afterFingerprint: fingerprint,
+      }],
+    },
+    artifacts: [{
+      id: artifactId,
+      name: "Approved discovery documentary baseline (pre-technical)",
+      kind: "document",
+      version: digest,
+      fingerprint,
+      uri: `casys://approved-discovery-capture/sha256/${digest}`,
+      mediaType: "application/json",
+      producer: {
+        serverId: "casys-digital-thread",
+        tool: "baseline_from_approved_discovery",
+        runId: "run:documentary-fixture",
+      },
+      inputArtifactIds: [],
+      freshness: {
+        status: "fresh",
+        changedAt: capturedAt,
+        invalidatedByChangeIds: [],
+      },
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [{
+      id: "approved-discovery-documentary-provenance-fixture",
+      relation: "changes",
+      from: { kind: "change", id: changeId },
+      to: { kind: "artifact", id: artifactId },
+      rationale:
+        "The immutable documentary record preserves the reviewed starting point.",
+    }],
+    proposedActions: [],
+  });
+}
+
+function projectReceipt(
+  commandId: string,
+  type: "project.create-from-discovery" | "project.plan-publish",
+  actor: { id: string; origin: "human" | "agent" },
+  issuedAt: string,
+  appliedAt: string,
+  snapshotId: string,
+  revision: number,
+) {
+  return {
+    commandId,
+    type,
+    actor,
+    issuedAt,
+    appliedAt,
+    requestFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "a".repeat(64),
+    },
+    resultingSnapshot: { snapshotId, revision },
   };
 }
 

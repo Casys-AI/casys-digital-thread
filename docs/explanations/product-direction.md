@@ -95,7 +95,7 @@ does not claim that every commercial authoring capability has already been repla
 
 | Horizon               | Honest scope                                                                                                                                                                                                        |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Verified now**      | One native engineering cockpit plus a separate guided Discovery Workbench with a live human handoff; an agent can publish or revise a bounded, unexecuted project path from the exact approved brief using reviewed intake-operation references; exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence; one approved CM-01 DripTray mechanical proof loop. |
+| **Verified now**      | One native engineering cockpit plus a separate guided Discovery Workbench with a live human handoff; a reviewer can authorize the exact first V2 operation and the agent can persist its immutable documentary starting record with live status updates; exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence remain demonstrated separately by the CM-01 reference path, including one approved DripTray mechanical proof loop. |
 | **V1 product target** | A beginner can move from idea or imported product evidence to a reviewable project, agent-orchestrated proof cases, visible change impact, bounded correction/recompute loops, and inspectable BOM/cost evidence.                 |
 | **V2 candidate**      | Operational digital-twin instances fed by real telemetry, time-series storage, state estimation, model calibration, contextual scenario testing, and service-life decisions.                                        |
 
@@ -105,11 +105,20 @@ an operational asset identity, calibration, or a Digital Twin Instance. Operatio
 claims remain out of V1 until those boundaries exist and are demonstrated with measured
 data.
 
-The new planning slice deliberately stops before the first generic run: it does not
-approve decisions, queue work, invoke providers, or create technical evidence. The next
-control-plane work is exact first-run authorization from an approved-discovery basis and
-a trusted executor that turns only an authorized, registered operation into canonical
-evidence. That gap must remain visible rather than being hidden behind a plausible UI.
+For a new idea or specification, the first V2 operation deliberately creates only an
+immutable documentary starting record: the exact approved discovery, reviewed project
+path, operation revision, and a SHA-256 fingerprint. The reviewer authorizes that bounded
+recording step; the agent runs it and the cockpit follows its public milestones. It is
+useful provenance, not technical evidence: it creates no SysML model, CAD geometry,
+simulation, measurement, requirement result, compliance conclusion, or certification
+claim. Technical work needs a later reviewed operation with its own inputs, output
+validator, and evidence contract.
+
+Historic V1 projects such as CM-01 remain readable technical references. They are not
+silently converted into V2 projects, and a V2 project never borrows a convenient existing
+thread head as its first baseline. The cockpit shows the project as planning until its
+declared documentary record exists, then shows that record as a distinct surface rather
+than an empty evidence graph.
 
 ## Demo criterion
 

@@ -34,6 +34,7 @@ import {
   projectViewLabel,
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
+import { DocumentaryBaselineWorkbench } from "../project/documentary-baseline-workbench.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
@@ -128,12 +129,13 @@ export function ThreadWorkbench({
     client.load(controller.signal).then((next) => {
       snapshotRef.current = next;
       setWorkbench(next);
-      if (next.surface === "planning") {
+      if (next.surface !== "evidence") {
         setSelectedComponentId(undefined);
         setSelection(undefined);
         setLineageFocus(undefined);
         setGraphSelection(undefined);
         setInspectorOpen(false);
+        setGraphCanvasOpen(false);
       } else {
         const thread = next.thread;
         setSelectedComponentId(thread.components.components[0]?.id);
@@ -153,17 +155,21 @@ export function ThreadWorkbench({
       if (client.subscribe) {
         unsubscribe = client.subscribe((incoming) => {
           const previous = snapshotRef.current;
-          if (previous && !shouldAcceptWorkbenchUpdate(previous, incoming)) {
+          if (
+            previous && !shouldAcceptWorkbenchUpdate(previous, incoming) &&
+            !shouldAcceptPlanningActivityUpdate(previous, incoming)
+          ) {
             return;
           }
           snapshotRef.current = incoming;
           setWorkbench(incoming);
-          if (incoming.surface === "planning") {
+          if (incoming.surface !== "evidence") {
             setSelectedComponentId(undefined);
             setSelection(undefined);
             setLineageFocus(undefined);
             setGraphSelection(undefined);
             setInspectorOpen(false);
+            setGraphCanvasOpen(false);
             return;
           }
           if (previous?.surface !== "evidence") {
@@ -259,9 +265,102 @@ export function ThreadWorkbench({
     );
   }
 
+  const executePlanningCommand = async (
+    commandKey: string,
+    command: ProjectOperatorCommand,
+  ) => {
+    const current = snapshotRef.current;
+    const capability = current?.capabilities?.operatorCommands;
+    const actorId = operatorId.trim();
+    if (!current || !capability?.enabled || !client.command || !actorId) {
+      setCommandFeedback({
+        state: "error",
+        commandKey,
+        message:
+          "This project is read-only or the local reviewer identity is missing.",
+      });
+      return;
+    }
+    setCommandFeedback({
+      state: "submitting",
+      commandKey,
+      message: "Recording the explicit review authorization…",
+    });
+    const request = createProjectCommandRequest({
+      command,
+      commandId: createCommandId(),
+      projectId: current.project.project.id,
+      expectedRevision: current.project.revision,
+      issuedAt: new Date().toISOString(),
+      actorId,
+    });
+    try {
+      const next = await client.command(request);
+      const latest = snapshotRef.current;
+      if (!latest || next.project.revision >= latest.project.revision) {
+        snapshotRef.current = next;
+        setWorkbench(next);
+      }
+      setCommandFeedback({
+        state: "success",
+        commandKey,
+        message:
+          "Authorization recorded. Your agent can now run the bounded documentary baseline.",
+      });
+    } catch (reason: unknown) {
+      if (reason instanceof ProjectCommandConflictError) {
+        try {
+          const refreshed = await client.load();
+          const latest = snapshotRef.current;
+          if (
+            !latest || refreshed.project.revision >= latest.project.revision
+          ) {
+            snapshotRef.current = refreshed;
+            setWorkbench(refreshed);
+          }
+          setCommandFeedback({
+            state: "conflict",
+            commandKey,
+            message:
+              "The project changed while you were reviewing it. The current state is now shown.",
+          });
+        } catch {
+          setCommandFeedback({
+            state: "error",
+            commandKey,
+            message:
+              "The authorization conflicted with a newer project revision, and the refresh failed.",
+          });
+        }
+        return;
+      }
+      setCommandFeedback({
+        state: "error",
+        commandKey,
+        message: reason instanceof Error
+          ? reason.message
+          : "The authorization could not be recorded.",
+      });
+    }
+  };
+
   if (workbench.surface === "planning") {
     return (
       <PlanningWorkbench
+        workbench={workbench}
+        streamStatus={streamStatus}
+        capability={workbench.capabilities?.operatorCommands}
+        actorId={operatorId}
+        onActorIdChange={setOperatorId}
+        feedback={commandFeedback}
+        onCommand={executePlanningCommand}
+      />
+    );
+  }
+
+  if (workbench.surface === "documentary") {
+    return (
+      <DocumentaryBaselineWorkbench
         workbench={workbench}
         streamStatus={streamStatus}
       />
@@ -1022,6 +1121,19 @@ export function ThreadWorkbench({
       )}
     </div>
   );
+}
+
+/**
+ * Planning receives status-only live milestones without a project revision.
+ * The generic evidence comparator intentionally rejects equal-revision
+ * planning snapshots, so keep this narrow exception at the composition edge.
+ */
+function shouldAcceptPlanningActivityUpdate(
+  current: EngineeringWorkbenchSnapshot,
+  incoming: EngineeringWorkbenchSnapshot,
+): boolean {
+  return current.surface === "planning" && incoming.surface === "planning" &&
+    incoming.planning.activity.version > current.planning.activity.version;
 }
 
 function createCommandId(): string {

@@ -43,19 +43,17 @@ Workbench projection.
 
 ### Engineering project tools
 
-| Tool                        | Authority      | Meaning                                                                                |
-| --------------------------- | -------------- | -------------------------------------------------------------------------------------- |
-| `project_snapshot`          | Read           | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts |
-| `project_decision_propose`  | Agent mutation | Record a concrete typed proposal; human approval remains required                      |
-| `project_agent_run_start`   | Agent mutation | Claim and start one already human-queued run                                           |
-| `project_agent_run_progress` | Agent mutation | Append a public progress summary to the claimed running run                            |
-| `project_agent_run_publish` | Agent mutation | Enter publishing, then complete against exact validated evidence                       |
-| `project_agent_run_fail`    | Agent mutation | Record a terminal run failure without deleting evidence                                |
+| Tool                        | Authority                | Meaning                                                                                              |
+| --------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `project_snapshot`          | Read                     | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts               |
+| `project_plan_publish`      | Agent mutation           | Publish or revise an unexecuted plan from the exact approved discovery                               |
+| `project_decision_propose`  | Agent mutation           | Record a concrete typed proposal; human approval remains required                                    |
+| `project_agent_run_execute` | Bounded server execution | Materialize only the exact human-queued V2 documentary baseline; no provider arguments or proof data |
 
 Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
 identical command ID and payload returns its immutable result; changing the request
 under the same ID is rejected. There is deliberately no MCP tool for approving,
-rejecting, or queueing work.
+rejecting, queueing work, or advancing a generic agent-run lifecycle.
 
 ## Truth boundary
 
@@ -68,9 +66,15 @@ commands with `X-Casys-Operator-Intent: explicit` and an expected project revisi
 actor ID is self-declared and unauthenticated. The browser cannot claim or complete a
 run and receives no generic MCP authority.
 
-Both browser and MCP project commands append validated immutable revisions under
-`state/local/engineering-projects/`. They do not execute the workflow or a provider. The
-tracked r5 CM-01 baseline assembles captured or read-only observed branches from SysON,
+The proposal and planning commands append validated immutable revisions under
+`state/local/engineering-projects/`; they do not execute a workflow or a provider.
+`project_agent_run_execute` is deliberately different from a generic lifecycle command:
+it dispatches one registered, server-owned V2 operation after a human has queued that
+exact run. The currently implemented operation creates only an immutable documentary,
+pre-technical starting record from the approved discovery. It invokes no provider and
+does not create CAD, SysML, simulation, measurement, verification, or compliance proof.
+
+The tracked r5 CM-01 baseline assembles captured or read-only observed branches from SysON,
 build123d, Modelica, and ERPNext through an explicit identity manifest. Its captured
 SysON inventory has no mechanical `ConstraintUsage`, so no mechanical verdict or
 CalculiX branch exists **in that clean baseline**. Assembly does not claim that
@@ -87,10 +91,14 @@ ERPNext remains one provider-native MCP on port `3012`. The backend selects revi
 read tools and projects their results; the browser receives neither ERP credentials nor
 generic tool-call authority.
 
-An agent must invoke reviewed provider tools separately, publish a canonical
-`ThreadSnapshot`, and cite entities from that exact result when completing a run.
-Missing or invented snapshot/evidence references are rejected. Project lifecycle tools
-are not provider proxies.
+Provider-facing work belongs inside a registered bounded executor, not in public
+lifecycle calls. Such an executor owns the reviewed provider calls, canonical capture,
+snapshot persistence and read-back, attachment, validation, and its internal lifecycle
+transitions. A caller cannot supply a provider/tool name, raw arguments, result snapshot,
+or evidence payload to make that happen. The public V2 baseline executor does not make
+provider calls; a future technical operation needs its own reviewed executor and output
+contract. CM-01's mechanical r6 remains valuable historical evidence of a bounded loop,
+not a public CM-01 execution endpoint.
 
 ## Verification
 

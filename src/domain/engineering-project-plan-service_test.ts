@@ -1,16 +1,24 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
   deriveEngineeringProjectStatus,
+  type EngineeringApprovedDiscoveryBasis,
+  type EngineeringOperationRef,
   type EngineeringProjectSnapshot,
 } from "./engineering-project.ts";
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
+  type EngineeringProjectCompletionEvidenceValidator,
+  type EngineeringProjectInitialCompletionEvidenceValidator,
   type EngineeringProjectPlanningDependencies,
   type EngineeringProjectRevisionStore,
   type PublishProjectPlanCommand,
 } from "./engineering-project-command-service.ts";
-import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
+import {
+  collectEngineeringProjectIssues,
+  validateEngineeringProjectSnapshot,
+} from "./engineering-project-validation.ts";
+import { sha256Fingerprint } from "./deterministic-json.ts";
 import type { ProjectDiscoverySnapshot } from "./project-discovery.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
 
@@ -63,7 +71,7 @@ Deno.test("agent publishes a bounded discovery plan with registered operations a
         source: { kind: "approved-discovery" },
       }],
     },
-    status: "planned",
+    status: "ready",
     owner: "agent",
     dependsOnWorkItemIds: [],
     evidenceRefs: [],
@@ -79,6 +87,281 @@ Deno.test("agent publishes a bounded discovery plan with registered operations a
   const replay = await service.publishPlan(AGENT, command);
   assertEquals(replay.id, published.id);
   assertEquals((await store.get(PROJECT_ID))?.revision, 2);
+});
+
+Deno.test("V2 queues only the exact published discovery basis and fingerprints its reviewed operation", async () => {
+  const discovery = discoveryFixture();
+  const store = new MemoryProjectStore(projectShell());
+  const service = planService(store, discovery);
+  const published = await service.publishPlan(AGENT, planCommand(1));
+  const basis = published.plan!.basis;
+  const queued = await service.queueRun(HUMAN, {
+    ...common(published.revision, "queue-discovery-baseline"),
+    runId: "run:discovery-baseline",
+    workItemId: "establish-baseline",
+    summary: "Human review authorizes the bounded baseline.",
+    basis,
+  });
+
+  const run = queued.agentRuns[0];
+  assertEquals(run.basis, basis);
+  assertEquals(run.baseSnapshot, undefined);
+  assertEquals(queued.workItems[0].status, "in-progress");
+  assertEquals(
+    run.inputFingerprint,
+    await sha256Fingerprint({
+      workItemId: "establish-baseline",
+      basis,
+      operation: {
+        id: "baseline.from-approved-discovery",
+        version: "1",
+        bindings: [{
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        }],
+      },
+      approvedDecisions: [],
+    }),
+  );
+
+  const forgedStore = new MemoryProjectStore(projectShell());
+  const forgedService = planService(forgedStore, discovery);
+  const forgedPlan = await forgedService.publishPlan(AGENT, planCommand(1));
+  await assertCommandError(
+    () =>
+      forgedService.queueRun(HUMAN, {
+        ...common(forgedPlan.revision, "queue-forged-discovery-basis"),
+        runId: "run:forged-discovery-basis",
+        workItemId: "establish-baseline",
+        summary: "Attempt to substitute a different approved brief.",
+        basis: { ...forgedPlan.plan!.basis, briefId: "other-brief" },
+      }),
+    "invalid_input",
+  );
+  await assertCommandError(
+    () =>
+      forgedService.queueRun(HUMAN, {
+        ...common(forgedPlan.revision, "queue-v2-with-v1-base"),
+        runId: "run:v2-with-v1-base",
+        workItemId: "establish-baseline",
+        summary: "Attempt to use a V1 base field in V2.",
+        baseSnapshot: {
+          snapshotId: "invented",
+          revision: 1,
+          subjectId: `project:${PROJECT_ID}`,
+        },
+      }),
+    "invalid_input",
+  );
+});
+
+Deno.test("a readable V1 discovery snapshot is not a fallback route into V2 planning", async () => {
+  const historic = structuredClone(projectShell()) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  historic.schemaVersion = "1.0";
+  const readableHistoric = validateEngineeringProjectSnapshot(historic);
+  const service = planService(
+    new MemoryProjectStore(readableHistoric),
+    discoveryFixture(),
+  );
+
+  await assertCommandError(
+    () => service.publishPlan(AGENT, planCommand(1)),
+    "invalid_transition",
+  );
+});
+
+Deno.test("V2 initial completion uses a dedicated validator instead of a fabricated ancestor", async () => {
+  const discovery = discoveryFixture();
+  const store = new MemoryProjectStore(projectShell());
+  const initialValidator = new RecordingInitialEvidenceValidator();
+  const service = planService(store, discovery, initialValidator);
+  let project = await service.publishPlan(AGENT, planCommand(1));
+  project = await service.queueRun(HUMAN, {
+    ...common(project.revision, "queue-initial-baseline"),
+    runId: "run:initial-baseline",
+    workItemId: "establish-baseline",
+    summary: "Queue the first reviewable documentary baseline.",
+    basis: project.plan!.basis,
+  });
+  project = await service.claimRun(AGENT, {
+    ...common(project.revision, "claim-initial-baseline"),
+    runId: "run:initial-baseline",
+    summary: "Agent starts the reviewed baseline operation.",
+  });
+  project = await service.publishRun(AGENT, {
+    ...common(project.revision, "publish-initial-baseline"),
+    runId: "run:initial-baseline",
+    summary: "Agent is ready to publish the initial documentary baseline.",
+  });
+  const resultSnapshot = {
+    snapshotId: `${PROJECT_ID}:thread:r1:initial-baseline`,
+    revision: 1,
+    subjectId: `project:${PROJECT_ID}`,
+  };
+  project = await service.completeRun(AGENT, {
+    ...common(project.revision, "complete-initial-baseline"),
+    runId: "run:initial-baseline",
+    summary: "Initial documentary baseline has been materialized.",
+    resultSnapshot,
+    evidenceRefs: [{
+      snapshotId: resultSnapshot.snapshotId,
+      snapshotRevision: resultSnapshot.revision,
+      kind: "artifact",
+      id: "initial-baseline-manifest",
+    }],
+  });
+
+  assertEquals(initialValidator.calls, 1);
+  assertEquals(initialValidator.lastRunId, "run:initial-baseline");
+  assertEquals(initialValidator.lastBasis, project.plan!.basis);
+  assertEquals(initialValidator.lastOperation, project.workItems[0].operation);
+  assertEquals(project.agentRuns[0].resultSnapshot, resultSnapshot);
+  assertEquals(project.threadSnapshots, [resultSnapshot]);
+  const v1FieldInjected = structuredClone(project) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  v1FieldInjected.agentRuns[0].baseSnapshot = resultSnapshot;
+  assertEquals(
+    collectEngineeringProjectIssues(v1FieldInjected).some((issue) =>
+      issue.code === "schema_version_mismatch" &&
+      issue.path === "$.agentRuns[0].baseSnapshot"
+    ),
+    true,
+  );
+
+  const noHookStore = new MemoryProjectStore(projectShell());
+  const noHookService = planService(noHookStore, discovery);
+  let noHook = await noHookService.publishPlan(AGENT, planCommand(1));
+  noHook = await noHookService.queueRun(HUMAN, {
+    ...common(noHook.revision, "queue-initial-without-hook"),
+    runId: "run:initial-without-hook",
+    workItemId: "establish-baseline",
+    summary: "Queue an initial baseline without its evidence validator.",
+    basis: noHook.plan!.basis,
+  });
+  noHook = await noHookService.claimRun(AGENT, {
+    ...common(noHook.revision, "claim-initial-without-hook"),
+    runId: "run:initial-without-hook",
+    summary: "Agent starts the pending initial baseline.",
+  });
+  noHook = await noHookService.publishRun(AGENT, {
+    ...common(noHook.revision, "publish-initial-without-hook"),
+    runId: "run:initial-without-hook",
+    summary: "The baseline awaits validation.",
+  });
+  await assertCommandError(
+    () =>
+      noHookService.completeRun(AGENT, {
+        ...common(noHook.revision, "complete-initial-without-hook"),
+        runId: "run:initial-without-hook",
+        summary: "Attempt to complete without dedicated validation.",
+        resultSnapshot,
+        evidenceRefs: [{
+          snapshotId: resultSnapshot.snapshotId,
+          snapshotRevision: resultSnapshot.revision,
+          kind: "artifact",
+          id: "initial-baseline-manifest",
+        }],
+      }),
+    "invalid_input",
+  );
+});
+
+Deno.test("a subsequent V2 thread basis still requires a true descendant result", async () => {
+  const { discovery, project: initialProject } = await completedInitialProject();
+  const laterProject = structuredClone(initialProject) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const phase = laterProject.phases[0];
+  phase.workItemIds.push("refine-after-baseline");
+  laterProject.workItems.push({
+    id: "refine-after-baseline",
+    phaseId: phase.id,
+    title: "Refine the established baseline",
+    description: "A later reviewed operation anchored to the exact baseline.",
+    kind: "design",
+    operation: {
+      id: "test.refine-after-baseline",
+      version: "1",
+      bindings: [],
+    },
+    status: "ready",
+    owner: "agent",
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: [],
+    blockerIds: [],
+  });
+  const store = new MemoryProjectStore(
+    validateEngineeringProjectSnapshot(laterProject),
+  );
+  const descendantValidator = new RecordingThreadEvidenceValidator();
+  const service = planService(
+    store,
+    discovery,
+    undefined,
+    descendantValidator,
+  );
+  const base = initialProject.threadSnapshots[0];
+  let project = await service.queueRun(HUMAN, {
+    ...common(initialProject.revision, "queue-thread-basis"),
+    runId: "run:refine-after-baseline",
+    workItemId: "refine-after-baseline",
+    summary: "Queue an exact post-baseline refinement.",
+    basis: { kind: "thread-snapshot", ...base },
+  });
+  project = await service.claimRun(AGENT, {
+    ...common(project.revision, "claim-thread-basis"),
+    runId: "run:refine-after-baseline",
+    summary: "Agent claims the post-baseline refinement.",
+  });
+  project = await service.publishRun(AGENT, {
+    ...common(project.revision, "publish-thread-basis"),
+    runId: "run:refine-after-baseline",
+    summary: "The refinement result is ready for validation.",
+  });
+  const evidenceRefs = [{
+    snapshotId: `${PROJECT_ID}:thread:r2:refined`,
+    snapshotRevision: 2,
+    kind: "artifact" as const,
+    id: "refined-baseline-manifest",
+  }];
+  await assertCommandError(
+    () =>
+      service.completeRun(AGENT, {
+        ...common(project.revision, "complete-thread-basis-same-id"),
+        runId: "run:refine-after-baseline",
+        summary: "Attempt to publish a non-descendant result.",
+        resultSnapshot: {
+          snapshotId: base.snapshotId,
+          revision: base.revision + 1,
+          subjectId: base.subjectId,
+        },
+        evidenceRefs,
+      }),
+    "invalid_input",
+  );
+  assertEquals(descendantValidator.calls, 0);
+
+  project = await service.completeRun(AGENT, {
+    ...common(project.revision, "complete-thread-basis"),
+    runId: "run:refine-after-baseline",
+    summary: "Publish a true descendant refinement result.",
+    resultSnapshot: {
+      snapshotId: `${PROJECT_ID}:thread:r2:refined`,
+      revision: 2,
+      subjectId: base.subjectId,
+    },
+    evidenceRefs,
+  });
+  assertEquals(descendantValidator.calls, 1);
+  assertEquals(descendantValidator.lastBase, base);
+  assertEquals(project.agentRuns.at(-1)?.basis, {
+    kind: "thread-snapshot",
+    ...base,
+  });
 });
 
 Deno.test("an unexecuted plan can be revised, which lets the agent adapt before a consequential run", async () => {
@@ -282,9 +565,60 @@ function common(expectedRevision: number, commandId: string) {
   };
 }
 
+async function completedInitialProject(): Promise<{
+  discovery: ProjectDiscoverySnapshot;
+  project: EngineeringProjectSnapshot;
+}> {
+  const discovery = discoveryFixture();
+  const store = new MemoryProjectStore(projectShell());
+  const service = planService(
+    store,
+    discovery,
+    new RecordingInitialEvidenceValidator(),
+  );
+  let project = await service.publishPlan(AGENT, planCommand(1));
+  project = await service.queueRun(HUMAN, {
+    ...common(project.revision, "queue-helper-initial-baseline"),
+    runId: "run:helper-initial-baseline",
+    workItemId: "establish-baseline",
+    summary: "Queue the fixture initial baseline.",
+    basis: project.plan!.basis,
+  });
+  project = await service.claimRun(AGENT, {
+    ...common(project.revision, "claim-helper-initial-baseline"),
+    runId: "run:helper-initial-baseline",
+    summary: "Claim the fixture initial baseline.",
+  });
+  project = await service.publishRun(AGENT, {
+    ...common(project.revision, "publish-helper-initial-baseline"),
+    runId: "run:helper-initial-baseline",
+    summary: "Publish the fixture initial baseline.",
+  });
+  const resultSnapshot = {
+    snapshotId: `${PROJECT_ID}:thread:r1:helper-initial`,
+    revision: 1,
+    subjectId: `project:${PROJECT_ID}`,
+  };
+  project = await service.completeRun(AGENT, {
+    ...common(project.revision, "complete-helper-initial-baseline"),
+    runId: "run:helper-initial-baseline",
+    summary: "Complete the fixture initial baseline.",
+    resultSnapshot,
+    evidenceRefs: [{
+      snapshotId: resultSnapshot.snapshotId,
+      snapshotRevision: resultSnapshot.revision,
+      kind: "artifact",
+      id: "helper-initial-baseline-manifest",
+    }],
+  });
+  return { discovery, project };
+}
+
 function planService(
   store: EngineeringProjectRevisionStore,
   discovery: ProjectDiscoverySnapshot,
+  initialEvidenceValidator?: EngineeringProjectInitialCompletionEvidenceValidator,
+  evidenceValidator?: EngineeringProjectCompletionEvidenceValidator,
 ): EngineeringProjectCommandService {
   const planning: EngineeringProjectPlanningDependencies = {
     discoveries: {
@@ -299,15 +633,16 @@ function planService(
   };
   return new EngineeringProjectCommandService(
     store,
-    undefined,
+    evidenceValidator,
     () => "2026-08-02T12:01:00.000Z",
     planning,
+    initialEvidenceValidator,
   );
 }
 
 function projectShell(): EngineeringProjectSnapshot {
   return validateEngineeringProjectSnapshot({
-    schemaVersion: "1.0",
+    schemaVersion: "2.0",
     id: "drone-concept:project:r1:handoff",
     revision: 1,
     generatedAt: "2026-08-02T12:00:00.000Z",
@@ -407,6 +742,40 @@ async function assertCommandError(
   assertEquals(error.code, code);
 }
 
+class RecordingInitialEvidenceValidator
+  implements EngineeringProjectInitialCompletionEvidenceValidator {
+  calls = 0;
+  lastRunId?: string;
+  lastBasis?: EngineeringApprovedDiscoveryBasis;
+  lastOperation?: EngineeringOperationRef;
+
+  validateInitial(
+    runId: string,
+    basis: EngineeringApprovedDiscoveryBasis,
+    operation: EngineeringOperationRef,
+  ): Promise<void> {
+    this.calls++;
+    this.lastRunId = runId;
+    this.lastBasis = structuredClone(basis);
+    this.lastOperation = structuredClone(operation);
+    return Promise.resolve();
+  }
+}
+
+class RecordingThreadEvidenceValidator
+  implements EngineeringProjectCompletionEvidenceValidator {
+  calls = 0;
+  lastBase?: { snapshotId: string; revision: number; subjectId: string };
+
+  validate(
+    base: { snapshotId: string; revision: number; subjectId: string },
+  ): Promise<void> {
+    this.calls++;
+    this.lastBase = structuredClone(base);
+    return Promise.resolve();
+  }
+}
+
 class MemoryProjectStore implements EngineeringProjectRevisionStore {
   readonly #revisions = new Map<number, EngineeringProjectSnapshot>();
 
@@ -445,3 +814,7 @@ class MemoryProjectStore implements EngineeringProjectRevisionStore {
     return Promise.resolve(structuredClone(snapshot));
   }
 }
+
+type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+  : T;

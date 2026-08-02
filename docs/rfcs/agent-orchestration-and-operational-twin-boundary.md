@@ -1,14 +1,14 @@
 # RFC: Minimal agent orchestration and the operational-twin boundary
 
-Status: **Partially implemented — bounded planning landed; execution remains proposed**\
+Status: **Partially implemented — V2 documentary first baseline landed; technical execution remains proposed**\
 Scope: one beginner journey from initial intent or existing product material to
 reviewable engineering evidence\
 Decision horizon: V1 orchestration now; operational Digital Twin only in V2
 
 Truth basis: source tree inspected on 2026-08-02. Current-state claims include the
-loopback Discovery handoff, the agent planning command, and the code-owned intake
-operation registry implemented in this worktree. Exact initial-run authorization, a
-trusted generic executor, and operational Digital Twin capabilities remain proposed.
+loopback Discovery handoff, V2 planning and exact basis, the code-owned intake operation
+registry, and the first provider-free documentary-baseline executor. Generic SysML, CAD,
+FEA, simulation, measurement, and operational Digital Twin execution remain proposed.
 
 ## Decision
 
@@ -65,9 +65,10 @@ The beginner-facing journey is deliberately short:
 4. **Authorize consequential work.** The agent proposes decisions with consequences. The
    person approves or rejects them, then authorizes the exact next run. There is no
    technical data-entry form in the main path.
-5. **Watch work and review evidence.** The activity feed shows operations as they run.
-   Successful work is replaced by canonical linked evidence; failures and unresolved
-   questions stay visible.
+5. **Watch work and review its record.** The activity feed shows bounded operations as
+   they run. The first idea/spec run produces only a canonical documentary baseline;
+   technical evidence appears only after a later technical operation has captured it.
+   Failures and unresolved questions stay visible.
 6. **Change and repeat.** A change invalidates affected evidence, the agent proposes
    recomputation, and the person reviews the new proof and impact chain.
 
@@ -75,7 +76,7 @@ The three entries affect only the first reviewed operation:
 
 | Starting point        | First bounded engineering operation                                                  | Honest V1 result                                                           |
 | --------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Idea or specification | Establish a system-definition baseline from the approved brief                       | A versioned model and declared assumptions                                 |
+| Idea or specification | Capture the exact approved brief and reviewed plan                                   | An immutable documentary baseline; no technical model or proof             |
 | Existing CAD          | Fingerprint and capture the supplied CAD before proposing semantic mappings          | A content-addressed design baseline; inferred structure remains a proposal |
 | Existing product      | Capture static source material such as BOM, documents, CAD, and bounded measurements | An observed static baseline; no claim of live operational state            |
 
@@ -113,14 +114,15 @@ tool families:
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Fleet     | `console_snapshot`, `console_server_detail`, `console_run_list`, `console_run_detail`                                                                               | Read provider availability and recorded console runs              |
 | Discovery | `project_discovery_snapshot`, `project_discovery_start`, `project_discovery_question_propose`, `project_discovery_answer_record`, `project_discovery_brief_propose` | Build an immutable pre-project conversation and proposed brief    |
-| Project   | `project_snapshot`, `project_plan_publish`, `project_decision_propose`, `project_agent_run_start`, `project_agent_run_progress`, `project_agent_run_publish`, `project_agent_run_fail` | Read project truth, publish bounded unexecuted planning state, and record an already-authorized run lifecycle |
+| Project   | `project_snapshot`, `project_plan_publish`, `project_decision_propose`, `project_agent_run_execute` | Read project truth, publish bounded unexecuted planning state, and materialize the exact human-authorized documentary baseline |
 
 `project_plan_publish` can create or revise an unexecuted plan from the exact approved
 Discovery handoff. It records only code-validated operation references and state
 bindings; it does **not** call a provider, approve a decision, queue a run, or
-materialize technical evidence. No work item is executable merely because it names an
-operation. The existing run tools remain lifecycle bookkeeping around a run that a human
-already queued.
+materialize technical evidence. Human queueing is still the authorization boundary.
+`project_agent_run_execute` then resolves only that durable queued run; it accepts no
+provider/tool/argument/result/evidence payload from its caller. In this slice it may run
+only `baseline.from-approved-discovery@1` and calls no provider.
 
 The loopback Discovery BFF now exposes a human-only
 `POST /api/project-discoveries/:id/handoff` action. It creates immutable project
@@ -181,29 +183,27 @@ clients. The CoffeeMachine scripts additionally record live updates, capture pro
 results, materialize a `ThreadSnapshot`, persist it, and attach exact references to the
 project.
 
-That path is real but product-specific and CLI-driven. The generic external agent cannot
-currently obtain the same guarantees by using the Console MCP tools. Calling providers
-directly bypasses the trusted recorder/materializer; updating the run lifecycle later
+That provider path is real but product-specific and CLI-driven. Calling providers
+directly still bypasses the trusted recorder/materializer; updating a run lifecycle later
 does not prove what produced the cited evidence.
 
-## Confirmed orchestration gaps
+## Implemented V2 bootstrap boundary
 
-The durable shell and bounded planning path now exist. The path from that plan to proof
-still has two consequential breaks:
+The generic control plane now closes only the first-run contract:
 
 ```text
-approved discovery
-  ---> durable project shell                 implemented human handoff
-  ---> reviewed, unexecuted project path     implemented agent plan + registry
-  -/-> initial authorization / exact basis   bootstrap basis migration pending
-  -/-> trusted provider execution/evidence   no generic control-plane executor
+exact approved discovery + reviewed plan
+  ---> V2 project with an approved-discovery basis
+  ---> explicit human queue authorization
+  ---> provider-free immutable documentary capture (SHA-256)
+  ---> persisted/read-back root ThreadSnapshot r1
 ```
 
-There is still a bootstrap mismatch in the current project contract: queueing and
-decision proposals require an exact base `ThreadSnapshot`, while the first planned
-operation is grounded in an approved discovery before its first technical snapshot.
-Creating an empty or fabricated technical snapshot would hide the gap rather than solve
-it.
+This avoids fabricating an empty technical snapshot. It deliberately stops before
+SysML, CAD, FEA, simulation, measurements, or verification. The root document is
+provenance for the project starting point, not evidence that an engineering tool ran.
+The remaining gap is a generic **technical** operation/executor contract, not the
+initial authorization or basis contract.
 
 ## Minimal target contract
 
@@ -294,7 +294,7 @@ type EngineeringOperationInputBinding =
 The command may create or revise only unexecuted planning state. It records a `plan`
 whose basis is the exact approved discovery handoff, and stamps its agent publisher and
 publication time. Each published work item carries the exact registry ID, version, and
-approved state-reference bindings. The V1 intake surface accepts only
+approved state-reference bindings. The intake planning surface accepts only
 `approved-discovery` and `discovery-answer` bindings; the broader domain binding union
 is reserved for a reviewed later operation/executor contract. Its displayed title,
 description, and work kind are derived from the registered operation rather than supplied
@@ -312,20 +312,20 @@ The registry currently contains these three bounded intake operations:
 | Existing CAD | `baseline.capture-existing-cad@1` |
 | Existing product | `baseline.capture-existing-product@1` |
 
-The registry is intentionally a safe planning descriptor today. It exposes no provider
+The registry is intentionally a safe planning descriptor. It exposes no provider
 selection, provider tool name, raw tool arguments, workflow definition, or evidence
-payload. A future trusted executor will use the same reviewed operation revision to own
-typed input resolution, provider selection, output validation, materialization, and
-redacted live projection. The agent never supplies raw provider tool names at execution
-time.
+payload. The implemented first executor uses the exact reviewed operation revision for a
+provider-free documentary capture. A later technical executor must separately own typed
+input resolution, provider selection, output validation, materialization, and redacted
+live projection. The agent never supplies raw provider tool names at execution time.
 At execution, existing-CAD and existing-product intake must resolve their supplied files
 or source records through exact discovery-answer bindings. The future intake executor
 must fingerprint the bytes; a path or label alone never becomes evidence.
 
-### 3. Still pending: use one exact basis type before and after the first proof
+### 3. Implemented: use one exact basis type before and after the first record
 
-Replace the bootstrap-only assumption that every action already has a base thread with
-an exact discriminated basis:
+V2 replaces the bootstrap-only assumption that every action already has a base thread
+with an exact discriminated basis:
 
 ```ts
 type EngineeringBasisRef =
@@ -345,9 +345,9 @@ type EngineeringBasisRef =
   };
 ```
 
-The initial planning and baseline run use the exact approved-discovery basis. Once the
-first canonical `ThreadSnapshot` exists, all later decisions and runs use an exact
-thread-snapshot basis. A queue fingerprint must cover:
+The initial planning and documentary baseline use the exact approved-discovery basis.
+Once the root `ThreadSnapshot` exists, later V2 runs use an exact thread-snapshot basis.
+A queue fingerprint covers:
 
 - the basis;
 - the work-item ID;
@@ -355,12 +355,12 @@ thread-snapshot basis. A queue fingerprint must cover:
 - every approved decision fingerprint;
 - resolved non-secret operation inputs.
 
-This should be a clean schema revision, not parallel `baseSnapshot` and `basis` fields
-with fallback behaviour.
+This is a clean schema revision: V2 runs use `basis` and reject `baseSnapshot`; V1
+history remains readable but cannot fall back into the V2 path.
 
-### 4. Still pending: give the agent one trusted execution tool
+### 4. Implemented: one trusted documentary execution tool
 
-Add one agent-only MCP tool:
+The agent-only MCP tool is:
 
 ```text
 project_agent_run_execute
@@ -378,27 +378,16 @@ interface ExecuteQueuedProjectRunInput {
 }
 ```
 
-The backend must resolve all consequential detail from the human-queued run and the
-server-side operation registry. The execution sequence is fixed:
+The backend resolves all consequential detail from the human-queued run and the
+server-side operation registry. For `baseline.from-approved-discovery@1` it validates the
+exact V2 discovery basis and operation, claims the run, produces deterministic canonical
+JSON for the approved discovery and plan, SHA-256 fingerprints and persists that document,
+creates and reads back root `ThreadSnapshot` r1, validates the cited artifact, then
+completes the run. Redacted lifecycle updates may appear in the feed while it runs.
 
-1. validate the current project revision, queued run, exact basis, operation version,
-   and approved decision bindings;
-2. claim the run durably before any provider call;
-3. execute the reviewed operation through no-retry, backend-owned MCP clients wrapped by
-   `RecordingMcpToolClient`;
-4. validate selected structured outputs and exact artefact consumptions;
-5. materialize and persist a descendant canonical `ThreadSnapshot`;
-6. read it back and validate the cited entities;
-7. complete the project run with the exact result/evidence references;
-8. reconcile the transient live overlay.
-
-On a provider failure, record a failed run and no evidence. On an uncertain
-interruption, leave a visible non-success state and require explicit reconciliation; an
-identical MCP retry must never repeat the provider operation automatically.
-
-This tool is not a generic workflow upload endpoint. Its registry may internally use the
-existing YAML compiler and `WorkflowExecutor`, specialized TypeScript operations, or
-both, but only reviewed, versioned entries can run.
+It calls no provider. It is not a generic workflow upload endpoint and is not a generic
+technical executor. A later provider-backed operation must enforce its own no-retry,
+input-consumption, output-validation, persistence, and interruption rules.
 
 ### 5. Keep authority simple
 
@@ -417,32 +406,30 @@ both, but only reviewed, versioned entries can run.
 | Create canonical evidence                   | Trusted backend operation |               No | Observe only |
 | Approve a technical verdict or release      |                        No |              Yes |      Observe |
 
-## V1 acceptance slice
+## V2 documentary-baseline acceptance slice
 
-The smallest useful vertical slice is not another dashboard panel. It is one complete,
-observable run from an approved brief:
+The smallest implemented vertical slice is not another dashboard panel. It is one
+complete, observable, **pre-technical** run from an approved brief:
 
 1. use the registered discovery-to-project handoff to create the exact empty project
    shell;
 2. let the agent publish a minimal project path whose first work item is bound to one
    reviewed intake operation;
 3. let the human authorize that exact run;
-4. let `project_agent_run_execute` create the first real `ThreadSnapshot` while the
+4. let `project_agent_run_execute` create the first root `ThreadSnapshot` while the
    existing feed updates live;
-5. show the canonical baseline and its provenance after completion;
-6. change one reviewed input, show affected state, recompute one proof, and review the
-   new evidence.
+5. show the immutable document and its provenance after completion.
 
-The current landing point reaches steps 1 and 2: an exact approved-discovery handoff can
-receive a visible, agent-published plan bound to one of the three intake operations. It
-does not yet reach human authorization, execution, technical evidence, or recomputation
-through this generic control-plane path. The existing CM-01 CLI flow remains a separate,
-product-specific demonstration of linked evidence.
+The path reaches those five steps for the idea/spec starting point. Its successful result
+is deliberately not technical evidence: it contains no provider output, technical model,
+geometry, calculation, measurement, requirement evaluation, or compliance conclusion.
+The next product increment is one separately reviewed technical operation that can attach
+that kind of evidence to the now-explicit source baseline. The existing CM-01 CLI flow
+remains a separate, product-specific demonstration of linked technical evidence.
 
-Implement the idea/spec intake executor first to prove the full contract. Existing-CAD
-and existing-product already have planning registry entries; before calling the product
-V1, they need the same safe execution, evidence, and review journey. They are operation
-variants, not separate applications or domain models.
+Existing-CAD and existing-product already have planning registry entries; they need their
+own safe source-capture and technical-evidence contracts before they can execute. They
+are operation variants, not separate applications or domain models.
 
 The resulting goal is a bounded feedback loop, not a static audit trail: observe the
 current proven state, evaluate a named consequence, propose a scoped correction,
@@ -534,17 +521,18 @@ Operational V2 must not delay or complicate the V1 beginner journey.
 
 ## Implementation map
 
-The human handoff and bounded planning slices are implemented. Likely implementation
-locations for the remaining slices are:
+The human handoff, bounded planning, exact V2 basis, and first documentary-baseline
+slice are implemented. The remaining slices are deliberately separate:
 
 | Slice                                       | Likely files                                                                                                                             |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Human handoff                               | Implemented in the domain service, HTTP adapter, Discovery BFF, browser client/UI, validation, and focused tests                         |
 | Bounded plan + operation binding            | Implemented in `src/domain/engineering-project.ts`, validation, plan command service, `src/tools/project-control.ts`, and `server.ts`  |
-| Reviewed intake operation registry          | Implemented as safe planning descriptors under `src/orchestration/operations/`; it does not execute providers                            |
-| Exact bootstrap basis migration             | `src/domain/engineering-project.ts`, `src/domain/engineering-project-validation.ts`, `src/domain/engineering-project-command-service.ts` |
-| Trusted run executor                        | New orchestration service using `RecordingMcpToolClient`, the thread materializer/store, and existing project command service            |
-| Cockpit projection                          | Existing passive BFF/projector after the domain contract is stable; no provider calls in UI code                                         |
+| Reviewed intake operation registry          | Implemented under `src/orchestration/operations/`; only the approved-discovery document operation is executable                         |
+| Exact bootstrap basis migration             | Implemented in `src/domain/engineering-project.ts`, validation, handoff, and command service                                              |
+| Documentary baseline executor               | Implemented with immutable capture storage, root-snapshot materialization/read-back, project command service, and narrow MCP tool        |
+| Generic technical run executor              | Future reviewed operations with provider clients, output validators, materializers, and no-retry semantics                               |
+| Cockpit projection                          | Passive BFF/projector exposes planning status and redacted live milestones; no provider calls in UI code                                  |
 | Operational V2                              | Separate operational domain/binding/store adapters plus one bounded evaluator; no raw telemetry fields in `ThreadSnapshot`               |
 
 The current `server.ts` also resolves a single tracked CM-01 project. A real new-product
@@ -559,8 +547,8 @@ project runtime, while preserving loopback and authority checks.
 - only human origin can approve the brief, create the handoff, approve/reject decisions,
   and authorize a run;
 - exact command replay is idempotent; command-ID reuse with changed input fails;
-- a project shell may have no thread only before technical publication and cannot claim
-  completed work or evidence;
+- a project shell may have no thread only before documentary-baseline publication and
+  cannot claim completed work or evidence;
 - the agent can publish planning state but cannot approve or queue it;
 - planning is grounded in the exact approved-discovery handoff and accepts only the
   matching registered intake operation revision and declared bindings;
@@ -571,24 +559,32 @@ project runtime, while preserving loopback and authority checks.
 - queue fingerprints include operation version and decision fingerprints;
 - no unknown or unregistered operation can enter a plan, be queued, or be executed.
 
-### Trusted execution
+### Documentary first-run execution
 
-- an unqueued, stale, changed, rejected, or already-executed run is refused before a
-  provider call;
-- each provider node is called at most once;
-- started/completed/failed live updates are redacted and ordered;
-- provider failure produces no canonical evidence;
-- exact artefact digest mismatch fails closed;
-- success persists and reads back a descendant `ThreadSnapshot` before project
-  completion;
+- an unqueued, stale, changed, or already-executed run is refused before capture;
+- the run basis must exactly equal the approved discovery and plan basis;
+- the canonical JSON document is byte-fingerprinted, immutable, and persisted before its
+  cited root `ThreadSnapshot`;
+- success reads that root snapshot back and validates the one documentary artifact before
+  project completion;
 - completion refuses missing or foreign evidence references;
+- started/completed/failed live updates are redacted and ordered;
 - reconnecting SSE or retrying the MCP command cannot repeat the operation.
+
+### Future technical execution
+
+- each provider node must be called at most once;
+- provider failure must produce no canonical evidence;
+- exact artefact digest mismatch must fail closed;
+- a later run must persist and read back a descendant `ThreadSnapshot` before project
+  completion.
 
 ### Product-path integration
 
-- idea/spec, existing-CAD, and existing-product fixtures all pass through the same
-  discovery, project, run, and review aggregates;
-- only their registered first operation differs;
+- idea/spec passes through the implemented discovery, project, authorization, first-run,
+  and review aggregates;
+- existing-CAD and existing-product remain planning-only until their own capture
+  contracts are implemented;
 - the beginner projection contains plain-language stage, next question, recommendation,
   authorization, progress, and review state without requiring provider/tool knowledge;
 - expert projections retain exact tools, hashes, inputs, units, provenance, and errors.

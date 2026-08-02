@@ -1,11 +1,11 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
+import type { ApprovedDiscoveryBaselineRunExecutor } from "../adapters/approved-discovery-baseline-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
 import type {
   EngineeringOperationInputBinding,
   EngineeringOperationRef,
   EngineeringProjectSnapshot,
   EngineeringProjectStartingPoint,
-  EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
   EngineeringWorkOwner,
 } from "../domain/engineering-project.ts";
@@ -26,6 +26,14 @@ const PROJECT_MUTATION_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: false,
+  openWorldHint: false,
+} as const;
+
+/** Same-command retries resume the server-owned local execution safely. */
+const PROJECT_EXECUTION_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
   openWorldHint: false,
 } as const;
 
@@ -60,41 +68,6 @@ const ISSUED_AT = {
   type: "string",
   description:
     "Stable ISO timestamp for this command. Preserve it together with commandId on retry.",
-} as const;
-
-const SNAPSHOT_REF_SCHEMA = {
-  type: "object",
-  properties: {
-    snapshotId: { type: "string", minLength: 1 },
-    revision: { type: "integer", minimum: 1 },
-    subjectId: { type: "string", minLength: 1 },
-  },
-  required: ["snapshotId", "revision", "subjectId"],
-  additionalProperties: false,
-} as const;
-
-const EVIDENCE_REF_SCHEMA = {
-  type: "object",
-  properties: {
-    snapshotId: { type: "string", minLength: 1 },
-    snapshotRevision: { type: "integer", minimum: 1 },
-    kind: {
-      type: "string",
-      enum: [
-        "artifact",
-        "consumption",
-        "observation",
-        "requirement",
-        "evaluation",
-        "violation",
-        "change",
-        "action",
-      ],
-    },
-    id: { type: "string", minLength: 1 },
-  },
-  required: ["snapshotId", "snapshotRevision", "kind", "id"],
-  additionalProperties: false,
 } as const;
 
 const OPERATION_BINDING_SCHEMA = {
@@ -157,6 +130,8 @@ export interface EngineeringProjectSnapshotReader {
 export interface ProjectControlToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
+  /** Optional so focused read-only tests need not construct an executor. */
+  baselineExecutor?: Pick<ApprovedDiscoveryBaselineRunExecutor, "execute">;
 }
 
 export function registerProjectControlTools(
@@ -187,6 +162,21 @@ export function registerProjectControlTools(
     );
   });
 
+  if (dependencies.baselineExecutor) {
+    app.registerTool(projectAgentRunExecuteTool, async (args, context) => {
+      const common = commonMutation(args);
+      const runId = requiredString(args.runId, "runId");
+      const snapshot = await dependencies.baselineExecutor!.execute(
+        agentOrigin(context),
+        { ...common, runId },
+      );
+      return projectResult(
+        `Agent run ${runId} recorded its durable approved-discovery documentary baseline at project revision ${snapshot.revision}. No technical tool evidence was created by this operation.`,
+        snapshot,
+      );
+    });
+  }
+
   app.registerTool(projectDecisionProposeTool, async (args, context) => {
     const common = commonMutation(args);
     const current = await requiredProjectRevision(
@@ -207,87 +197,6 @@ export function registerProjectControlTools(
       `Decision ${
         requiredString(args.decisionId, "decisionId")
       } now has an agent proposal at project revision ${snapshot.revision}; human approval is still required.`,
-      snapshot,
-    );
-  });
-
-  app.registerTool(projectAgentRunStartTool, async (args, context) => {
-    const common = commonMutation(args);
-    const runId = requiredString(args.runId, "runId");
-    const snapshot = await dependencies.commands.claimRun(
-      agentOrigin(context),
-      { ...common, runId, summary: requiredString(args.summary, "summary") },
-    );
-    return projectResult(
-      `Agent run ${runId} was claimed and started at project revision ${snapshot.revision}.`,
-      snapshot,
-    );
-  });
-
-  app.registerTool(projectAgentRunProgressTool, async (args, context) => {
-    const common = commonMutation(args);
-    const runId = requiredString(args.runId, "runId");
-    const snapshot = await dependencies.commands.progressRun(
-      agentOrigin(context),
-      {
-        ...common,
-        runId,
-        summary: requiredString(args.summary, "summary"),
-      },
-    );
-    return projectResult(
-      `Progress for agent run ${runId} was recorded at project revision ${snapshot.revision}.`,
-      snapshot,
-    );
-  });
-
-  app.registerTool(projectAgentRunPublishTool, async (args, context) => {
-    const common = commonMutation(args);
-    const runId = requiredString(args.runId, "runId");
-    const stage = oneOf(
-      args.stage,
-      ["publishing", "completed"] as const,
-      "stage",
-    );
-    if (
-      stage === "publishing" &&
-      (args.resultSnapshot !== undefined || args.evidenceRefs !== undefined)
-    ) {
-      throw new TypeError(
-        "resultSnapshot and evidenceRefs are valid only for stage=completed",
-      );
-    }
-    const snapshot = stage === "publishing"
-      ? await dependencies.commands.publishRun(agentOrigin(context), {
-        ...common,
-        runId,
-        summary: requiredString(args.summary, "summary"),
-      })
-      : await dependencies.commands.completeRun(agentOrigin(context), {
-        ...common,
-        runId,
-        summary: requiredString(args.summary, "summary"),
-        resultSnapshot: snapshotRef(args.resultSnapshot, "resultSnapshot"),
-        evidenceRefs: evidenceRefs(args.evidenceRefs, "evidenceRefs"),
-      });
-    return projectResult(
-      `Agent run ${runId} is ${stage} at project revision ${snapshot.revision}.`,
-      snapshot,
-    );
-  });
-
-  app.registerTool(projectAgentRunFailTool, async (args, context) => {
-    const common = commonMutation(args);
-    const runId = requiredString(args.runId, "runId");
-    const snapshot = await dependencies.commands.failRun(agentOrigin(context), {
-      ...common,
-      runId,
-      summary: requiredString(args.summary, "summary"),
-      code: requiredString(args.code, "code"),
-      message: requiredString(args.message, "message"),
-    });
-    return projectResult(
-      `Agent run ${runId} failed at project revision ${snapshot.revision}.`,
       snapshot,
     );
   });
@@ -426,79 +335,15 @@ const projectDecisionProposeTool: MCPTool = {
   annotations: PROJECT_MUTATION_ANNOTATIONS,
 };
 
-const projectAgentRunStartTool: MCPTool = {
-  name: "project_agent_run_start",
+const projectAgentRunExecuteTool: MCPTool = {
+  name: "project_agent_run_execute",
   description:
-    "Claim and start one human-queued EngineeringProject agent run. This cannot create or queue a run.",
+    "Execute one human-queued V2 baseline.from-approved-discovery@1 run through the server-owned local executor. The call accepts no provider, tool arguments, files or result payload. It records an immutable documentary pre-technical baseline from the exact approved discovery and reviewed plan; it does not create CAD, SysML, simulation, measurement, verification or compliance evidence. Reuse the same commandId unchanged to resume an interrupted call safely.",
   inputSchema: mutationSchema({
     runId: { type: "string", minLength: 1 },
-    summary: { type: "string", minLength: 1 },
-  }, ["runId", "summary"]),
+  }, ["runId"]),
   outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: PROJECT_MUTATION_ANNOTATIONS,
-};
-
-const projectAgentRunProgressTool: MCPTool = {
-  name: "project_agent_run_progress",
-  description:
-    "Record a progress summary and history entry for the exact agent-owned running run. The run remains running; this does not execute an external engineering tool.",
-  inputSchema: mutationSchema({
-    runId: { type: "string", minLength: 1 },
-    summary: { type: "string", minLength: 1 },
-  }, ["runId", "summary"]),
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: PROJECT_MUTATION_ANNOTATIONS,
-};
-
-const projectAgentRunPublishTool: MCPTool = {
-  name: "project_agent_run_publish",
-  description:
-    "Publish a run in two explicit CAS transitions. Use stage=publishing first; after an exact ThreadSnapshot and evidence exist, call again with a new commandId, the new expectedRevision, and stage=completed. This never manufactures technical evidence.",
-  inputSchema: {
-    ...mutationSchema({
-      runId: { type: "string", minLength: 1 },
-      stage: { enum: ["publishing", "completed"] },
-      summary: { type: "string", minLength: 1 },
-      resultSnapshot: SNAPSHOT_REF_SCHEMA,
-      evidenceRefs: {
-        type: "array",
-        items: EVIDENCE_REF_SCHEMA,
-        minItems: 1,
-      },
-    }, ["runId", "stage", "summary"]),
-    oneOf: [
-      {
-        properties: { stage: { const: "publishing" } },
-        required: ["stage"],
-        not: {
-          anyOf: [
-            { required: ["resultSnapshot"] },
-            { required: ["evidenceRefs"] },
-          ],
-        },
-      },
-      {
-        properties: { stage: { const: "completed" } },
-        required: ["stage", "resultSnapshot", "evidenceRefs"],
-      },
-    ],
-  },
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: PROJECT_MUTATION_ANNOTATIONS,
-};
-
-const projectAgentRunFailTool: MCPTool = {
-  name: "project_agent_run_fail",
-  description:
-    "Record a terminal failure code and message for one claimed EngineeringProject agent run. This does not delete evidence or invoke an external system.",
-  inputSchema: mutationSchema({
-    runId: { type: "string", minLength: 1 },
-    summary: { type: "string", minLength: 1 },
-    code: { type: "string", minLength: 1 },
-    message: { type: "string", minLength: 1 },
-  }, ["runId", "summary", "code", "message"]),
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: PROJECT_MUTATION_ANNOTATIONS,
+  annotations: PROJECT_EXECUTION_ANNOTATIONS,
 };
 
 function mutationSchema(
@@ -780,52 +625,6 @@ function planOperationBinding(
 function stringList(value: unknown, name: string): string[] {
   if (!Array.isArray(value)) throw new TypeError(`${name} must be an array`);
   return value.map((item, index) => requiredString(item, `${name}[${index}]`));
-}
-
-function snapshotRef(value: unknown, name: string): EngineeringThreadSnapshotRef {
-  const record = exactRecord(value, name);
-  exactKeys(record, ["snapshotId", "revision", "subjectId"], [], name);
-  return {
-    snapshotId: requiredString(record.snapshotId, `${name}.snapshotId`),
-    revision: positiveInteger(record.revision, `${name}.revision`),
-    subjectId: requiredString(record.subjectId, `${name}.subjectId`),
-  };
-}
-
-function evidenceRefs(
-  value: unknown,
-  name: string,
-): EngineeringThreadEntityRef[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new TypeError(`${name} must be a non-empty array`);
-  }
-  return value.map((item, index) => {
-    const path = `${name}[${index}]`;
-    const record = exactRecord(item, path);
-    exactKeys(record, ["snapshotId", "snapshotRevision", "kind", "id"], [], path);
-    return {
-      snapshotId: requiredString(record.snapshotId, `${path}.snapshotId`),
-      snapshotRevision: positiveInteger(
-        record.snapshotRevision,
-        `${path}.snapshotRevision`,
-      ),
-      kind: oneOf(
-        record.kind,
-        [
-          "artifact",
-          "consumption",
-          "observation",
-          "requirement",
-          "evaluation",
-          "violation",
-          "change",
-          "action",
-        ] as const,
-        `${path}.kind`,
-      ),
-      id: requiredString(record.id, `${path}.id`),
-    };
-  });
 }
 
 function exactRecord(value: unknown, name: string): Record<string, unknown> {

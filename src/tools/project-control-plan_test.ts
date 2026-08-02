@@ -1,8 +1,10 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertExists, assertStringIncludes } from "@std/assert";
 import type { DockerObserver } from "../adapters/docker-observer.ts";
 import { FileEngineeringProjectRevisionStore } from "../adapters/engineering-project-store.ts";
 import { FileProjectDiscoveryRevisionStore } from "../adapters/project-discovery-store.ts";
+import { FileThreadSnapshotStore } from "../adapters/file-thread-snapshot-store.ts";
 import type { McpProbe } from "../adapters/http-mcp-probe.ts";
+import { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
 import type { FleetManifest, ObservedContainer, RunDetail } from "../domain/types.ts";
 import { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
 import { ProjectDiscoveryCommandService } from "../domain/project-discovery-command-service.ts";
@@ -15,19 +17,7 @@ const AGENT = { kind: "agent" as const, actorId: "agent:planner" };
 
 Deno.test("project_plan_publish exposes an agent-only bounded plan contract", async () => {
   await withApprovedProjectShell(async ({ directory }) => {
-    const { app } = await createConsoleServer({
-      manifest: manifestFixture(),
-      runs: [runFixture()],
-      probe: healthyProbe(),
-      docker: unavailableDocker(),
-      logger: () => {},
-      projectId: PROJECT_ID,
-      projectPath: `${directory}/unused-tracked-project.json`,
-      activeProjectDirectory: `${directory}/projects`,
-      projectDiscoveryDirectory: `${directory}/discoveries`,
-      threadSnapshotDirectory: `${directory}/thread-snapshots`,
-      projectBaselineDirectory: `${directory}/project-baselines`,
-    });
+    const { app } = await createProjectControlTestServer(directory);
 
     assertEquals(app.getToolNames().includes("project_plan_publish"), true);
 
@@ -108,7 +98,7 @@ Deno.test("project_plan_publish exposes an agent-only bounded plan contract", as
       });
       const workItems = project.workItems as Array<Record<string, unknown>>;
       assertEquals(workItems.length, 1);
-      assertEquals(workItems[0].status, "planned");
+      assertEquals(workItems[0].status, "ready");
       assertEquals(workItems[0].title, "Create the engineering baseline");
       assertEquals(
         workItems[0].description,
@@ -223,6 +213,193 @@ Deno.test("project_plan_publish exposes an agent-only bounded plan contract", as
     }
   });
 });
+
+Deno.test(
+  "MCP HTTP executes a human-authorized V2 documentary baseline without provider input or technical facts",
+  async () => {
+    await withApprovedProjectShell(async ({ directory }) => {
+      const { app } = await createProjectControlTestServer(directory);
+      const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+      const port = (listener.addr as Deno.NetAddr).port;
+      listener.close();
+      const http = await app.startHttp({
+        port,
+        hostname: "127.0.0.1",
+        onListen: () => {},
+      });
+      try {
+        const client = new TestMcpClient(`http://127.0.0.1:${port}/mcp`);
+        assertResult(await client.invoke("server/discover", {}));
+
+        const listed = assertResult(await client.invoke("tools/list", {}));
+        const tools = listed.tools as Array<Record<string, unknown>>;
+        const executeTool = tools.find((tool) =>
+          tool.name === "project_agent_run_execute"
+        );
+        assert(executeTool, "The bounded V2 executor must be listed to the agent.");
+        assertEquals(executeTool.annotations, {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        });
+        const executeSchema = executeTool.inputSchema as Record<string, unknown>;
+        assertEquals(executeSchema.additionalProperties, false);
+        const executeProperties = executeSchema.properties as Record<string, unknown>;
+        assertEquals(Object.keys(executeProperties).sort(), [
+          "commandId",
+          "expectedRevision",
+          "issuedAt",
+          "projectId",
+          "runId",
+        ]);
+        const serializedExecuteSchema = JSON.stringify(executeSchema);
+        for (
+          const forbidden of [
+            "providerArguments",
+            "toolName",
+            "mcpUrl",
+            "resultSnapshot",
+            "evidenceRefs",
+            "baseSnapshot",
+            "basis",
+            "rawResult",
+          ]
+        ) {
+          assertEquals(
+            serializedExecuteSchema.includes(forbidden),
+            false,
+            `${forbidden} must not be accepted by the server-owned executor`,
+          );
+        }
+
+        const published = assertResult(
+          await client.invoke("tools/call", {
+            name: "project_plan_publish",
+            arguments: planCommand(),
+          }),
+        );
+        const planned = published.structuredContent as Record<string, unknown>;
+        assertEquals(planned.revision, 2);
+
+        // The human authorization remains local to the same-origin control
+        // plane.  The agent only receives the bounded execution endpoint.
+        const projects = new FileEngineeringProjectRevisionStore(
+          `${directory}/projects`,
+        );
+        const project = await projects.get(PROJECT_ID);
+        assertExists(project);
+        assertExists(project.plan);
+        const queued = await new EngineeringProjectCommandService(projects).queueRun(
+          HUMAN,
+          {
+            commandId: "human-authorize-documentary-baseline",
+            projectId: PROJECT_ID,
+            expectedRevision: project.revision,
+            issuedAt: "2026-08-01T11:01:00.000Z",
+            runId: "run:plan-contract-documentary-baseline",
+            workItemId: "create-baseline",
+            summary: "Human authorized the documentary project baseline.",
+            basis: project.plan.basis,
+          },
+        );
+        assertEquals(queued.revision, 3);
+        assertEquals(queued.agentRuns[0]?.basis, project.plan.basis);
+        assertEquals(queued.agentRuns[0]?.baseSnapshot, undefined);
+
+        const execution = {
+          commandId: "mcp-execute-documentary-baseline-1",
+          projectId: PROJECT_ID,
+          expectedRevision: queued.revision,
+          issuedAt: "2026-08-01T11:02:00.000Z",
+          runId: "run:plan-contract-documentary-baseline",
+        };
+        const completedResult = assertResult(
+          await client.invoke("tools/call", {
+            name: "project_agent_run_execute",
+            arguments: execution,
+          }),
+        );
+        const completed = completedResult.structuredContent as Record<string, unknown>;
+        assertEquals(completed.revision, 6);
+        const runs = completed.agentRuns as Array<Record<string, unknown>>;
+        const completedRun = runs[0];
+        assertExists(completedRun);
+        assertEquals(completedRun.status, "completed");
+        assertEquals(completedRun.basis, project.plan.basis);
+        assertEquals(
+          (completedRun.evidenceRefs as Array<unknown>).length,
+          1,
+        );
+        const threadSnapshots = completed.threadSnapshots as Array<
+          Record<string, unknown>
+        >;
+        assertEquals(threadSnapshots.length, 1);
+
+        const snapshots = new FileThreadSnapshotStore(
+          `${directory}/thread-snapshots`,
+        );
+        const snapshot = await snapshots.get(
+          threadSnapshots[0]?.snapshotId as string,
+        );
+        assertExists(snapshot);
+        assertEquals(snapshot.revision, 1);
+        assertEquals(snapshot.artifacts.map((artifact) => artifact.kind), ["document"]);
+        assertEquals(snapshot.consumptions, []);
+        assertEquals(snapshot.observations, []);
+        assertEquals(snapshot.requirements, []);
+        assertEquals(snapshot.evaluations, []);
+        assertEquals(snapshot.violations, []);
+        assertEquals(
+          snapshot.provenance.map((link) => link.relation),
+          ["changes"],
+        );
+        assertEquals(
+          snapshot.changeSet.changes.map((change) => [
+            change.kind,
+            change.target.kind,
+          ]),
+          [["created", "artifact"]],
+        );
+        assertEquals(snapshot.proposedActions, []);
+
+        const replay = assertResult(
+          await client.invoke("tools/call", {
+            name: "project_agent_run_execute",
+            arguments: execution,
+          }),
+        );
+        const replayed = replay.structuredContent as Record<string, unknown>;
+        assertEquals(replayed.id, completed.id);
+        assertEquals(replayed.revision, 6);
+        assertEquals(
+          (replayed.threadSnapshots as Array<unknown>).length,
+          1,
+        );
+      } finally {
+        await http.shutdown();
+      }
+    });
+  },
+);
+
+async function createProjectControlTestServer(directory: string) {
+  return await createConsoleServer({
+    manifest: manifestFixture(),
+    runs: [runFixture()],
+    probe: healthyProbe(),
+    docker: unavailableDocker(),
+    logger: () => {},
+    projectId: PROJECT_ID,
+    projectPath: `${directory}/unused-tracked-project.json`,
+    activeProjectDirectory: `${directory}/projects`,
+    projectDiscoveryDirectory: `${directory}/discoveries`,
+    threadSnapshotDirectory: `${directory}/thread-snapshots`,
+    liveThreadUpdateDirectory: `${directory}/live-thread-updates`,
+    approvedDiscoveryCaptureDirectory: `${directory}/approved-discovery-captures`,
+    projectBaselineDirectory: `${directory}/project-baselines`,
+  });
+}
 
 function planCommand() {
   return {

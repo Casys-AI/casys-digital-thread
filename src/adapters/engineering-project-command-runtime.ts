@@ -1,5 +1,6 @@
 import {
   EngineeringProjectCommandService,
+  type EngineeringProjectInitialCompletionEvidenceValidator,
   type EngineeringProjectPlanningDependencies,
   EngineeringProjectStoreConflictError,
 } from "../domain/engineering-project-command-service.ts";
@@ -18,6 +19,9 @@ export interface EngineeringProjectCommandRuntimeOptions {
   readonly evidenceSnapshots: ExactThreadSnapshotReader;
   /** Optional until a trusted agent planning surface is configured. */
   readonly planning?: EngineeringProjectPlanningDependencies;
+  /** Required by the trusted V2 documentary baseline executor. */
+  readonly initialEvidenceValidator?:
+    EngineeringProjectInitialCompletionEvidenceValidator;
 }
 
 export interface EngineeringProjectCommandRuntime {
@@ -68,6 +72,7 @@ export async function createEngineeringProjectCommandRuntime(
       new ExactThreadCompletionEvidenceValidator(options.evidenceSnapshots),
       undefined,
       options.planning,
+      options.initialEvidenceValidator,
     ),
   };
 }

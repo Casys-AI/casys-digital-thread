@@ -1,9 +1,14 @@
-# How-to: run and publish the CM-01 mechanical proof
+# How-to: inspect the CM-01 mechanical proof
 
 > **Evidence boundary.** This runner verifies one isolated CM-01 drip-tray concept. Its
 > reviewed case uses an ABS-like model, a 100 N downward service load, and preliminary
 > limits of `1 mm` displacement and `20 MPa` von Mises stress. Passing this case is not
 > proof of the whole CoffeeMachine, a fabrication release, or a certification claim.
+>
+> **Control-plane boundary.** The r6 run below is an immutable historical reference. The
+> public Console MCP surface has no generic agent-run lifecycle tools and no CM-01
+> technical executor, so it is not a recipe for an agent or browser to advance a new
+> project run.
 
 ## Start the required services
 
@@ -13,8 +18,9 @@ deno task start
 ```
 
 The provider MCPs listen on ports `3009`, `3014`, and `3015`. The Console MCP server on
-port `3020` owns the complementary agent project-control tools. Docker Compose only
-starts providers; it neither executes the proof nor advances the project lifecycle.
+port `3020` exposes bounded planning and documentary-baseline controls, not a generic
+CM-01 lifecycle. Docker Compose only starts providers; it neither executes the proof nor
+advances a project lifecycle.
 
 The native cockpit is optional during execution, but useful for watching the recorded
 operations arrive in Activity:
@@ -26,15 +32,20 @@ deno task preview:thread
 Its GET and SSE paths remain passive. Opening or refreshing the page never invokes a
 provider.
 
-## Establish the exact authorization
+## Read the archived authorization
 
-The runner accepts only the named project case already recorded in the active immutable
-project:
+The active immutable CM-01 history records this exact authorization chain:
 
 1. an agent proposes `review-mechanical-proof-case` against the exact r5 base evidence;
 2. a human approves that exact proposal and its fingerprint;
 3. a human queues `verify-current-mechanical-design`; and
-4. an agent claims the resulting run through `project_agent_run_start`.
+4. the historical bounded execution process claims and advances the resulting run
+   internally.
+
+The fourth step was not, and is no longer, a public MCP call. A human queue is the
+authorization boundary; a registered server-owned executor owns any later provider calls,
+capture, snapshot attachment, validation, and lifecycle transitions. No such CM-01
+technical executor is exposed by the current Console MCP server.
 
 The approved CM-01 reference proposal identifies the isolated `190 x 135 x 28 mm`
 DripTray, an ABS-like concept model (`E = 2200 MPa`, `nu = 0.35`), a fully fixed rear
@@ -57,14 +68,20 @@ assembly_max_displacement <= 1 mm
 assembly_max_von_mises <= 20 MPa
 ```
 
-## Execute the approved run
+## Audit the historical bounded runner
 
-Use the exact ID returned by the human queue and agent claim:
+For a local maintainer auditing an already prepared historical run, the command-side
+runner accepts its exact recorded run ID:
 
 ```bash
 deno task thread:run-coffee-machine-mechanical \
-  --run-id=<human-queued-and-agent-claimed-run-id>
+  --run-id=<recorded-historical-run-id>
 ```
+
+This is not an MCP execution endpoint and is not a way to create or complete a new
+project run. A future technical operation needs its own reviewed registered executor;
+the only current public V2 executor materializes the provider-free documentary baseline
+from an approved discovery.
 
 The command executes this backend-only chain:
 
@@ -89,7 +106,7 @@ The capture is written once under
 browser-safe provisional activity under `state/local/live-thread-updates/`; that feed is
 not canonical evidence.
 
-### Bounded safe resume
+### Historical runner safe-resume boundary
 
 A retry with the same run ID is accepted only when all prior live activity is confined
 to the exact allowed SysON constraint extract, child read, or bounded SysML insertion
@@ -101,28 +118,19 @@ reconciliation, an unknown operation, or a different base revision, retry fails 
 A persisted capture also cannot be overwritten. Create a newly authorized run instead
 of treating partial engineering work as safely repeatable.
 
-## Publish in the required order
+## Read the historical publication boundary
 
-Provider success does not complete the project. Keep the lifecycle and canonical
-publication as three explicit operations:
+Provider success did not complete the historical project by itself. Its bounded process
+internally moved through publication, validated and attached the capture with
+`deno task thread:attach-coffee-machine-mechanical`, then completed only against the
+read-back immutable snapshot and exact evidence references. That sequence describes the
+r6 provenance; it is not a set of public calls to replay.
 
-1. Call `project_agent_run_publish` with `stage: "publishing"`, a new stable
-   `commandId`, and the current `expectedRevision`.
-2. Validate and attach the capture:
-
-   ```bash
-   deno task thread:attach-coffee-machine-mechanical \
-     --run-id=<same-run-id>
-   ```
-
-3. Call `project_agent_run_publish` again with `stage: "completed"`, another new
-   `commandId`, the new project revision, and the exact `resultSnapshot` and
-   `evidenceRefs` printed by the attach command.
-
-The attach command fail-closes on authorization, effective arguments, constraint set,
-provider outputs, and exact STEP consumption. It saves and reads back the immutable
-snapshot before reconciling the provisional feed. It deliberately does not change the
-project lifecycle.
+The attachment command fail-closes on authorization, effective arguments, constraint
+set, provider outputs, and exact STEP consumption. It saves and reads back the immutable
+snapshot before reconciling the provisional feed. It does not itself advance a project
+lifecycle, and the public MCP surface no longer exposes a separate publishing or
+completion transition.
 
 The completed 2026-08-02 reference run used
 `run:erwan-authorize-cm01-mechanical-run-v1`. It published:

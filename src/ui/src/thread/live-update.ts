@@ -37,7 +37,12 @@ export function shouldAcceptWorkbenchUpdate(
     // retaining a stale technical view for an intent-only project.
     return true;
   }
-  if (incoming.surface === "planning" || current.surface === "planning") {
+  if (
+    incoming.surface === "planning" || current.surface === "planning" ||
+    incoming.surface === "documentary" || current.surface === "documentary"
+  ) {
+    // Planning accepts its own narrow activity comparator at the caller.
+    // A documentary record has no live graph or thread overlay to compare.
     return false;
   }
   if (

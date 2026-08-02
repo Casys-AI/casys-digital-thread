@@ -7,7 +7,12 @@ import type { IsoDateTime } from "./types.ts";
  * is only addressed here through exact snapshot/entity references.
  */
 
-export type EngineeringProjectSchemaVersion = "1.0";
+/**
+ * V1 remains the immutable CM-01 history format. New projects created from a
+ * human-approved discovery handoff are V2: their first run is anchored to the
+ * approved discovery, then every later run is anchored to a ThreadSnapshot.
+ */
+export type EngineeringProjectSchemaVersion = "1.0" | "2.0";
 
 export interface EngineeringProjectPreviousSnapshot {
   readonly snapshotId: string;
@@ -95,7 +100,7 @@ export interface EngineeringThreadEntityRef {
   readonly id: string;
 }
 
-/** How the project entered the engineering journey before a technical baseline exists. */
+/** How the project entered the engineering journey before any ThreadSnapshot exists. */
 export type EngineeringProjectStartingPoint =
   | "idea-or-spec"
   | "existing-cad"
@@ -114,6 +119,24 @@ export interface EngineeringApprovedDiscoveryBasis {
   readonly briefId: string;
   readonly approvedBriefFingerprint: ContentFingerprint;
 }
+
+/** Exact ThreadSnapshot state used after the first V2 documentary baseline. */
+export interface EngineeringThreadSnapshotBasis extends EngineeringThreadSnapshotRef {
+  readonly kind: "thread-snapshot";
+}
+
+/**
+ * An execution anchor, never a `latest` alias.
+ *
+ * `approved-discovery` is valid only for the one reviewed first-baseline
+ * operation. A result created from it is a documentary pre-technical
+ * baseline, not a descendant of a fabricated ThreadSnapshot or a claim of
+ * engineering proof. All later V2 runs use the
+ * `thread-snapshot` arm and retain the normal descendant invariant.
+ */
+export type EngineeringBasisRef =
+  | EngineeringApprovedDiscoveryBasis
+  | EngineeringThreadSnapshotBasis;
 
 /**
  * A reviewed source slot for an operation. Provider endpoints, tool names,
@@ -233,7 +256,15 @@ export interface EngineeringAgentRun {
   readonly completedAt?: IsoDateTime;
   readonly claimedAt?: IsoDateTime;
   readonly claimedBy?: EngineeringCommandActor;
-  /** Exact thread state and normalized inputs used by this execution. */
+  /**
+   * V2 execution anchor. V2 runs must use this field and never `baseSnapshot`.
+   * The validator enforces the schema-version boundary at JSON ingress.
+   */
+  readonly basis?: EngineeringBasisRef;
+  /**
+   * V1-only exact thread state. It remains readable for the immutable CM-01
+   * history and is deliberately not a fallback for V2 execution.
+   */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
   readonly inputFingerprint?: ContentFingerprint;
   readonly evidenceRefs: readonly EngineeringThreadEntityRef[];

@@ -138,7 +138,9 @@ export class ProjectDiscoveryHandoffService {
 
     const snapshotId = snapshotIdFor(normalized.projectId, requestFingerprint);
     const initial = validateEngineeringProjectSnapshot({
-      schemaVersion: "1.0",
+      // New discovery-born projects use the V2 run-basis contract. Existing
+      // V1 CM-01 snapshots stay immutable and are never upgraded in place.
+      schemaVersion: "2.0",
       id: snapshotId,
       revision: 1,
       generatedAt: appliedAt,

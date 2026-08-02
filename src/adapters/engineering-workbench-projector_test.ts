@@ -1,6 +1,9 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
-import type { LiveThreadWorkbenchSnapshot } from "./live-thread-update-store.ts";
+import type {
+  LiveThreadUpdate,
+  LiveThreadWorkbenchSnapshot,
+} from "./live-thread-update-store.ts";
 import {
   ENGINEERING_WORKBENCH_SCHEMA,
   projectEngineeringPlanningWorkbenchSnapshot,
@@ -14,7 +17,9 @@ Deno.test("engineering Workbench projection composes intent and observed proof w
   const result = projectEngineeringWorkbenchSnapshot(project, thread, 1);
 
   assertEquals(result.schemaVersion, ENGINEERING_WORKBENCH_SCHEMA);
-  assertEquals(result.surface, "evidence");
+  if (result.surface !== "evidence") {
+    throw new Error("Expected the observed thread fixture to remain evidence.");
+  }
   assertEquals(result.project, project);
   assertEquals(result.thread, thread);
   assertEquals(result.alignment, {
@@ -24,6 +29,72 @@ Deno.test("engineering Workbench projection composes intent and observed proof w
   });
   assertEquals(result.project === project, false);
   assertEquals(result.thread === thread, false);
+});
+
+Deno.test("engineering Workbench projects the exact V2 documentary baseline without an evidence graph", () => {
+  const thread = documentaryThreadFixture("drone-concept");
+  const project: EngineeringProjectSnapshot = {
+    ...projectFixture("drone-concept"),
+    schemaVersion: "2.0",
+    project: {
+      ...projectFixture("drone-concept").project,
+      subjectId: "drone-concept",
+      name: "Drone concept",
+    },
+    threadSnapshots: [{
+      snapshotId: thread.id,
+      revision: 1,
+      subjectId: "drone-concept",
+    }],
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
+    operatorCommandsEnabled: true,
+  });
+
+  assertEquals(result.surface, "documentary");
+  if (result.surface !== "documentary") {
+    throw new Error("Expected the approved-discovery root record.");
+  }
+  assertEquals(result.documentary.status, "recorded");
+  assertEquals(result.documentary.record, {
+    origin: "approved-discovery",
+    snapshotId: thread.id,
+    snapshotRevision: 1,
+    artifactId: "approved-discovery-document-r1",
+    label: "Approved discovery documentary baseline (pre-technical)",
+    fingerprint: "sha256:documentary-r1",
+    uri: "state/approved-discovery-baselines/documentary-r1.json",
+    recordedAt: "2026-08-01T12:00:00.000Z",
+  });
+  assertEquals(result.documentary.technicalEvidence.status, "not-recorded");
+  assertEquals("thread" in result, false);
+  assertEquals("alignment" in result, false);
+  assertEquals(result.capabilities.operatorCommands.enabled, false);
+});
+
+Deno.test("only the exact approved-discovery documentary root bypasses the evidence surface", () => {
+  const thread = documentaryThreadFixture("drone-concept");
+  const project: EngineeringProjectSnapshot = {
+    ...projectFixture("drone-concept"),
+    schemaVersion: "2.0",
+    project: {
+      ...projectFixture("drone-concept").project,
+      subjectId: "drone-concept",
+      name: "Drone concept",
+    },
+    threadSnapshots: [{
+      snapshotId: thread.id,
+      revision: 1,
+      subjectId: "drone-concept",
+    }],
+  };
+  const nonBaseline = structuredClone(thread);
+  nonBaseline.artifacts[0]!.producedBy = "some_other_document_operation";
+
+  const result = projectEngineeringWorkbenchSnapshot(project, nonBaseline, 1);
+
+  assertEquals(result.surface, "evidence");
 });
 
 Deno.test("engineering Workbench projects a discovery plan without inventing a technical thread", () => {
@@ -66,7 +137,103 @@ Deno.test("engineering Workbench projects a discovery plan without inventing a t
   assertEquals(result.project.threadSnapshots, []);
   assertEquals(result.planning.technicalBaseline.status, "not-created");
   assertEquals(result.planning.technicalBaseline.message.includes("not created"), true);
+  assertEquals(result.planning.baselineRun, undefined);
+  assertEquals(result.planning.activity, { version: 0, milestones: [] });
   assertEquals("thread" in result, false);
+});
+
+Deno.test("planning Workbench projects only public status milestones for the first baseline run", () => {
+  const project = planningProjectWithRun("running");
+  const updates: LiveThreadUpdate[] = [
+    {
+      schemaVersion: "live-thread-update/1.0",
+      sequence: 6,
+      subjectId: "drone-concept",
+      runId: "run-baseline",
+      operationId: "provider-hidden",
+      baseRevision: 0,
+      state: "running",
+      recordedAt: "2026-08-01T12:02:00.000Z",
+      graph: {
+        nodes: [{
+          id: "raw-graph-node",
+          ref: { kind: "artifact", id: "provider-secret" },
+          entityKind: "artifact",
+          label: "raw provider structured content",
+          system: "private-provider",
+          freshness: "running",
+          summary: "do not expose",
+        }],
+        edges: [],
+      },
+    },
+    {
+      schemaVersion: "live-thread-update/1.0",
+      sequence: 7,
+      subjectId: "drone-concept",
+      runId: "another-run",
+      operationId: "not-the-baseline",
+      baseRevision: 0,
+      state: "failed",
+      recordedAt: "2026-08-01T12:03:00.000Z",
+      graph: { nodes: [], edges: [] },
+    },
+  ];
+
+  const result = projectEngineeringPlanningWorkbenchSnapshot(project, updates);
+
+  assertEquals(result.planning.technicalBaseline.status, "running");
+  assertEquals(result.planning.baselineRun, {
+    id: "run-baseline",
+    status: "running",
+    workItem: {
+      id: "work-define",
+      title: "Prepare the first system definition",
+      kind: "define",
+    },
+    queuedAt: "2026-08-01T12:00:00.000Z",
+    startedAt: "2026-08-01T12:01:00.000Z",
+    statusHistory: [{
+      status: "queued",
+      at: "2026-08-01T12:00:00.000Z",
+    }, {
+      status: "running",
+      at: "2026-08-01T12:01:00.000Z",
+    }],
+  });
+  assertEquals(result.planning.activity, {
+    version: 7,
+    milestones: [{
+      sequence: 6,
+      state: "running",
+      recordedAt: "2026-08-01T12:02:00.000Z",
+    }],
+  });
+
+  const browserPayload = JSON.stringify(result);
+  assertEquals(browserPayload.includes("raw provider structured content"), false);
+  assertEquals(browserPayload.includes("provider-secret"), false);
+  assertEquals(browserPayload.includes("not-the-baseline"), false);
+  assertEquals(browserPayload.includes("provider failure detail"), false);
+  assertEquals(browserPayload.includes("provider raw run summary"), false);
+});
+
+Deno.test("planning Workbench maps terminal pre-evidence runs without claiming a baseline", () => {
+  const failed = projectEngineeringPlanningWorkbenchSnapshot(
+    planningProjectWithRun("failed"),
+  );
+  const completed = projectEngineeringPlanningWorkbenchSnapshot(
+    planningProjectWithRun("completed"),
+  );
+
+  assertEquals(failed.planning.technicalBaseline.status, "failed");
+  assertEquals(completed.planning.technicalBaseline.status, "not-created");
+  assertEquals(JSON.stringify(failed).includes("provider failure detail"), false);
+  assertEquals(JSON.stringify(failed).includes("provider raw run summary"), false);
+  assertEquals(
+    completed.planning.technicalBaseline.message.includes("completed without"),
+    true,
+  );
 });
 
 Deno.test("planning-only Workbench projection refuses a project with technical references", () => {
@@ -97,6 +264,9 @@ Deno.test("engineering Workbench projection exposes a newer current thread witho
     2,
   );
 
+  if (result.surface !== "evidence") {
+    throw new Error("Expected a later canonical revision to remain evidence.");
+  }
   assertEquals(result.alignment, {
     status: "thread-ahead",
     projectThreadRevision: 1,
@@ -149,6 +319,73 @@ function projectFixture(
   };
 }
 
+function planningProjectWithRun(
+  status: "running" | "failed" | "completed",
+): EngineeringProjectSnapshot {
+  const project = projectFixture("drone-concept");
+  return {
+    ...project,
+    project: {
+      ...project.project,
+      subjectId: "drone-concept",
+    },
+    threadSnapshots: [],
+    phases: [{
+      id: "define",
+      name: "Define",
+      order: 1,
+      description: "Turn discovery into a bounded technical baseline.",
+      workItemIds: ["work-define"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "work-define",
+      phaseId: "define",
+      title: "Prepare the first system definition",
+      description: "Record the first baseline from reviewed discovery.",
+      kind: "define",
+      status: "in-progress",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+    agentRuns: [{
+      id: "run-baseline",
+      workItemId: "work-define",
+      status,
+      summary: "provider raw run summary",
+      queuedAt: "2026-08-01T12:00:00.000Z",
+      startedAt: "2026-08-01T12:01:00.000Z",
+      ...(status !== "running" ? { completedAt: "2026-08-01T12:04:00.000Z" } : {}),
+      evidenceRefs: [],
+      ...(status === "failed"
+        ? {
+          failure: {
+            code: "provider-failed",
+            message: "provider failure detail",
+          },
+        }
+        : {}),
+      statusHistory: [{
+        commandId: "queue-baseline",
+        status: "queued",
+        at: "2026-08-01T12:00:00.000Z",
+        actor: { id: "operator", origin: "human" },
+        summary: "provider raw run summary",
+      }, {
+        commandId: "claim-baseline",
+        status,
+        at: "2026-08-01T12:01:00.000Z",
+        actor: { id: "agent", origin: "agent" },
+        summary: "provider raw run summary",
+      }],
+    }],
+  };
+}
+
 function threadFixture(subjectId: string): LiveThreadWorkbenchSnapshot {
   return {
     schemaVersion: "thread-workbench/0.1",
@@ -178,6 +415,58 @@ function threadFixture(subjectId: string): LiveThreadWorkbenchSnapshot {
     graph: { nodes: [], edges: [] },
     flow: [],
     artifacts: [],
+    observations: [],
+    requirements: [],
+    violations: [],
+    actions: [],
+    live: {
+      schemaVersion: "live-thread-overlay/1.0",
+      version: 0,
+      active: [],
+    },
+  };
+}
+
+function documentaryThreadFixture(subjectId: string): LiveThreadWorkbenchSnapshot {
+  return {
+    schemaVersion: "thread-workbench/0.1",
+    id: `${subjectId}:r1:approved-discovery-baseline`,
+    subject: { id: subjectId, label: "Drone concept", program: "Not recorded" },
+    generatedAt: "2026-08-01T12:00:00.000Z",
+    source: "observed",
+    sourceLabel: "CANONICAL THREAD SNAPSHOT",
+    change: {
+      id: "approved-discovery-change-r1",
+      title: "Record approved discovery documentary baseline",
+      summary: "Recorded pre-technical documentary provenance.",
+      author: "Not recorded",
+      revision: "documentary-r1",
+      changedAt: "2026-08-01T12:00:00.000Z",
+      status: "pending",
+      files: [],
+    },
+    components: {
+      schemaVersion: "thread-components/1.0",
+      authority: "workspace-declared",
+      subjectId,
+      rationale: "No product components are recorded in a documentary baseline.",
+      systemViews: {},
+      components: [],
+    },
+    graph: { nodes: [], edges: [] },
+    flow: [],
+    artifacts: [{
+      id: "approved-discovery-document-r1",
+      label: "Approved discovery documentary baseline (pre-technical)",
+      kind: "document",
+      system: "casys-digital-thread",
+      revision: "documentary-r1",
+      freshness: "fresh",
+      fingerprint: "sha256:documentary-r1",
+      uri: "state/approved-discovery-baselines/documentary-r1.json",
+      producedBy: "baseline_from_approved_discovery",
+      dependsOn: [],
+    }],
     observations: [],
     requirements: [],
     violations: [],

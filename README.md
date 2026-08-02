@@ -106,8 +106,9 @@ compare the declared fleet with live MCP and Docker observations; those Console 
 remain read-only. Runs also discovers persisted Modelica records through its two
 read-only tools; it never reads the sidecar's Docker volume. The same MCP server now
 exposes a separate, revision-bound project-control surface for agents. It can read a
-project, propose a decision, and advance a run which a human already queued; it cannot
-approve, reject, or queue work.
+project, publish its bounded path, propose a decision, and execute the one already
+human-authorized documentary-baseline operation; it cannot approve, reject, or queue
+work.
 
 For the exact, version-bound CoffeeMachine nominal run, the console also sends the
 measured temperature to `syson_constraint_evaluate` and displays the live result as a
@@ -154,11 +155,10 @@ Engineering provider `tools/call` requests remain backend-only and require a sep
 orchestrated agent execution.
 
 The browser never receives generic MCP authority. Agents use the Console MCP server's
-project tools to observe the same project, record proposals, and claim or advance only
-human-queued runs. Completion is refused until an exact canonical descendant
-`ThreadSnapshot` exists and its named evidence is new or content-changed from the run's
-exact base. Agents never receive project approval, rejection, or queue authority through
-MCP.
+project tools to observe the same project, record proposals, and act only on
+human-queued runs. Agents never receive project approval, rejection, or queue authority
+through MCP. A later technical run must still publish and read back exact evidence before
+completion; it cannot turn a raw provider response into thread truth.
 
 New product ideas begin in a separate immutable `ProjectDiscoverySnapshot`, not in an
 empty engineering project. Agents can start a discovery, prepare one bounded question at
@@ -166,13 +166,19 @@ a time, record a sourced answer, and propose a brief through `project_discovery_
 tools. The normal exchange happens in the paired agent conversation; the loopback
 Discovery Workbench receives the resulting snapshots live as the shared project record.
 Direct browser correction is a deliberate recovery path, while brief approval or
-revision remains a human review action. The domain handoff can now create an
-intentionally empty engineering project from the exact approved brief while retaining
-its fingerprint. The local Discovery Workbench exposes that handoff as one explicit
-same-origin human action: it creates only the immutable project shell under
-`state/local/engineering-projects/`. It does not fabricate a SysON model,
-`ThreadSnapshot`, or technical proof, and it does not claim that agent planning is
-already published through the current MCP runtime.
+revision remains a human review action. The domain handoff creates a schema-`2.0`
+engineering project from the exact approved brief while retaining its fingerprint. The
+local Discovery Workbench exposes that handoff as one explicit same-origin human action.
+
+For an idea/specification project, the first ready work item is the reviewed
+`baseline.from-approved-discovery@1` operation. A human authorizes that exact run; the
+backend captures the exact approved discovery and reviewed plan as an immutable,
+SHA-256-addressed document, then records the resulting root `ThreadSnapshot`. This is a
+**documentary, pre-technical baseline**: it proves the handoff and plan provenance, not
+a SysML model, CAD geometry, FEA result, measurement, requirement verdict, conformity,
+or certification. No generic technical executor is implied by this first capture.
+SysML, CAD, physics, measurement, and verification loops need their own later reviewed
+operations, provider evidence, and exact bindings.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
 bootstraps a local CM-01 revision from read-only SysON inventory, one persisted Modelica
@@ -251,6 +257,7 @@ security boundary.
 | `config/verification-plans/`             | Versioned provisional scenario-contract plans                            |
 | `state/fixtures/`                        | Canonical, explicitly labelled console and run fixtures                  |
 | `state/local/engineering-projects/`      | Ignored immutable active project revisions and command receipts          |
+| `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence |
 | `docs/README.md`                         | Diátaxis documentation map                                               |
 | `docs/tutorials/`                        | End-to-end learning paths, including the real CoffeeMachine run          |
 | `docs/how-to/`                           | Focused operating guides for native workflows and MCP Apps               |

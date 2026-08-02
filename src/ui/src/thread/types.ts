@@ -273,7 +273,38 @@ export interface EngineeringEvidenceWorkbenchSnapshot
 }
 
 /**
- * Discovery-derived project intent before any technical baseline exists.
+ * A durable capture of the approved discovery and reviewed path.
+ *
+ * This deliberately has no `thread` field: the first record is documentary
+ * provenance, not an empty evidence graph. CAD, SysML, simulation,
+ * measurement, requirement and compliance claims must arrive through a later
+ * linked technical snapshot.
+ */
+export interface EngineeringDocumentaryWorkbenchSnapshot
+  extends EngineeringWorkbenchBaseSnapshot {
+  readonly surface: "documentary";
+  readonly documentary: {
+    readonly status: "recorded";
+    readonly message: string;
+    readonly record: {
+      readonly origin: "approved-discovery";
+      readonly snapshotId: string;
+      readonly snapshotRevision: number;
+      readonly artifactId: string;
+      readonly label: string;
+      readonly fingerprint: string;
+      readonly uri?: string;
+      readonly recordedAt: string;
+    };
+    readonly technicalEvidence: {
+      readonly status: "not-recorded";
+      readonly message: string;
+    };
+  };
+}
+
+/**
+ * Discovery-derived project intent before any documentary pre-technical baseline exists.
  * This is deliberately not an empty technical thread.
  */
 export interface EngineeringPlanningWorkbenchSnapshot
@@ -281,14 +312,67 @@ export interface EngineeringPlanningWorkbenchSnapshot
   readonly surface: "planning";
   readonly planning: {
     readonly technicalBaseline: {
-      readonly status: "not-created";
+      readonly status: EngineeringTechnicalBaselineStatus;
       readonly message: string;
     };
+    /** Public-safe status history for the first documentary baseline attempt. */
+    readonly baselineRun?: EngineeringPlanningBaselineRun;
+    /** Filtered milestones from the append-only live activity journal. */
+    readonly activity: EngineeringPlanningActivity;
   };
+}
+
+export type EngineeringTechnicalBaselineStatus =
+  | "not-created"
+  | "queued"
+  | "running"
+  | "publishing"
+  | "failed";
+
+export type EngineeringPlanningAgentRunStatus =
+  | "queued"
+  | "running"
+  | "waiting-for-decision"
+  | "publishing"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface EngineeringPlanningBaselineRun {
+  readonly id: string;
+  readonly status: EngineeringPlanningAgentRunStatus;
+  readonly workItem: {
+    readonly id: string;
+    readonly title: string;
+    readonly kind: string;
+  };
+  readonly queuedAt: string;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+  /** Intentionally excludes command id, actor id and agent/provider prose. */
+  readonly statusHistory: readonly EngineeringPlanningBaselineRunMilestone[];
+}
+
+export interface EngineeringPlanningBaselineRunMilestone {
+  readonly status: EngineeringPlanningAgentRunStatus;
+  readonly at: string;
+}
+
+export interface EngineeringPlanningActivity {
+  readonly version: number;
+  /** No run id, operation id, graph patch, tool arguments or tool result. */
+  readonly milestones: readonly EngineeringPlanningActivityMilestone[];
+}
+
+export interface EngineeringPlanningActivityMilestone {
+  readonly sequence: number;
+  readonly state: "running" | "fresh" | "failed" | "reconciled";
+  readonly recordedAt: string;
 }
 
 export type EngineeringWorkbenchSnapshot =
   | EngineeringEvidenceWorkbenchSnapshot
+  | EngineeringDocumentaryWorkbenchSnapshot
   | EngineeringPlanningWorkbenchSnapshot;
 
 export function isEngineeringWorkbenchSnapshot(
@@ -311,6 +395,20 @@ export function isEngineeringWorkbenchSnapshot(
     return candidate.project.threadSnapshots.length === 0 &&
       isPlanningWorkbenchProjection(candidate.planning);
   }
+  if (candidate.surface === "documentary") {
+    const reference = candidate.project.threadSnapshots[0];
+    return hasAllowedKeys(candidate, [
+      "schemaVersion",
+      "surface",
+      "project",
+      "capabilities",
+      "documentary",
+    ]) && candidate.project.threadSnapshots.length === 1 &&
+      reference !== undefined &&
+      isDocumentaryWorkbenchProjection(candidate.documentary) &&
+      candidate.documentary.record.snapshotId === reference.snapshotId &&
+      candidate.documentary.record.snapshotRevision === reference.revision;
+  }
   return candidate.surface === "evidence" &&
     isThreadWorkbenchSnapshot(candidate.thread) &&
     !!candidate.alignment &&
@@ -320,6 +418,72 @@ export function isEngineeringWorkbenchSnapshot(
     typeof candidate.alignment.currentThreadRevision === "number";
 }
 
+function isDocumentaryWorkbenchProjection(
+  value: unknown,
+): value is EngineeringDocumentaryWorkbenchSnapshot["documentary"] {
+  if (!value || typeof value !== "object") return false;
+  const documentary = value as Partial<
+    EngineeringDocumentaryWorkbenchSnapshot["documentary"]
+  >;
+  if (
+    !hasExactKeys(documentary, [
+      "status",
+      "message",
+      "record",
+      "technicalEvidence",
+    ]) ||
+    documentary.status !== "recorded" ||
+    typeof documentary.message !== "string" ||
+    !isDocumentaryRecord(documentary.record) ||
+    !isDocumentaryTechnicalEvidence(documentary.technicalEvidence)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isDocumentaryRecord(
+  value: unknown,
+): value is EngineeringDocumentaryWorkbenchSnapshot["documentary"]["record"] {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<
+    EngineeringDocumentaryWorkbenchSnapshot["documentary"]["record"]
+  >;
+  return hasAllowedKeys(record, [
+    "origin",
+    "snapshotId",
+    "snapshotRevision",
+    "artifactId",
+    "label",
+    "fingerprint",
+    "uri",
+    "recordedAt",
+  ]) && record.origin === "approved-discovery" &&
+    typeof record.snapshotId === "string" &&
+    typeof record.snapshotRevision === "number" &&
+    Number.isSafeInteger(record.snapshotRevision) &&
+    record.snapshotRevision > 0 &&
+    typeof record.artifactId === "string" &&
+    typeof record.label === "string" &&
+    typeof record.fingerprint === "string" && record.fingerprint.length > 0 &&
+    (record.uri === undefined || typeof record.uri === "string") &&
+    typeof record.recordedAt === "string";
+}
+
+function isDocumentaryTechnicalEvidence(
+  value: unknown,
+): value is EngineeringDocumentaryWorkbenchSnapshot["documentary"][
+  "technicalEvidence"
+] {
+  if (!value || typeof value !== "object") return false;
+  const technicalEvidence = value as Partial<
+    EngineeringDocumentaryWorkbenchSnapshot["documentary"]["technicalEvidence"]
+  >;
+  return hasExactKeys(technicalEvidence, ["status", "message"]) &&
+    technicalEvidence.status === "not-recorded" &&
+    typeof technicalEvidence.message === "string";
+}
+
 function isPlanningWorkbenchProjection(
   value: unknown,
 ): value is EngineeringPlanningWorkbenchSnapshot["planning"] {
@@ -327,9 +491,150 @@ function isPlanningWorkbenchProjection(
   const planning = value as Partial<
     EngineeringPlanningWorkbenchSnapshot["planning"]
   >;
-  return !!planning.technicalBaseline &&
-    planning.technicalBaseline.status === "not-created" &&
-    typeof planning.technicalBaseline.message === "string";
+  const hasBaseline = planning.baselineRun !== undefined &&
+    isPlanningBaselineRun(planning.baselineRun);
+  return hasAllowedKeys(planning, [
+    "technicalBaseline",
+    "baselineRun",
+    "activity",
+  ]) && !!planning.technicalBaseline &&
+    isTechnicalBaseline(planning.technicalBaseline) &&
+    isPlanningActivity(planning.activity) &&
+    (hasBaseline
+      ? planning.technicalBaseline.status ===
+        technicalBaselineStatusForRun(planning.baselineRun.status)
+      : planning.baselineRun === undefined &&
+        planning.technicalBaseline.status === "not-created" &&
+        planning.activity.milestones.length === 0);
+}
+
+function isTechnicalBaseline(
+  value: unknown,
+): value is EngineeringPlanningWorkbenchSnapshot["planning"][
+  "technicalBaseline"
+] {
+  if (!value || typeof value !== "object") return false;
+  const baseline = value as Partial<
+    EngineeringPlanningWorkbenchSnapshot["planning"]["technicalBaseline"]
+  >;
+  return hasExactKeys(baseline, ["status", "message"]) &&
+    typeof baseline.message === "string" &&
+    isTechnicalBaselineStatus(baseline.status);
+}
+
+function isTechnicalBaselineStatus(
+  value: unknown,
+): value is EngineeringTechnicalBaselineStatus {
+  return value === "not-created" || value === "queued" ||
+    value === "running" || value === "publishing" || value === "failed";
+}
+
+function isPlanningBaselineRun(
+  value: unknown,
+): value is EngineeringPlanningBaselineRun {
+  if (!value || typeof value !== "object") return false;
+  const run = value as Partial<EngineeringPlanningBaselineRun>;
+  return hasAllowedKeys(run, [
+    "id",
+    "status",
+    "workItem",
+    "queuedAt",
+    "startedAt",
+    "completedAt",
+    "statusHistory",
+  ]) && typeof run.id === "string" &&
+    isPlanningAgentRunStatus(run.status) &&
+    !!run.workItem && hasExactKeys(run.workItem, ["id", "title", "kind"]) &&
+    typeof run.workItem.id === "string" &&
+    typeof run.workItem.title === "string" &&
+    typeof run.workItem.kind === "string" &&
+    typeof run.queuedAt === "string" &&
+    (run.startedAt === undefined || typeof run.startedAt === "string") &&
+    (run.completedAt === undefined || typeof run.completedAt === "string") &&
+    Array.isArray(run.statusHistory) &&
+    run.statusHistory.every(isPlanningBaselineRunMilestone);
+}
+
+function isPlanningBaselineRunMilestone(
+  value: unknown,
+): value is EngineeringPlanningBaselineRunMilestone {
+  if (!value || typeof value !== "object") return false;
+  const milestone = value as Partial<EngineeringPlanningBaselineRunMilestone>;
+  return hasExactKeys(milestone, ["status", "at"]) &&
+    isPlanningAgentRunStatus(milestone.status) &&
+    typeof milestone.at === "string";
+}
+
+function isPlanningAgentRunStatus(
+  value: unknown,
+): value is EngineeringPlanningAgentRunStatus {
+  return value === "queued" || value === "running" ||
+    value === "waiting-for-decision" || value === "publishing" ||
+    value === "completed" || value === "failed" || value === "cancelled";
+}
+
+function technicalBaselineStatusForRun(
+  status: EngineeringPlanningAgentRunStatus,
+): EngineeringTechnicalBaselineStatus {
+  if (status === "queued") return "queued";
+  if (status === "running" || status === "waiting-for-decision") {
+    return "running";
+  }
+  if (status === "publishing") return "publishing";
+  if (status === "failed") return "failed";
+  return "not-created";
+}
+
+function isPlanningActivity(
+  value: unknown,
+): value is EngineeringPlanningActivity {
+  if (!value || typeof value !== "object") return false;
+  const activity = value as Partial<EngineeringPlanningActivity>;
+  if (
+    !hasExactKeys(activity, ["version", "milestones"]) ||
+    typeof activity.version !== "number" ||
+    !Number.isSafeInteger(activity.version) || activity.version < 0 ||
+    !Array.isArray(activity.milestones)
+  ) {
+    return false;
+  }
+  const { version, milestones } = activity;
+  return milestones.every(isPlanningActivityMilestone) &&
+    milestones.every((milestone) => milestone.sequence <= version) &&
+    milestones.every((milestone, index) => {
+      if (index === 0) return true;
+      const previous = milestones[index - 1];
+      return previous !== undefined && milestone.sequence > previous.sequence;
+    });
+}
+
+function isPlanningActivityMilestone(
+  value: unknown,
+): value is EngineeringPlanningActivityMilestone {
+  if (!value || typeof value !== "object") return false;
+  const milestone = value as Partial<EngineeringPlanningActivityMilestone>;
+  return hasExactKeys(milestone, ["sequence", "state", "recordedAt"]) &&
+    typeof milestone.sequence === "number" &&
+    Number.isSafeInteger(milestone.sequence) && milestone.sequence > 0 &&
+    (milestone.state === "running" || milestone.state === "fresh" ||
+      milestone.state === "failed" || milestone.state === "reconciled") &&
+    typeof milestone.recordedAt === "string";
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length &&
+    expected.every((key) => Object.hasOwn(value, key));
+}
+
+function hasAllowedKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
 export function isThreadWorkbenchSnapshot(

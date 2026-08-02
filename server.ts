@@ -10,6 +10,11 @@ import {
   requestUsesExplicitLoopbackHost,
 } from "./src/adapters/loopback-host.ts";
 import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-store.ts";
+import { FileApprovedDiscoveryBaselineCaptureStore } from "./src/adapters/file-approved-discovery-baseline-capture-store.ts";
+import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
+import { ApprovedDiscoveryBaselineRunExecutor } from "./src/adapters/approved-discovery-baseline-run-executor.ts";
+import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
+import { FileLiveThreadUpdateStore } from "./src/adapters/live-thread-update-store.ts";
 import { FileProjectDiscoveryRevisionStore } from "./src/adapters/project-discovery-store.ts";
 import { createEngineeringProjectCommandRuntime } from "./src/adapters/engineering-project-command-runtime.ts";
 import {
@@ -56,6 +61,11 @@ const DEFAULT_PROJECT_PATH = "config/projects/coffee-machine-cm01.project.json";
 const DEFAULT_ACTIVE_PROJECT_DIRECTORY = "state/local/engineering-projects";
 const DEFAULT_PROJECT_DISCOVERY_DIRECTORY = "state/local/project-discoveries";
 const DEFAULT_THREAD_SNAPSHOT_DIRECTORY = "state/local/thread-snapshots";
+const DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY = "state/local/live-thread-updates";
+const DEFAULT_APPROVED_DISCOVERY_CAPTURE_DIRECTORY =
+  "state/local/approved-discovery-captures";
+const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
+  "state/local/engineering-project-run-leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
 
 export interface CreateConsoleServerOptions {
@@ -79,6 +89,9 @@ export interface CreateConsoleServerOptions {
   activeProjectDirectory?: string;
   projectDiscoveryDirectory?: string;
   threadSnapshotDirectory?: string;
+  liveThreadUpdateDirectory?: string;
+  approvedDiscoveryCaptureDirectory?: string;
+  engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
 }
 
@@ -117,7 +130,7 @@ export async function createConsoleServer(
     ? undefined
     : options.projectDiscovery ?? createProjectDiscovery(options);
   const instructions = projectControl || projectDiscovery
-    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery, but every work item must cite a reviewed server-side operation and the call cannot execute a provider, approve a decision, queue work or create evidence. Agents may propose decisions and advance only human-queued agent runs with explicit revision-bound project tools. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
+    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery, but every work item must cite a reviewed server-side operation and the call cannot execute a provider, approve a decision, queue work or create evidence. project_agent_run_execute can only advance a human-queued, registered V2 approved-discovery baseline through a server-owned immutable documentary capture; it accepts no provider arguments and creates no CAD, SysML, simulation, measurement, or compliance proof. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -160,14 +173,22 @@ export async function createConsoleServer(
 async function createProjectControl(
   options: CreateConsoleServerOptions,
 ): Promise<ProjectControlToolDependencies> {
+  const activeThreadSnapshots = new FileThreadSnapshotStore(
+    options.threadSnapshotDirectory ?? DEFAULT_THREAD_SNAPSHOT_DIRECTORY,
+  );
   const threadSnapshots = new OrderedExactThreadSnapshotReader([
-    new FileThreadSnapshotStore(
-      options.threadSnapshotDirectory ?? DEFAULT_THREAD_SNAPSHOT_DIRECTORY,
-    ),
+    activeThreadSnapshots,
     new FileExactThreadSnapshotDirectory(
       options.projectBaselineDirectory ?? DEFAULT_PROJECT_BASELINE_DIRECTORY,
     ),
   ]);
+  const discoveries = new FileProjectDiscoveryRevisionStore(
+    options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
+  );
+  const captures = new FileApprovedDiscoveryBaselineCaptureStore(
+    options.approvedDiscoveryCaptureDirectory ??
+      DEFAULT_APPROVED_DISCOVERY_CAPTURE_DIRECTORY,
+  );
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId ?? DEFAULT_PROJECT_ID,
     trackedManifestPath: options.projectPath ?? DEFAULT_PROJECT_PATH,
@@ -175,13 +196,32 @@ async function createProjectControl(
       DEFAULT_ACTIVE_PROJECT_DIRECTORY,
     evidenceSnapshots: threadSnapshots,
     planning: {
-      discoveries: new FileProjectDiscoveryRevisionStore(
-        options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
-      ),
+      discoveries,
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
     },
+    initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
+      activeThreadSnapshots,
+      captures,
+    ),
   });
-  return { projects: runtime.projects, commands: runtime.commands };
+  return {
+    projects: runtime.projects,
+    commands: runtime.commands,
+    baselineExecutor: new ApprovedDiscoveryBaselineRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      discoveries,
+      captures,
+      snapshots: activeThreadSnapshots,
+      lease: new FileEngineeringProjectRunLease(
+        options.engineeringProjectRunLeaseDirectory ??
+          DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY,
+      ),
+      liveUpdates: new FileLiveThreadUpdateStore(
+        options.liveThreadUpdateDirectory ?? DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY,
+      ),
+    }),
+  };
 }
 
 function createProjectDiscovery(

@@ -87,6 +87,74 @@ Deno.test("file live journal serializes concurrent agent writers", async () => {
   }
 });
 
+Deno.test("file live journal atomically records one idempotent lifecycle milestone and reconciliation", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-live-once-" });
+  try {
+    const first = new FileLiveThreadUpdateStore(directory);
+    const second = new FileLiveThreadUpdateStore(directory);
+    const input = {
+      subjectId: "coffee-machine-cm01",
+      runId: "same-command-run",
+      operationId: "baseline.from-approved-discovery",
+      baseRevision: 0,
+      state: "running" as const,
+      recordedAt: "2026-08-01T10:00:00.000Z",
+      graph: { nodes: [artifactNode("documentary-baseline", "running")], edges: [] },
+    };
+
+    const [firstMilestone, secondMilestone] = await Promise.all([
+      first.appendOnce(input),
+      second.appendOnce({
+        ...input,
+        recordedAt: "2026-08-01T10:00:01.000Z",
+        graph: {
+          nodes: [artifactNode("documentary-baseline-retry", "running")],
+          edges: [],
+        },
+      }),
+    ]);
+    assertEquals(firstMilestone.sequence, secondMilestone.sequence);
+
+    const [firstReconciliation, secondReconciliation] = await Promise.all([
+      first.reconcileRunOnce(
+        input.subjectId,
+        input.runId,
+        "2026-08-01T10:00:02.000Z",
+      ),
+      second.reconcileRunOnce(
+        input.subjectId,
+        input.runId,
+        "2026-08-01T10:00:03.000Z",
+      ),
+    ]);
+    assertEquals(firstReconciliation.sequence, secondReconciliation.sequence);
+
+    const journal = await first.list(input.subjectId);
+    assertEquals(journal.map((update) => update.state), ["running", "reconciled"]);
+    assertEquals(journal.map((update) => update.sequence), [1, 2]);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("regular append remains append-only for matching lifecycle identities", async () => {
+  const store = new LiveThreadUpdateStore();
+  const input = {
+    subjectId: "coffee-machine-cm01",
+    runId: "append-only-run",
+    operationId: "agent-progress",
+    baseRevision: 5,
+    state: "running" as const,
+    recordedAt: "2026-08-01T10:00:00.000Z",
+    graph: { nodes: [artifactNode("append-only", "running")], edges: [] },
+  };
+
+  await Promise.all([store.append(input), store.append(input)]);
+  const journal = await store.list(input.subjectId);
+  assertEquals(journal.map((update) => update.sequence), [1, 2]);
+  assertEquals(journal.map((update) => update.state), ["running", "running"]);
+});
+
 Deno.test("live thread journal is append-only and collapses one operation identity in place", async () => {
   const store = new LiveThreadUpdateStore();
   const canonical = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);

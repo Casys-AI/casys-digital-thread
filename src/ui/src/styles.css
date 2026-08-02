@@ -10420,6 +10420,187 @@ button.erp-bom-row {
   line-height: 1.55;
 }
 
+.planning-baseline-activity {
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
+}
+
+.planning-baseline-activity > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem 0.9rem;
+  border-bottom: 1px solid var(--thread-border);
+}
+
+.planning-baseline-activity p,
+.planning-baseline-run-copy small,
+.planning-baseline-live small {
+  margin: 0 0 0.36rem;
+  color: var(--thread-orange);
+  font: 700 0.5rem/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.planning-baseline-activity h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(0.96rem, 1.6vw, 1.22rem)/1.15 "Iowan Old Style",
+    "Baskerville",
+    Georgia, serif;
+}
+
+.planning-baseline-state {
+  flex: 0 0 auto;
+  padding: 0.33rem 0.48rem;
+  border: 1px solid var(--thread-border-strong);
+  color: var(--thread-muted);
+  font: 700 0.47rem/1 var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.planning-baseline-activity[data-state="queued"] .planning-baseline-state,
+.planning-baseline-activity[data-state="running"] .planning-baseline-state,
+.planning-baseline-activity[data-state="publishing"] .planning-baseline-state {
+  border-color: #d6a47b;
+  color: #8d4d20;
+  background: #fff7ed;
+}
+
+.planning-baseline-activity[data-state="failed"] .planning-baseline-state {
+  border-color: #c79184;
+  color: #8d3023;
+  background: #fff2ef;
+}
+
+.planning-baseline-run {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  padding: 0.95rem 1.1rem;
+}
+
+.planning-baseline-run-copy small,
+.planning-baseline-live small {
+  display: block;
+}
+
+.planning-baseline-run-copy strong {
+  display: block;
+  color: var(--thread-ink);
+  font-size: 0.74rem;
+}
+
+.planning-baseline-run-copy span {
+  display: block;
+  margin-top: 0.28rem;
+  color: var(--thread-muted);
+  font-size: 0.62rem;
+  text-transform: capitalize;
+}
+
+.planning-baseline-run-times {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+}
+
+.planning-baseline-run-times div {
+  min-width: 64px;
+}
+
+.planning-baseline-run-times dt,
+.planning-baseline-run-times dd {
+  margin: 0;
+}
+
+.planning-baseline-run-times dt {
+  color: var(--thread-muted);
+  font: 650 0.46rem/1 var(--mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.planning-baseline-run-times dd {
+  margin-top: 0.28rem;
+  color: var(--thread-ink);
+  font: 650 0.56rem/1.2 var(--mono);
+}
+
+.planning-baseline-empty {
+  margin: 0;
+  padding: 0.95rem 1.1rem;
+  color: var(--thread-muted);
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.planning-baseline-history,
+.planning-baseline-live ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  margin: 0;
+  padding: 0.7rem 1.1rem;
+  border-top: 1px solid var(--thread-border);
+  list-style: none;
+}
+
+.planning-baseline-history li,
+.planning-baseline-live li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  color: var(--thread-muted);
+  font: 650 0.5rem/1.25 var(--mono);
+}
+
+.planning-baseline-history i,
+.planning-baseline-live li > i {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: var(--thread-border-strong);
+}
+
+.planning-baseline-live {
+  border-top: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+
+.planning-baseline-live > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1.1rem 0;
+}
+
+.planning-baseline-live > div span {
+  color: var(--thread-muted);
+  font-size: 0.58rem;
+}
+
+.planning-baseline-live ol {
+  border-top: 0;
+}
+
+.planning-baseline-live li[data-state="running"] > i {
+  background: var(--thread-orange);
+}
+
+.planning-baseline-live li[data-state="fresh"] > i,
+.planning-baseline-live li[data-state="reconciled"] > i {
+  background: #43866f;
+}
+
+.planning-baseline-live li[data-state="failed"] > i {
+  background: #b94b36;
+}
+
 .planning-phase-rail {
   grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
 }
@@ -10494,6 +10675,102 @@ button.erp-bom-row {
   font: 650 0.48rem/1.3 var(--mono);
 }
 
+.planning-baseline-authorization {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.42fr) auto;
+  gap: 0.9rem 1.1rem;
+  align-items: end;
+  padding: 1.05rem 1.1rem;
+  border: 1px solid #d6a47b;
+  border-left: 3px solid var(--thread-orange);
+  background: #fffaf4;
+}
+
+.planning-baseline-authorization p {
+  margin: 0 0 0.36rem;
+  color: var(--thread-orange);
+  font: 700 0.5rem/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.planning-baseline-authorization h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(0.96rem, 1.55vw, 1.2rem)/1.15 "Iowan Old Style",
+    "Baskerville",
+    Georgia, serif;
+}
+
+.planning-baseline-authorization > div > span {
+  display: block;
+  margin-top: 0.36rem;
+  color: var(--thread-muted);
+  font-size: 0.64rem;
+  line-height: 1.5;
+}
+
+.planning-baseline-authorization label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--thread-muted);
+  font: 650 0.47rem/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.planning-baseline-authorization input {
+  min-width: 0;
+  padding: 0.58rem 0.65rem;
+  border: 1px solid var(--thread-border-strong);
+  border-radius: 0;
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+  font: 600 0.67rem/1.2 var(--mono);
+}
+
+.planning-baseline-authorization input:focus-visible {
+  outline: 2px solid var(--thread-orange);
+  outline-offset: 2px;
+}
+
+.planning-baseline-authorize-button {
+  min-height: 2.25rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #a95e2c;
+  color: #fff;
+  background: #a95e2c;
+  font: 700 0.53rem/1.15 var(--mono);
+  letter-spacing: 0.045em;
+  cursor: pointer;
+}
+
+.planning-baseline-authorize-button:hover:not(:disabled) {
+  background: #8d4d20;
+}
+
+.planning-baseline-authorize-button:disabled {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-muted);
+  background: #eee9e2;
+  cursor: not-allowed;
+}
+
+.planning-baseline-command-feedback {
+  grid-column: 1 / -1;
+  color: var(--thread-muted);
+  font-size: 0.61rem;
+  line-height: 1.4;
+}
+
+.planning-baseline-command-feedback[data-state="error"],
+.planning-baseline-command-feedback[data-state="conflict"] {
+  color: #9a3a2a;
+}
+
+.planning-baseline-command-feedback[data-state="success"] {
+  color: #35745f;
+}
+
 .planning-next-step {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
@@ -10515,10 +10792,224 @@ button.erp-bom-row {
   margin-top: -0.35rem;
 }
 
+/* Documentary baseline --------------------------------------------------
+
+   One durable document is useful provenance, but it is not a miniature
+   evidence dashboard. The surface therefore remains deliberately quiet:
+   make the boundary readable first, and move exact hashes and storage details
+   behind an explicit disclosure. */
+
+.documentary-baseline-notice {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--thread-border);
+  border-left: 3px solid var(--thread-green);
+  background: #eef6ef;
+}
+
+.documentary-baseline-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #96bd9f;
+  color: #245b3b;
+  background: #dceee0;
+  font: 700 0.55rem/1 var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.documentary-baseline-notice p,
+.documentary-record-card > header p,
+.documentary-boundary-card > p,
+.documentary-next-step p:first-child {
+  margin: 0 0 0.36rem;
+  color: var(--thread-green);
+  font: 700 0.5rem/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.documentary-baseline-notice h3,
+.documentary-record-card h3,
+.documentary-boundary-card h3,
+.documentary-next-step h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(1rem, 1.8vw, 1.36rem)/1.12 "Iowan Old Style", "Baskerville",
+    Georgia, serif;
+}
+
+.documentary-baseline-notice span {
+  display: block;
+  max-width: 780px;
+  margin-top: 0.43rem;
+  color: var(--thread-muted);
+  font-size: 0.67rem;
+  line-height: 1.55;
+}
+
+.documentary-record-card {
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
+}
+
+.documentary-record-card > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem 0.9rem;
+  border-bottom: 1px solid var(--thread-border);
+  background: linear-gradient(90deg, rgba(54, 117, 83, 0.08), transparent 44%);
+}
+
+.documentary-record-card > header h3 {
+  font-size: clamp(0.96rem, 1.6vw, 1.22rem);
+}
+
+.documentary-record-state {
+  flex: 0 0 auto;
+  padding: 0.33rem 0.48rem;
+  border: 1px solid #96bd9f;
+  color: #245b3b;
+  background: #eef6ef;
+  font: 700 0.47rem/1 var(--mono);
+  letter-spacing: 0.07em;
+}
+
+.documentary-record-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+}
+
+.documentary-record-facts > div {
+  min-width: 0;
+  padding: 0.9rem 1.1rem;
+  border-right: 1px solid var(--thread-border);
+}
+
+.documentary-record-facts > div:last-child {
+  border-right: 0;
+}
+
+.documentary-record-facts dt {
+  margin: 0;
+  color: var(--thread-muted);
+  font: 650 0.46rem/1 var(--mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.documentary-record-facts dd {
+  margin: 0.34rem 0 0;
+  overflow: hidden;
+  color: var(--thread-ink);
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentary-boundary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.documentary-boundary-card {
+  min-width: 0;
+  padding: 1.1rem;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
+}
+
+.documentary-boundary-card.is-recorded {
+  border-top: 3px solid var(--thread-green);
+}
+
+.documentary-boundary-card.is-not-evidence {
+  border-top: 3px solid var(--thread-orange);
+  background: #fffaf4;
+}
+
+.documentary-boundary-card.is-not-evidence > p {
+  color: var(--thread-orange);
+}
+
+.documentary-boundary-card h3 {
+  font-size: clamp(0.94rem, 1.45vw, 1.12rem);
+}
+
+.documentary-boundary-card ul {
+  display: grid;
+  gap: 0.48rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.documentary-boundary-card li {
+  position: relative;
+  padding-left: 0.9rem;
+  color: var(--thread-muted);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.documentary-boundary-card li::before {
+  position: absolute;
+  left: 0;
+  color: var(--thread-green);
+  content: "•";
+}
+
+.documentary-boundary-card.is-not-evidence li::before {
+  color: var(--thread-orange);
+}
+
+.documentary-next-step {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+  padding: 1.15rem;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+
+.documentary-next-step > p:last-child {
+  margin: 0;
+  color: var(--thread-muted);
+  font-size: 0.69rem;
+  line-height: 1.55;
+}
+
+.documentary-record-details {
+  margin-top: -0.35rem;
+}
+
 @media (max-width: 720px) {
   .planning-baseline-notice,
-  .planning-next-step {
+  .planning-next-step,
+  .planning-baseline-authorization,
+  .documentary-baseline-notice,
+  .documentary-next-step {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planning-baseline-activity > header,
+  .planning-baseline-run {
+    align-items: start;
+    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planning-baseline-run-times {
+    flex-wrap: wrap;
   }
 
   .planning-work-list li {
@@ -10527,6 +11018,25 @@ button.erp-bom-row {
 
   .planning-work-list li > span {
     grid-column: 1 / -1;
+  }
+
+  .documentary-record-card > header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .documentary-record-facts,
+  .documentary-boundary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .documentary-record-facts > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--thread-border);
+  }
+
+  .documentary-record-facts > div:last-child {
+    border-bottom: 0;
   }
 
   .thread-workbench .project-navigation {

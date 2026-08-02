@@ -80,7 +80,7 @@ snapshot IDs remain available as audit context.
 ```text
 native Preact SPA                           agent MCP client
   | GET + snapshot SSE                       | project snapshot/proposal
-  | human-only POST                          | run lifecycle only
+  | human-only POST                          | exact queued baseline execution
   v                                          v
                  immutable EngineeringProject revisions
                               |
@@ -109,9 +109,18 @@ self-declared and unauthenticated, so this remains a loopback prototype rather t
 multi-user authorization system. The route has no provider-execution authority.
 
 The same project is visible to agents through the Console MCP server. MCP exposes
-snapshot, proposal, and run-lifecycle tools, but deliberately no approval, rejection, or
-queue tool. Human and agent commands converge on one immutable active store with
-optimistic revision checks and durable idempotency receipts.
+snapshot, proposal, and the narrow execution of an exact human-queued V2 baseline run,
+but deliberately no approval, rejection, or queue tool. Human and agent commands
+converge on one immutable active store with optimistic revision checks and durable
+idempotency receipts.
+
+For a new idea/specification project, that first V2 run creates a SHA-256-addressed,
+immutable document of the exact approved discovery and reviewed plan. The cockpit can
+show its queue, redacted live milestones, and resulting provenance without presenting it
+as a technical graph. This documentary baseline is deliberately pre-technical: it is not
+a SysML model, CAD artifact, FEA/simulation result, measurement, requirement verdict, or
+conformity claim. Technical tool facets remain empty until a later reviewed operation
+produces their own evidence.
 
 The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
 build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It
