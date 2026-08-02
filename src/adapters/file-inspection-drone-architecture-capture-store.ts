@@ -41,15 +41,29 @@ export class FileInspectionDroneArchitectureCaptureStore {
 
     const path = this.pathFor(fingerprint);
     await Deno.mkdir(this.directory, { recursive: true });
-    try {
-      await Deno.writeTextFile(path, text, { createNew: true });
-    } catch (error) {
-      if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+    const created = await linkNewCaptureDurably(path, text, this.directory);
+    if (!created) {
       const existing = await Deno.readTextFile(path);
       if (existing !== text) {
-        throw new Error(
-          `Inspection-drone architecture capture ${digest} already exists with different content.`,
+        const existingDigest = await fingerprintBytes(
+          new TextEncoder().encode(existing),
         );
+        if (existingDigest === digest) {
+          throw new Error(
+            `Inspection-drone architecture capture ${digest} already exists with different content.`,
+          );
+        }
+        // A final capture pathname with the wrong digest can only be a
+        // partial/corrupt predecessor (or an integrity failure). Replace it
+        // atomically with the bytes named by this digest so a retry after the
+        // already-completed provider write can recover without another insert.
+        await replaceCorruptCaptureDurably(path, text, this.directory);
+        const repaired = await Deno.readTextFile(path);
+        if (repaired !== text) {
+          throw new Error(
+            `Inspection-drone architecture capture ${digest} could not be repaired exactly.`,
+          );
+        }
       }
     }
     return { uri: this.uriFor(fingerprint), path };
@@ -90,4 +104,99 @@ async function fingerprintBytes(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/**
+ * Prepare the bytes under a private pathname, fsync them, then link them into
+ * the content-addressed final pathname without overwriting a concurrent final
+ * file. A crash can leave only a disposable `.tmp`; it can never make a
+ * partial file look like the immutable digest capture.
+ */
+async function linkNewCaptureDurably(
+  path: string,
+  text: string,
+  directory: string,
+): Promise<boolean> {
+  const temporaryPath = `${path}.${crypto.randomUUID()}.tmp`;
+  await writeTextDurably(temporaryPath, text);
+  let linked = false;
+  try {
+    await Deno.link(temporaryPath, path);
+    linked = true;
+  } catch (error) {
+    await removeIfPresent(temporaryPath);
+    if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+  }
+  await removeIfPresent(temporaryPath);
+  if (linked) await syncDirectoryChain(directory);
+  return linked;
+}
+
+/** Replace only bytes already proved not to match their content-addressed key. */
+async function replaceCorruptCaptureDurably(
+  path: string,
+  text: string,
+  directory: string,
+): Promise<void> {
+  const temporaryPath = `${path}.${crypto.randomUUID()}.tmp`;
+  await writeTextDurably(temporaryPath, text);
+  await Deno.rename(temporaryPath, path);
+  await syncDirectoryChain(directory);
+}
+
+async function writeTextDurably(path: string, text: string): Promise<void> {
+  const file = await Deno.open(path, { createNew: true, write: true });
+  try {
+    const bytes = new TextEncoder().encode(text);
+    let written = 0;
+    while (written < bytes.length) {
+      const count = await file.write(bytes.subarray(written));
+      if (count <= 0) {
+        throw new Error(
+          "Inspection-drone architecture capture made no write progress.",
+        );
+      }
+      written += count;
+    }
+    await file.syncData();
+  } finally {
+    file.close();
+  }
+}
+
+async function syncDirectoryChain(directory: string): Promise<void> {
+  let current = directory.replace(/\/+$/, "") || ".";
+  const visited = new Set<string>();
+  while (!visited.has(current)) {
+    visited.add(current);
+    const file = await Deno.open(current, { read: true });
+    try {
+      await file.sync();
+    } finally {
+      file.close();
+    }
+    // `state` is the repository-owned durable storage root and pre-exists the
+    // run. Stopping here keeps the server inside its deliberately narrow
+    // filesystem permission boundary.
+    if (current === "state") return;
+    const parent = parentDirectory(current);
+    if (parent === current) return;
+    current = parent;
+  }
+}
+
+function parentDirectory(path: string): string {
+  if (path === "." || path === "/") return path;
+  const slash = path.lastIndexOf("/");
+  if (slash < 0) return ".";
+  if (slash === 0) return "/";
+  return path.slice(0, slash);
+}
+
+async function removeIfPresent(path: string): Promise<void> {
+  try {
+    await Deno.remove(path);
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotFound)) throw error;
+  }
 }

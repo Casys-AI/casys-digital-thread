@@ -70,3 +70,23 @@ Deno.test("r3 architecture capture store detects later corruption on read", asyn
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+Deno.test("r3 architecture capture store repairs a partial final file during safe resume", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-inspection-drone-architecture-capture-",
+  });
+  try {
+    const text = '{"architecturePackage":"InspectionDroneArchitecture"}';
+    const fingerprint = await sha256Fingerprint({
+      architecturePackage: "InspectionDroneArchitecture",
+    });
+    const store = new FileInspectionDroneArchitectureCaptureStore(directory);
+    await Deno.writeTextFile(store.pathFor(fingerprint), "{", { createNew: true });
+
+    await store.save(fingerprint, text);
+
+    assertEquals(await store.read(fingerprint), text);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});

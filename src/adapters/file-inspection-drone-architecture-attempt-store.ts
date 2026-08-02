@@ -256,7 +256,7 @@ export class FileInspectionDroneArchitectureAttemptStore {
    * child directory would not necessarily make its entry durable in a newly
    * created parent after power loss, which could erase the sole `dispatched`
    * marker and make a second insert look safe. Sync the directory and every
-   * ancestor through the stable process working directory.
+   * ancestor through the repository-owned `state` storage root.
    */
   private async syncDirectoryChain(): Promise<void> {
     for (const directoryPath of directoryChain(this.directory)) {
@@ -275,6 +275,10 @@ function directoryChain(path: string): string[] {
   let current = path.replace(/\/+$/, "") || ".";
   while (!result.includes(current)) {
     result.push(current);
+    // `state` is the repository-owned durable storage root. It exists before
+    // any run (and is within the server's narrow read permission), so syncing
+    // its parent would only broaden the process read scope to the workspace.
+    if (current === "state") break;
     const parent = parentDirectory(current);
     if (parent === current) break;
     current = parent;
