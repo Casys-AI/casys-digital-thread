@@ -32,6 +32,7 @@ import {
 import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/syson-model-seed.ts";
+import { INSPECTION_DRONE_ARCHITECTURE_OPERATION } from "../src/domain/inspection-drone-architecture.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -411,13 +412,14 @@ async function resolveCurrentThreadSnapshot(
     );
   }
   if (active.revision <= declared.revision) return declared;
-  // `SysonModelSeedRunExecutor` makes r2 durable before attaching it to the
-  // project, so a crash can leave an active descendant that the project has
-  // not accepted as its result. Keep the declared documentary r1 on screen
-  // during that bounded run and render only its safe live activity. The r2
-  // evidence surface becomes eligible only after completeRun records its
-  // exact reference in the immutable project state.
-  if (hasUnattachedSysonModelSeed(project)) return declared;
+  // A guarded operation can make a next ThreadSnapshot durable before
+  // completeRun attaches that exact reference to the project. A crash in that
+  // narrow interval must not let an undeclared descendant become canonical in
+  // the browser. Keep the declared head on screen; projectWorkbenchSnapshot
+  // still overlays the bounded live journal onto it. The durable result
+  // becomes eligible only after completeRun records its exact reference in
+  // immutable project state.
+  if (hasUnattachedDurableProjectOperation(project)) return declared;
   const lineageSnapshots = new OrderedExactThreadSnapshotReader([
     options.store,
     ...(options.projectSnapshots ? [options.projectSnapshots] : []),
@@ -431,7 +433,14 @@ async function resolveCurrentThreadSnapshot(
     : declared;
 }
 
-function hasUnattachedSysonModelSeed(project: EngineeringProjectSnapshot): boolean {
+const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
+  SYSON_MODEL_SEED_OPERATION,
+  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+] as const;
+
+function hasUnattachedDurableProjectOperation(
+  project: EngineeringProjectSnapshot,
+): boolean {
   const workItems = new Map(project.workItems.map((item) => [item.id, item]));
   return project.agentRuns.some((run) => {
     if (
@@ -444,8 +453,9 @@ function hasUnattachedSysonModelSeed(project: EngineeringProjectSnapshot): boole
       return false;
     }
     const operation = workItems.get(run.workItemId)?.operation;
-    return operation?.id === SYSON_MODEL_SEED_OPERATION.id &&
-      operation.version === SYSON_MODEL_SEED_OPERATION.version;
+    return DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS.some((candidate) =>
+      operation?.id === candidate.id && operation.version === candidate.version
+    );
   });
 }
 

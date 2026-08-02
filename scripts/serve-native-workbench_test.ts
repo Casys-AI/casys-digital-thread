@@ -6,6 +6,7 @@ import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-
 import { EngineeringProjectCommandService } from "../src/domain/engineering-project-command-service.ts";
 import { validateEngineeringProjectSnapshot } from "../src/domain/engineering-project-validation.ts";
 import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
+import { INSPECTION_DRONE_ARCHITECTURE_OPERATION } from "../src/domain/inspection-drone-architecture.ts";
 import { materializeAttestedMechanicalRun } from "../src/testing/attested-mechanical-run-fixture.ts";
 import {
   createNativeWorkbenchHandler,
@@ -261,6 +262,71 @@ Deno.test("native Workbench holds an unpublished SysON seed r2 behind documentar
   assertEquals("thread" in body, false);
   assertEquals(payload.includes(unpublishedR2.id), false);
   assertEquals(payload.includes("provider raw result must not cross"), false);
+});
+
+Deno.test("native Workbench holds an unattached inspection-drone architecture r3 behind r2 while preserving its live feed", async () => {
+  const r1 = documentaryThreadSnapshot("drone-architecture-fixture");
+  const r2 = unpublishedSeedThreadSnapshot(r1);
+  const unpublishedR3 = unpublishedInspectionDroneArchitectureThreadSnapshot(r2);
+  const project = projectWithPublishingInspectionDroneArchitecture(r2);
+  const liveUpdates = new LiveThreadUpdateStore();
+  await liveUpdates.append({
+    subjectId: r2.subject.id,
+    runId: "run-author-inspection-drone",
+    operationId: `${INSPECTION_DRONE_ARCHITECTURE_OPERATION.id}:syson_element_children`,
+    baseRevision: r2.revision,
+    state: "fresh",
+    recordedAt: "2026-08-03T12:11:30.000Z",
+    graph: {
+      nodes: [{
+        id: "run-author-inspection-drone:root-preflight",
+        ref: {
+          kind: "artifact",
+          id: "run-author-inspection-drone:root-preflight",
+        },
+        entityKind: "artifact",
+        artifactKind: "other",
+        label: "Root package preflight",
+        system: "SysON",
+        freshness: "fresh",
+        summary:
+          "The bounded architecture run confirmed its target before its one guarded insertion.",
+      }],
+      edges: [],
+    },
+  });
+  const handler = createNativeWorkbenchHandler({
+    store: new VersionedReadOnlyStore(unpublishedR3, [r1, r2, unpublishedR3]),
+    projectStore: new ReadOnlyProjectStore(project),
+    subjectId: r2.subject.id,
+    html: "unused",
+    liveUpdates,
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+  const payload = JSON.stringify(body);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.surface, "evidence");
+  assertEquals(body.thread.id, r2.id);
+  assertEquals(body.thread.live.active, [{
+    runId: "run-author-inspection-drone",
+    operationId: `${INSPECTION_DRONE_ARCHITECTURE_OPERATION.id}:syson_element_children`,
+    state: "fresh",
+    recordedAt: "2026-08-03T12:11:30.000Z",
+    baseRevision: r2.revision,
+    sequence: 1,
+  }]);
+  assertEquals(
+    body.thread.graph.nodes.some((node: { id: string }) =>
+      node.id === "run-author-inspection-drone:root-preflight"
+    ),
+    true,
+  );
+  assertEquals(payload.includes(unpublishedR3.id), false);
 });
 
 Deno.test("native Workbench V2 planning BFF round-trips through the browser HTTP client", async () => {
@@ -1622,6 +1688,93 @@ function unpublishedSeedThreadSnapshot(r1: ThreadSnapshot): ThreadSnapshot {
     revision: 2,
     generatedAt: "2026-08-02T12:11:20.000Z",
     previous: { snapshotId: r1.id, revision: r1.revision },
+  });
+}
+
+function unpublishedInspectionDroneArchitectureThreadSnapshot(
+  r2: ThreadSnapshot,
+): ThreadSnapshot {
+  return validateThreadSnapshot({
+    ...structuredClone(r2),
+    id: `${r2.id}:unattached-r3`,
+    revision: 3,
+    generatedAt: "2026-08-03T12:11:20.000Z",
+    previous: { snapshotId: r2.id, revision: r2.revision },
+  });
+}
+
+function projectWithPublishingInspectionDroneArchitecture(
+  r2: ThreadSnapshot,
+): EngineeringProjectSnapshot {
+  const base = projectSnapshot(r2);
+  return validateEngineeringProjectSnapshot({
+    ...structuredClone(base),
+    generatedAt: "2026-08-03T12:12:00.000Z",
+    phases: [{
+      id: "architecture",
+      name: "System architecture",
+      order: 1,
+      description:
+        "Author one bounded high-level inspection-drone architecture after the SysON model container exists.",
+      workItemIds: ["author-inspection-drone"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "author-inspection-drone",
+      phaseId: "architecture",
+      title: "Author the bounded inspection-drone architecture",
+      description:
+        "Insert and read back the reviewed high-level SysML architecture exactly once.",
+      kind: "architect",
+      status: "in-progress",
+      owner: "agent",
+      operation: {
+        id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+        version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+        bindings: [],
+      },
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+    agentRuns: [{
+      id: "run-author-inspection-drone",
+      workItemId: "author-inspection-drone",
+      status: "publishing",
+      summary: "Persist the bounded architecture read-back before project attachment.",
+      queuedAt: "2026-08-03T12:10:00.000Z",
+      startedAt: "2026-08-03T12:10:10.000Z",
+      claimedAt: "2026-08-03T12:10:10.000Z",
+      claimedBy: { id: "agent:fixture", origin: "agent" },
+      baseSnapshot: {
+        snapshotId: r2.id,
+        revision: r2.revision,
+        subjectId: r2.subject.id,
+      },
+      inputFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+      evidenceRefs: [],
+      statusHistory: [{
+        commandId: "fixture-queue-inspection-drone",
+        status: "queued",
+        at: "2026-08-03T12:10:00.000Z",
+        actor: { id: "human:fixture", origin: "human" },
+        summary: "Queued.",
+      }, {
+        commandId: "fixture-claim-inspection-drone",
+        status: "running",
+        at: "2026-08-03T12:10:10.000Z",
+        actor: { id: "agent:fixture", origin: "agent" },
+        summary: "Running.",
+      }, {
+        commandId: "fixture-publish-inspection-drone",
+        status: "publishing",
+        at: "2026-08-03T12:11:00.000Z",
+        actor: { id: "agent:fixture", origin: "agent" },
+        summary: "Persisting guarded result.",
+      }],
+    }],
   });
 }
 
