@@ -12,6 +12,7 @@ import {
   type EngineeringProjectInitialCompletionEvidenceValidator,
   type EngineeringProjectPlanningDependencies,
   type EngineeringProjectPlanOperationRegistry,
+  type EngineeringProjectQueueEligibility,
   type EngineeringProjectRevisionStore,
   type PublishProjectPlanCommand,
 } from "./engineering-project-command-service.ts";
@@ -188,6 +189,50 @@ Deno.test("V2 queue refuses a planning-only operation before it mutates the proj
         runId: "run:planning-only-operation",
         workItemId: "establish-baseline",
         summary: "A planning descriptor cannot create an executable run.",
+        basis: published.plan!.basis,
+      }),
+    "invalid_transition",
+  );
+
+  assertEquals(await store.get(PROJECT_ID), before);
+});
+
+Deno.test("V2 queue eligibility refusal leaves the project strictly unchanged", async () => {
+  const discovery = discoveryFixture();
+  const store = new MemoryProjectStore(projectShell());
+  const queueEligibility: EngineeringProjectQueueEligibility = {
+    validate({ project, workItem, operation, basis }) {
+      assertEquals(Object.isFrozen(project), true);
+      assertEquals(Object.isFrozen(project.workItems), true);
+      assertEquals(Object.isFrozen(workItem), true);
+      assertEquals(Object.isFrozen(operation), true);
+      assertEquals(workItem.status, "ready");
+      assertEquals(project.agentRuns, []);
+      assertEquals(operation, workItem.operation);
+      assertEquals(basis, project.plan!.basis);
+      return Promise.reject(
+        new Error("The bounded prerequisite is not yet satisfied."),
+      );
+    },
+  };
+  const service = planService(
+    store,
+    discovery,
+    undefined,
+    undefined,
+    REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+    queueEligibility,
+  );
+  const published = await service.publishPlan(AGENT, planCommand(1));
+  const before = await store.get(PROJECT_ID);
+
+  await assertCommandError(
+    () =>
+      service.queueRun(HUMAN, {
+        ...common(published.revision, "queue-ineligible-operation"),
+        runId: "run:ineligible-operation",
+        workItemId: "establish-baseline",
+        summary: "Do not queue until the bounded prerequisite is satisfied.",
         basis: published.plan!.basis,
       }),
     "invalid_transition",
@@ -838,6 +883,7 @@ function planService(
   evidenceValidator?: EngineeringProjectCompletionEvidenceValidator,
   operations: EngineeringProjectPlanOperationRegistry =
     REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+  queueEligibility?: EngineeringProjectQueueEligibility,
 ): EngineeringProjectCommandService {
   const planning: EngineeringProjectPlanningDependencies = {
     discoveries: {
@@ -849,6 +895,7 @@ function planService(
         ),
     },
     operations,
+    ...(queueEligibility ? { queueEligibility } : {}),
   };
   return new EngineeringProjectCommandService(
     store,

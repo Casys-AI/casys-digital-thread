@@ -197,9 +197,30 @@ export interface EngineeringProjectPlanOperationRegistry {
   };
 }
 
+/**
+ * Optional policy gate for a concrete V2 run after its reviewed operation and
+ * exact basis have already been accepted. The command service gives the gate
+ * a validated, deeply frozen pre-mutation project snapshot: it can refuse the
+ * queue transition, but cannot alter the candidate run or project state.
+ */
+export interface EngineeringProjectQueueEligibility {
+  validate(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly workItem: EngineeringWorkItem;
+    readonly operation: EngineeringOperationRef;
+    readonly basis: EngineeringBasisRef;
+  }): Promise<void>;
+}
+
 export interface EngineeringProjectPlanningDependencies {
   readonly discoveries: Pick<ProjectDiscoveryRevisionStore, "getRevision">;
   readonly operations: EngineeringProjectPlanOperationRegistry;
+  /**
+   * Optional, code-owned admission gate for a particular reviewed V2 run.
+   * It is deliberately evaluated before a run, work-item status or receipt is
+   * mutated.
+   */
+  readonly queueEligibility?: EngineeringProjectQueueEligibility;
 }
 
 export interface EngineeringProjectCompletionEvidenceValidator {
@@ -963,6 +984,7 @@ async function queueV2Run(
     invalidInput("A V2 run requires a registered operation on its work item.");
   }
   assertRegisteredQueueOperation(planning, operation, basis.kind);
+  await assertQueueEligibility(planning, draft, workItem.id, basis);
   const inputFingerprint = await sha256Fingerprint({
     workItemId: workItem.id,
     basis,
@@ -1016,6 +1038,73 @@ function assertRegisteredQueueOperation(
       `Queued operation ${registered.operation.id}@${registered.operation.version} is planning-only and is not backed by a trusted executor.`,
     );
   }
+}
+
+/**
+ * Give an optional queue gate a detached, validated snapshot of exactly the
+ * state it is deciding about. Nothing below this point mutates `draft` until
+ * queueV2Run returns a run, so a rejected promise leaves the durable project
+ * untouched.
+ */
+async function assertQueueEligibility(
+  planning: EngineeringProjectPlanningDependencies | undefined,
+  draft: EngineeringProjectSnapshot,
+  workItemId: string,
+  basis: EngineeringBasisRef,
+): Promise<void> {
+  const queueEligibility = planning?.queueEligibility;
+  if (!queueEligibility) return;
+
+  const project = validateEngineeringProjectSnapshot(draft);
+  const workItem = project.workItems.find((candidate) => candidate.id === workItemId);
+  if (!workItem || !workItem.operation) {
+    invalidInput(
+      "The reviewed V2 work item is unavailable for queue-eligibility validation.",
+    );
+  }
+
+  try {
+    await queueEligibility.validate({
+      project,
+      workItem,
+      operation: workItem.operation,
+      basis: immutableQueueEligibilityBasis(project, basis),
+    });
+  } catch (error) {
+    invalidTransition(
+      error instanceof Error
+        ? `The requested V2 run is not eligible for queueing: ${error.message}`
+        : "The requested V2 run is not eligible for queueing.",
+    );
+  }
+}
+
+/** Return the same declared basis through the immutable project view. */
+function immutableQueueEligibilityBasis(
+  project: EngineeringProjectSnapshot,
+  basis: EngineeringBasisRef,
+): EngineeringBasisRef {
+  if (basis.kind === "approved-discovery") {
+    const plannedBasis = project.plan?.basis;
+    if (!plannedBasis || !sameApprovedDiscoveryBasis(basis, plannedBasis)) {
+      invalidInput(
+        "The reviewed approved-discovery basis is unavailable for queue-eligibility validation.",
+      );
+    }
+    return plannedBasis;
+  }
+
+  const snapshot = project.threadSnapshots.find((candidate) =>
+    candidate.snapshotId === basis.snapshotId &&
+    candidate.revision === basis.revision &&
+    candidate.subjectId === basis.subjectId
+  );
+  if (!snapshot) {
+    invalidInput(
+      "The reviewed thread-snapshot basis is unavailable for queue-eligibility validation.",
+    );
+  }
+  return Object.freeze({ kind: "thread-snapshot" as const, ...snapshot });
 }
 
 function assertV2QueueBasis(
