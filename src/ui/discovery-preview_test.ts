@@ -11,10 +11,16 @@ Deno.test("discovery preview remains a single calm live review surface", async (
   assertStringIncludes(source, "<DiscoveryWorkbench");
   assertStringIncludes(source, "onAnswer={answerQuestion}");
   assertStringIncludes(source, "onReviewBrief={reviewBrief}");
+  assertStringIncludes(source, "onCreateEngineeringProject={createEngineeringProject}");
+  assertStringIncludes(source, "client.handoff(handoffRequest)");
+  assertStringIncludes(source, "projectId: current.discoveryId");
+  assertStringIncludes(source, "projectName: current.brief.objective");
+  assertStringIncludes(source, "handoffCommandRef.current = handoffRequest");
   assertStringIncludes(source, "expectedRevision: current.revision");
 
   assertEquals(source.includes("iframe"), false);
   assertEquals(source.includes("ThreadGraph"), false);
   assertEquals(source.includes("MetricGrid"), false);
+  assertEquals(source.includes("window.location"), false);
   assertEquals(source.includes("inputFingerprint.digest"), false);
 });

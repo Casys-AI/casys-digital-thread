@@ -1,9 +1,10 @@
-# Graph-first Workbench UX: evidence arrives, the graph grows
+# Activity-first Workbench UX: evidence arrives, contextual lineage grows
 
-The primary product surface is the linked engineering graph. It shows which recorded
-fact depends on which source, what a change affects downstream, and where evidence is
-still disconnected. The chronological feed remains a secondary lens over the same graph;
-it never creates lineage.
+The primary product surface is the engineering activity feed: it lets a beginner follow
+what the agent changed, what evidence appeared, and what needs review. The linked graph
+explains why a selected fact depends on its sources, what it affects downstream, and
+where evidence remains disconnected. The feed never creates lineage; both views project
+the same canonical thread.
 
 The feed is not an agent transcript. Raw reasoning and transient console text do not
 become engineering truth. Cards represent canonical changes, important artifacts,
@@ -24,16 +25,19 @@ operator.
   workspace.
 - **Status strip:** linked evidence, freshness, requirement coverage and named
   violations stay visible as operational signals rather than a separate report.
-- **Centre:** the complete subject graph. Selecting a fact preserves its recorded
-  ancestors and descendants while the drawer changes context beside it.
+- **Centre:** the project path and chronological activity. Selecting a fact opens its
+  bounded ancestor-and-descendant lineage without losing the current work context.
 - **Follow live:** enabled by default. A new persisted revision activates its newest
   meaningful fact; manual history selection pauses following until the operator resumes.
-- **Feed:** a secondary tab for chronological review. Each active card owns a scoped
-  graph containing every recorded ancestor and descendant, not only the shortest path.
+- **Context graph:** each active card can reveal a scoped graph containing every
+  recorded ancestor and descendant, not only the shortest path.
+- **Full graph:** an explicit expanded workspace owns the available viewport, fit/zoom
+  controls, legend, and large-topology inspection. It is not compressed into a card.
 - **Right drawer:** one sticky, resizable tool inspector. It follows selection without
   changing the feed or topology viewport.
-- **Drawer rail:** SysON, build123d, CalculiX, Modelica and ERPNext remain visible as
-  facets of the same engineering subject. A facet with no observed evidence stays
+- **Provider facets:** SysON, build123d, CalculiX, Modelica and ERPNext remain available
+  inside the inspector as compact context controls. They do not create another permanent
+  vertical rail before the useful content. A facet with no observed evidence stays
   visible but disabled.
 - **Drawer body:** selected identity, provider role, related artifacts, observations,
   requirements, violations, attestations and proposed actions.
@@ -42,7 +46,9 @@ operator.
   is never a mini-app embedded inside the drawer.
 
 On a narrow screen the right drawer becomes a bottom sheet. Tabs should be reserved for
-full native tool views, not used to keep five provider panels alive at once.
+full native tool views, not used to keep five provider panels alive at once. Nodes,
+edges, relation colors, arrows, and legend samples must use the same visual tokens;
+semantic edges are strokes, never decorative filled ribbons that imply an area value.
 
 ## Selection and tool-panel contract
 

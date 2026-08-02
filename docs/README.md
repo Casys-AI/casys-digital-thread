@@ -14,7 +14,8 @@ categories deliberately answer different questions.
 
 - [Preview a guided project discovery](how-to/preview-project-discovery.md) starts the
   MCP-authored pre-project conversation, opens the calm live review surface, and
-  explains the human answer and brief-approval boundary.
+  explains the human answer, brief-approval, and approved-brief-to-project handoff
+  boundaries.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
   assembles the observed CM-01 branches, starts the single-shell Preact product surface,
   follows review notifications into live evidence and SysON context, and explains why
@@ -30,8 +31,8 @@ categories deliberately answer different questions.
   explains the ERPNext-derived visual baseline, Preact default, and component-only
   palette rule.
 - [Run the CoffeeMachine mechanical workflow](how-to/view-coffee-machine-cm01.md)
-  executes the human-approved SysON → build123d → CalculiX → normalization → SysON
-  loop, publishes its exact evidence, and documents bounded safe resume and lifecycle
+  executes the human-approved SysON → build123d → CalculiX → normalization → SysON loop,
+  publishes its exact evidence, and documents bounded safe resume and lifecycle
   ordering.
 - [Attach a persisted Modelica branch](how-to/attach-observed-modelica-branch.md)
   imports one exact, already-persisted thermal run as evidence only: the model,
@@ -59,7 +60,11 @@ categories deliberately answer different questions.
   into immutable thread evidence.
 - [ProjectDiscoverySnapshot contract](reference/project-discovery.md) defines the
   separate pre-project intent, guided questions, sourced answers, proposed brief,
-  immutable revisions, MCP authoring surface, and human-only review commands.
+  immutable revisions, MCP authoring surface, and human-only review and project-shell
+  handoff commands.
+- [Candidate mechanical-analysis declaration](reference/mechanical-proof-case.md)
+  defines the strict non-executable CM-01 input schema, its limited identity binding,
+  and the missing receipt boundary before it can attest a fail-closed execution.
 - [Cross-tool component identity](reference/thread-components.md) defines the reviewed
   SysON PartUsage, build123d artifact, and ERPNext Item bindings used by the native
   **Parts** workspace, including visible trace gaps.
@@ -68,6 +73,12 @@ categories deliberately answer different questions.
 
 ## Explanation — understand why the boundaries exist
 
+- [Product direction and delivery boundary](explanations/product-direction.md) is the
+  canonical product compass: beginner-first human-agent work, idea/CAD/product entry
+  points, vendor independence, and the verified-now/V1/V2 boundary.
+- [Agent orchestration and operational-twin boundary](rfcs/agent-orchestration-and-operational-twin-boundary.md)
+  is the proposed technical path from the implemented project shell to agent-authored
+  plans and trusted execution, while keeping an operational twin in V2.
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.
@@ -93,7 +104,7 @@ has been attached. The CoffeeMachine thermal comparison is a versioned **provisi
 scenario contract** with one condition, `water_temperature_max >= 90 degC`; it is
 neither a product requirement nor a requirement stored in a SysON project. The tracked
 r5 CM-01 baseline has no model-owned mechanical criterion and therefore no product
-verdict. The approved r6 DripTray extension instead contains two model-owned criteria and
-two passing evaluations, bounded to that concept case. A demo fixture is always labelled
-demo, and `unavailable`, `unresolved`, and `error` are evidence states, not hidden
-successes.
+verdict. The approved r6 DripTray extension instead contains two model-owned criteria
+and two passing evaluations, bounded to that concept case. A demo fixture is always
+labelled demo, and `unavailable`, `unresolved`, and `error` are evidence states, not
+hidden successes.

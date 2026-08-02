@@ -4,6 +4,12 @@ import {
   type ProjectDiscoveryOperatorCommandRequest,
 } from "./discovery-command-contract.ts";
 import { isProjectDiscoverySnapshot } from "./discovery-contract.ts";
+import {
+  PROJECT_DISCOVERY_HANDOFF_RESULT_SCHEMA,
+  PROJECT_DISCOVERY_HANDOFF_RESULT_SCOPE,
+  type ProjectDiscoveryHandoffRequest,
+  type ProjectDiscoveryHandoffResult,
+} from "./discovery-handoff-contract.ts";
 
 export type ProjectDiscoveryStreamStatus =
   | "connecting"
@@ -20,6 +26,10 @@ export interface ProjectDiscoveryClient {
     request: ProjectDiscoveryOperatorCommandRequest,
     signal?: AbortSignal,
   ): Promise<ProjectDiscoverySnapshot>;
+  handoff(
+    request: ProjectDiscoveryHandoffRequest,
+    signal?: AbortSignal,
+  ): Promise<ProjectDiscoveryHandoffResult>;
 }
 
 export type ProjectDiscoveryFetch = (
@@ -108,6 +118,50 @@ export class HttpProjectDiscoveryClient implements ProjectDiscoveryClient {
     );
   }
 
+  async handoff(
+    request: ProjectDiscoveryHandoffRequest,
+    signal?: AbortSignal,
+  ): Promise<ProjectDiscoveryHandoffResult> {
+    const response = await this.fetcher(`${this.endpoint}/handoff`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        [PROJECT_DISCOVERY_INTENT_HEADER]: "explicit",
+      },
+      body: JSON.stringify(request),
+      signal,
+    });
+    if (response.status === 409) {
+      const failure = await readJsonRecord(response);
+      throw new ProjectDiscoveryHandoffConflictError(
+        typeof failure?.error === "string"
+          ? failure.error
+          : "engineering_project_conflict",
+        typeof failure?.actualRevision === "number"
+          ? failure.actualRevision
+          : undefined,
+        typeof failure?.message === "string"
+          ? failure.message
+          : "The engineering project could not be created from this brief.",
+      );
+    }
+    if (!response.ok) {
+      const failure = await readJsonRecord(response);
+      throw new ProjectDiscoveryHttpError(
+        response.status,
+        typeof failure?.message === "string"
+          ? failure.message
+          : `Project discovery handoff HTTP ${response.status}.`,
+      );
+    }
+    return readHandoffResult(
+      await response.json(),
+      request,
+      "The engineering project handoff returned an unsupported contract.",
+    );
+  }
+
   subscribe(
     onSnapshot: (snapshot: ProjectDiscoverySnapshot) => void,
     onStatus?: (status: ProjectDiscoveryStreamStatus) => void,
@@ -141,6 +195,19 @@ export class ProjectDiscoveryConflictError extends Error {
   }
 }
 
+export class ProjectDiscoveryHandoffConflictError extends Error {
+  readonly status = 409;
+
+  constructor(
+    readonly code: string,
+    readonly actualRevision: number | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProjectDiscoveryHandoffConflictError";
+  }
+}
+
 export class ProjectDiscoveryHttpError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -154,6 +221,61 @@ function readSnapshot(
 ): ProjectDiscoverySnapshot {
   if (!isProjectDiscoverySnapshot(value)) throw new Error(message);
   return value;
+}
+
+function readHandoffResult(
+  value: unknown,
+  request: ProjectDiscoveryHandoffRequest,
+  message: string,
+): ProjectDiscoveryHandoffResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(message);
+  }
+  const result = value as Record<string, unknown>;
+  if (
+    !hasExactKeys(result, ["schemaVersion", "scope", "project", "message"]) ||
+    result.schemaVersion !== PROJECT_DISCOVERY_HANDOFF_RESULT_SCHEMA ||
+    result.scope !== PROJECT_DISCOVERY_HANDOFF_RESULT_SCOPE ||
+    typeof result.message !== "string" || !result.message.trim() ||
+    !result.project || typeof result.project !== "object" ||
+    Array.isArray(result.project)
+  ) {
+    throw new Error(message);
+  }
+  const project = result.project as Record<string, unknown>;
+  if (!hasExactKeys(project, ["id", "name", "revision"])) {
+    throw new Error(message);
+  }
+  const projectId = project.id;
+  const projectName = project.name;
+  const projectRevision = project.revision;
+  const expectedProjectId = request.command.projectId.trim();
+  const expectedProjectName = request.command.projectName.trim();
+  if (
+    projectId !== expectedProjectId || projectName !== expectedProjectName ||
+    projectRevision !== 1
+  ) {
+    throw new Error(message);
+  }
+  return {
+    schemaVersion: PROJECT_DISCOVERY_HANDOFF_RESULT_SCHEMA,
+    scope: PROJECT_DISCOVERY_HANDOFF_RESULT_SCOPE,
+    project: {
+      id: projectId,
+      name: projectName,
+      revision: projectRevision,
+    },
+    message: result.message,
+  };
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length &&
+    expected.every((key) => key in value);
 }
 
 async function readJsonRecord(

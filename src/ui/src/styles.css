@@ -2464,10 +2464,6 @@ td code {
   max-height: 540px;
 }
 
-.thread-feed-lineage .thread-graph-component-boundary {
-  fill: rgba(17, 22, 20, 0.72);
-}
-
 .thread-feed-lineage .thread-graph-component-label {
   fill: #59635e;
 }
@@ -2618,10 +2614,6 @@ td code {
   fill: #59645f;
 }
 
-.thread-graph-arrow-selected path {
-  fill: var(--thread-orange);
-}
-
 .thread-graph-edge[data-impact="upstream"] .thread-graph-edge-line {
   stroke: var(--thread-blue);
 }
@@ -2645,7 +2637,7 @@ td code {
   fill: var(--thread-orange);
 }
 
-.thread-graph-edge[data-attested="true"] .thread-graph-edge-line {
+.thread-graph-edge[data-attestation="verified"] .thread-graph-edge-line {
   stroke-dasharray: 4 3;
 }
 
@@ -8734,7 +8726,7 @@ button.erp-bom-row {
 
 .thread-graph-component-boundary,
 .thread-feed-lineage .thread-graph-component-boundary {
-  fill: #f2f0e9;
+  fill: transparent;
   stroke: #c8ccc5;
 }
 
@@ -8743,10 +8735,14 @@ button.erp-bom-row {
   fill: #65746e;
 }
 
-.thread-graph-edge-line,
-.thread-graph-arrow path {
+.thread-graph-edge-line {
+  fill: none;
   stroke: #8b9791;
-  fill: #8b9791;
+}
+
+.thread-graph-arrow path {
+  fill: context-stroke;
+  stroke: none;
 }
 
 .thread-graph-edge-label {
@@ -9359,6 +9355,64 @@ button.erp-bom-row {
   margin: 0;
 }
 
+.discovery-handoff {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.15rem;
+  align-items: center;
+  margin-top: 1.15rem;
+  padding: clamp(1rem, 2.4vw, 1.45rem);
+  border: 1px solid rgba(54, 117, 83, 0.38);
+  background: linear-gradient(120deg, #edf6ee, #f9fbf7 68%);
+}
+
+.discovery-handoff > div {
+  max-width: 620px;
+}
+
+.discovery-handoff-kicker {
+  margin: 0 0 0.35rem;
+  color: var(--discovery-green) !important;
+  font: 700 0.48rem/1 var(--mono);
+  letter-spacing: 0.12em;
+}
+
+.discovery-handoff h2 {
+  margin: 0;
+  color: var(--discovery-ink);
+  font-size: clamp(1.1rem, 1.8vw, 1.35rem);
+}
+
+.discovery-handoff p:not(.discovery-handoff-kicker) {
+  margin: 0.45rem 0 0;
+  color: #52665d;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.discovery-workbench .discovery-handoff-action.mcp-view-button {
+  border-color: var(--discovery-green);
+  color: #fffdfa;
+  background: var(--discovery-green);
+  white-space: nowrap;
+}
+
+.discovery-workbench .discovery-handoff-action.mcp-view-button:not(:disabled):hover {
+  border-color: #2e6648;
+  background: #2e6648;
+}
+
+.discovery-handoff-result.mcp-view-state {
+  margin-top: 1.15rem;
+  border-color: rgba(54, 117, 83, 0.38);
+  background: #f3f8f3;
+}
+
+.discovery-handoff-result.mcp-view-state[data-tone="danger"] {
+  border-color: rgba(182, 69, 61, 0.42);
+  background: #fdf1ef;
+}
+
 @media (max-width: 620px) {
   .discovery-intent,
   .discovery-progress {
@@ -9382,6 +9436,11 @@ button.erp-bom-row {
 
   .discovery-option-context ul {
     grid-template-columns: 1fr;
+  }
+
+  .discovery-handoff {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 }
 
@@ -9824,5 +9883,559 @@ button.erp-bom-row {
   .thread-workbench .decision-review-actions .decision-approve-button,
   .thread-workbench .decision-review-actions .decision-reject-button {
     width: 100%;
+  }
+}
+
+/* Calm cockpit and evidence canvas ---------------------------------------
+
+   The workspace is a reading surface first. Navigation and project pulse are
+   deliberately compact, while the graph receives a dedicated canvas when an
+   operator needs to inspect the whole recorded chain. */
+
+.thread-workbench .thread-cockpit-header {
+  min-height: 96px;
+}
+
+.thread-workbench .thread-kicker {
+  margin-bottom: 0.42rem;
+}
+
+.thread-workbench .project-navigation {
+  display: flex;
+  align-items: center;
+  gap: 0.16rem;
+  padding: 0.3rem clamp(0.65rem, 2vw, 1.35rem);
+  border-bottom-color: var(--thread-border);
+  background: rgba(255, 253, 250, 0.9);
+}
+
+.thread-workbench .project-navigation button {
+  min-height: 38px;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  color: var(--thread-muted);
+  text-align: center;
+  background: transparent;
+}
+
+.thread-workbench .project-navigation button::after,
+.thread-workbench .project-navigation button > span,
+.thread-workbench .project-navigation small {
+  display: none;
+}
+
+.thread-workbench .project-navigation strong {
+  overflow: visible;
+  font-size: 0.65rem;
+  line-height: 1;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.thread-workbench .project-navigation button:hover {
+  color: var(--thread-ink);
+  background: #f5f1e9;
+}
+
+.thread-workbench .project-navigation button[aria-current="page"] {
+  color: var(--thread-ink);
+  box-shadow: inset 0 -2px 0 var(--thread-orange);
+  background: #faede1;
+}
+
+.project-workspace-page.is-work {
+  padding-top: clamp(0.85rem, 1.5vw, 1.2rem);
+}
+
+.project-workspace-page .thread-workspace-meta {
+  margin-bottom: 0.65rem;
+}
+
+.project-activity-brief {
+  margin: 0 0 0.72rem;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
+}
+
+.project-activity-brief > summary {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  color: var(--thread-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.project-activity-brief > summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-activity-brief > summary > span {
+  color: var(--thread-orange);
+  font: 700 0.43rem/1 var(--mono);
+  letter-spacing: 0.09em;
+}
+
+.project-activity-brief > summary > strong {
+  overflow: hidden;
+  color: var(--thread-ink);
+  font-size: 0.67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-activity-brief > summary > small {
+  color: var(--thread-muted);
+  font-size: 0.56rem;
+  white-space: nowrap;
+}
+
+.project-activity-brief > summary::after {
+  content: "⌄";
+  color: var(--thread-orange);
+  font: 700 0.72rem/1 var(--mono);
+  transition: rotate 140ms ease;
+}
+
+.project-activity-brief[open] > summary {
+  border-bottom: 1px solid var(--thread-border);
+  background: #f8f4ed;
+}
+
+.project-activity-brief[open] > summary::after {
+  rotate: 180deg;
+}
+
+.project-activity-brief > div {
+  padding: 0.72rem;
+}
+
+.project-activity-brief .project-work-ribbon {
+  margin-bottom: 0.72rem;
+}
+
+.thread-workbench .thread-feed-lineage-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.thread-workbench .thread-feed-lineage-actions > span {
+  color: var(--thread-muted);
+  font: 650 0.46rem/1 var(--mono);
+  white-space: nowrap;
+}
+
+.thread-workbench .thread-feed-lineage-actions button {
+  min-height: 27px;
+  padding: 0 0.55rem;
+  border: 1px solid var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+  font: 700 0.43rem/1 var(--mono) !important;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.thread-workbench .thread-feed-lineage-actions button:hover,
+.thread-workbench .thread-feed-lineage-actions button:focus-visible {
+  border-color: var(--thread-orange);
+  color: var(--thread-orange);
+  background: #fff4ea;
+}
+
+.thread-workbench .thread-graph-workspace.is-wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.thread-workbench .thread-graph-stage {
+  min-height: max(480px, calc(100vh - 350px));
+}
+
+.thread-workbench .thread-graph {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.thread-workbench .thread-graph-controls {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+  border: 1px solid var(--thread-border);
+  color: var(--thread-muted);
+  background: rgba(255, 253, 250, 0.88);
+  font: 650 0.48rem/1 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thread-workbench .thread-graph-controls > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+}
+
+.thread-workbench .thread-graph-controls button,
+.thread-workbench .thread-graph-expand-button,
+.thread-workbench .thread-graph-focus-close {
+  min-height: 28px;
+  padding: 0 0.62rem;
+  border: 1px solid var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+  font: 700 0.46rem/1 var(--mono) !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.thread-workbench .thread-graph-controls button:first-child,
+.thread-workbench .thread-graph-controls button:last-child {
+  width: 28px;
+  padding: 0;
+  font-size: 0.8rem !important;
+}
+
+.thread-workbench .thread-graph-controls button:hover:not(:disabled),
+.thread-workbench .thread-graph-controls button:focus-visible,
+.thread-workbench .thread-graph-expand-button:hover,
+.thread-workbench .thread-graph-expand-button:focus-visible,
+.thread-workbench .thread-graph-focus-close:hover,
+.thread-workbench .thread-graph-focus-close:focus-visible {
+  border-color: var(--thread-orange);
+  color: var(--thread-orange);
+  background: #fff4ea;
+}
+
+.thread-workbench .thread-graph-controls button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.thread-workbench .thread-graph[data-presentation="canvas"] .thread-graph-viewport {
+  min-height: clamp(430px, 56vh, 690px);
+  overflow: hidden;
+  border: 1px solid var(--thread-border);
+  background:
+    linear-gradient(rgba(37, 53, 48, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 53, 48, 0.035) 1px, transparent 1px),
+    #fbfaf6;
+  background-size: 24px 24px;
+}
+
+.thread-workbench .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
+  height: clamp(430px, 56vh, 690px);
+  min-height: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.thread-workbench .thread-graph[data-panning="true"] .thread-graph-canvas {
+  cursor: grabbing;
+}
+
+.thread-workbench .thread-feed-lineage .thread-graph-viewport {
+  overflow: hidden;
+}
+
+.thread-workbench .thread-graph-component-boundary {
+  fill: transparent;
+  stroke: #bac4bb;
+  stroke-dasharray: 4 5;
+}
+
+.thread-workbench .thread-graph-component-label {
+  fill: #5e7169;
+}
+
+.thread-workbench .thread-graph-edge-line {
+  fill: none;
+  stroke: #738179;
+}
+
+.thread-workbench .thread-graph-arrow path {
+  fill: context-stroke;
+  stroke: none;
+}
+
+.thread-workbench .thread-graph-edge[data-attestation="verified"] .thread-graph-edge-line {
+  stroke-dasharray: 5 3;
+}
+
+.thread-workbench .thread-graph-edge[data-attestation="mismatch"]:not([data-selected="true"]) .thread-graph-edge-line {
+  stroke: var(--thread-red);
+  stroke-dasharray: 2 3;
+  stroke-width: 2.4;
+}
+
+.thread-workbench .thread-graph-edge[data-attestation="mismatch"]:not([data-selected="true"]) .thread-graph-edge-label {
+  fill: var(--thread-red);
+}
+
+.thread-workbench .thread-graph-edge-label {
+  fill: #52665d;
+  stroke: #fbfaf6;
+}
+
+.thread-workbench .thread-graph-legend span[data-tone="attested"]::before {
+  height: 0;
+  border-top: 2px dashed var(--thread-green);
+  background: transparent;
+}
+
+.thread-workbench .thread-graph-legend span[data-tone="mismatch"]::before {
+  height: 0;
+  border-top: 2px dashed var(--thread-red);
+  background: transparent;
+}
+
+.thread-workbench .thread-graph-stage-verification {
+  min-height: 0;
+}
+
+.thread-evidence-context {
+  overflow: hidden;
+  border: 1px solid var(--thread-border);
+  background: rgba(255, 253, 250, 0.82);
+}
+
+.thread-evidence-context > header {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+
+.thread-evidence-context > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.thread-evidence-context > header small,
+.thread-evidence-context > header > span {
+  color: var(--thread-muted);
+  font: 650 0.46rem/1.25 var(--mono);
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.thread-evidence-context > header strong {
+  overflow: hidden;
+  color: var(--thread-ink);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-evidence-context > header > span {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.thread-evidence-context .thread-graph {
+  padding: 0.75rem;
+}
+
+.thread-evidence-context .thread-graph-viewport {
+  overflow: hidden;
+}
+
+.thread-evidence-context .thread-graph-canvas {
+  height: clamp(300px, 40vh, 420px);
+  min-height: 0;
+}
+
+.thread-graph-focus-mode {
+  min-height: 100vh;
+  background: var(--thread-paper);
+}
+
+.thread-graph-focus-shell {
+  width: min(100%, 1600px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(0.8rem, 1.8vw, 1.5rem);
+}
+
+.thread-graph-focus-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.2rem;
+  padding: 0.8rem 0 0.95rem;
+}
+
+.thread-graph-focus-header p {
+  margin: 0 0 0.35rem;
+  color: var(--thread-orange);
+  font: 700 0.5rem/1 var(--mono);
+  letter-spacing: 0.12em;
+}
+
+.thread-graph-focus-header h2 {
+  margin: 0;
+  color: var(--thread-ink);
+  font-family: "Iowan Old Style", "Baskerville", Georgia, serif;
+  font-size: clamp(1.5rem, 2.7vw, 2.3rem);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.thread-graph-focus-header > div:first-child > span {
+  display: block;
+  max-width: 49rem;
+  margin-top: 0.5rem;
+  color: var(--thread-muted);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.thread-graph-focus-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 0 0 auto;
+}
+
+.thread-graph-focus-actions > span {
+  color: var(--thread-muted);
+  font: 650 0.48rem/1 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thread-graph-focus-body {
+  min-height: calc(100vh - 150px);
+  padding: clamp(0.65rem, 1.5vw, 1.05rem);
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
+}
+
+.thread-graph-focus-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.thread-graph-focus-workspace.has-inspector {
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
+}
+
+.thread-graph-focus-workspace > .thread-tool-drawer {
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  border: 1px solid var(--thread-border);
+  border-left: 0;
+  background: var(--thread-panel);
+  box-shadow: none;
+}
+
+.thread-graph-focus-workspace > .thread-tool-drawer > :is(.thread-card, .thread-inspector-card, .thread-edge-inspector) {
+  min-height: 0;
+}
+
+.thread-graph-focus-body .thread-graph-legend {
+  margin-bottom: 0.65rem;
+}
+
+.thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
+.thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
+  height: calc(100vh - 250px);
+  min-height: 520px;
+  max-height: none;
+}
+
+@media (max-width: 720px) {
+  .thread-workbench .project-navigation {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .thread-workbench .project-navigation button {
+    min-width: max-content;
+    flex: 0 0 auto;
+    padding-inline: 0.7rem;
+  }
+
+  .thread-workbench .thread-graph-controls,
+  .thread-graph-focus-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .thread-workbench .thread-graph-controls > div {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .thread-workbench .thread-feed-lineage-actions {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+
+  .thread-graph-focus-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .thread-graph-focus-workspace.has-inspector {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-graph-focus-workspace > .thread-tool-drawer {
+    max-height: none;
+    border-top: 0;
+    border-left: 1px solid var(--thread-border);
+  }
+
+  .thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
+  .thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
+    height: calc(100vh - 300px);
+    min-height: 400px;
+  }
+
+  .thread-evidence-context > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .thread-evidence-context > header > span {
+    text-align: left;
+  }
+}
+
+@media (max-width: 540px) {
+  .project-activity-brief > summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .project-activity-brief > summary > span,
+  .project-activity-brief > summary > small {
+    display: none;
+  }
+
+  .thread-workbench .thread-graph-controls button:nth-child(3) {
+    display: none;
   }
 }

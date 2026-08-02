@@ -9,9 +9,15 @@ import {
   HttpProjectDiscoveryClient,
   type ProjectDiscoveryClient,
   ProjectDiscoveryConflictError,
+  ProjectDiscoveryHandoffConflictError,
   type ProjectDiscoveryStreamStatus,
 } from "./discovery-client.ts";
 import { createProjectDiscoveryCommandRequest } from "./discovery-command-contract.ts";
+import {
+  createProjectDiscoveryHandoffRequest,
+  type ProjectDiscoveryHandoffRequest,
+  type ProjectDiscoveryHandoffResult,
+} from "./discovery-handoff-contract.ts";
 import {
   type DiscoveryAnswerSelection,
   type DiscoveryBriefReviewSelection,
@@ -43,8 +49,18 @@ export function DiscoveryPreviewApp({
   const [loadingError, setLoadingError] = useState<string>();
   const [feedback, setFeedback] = useState<DiscoveryFeedback>();
   const [busy, setBusy] = useState(false);
+  const [handoffPending, setHandoffPending] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [handoffResult, setHandoffResult] = useState<
+    ProjectDiscoveryHandoffResult
+  >();
+  const [engineeringProjectIdOccupied, setEngineeringProjectIdOccupied] =
+    useState(
+      false,
+    );
   const snapshotRef = useRef<ProjectDiscoverySnapshot>();
+  /** Retain the full command so a lost response retries with one fingerprint. */
+  const handoffCommandRef = useRef<ProjectDiscoveryHandoffRequest>();
 
   const acceptSnapshot = (incoming: ProjectDiscoverySnapshot): boolean => {
     const current = snapshotRef.current;
@@ -64,8 +80,12 @@ export function DiscoveryPreviewApp({
     const controller = new AbortController();
     let unsubscribe: (() => void) | undefined;
     snapshotRef.current = undefined;
+    handoffCommandRef.current = undefined;
     setSnapshot(undefined);
     setLoadingError(undefined);
+    setHandoffPending(false);
+    setHandoffResult(undefined);
+    setEngineeringProjectIdOccupied(false);
     setStreamStatus("connecting");
 
     client.load(controller.signal).then((initial) => {
@@ -160,6 +180,76 @@ export function DiscoveryPreviewApp({
         : "The human reviewer requested a revised brief in the Discovery Workbench.",
     }));
 
+  const createEngineeringProject = async (): Promise<void> => {
+    const current = snapshotRef.current;
+    if (
+      !current || busy || !current.brief || current.status !== "approved" ||
+      current.review?.status !== "approved" ||
+      current.review.briefId !== current.brief.id ||
+      current.review.decidedBy?.origin !== "human"
+    ) return;
+
+    const existingCommand = handoffCommandRef.current;
+    const handoffRequest =
+      existingCommand?.discoveryId === current.discoveryId &&
+        existingCommand.expectedDiscoveryRevision === current.revision
+        ? existingCommand
+        : createProjectDiscoveryHandoffRequest({
+          commandId: createStableId("engineering-project-handoff"),
+          discoveryId: current.discoveryId,
+          expectedDiscoveryRevision: current.revision,
+          issuedAt: new Date().toISOString(),
+          actorId,
+          projectId: current.discoveryId,
+          projectName: current.brief.objective,
+        });
+    handoffCommandRef.current = handoffRequest;
+
+    setBusy(true);
+    setHandoffPending(true);
+    setFeedback(undefined);
+    try {
+      const result = await client.handoff(handoffRequest);
+      setHandoffResult(result);
+      setEngineeringProjectIdOccupied(false);
+    } catch (reason: unknown) {
+      if (reason instanceof ProjectDiscoveryHandoffConflictError) {
+        if (reason.code === "stale_discovery_revision") {
+          handoffCommandRef.current = undefined;
+          try {
+            const latest = await client.load();
+            acceptSnapshot(latest);
+            setFeedback({
+              tone: "danger",
+              message:
+                "The approved brief changed before the project was created. The latest record is now shown.",
+            });
+          } catch {
+            setFeedback({
+              tone: "danger",
+              message:
+                "The approved brief changed and the latest record could not be reloaded.",
+            });
+          }
+        } else if (reason.code === "project_exists") {
+          setEngineeringProjectIdOccupied(true);
+        } else {
+          setFeedback({ tone: "danger", message: reason.message });
+        }
+      } else {
+        setFeedback({
+          tone: "danger",
+          message: reason instanceof Error
+            ? reason.message
+            : "The engineering project could not be created from this brief.",
+        });
+      }
+    } finally {
+      setHandoffPending(false);
+      setBusy(false);
+    }
+  };
+
   return (
     <div class="discovery-preview-shell">
       <header class="discovery-preview-bar">
@@ -219,8 +309,12 @@ export function DiscoveryPreviewApp({
             <DiscoveryWorkbench
               discovery={snapshot}
               busy={busy}
+              handoffPending={handoffPending}
               onAnswer={answerQuestion}
               onReviewBrief={reviewBrief}
+              onCreateEngineeringProject={createEngineeringProject}
+              engineeringProject={handoffResult}
+              engineeringProjectIdOccupied={engineeringProjectIdOccupied}
             />
           </>
         )}

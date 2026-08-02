@@ -76,8 +76,12 @@ On 2026-08-01 this boundary was proved against the local provider checkouts:
 | Maximum von Mises stress       | `26.2900 MPa`                                                      |
 | Negative test                  | A false expected hash was rejected before the solve                |
 
-This is a local integration proof, not yet a committed or published provider release.
-Consumers must continue to discover and validate the actual live schemas.
+This table remains a historical local integration proof. The producer and consumer
+contracts are now published in `@casys/mcp-build123d@0.4.1` and
+`@casys/mcp-calculix@0.4.0`; the latter exposes mandatory `static-solve` structured
+content schema `2.0` with `inputArtifact`. Compose pins the released toolchain image by
+digest. Consumers still fail closed on the actual structured schema and attested bytes
+instead of trusting a version label alone.
 
 ## Freshness, evaluations, and violations
 
@@ -97,8 +101,8 @@ as a pass.
 The approved CM-01 runner is a bounded later mutation. It writes and re-extracts exactly
 the reviewed DripTray limits (`assembly_max_displacement <= 1 mm` and
 `assembly_max_von_mises <= 20 MPa`), then publishes their evaluations only after exact
-CAD consumption and unit normalization have been validated. The 2026-08-02 reference
-run published both as `pass` in r6. The existing `90 degC` comparison remains a separate
+CAD consumption and unit normalization have been validated. The 2026-08-02 reference run
+published both as `pass` in r6. The existing `90 degC` comparison remains a separate
 provisional scenario contract, not proof of either mechanical criterion.
 
 ## Persistence and UI status
@@ -114,10 +118,9 @@ read crosses the canonical validator again.
 that store. It starts from a captured SysON inventory, reads the declared persisted
 Modelica run, and reads the reviewed ERPNext BOM and Bin projections. Explicit build and
 mechanical runners publish later immutable revisions through separate attach tasks. The
-BFF's passive read path
-projects the latest validated subject snapshot into the deliberately smaller browser
-contract. The projection is never promoted back into the canonical domain model, and
-project commands cannot create thread evidence.
+BFF's passive read path projects the latest validated subject snapshot into the
+deliberately smaller browser contract. The projection is never promoted back into the
+canonical domain model, and project commands cannot create thread evidence.
 
 The browser projection includes a required `graph` with typed nodes and edges. Canonical
 `provenance` links retain their relation and rationale. Exact `inputArtifactIds` and

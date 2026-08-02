@@ -69,7 +69,7 @@ export function collectEngineeringProjectIssues(
       "approvals",
       "blockers",
     ],
-    ["previous", "commandReceipts"],
+    ["previous", "commandReceipts", "discoveryHandoff"],
     issues,
   );
   if (!root) return issues;
@@ -82,6 +82,9 @@ export function collectEngineeringProjectIssues(
     validatePrevious(root.previous, "$.previous", issues);
   }
   validateProjectIdentity(root.project, "$.project", issues);
+  if (root.discoveryHandoff !== undefined) {
+    validateDiscoveryHandoff(root.discoveryHandoff, "$.discoveryHandoff", issues);
+  }
   validateArray(root.threadSnapshots, "$.threadSnapshots", issues, validateSnapshotRef);
   validateArray(root.phases, "$.phases", issues, validatePhase);
   validateArray(root.workItems, "$.workItems", issues, validateWorkItem);
@@ -210,6 +213,40 @@ function validateProjectIdentity(
   if (!objective) return;
   nonEmptyString(objective.title, `${path}.objective.title`, issues);
   nonEmptyString(objective.statement, `${path}.objective.statement`, issues);
+}
+
+function validateDiscoveryHandoff(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "discoveryId",
+      "snapshotId",
+      "revision",
+      "briefId",
+      "approvedBriefFingerprint",
+      "approvedAt",
+      "approvedBy",
+    ],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.discoveryId, `${path}.discoveryId`, issues);
+  nonEmptyString(input.snapshotId, `${path}.snapshotId`, issues);
+  positiveInteger(input.revision, `${path}.revision`, issues);
+  nonEmptyString(input.briefId, `${path}.briefId`, issues);
+  validateFingerprint(
+    input.approvedBriefFingerprint,
+    `${path}.approvedBriefFingerprint`,
+    issues,
+  );
+  isoDateTime(input.approvedAt, `${path}.approvedAt`, issues);
+  validateCommandActor(input.approvedBy, `${path}.approvedBy`, issues);
 }
 
 function validateSnapshotRef(
@@ -682,6 +719,7 @@ function validateCommandReceipt(
   oneOf(
     input.type,
     [
+      "project.create-from-discovery",
       "decision.propose",
       "decision.approve",
       "decision.reject",
@@ -819,15 +857,17 @@ function validateInvariants(
     "$.threadSnapshots",
     issues,
   );
-  if (
-    project.revision > 1 &&
-    (project.commandReceipts?.length ?? 0) !== project.revision - 1
-  ) {
+  const expectedCommandReceiptCount = project.discoveryHandoff
+    ? project.revision
+    : Math.max(0, project.revision - 1);
+  if ((project.commandReceipts?.length ?? 0) !== expectedCommandReceiptCount) {
     issue(
       issues,
       "incomplete_command_history",
       "$.commandReceipts",
-      "must contain exactly one durable receipt for every command-created revision",
+      project.discoveryHandoff
+        ? "must contain the discovery handoff receipt and one receipt for every later command revision"
+        : "must contain exactly one durable receipt for every command-created revision",
     );
   }
   requireUnique(
@@ -849,13 +889,48 @@ function validateInvariants(
     issues,
   );
 
-  if (project.threadSnapshots.length === 0) {
+  if (project.threadSnapshots.length === 0 && !project.discoveryHandoff) {
     issue(
       issues,
       "missing_thread_snapshot",
       "$.threadSnapshots",
       "must declare at least one exact ThreadSnapshot revision",
     );
+  }
+  if (project.discoveryHandoff) {
+    if (project.discoveryHandoff.approvedBy.origin !== "human") {
+      issue(
+        issues,
+        "handoff_approval_origin_forbidden",
+        "$.discoveryHandoff.approvedBy.origin",
+        "only a human may approve the discovery brief used to create a project",
+      );
+    }
+    if (
+      Date.parse(project.discoveryHandoff.approvedAt) > Date.parse(project.generatedAt)
+    ) {
+      issue(
+        issues,
+        "invalid_chronology",
+        "$.discoveryHandoff.approvedAt",
+        "cannot be later than the project snapshot generation time",
+      );
+    }
+    if (
+      project.revision === 1 && (
+        project.threadSnapshots.length > 0 || project.phases.length > 0 ||
+        project.workItems.length > 0 || project.agentRuns.length > 0 ||
+        project.decisions.length > 0 || project.approvals.length > 0 ||
+        project.blockers.length > 0
+      )
+    ) {
+      issue(
+        issues,
+        "handoff_initial_scope",
+        "$",
+        "a discovery handoff initial project contains planning provenance only and cannot fabricate technical state",
+      );
+    }
   }
   project.threadSnapshots.forEach((reference, index) => {
     if (reference.subjectId !== project.project.subjectId) {
@@ -1476,8 +1551,9 @@ function validateCommandReceiptInvariant(
   issues: EngineeringProjectValidationIssue[],
 ): void {
   const path = `$.commandReceipts[${index}]`;
+  const firstCommandRevision = project.discoveryHandoff ? 1 : 2;
   if (
-    receipt.resultingSnapshot.revision < 2 ||
+    receipt.resultingSnapshot.revision < firstCommandRevision ||
     receipt.resultingSnapshot.revision > project.revision
   ) {
     issue(
@@ -1498,12 +1574,76 @@ function validateCommandReceiptInvariant(
       "must match the current snapshot id for the current revision",
     );
   }
-  if (receipt.resultingSnapshot.revision !== index + 2) {
+  if (receipt.resultingSnapshot.revision !== index + firstCommandRevision) {
     issue(
       issues,
       "invalid_revision",
       `${path}.resultingSnapshot.revision`,
-      `must equal command revision ${index + 2}`,
+      `must equal command revision ${index + firstCommandRevision}`,
+    );
+  }
+  if (
+    project.discoveryHandoff && index === 0 &&
+    receipt.type !== "project.create-from-discovery"
+  ) {
+    issue(
+      issues,
+      "invalid_handoff_receipt",
+      `${path}.type`,
+      "the first command receipt for a discovery handoff must create the project",
+    );
+  }
+  const isDiscoveryHandoffCreation = project.discoveryHandoff !== undefined &&
+    index === 0;
+  if (
+    isDiscoveryHandoffCreation && receipt.actor.origin !== "human"
+  ) {
+    issue(
+      issues,
+      "command_authority_mismatch",
+      `${path}.actor.origin`,
+      "project.create-from-discovery requires human authority",
+    );
+  }
+  if (!isDiscoveryHandoffCreation && receipt.type === "project.create-from-discovery") {
+    issue(
+      issues,
+      "invalid_handoff_receipt",
+      `${path}.type`,
+      "project.create-from-discovery is valid only as the first receipt of a discovery handoff",
+    );
+  }
+  if (
+    isDiscoveryHandoffCreation && project.discoveryHandoff &&
+    Date.parse(receipt.appliedAt) < Date.parse(project.discoveryHandoff.approvedAt)
+  ) {
+    issue(
+      issues,
+      "invalid_chronology",
+      `${path}.appliedAt`,
+      "cannot precede the approved discovery brief",
+    );
+  }
+  if (
+    isDiscoveryHandoffCreation && project.revision === 1 &&
+    Date.parse(receipt.appliedAt) !== Date.parse(project.generatedAt)
+  ) {
+    issue(
+      issues,
+      "invalid_chronology",
+      `${path}.appliedAt`,
+      "must equal the initial project snapshot generation time",
+    );
+  }
+  if (
+    isDiscoveryHandoffCreation &&
+    Date.parse(receipt.issuedAt) > Date.parse(receipt.appliedAt)
+  ) {
+    issue(
+      issues,
+      "invalid_chronology",
+      `${path}.issuedAt`,
+      "cannot be later than the authoritative command application time",
     );
   }
   const previous = project.commandReceipts?.[index - 1];

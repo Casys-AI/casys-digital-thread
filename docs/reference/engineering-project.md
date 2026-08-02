@@ -30,23 +30,36 @@ cannot manufacture thread evidence or execute a provider.
 
 ## Root fields
 
-| Field             | Contract                                                                   |
-| ----------------- | -------------------------------------------------------------------------- |
-| `id`, `revision`  | Immutable project-snapshot identity and positive revision                  |
-| `previous`        | Required after revision 1 and always lower than the current revision       |
-| `generatedAt`     | ISO 8601 UTC materialization timestamp                                     |
-| `project`         | Stable project ID, display name, thread subject ID, and explicit objective |
-| `threadSnapshots` | One or more exact, declared `ThreadSnapshot` revisions                     |
-| `phases`          | Ordered project phases; phase status is deliberately absent                |
-| `workItems`       | Human, agent, or shared work and its explicit lifecycle state              |
-| `agentRuns`       | Observable execution lifecycle and exact produced evidence                 |
-| `decisions`       | Questions or proposals requiring project authority                         |
-| `approvals`       | Auditable responses bound to the exact inputs approved                     |
-| `blockers`        | Open or resolved conditions overlaid on affected work and phases           |
-| `commandReceipts` | Optional durable idempotency and audit ledger after the first command      |
+| Field              | Contract                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `id`, `revision`   | Immutable project-snapshot identity and positive revision                                                          |
+| `previous`         | Required after revision 1 and always lower than the current revision                                               |
+| `generatedAt`      | ISO 8601 UTC materialization timestamp                                                                             |
+| `project`          | Stable project ID, display name, thread subject ID, and explicit objective                                         |
+| `discoveryHandoff` | Optional exact approved-discovery provenance; only valid for a human-created initial project                       |
+| `threadSnapshots`  | Exact declared `ThreadSnapshot` revisions; may be empty only while a valid discovery handoff has no technical work |
+| `phases`           | Ordered project phases; phase status is deliberately absent                                                        |
+| `workItems`        | Human, agent, or shared work and its explicit lifecycle state                                                      |
+| `agentRuns`        | Observable execution lifecycle and exact produced evidence                                                         |
+| `decisions`        | Questions or proposals requiring project authority                                                                 |
+| `approvals`        | Auditable responses bound to the exact inputs approved                                                             |
+| `blockers`         | Open or resolved conditions overlaid on affected work and phases                                                   |
+| `commandReceipts`  | Durable idempotency and audit ledger after a command-created revision                                              |
 
 The project revision and the referenced thread revision are independent counters. For
 example, project snapshot revision 1 may cite thread snapshot revision 5.
+
+## Discovery handoff
+
+`discoveryHandoff` records the exact discovery ID, snapshot ID and revision, approved
+brief ID and fingerprint, approval time, and human approver. The first command receipt
+is `project.create-from-discovery`. The create operation is atomic and idempotent; a
+different request cannot reuse its command ID or existing project ID.
+
+This is planning provenance, not engineering evidence. A handoff project may begin with
+empty phases, work, decisions, runs, approvals, blockers, and `threadSnapshots`. Its
+derived status is `planned`, never a fabricated completion. SysON modeling and the first
+technical `ThreadSnapshot` require later agent work and their own evidence.
 
 ## Exact thread references
 
@@ -153,8 +166,8 @@ waits on human review. Only a proposed decision is counted as a human action. Th
 presentation rule is intentionally narrower than the command contract: **Project** only
 shows a lightweight review notification; **Activity** supplies the evidence and lineage
 for review; and **Product** is the SysON/specification inspection context from which a
-correction can be scoped with the agent. The Workbench exposes no general manual proposal
-or fallback data-entry form in that inbox.
+correction can be scoped with the agent. The Workbench exposes no general manual
+proposal or fallback data-entry form in that inbox.
 
 ### Blockers
 
@@ -172,15 +185,15 @@ evidence. A run may bind its normalized inputs to an exact base snapshot and SHA
 fingerprint using the same atomic pair as decisions.
 
 Queueing is a human authorization over an already bounded `ready` work item. The command
-creates a durable `queued` run; it does not execute a tool. An agent may claim it, append
-public progress summaries,
-enter `publishing`, and then complete or fail it. `statusHistory` records these public
-lifecycle facts and summaries, not chain-of-thought. Completion requires a non-`latest`
-result snapshot whose revision advances the run's exact base snapshot and whose complete
-`previous` chain reaches that base, plus at least one unique entity reference from that
-result. The completion validator resolves the base, result, intervening ancestors, and
-every cited entity, then requires each cited entity to be new or content-changed relative
-to the base before the project may cite it. A newer parallel branch is rejected.
+creates a durable `queued` run; it does not execute a tool. An agent may claim it,
+append public progress summaries, enter `publishing`, and then complete or fail it.
+`statusHistory` records these public lifecycle facts and summaries, not
+chain-of-thought. Completion requires a non-`latest` result snapshot whose revision
+advances the run's exact base snapshot and whose complete `previous` chain reaches that
+base, plus at least one unique entity reference from that result. The completion
+validator resolves the base, result, intervening ancestors, and every cited entity, then
+requires each cited entity to be new or content-changed relative to the base before the
+project may cite it. A newer parallel branch is rejected.
 
 ## Command and authority surfaces
 
@@ -192,10 +205,10 @@ returns the original result; reusing the ID with different arguments is an error
 
 The transports grant different fixed capabilities:
 
-| Surface               | Allowed project operations                                          | Explicitly absent                    |
-| --------------------- | ------------------------------------------------------------------- | ------------------------------------ |
-| Passive browser reads | `GET /api/thread/workbench` and snapshot SSE                        | Every mutation and provider call     |
-| Human browser command | Propose, approve, reject, and queue                                 | Claim, run lifecycle, provider calls |
+| Surface               | Allowed project operations                                       | Explicitly absent                    |
+| --------------------- | ---------------------------------------------------------------- | ------------------------------------ |
+| Passive browser reads | `GET /api/thread/workbench` and snapshot SSE                     | Every mutation and provider call     |
+| Human browser command | Propose, approve, reject, and queue                              | Claim, run lifecycle, provider calls |
 | Agent MCP tools       | Snapshot, propose, claim/start, progress, publish/complete, fail | Approve, reject, queue               |
 
 `decision.propose` is a narrow command capability, not a promise of a generic browser
@@ -243,20 +256,21 @@ does not cite the historical support-bracket demo.
 
 The project honestly derives these phase states:
 
-| Phase             | Status      | Basis                                                                                  |
-| ----------------- | ----------- | -------------------------------------------------------------------------------------- |
-| Definition        | `completed` | Exact SysON inventory artifact                                                         |
-| Architecture      | `completed` | Exact observed SysON architecture artifact                                             |
-| Design            | `completed` | Exact whole-machine STEP artifact                                                      |
-| Simulation        | `completed` | Exact observed Modelica result artifact                                                |
-| Verification      | `blocked`   | The bundled mechanical proof case has not been reviewed                                |
-| Industrialization | `completed` | Exact ERPNext BOM-detail artifact                                                      |
+| Phase             | Status      | Basis                                                   |
+| ----------------- | ----------- | ------------------------------------------------------- |
+| Definition        | `completed` | Exact SysON inventory artifact                          |
+| Architecture      | `completed` | Exact observed SysON architecture artifact              |
+| Design            | `completed` | Exact whole-machine STEP artifact                       |
+| Simulation        | `completed` | Exact observed Modelica result artifact                 |
+| Verification      | `blocked`   | The bundled mechanical proof case has not been reviewed |
+| Industrialization | `completed` | Exact ERPNext BOM-detail artifact                       |
 
 The missing mechanical inputs form one `required` proof-case decision and one open
-blocker. There are no approvals and zero agent runs. This is still the clean state seeded
-on a fresh active store; real operator or agent commands may create later local revisions.
-The Modelica scenario observation does not become a product requirement, and the project
-snapshot invents no stress, temperature, material, support, or load threshold.
+blocker. There are no approvals and zero agent runs. This is still the clean state
+seeded on a fresh active store; real operator or agent commands may create later local
+revisions. The Modelica scenario observation does not become a product requirement, and
+the project snapshot invents no stress, temperature, material, support, or load
+threshold.
 
 ## Completed CM-01 reference lifecycle
 

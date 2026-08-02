@@ -105,6 +105,7 @@ export function ThreadWorkbench({
   );
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [graphCanvasOpen, setGraphCanvasOpen] = useState(false);
   const [prepared, setPrepared] = useState<PreparedAction>();
   const [operatorId, setOperatorId] = useState("");
   const [commandFeedback, setCommandFeedback] = useState<
@@ -115,6 +116,8 @@ export function ThreadWorkbench({
   const [error, setError] = useState<string>();
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
   const followLiveRef = useRef(followLive);
+  const graphCanvasCloseButton = useRef<HTMLButtonElement>(null);
+  const graphCanvasReturnView = useRef<ProjectWorkspaceView>("verification");
   followLiveRef.current = followLive;
 
   useEffect(() => {
@@ -171,6 +174,35 @@ export function ThreadWorkbench({
     };
   }, [client]);
 
+  useEffect(() => {
+    if (!graphCanvasOpen || typeof window === "undefined") return;
+    globalThis.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    const focusFrame = globalThis.requestAnimationFrame(() => {
+      graphCanvasCloseButton.current?.focus();
+    });
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setGraphCanvasOpen(false);
+    };
+    globalThis.addEventListener("keydown", closeOnEscape);
+    const returnView = graphCanvasReturnView.current;
+    return () => {
+      globalThis.cancelAnimationFrame(focusFrame);
+      globalThis.removeEventListener("keydown", closeOnEscape);
+      globalThis.requestAnimationFrame(() => {
+        const selector = returnView === "work"
+          ? ".thread-feed-lineage-actions button"
+          : ".thread-graph-expand-button";
+        const trigger = document.querySelector<HTMLElement>(selector) ??
+          document.querySelector<HTMLElement>(
+            ".project-navigation button[aria-current='page']",
+          );
+        trigger?.focus();
+      });
+    };
+  }, [graphCanvasOpen]);
+
   if (error) {
     return (
       <StateMessage title="Engineering project unavailable" tone="danger">
@@ -194,6 +226,17 @@ export function ThreadWorkbench({
   const project = workbench.project;
   const projectBrief = buildProjectBrief(project);
   const commandCapability = workbench.capabilities?.operatorCommands;
+  const evidenceContext = contextualGraphProjection(
+    snapshot.graph.nodes,
+    snapshot.graph.edges,
+    lineageFocus,
+  );
+
+  const openGraphCanvas = () => {
+    graphCanvasReturnView.current = activeView;
+    setInspectorOpen(false);
+    setGraphCanvasOpen(true);
+  };
 
   const executeProjectCommand = async (
     commandKey: string,
@@ -287,6 +330,7 @@ export function ThreadWorkbench({
 
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);
+    setGraphCanvasOpen(false);
     // A selected record can belong to another tool surface. Keep the main
     // workspace calm when changing context; explicit inspection reopens this.
     setInspectorOpen(false);
@@ -363,6 +407,31 @@ export function ThreadWorkbench({
     if (node.selection) {
       setSelection(node.selection);
     }
+  };
+
+  const selectVerificationGraphItem = (
+    next: ThreadGraphSelection | undefined,
+  ) => {
+    if (next?.kind === "node") {
+      const node = graphNodeByRef(snapshot, next.ref);
+      if (node) selectGraphNode(node);
+      return;
+    }
+    setGraphSelection(next);
+    if (next?.kind === "edge") {
+      setDrawerMode("tool");
+      setInspectorOpen(true);
+    }
+  };
+
+  const inspectVerificationGraphItem = (
+    next: ThreadRef,
+    node: ThreadGraphNode,
+  ) => {
+    setSelection(next);
+    setLineageFocus(node.ref);
+    setDrawerMode("tool");
+    setInspectorOpen(true);
   };
 
   const changeFollowLive = (next: boolean) => {
@@ -511,6 +580,82 @@ export function ThreadWorkbench({
     </aside>
   );
 
+  if (graphCanvasOpen) {
+    return (
+      <div class="thread-workbench mcp-view-surface thread-graph-focus-mode">
+        <section
+          class="thread-graph-focus-shell"
+          aria-labelledby="thread-graph-focus-title"
+          role="dialog"
+          aria-modal="true"
+        >
+          <header class="thread-graph-focus-header">
+            <div>
+              <p>RECORDED EVIDENCE · FULL CANVAS</p>
+              <h2 id="thread-graph-focus-title">{project.project.name}</h2>
+              <span>
+                Follow a fact back to its recorded sources and forward to the
+                work it affects.
+              </span>
+            </div>
+            <div class="thread-graph-focus-actions">
+              <span>
+                {snapshot.graph.nodes.length} facts ·{" "}
+                {snapshot.graph.edges.length} relations
+              </span>
+              {inspectorOpen && (
+                <button
+                  type="button"
+                  class="thread-inspector-toggle"
+                  aria-controls="thread-tool-inspector"
+                  onClick={() => setInspectorOpen(false)}
+                >
+                  Close details
+                </button>
+              )}
+              <button
+                type="button"
+                class="thread-graph-focus-close"
+                ref={graphCanvasCloseButton}
+                onClick={() => setGraphCanvasOpen(false)}
+              >
+                Back to evidence
+              </button>
+            </div>
+          </header>
+          <div
+            class={`thread-graph-focus-workspace ${
+              inspectorOpen ? "has-inspector" : ""
+            }`}
+          >
+            <div class="thread-graph-focus-body">
+              <div class="thread-graph-legend" aria-label="Graph legend">
+                <span data-tone="source">upstream evidence</span>
+                <span data-tone="focus">selected fact</span>
+                <span data-tone="impact">downstream impact</span>
+                <span data-tone="attested">verified fingerprint</span>
+                <span data-tone="mismatch">fingerprint mismatch</span>
+              </div>
+              <ThreadGraph
+                nodes={snapshot.graph.nodes}
+                edges={snapshot.graph.edges}
+                selection={graphSelection}
+                focus={lineageFocus}
+                presentation="canvas"
+                initialZoom={3.25}
+                showSupporting
+                showDensityControl={false}
+                onSelectionChange={selectVerificationGraphItem}
+                onInspect={inspectVerificationGraphItem}
+              />
+            </div>
+            {inspectorOpen && inspector}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div class="thread-workbench mcp-view-surface">
       <header class="thread-cockpit-header">
@@ -632,6 +777,15 @@ export function ThreadWorkbench({
                 >
                   {inspectorOpen ? "Close details" : "Inspect selection"}
                 </button>
+                {activeView === "verification" && (
+                  <button
+                    type="button"
+                    class="thread-graph-expand-button"
+                    onClick={openGraphCanvas}
+                  >
+                    Open graph canvas
+                  </button>
+                )}
               </div>
             </div>
             <div class="thread-workspace-meta">
@@ -652,20 +806,38 @@ export function ThreadWorkbench({
               </div>
             </div>
             {activeView === "work" && (
-              <>
-                <ProjectWorkRibbon project={project} />
-                <ReviewNotifications
-                  surface="activity"
-                  project={project}
-                  capability={commandCapability}
-                  actorId={operatorId}
-                  onActorIdChange={setOperatorId}
-                  feedback={commandFeedback}
-                  onCommand={executeProjectCommand}
-                  onOpenActivity={openDecisionActivity}
-                  onOpenSpecification={openDecisionSpecification}
-                />
-              </>
+              <details
+                class="project-activity-brief"
+                open={project.decisions.some((decision) =>
+                  decision.status === "proposed"
+                )}
+              >
+                <summary>
+                  <span>PROJECT PULSE</span>
+                  <strong>
+                    {project.decisions.some((decision) =>
+                        decision.status === "proposed"
+                      )
+                      ? "A recommendation is ready for your review"
+                      : "Review status, current work and blockers"}
+                  </strong>
+                  <small>Open when you need the project context</small>
+                </summary>
+                <div>
+                  <ProjectWorkRibbon project={project} />
+                  <ReviewNotifications
+                    surface="activity"
+                    project={project}
+                    capability={commandCapability}
+                    actorId={operatorId}
+                    onActorIdChange={setOperatorId}
+                    feedback={commandFeedback}
+                    onCommand={executeProjectCommand}
+                    onOpenActivity={openDecisionActivity}
+                    onOpenSpecification={openDecisionSpecification}
+                  />
+                </div>
+              </details>
             )}
             {activeView === "verification" && (
               <>
@@ -677,12 +849,19 @@ export function ThreadWorkbench({
                   <span data-tone="source">upstream evidence</span>
                   <span data-tone="focus">selected fact</span>
                   <span data-tone="impact">downstream impact</span>
-                  <span data-tone="attested">hash-attested handoff</span>
+                  <span data-tone="attested">verified fingerprint</span>
+                  <span data-tone="mismatch">fingerprint mismatch</span>
                 </div>
               </>
             )}
-            <div class="thread-graph-workspace">
-              <div class="thread-graph-stage">
+            <div
+              class={`thread-graph-workspace ${
+                inspectorOpen ? "has-inspector" : "is-wide"
+              }`}
+            >
+              <div
+                class={`thread-graph-stage thread-graph-stage-${activeView}`}
+              >
                 {activeView === "work"
                   ? (
                     <ThreadFeed
@@ -706,34 +885,46 @@ export function ThreadWorkbench({
                         setDrawerMode("tool");
                         setInspectorOpen(true);
                       }}
+                      onOpenGraphCanvas={() => {
+                        openGraphCanvas();
+                      }}
                     />
                   )
                   : activeView === "verification"
                   ? (
-                    <ThreadGraph
-                      nodes={snapshot.graph.nodes}
-                      edges={snapshot.graph.edges}
-                      selection={graphSelection}
-                      focus={lineageFocus}
-                      onSelectionChange={(next) => {
-                        if (next?.kind === "node") {
-                          const node = graphNodeByRef(snapshot, next.ref);
-                          if (node) selectGraphNode(node);
-                          return;
-                        }
-                        setGraphSelection(next);
-                        if (next?.kind === "edge") {
-                          setDrawerMode("tool");
-                          setInspectorOpen(true);
-                        }
-                      }}
-                      onInspect={(next, node) => {
-                        setSelection(next);
-                        setLineageFocus(node.ref);
-                        setDrawerMode("tool");
-                        setInspectorOpen(true);
-                      }}
-                    />
+                    <section
+                      class="thread-evidence-context"
+                      aria-labelledby="thread-evidence-context-title"
+                    >
+                      <header>
+                        <div>
+                          <small>SELECTED FACT · DIRECT RELATIONS</small>
+                          <strong id="thread-evidence-context-title">
+                            {evidenceContext.focus?.label ??
+                              "Recorded evidence context"}
+                          </strong>
+                        </div>
+                        <span>
+                          {evidenceContext.nodes.length} facts ·{" "}
+                          {evidenceContext.edges.length} direct relations
+                          {evidenceContext.hiddenEdgeCount > 0
+                            ? ` · ${evidenceContext.hiddenEdgeCount} more in canvas`
+                            : ""}
+                        </span>
+                      </header>
+                      <ThreadGraph
+                        nodes={evidenceContext.nodes}
+                        edges={evidenceContext.edges}
+                        selection={graphSelection}
+                        focus={lineageFocus}
+                        presentation="context"
+                        showSupporting
+                        showDensityControl={false}
+                        ariaLabel="Direct evidence around the selected fact"
+                        onSelectionChange={selectVerificationGraphItem}
+                        onInspect={inspectVerificationGraphItem}
+                      />
+                    </section>
                   )
                   : activeView === "product"
                   ? (
@@ -1495,6 +1686,65 @@ function graphNodeByRef(
   return snapshot.graph.nodes.find((node) =>
     node.ref.kind === reference.kind && node.ref.id === reference.id
   );
+}
+
+interface ContextualGraphProjection {
+  focus?: ThreadGraphNode;
+  nodes: ThreadGraphNode[];
+  edges: ThreadGraphEdge[];
+  hiddenEdgeCount: number;
+}
+
+/** One-hop evidence preview; the dedicated canvas owns the complete graph. */
+function contextualGraphProjection(
+  nodes: ThreadGraphNode[],
+  edges: ThreadGraphEdge[],
+  focus: ThreadGraphRef | undefined,
+): ContextualGraphProjection {
+  const focusNode = focus
+    ? nodes.find((node) => sameGraphRef(node.ref, focus))
+    : nodes[0];
+  if (!focusNode) {
+    return { nodes: [], edges: [], hiddenEdgeCount: 0 };
+  }
+  const incidentEdges = edges.filter((edge) =>
+    sameGraphRef(edge.from, focusNode.ref) ||
+    sameGraphRef(edge.to, focusNode.ref)
+  ).sort((left, right) =>
+    attestationPriority(left) - attestationPriority(right) ||
+    left.id.localeCompare(right.id)
+  );
+  const visibleEdges = incidentEdges.slice(0, 6);
+  const visibleRefs = new Set<string>([
+    graphRefKey(focusNode.ref),
+    ...visibleEdges.flatMap((edge) => [
+      graphRefKey(edge.from),
+      graphRefKey(edge.to),
+    ]),
+  ]);
+  return {
+    focus: focusNode,
+    nodes: nodes.filter((node) => visibleRefs.has(graphRefKey(node.ref))),
+    edges: visibleEdges,
+    hiddenEdgeCount: incidentEdges.length - visibleEdges.length,
+  };
+}
+
+function attestationPriority(edge: ThreadGraphEdge): number {
+  if (edge.attestation?.status === "mismatch") return 0;
+  if (edge.attestation?.status === "verified") return 1;
+  return 2;
+}
+
+function sameGraphRef(
+  left: ThreadGraphRef,
+  right: ThreadGraphRef,
+): boolean {
+  return left.kind === right.kind && left.id === right.id;
+}
+
+function graphRefKey(reference: ThreadGraphRef): string {
+  return `${reference.kind}:${reference.id}`;
 }
 
 function relationTitle(relation: ThreadGraphEdge["relation"]): string {

@@ -21,6 +21,7 @@ import {
   discoveryRiskLabel,
   discoveryRiskTone,
 } from "./discovery-model.ts";
+import type { ProjectDiscoveryHandoffResult } from "./discovery-handoff-contract.ts";
 
 export interface DiscoveryAnswerSelection {
   readonly questionId: string;
@@ -38,12 +39,19 @@ export interface DiscoveryWorkbenchProps {
   readonly discovery: ProjectDiscoverySnapshot;
   readonly disabled?: boolean;
   readonly busy?: boolean;
+  /** Keeps discovery-review copy distinct from the project-handoff action. */
+  readonly handoffPending?: boolean;
   readonly onAnswer?: (
     selection: DiscoveryAnswerSelection,
   ) => void | Promise<void>;
   readonly onReviewBrief?: (
     selection: DiscoveryBriefReviewSelection,
   ) => void | Promise<void>;
+  readonly onCreateEngineeringProject?: () => void | Promise<void>;
+  /** A narrow handoff receipt, deliberately not a technical project snapshot. */
+  readonly engineeringProject?: ProjectDiscoveryHandoffResult;
+  /** The project id is occupied; its origin has not been verified here. */
+  readonly engineeringProjectIdOccupied?: boolean;
 }
 
 /**
@@ -54,8 +62,12 @@ export function DiscoveryWorkbench({
   discovery,
   disabled = false,
   busy = false,
+  handoffPending = false,
   onAnswer,
   onReviewBrief,
+  onCreateEngineeringProject,
+  engineeringProject,
+  engineeringProjectIdOccupied = false,
 }: DiscoveryWorkbenchProps): JSX.Element {
   const view = buildProjectDiscoveryView(discovery);
   const interactionDisabled = disabled || busy;
@@ -77,6 +89,15 @@ export function DiscoveryWorkbench({
       inputFingerprint: discovery.review.inputFingerprint,
       action,
     });
+  };
+
+  const startEngineeringProject = (): void => {
+    if (
+      interactionDisabled || !onCreateEngineeringProject ||
+      !hasApprovedBrief(discovery) || engineeringProject ||
+      engineeringProjectIdOccupied
+    ) return;
+    void onCreateEngineeringProject();
   };
 
   return (
@@ -171,12 +192,102 @@ export function DiscoveryWorkbench({
         brief={discovery.brief}
         canReview={view.canReviewBrief}
         disabled={interactionDisabled || !onReviewBrief}
-        busy={busy}
+        busy={busy && !handoffPending}
         reviewStatus={discovery.review?.status}
         onReview={review}
       />
+
+      <EngineeringProjectHandoff
+        discovery={discovery}
+        disabled={interactionDisabled || !onCreateEngineeringProject}
+        busy={handoffPending}
+        result={engineeringProject}
+        projectIdOccupied={engineeringProjectIdOccupied}
+        onStart={startEngineeringProject}
+      />
     </main>
   );
+}
+
+function EngineeringProjectHandoff({
+  discovery,
+  disabled,
+  busy,
+  result,
+  projectIdOccupied,
+  onStart,
+}: {
+  discovery: ProjectDiscoverySnapshot;
+  disabled: boolean;
+  busy: boolean;
+  result?: ProjectDiscoveryHandoffResult;
+  projectIdOccupied: boolean;
+  onStart: () => void;
+}): JSX.Element | null {
+  if (!hasApprovedBrief(discovery)) return null;
+
+  if (result) {
+    return (
+      <StateMessage
+        title="Initial project shell recorded"
+        tone="success"
+        className="discovery-handoff-result"
+      >
+        <p>{result.message}</p>
+        <p>
+          This receipt describes the initial handoff only. Open the engineering
+          project to inspect any model, simulation, or evidence added afterward.
+        </p>
+      </StateMessage>
+    );
+  }
+
+  if (projectIdOccupied) {
+    return (
+      <StateMessage
+        title="Project ID already occupied"
+        tone="danger"
+        className="discovery-handoff-result"
+      >
+        <p>
+          An engineering project already uses this discovery ID. Inspect it
+          before continuing: this screen has not verified that it came from this
+          approved brief.
+        </p>
+      </StateMessage>
+    );
+  }
+
+  return (
+    <section
+      class="discovery-handoff"
+      aria-labelledby="discovery-handoff-title"
+    >
+      <div>
+        <p class="discovery-handoff-kicker">NEXT STEP</p>
+        <h2 id="discovery-handoff-title">Your framing is approved</h2>
+        <p>
+          Start the engineering project to preserve this approved brief. This
+          creates a project shell only; it does not create a model, simulation,
+          or technical proof.
+        </p>
+      </div>
+      <Button
+        className="discovery-handoff-action"
+        disabled={disabled}
+        onClick={onStart}
+      >
+        {busy ? "Starting project…" : "Start engineering project"}
+      </Button>
+    </section>
+  );
+}
+
+function hasApprovedBrief(discovery: ProjectDiscoverySnapshot): boolean {
+  return discovery.status === "approved" && !!discovery.brief &&
+    discovery.review?.status === "approved" &&
+    discovery.review.briefId === discovery.brief.id &&
+    discovery.review.decidedBy?.origin === "human";
 }
 
 function ActiveDiscoveryQuestion({

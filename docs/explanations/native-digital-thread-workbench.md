@@ -24,6 +24,13 @@ answer three questions at the same time:
 3. Which prepared recommendation needs the operator to review, challenge, approve, or
    return now?
 
+Those questions share one evidence model but must not compete visually. The beginner
+view leads with current project stage, agent activity, and the next review. Technical
+lineage and provider records appear progressively when the person selects the affected
+fact. The product may start from an idea, existing CAD, or an existing product; those
+entry points converge on the same change-to-proof loop described in
+[the product direction](product-direction.md).
+
 The primary UI object is therefore a change and its propagation, not an MCP server or a
 dashboard panel. The activity feed is the chronological backbone of the cockpit, not the
 whole product: its inline lineage explains impact, and the contextual tool surface is
@@ -65,8 +72,8 @@ reviewer to the relevant context; it is not a second technical authoring surface
 recommendation. Inspection and any correction request start with the affected
 SysON/specification context in **Product** and the paired agent conversation, never in a
 generic decision card. Activity may record one exact-bound request for a revised
-recommendation; it never collects replacement technical values. Exact hashes and snapshot
-IDs remain available as audit context.
+recommendation; it never collects replacement technical values. Exact hashes and
+snapshot IDs remain available as audit context.
 
 ## Runtime boundary
 
@@ -194,8 +201,9 @@ branch:
 11. reloading the shell starts no engineering computation.
 12. **Project** exposes a lightweight review-notification inbox, **Activity** supplies
     the live evidence and lineage for review, and **Product** routes specification
-    inspection and any correction request to the affected SysON context; explicit human approval,
-    rejection, and bounded work authorization still append immutable project revisions;
+    inspection and any correction request to the affected SysON context; explicit human
+    approval, rejection, and bounded work authorization still append immutable project
+    revisions;
 13. agents can advance only an already queued run, and cannot grant themselves approval
     or queue authority;
 14. run completion fails closed until an exact descendant snapshot contains evidence
@@ -205,12 +213,12 @@ branch:
 
 This is an evidence assembly, not a causal merger. CAD → FEA becomes an attested edge
 only after a solver run consumes the exact STEP and its result is canonically published;
-r6 contains that edge for the isolated concept DripTray, while the clean r5 baseline does
-not. Modelica's scenario and ERPNext's provider reads
-are independent branches until an explicit transformation or requirement trace links
-them. In particular, zero ERP Bin rows is not a stock conclusion, and a successful
-Modelica run is not a compliance verdict. The passing DripTray evaluations are likewise
-not whole-machine, fabrication-release, or certification evidence.
+r6 contains that edge for the isolated concept DripTray, while the clean r5 baseline
+does not. Modelica's scenario and ERPNext's provider reads are independent branches
+until an explicit transformation or requirement trace links them. In particular, zero
+ERP Bin rows is not a stock conclusion, and a successful Modelica run is not a
+compliance verdict. The passing DripTray evaluations are likewise not whole-machine,
+fabrication-release, or certification evidence.
 
 ## Product rule
 

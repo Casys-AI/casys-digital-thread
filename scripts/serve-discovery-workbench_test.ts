@@ -3,8 +3,10 @@ import {
   DISCOVERY_OPERATOR_INTENT_HEADER,
   DISCOVERY_OPERATOR_INTENT_VALUE,
 } from "../src/adapters/project-discovery-command-http.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import { ProjectDiscoveryCommandService } from "../src/domain/project-discovery-command-service.ts";
+import { ProjectDiscoveryHandoffService } from "../src/domain/project-discovery-handoff-service.ts";
 import { createDiscoveryWorkbenchHandler } from "./serve-discovery-workbench.ts";
 
 const DISCOVERY_ID = "drone-concept";
@@ -132,6 +134,102 @@ Deno.test("Discovery Workbench applies explicit same-origin human commands with 
   });
 });
 
+Deno.test("Discovery Workbench hands an approved brief to one empty engineering project shell", async () => {
+  await withDiscovery(async ({ store, service, projects, handoff }) => {
+    const approved = await approveDroneBrief(service);
+    const handler = createDiscoveryWorkbenchHandler({
+      discoveries: store,
+      handoff,
+      html: "unused",
+    });
+    const command = {
+      schemaVersion: "project-discovery-handoff-command/1.0",
+      commandId: "create-drone-engineering-project",
+      discoveryId: DISCOVERY_ID,
+      expectedDiscoveryRevision: approved.revision,
+      issuedAt: NOW,
+      actor: { id: "reviewer-erwan" },
+      command: {
+        type: "project.create-from-approved-discovery",
+        projectId: DISCOVERY_ID,
+        projectName: approved.brief!.objective,
+      },
+    } as const;
+
+    const created = await handler(handoffRequest(command));
+    assertEquals(created.status, 200);
+    assertEquals(
+      created.headers.get("X-Casys-Data-Source"),
+      "immutable-engineering-project-handoff",
+    );
+    const result = await created.json();
+    assertEquals(result, {
+      schemaVersion: "project-discovery-handoff-result/1.0",
+      scope: "initial-project-shell",
+      project: {
+        id: DISCOVERY_ID,
+        name: approved.brief!.objective.trim(),
+        revision: 1,
+      },
+      message:
+        "The initial project shell preserved the approved brief and added no technical state.",
+    });
+
+    const project = await projects.get(DISCOVERY_ID);
+    assertEquals(project?.project.name, approved.brief!.objective.trim());
+    assertEquals(project?.project.subjectId, `project:${DISCOVERY_ID}`);
+    assertEquals(project?.discoveryHandoff?.snapshotId, approved.id);
+    assertEquals(project?.threadSnapshots, []);
+    assertEquals(project?.phases, []);
+    assertEquals(project?.workItems, []);
+    assertEquals(project?.agentRuns, []);
+    assertEquals(project?.decisions, []);
+    assertEquals(project?.approvals, []);
+    assertEquals(project?.blockers, []);
+
+    const replay = await handler(handoffRequest(command));
+    assertEquals(replay.status, 200);
+    assertEquals(await replay.json(), result);
+
+    const mismatchedPath = await handler(
+      handoffRequest(command, "another-discovery"),
+    );
+    assertEquals(mismatchedPath.status, 422);
+    assertEquals(
+      (await mismatchedPath.json()).error,
+      "invalid_discovery_handoff",
+    );
+
+    const forgedProjectId = await handler(handoffRequest({
+      ...command,
+      command: { ...command.command, projectId: "another-project" },
+    }));
+    assertEquals(forgedProjectId.status, 422);
+    assertEquals(
+      (await forgedProjectId.json()).error,
+      "invalid_discovery_handoff",
+    );
+
+    const forgedProjectName = await handler(handoffRequest({
+      ...command,
+      command: { ...command.command, projectName: "Invented project name" },
+    }));
+    assertEquals(forgedProjectName.status, 422);
+    assertEquals(
+      (await forgedProjectName.json()).error,
+      "invalid_discovery_handoff",
+    );
+
+    const readOnlyHandler = createDiscoveryWorkbenchHandler({
+      discoveries: store,
+      html: "unused",
+    });
+    const disabled = await readOnlyHandler(handoffRequest(command));
+    assertEquals(disabled.status, 404);
+    assertEquals((await disabled.json()).error, "project_handoff_disabled");
+  });
+});
+
 Deno.test("Discovery Workbench SSE emits the full snapshot when a revision advances", async () => {
   await withDiscovery(async ({ store, service }) => {
     const handler = createDiscoveryWorkbenchHandler({
@@ -170,12 +268,22 @@ async function withDiscovery(
   run: (context: {
     store: FileProjectDiscoveryRevisionStore;
     service: ProjectDiscoveryCommandService;
+    projects: FileEngineeringProjectRevisionStore;
+    handoff: ProjectDiscoveryHandoffService;
   }) => Promise<void>,
 ): Promise<void> {
   const directory = await Deno.makeTempDir({ prefix: "casys-discovery-bff-" });
   try {
     const store = new FileProjectDiscoveryRevisionStore(directory);
     const service = new ProjectDiscoveryCommandService(store, () => NOW);
+    const projects = new FileEngineeringProjectRevisionStore(
+      `${directory}/engineering-projects`,
+    );
+    const handoff = new ProjectDiscoveryHandoffService(
+      store,
+      projects,
+      () => NOW,
+    );
     await service.start(
       { kind: "agent", actorId: "guide" },
       {
@@ -185,10 +293,51 @@ async function withDiscovery(
         intent: "Build a drone.",
       },
     );
-    await run({ store, service });
+    await run({ store, service, projects, handoff });
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
+}
+
+async function approveDroneBrief(service: ProjectDiscoveryCommandService) {
+  const proposed = await service.proposeBrief(
+    { kind: "agent", actorId: "guide" },
+    {
+      commandId: "propose-drone-brief",
+      discoveryId: DISCOVERY_ID,
+      expectedRevision: 1,
+      issuedAt: NOW,
+      brief: {
+        id: "drone-brief-v1",
+        objective: "  Deliver a reviewable drone demonstrator.  ",
+        missionScenarios: ["Fly a controlled demonstration route"],
+        successCriteria: ["Record planned verification evidence"],
+        constraints: ["No certification claim from discovery"],
+        intendedMarkets: ["Initial market unknown"],
+        manufacturingJurisdictions: ["Manufacturing location unknown"],
+        operatingJurisdictions: ["Operating jurisdiction unknown"],
+        complianceTargets: [
+          "Identify applicable rules from authoritative sources",
+        ],
+        verificationPlan: ["Plan named analysis and test evidence"],
+        exclusions: ["Production authorization"],
+        assumptions: ["The first flight occurs in a controlled setting"],
+        openQuestions: ["Which operating jurisdiction is intended?"],
+      },
+    },
+  );
+  return await service.approveBrief(
+    { kind: "human", actorId: "reviewer-erwan" },
+    {
+      commandId: "approve-drone-brief",
+      discoveryId: DISCOVERY_ID,
+      expectedRevision: proposed.revision,
+      issuedAt: NOW,
+      briefId: proposed.brief!.id,
+      rationale: "Approved as a project planning basis.",
+      inputFingerprint: proposed.review!.inputFingerprint,
+    },
+  );
 }
 
 function proposeMissionQuestion(
@@ -241,6 +390,22 @@ function operatorRequest(
       headers: {
         "Content-Type": "application/json",
         Origin: requestOrigin,
+        [DISCOVERY_OPERATOR_INTENT_HEADER]: DISCOVERY_OPERATOR_INTENT_VALUE,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+function handoffRequest(body: unknown, discoveryId = DISCOVERY_ID): Request {
+  const origin = "http://127.0.0.1:5174";
+  return new Request(
+    `${origin}/api/project-discoveries/${discoveryId}/handoff`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: origin,
         [DISCOVERY_OPERATOR_INTENT_HEADER]: DISCOVERY_OPERATOR_INTENT_VALUE,
       },
       body: JSON.stringify(body),

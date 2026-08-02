@@ -1,7 +1,12 @@
 /** @jsxImportSource preact */
 
 import type { JSX } from "preact";
-import { useId, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import {
+  canvasComponentRowWidth,
+  graphViewport,
+  type GraphViewportPoint,
+} from "./graph-viewport.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -38,6 +43,13 @@ export interface ThreadGraphProps {
   showSupporting?: boolean;
   /** Hides the density explanation in compact embedded graph projections. */
   showDensityControl?: boolean;
+  /**
+   * Embedded graphs tell the story of one feed event. Canvas graphs are a
+   * dedicated inspection surface with explicit fit and zoom controls.
+   */
+  presentation?: "embedded" | "context" | "canvas";
+  /** A focused canvas may start one readable step closer than the overview. */
+  initialZoom?: number;
   /** Staggers node and edge entry when a live lineage first appears. */
   animate?: boolean;
   onSelectionChange?: (selection: ThreadGraphSelection | undefined) => void;
@@ -82,6 +94,12 @@ export interface ThreadGraphLayout {
   unresolvedEdgeIds: string[];
 }
 
+export interface ThreadGraphLayoutOptions {
+  maxComponentRowWidth?: number;
+  /** Wraps crowded causal layers into visual columns without changing layer. */
+  maxRowsPerLayer?: number;
+}
+
 /**
  * Native, deterministic projection of the canonical thread graph.
  *
@@ -91,6 +109,7 @@ export interface ThreadGraphLayout {
 export function layoutThreadGraph(
   nodes: ThreadGraphNode[],
   edges: ThreadGraphEdge[],
+  options: ThreadGraphLayoutOptions = {},
 ): ThreadGraphLayout {
   if (nodes.length === 0) {
     return {
@@ -158,12 +177,36 @@ export function layoutThreadGraph(
     for (const bucket of nodesByLayer.values()) bucket.sort(compareGraphNodes);
 
     const maxLayer = Math.max(0, ...nodesByLayer.keys());
-    const maxRows = Math.max(
+    const nativeMaxRows = Math.max(
       1,
       ...[...nodesByLayer.values()].map((list) => list.length),
     );
-    const componentWidth = (COMPONENT_PADDING_X * 2) + NODE_WIDTH +
-      (maxLayer * (NODE_WIDTH + COLUMN_GAP));
+    const rowsPerVisualColumn = Math.max(
+      1,
+      Math.min(
+        nativeMaxRows,
+        Math.floor(options.maxRowsPerLayer ?? nativeMaxRows),
+      ),
+    );
+    const visualColumnByLayer = new Map<number, number>();
+    let visualColumnCount = 0;
+    for (let layer = 0; layer <= maxLayer; layer += 1) {
+      visualColumnByLayer.set(layer, visualColumnCount);
+      const nodeCount = nodesByLayer.get(layer)?.length ?? 0;
+      visualColumnCount += Math.max(
+        1,
+        Math.ceil(nodeCount / rowsPerVisualColumn),
+      );
+    }
+    const maxRows = Math.max(
+      1,
+      ...[...nodesByLayer.values()].map((list) =>
+        Math.min(list.length, rowsPerVisualColumn)
+      ),
+    );
+    const componentWidth = (COMPONENT_PADDING_X * 2) +
+      (visualColumnCount * NODE_WIDTH) +
+      ((visualColumnCount - 1) * COLUMN_GAP);
     const componentHeight = COMPONENT_HEADER + COMPONENT_PADDING_BOTTOM +
       (maxRows * NODE_HEIGHT) + ((maxRows - 1) * ROW_GAP);
 
@@ -173,6 +216,8 @@ export function layoutThreadGraph(
       nodesByLayer,
       componentWidth,
       componentHeight,
+      rowsPerVisualColumn,
+      visualColumnByLayer,
     };
   });
 
@@ -180,12 +225,14 @@ export function layoutThreadGraph(
   let nextY = VIEWBOX_PADDING;
   let rowHeight = 0;
   let widestRight = VIEWBOX_PADDING;
+  const maxComponentRowWidth = options.maxComponentRowWidth ??
+    MAX_COMPONENT_ROW_WIDTH;
 
   pendingComponents.forEach((pending) => {
     if (
       nextX > VIEWBOX_PADDING &&
       nextX + pending.componentWidth + VIEWBOX_PADDING >
-        MAX_COMPONENT_ROW_WIDTH
+        maxComponentRowWidth
     ) {
       nextX = VIEWBOX_PADDING;
       nextY += rowHeight + COMPONENT_GAP;
@@ -209,12 +256,15 @@ export function layoutThreadGraph(
       )
     ) {
       layerNodes.forEach((node, row) => {
+        const visualColumn = (pending.visualColumnByLayer.get(layer) ?? layer) +
+          Math.floor(row / pending.rowsPerVisualColumn);
+        const visualRow = row % pending.rowsPerVisualColumn;
         positioned.push({
           node,
           x: componentX + COMPONENT_PADDING_X +
-            (layer * (NODE_WIDTH + COLUMN_GAP)),
+            (visualColumn * (NODE_WIDTH + COLUMN_GAP)),
           y: componentY + COMPONENT_HEADER +
-            (row * (NODE_HEIGHT + ROW_GAP)),
+            (visualRow * (NODE_HEIGHT + ROW_GAP)),
           component: pending.componentIndex,
           layer,
           cyclic: cyclicRefs.has(refKey(node.ref)),
@@ -268,6 +318,8 @@ export function ThreadGraph({
   emptyLabel = "No linked engineering evidence is available.",
   showSupporting,
   showDensityControl = true,
+  presentation = "embedded",
+  initialZoom = 1,
   animate = false,
   onSelectionChange,
   onShowSupportingChange,
@@ -275,10 +327,26 @@ export function ThreadGraph({
 }: ThreadGraphProps): JSX.Element {
   const markerPrefix = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const nodeElements = useRef(new Map<string, SVGGElement>());
+  const edgeElements = useRef(new Map<string, SVGGElement>());
+  const viewportElement = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    center: GraphViewportPoint;
+    scaleX: number;
+    scaleY: number;
+  }>();
   const [keyboardNode, setKeyboardNode] = useState<string>();
+  const [keyboardEdge, setKeyboardEdge] = useState<string>();
   const [locallyShowingSupporting, setLocallyShowingSupporting] = useState(
     false,
   );
+  const [zoom, setZoom] = useState(() => normaliseZoom(initialZoom));
+  const [cameraTarget, setCameraTarget] = useState<ThreadGraphRef>();
+  const [cameraCenter, setCameraCenter] = useState<GraphViewportPoint>();
+  const [frameAspectRatio, setFrameAspectRatio] = useState(16 / 9);
+  const [panning, setPanning] = useState(false);
   const focusedRef = focus ??
     (selection?.kind === "node" ? selection.ref : undefined);
   const showingSupporting = showSupporting ?? locallyShowingSupporting;
@@ -294,13 +362,81 @@ export function ThreadGraph({
     [nodes, edges, showingSupporting, focusedRef, selection],
   );
   const layout = useMemo(
-    () => layoutThreadGraph(projection.nodes, projection.edges),
-    [projection],
+    () =>
+      layoutThreadGraph(projection.nodes, projection.edges, {
+        maxComponentRowWidth: presentation === "canvas"
+          ? canvasComponentRowWidth(frameAspectRatio)
+          : MAX_COMPONENT_ROW_WIDTH,
+        maxRowsPerLayer: presentation === "context"
+          ? 2
+          : presentation === "canvas"
+          ? 6
+          : undefined,
+      }),
+    [projection, presentation, frameAspectRatio],
   );
   const impact = useMemo(
     () => impactContext(layout.nodes, layout.edges, focusedRef),
     [layout, focusedRef],
   );
+  const selectedNodeRef = selection?.kind === "node"
+    ? selection.ref
+    : focusedRef;
+  const selectedNodeKey = selection?.kind === "node"
+    ? refKey(selection.ref)
+    : undefined;
+  const selectedNodeVisible = selectedNodeKey
+    ? layout.nodes.some((item) => refKey(item.node.ref) === selectedNodeKey)
+    : false;
+  const selectedEdgeId = selection?.kind === "edge" ? selection.id : undefined;
+  const selectedEdgeVisible = selectedEdgeId
+    ? layout.edges.some((item) => item.edge.id === selectedEdgeId)
+    : false;
+  const viewport = useMemo(
+    () =>
+      graphViewport(
+        layout,
+        zoom,
+        cameraTarget ??
+          (presentation === "canvas" ? selectedNodeRef : undefined),
+        presentation === "canvas"
+          ? { aspectRatio: frameAspectRatio, center: cameraCenter }
+          : undefined,
+      ),
+    [
+      layout,
+      zoom,
+      cameraTarget,
+      presentation,
+      selectedNodeRef,
+      frameAspectRatio,
+      cameraCenter,
+    ],
+  );
+
+  useEffect(() => {
+    setZoom(normaliseZoom(initialZoom));
+    setCameraTarget(undefined);
+    setCameraCenter(undefined);
+  }, [layout.width, layout.height, showingSupporting, initialZoom]);
+
+  useEffect(() => {
+    const element = viewportElement.current;
+    if (presentation !== "canvas" || !element) return;
+    const updateRatio = () => {
+      const bounds = element.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      setFrameAspectRatio(bounds.width / bounds.height);
+    };
+    updateRatio();
+    if (typeof ResizeObserver === "undefined") {
+      globalThis.addEventListener("resize", updateRatio);
+      return () => globalThis.removeEventListener("resize", updateRatio);
+    }
+    const observer = new ResizeObserver(updateRatio);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [presentation]);
 
   if (layout.nodes.length === 0) {
     return (
@@ -313,10 +449,19 @@ export function ThreadGraph({
   const selectNode = (item: PositionedThreadGraphNode) => {
     const next: ThreadGraphSelection = { kind: "node", ref: item.node.ref };
     setKeyboardNode(refKey(item.node.ref));
+    if (presentation === "canvas") {
+      setCameraCenter(undefined);
+      setCameraTarget(item.node.ref);
+    }
     onSelectionChange?.(next);
     if (item.node.selection) onInspect?.(item.node.selection, item.node);
   };
   const selectEdge = (item: PositionedThreadGraphEdge) => {
+    setKeyboardEdge(item.edge.id);
+    if (presentation === "canvas") {
+      setCameraTarget(undefined);
+      setCameraCenter(edgeCenter(item));
+    }
     onSelectionChange?.({ kind: "edge", id: item.edge.id });
   };
   const moveNodeFocus = (
@@ -327,7 +472,60 @@ export function ThreadGraph({
     if (!target) return;
     const key = refKey(target.node.ref);
     setKeyboardNode(key);
+    if (presentation === "canvas") {
+      setCameraCenter(undefined);
+      setCameraTarget(target.node.ref);
+    }
     nodeElements.current.get(key)?.focus();
+  };
+  const moveEdgeFocus = (
+    item: PositionedThreadGraphEdge,
+    direction: "previous" | "next" | "first" | "last",
+  ) => {
+    const currentIndex = layout.edges.findIndex((candidate) =>
+      candidate.edge.id === item.edge.id
+    );
+    const targetIndex = direction === "first"
+      ? 0
+      : direction === "last"
+      ? layout.edges.length - 1
+      : direction === "previous"
+      ? Math.max(0, currentIndex - 1)
+      : Math.min(layout.edges.length - 1, currentIndex + 1);
+    const target = layout.edges[targetIndex];
+    if (!target) return;
+    setKeyboardEdge(target.edge.id);
+    if (presentation === "canvas") {
+      setCameraTarget(undefined);
+      setCameraCenter(edgeCenter(target));
+    }
+    edgeElements.current.get(target.edge.id)?.focus();
+  };
+  const changeZoom = (direction: "in" | "out") => {
+    setZoom((current) => {
+      const levels = [1, 1.5, 2.25, 3.25, 4.5];
+      const currentIndex = levels.findIndex((level) => level >= current);
+      const index = currentIndex === -1 ? levels.length - 1 : currentIndex;
+      const nextIndex = direction === "in"
+        ? Math.min(levels.length - 1, index + 1)
+        : Math.max(0, index - 1);
+      return levels[nextIndex] ?? 1;
+    });
+  };
+  const fitGraph = () => {
+    setZoom(1);
+    setCameraTarget(undefined);
+    setCameraCenter(undefined);
+  };
+  const centreSelection = () => {
+    if (selectedNodeRef) {
+      setCameraCenter(undefined);
+      setCameraTarget(selectedNodeRef);
+    }
+  };
+  const finishPanning = () => {
+    dragState.current = undefined;
+    setPanning(false);
   };
 
   return (
@@ -337,7 +535,50 @@ export function ThreadGraph({
       data-components={layout.components.length}
       data-density={showingSupporting ? "complete" : "essential"}
       data-animate={animate ? "true" : "false"}
+      data-presentation={presentation}
+      data-panning={panning ? "true" : "false"}
     >
+      {presentation === "canvas" && (
+        <div class="thread-graph-controls" aria-label="Graph view controls">
+          <span aria-live="polite">
+            {Math.round(viewport.zoom * 100)}% · {layout.nodes.length} recorded
+            {" "}
+            facts
+          </span>
+          <div role="group" aria-label="Zoom graph">
+            <button
+              type="button"
+              onClick={() =>
+                changeZoom("out")}
+              disabled={viewport.zoom <= 1}
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <button type="button" onClick={fitGraph}>
+              Fit overview
+            </button>
+            <button
+              type="button"
+              onClick={centreSelection}
+              disabled={!selectedNodeRef}
+            >
+              Centre selection
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                changeZoom("in")}
+              disabled={viewport.zoom >= 4.5}
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      )}
       {showDensityControl && (projection.hiddenNodeCount > 0 ||
         (showingSupporting && projection.supportingCount > 0)) &&
         (
@@ -367,18 +608,60 @@ export function ThreadGraph({
             </button>
           </div>
         )}
-      <div class="thread-graph-viewport">
+      <div class="thread-graph-viewport" ref={viewportElement}>
         <svg
           class="thread-graph-canvas"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
-          preserveAspectRatio="xMinYMin meet"
+          viewBox={`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`}
+          preserveAspectRatio="xMidYMid meet"
           role="group"
           aria-label={ariaLabel}
+          onPointerDown={(event) => {
+            if (presentation !== "canvas" || event.button !== 0) return;
+            const target = event.target as Element;
+            if (target.closest(".thread-graph-node, .thread-graph-edge")) {
+              return;
+            }
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (bounds.width <= 0 || bounds.height <= 0) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            dragState.current = {
+              pointerId: event.pointerId,
+              clientX: event.clientX,
+              clientY: event.clientY,
+              center: {
+                x: viewport.x + (viewport.width / 2),
+                y: viewport.y + (viewport.height / 2),
+              },
+              scaleX: viewport.width / bounds.width,
+              scaleY: viewport.height / bounds.height,
+            };
+            setPanning(true);
+          }}
+          onPointerMove={(event) => {
+            const drag = dragState.current;
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            setCameraTarget(undefined);
+            setCameraCenter({
+              x: drag.center.x -
+                ((event.clientX - drag.clientX) * drag.scaleX),
+              y: drag.center.y -
+                ((event.clientY - drag.clientY) * drag.scaleY),
+            });
+          }}
+          onPointerUp={(event) => {
+            if (dragState.current?.pointerId !== event.pointerId) return;
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            finishPanning();
+          }}
+          onPointerCancel={finishPanning}
+          onLostPointerCapture={finishPanning}
         >
           <desc>
             {`${layout.nodes.length} evidence nodes and ${layout.edges.length} explicit relations in ${layout.components.length} connected component${
               layout.components.length === 1 ? "" : "s"
-            }.`}
+            }. ${
+              presentation === "canvas" ? "Drag empty canvas space to pan." : ""
+            }`}
           </desc>
           <defs>
             <marker
@@ -391,19 +674,7 @@ export function ThreadGraph({
               orient="auto"
               markerUnits="strokeWidth"
             >
-              <path d="M 0 0 L 8 4 L 0 8 z" />
-            </marker>
-            <marker
-              id={`${markerPrefix}-arrow-selected`}
-              class="thread-graph-arrow-selected"
-              markerWidth="8"
-              markerHeight="8"
-              refX="7"
-              refY="4"
-              orient="auto"
-              markerUnits="strokeWidth"
-            >
-              <path d="M 0 0 L 8 4 L 0 8 z" />
+              <path fill="context-stroke" d="M 0 0 L 8 4 L 0 8 z" />
             </marker>
           </defs>
 
@@ -442,41 +713,75 @@ export function ThreadGraph({
               const selected = selection?.kind === "edge" &&
                 selection.id === item.edge.id;
               const state = edgeImpactState(item, impact, focusedRef);
+              const isKeyboardEdge = keyboardEdge
+                ? keyboardEdge === item.edge.id
+                : selectedEdgeVisible
+                ? selected
+                : index === 0;
+              const attestation = item.edge.attestation?.status ?? "none";
               return (
                 <g
                   key={item.edge.id}
+                  ref={(element) => {
+                    if (element) {
+                      edgeElements.current.set(item.edge.id, element);
+                    } else {
+                      edgeElements.current.delete(item.edge.id);
+                    }
+                  }}
                   class="thread-graph-edge"
                   role="button"
-                  tabIndex={0}
+                  tabindex={isKeyboardEdge ? 0 : -1}
                   aria-label={`${
                     relationLabel(item.edge.relation)
-                  }: ${item.source.node.label} to ${item.target.node.label}. ${item.edge.rationale}`}
+                  }: ${item.source.node.label} to ${item.target.node.label}. ${item.edge.rationale}${
+                    attestationDescription(attestation)
+                  }`}
                   aria-pressed={selected}
                   data-relation={item.edge.relation}
                   data-origin={item.edge.origin}
-                  data-attested={item.edge.attestation ? "true" : "false"}
+                  data-attestation={attestation}
                   data-impact={state}
                   data-selected={selected ? "true" : "false"}
                   style={animate
                     ? { animationDelay: `${Math.min(index * 55, 440)}ms` }
                     : undefined}
                   onClick={() => selectEdge(item)}
+                  onFocus={() => setKeyboardEdge(item.edge.id)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       selectEdge(item);
+                    } else if (
+                      event.key === "ArrowLeft" || event.key === "ArrowUp"
+                    ) {
+                      event.preventDefault();
+                      moveEdgeFocus(item, "previous");
+                    } else if (
+                      event.key === "ArrowRight" || event.key === "ArrowDown"
+                    ) {
+                      event.preventDefault();
+                      moveEdgeFocus(item, "next");
+                    } else if (event.key === "Home") {
+                      event.preventDefault();
+                      moveEdgeFocus(item, "first");
+                    } else if (event.key === "End") {
+                      event.preventDefault();
+                      moveEdgeFocus(item, "last");
                     } else if (event.key === "Escape") {
                       onSelectionChange?.(undefined);
                     }
                   }}
                 >
-                  <title>{item.edge.rationale}</title>
+                  <title>
+                    {`${item.edge.rationale}${
+                      attestationDescription(attestation)
+                    }`}
+                  </title>
                   <path
                     class="thread-graph-edge-line"
                     d={item.path}
-                    marker-end={selected
-                      ? `url(#${markerPrefix}-arrow-selected)`
-                      : `url(#${markerPrefix}-arrow)`}
+                    marker-end={`url(#${markerPrefix}-arrow)`}
                   />
                   <path class="thread-graph-edge-hit" d={item.path} />
                   <text
@@ -500,7 +805,9 @@ export function ThreadGraph({
               const state = nodeImpactState(key, impact, focusedRef);
               const isKeyboardNode = keyboardNode
                 ? keyboardNode === key
-                : selected || index === 0;
+                : selectedNodeVisible
+                ? selected
+                : index === 0;
               return (
                 <g
                   key={item.node.id}
@@ -511,7 +818,7 @@ export function ThreadGraph({
                   class="thread-graph-node"
                   transform={`translate(${item.x} ${item.y})`}
                   role="button"
-                  tabIndex={isKeyboardNode ? 0 : -1}
+                  tabindex={isKeyboardNode ? 0 : -1}
                   aria-label={`${item.node.system}, ${item.node.label}. ${item.node.summary}`}
                   aria-pressed={selected}
                   data-kind={item.node.ref.kind}
@@ -795,6 +1102,13 @@ function edgeImpactState(
   if (upstream) return "upstream";
   if (downstream) return "downstream";
   return "unrelated";
+}
+
+function edgeCenter(item: PositionedThreadGraphEdge): GraphViewportPoint {
+  return {
+    x: (item.source.x + item.target.x + NODE_WIDTH) / 2,
+    y: (item.source.y + item.target.y + NODE_HEIGHT) / 2,
+  };
 }
 
 function directionalNode(
@@ -1093,8 +1407,20 @@ function relationLabel(relation: ThreadGraphEdge["relation"]): string {
   return relation.replaceAll("_", " ");
 }
 
+function attestationDescription(
+  status: "verified" | "mismatch" | "none",
+): string {
+  if (status === "verified") return " Fingerprints verified.";
+  if (status === "mismatch") return " Fingerprint mismatch detected.";
+  return "";
+}
+
 function refKey(ref: ThreadGraphRef): string {
   return `${ref.kind}:${ref.id}`;
+}
+
+function normaliseZoom(value: number): number {
+  return Math.min(4.5, Math.max(1, value));
 }
 
 function compareGraphNodes(

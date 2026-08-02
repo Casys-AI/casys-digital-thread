@@ -88,10 +88,8 @@ Deno.test("Workbench hands a review notification to current evidence and SysON",
   assertStringIncludes(source, "const openDecisionSpecification");
   assertStringIncludes(source, "reference.snapshotId === snapshot.id");
   assertStringIncludes(source, 'setActiveComponentProvider("syson")');
-  assertStringIncludes(
-    source,
-    '<ReviewNotifications\n                  surface="activity"',
-  );
+  assertStringIncludes(source, "<ReviewNotifications");
+  assertStringIncludes(source, 'surface="activity"');
   assertEquals(source.includes("Open review desk"), false);
   assertStringIncludes(ribbon, '"REVIEW STATUS"');
   assertEquals(ribbon.includes("REVIEW DESK"), false);

@@ -22,6 +22,8 @@ export interface ThreadFeedProps {
   onSelectNode: (node: ThreadGraphNode, origin: "feed" | "lineage") => void;
   onSelectEdge: (edge: ThreadGraphEdge) => void;
   onInspect: (selection: ThreadRef, node: ThreadGraphNode) => void;
+  /** Opens the dedicated evidence canvas without interrupting the live feed. */
+  onOpenGraphCanvas?: () => void;
 }
 
 /**
@@ -40,6 +42,7 @@ export function ThreadFeed({
   onSelectNode,
   onSelectEdge,
   onInspect,
+  onOpenGraphCanvas,
 }: ThreadFeedProps): JSX.Element {
   const feedNodes = activityFeedNodes(nodes);
   const focusNode = focus
@@ -145,10 +148,20 @@ export function ThreadFeed({
                         <small>LINEAGE ASSEMBLED FROM RECORDED RELATIONS</small>
                         <strong>Complete chain for this event</strong>
                       </div>
-                      <span>
-                        {lineage.upstream.length} upstream ·{" "}
-                        {lineage.downstream.length} downstream
-                      </span>
+                      <div class="thread-feed-lineage-actions">
+                        <span>
+                          {lineage.upstream.length} upstream ·{" "}
+                          {lineage.downstream.length} downstream
+                        </span>
+                        {onOpenGraphCanvas && (
+                          <button
+                            type="button"
+                            onClick={onOpenGraphCanvas}
+                          >
+                            Open evidence canvas
+                          </button>
+                        )}
+                      </div>
                     </header>
                     {lineageCount === 0
                       ? (

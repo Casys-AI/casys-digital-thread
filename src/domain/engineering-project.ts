@@ -29,6 +29,7 @@ export interface EngineeringProjectIdentity {
 export type EngineeringCommandOriginKind = "human" | "agent";
 
 export type EngineeringProjectCommandName =
+  | "project.create-from-discovery"
   | "decision.propose"
   | "decision.approve"
   | "decision.reject"
@@ -42,6 +43,25 @@ export type EngineeringProjectCommandName =
 export interface EngineeringCommandActor {
   readonly id: string;
   readonly origin: EngineeringCommandOriginKind;
+}
+
+/**
+ * Immutable origin for a project that was explicitly created from an approved
+ * pre-project discovery brief. This records planning provenance only: it is
+ * neither a SysON model nor technical ThreadSnapshot evidence.
+ */
+export interface EngineeringProjectDiscoveryHandoff {
+  /** Stable pre-project discovery aggregate identity. */
+  readonly discoveryId: string;
+  /** Exact immutable discovery revision accepted for this project. */
+  readonly snapshotId: string;
+  readonly revision: number;
+  /** The exact approved brief within that discovery revision. */
+  readonly briefId: string;
+  /** Fingerprint of the precise brief-review input that the human approved. */
+  readonly approvedBriefFingerprint: ContentFingerprint;
+  readonly approvedAt: IsoDateTime;
+  readonly approvedBy: EngineeringCommandActor;
 }
 
 export interface EngineeringDecisionProposalParameter {
@@ -245,6 +265,11 @@ export interface EngineeringProjectSnapshot {
   readonly previous?: EngineeringProjectPreviousSnapshot;
   readonly generatedAt: IsoDateTime;
   readonly project: EngineeringProjectIdentity;
+  /**
+   * Present only for a project born from a human-approved discovery handoff.
+   * Existing projects retain their own independently established provenance.
+   */
+  readonly discoveryHandoff?: EngineeringProjectDiscoveryHandoff;
   readonly threadSnapshots: readonly EngineeringThreadSnapshotRef[];
   readonly phases: readonly EngineeringProjectPhase[];
   readonly workItems: readonly EngineeringWorkItem[];
@@ -314,6 +339,10 @@ export function deriveEngineeringPhaseStatus(
 export function deriveEngineeringProjectStatus(
   snapshot: EngineeringProjectSnapshot,
 ): EngineeringProjectStatus {
+  // A discovery handoff deliberately creates a project before there is a
+  // technical baseline. Vacuous completion would falsely claim that such a
+  // project has finished engineering work.
+  if (snapshot.phases.length === 0) return "planned";
   const phaseStatuses = snapshot.phases.map((phase) =>
     deriveEngineeringPhaseStatus(snapshot, phase.id)
   );

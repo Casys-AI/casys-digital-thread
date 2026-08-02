@@ -4,18 +4,32 @@ import {
   type ProjectDiscoveryOperatorCommandRequest,
   readProjectDiscoveryOperatorCommand,
 } from "../src/adapters/project-discovery-command-http.ts";
+import {
+  executeProjectDiscoveryHandoffOperatorCommand,
+  ProjectDiscoveryHandoffCommandHttpError,
+  type ProjectDiscoveryHandoffOperatorCommandRequest,
+  readProjectDiscoveryHandoffOperatorCommand,
+} from "../src/adapters/project-discovery-handoff-command-http.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import { isExplicitLoopbackHostname } from "../src/adapters/loopback-host.ts";
+import { EngineeringProjectStoreConflictError } from "../src/domain/engineering-project-command-service.ts";
 import {
   ProjectDiscoveryCommandError,
   ProjectDiscoveryCommandService,
   type ProjectDiscoveryRevisionStore,
   ProjectDiscoveryStoreConflictError,
 } from "../src/domain/project-discovery-command-service.ts";
+import {
+  ProjectDiscoveryHandoffError,
+  ProjectDiscoveryHandoffService,
+} from "../src/domain/project-discovery-handoff-service.ts";
 
 export interface DiscoveryWorkbenchHandlerOptions {
   readonly discoveries: ProjectDiscoveryRevisionStore;
   readonly commands?: ProjectDiscoveryCommandService;
+  /** Explicit human-only transition from an approved brief to a project shell. */
+  readonly handoff?: ProjectDiscoveryHandoffService;
   readonly html: string;
   /** Polling observes immutable discovery revisions; it never invokes an agent. */
   readonly pollIntervalMs?: number;
@@ -23,7 +37,7 @@ export interface DiscoveryWorkbenchHandlerOptions {
 
 type DiscoveryRoute = {
   readonly discoveryId: string;
-  readonly action: "snapshot" | "events" | "commands";
+  readonly action: "snapshot" | "events" | "commands" | "handoff";
 };
 
 /** Serve one local, live view over immutable ProjectDiscovery revisions. */
@@ -53,6 +67,11 @@ export function createDiscoveryWorkbenchHandler(
     if (route.action === "events") {
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, route.discoveryId, options);
+    }
+    if (route.action === "handoff") {
+      if (request.method !== "POST") return methodNotAllowed("POST");
+      if (!options.handoff) return projectHandoffDisabled();
+      return await handleProjectHandoff(request, route.discoveryId, options);
     }
     if (request.method !== "POST") return methodNotAllowed("POST");
     if (!options.commands) {
@@ -223,9 +242,115 @@ async function handleOperatorCommand(
   }
 }
 
+/**
+ * Creates only the durable engineering-project shell for an already approved
+ * brief. It must not make a technical model, a ThreadSnapshot, or a cockpit
+ * projection look as if it exists.
+ */
+async function handleProjectHandoff(
+  request: Request,
+  discoveryId: string,
+  options: DiscoveryWorkbenchHandlerOptions,
+): Promise<Response> {
+  let command: ProjectDiscoveryHandoffOperatorCommandRequest | undefined;
+  try {
+    command = await readProjectDiscoveryHandoffOperatorCommand(request);
+    if (command.discoveryId !== discoveryId) {
+      return json({
+        error: "invalid_discovery_handoff",
+        message:
+          `Command discovery ${command.discoveryId} does not match request path ${discoveryId}.`,
+      }, 422);
+    }
+    if (command.command.projectId !== discoveryId) {
+      return json({
+        error: "invalid_discovery_handoff",
+        message: "The engineering project id must match the approved discovery id.",
+      }, 422);
+    }
+    const discovery = await readStableSnapshot(options.discoveries, discoveryId);
+    if (!discovery) return discoveryNotFound(discoveryId);
+    if (
+      discovery.brief &&
+      command.command.projectName !== discovery.brief.objective.trim()
+    ) {
+      return json({
+        error: "invalid_discovery_handoff",
+        message:
+          "The engineering project name must match the approved brief objective.",
+      }, 422);
+    }
+    const project = await executeProjectDiscoveryHandoffOperatorCommand(
+      options.handoff!,
+      command,
+    );
+    return json(
+      {
+        schemaVersion: "project-discovery-handoff-result/1.0",
+        scope: "initial-project-shell",
+        project: {
+          id: project.project.id,
+          name: project.project.name,
+          revision: project.revision,
+        },
+        message:
+          "The initial project shell preserved the approved brief and added no technical state.",
+      },
+      200,
+      {
+        "X-Casys-Data-Source": "immutable-engineering-project-handoff",
+      },
+    );
+  } catch (error) {
+    if (error instanceof ProjectDiscoveryHandoffCommandHttpError) {
+      return json({ error: error.code, message: error.message }, error.status);
+    }
+    if (error instanceof ProjectDiscoveryHandoffError) {
+      const body: Record<string, unknown> = {
+        error: error.code,
+        message: error.message,
+      };
+      if (error.code === "stale_discovery_revision" && command) {
+        body.expectedRevision = command.expectedDiscoveryRevision;
+        try {
+          body.actualRevision = (await readStableSnapshot(
+            options.discoveries,
+            discoveryId,
+          ))?.revision;
+        } catch (readError) {
+          if (!(readError instanceof ProjectDiscoveryStoreConflictError)) {
+            throw readError;
+          }
+        }
+      }
+      return json(body, error.httpStatus);
+    }
+    if (error instanceof ProjectDiscoveryStoreConflictError) {
+      return revisionUnavailable(discoveryId);
+    }
+    if (error instanceof EngineeringProjectStoreConflictError) {
+      return json({
+        error: "engineering_project_revision_unavailable",
+        discoveryId,
+        message:
+          "The engineering project handoff is being finalized. Retry without changing the approved brief.",
+      }, 409);
+    }
+    console.error(
+      `Discovery project handoff failed unexpectedly: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return json({
+      error: "project_discovery_handoff_failed",
+      message: "The engineering project could not be created from this brief.",
+    }, 500);
+  }
+}
+
 function parseDiscoveryRoute(pathname: string): DiscoveryRoute | undefined {
   const match = pathname.match(
-    /^\/api\/project-discoveries\/([^/]+)(?:\/(events|commands))?$/,
+    /^\/api\/project-discoveries\/([^/]+)(?:\/(events|commands|handoff))?$/,
   );
   if (!match) return undefined;
   let discoveryId: string;
@@ -240,6 +365,8 @@ function parseDiscoveryRoute(pathname: string): DiscoveryRoute | undefined {
       ? "events"
       : match[2] === "commands"
       ? "commands"
+      : match[2] === "handoff"
+      ? "handoff"
       : "snapshot",
   };
 }
@@ -288,6 +415,14 @@ function revisionUnavailable(discoveryId: string): Response {
     message:
       "A discovery revision is claimed but not yet durably available. Retry without guessing its contents.",
   }, 409);
+}
+
+function projectHandoffDisabled(): Response {
+  return json({
+    error: "project_handoff_disabled",
+    message:
+      "Creating an engineering project is available only from the local Discovery Workbench.",
+  }, 404);
 }
 
 function methodNotAllowed(allow = "GET"): Response {
@@ -346,15 +481,21 @@ if (import.meta.main) {
   const discoveryId = argument("discovery-id") ?? "drone-concept";
   const discoveryDirectory = argument("discovery-dir") ??
     "state/local/project-discoveries";
+  const projectDirectory = argument("project-dir") ??
+    "state/local/engineering-projects";
   const htmlPath = argument("html") ??
     "src/ui/dist/discovery/discovery-workbench.html";
   const document = await Deno.readTextFile(htmlPath);
   const discoveries = new FileProjectDiscoveryRevisionStore(discoveryDirectory);
+  const projects = new FileEngineeringProjectRevisionStore(projectDirectory);
   const operatorCommandsEnabled = isExplicitLoopbackHostname(hostname);
   const handler = createDiscoveryWorkbenchHandler({
     discoveries,
     commands: operatorCommandsEnabled
       ? new ProjectDiscoveryCommandService(discoveries)
+      : undefined,
+    handoff: operatorCommandsEnabled
+      ? new ProjectDiscoveryHandoffService(discoveries, projects)
       : undefined,
     html: document,
   });
@@ -369,9 +510,10 @@ if (import.meta.main) {
       );
       console.log(`Project discovery id: ${discoveryId}`);
       console.log(`Immutable discovery revisions: ${discoveryDirectory}`);
+      console.log(`Engineering project shells: ${projectDirectory}`);
       console.log(
         operatorCommandsEnabled
-          ? "Page loads are read-only; explicit same-origin human commands append ProjectDiscovery revisions."
+          ? "Page loads are read-only; explicit same-origin human review commands append discovery revisions or create an empty engineering project shell."
           : "Read-only Discovery Workbench: human commands are disabled on a non-loopback binding.",
       );
     },

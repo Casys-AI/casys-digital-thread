@@ -70,6 +70,32 @@ Deno.test("EngineeringProjectSnapshot is cloned, deeply frozen and strictly vers
   );
 });
 
+Deno.test("ordinary receipt issuedAt remains client audit metadata", async () => {
+  const project = await projectJson();
+  const previousSnapshotId = project.id;
+  project.id = "engineering-project-coffee-machine-cm01-r2";
+  project.revision = 2;
+  project.previous = { snapshotId: previousSnapshotId, revision: 1 };
+  project.generatedAt = "2026-08-02T06:04:27.475Z";
+  project.commandReceipts = [{
+    commandId: "client-clock-ahead-of-server-application",
+    type: "agent-run.progress",
+    actor: { id: "agent-worker-3", origin: "agent" },
+    issuedAt: "2026-08-02T06:05:00.000Z",
+    appliedAt: "2026-08-02T06:04:27.475Z",
+    requestFingerprint: fingerprint("d"),
+    resultingSnapshot: { snapshotId: project.id, revision: 2 },
+  }];
+
+  assertEquals(
+    collectEngineeringProjectIssues(project).some((issue) =>
+      issue.path === "$.commandReceipts[0].issuedAt"
+    ),
+    false,
+  );
+  validateEngineeringProjectSnapshot(project);
+});
+
 Deno.test("phase status cannot be duplicated as blocked work-item state", async () => {
   const invalid = await projectJson();
   (invalid.workItems[4] as unknown as { status: string }).status = "blocked";

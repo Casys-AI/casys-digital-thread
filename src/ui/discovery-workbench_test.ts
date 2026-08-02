@@ -24,6 +24,11 @@ Deno.test("Discovery Workbench stays a calm one-question review surface", async 
   assertStringIncludes(source, '<details class="discovery-brief"');
   assertStringIncludes(source, "Request revision");
   assertStringIncludes(source, "Approve brief");
+  assertStringIncludes(source, "Start engineering project");
+  assertStringIncludes(source, "Your framing is approved");
+  assertStringIncludes(source, "Initial project shell recorded");
+  assertStringIncludes(source, "This receipt describes the initial handoff only");
+  assertStringIncludes(source, "Project ID already occupied");
   assertStringIncludes(
     source,
     "inputFingerprint: discovery.review.inputFingerprint",

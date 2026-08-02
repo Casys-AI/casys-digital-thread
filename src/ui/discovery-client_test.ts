@@ -4,11 +4,17 @@ import {
   HttpProjectDiscoveryClient,
   ProjectDiscoveryConflictError,
   type ProjectDiscoveryEventSource,
+  ProjectDiscoveryHandoffConflictError,
 } from "./src/project/discovery-client.ts";
 import {
   createProjectDiscoveryCommandRequest,
   PROJECT_DISCOVERY_INTENT_HEADER,
 } from "./src/project/discovery-command-contract.ts";
+import {
+  createProjectDiscoveryHandoffRequest,
+  PROJECT_DISCOVERY_HANDOFF_RESULT_SCHEMA,
+  PROJECT_DISCOVERY_HANDOFF_RESULT_SCOPE,
+} from "./src/project/discovery-handoff-contract.ts";
 
 const DIGEST = "a".repeat(64);
 
@@ -116,8 +122,7 @@ Deno.test("discovery command conflicts retain the actual server revision", async
     "/discovery",
     "/commands",
     "/events",
-    () =>
-      Promise.resolve(Response.json({ actualRevision: 4 }, { status: 409 })),
+    () => Promise.resolve(Response.json({ actualRevision: 4 }, { status: 409 })),
     undefined,
   );
   const request = createProjectDiscoveryCommandRequest({
@@ -139,6 +144,127 @@ Deno.test("discovery command conflicts retain the actual server revision", async
     ProjectDiscoveryConflictError,
   );
   assertEquals(error.actualRevision, 4);
+});
+
+Deno.test("discovery client hands an approved brief to the same-origin project shell route", async () => {
+  let captured: { input: string; init?: RequestInit } | undefined;
+  const client = new HttpProjectDiscoveryClient(
+    "/discovery",
+    "/commands",
+    "/events",
+    (input, init) => {
+      captured = { input: String(input), init };
+      return Promise.resolve(Response.json({
+        schemaVersion: PROJECT_DISCOVERY_HANDOFF_RESULT_SCHEMA,
+        scope: PROJECT_DISCOVERY_HANDOFF_RESULT_SCOPE,
+        project: {
+          id: "drone-concept",
+          name: "Reviewable drone demonstrator",
+          revision: 1,
+        },
+        message:
+          "The initial project shell preserved the approved brief and added no technical state.",
+      }));
+    },
+    undefined,
+  );
+  const request = createProjectDiscoveryHandoffRequest({
+    commandId: "handoff-drone-1",
+    discoveryId: "drone-concept",
+    expectedDiscoveryRevision: 3,
+    issuedAt: "2026-08-02T12:01:00.000Z",
+    actorId: "local-reviewer",
+    projectId: "drone-concept",
+    projectName: "  Reviewable drone demonstrator  ",
+  });
+
+  const result = await client.handoff(request);
+
+  const headers = new Headers(captured?.init?.headers);
+  assertEquals(captured?.input, "/discovery/handoff");
+  assertEquals(captured?.init?.method, "POST");
+  assertEquals(headers.get(PROJECT_DISCOVERY_INTENT_HEADER), "explicit");
+  assertEquals(headers.get("Content-Type"), "application/json");
+  assertEquals(JSON.parse(String(captured?.init?.body)), request);
+  assertEquals(request.command.projectName, "Reviewable drone demonstrator");
+  assertEquals(result.project.id, "drone-concept");
+  assertEquals(result.project.revision, 1);
+  assertEquals(result.scope, "initial-project-shell");
+});
+
+Deno.test("discovery client rejects an unbound or non-shell handoff result", async () => {
+  const request = createProjectDiscoveryHandoffRequest({
+    commandId: "handoff-drone-strict-result",
+    discoveryId: "drone-concept",
+    expectedDiscoveryRevision: 3,
+    issuedAt: "2026-08-02T12:01:00.000Z",
+    actorId: "local-reviewer",
+    projectId: "drone-concept",
+    projectName: "Reviewable drone demonstrator",
+  });
+  const valid = {
+    schemaVersion: PROJECT_DISCOVERY_HANDOFF_RESULT_SCHEMA,
+    scope: PROJECT_DISCOVERY_HANDOFF_RESULT_SCOPE,
+    project: {
+      id: "drone-concept",
+      name: "Reviewable drone demonstrator",
+      revision: 1,
+    },
+    message:
+      "The initial project shell preserved the approved brief and added no technical state.",
+  };
+  const invalidResults = [
+    { ...valid, project: { ...valid.project, id: "wrong-project" } },
+    { ...valid, project: { ...valid.project, name: "Wrong name" } },
+    { ...valid, project: { ...valid.project, revision: 2 } },
+    { ...valid, scope: "current-project-state" },
+    { ...valid, unexpectedTechnicalState: {} },
+  ];
+
+  for (const invalid of invalidResults) {
+    const client = new HttpProjectDiscoveryClient(
+      "/discovery",
+      "/commands",
+      "/events",
+      () => Promise.resolve(Response.json(invalid)),
+      undefined,
+    );
+    await assertRejects(
+      () => client.handoff(request),
+      Error,
+      "unsupported contract",
+    );
+  }
+});
+
+Deno.test("discovery handoff conflicts retain the server code without inventing a project", async () => {
+  const client = new HttpProjectDiscoveryClient(
+    "/discovery",
+    "/commands",
+    "/events",
+    () =>
+      Promise.resolve(Response.json({
+        error: "project_exists",
+        message: "Engineering project drone-concept already exists.",
+      }, { status: 409 })),
+    undefined,
+  );
+  const request = createProjectDiscoveryHandoffRequest({
+    commandId: "handoff-drone-2",
+    discoveryId: "drone-concept",
+    expectedDiscoveryRevision: 3,
+    issuedAt: "2026-08-02T12:01:00.000Z",
+    actorId: "local-reviewer",
+    projectId: "drone-concept",
+    projectName: "Reviewable drone demonstrator",
+  });
+
+  const error = await assertRejects(
+    () => client.handoff(request),
+    ProjectDiscoveryHandoffConflictError,
+  );
+  assertEquals(error.code, "project_exists");
+  assertEquals(error.actualRevision, undefined);
 });
 
 Deno.test("discovery SSE consumes named full snapshots and stays calm on reconnect", () => {
