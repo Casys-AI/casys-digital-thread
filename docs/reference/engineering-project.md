@@ -527,6 +527,22 @@ idempotent persistence. This recovery design has not yet been tested against a r
 SysON instance and does not establish CAD, physics, flight, cost, compliance, or
 requirements verification.
 
+### Disposable r3 parser/translator conformance harness
+
+`scripts/run-inspection-drone-syson-conformance.ts` is an operator-only preflight for
+the fixed r3 SysML fragment, not an EngineeringProject operation and not thread
+evidence. With no flags it is inert: it creates no MCP client, makes no MCP call, and
+returns `confirmation-required`. Actual mode requires all of `--execute`,
+`--acknowledge=CREATE_DISPOSABLE_SYSON_PROJECT`, a `disposable-...` project prefix, and
+a credential-free loopback `http(s)` MCP `/mcp` endpoint. It creates and retains a
+throwaway SysON project for inspection.
+
+Its only assertions are that the deployed parser/translator accepts the canonical text
+and exposes the expected package, five part usages, and four requirement usages on
+read-back. A `passed` report remains `engineeringEvidence: none`; it says nothing about
+CAD, physical behaviour, flight, cost, compliance, or a verified requirement. The
+harness has not been executed against SysON, so no provider conformance evidence exists.
+
 `FileEngineeringProjectRunLease` additionally holds one local advisory lock for the
 exact `(projectId, runId)` while the trusted V2 executor runs. Its retained empty file
 under `state/local/engineering-project-run-leases/` is coordination state only: it is

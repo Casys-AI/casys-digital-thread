@@ -82,7 +82,8 @@ categories deliberately answer different questions.
   first bounded SysON seed, while keeping an operational twin in V2.
 - [Bounded inspection-drone SysON architecture slice](rfcs/inspection-drone-syson-architecture-slice.md)
   records the proposed r3 model fragment, exact one-write executor boundary, fake-client
-  test recipe, and remaining SysON textual-syntax conformance gate.
+  test recipe, and the inert-by-default, separately authorized disposable SysON
+  parser/translator conformance harness. It has not been executed against SysON.
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.

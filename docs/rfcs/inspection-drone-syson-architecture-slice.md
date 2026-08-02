@@ -226,11 +226,27 @@ coordinates and constant text above. Add a small live-projector test in parallel
 should expose redacted `started` and `completed` milestones for the single write, but a
 live-feed failure must never cause a retry.
 
-After the fake tests pass, run a **separately authorized disposable SysON conformance
-test**. It creates a throwaway project/root, inserts this exact text once, and asserts
-the package, five part definitions/usages, and four `RequirementUsage` elements from
-read-back. It is intentionally not a normal test-suite step: it mutates a real provider
-and is the only reliable answer to the current parser/translator uncertainty.
+After the fake tests pass, the repository provides the separately authorized, disposable
+harness at `scripts/run-inspection-drone-syson-conformance.ts`. Its default invocation
+is inert: it does not instantiate an MCP client, make an MCP call, or mutate SysON:
+
+```sh
+deno run scripts/run-inspection-drone-syson-conformance.ts
+```
+
+An actual conformance attempt must be authorized separately and acknowledge all of the
+following in one command: `--execute`, `--acknowledge=CREATE_DISPOSABLE_SYSON_PROJECT`,
+a lowercase `--disposable-project-prefix=disposable-...`, and a credential-free loopback
+`--mcp-url=http(s)://127.0.0.1:<port>/mcp` (or `localhost`). It retains the disposable
+project for provider inspection rather than attempting cleanup. The harness creates a
+throwaway project/root, inserts this exact text once, and checks from read-back the
+architecture package, five `PartUsage` elements, and four `RequirementUsage` elements.
+It is intentionally not a normal test-suite step: actual mode mutates a real provider.
+
+It reports parser/translator and model-tree-shape conformance only. It is not CAD,
+physics, flight, cost, compliance, requirement-verification, or other engineering
+evidence. No real SysON conformance attempt has been executed yet, so no such
+conformance result exists.
 
 ## Implementation state and remaining gates
 
@@ -244,9 +260,10 @@ provider claim. The remaining gates are:
    text.
 2. Let discovery reach an approved brief with the exact `payload-class` answer, then
    create the human-owned initial plan and execute r1/r2 under their existing gates.
-3. Run the disposable SysON parser conformance check only with explicit authorization.
-   It is required before an r3 provider mutation because it is the first real test of
-   this exact fragment against the deployed parser/translator.
+3. Run the disposable SysON parser conformance check only with explicit authorization
+   and all of its local acknowledgement flags. It is required before an r3 provider
+   mutation because it is the first real test of this exact fragment against the
+   deployed parser/translator. It has not been run yet.
 4. Only after r3 is durable, review a separate CAD-frame operation; do not smuggle CAD
    or CalculiX work into architecture authoring.
 
