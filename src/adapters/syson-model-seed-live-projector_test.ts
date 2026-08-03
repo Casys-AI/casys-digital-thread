@@ -10,6 +10,7 @@ Deno.test("SysON seed live projector shows the container chain without provider 
   assertEquals(before.nodes.map((node) => [node.label, node.freshness]), [
     ["SysON project container", "running"],
   ]);
+  assertEquals(before.nodes[0]?.activityRole, "milestone");
 
   const model = project(event("syson_model_create", "completed"));
   assertEquals(model.nodes.map((node) => [node.label, node.freshness]), [

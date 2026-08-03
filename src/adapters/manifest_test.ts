@@ -47,7 +47,13 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
   const compose = record(parseYaml(composeSource), "docker-compose.yml");
   const services = record(compose.services, "docker-compose.yml.services");
 
-  for (const serverId of ["syson", "build123d", "calculix"]) {
+  for (
+    const [serverId, imageVariable] of [
+      ["syson", "MCP_SYSON_IMAGE"],
+      ["build123d", "TOOLCHAIN_IMAGE"],
+      ["calculix", "TOOLCHAIN_IMAGE"],
+    ] as const
+  ) {
     const server = manifest.servers.find((candidate) => candidate.id === serverId);
     assert(server, `fleet manifest is missing ${serverId}`);
 
@@ -56,7 +62,8 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
       `docker-compose.yml.services.${server.serviceName}`,
     );
     assertEquals(
-      toolchainDefaultImage(service.image, server.serviceName),
+      composeImageDefault(service.image, server.serviceName, imageVariable)
+        .defaultImage,
       server.image,
       `${server.serviceName} Compose default must match ${serverId} fleet image`,
     );
@@ -120,15 +127,19 @@ function record(value: unknown, path: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function toolchainDefaultImage(image: unknown, serviceName: string): string {
+function composeImageDefault(
+  image: unknown,
+  serviceName: string,
+  imageVariable: string,
+): { readonly imageVariable: string; readonly defaultImage: string } {
   assert(
     typeof image === "string",
     `${serviceName}.image must be a string`,
   );
-  const match = /^\$\{TOOLCHAIN_IMAGE:-(.+)\}$/.exec(image);
+  const match = new RegExp(`^\\$\\{${imageVariable}:-(.+)\\}$`).exec(image);
   assert(
     match,
-    `${serviceName}.image must use TOOLCHAIN_IMAGE with a committed default`,
+    `${serviceName}.image must use ${imageVariable} with a committed default`,
   );
-  return match[1];
+  return { imageVariable, defaultImage: match[1]! };
 }

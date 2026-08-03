@@ -86,6 +86,7 @@ function projectNode(
     ref: { kind: "artifact", id: `${runId}:syson-project` },
     entityKind: "artifact",
     artifactKind: "other",
+    activityRole: "milestone",
     label: "SysON project container",
     system: "SysON",
     freshness,

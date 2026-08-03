@@ -64,7 +64,10 @@ services:
     networks: [chain]
 
   mcp-syson:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
+    # Keep the SysON sidecar independently selectable for a locally verified
+    # protocol fix. This avoids replacing it with the shared toolchain image
+    # when Compose is started for build123d or CalculiX.
+    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
     command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
@@ -160,6 +163,8 @@ volumes:
   syson-db-data:
   exports:
   # An explicit Docker name preserves immutable Modelica run records across
-  # Compose restarts for modelica_run_get.
+  # Compose restarts for modelica_run_get. An opt-in local integration run may
+  # set MODELICA_RUNS_VOLUME to a fresh name instead of deleting retained
+  # evidence from the default volume.
   modelica-runs:
-    name: casys-digital-thread-modelica-runs
+    name: "${MODELICA_RUNS_VOLUME:-casys-digital-thread-modelica-runs}"

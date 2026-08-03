@@ -30,6 +30,28 @@ Deno.test("same-id projection focuses a genuinely new feed node", () => {
   assertEquals(nextLiveFocusNode(previous, incoming)?.ref.id, "cad-live");
 });
 
+Deno.test("same-id projection focuses a server-declared live milestone", () => {
+  const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const incoming = structuredClone(previous);
+  incoming.graph.nodes.push({
+    id: "graph:artifact:projector-milestone",
+    ref: { kind: "artifact", id: "projector-milestone" },
+    entityKind: "artifact",
+    artifactKind: "other",
+    activityRole: "milestone",
+    label: "Model container",
+    system: "server-owned-projector",
+    freshness: "running",
+    summary: "Creating the bounded model container.",
+    recordedAt: "2026-08-01T10:00:00.000Z",
+  });
+
+  assertEquals(
+    nextLiveFocusNode(previous, incoming)?.ref.id,
+    "projector-milestone",
+  );
+});
+
 Deno.test("same-id in-place update preserves current focus", () => {
   const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
   const incoming = structuredClone(previous);

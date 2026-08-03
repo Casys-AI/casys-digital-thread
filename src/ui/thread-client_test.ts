@@ -351,6 +351,15 @@ Deno.test("the Workbench contract requires a typed native graph", () => {
   assertEquals(isThreadWorkbenchSnapshot(unsupportedRelation), false);
 });
 
+Deno.test("the Workbench contract accepts only its explicit activity role", () => {
+  const milestone = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  milestone.graph.nodes[0]!.activityRole = "milestone";
+  assertEquals(isThreadWorkbenchSnapshot(milestone), true);
+
+  milestone.graph.nodes[0]!.activityRole = "provider-event" as never;
+  assertEquals(isThreadWorkbenchSnapshot(milestone), false);
+});
+
 Deno.test("the Workbench contract requires evidence-backed component facets", () => {
   const missingComponents = JSON.parse(
     JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),

@@ -647,6 +647,9 @@ function validateNode(node: ThreadGraphNode): void {
   nonEmpty(node.label, "node.label");
   nonEmpty(node.system, "node.system");
   nonEmpty(node.summary, "node.summary");
+  if (node.activityRole !== undefined && node.activityRole !== "milestone") {
+    throw new TypeError("node.activityRole is unsupported");
+  }
 }
 
 function validateEdge(edge: ThreadGraphEdge): void {

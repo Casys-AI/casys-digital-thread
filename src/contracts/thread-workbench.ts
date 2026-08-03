@@ -54,6 +54,11 @@ export interface ThreadGraphNode {
   summary: string;
   /** Canonical timestamp used to order this fact in the activity feed. */
   recordedAt?: string;
+  /**
+   * Explicit browser-safe presentation role for a server-owned live milestone.
+   * It does not change the node's engineering/provenance semantics.
+   */
+  activityRole?: "milestone";
   /** Existing inspector target when this entity has a native detail panel. */
   selection?: ThreadRef;
 }

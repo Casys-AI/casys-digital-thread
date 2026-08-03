@@ -106,6 +106,10 @@ export function activityFeedNodes(nodes: ThreadGraphNode[]): ThreadGraphNode[] {
     node.entityKind === "evaluation" ||
     node.entityKind === "violation" ||
     node.entityKind === "action" ||
+    // The BFF assigns this presentation-only role to bounded live milestones.
+    // Untagged support nodes, including generic `other` artifacts, stay in
+    // lineage rather than becoming feed noise.
+    node.activityRole === "milestone" ||
     (node.entityKind === "artifact" && isPrimaryArtifact(node.artifactKind))
   );
   return [...primary, ...(latestChange ? [latestChange] : [])]

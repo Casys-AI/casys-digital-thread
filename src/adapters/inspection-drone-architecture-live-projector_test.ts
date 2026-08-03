@@ -17,6 +17,7 @@ Deno.test("inspection-drone architecture live projector distinguishes all guarde
   assertEquals(preflightStarted.nodes.map((node) => [node.ref.id, node.freshness]), [
     [`${RUN_ID}:root-preflight`, "running"],
   ]);
+  assertEquals(preflightStarted.nodes[0]?.activityRole, "milestone");
 
   const preflightCompleted = project(event(
     "syson_element_children",

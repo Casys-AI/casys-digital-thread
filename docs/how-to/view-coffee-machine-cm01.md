@@ -6,9 +6,10 @@
 > proof of the whole CoffeeMachine, a fabrication release, or a certification claim.
 >
 > **Control-plane boundary.** The r6 run below is an immutable historical reference. The
-> public Console MCP surface has no generic agent-run lifecycle tools and no CM-01
-> technical executor, so it is not a recipe for an agent or browser to advance a new
-> project run.
+> public Console MCP surface has no generic agent-run lifecycle tools. This historical
+> runner is not the fresh CM-01 V3 executor path, so it is not a recipe for an agent or
+> browser to advance a new project run. See the
+> [CM-01 V3 local golden-run guide](run-cm01-v3-golden-local.md).
 
 ## Start the required services
 
@@ -96,8 +97,9 @@ The current V3 path starts from the exact human-approved living brief with
 r1 and `architecture.author-inspection-drone@2` from exact r2 and the same authorization
 chain. It is not a CM-01 path: those fixed operations create only a SysON container and
 one bounded inspection-drone architecture. They create no CM-01 or general CAD, physics,
-flight, cost, compliance, or verification evidence. Any new CM-01 technical operation
-still needs its own reviewed registered executor.
+flight, cost, compliance, or verification evidence. The separate CM-01 V3 golden path
+now provides reviewed registered executors with fresh identities; it does not reuse this
+r6 reference.
 
 The command executes this backend-only chain:
 

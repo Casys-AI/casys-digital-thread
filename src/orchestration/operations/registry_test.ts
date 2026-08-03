@@ -12,6 +12,7 @@ import {
   INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 } from "../../domain/inspection-drone-architecture.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
+import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
@@ -273,4 +274,39 @@ Deno.test("registered operations accept only exact declared state-reference inpu
     EngineeringOperationRegistryError,
   );
   assertEquals(malformed.code, "invalid_input");
+});
+
+Deno.test("CM-01 V3 promotes each server-wired golden-path kit", () => {
+  const architecture = getRegisteredEngineeringOperation(
+    COFFEE_MACHINE_CM01_V3_OPERATION_REFS.architecture,
+  );
+  const cad = getRegisteredEngineeringOperation(
+    COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cad,
+  );
+  const thermal = getRegisteredEngineeringOperation(
+    COFFEE_MACHINE_CM01_V3_OPERATION_REFS.thermal,
+  );
+  const bom = getRegisteredEngineeringOperation(
+    COFFEE_MACHINE_CM01_V3_OPERATION_REFS.bom,
+  );
+  const mechanical = getRegisteredEngineeringOperation(
+    COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanical,
+  );
+
+  assertEquals(architecture?.execution, "trusted");
+  assertEquals(architecture?.workItemKind, "architect");
+  assertEquals(architecture?.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(cad?.execution, "trusted");
+  assertEquals(cad?.workItemKind, "design");
+  assertEquals(thermal?.execution, "trusted");
+  assertEquals(thermal?.workItemKind, "simulate");
+  assertEquals(thermal?.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(thermal?.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+  assertEquals(bom?.execution, "trusted");
+  assertEquals(bom?.workItemKind, "industrialize");
+  assertEquals(mechanical?.execution, "trusted");
+  assertEquals(mechanical?.workItemKind, "verify");
 });

@@ -12,6 +12,9 @@ categories deliberately answer different questions.
 
 ## How-to guides — achieve a focused task
 
+- [Run the CM-01 V3 golden path locally](how-to/run-cm01-v3-golden-local.md) starts a
+  fresh isolated Compose topology without deleting retained evidence, then follows the
+  paired-agent path from approved brief through the five registered CM-01 V3 operations.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
   starts the single-shell Preact product surface, follows a project from its living
   brief into activity and evidence, and explains why the cockpit observes while the

@@ -1,4 +1,8 @@
-import { deterministicJson, sha256Fingerprint } from "./deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "./deterministic-json.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringCommandActor,
@@ -64,6 +68,21 @@ export interface SysonModelSeedNormalizedResults {
   readonly project: SysonModelSeedProjectResult;
   readonly document: SysonModelSeedDocumentResult;
   readonly rootPackage: SysonModelSeedRootPackageResult;
+}
+
+/** Provider-free identity of one exact, re-read r2 SysON model container. */
+export interface ExactSysonModelSeed {
+  readonly artifactId: string;
+  readonly fingerprint: ContentFingerprint;
+  readonly normalizedResults: SysonModelSeedCapture["normalizedResults"];
+}
+
+/** The generic r2 gate must not inherit a product or architecture name. */
+export class SysonModelSeedBasisError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SysonModelSeedBasisError";
+  }
 }
 
 /**
@@ -343,6 +362,93 @@ export function parseSysonModelSeedCapture(value: unknown): SysonModelSeedCaptur
       },
     },
     normalizedResults,
+  };
+}
+
+/**
+ * Verify the exact V3 r2 SysON seed independently of a later product recipe.
+ *
+ * Both SysML authoring executors and future downstream adapters use this
+ * helper. It binds the seed capture to its content-addressed artifact and to
+ * the exact approved-brief documentary r1 inherited by the snapshot.
+ */
+export async function requireExactSysonModelSeed(
+  value: ThreadSnapshot,
+  seedCaptureValue: unknown,
+): Promise<ExactSysonModelSeed> {
+  let base: ThreadSnapshot;
+  try {
+    base = validateThreadSnapshot(value);
+  } catch (error) {
+    throw new SysonModelSeedBasisError(
+      `base must be a valid immutable ThreadSnapshot: ${errorMessage(error)}`,
+    );
+  }
+  if (
+    base.revision !== 2 || !base.previous || base.previous.revision !== 1 ||
+    base.artifacts.length !== 2 || base.consumptions.length !== 0 ||
+    base.observations.length !== 0 || base.requirements.length !== 0 ||
+    base.evaluations.length !== 0 || base.violations.length !== 0 ||
+    base.proposedActions.length !== 0
+  ) {
+    throw new SysonModelSeedBasisError(
+      "The exact r2 SysON model-container snapshot is required.",
+    );
+  }
+  const seedArtifact = base.artifacts.find((artifact) =>
+    artifact.kind === "sysml-model"
+  );
+  if (
+    !seedArtifact || seedArtifact.producer.serverId !== "syson" ||
+    seedArtifact.producer.tool !== "syson_model_create" ||
+    seedArtifact.inputArtifactIds.length !== 0
+  ) {
+    throw new SysonModelSeedBasisError(
+      "The r2 basis must expose one unmodified SysON model-container artifact.",
+    );
+  }
+  let capture: SysonModelSeedCapture;
+  try {
+    capture = parseSysonModelSeedCapture(seedCaptureValue);
+  } catch (error) {
+    throw new SysonModelSeedBasisError(
+      `The r2 SysON model-seed capture is invalid: ${errorMessage(error)}`,
+    );
+  }
+  if (
+    !fingerprintsEqual(seedArtifact.fingerprint, await sha256Fingerprint(capture)) ||
+    seedArtifact.producer.runId !== capture.trustedRunId ||
+    seedArtifact.id !== `syson-model-seed-${seedArtifact.fingerprint.digest}`
+  ) {
+    throw new SysonModelSeedBasisError(
+      "The r2 SysON model-seed capture does not exactly match its model-container artifact.",
+    );
+  }
+  const documentary = base.artifacts.find((artifact) =>
+    artifact.id === capture.lineage.documentaryArtifact.id &&
+    artifact.kind === "document"
+  );
+  if (
+    !base.previous ||
+    capture.lineage.baseSnapshot.snapshotId !== base.previous.snapshotId ||
+    capture.lineage.baseSnapshot.revision !== base.previous.revision ||
+    capture.lineage.baseSnapshot.subjectId !== base.subject.id ||
+    !documentary ||
+    !fingerprintsEqual(
+      documentary.fingerprint,
+      capture.lineage.documentaryArtifact.fingerprint,
+    ) ||
+    documentary.producer.tool !== "baseline_from_approved_brief" ||
+    documentary.producer.runId !== capture.lineage.documentaryArtifact.producerRunId
+  ) {
+    throw new SysonModelSeedBasisError(
+      "The r2 seed capture does not preserve the exact approved-brief documentary lineage inherited by its ThreadSnapshot.",
+    );
+  }
+  return {
+    artifactId: seedArtifact.id,
+    fingerprint: structuredClone(seedArtifact.fingerprint),
+    normalizedResults: structuredClone(capture.normalizedResults),
   };
 }
 

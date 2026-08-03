@@ -629,6 +629,7 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
     isThreadFreshness(node.freshness) &&
     typeof node.summary === "string" &&
     (node.recordedAt === undefined || typeof node.recordedAt === "string") &&
+    (node.activityRole === undefined || node.activityRole === "milestone") &&
     (node.selection === undefined || isThreadRef(node.selection));
 }
 

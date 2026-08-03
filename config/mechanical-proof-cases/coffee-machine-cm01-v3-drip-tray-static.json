@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "cm01-v3-drip-tray-static-proof/1.0",
+  "id": "coffee-machine-cm01-v3-drip-tray-static-proof",
+  "project": {
+    "id": "coffee-machine-cm01-v3",
+    "subjectId": "project:coffee-machine-cm01-v3"
+  },
+  "evidenceBoundary": "Concept verification only for the isolated CM-01 drip tray; no certification or fabrication-release claim.",
+  "geometry": { "widthMm": 190, "depthMm": 135, "heightMm": 28 },
+  "material": { "eMpa": 2200, "nu": 0.35 },
+  "meshSizeMm": 5,
+  "fixed": {
+    "name": "FIXED",
+    "box": { "min": [-96, 66.5, -15], "max": [96, 68.5, 15] }
+  },
+  "loaded": {
+    "name": "LOADED",
+    "box": { "min": [-96, -68.5, -15], "max": [96, -66.5, 15] },
+    "forceN": [0, 0, -100]
+  },
+  "limits": {
+    "maximumDisplacementMm": 1,
+    "maximumVonMisesMpa": 20
+  }
+}

@@ -14,12 +14,44 @@ import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-sto
 import { FileApprovedDiscoveryBaselineCaptureStore } from "./src/adapters/file-approved-discovery-baseline-capture-store.ts";
 import { FileSysonModelSeedCaptureStore } from "./src/adapters/file-syson-model-seed-capture-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
+import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
+import { FileCm01NominalModelicaCaptureStore } from "./src/adapters/file-cm01-nominal-modelica-capture-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-capture-store.ts";
+import { FileCm01ErpNextBomCaptureStore } from "./src/adapters/file-cm01-erpnext-bom-capture-store.ts";
+import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
+import { FileCm01SemanticCadAttemptStore } from "./src/adapters/file-cm01-semantic-cad-attempt-store.ts";
+import { FileCm01SemanticCadCaptureStore } from "./src/adapters/file-cm01-semantic-cad-capture-store.ts";
+import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
+import { FileCm01DripTrayMechanicalCaptureStore } from "./src/adapters/file-cm01-drip-tray-mechanical-capture-store.ts";
 import { FileInspectionDroneArchitectureCaptureStore } from "./src/adapters/file-inspection-drone-architecture-capture-store.ts";
 import { FileInspectionDroneArchitectureAttemptStore } from "./src/adapters/file-inspection-drone-architecture-attempt-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedDiscoveryBaselineRunExecutor } from "./src/adapters/approved-discovery-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/syson-model-seed-run-executor.ts";
 import { InspectionDroneArchitectureRunExecutor } from "./src/adapters/inspection-drone-architecture-run-executor.ts";
+import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/cm01-nominal-modelica-capture.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
+  CoffeeMachineCm01V3ThermalRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-thermal-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
+  CoffeeMachineCm01V3ArchitectureRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-architecture-run-executor.ts";
+import { Cm01ErpNextBomCaptureAdapter } from "./src/adapters/cm01-erpnext-bom-capture.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_ERPNEXT_BOM_OPERATION,
+  CoffeeMachineCm01V3ErpNextBomRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_CAD_OPERATION,
+  CoffeeMachineCm01V3CadRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-cad-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,
+  CoffeeMachineCm01V3MechanicalRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-mechanical-run-executor.ts";
 import { InspectionDroneArchitectureQueueEligibility } from "./src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
@@ -41,6 +73,8 @@ import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verif
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
+import { parseCoffeeMachineCm01SemanticRecipe } from "./src/domain/coffee-machine-cm01-semantic-recipe.ts";
+import { parseCm01DripTrayMechanicalProof } from "./src/domain/cm01-drip-tray-mechanical-proof.ts";
 import { ProjectBriefCommandService } from "./src/domain/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import {
@@ -94,6 +128,30 @@ const DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY =
   "state/local/syson-model-seed-captures";
 const DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY =
   "state/local/syson-model-seed-attempts";
+const DEFAULT_CM01_NOMINAL_MODELICA_CAPTURE_DIRECTORY =
+  "state/local/cm01-nominal-modelica-captures";
+const DEFAULT_CM01_NOMINAL_MODELICA_ATTEMPT_DIRECTORY =
+  "state/local/cm01-nominal-modelica-attempts";
+const DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY =
+  "state/local/coffee-machine-cm01-v3-architecture-captures";
+const DEFAULT_CM01_ARCHITECTURE_ATTEMPT_DIRECTORY =
+  "state/local/coffee-machine-cm01-v3-architecture-attempts";
+const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
+  "state/local/cm01-erpnext-bom-captures";
+const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
+  "state/local/cm01-erpnext-bom-run-captures";
+const DEFAULT_CM01_SEMANTIC_CAD_ATTEMPT_DIRECTORY =
+  "state/local/cm01-semantic-cad-attempts";
+const DEFAULT_CM01_SEMANTIC_CAD_CAPTURE_DIRECTORY =
+  "state/local/cm01-semantic-cad-captures";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_ATTEMPT_DIRECTORY =
+  "state/local/cm01-drip-tray-mechanical-attempts";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DIRECTORY =
+  "state/local/cm01-drip-tray-mechanical-captures";
+const DEFAULT_CM01_SEMANTIC_RECIPE_PATH =
+  "config/product-recipes/coffee-machine-cm01-v1.json";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_PATH =
+  "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json";
 const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_CAPTURE_DIRECTORY =
   "state/local/inspection-drone-architecture-captures";
 const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_ATTEMPT_DIRECTORY =
@@ -134,6 +192,16 @@ export interface CreateConsoleServerOptions {
   approvedDiscoveryCaptureDirectory?: string;
   sysonModelSeedCaptureDirectory?: string;
   sysonModelSeedAttemptDirectory?: string;
+  cm01NominalModelicaCaptureDirectory?: string;
+  cm01NominalModelicaAttemptDirectory?: string;
+  cm01ArchitectureCaptureDirectory?: string;
+  cm01ArchitectureAttemptDirectory?: string;
+  cm01ErpNextBomCaptureDirectory?: string;
+  cm01ErpNextBomRunCaptureDirectory?: string;
+  cm01SemanticCadAttemptDirectory?: string;
+  cm01SemanticCadCaptureDirectory?: string;
+  cm01DripTrayMechanicalAttemptDirectory?: string;
+  cm01DripTrayMechanicalCaptureDirectory?: string;
   inspectionDroneArchitectureCaptureDirectory?: string;
   inspectionDroneArchitectureAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
@@ -155,6 +223,9 @@ export async function createConsoleServer(
     );
   const modelica = manifest.servers.find((server) => server.id === "modelica");
   const syson = manifest.servers.find((server) => server.id === "syson");
+  const erpnext = manifest.servers.find((server) => server.id === "erpnext");
+  const build123d = manifest.servers.find((server) => server.id === "build123d");
+  const calculix = manifest.servers.find((server) => server.id === "calculix");
   const observedRuns = options.observedRuns ??
     await createObservedRunCatalog(modelica?.mcpUrl, syson?.mcpUrl);
   const controlPlane = new ControlPlane({
@@ -169,7 +240,14 @@ export async function createConsoleServer(
   });
   const defaultProjectTools = options.projectControl === undefined &&
       options.projectBrief === undefined
-    ? await createProjectControl(options, syson?.mcpUrl)
+    ? await createProjectControl(
+      options,
+      syson?.mcpUrl,
+      modelica?.mcpUrl,
+      erpnext?.mcpUrl,
+      build123d?.mcpUrl,
+      calculix?.mcpUrl,
+    )
     : undefined;
   const projectControl = options.projectControl === false
     ? undefined
@@ -241,6 +319,10 @@ export async function createConsoleServer(
 async function createProjectControl(
   options: CreateConsoleServerOptions,
   sysonMcpUrl?: string,
+  modelicaMcpUrl?: string,
+  erpnextMcpUrl?: string,
+  build123dMcpUrl?: string,
+  calculixMcpUrl?: string,
 ): Promise<{
   readonly control: ProjectControlToolDependencies;
   readonly brief: ProjectBriefToolDependencies;
@@ -345,6 +427,120 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01Architecture = sysonMcpUrl
+    ? new CoffeeMachineCm01V3ArchitectureRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      seedCaptures: sysonModelSeedCaptures,
+      captures: new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
+        options.cm01ArchitectureCaptureDirectory ??
+          DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY,
+      ),
+      attempts: new FileCoffeeMachineCm01V3ArchitectureAttemptStore(
+        options.cm01ArchitectureAttemptDirectory ??
+          DEFAULT_CM01_ARCHITECTURE_ATTEMPT_DIRECTORY,
+      ),
+      recipe: await loadCoffeeMachineCm01SemanticRecipe(),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const cm01NominalThermal = modelicaMcpUrl
+    ? new CoffeeMachineCm01V3ThermalRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      capture: new Cm01NominalModelicaCaptureAdapter({
+        modelica: new HttpMcpToolClient({
+          mcpUrl: modelicaMcpUrl,
+          timeoutMs: 120_000,
+        }),
+      }),
+      attempts: new FileCm01NominalModelicaAttemptStore(
+        options.cm01NominalModelicaAttemptDirectory ??
+          DEFAULT_CM01_NOMINAL_MODELICA_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCm01NominalModelicaCaptureStore(
+        options.cm01NominalModelicaCaptureDirectory ??
+          DEFAULT_CM01_NOMINAL_MODELICA_CAPTURE_DIRECTORY,
+      ),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const cm01ErpNextBom = erpnextMcpUrl
+    ? new CoffeeMachineCm01V3ErpNextBomRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      capture: new Cm01ErpNextBomCaptureAdapter({
+        erpnext: new HttpMcpToolClient({
+          mcpUrl: erpnextMcpUrl,
+          timeoutMs: 30_000,
+        }),
+      }),
+      captures: new FileCm01ErpNextBomCaptureStore(
+        options.cm01ErpNextBomCaptureDirectory ??
+          DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY,
+      ),
+      runCaptures: new FileCm01ErpNextBomRunCaptureStore(
+        options.cm01ErpNextBomRunCaptureDirectory ??
+          DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY,
+      ),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const cm01Cad = build123dMcpUrl
+    ? new CoffeeMachineCm01V3CadRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      recipe: await loadCoffeeMachineCm01SemanticRecipe(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      attempts: new FileCm01SemanticCadAttemptStore(
+        options.cm01SemanticCadAttemptDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCm01SemanticCadCaptureStore(
+        options.cm01SemanticCadCaptureDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_CAPTURE_DIRECTORY,
+      ),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const cm01Mechanical = build123dMcpUrl && calculixMcpUrl
+    ? new CoffeeMachineCm01V3MechanicalRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      proof: await loadCm01DripTrayMechanicalProof(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      calculix: new HttpMcpToolClient({
+        mcpUrl: calculixMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      attempts: new FileCm01DripTrayMechanicalAttemptStore(
+        options.cm01DripTrayMechanicalAttemptDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_MECHANICAL_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCm01DripTrayMechanicalCaptureStore(
+        options.cm01DripTrayMechanicalCaptureDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DIRECTORY,
+      ),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   return {
     brief: {
       projects: runtime.projects,
@@ -358,9 +554,71 @@ async function createProjectControl(
         baseline,
         sysonModelSeed,
         inspectionDroneArchitecture,
+        additional: [
+          {
+            operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
+            executor: cm01Architecture,
+            unavailableMessage:
+              "The server has no trusted CM-01 SysON architecture executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
+            executor: cm01NominalThermal,
+            unavailableMessage:
+              "The server has no trusted CM-01 nominal Modelica executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_ERPNEXT_BOM_OPERATION,
+            executor: cm01ErpNextBom,
+            unavailableMessage:
+              "The server has no trusted CM-01 ERPNext BOM executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_CAD_OPERATION,
+            executor: cm01Cad,
+            unavailableMessage:
+              "The server has no trusted CM-01 semantic CAD executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,
+            executor: cm01Mechanical,
+            unavailableMessage:
+              "The server has no trusted CM-01 DripTray mechanical executor configured for this run.",
+          },
+        ],
       }),
     },
   };
+}
+
+async function loadCoffeeMachineCm01SemanticRecipe() {
+  return parseCoffeeMachineCm01SemanticRecipe(
+    await loadReviewedJson(
+      DEFAULT_CM01_SEMANTIC_RECIPE_PATH,
+      "CM-01 semantic recipe",
+    ),
+  );
+}
+
+async function loadCm01DripTrayMechanicalProof() {
+  return parseCm01DripTrayMechanicalProof(
+    await loadReviewedJson(
+      DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_PATH,
+      "CM-01 DripTray mechanical proof",
+    ),
+  );
+}
+
+async function loadReviewedJson(path: string, label: string): Promise<unknown> {
+  try {
+    return JSON.parse(await Deno.readTextFile(path));
+  } catch (error) {
+    throw new Error(
+      `Unable to load the reviewed ${label}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 function createCockpitFocus(

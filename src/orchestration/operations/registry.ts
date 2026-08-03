@@ -9,6 +9,7 @@ import {
   INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 } from "../../domain/inspection-drone-architecture.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
+import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -267,6 +268,10 @@ const OPERATIONS = [
       },
     ],
   },
+  // CM-01 is the static golden-path reference for future oracle onboarding.
+  // These descriptors are reviewed planning data only until a server-owned
+  // executor is explicitly registered for each one.
+  ...listCoffeeMachineCm01V3OperationDescriptors(),
 ] as const satisfies readonly RegisteredEngineeringOperation[];
 
 const OPERATION_BY_KEY = new Map(

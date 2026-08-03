@@ -91,7 +91,8 @@ Assembly and the whole-machine CAD build do not authorize a solve. The separatel
 approved CM-01 mechanical path is retained as an exact historical reference: it proves
 what the bounded DripTray loop captured, not an executable public project-control
 recipe. The Console MCP server has no public `start`, `progress`, `publish`, or `fail`
-lifecycle tools, and it does not currently expose a CM-01 technical executor.
+lifecycle tools. Its historical r6 runner is not the CM-01 V3 executor path; that fresh
+path is documented in the [CM-01 V3 local golden-run guide](run-cm01-v3-golden-local.md).
 
 For a local maintainer auditing an already prepared historical run, the underlying
 command-side runner accepts its exact recorded run ID:
@@ -120,13 +121,11 @@ no longer offers a separate MCP call to move a run into `publishing` or `complet
 not try to recreate the r6 reference by supplying a capture or evidence payload through
 MCP.
 
-For a future technical operation, the agent queues an exact ready work item whose
-operation and basis are derived by the server. Its registered executor must then own the
-provider calls, capture, snapshot/attachment, output validation, and internal lifecycle
-transitions. Until that executor exists, CM-01 r6 is reviewed as existing evidence
-rather than offered as a re-runnable agent workflow. See the
-[mechanical workflow reference](view-coffee-machine-cm01.md) for the recorded case and
-its safe-resume boundary.
+CM-01 r6 remains historical evidence rather than a re-runnable public workflow. The
+separate `coffee-machine-cm01-v3` path now has registered, server-owned operations with
+fresh identities and no r6 fallback. See the [CM-01 V3 local golden-run guide](run-cm01-v3-golden-local.md)
+for that path, and the [mechanical workflow reference](view-coffee-machine-cm01.md) for
+the recorded r6 case and its safe-resume boundary.
 
 ## Inspect the assembled state
 

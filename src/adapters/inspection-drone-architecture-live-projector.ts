@@ -138,6 +138,7 @@ function milestoneNode(
     ref: { kind: "artifact", id: `${runId}:${step.id}` },
     entityKind: "artifact",
     artifactKind: "other",
+    activityRole: "milestone",
     label: step.label,
     system: "SysON",
     freshness: phase === "started"

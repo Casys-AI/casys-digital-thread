@@ -5,6 +5,7 @@ import {
 } from "./deterministic-json.ts";
 import {
   parseSysonModelSeedCapture,
+  requireExactSysonModelSeed,
   type SysonModelSeedCapture,
 } from "./syson-model-seed.ts";
 import type { EngineeringApprovedBriefBasis } from "./engineering-project.ts";
@@ -21,7 +22,6 @@ import type {
   ThreadOperationRef,
   ThreadSnapshot,
 } from "./thread-snapshot.ts";
-import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
 
 /** Immutable normalized capture produced by the bounded r3 operation. */
 export const INSPECTION_DRONE_ARCHITECTURE_CAPTURE_SCHEMA =
@@ -420,91 +420,14 @@ export async function requireInspectionDroneArchitectureSeed(
   value: ThreadSnapshot,
   seedCaptureValue: unknown,
 ): Promise<InspectionDroneArchitectureSeed> {
-  let base: ThreadSnapshot;
   try {
-    base = validateThreadSnapshot(value);
+    return await requireExactSysonModelSeed(value, seedCaptureValue);
   } catch (error) {
     throw materializationInvalid(
       "invalid_seed",
-      `base must be a valid immutable ThreadSnapshot: ${errorMessage(error)}`,
+      errorMessage(error),
     );
   }
-  if (
-    base.revision !== 2 || !base.previous || base.previous.revision !== 1 ||
-    base.artifacts.length !== 2 || base.consumptions.length !== 0 ||
-    base.observations.length !== 0 || base.requirements.length !== 0 ||
-    base.evaluations.length !== 0 || base.violations.length !== 0 ||
-    base.proposedActions.length !== 0
-  ) {
-    throw materializationInvalid(
-      "invalid_seed",
-      "The inspection-drone architecture requires the exact r2 SysON model-container snapshot.",
-    );
-  }
-  const seedArtifact = base.artifacts.find((artifact) =>
-    artifact.kind === "sysml-model"
-  );
-  if (
-    !seedArtifact || seedArtifact.producer.serverId !== "syson" ||
-    seedArtifact.producer.tool !== "syson_model_create" ||
-    seedArtifact.inputArtifactIds.length !== 0
-  ) {
-    throw materializationInvalid(
-      "invalid_seed",
-      "The r2 basis must expose one unmodified SysON model-container artifact.",
-    );
-  }
-
-  let seedCapture: SysonModelSeedCapture;
-  try {
-    seedCapture = parseSysonModelSeedCapture(seedCaptureValue);
-  } catch (error) {
-    throw materializationInvalid(
-      "invalid_seed",
-      `The r2 SysON model-seed capture is invalid: ${errorMessage(error)}`,
-    );
-  }
-  if (
-    !fingerprintsEqual(
-      seedArtifact.fingerprint,
-      await sha256Fingerprint(seedCapture),
-    ) ||
-    seedArtifact.producer.runId !== seedCapture.trustedRunId ||
-    seedArtifact.id !== `syson-model-seed-${seedArtifact.fingerprint.digest}`
-  ) {
-    throw materializationInvalid(
-      "invalid_seed",
-      "The r2 SysON model-seed capture does not exactly match its model-container artifact.",
-    );
-  }
-  const documentaryArtifact = base.artifacts.find((artifact) =>
-    artifact.id === seedCapture.lineage.documentaryArtifact.id &&
-    artifact.kind === "document"
-  );
-  if (
-    !base.previous ||
-    seedCapture.lineage.baseSnapshot.snapshotId !== base.previous.snapshotId ||
-    seedCapture.lineage.baseSnapshot.revision !== base.previous.revision ||
-    seedCapture.lineage.baseSnapshot.subjectId !== base.subject.id ||
-    !documentaryArtifact ||
-    !fingerprintsEqual(
-      documentaryArtifact.fingerprint,
-      seedCapture.lineage.documentaryArtifact.fingerprint,
-    ) ||
-    documentaryArtifact.producer.tool !== "baseline_from_approved_brief" ||
-    documentaryArtifact.producer.runId !==
-      seedCapture.lineage.documentaryArtifact.producerRunId
-  ) {
-    throw materializationInvalid(
-      "invalid_seed",
-      "The r2 seed capture does not preserve the exact approved-brief documentary lineage inherited by its ThreadSnapshot.",
-    );
-  }
-  return {
-    artifactId: seedArtifact.id,
-    fingerprint: structuredClone(seedArtifact.fingerprint),
-    normalizedResults: structuredClone(seedCapture.normalizedResults),
-  };
 }
 
 function validateReadbackAfterInsertion(input: {

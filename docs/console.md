@@ -109,7 +109,7 @@ not to a later run; each queued run still receives its server-derived exact `bas
 project state; the caller cannot submit those execution details.
 `project_agent_run_execute` is deliberately different from a generic lifecycle command:
 it dispatches one queued, registered, server-owned operation. The source tree implements
-three guarded V3 operations for the idea/spec path:
+the three guarded V3 bootstrap operations for a general idea/spec path:
 
 1. `baseline.from-approved-brief@1` records the exact approved brief and plan as the
    provider-free documentary `ThreadSnapshot` r1.
@@ -120,7 +120,14 @@ three guarded V3 operations for the idea/spec path:
 3. `architecture.author-inspection-drone@2` requires the exact r2 seed, the same exact
    human-approved brief lineage, and an empty root. It can insert one fixed high-level
    architecture, then persists `inspection-drone-architecture-capture/2.0`, attests and
-   reads it back before publishing r3.
+    reads it back before publishing r3.
+
+The separate `coffee-machine-cm01-v3` golden path additionally registers five bounded
+operations for its fixed architecture, semantic CAD, nominal Modelica observation,
+read-only ERP BOM observation, and isolated DripTray proof. They do not turn the
+historical CM-01 r6 record into a fallback. See the
+[local CM-01 V3 guide](how-to/run-cm01-v3-golden-local.md) for exact scope, provider
+topology, evidence locations, and comparison boundary.
 
 Neither caller can choose a provider, tool, argument, file, SysML text, or result.
 Before every non-idempotent SysON write is dispatched, the executor writes a durable
@@ -164,8 +171,8 @@ snapshot, or evidence payload to make that happen. The public V3 baseline execut
 no provider call; the provider-backed seed and guarded r3 inspection-drone architecture
 operation have the closed contracts above. Any other architecture, requirements, CAD,
 simulation, measurement, or verification operation still needs its own reviewed executor
-and output contract. CM-01's mechanical r6 remains valuable historical evidence of a
-bounded loop, not a public CM-01 execution endpoint.
+and output contract. CM-01's historical r6 remains valuable evidence of a bounded loop;
+the new V3 route uses fresh identities and distinct registered executors instead.
 
 ## Signed human elicitation
 

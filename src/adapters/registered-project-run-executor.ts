@@ -35,7 +35,44 @@ export interface RegisteredProjectRunExecutorDependencies {
     InspectionDroneArchitectureRunExecutor,
     "execute"
   >;
+  /** Additional code-owned operations, such as a reviewed product kit. */
+  readonly additional?: readonly RegisteredProjectRunExecutorRegistration[];
 }
+
+type ExactOperationRef = Readonly<{
+  id: string;
+  version: string;
+}>;
+
+type ExactOperationKey = `${string}@${string}`;
+
+interface RegisteredOperationExecutor {
+  execute(
+    origin: EngineeringProjectCommandOrigin,
+    command: RegisteredProjectRunExecutorCommand,
+  ): Promise<EngineeringProjectSnapshot>;
+}
+
+/**
+ * Server-owned registration for one exact reviewed operation revision.
+ *
+ * The agent still supplies only a queued run identity. The composition root
+ * chooses which reviewed operations have an available trusted executor.
+ */
+export interface RegisteredProjectRunExecutorRegistration {
+  readonly operation: ExactOperationRef;
+  readonly executor?: RegisteredOperationExecutor;
+  /** Safe reason exposed when a reviewed capability is intentionally absent. */
+  readonly unavailableMessage?: string;
+}
+
+interface ExecutorDispatchEntry {
+  readonly executor: RegisteredOperationExecutor | undefined;
+  /** Preserves the reviewed fail-closed reason when a local capability is absent. */
+  readonly unavailableMessage?: string;
+}
+
+type ExecutorDispatch = ReadonlyMap<ExactOperationKey, ExecutorDispatchEntry>;
 
 /**
  * Server-owned dispatch over exact reviewed operation identities.
@@ -46,20 +83,47 @@ export interface RegisteredProjectRunExecutorDependencies {
  */
 export class RegisteredProjectRunExecutor {
   readonly #projects: Pick<EngineeringProjectRevisionStore, "get">;
-  readonly #baseline: Pick<ApprovedDiscoveryBaselineRunExecutor, "execute">;
-  readonly #sysonModelSeed: Pick<SysonModelSeedRunExecutor, "execute"> | undefined;
-  readonly #inspectionDroneArchitecture:
-    | Pick<
-      InspectionDroneArchitectureRunExecutor,
-      "execute"
-    >
-    | undefined;
+  readonly #dispatch: ExecutorDispatch;
 
   constructor(dependencies: RegisteredProjectRunExecutorDependencies) {
     this.#projects = dependencies.projects;
-    this.#baseline = dependencies.baseline;
-    this.#sysonModelSeed = dependencies.sysonModelSeed;
-    this.#inspectionDroneArchitecture = dependencies.inspectionDroneArchitecture;
+    const registrations: readonly RegisteredProjectRunExecutorRegistration[] = [
+      {
+        operation: APPROVED_BRIEF_BASELINE_OPERATION,
+        executor: dependencies.baseline,
+      },
+      {
+        operation: APPROVED_DISCOVERY_BASELINE_OPERATION,
+        executor: dependencies.baseline,
+      },
+      {
+        operation: SYSON_MODEL_SEED_OPERATION,
+        executor: dependencies.sysonModelSeed,
+        unavailableMessage:
+          "The server has no trusted SysON model-seed executor configured for this run.",
+      },
+      {
+        operation: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+        executor: dependencies.inspectionDroneArchitecture,
+        unavailableMessage:
+          "The server has no trusted inspection-drone architecture executor configured for this run.",
+      },
+      ...(dependencies.additional ?? []),
+    ];
+    const dispatch = new Map<ExactOperationKey, ExecutorDispatchEntry>();
+    for (const registration of registrations) {
+      const key = operationKey(registration.operation);
+      if (dispatch.has(key)) {
+        throw new Error(`Duplicate trusted executor registration for ${key}.`);
+      }
+      dispatch.set(key, {
+        executor: registration.executor,
+        ...(registration.unavailableMessage
+          ? { unavailableMessage: registration.unavailableMessage }
+          : {}),
+      });
+    }
+    this.#dispatch = dispatch;
   }
 
   async execute(
@@ -84,40 +148,28 @@ export class RegisteredProjectRunExecutor {
         "The requested run does not identify a registered executable operation.",
       );
     }
-    if (
-      sameOperation(operation, APPROVED_BRIEF_BASELINE_OPERATION) ||
-      sameOperation(operation, APPROVED_DISCOVERY_BASELINE_OPERATION)
-    ) {
-      return await this.#baseline.execute(origin, command);
+    const entry = this.#dispatch.get(operationKey(operation));
+    if (!entry) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The requested run is not backed by a trusted registered executor.",
+      );
     }
-    if (sameOperation(operation, SYSON_MODEL_SEED_OPERATION)) {
-      if (!this.#sysonModelSeed) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "The server has no trusted SysON model-seed executor configured for this run.",
-        );
-      }
-      return await this.#sysonModelSeed.execute(origin, command);
+    if (!entry.executor) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        entry.unavailableMessage ??
+          "The requested run is not backed by a trusted registered executor.",
+      );
     }
-    if (sameOperation(operation, INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION)) {
-      if (!this.#inspectionDroneArchitecture) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "The server has no trusted inspection-drone architecture executor configured for this run.",
-        );
-      }
-      return await this.#inspectionDroneArchitecture.execute(origin, command);
-    }
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      "The requested run is not backed by a trusted registered executor.",
-    );
+    return await entry.executor.execute(origin, command);
   }
 }
 
-function sameOperation(
-  value: { readonly id: string; readonly version: string },
-  expected: { readonly id: string; readonly version: string },
-): boolean {
-  return value.id === expected.id && value.version === expected.version;
+function operationKey<Operation extends ExactOperationRef>(
+  operation: Operation,
+): `${Operation["id"]}@${Operation["version"]}` {
+  return `${operation.id}@${operation.version}` as `${Operation["id"]}@${Operation[
+    "version"
+  ]}`;
 }

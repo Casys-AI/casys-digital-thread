@@ -59,11 +59,38 @@ Deno.test("activity feed hides support plumbing but keeps meaningful outputs", (
   ]);
 });
 
+Deno.test("activity feed promotes server-declared live milestones, not generic support", () => {
+  const nodes = [
+    {
+      ...node(
+        "run-7:projector-milestone",
+        "artifact",
+        "2026-08-01T08:03:00.000Z",
+        "other",
+        "any-server-owned-projector",
+      ),
+      activityRole: "milestone" as const,
+    },
+    node(
+      "run-7:provider-support",
+      "artifact",
+      "2026-08-01T08:02:00.000Z",
+      "other",
+      "any-server-owned-projector",
+    ),
+  ];
+
+  assertEquals(activityFeedNodes(nodes).map((item) => item.ref.id), [
+    "run-7:projector-milestone",
+  ]);
+});
+
 function node(
   id: string,
   kind: ThreadGraphRef["kind"] = "artifact",
   recordedAt = "2026-08-01T08:00:00.000Z",
   artifactKind?: string,
+  system = "test",
 ): ThreadGraphNode {
   return {
     id: `graph:${kind}:${id}`,
@@ -71,7 +98,7 @@ function node(
     entityKind: kind,
     ...(artifactKind ? { artifactKind } : {}),
     label: id,
-    system: "test",
+    system,
     freshness: "fresh",
     summary: id,
     recordedAt,
