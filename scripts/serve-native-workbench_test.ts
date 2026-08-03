@@ -3,11 +3,15 @@ import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
+import type { CockpitFocusStore } from "../src/adapters/file-cockpit-focus-store.ts";
+import type { CockpitFocusSnapshot } from "../src/domain/cockpit-focus.ts";
+import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../src/domain/cockpit-focus.ts";
 import { validateEngineeringProjectSnapshot } from "../src/domain/engineering-project-validation.ts";
 import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
 import { INSPECTION_DRONE_ARCHITECTURE_OPERATION } from "../src/domain/inspection-drone-architecture.ts";
 import { materializeAttestedMechanicalRun } from "../src/testing/attested-mechanical-run-fixture.ts";
 import {
+  createFocusedWorkspaceHandler,
   createNativeWorkbenchHandler,
   NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
   resolveNativeWorkbenchProjectId,
@@ -50,6 +54,149 @@ Deno.test("native Workbench resolves a project-only V2 launch from the persisted
     ),
     "operator-selected-subject",
   );
+});
+
+Deno.test("native Workbench resolves the agent-selected project and its subject on every read", async () => {
+  const first = namedPlanningProject("focus-one", "project:focus-one");
+  const second = namedPlanningProject("focus-two", "project:focus-two");
+  const focus = new MutableFocus(
+    focusSnapshot({ kind: "project", projectId: "focus-one" }),
+  );
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(undefined),
+    projectStore: new ProjectMapStore([first, second]),
+    projectId: "legacy-project",
+    subjectId: "legacy-subject",
+    cockpitFocus: focus,
+    workspaceId: "primary",
+    html: "unused",
+  });
+  let response = await handler(new Request("http://localhost/api/thread/workbench"));
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).project.project.subjectId, "project:focus-one");
+  focus.value = focusSnapshot({ kind: "project", projectId: "focus-two" }, 2);
+  response = await handler(new Request("http://localhost/api/thread/workbench"));
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).project.project.subjectId, "project:focus-two");
+  focus.value = focusSnapshot({ kind: "discovery", discoveryId: "drone-discovery" }, 3);
+  response = await handler(new Request("http://localhost/api/thread/workbench"));
+  assertEquals(response.status, 409);
+  assertEquals(
+    (await response.json()).error,
+    "cockpit_focus_requires_discovery_workbench",
+  );
+});
+
+Deno.test("focused native Workbench never applies the legacy component catalog to another project subject", async () => {
+  const snapshot = await materializeAttestedMechanicalRun(capture());
+  const project = projectSnapshot(snapshot);
+  const focus = new MutableFocus(focusSnapshot({
+    kind: "project",
+    projectId: project.project.id,
+  }));
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(snapshot),
+    projectStore: new ProjectMapStore([project]),
+    subjectId: "legacy-subject",
+    cockpitFocus: focus,
+    workspaceId: "primary",
+    componentCatalog: {
+      schemaVersion: "thread-components/1.0",
+      authority: "workspace-declared",
+      subjectId: "legacy-subject",
+      rationale: "Must not cross the focused project boundary.",
+      systemViews: {},
+      components: [],
+    },
+    html: "unused",
+  });
+  const response = await handler(new Request("http://localhost/api/thread/workbench"));
+  assertEquals(response.status, 200);
+  assertEquals(
+    (await response.json()).thread.components.subjectId,
+    snapshot.subject.id,
+  );
+});
+
+Deno.test("native Workbench focus SSE exposes only the public target on project switch", async () => {
+  const project = namedPlanningProject("focus-one", "project:focus-one");
+  const targetProject = documentaryProjectWithPublishingSeed(
+    documentaryThreadSnapshot("project:focus-two"),
+  );
+  const focus = new MutableFocus(
+    focusSnapshot({ kind: "project", projectId: "focus-one" }),
+  );
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(undefined),
+    projectStore: new ProjectMapStore([project, targetProject]),
+    subjectId: "legacy-subject",
+    cockpitFocus: focus,
+    workspaceId: "primary",
+    html: "unused",
+    pollIntervalMs: 2,
+  });
+  const response = await handler(
+    new Request(
+      "http://localhost/api/thread/workbench/events",
+      { headers: { "Last-Event-ID": "planning:focus-one:1:0" } },
+    ),
+  );
+  const reader = response.body!.getReader();
+  try {
+    focus.value = focusSnapshot({
+      kind: "project",
+      projectId: targetProject.project.id,
+    }, 2);
+    const chunk = await reader.read();
+    const event = new TextDecoder().decode(chunk.value);
+    assertStringIncludes(event, "event: cockpit-focus");
+    assertStringIncludes(event, '"kind":"project"');
+    assertStringIncludes(event, `"projectId":"${targetProject.project.id}"`);
+    for (
+      const privateField of [
+        "basis",
+        "inputFingerprint",
+        "commandReceipts",
+        "statusHistory",
+      ]
+    ) {
+      assertEquals(event.includes(privateField), false);
+    }
+  } finally {
+    await reader.cancel();
+  }
+});
+
+Deno.test("focused workspace root selects one complete native surface and names an absent focus", async () => {
+  const focus = new MutableFocus();
+  const handler = createFocusedWorkspaceHandler({
+    focus,
+    workspaceId: "primary",
+    native: (request) =>
+      Promise.resolve(new Response(`native:${new URL(request.url).pathname}`)),
+    discovery: (request) =>
+      Promise.resolve(new Response(`discovery:${new URL(request.url).pathname}`)),
+  });
+  let response = await handler(new Request("http://localhost/"));
+  assertEquals(response.status, 200);
+  assertStringIncludes(await response.text(), "has not selected");
+  response = await handler(new Request("http://localhost/api/thread/workbench"));
+  assertEquals(response.status, 409);
+  assertEquals((await response.json()).error, "cockpit_focus_not_selected");
+  focus.value = focusSnapshot({ kind: "discovery", discoveryId: "drone-discovery" });
+  response = await handler(new Request("http://localhost/"));
+  assertEquals(await response.text(), "discovery:/");
+  response = await handler(
+    new Request("http://localhost/native-workbench.html"),
+  );
+  assertEquals(await response.text(), "discovery:/");
+  focus.value = focusSnapshot({ kind: "project", projectId: "drone" }, 2);
+  response = await handler(new Request("http://localhost/"));
+  assertEquals(await response.text(), "native:/");
+  response = await handler(
+    new Request("http://localhost/discovery-workbench.html"),
+  );
+  assertEquals(await response.text(), "native:/");
 });
 
 Deno.test("native Workbench handler serves the persisted projection without executing tools", async () => {
@@ -994,6 +1141,39 @@ class ReadOnlyProjectStore implements EngineeringProjectRevisionStore {
   }
 }
 
+class ProjectMapStore implements EngineeringProjectRevisionStore {
+  #projects: Map<string, EngineeringProjectSnapshot>;
+  constructor(projects: readonly EngineeringProjectSnapshot[]) {
+    this.#projects = new Map(projects.map((project) => [project.project.id, project]));
+  }
+  get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
+    return Promise.resolve(this.#projects.get(projectId));
+  }
+  getRevision(
+    projectId: string,
+    revision: number,
+  ): Promise<EngineeringProjectSnapshot | undefined> {
+    const project = this.#projects.get(projectId);
+    return Promise.resolve(project?.revision === revision ? project : undefined);
+  }
+  createInitial(): Promise<EngineeringProjectSnapshot> {
+    throw new Error("read-only");
+  }
+  commit(): Promise<EngineeringProjectSnapshot> {
+    throw new Error("read-only");
+  }
+}
+
+class MutableFocus implements CockpitFocusStore {
+  constructor(public value?: CockpitFocusSnapshot) {}
+  get(): Promise<CockpitFocusSnapshot | undefined> {
+    return Promise.resolve(this.value);
+  }
+  select(): Promise<CockpitFocusSnapshot> {
+    throw new Error("read-only");
+  }
+}
+
 function projectSnapshot(
   thread?: ThreadSnapshot,
   revision = 1,
@@ -1056,6 +1236,34 @@ function projectSnapshot(
         }),
       }
       : {}),
+  };
+}
+
+function namedPlanningProject(
+  projectId: string,
+  subjectId: string,
+): EngineeringProjectSnapshot {
+  const base = projectSnapshot();
+  return {
+    ...base,
+    id: `${projectId}:r1`,
+    project: { ...base.project, id: projectId, subjectId },
+  };
+}
+
+function focusSnapshot(
+  target: CockpitFocusSnapshot["target"],
+  revision = 1,
+): CockpitFocusSnapshot {
+  return {
+    schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,
+    workspaceId: "primary",
+    revision,
+    commandId: `focus-${revision}`,
+    selectedAt: "2026-08-03T12:00:00.000Z",
+    selectedBy: { kind: "agent", actorId: "mcp:test@1" },
+    target,
+    ...(revision === 1 ? {} : { previous: { revision: revision - 1 } }),
   };
 }
 

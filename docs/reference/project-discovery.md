@@ -111,6 +111,23 @@ The browser consumes ordinary JSON and SSE. It receives no generic MCP endpoint,
 provider credentials, or MCP Apps iframe. Agent tool calls and human review converge on
 the same immutable file store under `state/local/project-discoveries/`.
 
+## Agent-selected cockpit focus
+
+Discovery authoring and cockpit routing are separate. Once a discovery already exists,
+the paired agent can use `cockpit_focus_set` to select it for a named read-only cockpit
+workspace (normally `primary`). It first reads `cockpit_focus_snapshot`, then submits a
+stable `commandId`, `issuedAt`, and that focus revision as `expectedRevision`. After the
+person confirms the brief and the agent creates the empty project shell through the
+normal `project_discovery_project_create` handoff, the agent may select that project in
+the same workspace instead.
+
+A focus is not part of `ProjectDiscoverySnapshot`, does not alter any discovery revision,
+and is never a confirmation, approval, plan, run, provider call, or evidence record.
+It only tells the passive single-shell cockpit which existing dossier to read. The
+browser has no project selector or mutation route; selection stays in the paired agent
+conversation. See [the Console reference](../console.md#cockpit-focus-tools) for the
+two focus-tool contracts.
+
 ## MRTR runtime boundary
 
 `MCP_MRTR_SIGNING_KEY` is a server-only signing secret for opaque MRTR `requestState`;

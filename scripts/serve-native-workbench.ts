@@ -4,11 +4,16 @@ import type { EngineeringProjectSnapshot } from "../src/domain/engineering-proje
 import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
 import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import {
+  type CockpitFocusStore,
+  FileCockpitFocusStore,
+} from "../src/adapters/file-cockpit-focus-store.ts";
 import { FileApprovedDiscoveryBaselineCaptureStore } from "../src/adapters/file-approved-discovery-baseline-capture-store.ts";
 import { FileSysonModelSeedCaptureStore } from "../src/adapters/file-syson-model-seed-capture-store.ts";
 import { InspectionDroneArchitectureQueueEligibility } from "../src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
+import { createDiscoveryWorkbenchHandler } from "./serve-discovery-workbench.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
 import {
   type EngineeringWorkbenchSnapshot,
@@ -46,11 +51,17 @@ export interface NativeWorkbenchHandlerOptions {
   projectStore: EngineeringProjectRevisionStore;
   /** EngineeringProject identity; defaults to subjectId only for CM-01 compatibility. */
   projectId?: string;
+  /** Agent-selected durable target. The BFF reads it, never mutates it. */
+  cockpitFocus?: CockpitFocusStore;
+  workspaceId?: string;
   /** Active store plus optional exact, versioned project baselines. */
   projectSnapshots?: ExactThreadSnapshotReader;
   subjectId: string;
   html: string;
   componentCatalog?: ThreadComponentCatalog;
+  componentCatalogForSubject?: (
+    subjectId: string,
+  ) => Promise<ThreadComponentCatalog | undefined>;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
@@ -70,6 +81,53 @@ export function resolveNativeWorkbenchProjectId(
 ): string {
   return explicitProjectId ?? explicitSubjectId ??
     NATIVE_WORKBENCH_LEGACY_PROJECT_ID;
+}
+
+type ResolvedActiveProject = {
+  readonly kind: "project";
+  readonly projectId: string;
+  readonly project: EngineeringProjectSnapshot;
+  readonly subjectId: string;
+  readonly componentCatalog?: ThreadComponentCatalog;
+};
+
+type ActiveTargetResolution = ResolvedActiveProject | {
+  readonly kind: "discovery";
+  readonly discoveryId: string;
+};
+
+async function resolveActiveProject(
+  options: NativeWorkbenchHandlerOptions,
+): Promise<ActiveTargetResolution> {
+  const focus = await options.cockpitFocus?.get(options.workspaceId ?? "primary");
+  if (focus?.target.kind === "discovery") {
+    return { kind: "discovery", discoveryId: focus.target.discoveryId };
+  }
+  const projectId = focus?.target.kind === "project"
+    ? focus.target.projectId
+    : configuredProjectId(options);
+  const project = await options.projectStore.get(projectId);
+  if (!project) throw new NativeWorkbenchProjectNotFoundError(projectId);
+  const subjectId = focus ? project.project.subjectId : options.subjectId;
+  if (project.project.subjectId !== subjectId) {
+    throw new Error(
+      `Engineering project subject ${project.project.subjectId} does not match resolved Workbench subject ${subjectId}.`,
+    );
+  }
+  return {
+    kind: "project",
+    projectId,
+    project,
+    subjectId,
+    componentCatalog: await options.componentCatalogForSubject?.(subjectId),
+  };
+}
+
+class NativeWorkbenchProjectNotFoundError extends Error {
+  constructor(readonly projectId: string) {
+    super(`Engineering project ${projectId} was not found.`);
+    this.name = "NativeWorkbenchProjectNotFoundError";
+  }
 }
 
 /**
@@ -107,19 +165,35 @@ export function createNativeWorkbenchHandler(
     }
     if (url.pathname === "/api/thread/workbench") {
       if (request.method !== "GET") return methodNotAllowed();
-      const project = await options.projectStore.get(configuredProjectId(options));
-      if (!project) return projectNotFound(configuredProjectId(options));
-      const snapshot = await resolveCurrentThreadSnapshot(project, options);
-      if (!snapshot && project.threadSnapshots.length > 0) {
+      let context: ActiveTargetResolution;
+      try {
+        context = await resolveActiveProject(options);
+      } catch (error) {
+        if (error instanceof NativeWorkbenchProjectNotFoundError) {
+          return projectNotFound(error.projectId);
+        }
+        throw error;
+      }
+      if (context.kind === "discovery") {
+        return focusRequiresDiscoveryWorkbench(context.discoveryId);
+      }
+      const snapshot = await resolveCurrentThreadSnapshot(
+        context.project,
+        options,
+        context.subjectId,
+      );
+      if (!snapshot && context.project.threadSnapshots.length > 0) {
         return json({
           error: "thread_snapshot_not_found",
-          subjectId: options.subjectId,
+          subjectId: context.subjectId,
         }, 404);
       }
       const projection = await projectWorkbenchSnapshot(
-        project,
+        context.project,
         snapshot,
         options,
+        context.subjectId,
+        context.componentCatalog,
       );
       return json(
         projection,
@@ -150,11 +224,19 @@ async function snapshotEventStream(
   request: Request,
   options: NativeWorkbenchHandlerOptions,
 ): Promise<Response> {
-  const initialProject = await options.projectStore.get(
-    configuredProjectId(options),
-  );
-  if (!initialProject) return projectNotFound(configuredProjectId(options));
-  let project = initialProject;
+  let initial: ActiveTargetResolution;
+  try {
+    initial = await resolveActiveProject(options);
+  } catch (error) {
+    if (error instanceof NativeWorkbenchProjectNotFoundError) {
+      return projectNotFound(error.projectId);
+    }
+    throw error;
+  }
+  if (initial.kind === "discovery") {
+    return focusRequiresDiscoveryWorkbench(initial.discoveryId);
+  }
+  let current = initial;
   const encoder = new TextEncoder();
   const pollIntervalMs = options.pollIntervalMs ?? 500;
   let lastEventId = request.headers.get("Last-Event-ID") ?? "";
@@ -168,23 +250,63 @@ async function snapshotEventStream(
         // return, even while a streaming response is still open. Stream
         // cancellation is the reliable browser-disconnect signal here.
         while (!cancelled) {
-          const [latestProject, liveUpdates] = await Promise.all([
-            options.projectStore.get(configuredProjectId(options)),
-            options.liveUpdates?.list(options.subjectId) ?? [],
-          ]);
+          let latestProject: ActiveTargetResolution;
+          try {
+            latestProject = await resolveActiveProject(options);
+          } catch (error) {
+            if (!(error instanceof NativeWorkbenchProjectNotFoundError)) throw error;
+            latestProject = { kind: "discovery", discoveryId: "unavailable" };
+          }
+          if (latestProject.kind === "discovery") {
+            const targetId = `focus:discovery:${latestProject.discoveryId}`;
+            if (targetId !== lastEventId) {
+              controller.enqueue(encoder.encode(
+                `id: ${targetId}\nevent: cockpit-focus\ndata: ${
+                  JSON.stringify({ target: publicFocusTarget(latestProject) })
+                }\n\n`,
+              ));
+              lastEventId = targetId;
+              lastWrite = Date.now();
+            }
+            await waitForPoll(pollIntervalMs);
+            continue;
+          }
+          if (latestProject.projectId !== current.projectId) {
+            const targetId = `focus:project:${latestProject.projectId}`;
+            if (targetId !== lastEventId) {
+              controller.enqueue(encoder.encode(
+                `id: ${targetId}\nevent: cockpit-focus\ndata: ${
+                  JSON.stringify({ target: publicFocusTarget(latestProject) })
+                }\n\n`,
+              ));
+              lastEventId = targetId;
+              lastWrite = Date.now();
+            }
+            current = latestProject;
+            await waitForPoll(pollIntervalMs);
+            continue;
+          }
+          const liveUpdates = await options.liveUpdates?.list(current.subjectId) ?? [];
           // A manifest removed during an established stream cannot revoke the
           // last valid event. A reconnect will receive an explicit 404.
-          if (latestProject) project = latestProject;
-          const snapshot = await resolveCurrentThreadSnapshot(project, options);
+          if (latestProject.kind === "project") current = latestProject;
+          const snapshot = await resolveCurrentThreadSnapshot(
+            current.project,
+            options,
+            current.subjectId,
+          );
           const liveVersion = liveUpdates.at(-1)?.sequence ?? 0;
+          const focusPrefix = options.cockpitFocus ? `${current.projectId}:` : "";
           const eventId = snapshot
-            ? `${project.revision}:${snapshot.revision}:${liveVersion}`
-            : `planning:${project.revision}:${liveVersion}`;
+            ? `${focusPrefix}${current.project.revision}:${snapshot.revision}:${liveVersion}`
+            : `planning:${focusPrefix}${current.project.revision}:${liveVersion}`;
           if (eventId !== lastEventId) {
             const projection = await projectWorkbenchSnapshot(
-              project,
+              current.project,
               snapshot,
               options,
+              current.subjectId,
+              current.componentCatalog,
               liveUpdates,
             );
             controller.enqueue(encoder.encode(
@@ -234,6 +356,8 @@ async function projectWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
   snapshot: ThreadSnapshot | undefined,
   options: NativeWorkbenchHandlerOptions,
+  subjectId: string,
+  componentCatalog?: ThreadComponentCatalog,
   liveUpdates?: LiveThreadUpdate[],
 ): Promise<EngineeringWorkbenchSnapshot> {
   if (!snapshot) {
@@ -242,14 +366,14 @@ async function projectWorkbenchSnapshot(
         "A declared technical baseline could not be resolved for this project.",
       );
     }
-    if (project.project.subjectId !== options.subjectId) {
+    if (project.project.subjectId !== subjectId) {
       throw new Error(
-        `Engineering project subject ${project.project.subjectId} does not match configured subject ${options.subjectId}.`,
+        `Engineering project subject ${project.project.subjectId} does not match resolved Workbench subject ${subjectId}.`,
       );
     }
     return projectEngineeringPlanningWorkbenchSnapshot(
       project,
-      liveUpdates ?? (await options.liveUpdates?.list(options.subjectId) ?? []),
+      liveUpdates ?? (await options.liveUpdates?.list(subjectId) ?? []),
     );
   }
   const declaredSnapshots = await Promise.all(
@@ -267,10 +391,16 @@ async function projectWorkbenchSnapshot(
     ),
   );
   const updates = liveUpdates ??
-    (await options.liveUpdates?.list(options.subjectId) ?? []);
+    (await options.liveUpdates?.list(subjectId) ?? []);
   return projectEngineeringWorkbenchSnapshot(
     validatedProject,
-    await projectThreadSnapshot(snapshot, options, updates),
+    await projectThreadSnapshot(
+      snapshot,
+      options,
+      subjectId,
+      componentCatalog,
+      updates,
+    ),
     snapshot.revision,
     updates,
   );
@@ -305,6 +435,7 @@ async function resolveDeclaredProjectHead(
 async function resolveCurrentThreadSnapshot(
   project: EngineeringProjectSnapshot,
   options: NativeWorkbenchHandlerOptions,
+  subjectId: string,
 ): Promise<ThreadSnapshot | undefined> {
   // A project created from approved discovery is intentionally not allowed to
   // borrow whatever happens to be the current subject head. Before the first
@@ -312,7 +443,7 @@ async function resolveCurrentThreadSnapshot(
   // provenance only.
   if (project.threadSnapshots.length === 0) return undefined;
   const [active, declared] = await Promise.all([
-    options.store.latest(options.subjectId),
+    options.store.latest(subjectId),
     resolveDeclaredProjectHead(project, options),
   ]);
   if (!active) return declared;
@@ -385,14 +516,17 @@ function workbenchDataSource(projection: EngineeringWorkbenchSnapshot): string {
 async function projectThreadSnapshot(
   snapshot: ThreadSnapshot,
   options: NativeWorkbenchHandlerOptions,
+  subjectId: string,
+  componentCatalog: ThreadComponentCatalog | undefined,
   liveUpdates?: LiveThreadUpdate[],
 ) {
   const canonical = projectThreadWorkbenchSnapshot(
     snapshot,
-    options.componentCatalog,
+    componentCatalog ??
+      (subjectId === options.subjectId ? options.componentCatalog : undefined),
   );
   const updates = liveUpdates ??
-    (await options.liveUpdates?.list(options.subjectId) ?? []);
+    (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
     canonical,
     snapshot.revision,
@@ -450,11 +584,15 @@ if (import.meta.main) {
     `${projectBaselineDirectory}/assets`;
   const htmlPath = argument("html") ??
     "src/ui/dist/thread/native-workbench.html";
+  const discoveryHtmlPath = argument("discovery-html") ??
+    "src/ui/dist/discovery/discovery-workbench.html";
   const assetDirectory = argument("asset-dir") ?? "state/local/thread-assets";
   const liveUpdateDirectory = argument("live-update-dir") ??
     "state/local/live-thread-updates";
   const projectDiscoveryDirectory = argument("project-discovery-dir") ??
     "state/local/project-discoveries";
+  const focusDirectory = argument("focus-dir") ?? "state/local/cockpit-focus";
+  const workspaceId = argument("workspace-id");
   const approvedDiscoveryCaptureDirectory = argument(
     "approved-discovery-capture-dir",
   ) ?? "state/local/approved-discovery-captures";
@@ -462,6 +600,9 @@ if (import.meta.main) {
     "syson-model-seed-capture-dir",
   ) ?? "state/local/syson-model-seed-captures";
   const html = await Deno.readTextFile(htmlPath);
+  const discoveryHtml = workspaceId
+    ? await Deno.readTextFile(discoveryHtmlPath)
+    : undefined;
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
     store,
@@ -470,6 +611,9 @@ if (import.meta.main) {
   const discoveries = new FileProjectDiscoveryRevisionStore(
     projectDiscoveryDirectory,
   );
+  const cockpitFocus = workspaceId
+    ? new FileCockpitFocusStore(focusDirectory)
+    : undefined;
   const captures = new FileApprovedDiscoveryBaselineCaptureStore(
     approvedDiscoveryCaptureDirectory,
   );
@@ -512,13 +656,36 @@ if (import.meta.main) {
     store,
     projectStore: projectRuntime.projects,
     projectId,
+    cockpitFocus,
+    workspaceId,
     projectSnapshots,
     subjectId,
     html,
     componentCatalog,
+    componentCatalogForSubject: async (resolvedSubjectId) =>
+      await readOptionalComponentCatalog(
+        `config/thread-subjects/${resolvedSubjectId}.components.json`,
+      ),
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),
   });
+  const discoveryHandler = discoveryHtml === undefined
+    ? undefined
+    : createDiscoveryWorkbenchHandler({
+      discoveries,
+      html: discoveryHtml,
+      focus: cockpitFocus,
+      workspaceId,
+    });
+  const workspaceHandler = workspaceId === undefined || !cockpitFocus ||
+      !discoveryHandler
+    ? handler
+    : createFocusedWorkspaceHandler({
+      focus: cockpitFocus,
+      workspaceId,
+      native: handler,
+      discovery: discoveryHandler,
+    });
 
   Deno.serve({
     hostname,
@@ -536,12 +703,58 @@ if (import.meta.main) {
       console.log(`Component identities: ${componentCatalogPath}`);
       console.log(`Live activity journal: ${liveUpdateDirectory}`);
       console.log(`Discovery revisions: ${projectDiscoveryDirectory}`);
+      if (workspaceId) {
+        console.log(`Agent-selected cockpit workspace: ${workspaceId}`);
+      }
       console.log(`Documentary captures: ${approvedDiscoveryCaptureDirectory}`);
       console.log(
         "Read-only Workbench: project commands and human decisions flow through the paired MCP conversation.",
       );
     },
-  }, handler);
+  }, workspaceHandler);
+}
+
+interface FocusedWorkspaceHandlerOptions {
+  readonly focus: CockpitFocusStore;
+  readonly workspaceId: string;
+  readonly native: (request: Request) => Promise<Response>;
+  readonly discovery: (request: Request) => Promise<Response>;
+}
+
+/**
+ * Same-origin workspace router. It selects a complete native surface rather
+ * than nesting applications or allowing the browser to issue focus commands.
+ */
+export function createFocusedWorkspaceHandler(
+  options: FocusedWorkspaceHandlerOptions,
+): (request: Request) => Promise<Response> {
+  return async (request) => {
+    const url = new URL(request.url);
+    const focus = await options.focus.get(options.workspaceId);
+    if (!focus) return cockpitFocusUnavailable(options.workspaceId, request);
+    if (
+      url.pathname === "/" || url.pathname === "/native-workbench.html" ||
+      url.pathname === "/discovery-workbench.html"
+    ) {
+      if (request.method !== "GET") return methodNotAllowed();
+      // Keep bookmarked surface aliases honest after the paired agent moves
+      // focus: the selected complete surface owns the root, not its old URL.
+      const rootRequest = url.pathname === "/" ? request : requestAtRoot(request);
+      return focus.target.kind === "project"
+        ? await options.native(rootRequest)
+        : await options.discovery(rootRequest);
+    }
+    if (url.pathname.startsWith("/api/project-discoveries/")) {
+      return await options.discovery(request);
+    }
+    return await options.native(request);
+  };
+}
+
+function requestAtRoot(request: Request): Request {
+  const url = new URL(request.url);
+  url.pathname = "/";
+  return new Request(url, { method: "GET", headers: request.headers });
 }
 
 async function readOptionalComponentCatalog(
@@ -581,6 +794,53 @@ function projectNotFound(projectId: string): Response {
     error: "engineering_project_not_found",
     projectId,
   }, 404);
+}
+
+function focusRequiresDiscoveryWorkbench(discoveryId: string): Response {
+  return json({
+    error: "cockpit_focus_requires_discovery_workbench",
+    discoveryId,
+    message:
+      "The paired agent selected a project discovery. The workspace root serves its discovery dossier; this engineering projection does not pretend that a discovery is technical evidence.",
+  }, 409);
+}
+
+function publicFocusTarget(target: ActiveTargetResolution): {
+  kind: "project";
+  projectId: string;
+} | {
+  kind: "discovery";
+  discoveryId: string;
+} {
+  return target.kind === "project"
+    ? { kind: "project", projectId: target.projectId }
+    : { kind: "discovery", discoveryId: target.discoveryId };
+}
+
+function cockpitFocusUnavailable(workspaceId: string, request: Request): Response {
+  const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/")) {
+    return json({
+      error: "cockpit_focus_not_selected",
+      workspaceId,
+      message:
+        "The paired agent has not selected a durable project or discovery for this cockpit workspace yet.",
+    }, 409);
+  }
+  return new Response(
+    `<!doctype html><title>Cockpit awaiting project context</title><main><h1>Opening project context</h1><p>Your paired agent has not selected a project or discovery for this workspace yet. Continue the conversation; no engineering tool is running.</p></main>`,
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Security-Policy":
+          "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+      },
+    },
+  );
 }
 
 function configuredProjectId(options: NativeWorkbenchHandlerOptions): string {

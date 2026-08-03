@@ -28,6 +28,7 @@ export function shouldAcceptWorkbenchUpdate(
   current: EngineeringWorkbenchSnapshot,
   incoming: EngineeringWorkbenchSnapshot,
 ): boolean {
+  if (incoming.project.project.id !== current.project.project.id) return true;
   if (incoming.project.revision !== current.project.revision) {
     return incoming.project.revision > current.project.revision;
   }

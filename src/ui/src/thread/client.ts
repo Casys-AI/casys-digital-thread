@@ -92,6 +92,11 @@ export class HttpThreadWorkbenchClient implements ThreadWorkbenchClient {
       }
     });
     source.addEventListener("error", () => onStatus?.("reconnecting"));
+    source.addEventListener("cockpit-focus", () => {
+      // A paired agent changed the durable workspace target. The root serves
+      // the next full native surface; the browser does not select it itself.
+      globalThis.location?.reload();
+    });
     return () => source.close();
   }
 }

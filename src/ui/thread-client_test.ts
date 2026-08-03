@@ -178,8 +178,7 @@ Deno.test("Workbench contract accepts the closed redacted V2 run projection only
     briefId: "inspection-drone-brief-v2",
     approvedBriefFingerprint: {
       algorithm: "sha256",
-      digest:
-        "e42aeb5109457f4430a7006b4ebd3d76cc7e15a6e8d0b832ee49cb0fbeb3854e",
+      digest: "e42aeb5109457f4430a7006b4ebd3d76cc7e15a6e8d0b832ee49cb0fbeb3854e",
     },
   };
   const { kind: _kind, ...discoveryHandoffBasis } = approvedBasis;

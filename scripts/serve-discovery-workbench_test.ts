@@ -1,5 +1,8 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
+import type { CockpitFocusStore } from "../src/adapters/file-cockpit-focus-store.ts";
+import type { CockpitFocusSnapshot } from "../src/domain/cockpit-focus.ts";
+import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../src/domain/cockpit-focus.ts";
 import { ProjectDiscoveryCommandService } from "../src/domain/project-discovery-command-service.ts";
 import { createDiscoveryWorkbenchHandler } from "./serve-discovery-workbench.ts";
 
@@ -24,6 +27,12 @@ Deno.test("Discovery Workbench serves an exact immutable snapshot and hardened H
     const snapshot = await response.json();
     assertEquals(snapshot.discoveryId, DISCOVERY_ID);
     assertEquals(snapshot.revision, 1);
+
+    const active = await handler(
+      new Request("http://localhost/api/project-discoveries/active"),
+    );
+    assertEquals(active.status, 200);
+    assertEquals((await active.json()).discoveryId, DISCOVERY_ID);
 
     const missing = await handler(
       new Request("http://localhost/api/project-discoveries/absent"),
@@ -95,6 +104,42 @@ Deno.test("Discovery Workbench SSE emits the full snapshot when a revision advan
   });
 });
 
+Deno.test("Discovery Workbench active route follows focus and signals a full-surface transition", async () => {
+  await withDiscovery(async ({ store }) => {
+    const focus = new MutableFocus(focusSnapshot({
+      kind: "discovery",
+      discoveryId: DISCOVERY_ID,
+    }));
+    const handler = createDiscoveryWorkbenchHandler({
+      discoveries: store,
+      html: "unused",
+      focus,
+      workspaceId: "primary",
+      pollIntervalMs: 2,
+    });
+    const read = await handler(
+      new Request("http://localhost/api/project-discoveries/active"),
+    );
+    assertEquals(read.status, 200);
+    assertEquals((await read.json()).discoveryId, DISCOVERY_ID);
+    const stream = await handler(
+      new Request(
+        "http://localhost/api/project-discoveries/active/events",
+        { headers: { "Last-Event-ID": "1:drone-concept:1" } },
+      ),
+    );
+    const reader = stream.body!.getReader();
+    try {
+      focus.value = focusSnapshot({ kind: "project", projectId: "drone-project" }, 2);
+      const event = new TextDecoder().decode(await readChunk(reader));
+      assertStringIncludes(event, "event: cockpit-focus");
+      assertStringIncludes(event, '"kind":"project"');
+    } finally {
+      await reader.cancel();
+    }
+  });
+});
+
 async function withDiscovery(
   run: (context: {
     store: FileProjectDiscoveryRevisionStore;
@@ -151,6 +196,32 @@ function proposeMissionQuestion(
       },
     },
   );
+}
+
+class MutableFocus implements CockpitFocusStore {
+  constructor(public value?: CockpitFocusSnapshot) {}
+  get(): Promise<CockpitFocusSnapshot | undefined> {
+    return Promise.resolve(this.value);
+  }
+  select(): Promise<CockpitFocusSnapshot> {
+    throw new Error("read-only");
+  }
+}
+
+function focusSnapshot(
+  target: CockpitFocusSnapshot["target"],
+  revision = 1,
+): CockpitFocusSnapshot {
+  return {
+    schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,
+    workspaceId: "primary",
+    revision,
+    commandId: `focus-${revision}`,
+    selectedAt: NOW,
+    selectedBy: { kind: "agent", actorId: "mcp:test@1" },
+    target,
+    ...(revision === 1 ? {} : { previous: { revision: revision - 1 } }),
+  };
 }
 
 async function readChunk(

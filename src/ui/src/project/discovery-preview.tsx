@@ -15,12 +15,15 @@ import "../styles.css";
 
 export interface DiscoveryPreviewAppProps {
   readonly client: ProjectDiscoveryClient;
+  /** The agent-selected active route may move to a different discovery. */
+  readonly followsCockpitFocus?: boolean;
 }
 
 type DiscoveryTransportState = ProjectDiscoveryStreamStatus | "error";
 
 export function DiscoveryPreviewApp({
   client,
+  followsCockpitFocus = false,
 }: DiscoveryPreviewAppProps): JSX.Element {
   const [snapshot, setSnapshot] = useState<ProjectDiscoverySnapshot>();
   const [streamStatus, setStreamStatus] = useState<
@@ -36,8 +39,9 @@ export function DiscoveryPreviewApp({
     const current = snapshotRef.current;
     if (
       current &&
-      (incoming.discoveryId !== current.discoveryId ||
-        incoming.revision < current.revision)
+      ((!followsCockpitFocus && incoming.discoveryId !== current.discoveryId) ||
+        (incoming.discoveryId === current.discoveryId &&
+          incoming.revision < current.revision))
     ) {
       return false;
     }
@@ -135,15 +139,10 @@ if (!root) throw new Error("Missing #discovery-preview mount point");
 
 installMcpViewTheme(document);
 
-const requestedDiscovery = new URLSearchParams(globalThis.location.search).get(
-  "discovery",
-)?.trim();
-const discoveryId = requestedDiscovery || root.dataset.discoveryId ||
-  "drone-concept";
-const endpoint = `/api/project-discoveries/${encodeURIComponent(discoveryId)}`;
+const endpoint = "/api/project-discoveries/active";
 const client = new HttpProjectDiscoveryClient(
   endpoint,
   `${endpoint}/events`,
 );
 
-render(<DiscoveryPreviewApp client={client} />, root);
+render(<DiscoveryPreviewApp client={client} followsCockpitFocus />, root);

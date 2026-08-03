@@ -82,6 +82,12 @@ export class HttpProjectDiscoveryClient implements ProjectDiscoveryClient {
       }
     });
     source.addEventListener("error", () => onStatus?.("reconnecting"));
+    source.addEventListener("cockpit-focus", () => {
+      // The same-origin workspace root selects the next complete native
+      // surface. Reloading preserves the browser's read-only role and avoids
+      // embedding a discovery inside the engineering cockpit.
+      globalThis.location?.reload();
+    });
     return () => source.close();
   }
 }

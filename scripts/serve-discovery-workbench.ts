@@ -1,5 +1,9 @@
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import {
+  type CockpitFocusStore,
+  FileCockpitFocusStore,
+} from "../src/adapters/file-cockpit-focus-store.ts";
+import {
   type ProjectDiscoveryRevisionStore,
   ProjectDiscoveryStoreConflictError,
 } from "../src/domain/project-discovery-command-service.ts";
@@ -7,12 +11,17 @@ import {
 export interface DiscoveryWorkbenchHandlerOptions {
   readonly discoveries: ProjectDiscoveryRevisionStore;
   readonly html: string;
+  /** Agent-owned target read on every active endpoint poll; browser remains read-only. */
+  readonly focus?: CockpitFocusStore;
+  readonly workspaceId?: string;
+  /** Compatibility fallback before an agent has selected this workspace. */
+  readonly fallbackDiscoveryId?: string;
   /** Polling observes immutable discovery revisions; it never invokes an agent. */
   readonly pollIntervalMs?: number;
 }
 
 type DiscoveryRoute = {
-  readonly discoveryId: string;
+  readonly discoveryId: string | "active";
   readonly action: "snapshot" | "events";
 };
 
@@ -29,7 +38,7 @@ export function createDiscoveryWorkbenchHandler(
 
     const route = parseDiscoveryRoute(url.pathname);
     if (!route) return new Response("Not found", { status: 404 });
-    if (!validDiscoveryId(route.discoveryId)) {
+    if (route.discoveryId !== "active" && !validDiscoveryId(route.discoveryId)) {
       return json({
         error: "invalid_discovery_id",
         message: "The discovery id in the request path is invalid.",
@@ -38,14 +47,28 @@ export function createDiscoveryWorkbenchHandler(
 
     if (route.action === "snapshot") {
       if (request.method !== "GET") return methodNotAllowed();
+      if (route.discoveryId === "active") return await serveActiveSnapshot(options);
       return await serveSnapshot(route.discoveryId, options.discoveries);
     }
     if (route.action === "events") {
       if (request.method !== "GET") return methodNotAllowed();
+      if (route.discoveryId === "active") {
+        return await activeSnapshotEventStream(request, options);
+      }
       return await snapshotEventStream(request, route.discoveryId, options);
     }
     return new Response("Not found", { status: 404 });
   };
+}
+
+async function serveActiveSnapshot(
+  options: DiscoveryWorkbenchHandlerOptions,
+): Promise<Response> {
+  const resolved = await resolveActiveDiscovery(options);
+  if (resolved.kind === "project") {
+    return focusRequiresProjectWorkbench(resolved.projectId);
+  }
+  return await serveSnapshot(resolved.discoveryId, options.discoveries);
 }
 
 async function serveSnapshot(
@@ -146,6 +169,106 @@ async function snapshotEventStream(
   });
 }
 
+async function activeSnapshotEventStream(
+  request: Request,
+  options: DiscoveryWorkbenchHandlerOptions,
+): Promise<Response> {
+  const initial = await resolveActiveDiscovery(options);
+  if (initial.kind === "project") {
+    return focusRequiresProjectWorkbench(initial.projectId);
+  }
+  const encoder = new TextEncoder();
+  const pollIntervalMs = options.pollIntervalMs ?? 500;
+  let lastEventId = request.headers.get("Last-Event-ID") ?? "";
+  let activeDiscoveryId = initial.discoveryId;
+  let cancelled = false;
+  let lastWrite = Date.now();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const run = async () => {
+        while (!cancelled) {
+          const target = await resolveActiveDiscovery(options);
+          if (target.kind === "discovery") {
+            if (target.discoveryId !== activeDiscoveryId) {
+              const eventId = `focus:discovery:${target.discoveryId}`;
+              if (eventId !== lastEventId) {
+                controller.enqueue(encoder.encode(
+                  `id: ${eventId}\nevent: cockpit-focus\ndata: ${
+                    JSON.stringify({ target })
+                  }\n\n`,
+                ));
+                lastEventId = eventId;
+                lastWrite = Date.now();
+              }
+              activeDiscoveryId = target.discoveryId;
+              await waitForPoll(pollIntervalMs);
+              continue;
+            }
+            const snapshot = await readStableSnapshot(
+              options.discoveries,
+              target.discoveryId,
+            );
+            if (snapshot) {
+              const eventId =
+                `${target.focusRevision}:${snapshot.discoveryId}:${snapshot.revision}`;
+              if (eventId !== lastEventId) {
+                controller.enqueue(encoder.encode(
+                  `id: ${eventId}\nevent: project-discovery-snapshot\ndata: ${
+                    JSON.stringify(snapshot)
+                  }\n\n`,
+                ));
+                lastEventId = eventId;
+                lastWrite = Date.now();
+              }
+            }
+          } else {
+            const eventId = `focus:project:${target.projectId}`;
+            if (eventId !== lastEventId) {
+              controller.enqueue(encoder.encode(
+                `id: ${eventId}\nevent: cockpit-focus\ndata: ${
+                  JSON.stringify({ target })
+                }\n\n`,
+              ));
+              lastEventId = eventId;
+              lastWrite = Date.now();
+            }
+          }
+          if (Date.now() - lastWrite >= 15_000) {
+            controller.enqueue(encoder.encode(": keep-alive\n\n"));
+            lastWrite = Date.now();
+          }
+          await waitForPoll(pollIntervalMs);
+        }
+      };
+      void run().then(() => {
+        try {
+          controller.close();
+        } catch {
+          // Stream cancellation can win the race.
+        }
+      }).catch((error) => {
+        try {
+          controller.error(error);
+        } catch {
+          // Stream cancellation can win the race.
+        }
+      });
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      "X-Content-Type-Options": "nosniff",
+      ...snapshotHeaders(),
+    },
+  });
+}
+
 function parseDiscoveryRoute(pathname: string): DiscoveryRoute | undefined {
   const match = pathname.match(
     /^\/api\/project-discoveries\/([^/]+)(?:\/(events))?$/,
@@ -160,6 +283,35 @@ function parseDiscoveryRoute(pathname: string): DiscoveryRoute | undefined {
   return {
     discoveryId,
     action: match[2] === "events" ? "events" : "snapshot",
+  };
+}
+
+type ActiveDiscoveryTarget =
+  | {
+    readonly kind: "discovery";
+    readonly discoveryId: string;
+    readonly focusRevision: number;
+  }
+  | { readonly kind: "project"; readonly projectId: string };
+
+async function resolveActiveDiscovery(
+  options: DiscoveryWorkbenchHandlerOptions,
+): Promise<ActiveDiscoveryTarget> {
+  const focus = await options.focus?.get(options.workspaceId ?? "primary");
+  if (focus?.target.kind === "project") {
+    return { kind: "project", projectId: focus.target.projectId };
+  }
+  if (focus?.target.kind === "discovery") {
+    return {
+      kind: "discovery",
+      discoveryId: focus.target.discoveryId,
+      focusRevision: focus.revision,
+    };
+  }
+  return {
+    kind: "discovery",
+    discoveryId: options.fallbackDiscoveryId ?? "drone-concept",
+    focusRevision: 0,
   };
 }
 
@@ -198,6 +350,15 @@ function snapshotHeaders(): Record<string, string> {
 
 function discoveryNotFound(discoveryId: string): Response {
   return json({ error: "project_discovery_not_found", discoveryId }, 404);
+}
+
+function focusRequiresProjectWorkbench(projectId: string): Response {
+  return json({
+    error: "cockpit_focus_requires_engineering_workbench",
+    projectId,
+    message:
+      "The paired agent selected an engineering project. Open the native Engineering Workbench; this discovery dossier never renders a project as a fake discovery.",
+  }, 409);
 }
 
 function revisionUnavailable(discoveryId: string): Response {
@@ -265,6 +426,10 @@ if (import.meta.main) {
   const discoveryId = argument("discovery-id") ?? "drone-concept";
   const discoveryDirectory = argument("discovery-dir") ??
     "state/local/project-discoveries";
+  const focusDirectory = argument("focus-dir") ?? "state/local/cockpit-focus";
+  // A standalone Discovery preview remains pinned to its requested dossier.
+  // Only the explicit workspace mode follows agent-owned cockpit focus.
+  const workspaceId = argument("workspace-id");
   const htmlPath = argument("html") ??
     "src/ui/dist/discovery/discovery-workbench.html";
   const document = await Deno.readTextFile(htmlPath);
@@ -272,6 +437,9 @@ if (import.meta.main) {
   const handler = createDiscoveryWorkbenchHandler({
     discoveries,
     html: document,
+    focus: workspaceId ? new FileCockpitFocusStore(focusDirectory) : undefined,
+    workspaceId,
+    fallbackDiscoveryId: discoveryId,
   });
 
   Deno.serve({
@@ -283,6 +451,7 @@ if (import.meta.main) {
         `Discovery Workbench: http://${hostname}:${port}/?${query.toString()}`,
       );
       console.log(`Project discovery id: ${discoveryId}`);
+      if (workspaceId) console.log(`Cockpit focus workspace: ${workspaceId}`);
       console.log(`Immutable discovery revisions: ${discoveryDirectory}`);
       console.log(
         "Read-only Discovery Workbench: project changes and confirmations flow through the paired MCP conversation.",

@@ -70,6 +70,25 @@ provider-execution tool.
 | `project_discovery_brief_confirm`    | Human elicitation | Confirm the exact pending brief through signed MRTR in the paired conversation        |
 | `project_discovery_project_create`   | Bounded handoff   | Create only the empty project shell from the exact human-confirmed discovery revision |
 
+### Cockpit focus tools
+
+| Tool                     | Authority      | Meaning                                                                                              |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------- |
+| `cockpit_focus_snapshot` | Read           | Read the durable agent-selected target for one read-only cockpit workspace                           |
+| `cockpit_focus_set`      | Agent mutation | Point a workspace at one already durable discovery or engineering project; never changes that target |
+
+The paired agent, not the browser, chooses what the single cockpit shell follows. The
+normal sequence is: start or resume a discovery with `project_discovery_*`, set the
+workspace focus to that discovery, obtain the person's brief confirmation through MRTR,
+create the empty project shell, then set the same workspace focus to that project.
+`cockpit_focus_snapshot` supplies the current revision; `cockpit_focus_set` requires it
+as `expectedRevision` together with a stable `commandId` and `issuedAt`.
+
+Focus is durable UI-routing state only. It cannot create a discovery or project, record
+an answer, approve a brief or decision, queue or execute a run, call a provider, or
+produce evidence. The cockpit remains GET/SSE-only and has no human selector yet. See
+[the native Workbench preview how-to](how-to/preview-native-workbench.md#follow-the-agent-selected-workspace).
+
 ## Truth boundary
 
 Desired state comes from the fleet manifest. Observed state comes from the running MCP

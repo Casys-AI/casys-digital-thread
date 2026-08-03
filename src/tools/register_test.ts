@@ -19,6 +19,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     projectDiscoveryDirectory: `${activeProjectDirectory}/discoveries`,
   });
   assertEquals(app.getToolNames().sort(), [
+    "cockpit_focus_set",
+    "cockpit_focus_snapshot",
     "console_refresh",
     "console_run_detail",
     "console_run_list",
@@ -75,6 +77,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     const listed = await client.call("tools/list", {});
     const tools = listed.tools as Array<Record<string, unknown>>;
     assertEquals(tools.map((tool) => tool.name).sort(), [
+      "cockpit_focus_set",
+      "cockpit_focus_snapshot",
       "console_run_detail",
       "console_run_list",
       "console_server_detail",
@@ -296,6 +300,20 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(
         annotations.readOnlyHint,
         tool.name === "project_discovery_snapshot",
+      );
+    }
+    const focusTools = tools.filter((tool) =>
+      String(tool.name).startsWith("cockpit_focus_")
+    );
+    assertEquals(focusTools.length, 2);
+    for (const tool of focusTools) {
+      const annotations = tool.annotations as Record<string, unknown>;
+      assertEquals(annotations.destructiveHint, false);
+      assertEquals(annotations.openWorldHint, false);
+      assertEquals(annotations.idempotentHint, true);
+      assertEquals(
+        annotations.readOnlyHint,
+        tool.name === "cockpit_focus_snapshot",
       );
     }
   } finally {

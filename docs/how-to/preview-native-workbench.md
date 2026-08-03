@@ -103,6 +103,25 @@ event stream. Neither path mutates project state nor reruns assembly, build123d,
 CalculiX, or Modelica. Provider MCP calls happen only in an explicit backend runner or
 in a separately orchestrated agent workflow.
 
+## Follow the agent-selected workspace
+
+For the paired-project flow, start one same-origin workspace shell instead:
+
+```bash
+deno task preview:cockpit
+```
+
+The agent starts or resumes a discovery with `project_discovery_*`, then uses
+`cockpit_focus_set` to point workspace `primary` at that durable discovery. After the
+human-confirmed brief creates its project shell, the agent points the same workspace at
+that existing project. `cockpit_focus_snapshot` supplies the optimistic focus revision.
+
+The browser has no selector and no command route: it only reads durable focus and
+reloads the root page when focus changes between complete Discovery and Engineering
+Workbench surfaces. A focus change creates no project, answer, run, tool call, evidence,
+or approval. Before an agent selects a target, workspace mode clearly says it is
+awaiting project context; it never silently falls back to CM-01.
+
 ## Inspect the truth boundary
 
 ```bash
