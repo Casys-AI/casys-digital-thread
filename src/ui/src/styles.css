@@ -60,6 +60,28 @@
   --page-max: 1180px;
   --page-inline: clamp(1rem, 5vw, 5.75rem);
 
+  /* Echelle d'espacement. Grille de 2px, nommee par sa taille rendue : lire
+     `var(--space-12)` suffit a savoir qu'il s'agit de 12px, sans convertir des
+     rem de tete. Choisir le palier le plus proche plutot que d'ecrire un
+     decimal : cinquante-quatre valeurs libres cohabitaient ici, dont des ecarts
+     de 0,05rem que personne ne peut voir. */
+  --space-2: 0.125rem;
+  --space-4: 0.25rem;
+  --space-6: 0.375rem;
+  --space-8: 0.5rem;
+  --space-10: 0.625rem;
+  --space-12: 0.75rem;
+  --space-14: 0.875rem;
+  --space-16: 1rem;
+  --space-18: 1.125rem;
+  --space-20: 1.25rem;
+  --space-24: 1.5rem;
+  --space-28: 1.75rem;
+  --space-32: 2rem;
+  --space-40: 2.5rem;
+  --space-48: 3rem;
+  --space-56: 3.5rem;
+
   font-family: var(--sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -134,7 +156,7 @@ svg {
   left: 1rem;
   top: -4rem;
   z-index: 100;
-  padding: 0.65rem 0.9rem;
+  padding: var(--space-10) var(--space-14);
   color: var(--surface-1);
   background: var(--green);
   font-weight: 800;
@@ -157,7 +179,7 @@ svg {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1.1rem;
+  gap: var(--space-18);
   color: var(--text);
 }
 
@@ -174,7 +196,7 @@ svg {
 }
 
 .boot-copy {
-  margin: 0.25rem 0 0;
+  margin: var(--space-4) 0 0;
   color: var(--muted);
 }
 
@@ -191,7 +213,7 @@ svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2rem;
+  gap: var(--space-32);
   padding: 1.35rem clamp(1rem, 3vw, 2.6rem);
   border-bottom: 1px solid var(--line);
   background: var(--surface-0);
@@ -206,7 +228,7 @@ svg {
 }
 
 .brand-lockup {
-  gap: 1rem;
+  gap: var(--space-16);
 }
 
 .brand-mark {
@@ -233,7 +255,7 @@ svg {
 
 .brand-mark span {
   z-index: 1;
-  padding: 0.25rem;
+  padding: var(--space-4);
   color: var(--text);
   background: var(--surface-2);
   font: 800 var(--text-xs)/1 var(--mono);
@@ -241,7 +263,7 @@ svg {
 }
 
 .masthead h1 {
-  margin: 0.38rem 0 0;
+  margin: var(--space-6) 0 0;
   font-size: clamp(1.25rem, 2.3vw, 1.85rem);
   line-height: 1;
   letter-spacing: -0.035em;
@@ -250,8 +272,8 @@ svg {
 .build-id {
   display: inline-block;
   vertical-align: 0.2rem;
-  margin-left: 0.3rem;
-  padding: 0.15rem 0.25rem;
+  margin-left: var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--line-strong);
   color: var(--muted);
   font: 600 var(--text-3xs)/1 var(--mono);
@@ -259,12 +281,12 @@ svg {
 }
 
 .mast-actions {
-  gap: 1.25rem;
+  gap: var(--space-20);
 }
 
 .connection {
-  gap: 0.65rem;
-  padding-right: 1.25rem;
+  gap: var(--space-10);
+  padding-right: var(--space-20);
   border-right: 1px solid var(--line);
 }
 
@@ -284,7 +306,7 @@ svg {
 
 .connection span:last-child {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
 }
 
 .connection small,
@@ -309,8 +331,8 @@ svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.85rem;
+  gap: var(--space-8);
+  padding: var(--space-10) var(--space-14);
   border: 1px solid var(--line-strong);
   border-radius: 0;
   background: var(--surface-2);
@@ -342,7 +364,7 @@ svg {
   grid-template-columns: auto 1fr;
   grid-template-rows: auto auto;
   align-content: center;
-  column-gap: 0.7rem;
+  column-gap: var(--space-12);
   padding: 0.8rem clamp(0.75rem, 2vw, 1.5rem);
   border-right: 1px solid var(--line);
 }
@@ -390,8 +412,8 @@ svg {
   min-width: 185px;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.1rem;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--space-18);
   border: 0;
   border-left: 1px solid var(--line);
   color: var(--muted);
@@ -434,7 +456,7 @@ svg {
 
 .tabs button > span {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
 }
 
 .tabs b {
@@ -451,9 +473,9 @@ svg {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: var(--space-10);
   margin: 1rem clamp(1rem, 3vw, 2.6rem) -0.25rem;
-  padding: 0.65rem 0.75rem;
+  padding: var(--space-10) var(--space-12);
   border: 1px solid var(--line);
   background: var(--surface-2);
   font-size: var(--text-sm);
@@ -504,14 +526,14 @@ svg {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 2rem;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1.25rem;
+  gap: var(--space-32);
+  margin-bottom: var(--space-24);
+  padding-bottom: var(--space-20);
   border-bottom: 1px solid var(--line);
 }
 
 .section-heading h2 {
-  margin: 0.45rem 0 0.55rem;
+  margin: var(--space-8) 0 var(--space-8);
   font-size: clamp(1.55rem, 3vw, 2.4rem);
   line-height: 1;
   letter-spacing: -0.045em;
@@ -528,7 +550,7 @@ svg {
 .health-score {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: var(--space-12);
 }
 
 .health-ring {
@@ -555,7 +577,7 @@ svg {
 
 .health-score > div {
   display: grid;
-  gap: 0.3rem;
+  gap: var(--space-4);
 }
 
 .health-score > div strong {
@@ -570,7 +592,7 @@ svg {
 
 .server-list {
   display: grid;
-  gap: 1rem;
+  gap: var(--space-16);
 }
 
 .server-card {
@@ -597,11 +619,11 @@ svg {
 
 .server-title {
   min-width: 0;
-  padding: 1rem 1.2rem;
+  padding: var(--space-16) var(--space-20);
 }
 
 .server-title .title-line {
-  gap: 0.65rem;
+  gap: var(--space-10);
 }
 
 .server-title h3 {
@@ -611,13 +633,13 @@ svg {
 }
 
 .server-title p {
-  margin: 0.34rem 0 0;
+  margin: var(--space-6) 0 0;
   color: var(--muted);
   font-size: var(--text-xs);
 }
 
 .demo-tag {
-  padding: 0.15rem 0.3rem;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid #665026;
   color: var(--amber);
   background: var(--amber-dim);
@@ -629,8 +651,8 @@ svg {
   min-width: 116px;
   display: grid;
   justify-items: end;
-  gap: 0.35rem;
-  padding: 0 1.2rem;
+  gap: var(--space-6);
+  padding: 0 var(--space-20);
 }
 
 .server-state small {
@@ -641,7 +663,7 @@ svg {
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-6);
   color: var(--muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.065em;
@@ -659,7 +681,7 @@ svg {
 
 .labeled-status {
   display: inline-grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
   color: var(--muted);
 }
 
@@ -703,8 +725,8 @@ svg {
 .server-facts > div {
   min-width: 0;
   display: grid;
-  gap: 0.35rem;
-  padding: 0.95rem 1.1rem;
+  gap: var(--space-6);
+  padding: var(--space-16) var(--space-18);
   border-right: 1px solid var(--line);
 }
 
@@ -745,7 +767,7 @@ svg {
 
 .server-lower > section {
   min-width: 0;
-  padding: 1rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
   border-right: 1px solid var(--line);
 }
 
@@ -757,14 +779,14 @@ svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.7rem;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
 }
 
 .mini-heading span {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-6);
 }
 
 .mini-heading span svg {
@@ -780,15 +802,15 @@ svg {
 .token-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: var(--space-6);
 }
 
 .token {
   max-width: 100%;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.4rem;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6);
   border: 1px solid var(--line);
   color: var(--text-soft);
   background: var(--surface-0);
@@ -810,12 +832,12 @@ svg {
 
 .uri-list {
   display: grid;
-  gap: 0.35rem;
+  gap: var(--space-6);
 }
 
 .uri-list code {
   overflow: hidden;
-  padding: 0.3rem 0.4rem;
+  padding: var(--space-4) var(--space-6);
   border-left: 2px solid var(--cyan);
   color: var(--cyan);
   background: var(--surface-0);
@@ -837,7 +859,7 @@ svg {
 }
 
 .security-card p {
-  margin: 0 0 0.4rem;
+  margin: 0 0 var(--space-6);
   color: var(--muted);
   font-size: var(--text-2xs);
   line-height: 1.45;
@@ -864,8 +886,8 @@ svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.55rem 1.1rem;
+  gap: var(--space-16);
+  padding: var(--space-8) var(--space-18);
   color: var(--muted);
   cursor: pointer;
   font: var(--text-3xs)/1.2 var(--mono);
@@ -878,7 +900,7 @@ svg {
 .drift-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: var(--space-8);
   color: var(--green);
   font-weight: 700;
   text-transform: uppercase;
@@ -897,8 +919,8 @@ svg {
   grid-template-columns: 90px minmax(200px, 1.5fr) minmax(120px, 1fr)
     minmax(120px, 1fr);
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1.1rem;
+  gap: var(--space-16);
+  padding: var(--space-12) var(--space-18);
   border-bottom: 1px solid var(--line);
 }
 
@@ -924,7 +946,7 @@ svg {
 
 .drift-row small {
   display: block;
-  margin-bottom: 0.2rem;
+  margin-bottom: var(--space-4);
   color: #5f6a6b;
   font-size: var(--text-3xs);
   text-transform: uppercase;
@@ -937,7 +959,7 @@ svg {
 }
 
 .drift-content > .empty-note {
-  padding: 0.8rem 1.1rem;
+  padding: var(--space-12) var(--space-18);
 }
 
 /* Runs */
@@ -959,7 +981,7 @@ svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1rem;
+  padding: 0 var(--space-16);
   border-bottom: 1px solid var(--line);
 }
 
@@ -988,8 +1010,8 @@ svg {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.7rem;
-  padding: 1rem;
+  gap: var(--space-12);
+  padding: var(--space-16);
   border: 0;
   border-bottom: 1px solid var(--line);
   color: inherit;
@@ -1008,7 +1030,7 @@ svg {
 }
 
 .run-no {
-  padding-top: 0.1rem;
+  padding-top: var(--space-2);
   color: var(--line-strong);
   font: 700 var(--text-xs)/1 var(--mono);
 }
@@ -1016,7 +1038,7 @@ svg {
 .run-copy {
   min-width: 0;
   display: grid;
-  gap: 0.3rem;
+  gap: var(--space-4);
 }
 
 .run-copy b {
@@ -1045,7 +1067,7 @@ svg {
 .run-result {
   grid-column: 2;
   justify-self: start;
-  margin-top: 0.1rem;
+  margin-top: var(--space-2);
 }
 
 .run-verdict {
@@ -1063,8 +1085,8 @@ svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2rem;
-  padding: 1.5rem;
+  gap: var(--space-32);
+  padding: var(--space-24);
   border-bottom: 1px solid var(--line);
 }
 
@@ -1073,18 +1095,18 @@ svg {
 }
 
 .run-titlebar .title-line {
-  gap: 0.75rem;
+  gap: var(--space-12);
 }
 
 .run-status-pair {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.7rem;
+  gap: var(--space-12);
 }
 
 .run-titlebar h2 {
-  margin: 0.55rem 0 0.45rem;
+  margin: var(--space-8) 0 var(--space-8);
   font-size: clamp(1.35rem, 2.5vw, 2rem);
   line-height: 1;
   letter-spacing: -0.04em;
@@ -1107,8 +1129,8 @@ svg {
 .run-meta div {
   min-width: 95px;
   display: grid;
-  gap: 0.45rem;
-  padding: 0.7rem 0.8rem;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-12);
   border-right: 1px solid var(--line);
 }
 
@@ -1125,7 +1147,7 @@ svg {
 .requirements-block,
 .artifacts-block {
   min-width: 0;
-  padding: 1.35rem 1.5rem;
+  padding: var(--space-20) var(--space-24);
 }
 
 .lineage-block {
@@ -1136,12 +1158,12 @@ svg {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: var(--space-16);
+  margin-bottom: var(--space-16);
 }
 
 .block-heading h3 {
-  margin: 0.28rem 0 0;
+  margin: var(--space-4) 0 0;
   font-size: var(--text-md);
 }
 
@@ -1167,7 +1189,7 @@ svg {
   min-height: 210px;
   display: flex;
   flex-direction: column;
-  padding: 0.85rem;
+  padding: var(--space-14);
   border: 1px solid var(--line);
   background: var(--surface-1);
 }
@@ -1229,7 +1251,7 @@ svg {
   height: 40px;
   display: grid;
   place-items: center;
-  margin: 1.1rem 0 0.8rem;
+  margin: var(--space-18) 0 var(--space-12);
   border: 1px solid currentColor;
   color: inherit;
   background: var(--surface-0);
@@ -1245,7 +1267,7 @@ svg {
 
 .lineage-stage > p {
   flex: 1;
-  margin: 0.4rem 0 0.9rem;
+  margin: var(--space-6) 0 var(--space-14);
   color: var(--muted);
   font-size: var(--text-3xs);
   line-height: 1.45;
@@ -1254,8 +1276,8 @@ svg {
 .lineage-stage footer {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
-  padding-top: 0.6rem;
+  gap: var(--space-4);
+  padding-top: var(--space-10);
   border-top: 1px solid var(--line);
 }
 
@@ -1293,7 +1315,7 @@ svg {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-16);
   padding: 1px;
   background: var(--line);
   list-style: none;
@@ -1302,8 +1324,8 @@ svg {
 .measurement-list li {
   min-width: 0;
   display: grid;
-  gap: 0.35rem;
-  padding: 0.7rem;
+  gap: var(--space-6);
+  padding: var(--space-12);
   background: var(--surface-1);
 }
 
@@ -1335,7 +1357,7 @@ svg {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  margin: 0 0 1.1rem;
+  margin: 0 0 var(--space-18);
   padding: 1px;
   background: var(--line);
 }
@@ -1343,8 +1365,8 @@ svg {
 .provenance-list > div {
   min-width: 0;
   display: grid;
-  gap: 0.35rem;
-  padding: 0.62rem 0.7rem;
+  gap: var(--space-6);
+  padding: var(--space-10) var(--space-12);
   background: var(--surface-0);
 }
 
@@ -1364,9 +1386,9 @@ svg {
 
 .run-warnings {
   display: grid;
-  gap: 0.35rem;
-  margin: 0 0 1.1rem;
-  padding: 0.7rem 0.8rem 0.7rem 1.65rem;
+  gap: var(--space-6);
+  margin: 0 0 var(--space-18);
+  padding: var(--space-12) var(--space-12) var(--space-12) var(--space-28);
   border-left: 2px solid var(--amber);
   color: var(--text-soft);
   background: var(--amber-dim);
@@ -1376,8 +1398,8 @@ svg {
 
 .verdict-pending {
   display: grid;
-  gap: 0.7rem;
-  padding: 0.85rem;
+  gap: var(--space-12);
+  padding: var(--space-14);
   border: 1px solid #665026;
   color: var(--text-soft);
   background: var(--amber-dim);
@@ -1403,7 +1425,7 @@ table {
 
 th,
 td {
-  padding: 0.7rem 0.75rem;
+  padding: var(--space-12) var(--space-12);
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   text-align: left;
@@ -1433,7 +1455,7 @@ td {
 
 td:first-child {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
 }
 
 .requirement-id {
@@ -1454,7 +1476,7 @@ td code {
   display: grid;
   grid-template-columns: minmax(45px, 1fr) auto auto;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-8);
 }
 .margin-track {
   display: block;
@@ -1488,8 +1510,8 @@ td code {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.62rem;
+  gap: var(--space-10);
+  padding: var(--space-10);
   border-bottom: 1px solid var(--line);
 }
 
@@ -1498,7 +1520,7 @@ td code {
 }
 
 .artifact-kind {
-  padding: 0.22rem 0.28rem;
+  padding: var(--space-4) var(--space-4);
   border: 1px solid var(--line-strong);
   color: var(--muted);
   font: 700 var(--text-3xs)/1 var(--mono);
@@ -1509,7 +1531,7 @@ td code {
 .artifact-list li > div {
   min-width: 0;
   display: grid;
-  gap: 0.18rem;
+  gap: var(--space-2);
 }
 
 .artifact-list strong,
@@ -1560,12 +1582,12 @@ td code {
   display: grid;
   place-items: center;
   align-content: center;
-  padding: 2rem;
+  padding: var(--space-32);
   text-align: center;
 }
 
 .run-empty h2 {
-  margin: 0.6rem 0;
+  margin: var(--space-10) 0;
   font-size: var(--text-2xl);
 }
 
@@ -1581,7 +1603,7 @@ td code {
   height: 65px;
   display: grid;
   place-items: center;
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--space-20);
   border: 1px solid var(--line-strong);
   border-radius: 50%;
 }
@@ -1602,13 +1624,13 @@ td code {
 .workbench-runtime {
   display: grid;
   justify-items: end;
-  gap: 0.4rem;
+  gap: var(--space-6);
 }
 
 .workbench-runtime > span {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: var(--space-8);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1658,7 +1680,7 @@ td code {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.9rem;
+  gap: var(--space-14);
 }
 
 .thread-loading-mark {
@@ -1671,7 +1693,7 @@ td code {
 
 .thread-loading div {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
 }
 
 .thread-loading small {
@@ -1705,8 +1727,8 @@ td code {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.65rem;
-  margin-bottom: 0.7rem;
+  gap: var(--space-10);
+  margin-bottom: var(--space-12);
 }
 
 .thread-coordinate {
@@ -1724,7 +1746,7 @@ td code {
 }
 
 .thread-program {
-  margin: 0 0 0.18rem;
+  margin: 0 0 var(--space-2);
   color: var(--muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.04em;
@@ -1735,7 +1757,7 @@ td code {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: var(--space-14);
 }
 
 .thread-subject-heading > div {
@@ -1778,8 +1800,8 @@ td code {
 .thread-session-state {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.85rem 1rem;
+  gap: var(--space-10);
+  padding: var(--space-14) var(--space-16);
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   background: rgba(134, 183, 104, 0.025);
@@ -1809,7 +1831,7 @@ td code {
 .thread-session-state > div {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: var(--space-4);
 }
 
 .thread-session-state small,
@@ -1832,8 +1854,8 @@ td code {
   min-width: 0;
   display: grid;
   align-content: center;
-  gap: 0.35rem;
-  padding: 0.85rem 1rem;
+  gap: var(--space-6);
+  padding: var(--space-14) var(--space-16);
   border-bottom: 1px solid var(--line);
 }
 
@@ -1857,8 +1879,8 @@ td code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.7rem;
-  padding: 0.55rem 1rem;
+  gap: var(--space-12);
+  padding: var(--space-8) var(--space-16);
   border-right: 1px solid var(--line);
 }
 
@@ -1896,7 +1918,7 @@ td code {
   grid-template-columns: auto auto minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-content: center;
-  column-gap: 0.55rem;
+  column-gap: var(--space-8);
   padding: 0.65rem clamp(0.8rem, 1.7vw, 1.25rem);
   border-right: 1px solid var(--line);
   border-radius: 0;
@@ -1921,7 +1943,7 @@ td code {
 
 .thread-metrics .mcp-view-metric-value {
   align-self: baseline;
-  margin-top: 0.3rem;
+  margin-top: var(--space-4);
   font: 800 clamp(1rem, 1.6vw, 1.35rem)/1 var(--mono);
 }
 
@@ -1954,12 +1976,12 @@ td code {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
 }
 
 .thread-section-heading p {
-  margin: 0 0 0.3rem;
+  margin: 0 0 var(--space-4);
   color: var(--thread-orange);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.14em;
@@ -1987,7 +2009,7 @@ td code {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 0.7rem 1rem;
+  gap: var(--space-12) var(--space-16);
 }
 
 .thread-workspace-heading-tools > span {
@@ -1998,8 +2020,8 @@ td code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.8rem 1.5rem;
-  margin: 0 0 0.8rem;
+  gap: var(--space-12) var(--space-24);
+  margin: 0 0 var(--space-12);
 }
 
 .thread-flow-explanation {
@@ -2016,7 +2038,7 @@ td code {
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.45rem;
+  gap: var(--space-8);
   color: #858d88;
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.035em;
@@ -2027,8 +2049,8 @@ td code {
   min-height: 27px;
   display: inline-flex;
   align-items: center;
-  gap: 0.42rem;
-  padding: 0 0.6rem;
+  gap: var(--space-6);
+  padding: 0 var(--space-10);
   border: 1px solid #303735;
   background: #101413;
 }
@@ -2052,8 +2074,8 @@ td code {
 .thread-graph-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.55rem 1rem;
-  margin: 0 0 0.75rem;
+  gap: var(--space-8) var(--space-16);
+  margin: 0 0 var(--space-12);
   color: #858d88;
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.04em;
@@ -2063,7 +2085,7 @@ td code {
 .thread-graph-legend span {
   display: inline-flex;
   align-items: center;
-  gap: 0.42rem;
+  gap: var(--space-6);
 }
 
 .thread-graph-legend span::before {
@@ -2116,9 +2138,9 @@ td code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.7rem;
-  padding: 0.65rem 0.75rem;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
+  padding: var(--space-10) var(--space-12);
   border: 1px solid #303735;
   background: rgba(17, 21, 20, 0.94);
 }
@@ -2127,7 +2149,7 @@ td code {
   min-width: 0;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.17rem 0.55rem;
+  gap: var(--space-2) var(--space-8);
   align-items: center;
 }
 
@@ -2168,7 +2190,7 @@ td code {
 .thread-feed-toolbar button {
   flex: 0 0 auto;
   min-height: 28px;
-  padding: 0 0.65rem;
+  padding: 0 var(--space-10);
   border: 1px solid #3c4541;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2192,8 +2214,8 @@ td code {
   display: grid;
   align-content: start;
   justify-items: end;
-  gap: 0.2rem;
-  padding: 1rem 0.55rem 0 0;
+  gap: var(--space-4);
+  padding: var(--space-16) var(--space-8) 0 0;
   color: #737c77;
   font-family: var(--mono);
 }
@@ -2261,7 +2283,7 @@ td code {
 
 .thread-feed-event {
   min-width: 0;
-  padding: 0 0 0.55rem;
+  padding: 0 0 var(--space-8);
 }
 
 .thread-feed-card {
@@ -2269,9 +2291,9 @@ td code {
   min-width: 0;
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) auto;
-  gap: 0.75rem;
+  gap: var(--space-12);
   align-items: center;
-  padding: 0.72rem;
+  padding: var(--space-12);
   border: 1px solid #303735;
   color: inherit;
   text-align: left;
@@ -2305,7 +2327,7 @@ td code {
 .thread-feed-copy {
   min-width: 0;
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
 }
 
 .thread-feed-copy small {
@@ -2338,7 +2360,7 @@ td code {
 .thread-feed-meta {
   display: grid;
   justify-items: end;
-  gap: 0.3rem;
+  gap: var(--space-4);
   font-family: var(--mono);
 }
 
@@ -2378,14 +2400,14 @@ td code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.65rem 0.8rem;
+  gap: var(--space-16);
+  padding: var(--space-10) var(--space-12);
   border-bottom: 1px solid #2c3430;
 }
 
 .thread-feed-lineage > header > div {
   display: grid;
-  gap: 0.22rem;
+  gap: var(--space-4);
 }
 
 .thread-feed-lineage header small {
@@ -2406,7 +2428,7 @@ td code {
 }
 
 .thread-feed-lineage .thread-graph {
-  padding: 0.65rem;
+  padding: var(--space-10);
 }
 
 .thread-feed-lineage .thread-graph-canvas {
@@ -2416,7 +2438,7 @@ td code {
 .thread-feed-unlinked,
 .thread-feed-empty {
   margin: 0;
-  padding: 2rem;
+  padding: var(--space-32);
   color: #7d8681;
   font: var(--text-3xs)/1.55 var(--mono);
 }
@@ -2475,9 +2497,9 @@ td code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.7rem;
-  padding: 0.45rem 0.55rem 0.45rem 0.75rem;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
+  padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12);
   border-left: 2px solid #4c5753;
   background: rgba(20, 25, 24, 0.92);
   font: var(--text-3xs)/1.4 var(--mono);
@@ -2486,7 +2508,7 @@ td code {
 .thread-graph-density-toggle {
   flex: 0 0 auto;
   min-height: 26px;
-  padding: 0 0.6rem;
+  padding: 0 var(--space-10);
   border: 1px solid #3b4541;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2639,8 +2661,8 @@ td code {
 
 .thread-graph-caption,
 .thread-graph-notice {
-  margin: 0.7rem 0 0;
-  padding-left: 0.65rem;
+  margin: var(--space-12) 0 0;
+  padding-left: var(--space-10);
   border-left: 2px solid var(--amber);
   color: #8f9691;
   font: var(--text-3xs)/1.45 var(--mono);
@@ -2699,17 +2721,17 @@ td code {
 .thread-tool-drawer > .thread-inspector-card.mcp-view-card,
 .thread-tool-drawer > .thread-edge-inspector.mcp-view-card {
   min-height: 570px;
-  padding: 1rem;
+  padding: var(--space-16);
   border: 0;
 }
 
 .tool-inspector-identity {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
-  gap: 0.75rem;
+  gap: var(--space-12);
   align-items: center;
-  margin: 0 0 0.9rem;
-  padding: 0.75rem;
+  margin: 0 0 var(--space-14);
+  padding: var(--space-12);
   border: 1px solid #303735;
   background: #151918;
 }
@@ -2728,7 +2750,7 @@ td code {
 .tool-inspector-identity > div {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: var(--space-4);
 }
 
 .tool-inspector-identity small,
@@ -2758,7 +2780,7 @@ td code {
 .tool-facet-rail {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-bottom: 0.9rem;
+  margin-bottom: var(--space-14);
   border: 1px solid #303735;
 }
 
@@ -2768,8 +2790,8 @@ td code {
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 0.25rem;
-  padding: 0.35rem 0.2rem;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-4);
   border: 0;
   border-right: 1px solid #303735;
   color: #7f8883;
@@ -2810,12 +2832,12 @@ td code {
 
 .tool-inspector-metrics.mcp-view-metrics {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-bottom: 0.9rem;
+  margin-bottom: var(--space-14);
 }
 
 .tool-inspector-metrics .mcp-view-metric {
   min-height: 84px;
-  padding: 0.65rem;
+  padding: var(--space-10);
 }
 
 .tool-inspector-lead {
@@ -2827,7 +2849,7 @@ td code {
 .tool-inspector-sections,
 .tool-inspector-provenance,
 .tool-inspector-actions {
-  margin-top: 1rem;
+  margin-top: var(--space-16);
 }
 
 .tool-inspector-section {
@@ -2840,7 +2862,7 @@ td code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.7rem;
+  gap: var(--space-12);
 }
 
 .tool-inspector-section h4,
@@ -2863,8 +2885,8 @@ td code {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.22rem 0.5rem;
-  padding: 0.58rem 0;
+  gap: var(--space-4) var(--space-8);
+  padding: var(--space-10) 0;
   border: 0;
   border-top: 1px solid #252b29;
   color: inherit;
@@ -2920,8 +2942,8 @@ button.tool-inspector-row:hover strong {
 .tool-inspector-attestation {
   width: 100%;
   display: grid;
-  gap: 0.28rem;
-  padding: 0.65rem 0;
+  gap: var(--space-4);
+  padding: var(--space-10) 0;
   border: 0;
   border-bottom: 1px solid #29302d;
   color: inherit;
@@ -2966,7 +2988,7 @@ button.tool-inspector-row:hover strong {
 .tool-inspector-attestation div {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: var(--space-4);
 }
 
 .tool-inspector-attestation strong {
@@ -2984,16 +3006,16 @@ button.tool-inspector-row:hover strong {
 .tool-inspector-action {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.7rem;
+  gap: var(--space-12);
   align-items: center;
-  padding: 0.65rem 0;
+  padding: var(--space-10) 0;
   border-top: 1px solid #29302d;
 }
 
 .tool-inspector-action > div {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: var(--space-4);
 }
 
 .tool-inspector-action small,
@@ -3007,7 +3029,7 @@ button.tool-inspector-row:hover strong {
 }
 
 .tool-inspector-action > button {
-  padding: 0.4rem 0.55rem;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid var(--thread-orange);
   color: var(--thread-orange);
   background: transparent;
@@ -3017,9 +3039,9 @@ button.tool-inspector-row:hover strong {
 .thread-edge-route {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 0.55rem;
+  gap: var(--space-8);
   align-items: center;
-  margin: 1rem 0;
+  margin: var(--space-16) 0;
 }
 
 .thread-edge-route > span {
@@ -3032,8 +3054,8 @@ button.tool-inspector-row:hover strong {
   min-height: 96px;
   display: grid;
   align-content: center;
-  gap: 0.4rem;
-  padding: 0.65rem;
+  gap: var(--space-6);
+  padding: var(--space-10);
   border: 1px solid #343c38;
   color: inherit;
   text-align: left;
@@ -3067,7 +3089,7 @@ button.tool-inspector-row:hover strong {
 }
 
 .thread-edge-inspector .mcp-view-key-values {
-  margin: 0.8rem 0;
+  margin: var(--space-12) 0;
 }
 .thread-card.mcp-view-card {
   padding: clamp(1rem, 2.5vw, 1.7rem);
@@ -3079,13 +3101,13 @@ button.tool-inspector-row:hover strong {
 
 .thread-card .mcp-view-card-header {
   align-items: end;
-  margin-bottom: 1.2rem;
-  padding-bottom: 0.8rem;
+  margin-bottom: var(--space-20);
+  padding-bottom: var(--space-12);
   border-bottom: 1px solid var(--line);
 }
 
 .thread-card .mcp-view-card-eyebrow {
-  margin-bottom: 0.35rem;
+  margin-bottom: var(--space-6);
   color: var(--thread-orange);
   font-size: var(--text-3xs);
   letter-spacing: 0.14em;
@@ -3113,7 +3135,7 @@ button.tool-inspector-row:hover strong {
 .thread-freshness {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-6);
   color: #929994;
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.05em;
@@ -3152,19 +3174,19 @@ button.tool-inspector-row:hover strong {
 }
 
 .thread-inspector-lead {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-16);
   color: #b2b3ad;
   font-size: var(--text-sm);
   line-height: 1.65;
 }
 
 .thread-tool-drawer .mcp-view-key-values {
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-16);
 }
 
 .thread-tool-drawer .mcp-view-key-value {
   grid-template-columns: minmax(6rem, 0.44fr) minmax(0, 1fr);
-  padding: 0.58rem 0;
+  padding: var(--space-10) 0;
   border-bottom: 1px solid #262b2a;
   border-radius: 0;
   background: transparent;
@@ -3186,8 +3208,8 @@ button.tool-inspector-row:hover strong {
 
 .thread-tool-drawer .mcp-view-state {
   min-height: 0;
-  margin: 1rem 0;
-  padding: 0.8rem;
+  margin: var(--space-16) 0;
+  padding: var(--space-12);
   border-radius: 0;
   font-size: var(--text-xs);
   line-height: 1.5;
@@ -3197,9 +3219,9 @@ button.tool-inspector-row:hover strong {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.2rem;
-  padding: 1.2rem 0;
+  gap: var(--space-16);
+  margin-bottom: var(--space-20);
+  padding: var(--space-20) 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -3209,8 +3231,8 @@ button.tool-inspector-row:hover strong {
 }
 
 .thread-expression {
-  margin-bottom: 1rem;
-  padding: 1.1rem;
+  margin-bottom: var(--space-16);
+  padding: var(--space-18);
   border-left: 2px solid var(--thread-orange);
   color: var(--thread-ink);
   background: rgba(217, 155, 80, 0.06);
@@ -3221,9 +3243,9 @@ button.tool-inspector-row:hover strong {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  padding: 1rem;
+  gap: var(--space-16);
+  margin-bottom: var(--space-16);
+  padding: var(--space-16);
   border: 1px solid rgba(226, 110, 94, 0.42);
   color: var(--thread-red);
   background: rgba(226, 110, 94, 0.075);
@@ -3240,15 +3262,15 @@ button.tool-inspector-row:hover strong {
 
 .thread-relations,
 .thread-actions {
-  margin-top: 1.2rem;
+  margin-top: var(--space-20);
 }
 
 .thread-relation-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.55rem;
+  gap: var(--space-16);
+  margin-bottom: var(--space-8);
   color: var(--muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.09em;
@@ -3266,9 +3288,9 @@ button.tool-inspector-row:hover strong {
   width: 100%;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.65rem;
+  gap: var(--space-10);
   align-items: center;
-  padding: 0.7rem 0;
+  padding: var(--space-12) 0;
   border: 0;
   border-top: 1px solid #272c2b;
   color: inherit;
@@ -3299,13 +3321,13 @@ button.tool-inspector-row:hover strong {
 }
 
 .thread-tool-drawer .mcp-view-toolbar {
-  margin-top: 1rem;
+  margin-top: var(--space-16);
 }
 
 .thread-tool-drawer .mcp-view-button {
   width: 100%;
   justify-content: center;
-  padding: 0.7rem;
+  padding: var(--space-12);
   border-radius: 0;
   font-size: var(--text-2xs);
 }
@@ -3314,9 +3336,9 @@ button.tool-inspector-row:hover strong {
   width: 100%;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
-  gap: 0.7rem;
+  gap: var(--space-12);
   align-items: center;
-  padding: 0.75rem 0;
+  padding: var(--space-12) 0;
   border: 0;
   border-top: 1px solid #292e2d;
   color: inherit;
@@ -3350,7 +3372,7 @@ button.tool-inspector-row:hover strong {
 
 .thread-actions > button > div {
   display: grid;
-  gap: 0.22rem;
+  gap: var(--space-4);
 }
 
 .thread-actions > button strong {
@@ -3384,8 +3406,8 @@ button.tool-inspector-row:hover strong {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.85rem;
-  padding: 0.75rem 1rem;
+  gap: var(--space-14);
+  padding: var(--space-12) var(--space-16);
   border-bottom: 1px solid var(--line);
   background: #111515;
 }
@@ -3401,7 +3423,7 @@ button.tool-inspector-row:hover strong {
 
 .native-preview-header > div:nth-child(2) {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
 }
 
 .native-preview-header small {
@@ -3424,8 +3446,8 @@ button.tool-inspector-row:hover strong {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0 2.6rem;
+  gap: var(--space-16);
+  padding: 0 var(--space-40);
   border-top: 1px solid var(--line);
   color: #536061;
   background: var(--surface-0);
@@ -3445,18 +3467,18 @@ button.tool-inspector-row:hover strong {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-16);
 }
 
 .component-workspace-header {
   min-height: 76px;
-  padding: 0.9rem 1rem;
+  padding: var(--space-14) var(--space-16);
   border-bottom: 1px solid #303836;
 }
 
 .component-workspace-header p,
 .provider-surface-header p {
-  margin: 0 0 0.28rem;
+  margin: 0 0 var(--space-4);
   color: var(--thread-orange);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.12em;
@@ -3476,7 +3498,7 @@ button.tool-inspector-row:hover strong {
   display: grid;
   grid-template-columns: auto auto;
   align-items: end;
-  gap: 0.3rem 0.6rem;
+  gap: var(--space-4) var(--space-10);
 }
 
 .component-workspace-count strong {
@@ -3502,8 +3524,8 @@ button.tool-inspector-row:hover strong {
   min-height: 60px;
   display: grid;
   align-content: center;
-  gap: 0.3rem;
-  padding: 0.65rem 0.85rem;
+  gap: var(--space-4);
+  padding: var(--space-10) var(--space-14);
   border: 0;
   border-right: 1px solid #303836;
   color: var(--muted);
@@ -3530,8 +3552,8 @@ button.tool-inspector-row:hover strong {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.4rem;
-  padding: 0.75rem 1rem;
+  gap: var(--space-24);
+  padding: var(--space-12) var(--space-16);
   border-bottom: 1px solid #303836;
   background: #0b0e0e;
 }
@@ -3557,8 +3579,8 @@ button.tool-inspector-row:hover strong {
   display: grid;
   grid-template-columns: 25px minmax(0, 1fr);
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.55rem 0.65rem;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-10);
   border: 1px solid #343c39;
   color: var(--text-soft);
   text-align: left;
@@ -3594,7 +3616,7 @@ button.tool-inspector-row:hover strong {
 .part-trace-step button span {
   min-width: 0;
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
 }
 
 .part-trace-step small {
@@ -3613,13 +3635,13 @@ button.tool-inspector-row:hover strong {
 
 .component-provider-surface {
   min-height: 455px;
-  padding: 1rem;
+  padding: var(--space-16);
 }
 
 .provider-surface-header {
   min-height: 58px;
-  margin-bottom: 0.85rem;
-  padding-bottom: 0.75rem;
+  margin-bottom: var(--space-14);
+  padding-bottom: var(--space-12);
   border-bottom: 1px solid #2e3633;
 }
 
@@ -3638,7 +3660,7 @@ button.tool-inspector-row:hover strong {
 }
 
 .provider-surface-header > button {
-  padding: 0.45rem 0.65rem;
+  padding: var(--space-8) var(--space-10);
   border: 1px solid #3e4944;
   font: 700 var(--text-3xs)/1 var(--mono);
   cursor: pointer;
@@ -3647,9 +3669,9 @@ button.tool-inspector-row:hover strong {
 .syson-root-node {
   width: min(330px, 100%);
   display: grid;
-  gap: 0.2rem;
-  margin: 0 auto 1.8rem;
-  padding: 0.8rem 1rem;
+  gap: var(--space-4);
+  margin: 0 auto var(--space-28);
+  padding: var(--space-12) var(--space-16);
   border: 1px solid #70806e;
   border-left: 3px solid var(--green);
   background: #18201b;
@@ -3670,7 +3692,7 @@ button.tool-inspector-row:hover strong {
   position: relative;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
+  gap: var(--space-10);
 }
 
 .syson-part-grid::before {
@@ -3687,8 +3709,8 @@ button.tool-inspector-row:hover strong {
   min-height: 92px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.24rem 0.55rem;
-  padding: 0.65rem;
+  gap: var(--space-4) var(--space-8);
+  padding: var(--space-10);
   border: 1px solid #35403c;
   color: var(--text-soft);
   text-align: left;
@@ -3737,9 +3759,9 @@ button.tool-inspector-row:hover strong {
   grid-template-columns: 48px minmax(120px, 0.9fr) minmax(150px, 1.25fr) 48px
     70px;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--space-10);
   min-height: 42px;
-  padding: 0.45rem 0.65rem;
+  padding: var(--space-8) var(--space-10);
   border: 0;
   border-bottom: 1px solid #29322f;
   color: var(--text-soft);
@@ -3794,16 +3816,16 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.7rem;
-  padding: 0.55rem 0.7rem;
+  gap: var(--space-12);
+  margin-bottom: var(--space-12);
+  padding: var(--space-8) var(--space-12);
   border: 1px solid rgba(116, 171, 173, 0.32);
   color: #939d98;
   background: rgba(116, 171, 173, 0.055);
 }
 
 .cad-scope-notice > span {
-  padding: 0.25rem 0.38rem;
+  padding: var(--space-4) var(--space-6);
   border: 1px solid rgba(116, 171, 173, 0.45);
   color: var(--thread-blue);
   font: 700 var(--text-3xs)/1 var(--mono);
@@ -3838,7 +3860,7 @@ button.erp-bom-row {
   z-index: 2;
   right: 0.65rem;
   bottom: 0.65rem;
-  padding: 0.35rem 0.48rem;
+  padding: var(--space-6) var(--space-8);
   font: 600 var(--text-3xs)/1 var(--mono);
   pointer-events: none;
 }
@@ -3853,7 +3875,7 @@ button.erp-bom-row {
   left: 0.7rem;
   bottom: 0.65rem;
   display: flex;
-  gap: 0.25rem;
+  gap: var(--space-4);
   pointer-events: none;
 }
 
@@ -3876,8 +3898,8 @@ button.erp-bom-row {
   min-width: 0;
   flex: 1;
   display: grid;
-  gap: 0.25rem;
-  padding: 0.75rem;
+  gap: var(--space-4);
+  padding: var(--space-12);
 }
 
 .cad-viewer-evidence > div + div {
@@ -3908,8 +3930,8 @@ button.erp-bom-row {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 0.8rem;
-  padding: 2rem;
+  gap: var(--space-12);
+  padding: var(--space-32);
   border: 1px dashed #514737;
   text-align: center;
 }
@@ -3934,7 +3956,7 @@ button.erp-bom-row {
 .cad-trace-gap p,
 .component-empty p {
   max-width: 560px;
-  margin: 0.4rem auto 0;
+  margin: var(--space-6) auto 0;
   color: var(--muted);
   font-size: var(--text-xs);
   line-height: 1.55;
@@ -3942,8 +3964,8 @@ button.erp-bom-row {
 
 .cad-available-parts {
   display: grid;
-  gap: 0.45rem;
-  margin-top: 0.6rem;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
 }
 
 .cad-available-parts small {
@@ -3952,7 +3974,7 @@ button.erp-bom-row {
 }
 
 .cad-available-parts button {
-  padding: 0.5rem 0.7rem;
+  padding: var(--space-8) var(--space-12);
   border: 1px solid #59634b;
   cursor: pointer;
 }
@@ -3964,7 +3986,7 @@ button.erp-bom-row {
 
   .part-trace-strip {
     grid-template-columns: 1fr;
-    gap: 0.45rem;
+    gap: var(--space-8);
   }
 
   .part-trace-connector {
@@ -3981,7 +4003,7 @@ button.erp-bom-row {
   }
 
   .component-provider-tabs button {
-    padding-inline: 0.45rem;
+    padding-inline: var(--space-8);
   }
 
   .component-provider-tabs small {
@@ -3989,7 +4011,7 @@ button.erp-bom-row {
   }
 
   .component-provider-surface {
-    padding: 0.55rem;
+    padding: var(--space-8);
   }
 
   .syson-part-grid {
@@ -4013,8 +4035,8 @@ button.erp-bom-row {
 @media (max-width: 440px) {
   .native-preview-header {
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.65rem;
-    padding: 0.65rem 0.75rem;
+    gap: var(--space-10);
+    padding: var(--space-10) var(--space-12);
   }
 
   .native-preview-brand {
@@ -4182,7 +4204,7 @@ button.erp-bom-row {
 @media (max-width: 620px) {
   .masthead {
     min-height: 78px;
-    padding: 1rem;
+    padding: var(--space-16);
   }
 
   .brand-mark {
@@ -4213,7 +4235,7 @@ button.erp-bom-row {
 
   .tabs button {
     min-width: 138px;
-    padding: 0.85rem;
+    padding: var(--space-14);
   }
 
   .tabs small {
@@ -4221,7 +4243,7 @@ button.erp-bom-row {
   }
 
   .main-content {
-    padding: 1rem;
+    padding: var(--space-16);
   }
 
   .section-heading h2 {
@@ -4239,7 +4261,7 @@ button.erp-bom-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-inline: 1rem;
+    padding-inline: var(--space-16);
     border-top: 1px solid var(--line);
   }
 
@@ -4283,7 +4305,7 @@ button.erp-bom-row {
   .lineage-block,
   .requirements-block,
   .artifacts-block {
-    padding: 1rem;
+    padding: var(--space-16);
   }
 
   .run-meta {
@@ -4325,7 +4347,7 @@ button.erp-bom-row {
   }
 
   .thread-cockpit-identity {
-    padding: 1rem;
+    padding: var(--space-16);
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -4380,7 +4402,7 @@ button.erp-bom-row {
 
   .thread-graph-stage {
     min-height: 0;
-    padding: 0.55rem;
+    padding: var(--space-8);
   }
 
   .thread-graph-canvas {
@@ -4405,7 +4427,7 @@ button.erp-bom-row {
     justify-self: center;
   }
   .console-footer {
-    padding: 0 1rem;
+    padding: 0 var(--space-16);
   }
 
   .console-footer span:last-child {
@@ -4417,7 +4439,7 @@ button.erp-bom-row {
 
 .thread-subject-context {
   display: block;
-  margin-top: 0.42rem;
+  margin-top: var(--space-6);
   color: var(--muted);
   font-size: var(--text-2xs);
 }
@@ -4442,7 +4464,7 @@ button.erp-bom-row {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-content: center;
-  gap: 0.16rem 0.65rem;
+  gap: var(--space-2) var(--space-10);
   padding: 0.72rem clamp(0.65rem, 1.5vw, 1.2rem);
   overflow: hidden;
   border: 0;
@@ -4499,7 +4521,7 @@ button.erp-bom-row {
   min-height: 48px;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-12);
   padding: 0.65rem clamp(1rem, 2.4vw, 2rem);
   border-bottom: 1px solid rgba(216, 169, 74, 0.45);
   color: #c6c2b5;
@@ -4519,7 +4541,7 @@ button.erp-bom-row {
 
 .project-alignment-notice > div {
   display: grid;
-  gap: 0.18rem;
+  gap: var(--space-2);
 }
 
 .project-alignment-notice strong {
@@ -4549,7 +4571,7 @@ button.erp-bom-row {
   display: grid;
   grid-template-rows: 1fr auto;
   justify-items: center;
-  padding: 1rem 0.65rem;
+  padding: var(--space-16) var(--space-10);
   border-right: 1px solid #373c39;
   color: var(--muted);
 }
@@ -4578,7 +4600,7 @@ button.erp-bom-row {
 .project-evidence-overview > header p,
 .project-operations-panel > header p,
 .project-work-plan > header p {
-  margin: 0 0 0.48rem;
+  margin: 0 0 var(--space-8);
   color: var(--thread-orange);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.15em;
@@ -4596,7 +4618,7 @@ button.erp-bom-row {
 
 .project-objective-copy blockquote {
   max-width: 760px;
-  margin: 1.2rem 0 0;
+  margin: var(--space-20) 0 0;
   color: #adb3ad;
   font-size: clamp(0.75rem, 1.15vw, 0.93rem);
   line-height: 1.65;
@@ -4608,8 +4630,8 @@ button.erp-bom-row {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto auto auto;
   align-content: center;
-  column-gap: 0.65rem;
-  padding: 1.4rem;
+  column-gap: var(--space-10);
+  padding: var(--space-24);
   border-left: 1px solid #373c39;
 }
 
@@ -4618,7 +4640,7 @@ button.erp-bom-row {
   align-self: start;
   width: 9px;
   aspect-ratio: 1;
-  margin-top: 0.12rem;
+  margin-top: var(--space-2);
   border-radius: 50%;
   background: #79817d;
   box-shadow: 0 0 0 5px rgba(121, 129, 125, 0.09);
@@ -4647,7 +4669,7 @@ button.erp-bom-row {
 }
 
 .project-status-seal strong {
-  margin: 0.4rem 0 0.58rem;
+  margin: var(--space-6) 0 var(--space-10);
   font-size: var(--text-md);
 }
 
@@ -4664,7 +4686,7 @@ button.erp-bom-row {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-16);
 }
 
 .project-section-label h3,
@@ -4690,8 +4712,8 @@ button.erp-bom-row {
 
 .project-phase-section {
   display: grid;
-  gap: 1rem;
-  padding: 0.3rem 0;
+  gap: var(--space-16);
+  padding: var(--space-4) 0;
 }
 
 .project-phase-rail {
@@ -4707,15 +4729,15 @@ button.erp-bom-row {
   min-width: 0;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  gap: 0.55rem;
-  padding: 1rem 0.8rem 1rem 0;
+  gap: var(--space-8);
+  padding: var(--space-16) var(--space-12) var(--space-16) 0;
   border-top: 1px solid #353b38;
   border-bottom: 1px solid #353b38;
   background: #101413;
 }
 
 .project-phase-rail li:first-child {
-  padding-left: 0.8rem;
+  padding-left: var(--space-12);
   border-left: 1px solid #353b38;
 }
 
@@ -4728,7 +4750,7 @@ button.erp-bom-row {
   display: grid;
   align-content: start;
   justify-items: center;
-  gap: 0.6rem;
+  gap: var(--space-10);
 }
 
 .project-phase-node::after {
@@ -4775,7 +4797,7 @@ button.erp-bom-row {
 
 .project-phase-copy > small {
   display: block;
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--space-6);
   color: var(--muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.07em;
@@ -4791,7 +4813,7 @@ button.erp-bom-row {
 
 .project-phase-copy > p {
   min-height: 2.5em;
-  margin: 0.45rem 0 0.75rem;
+  margin: var(--space-8) 0 var(--space-12);
   overflow: hidden;
   color: var(--muted);
   font-size: var(--text-3xs);
@@ -4804,13 +4826,13 @@ button.erp-bom-row {
 .project-phase-copy dl {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem 0.75rem;
+  gap: var(--space-8) var(--space-12);
   margin: 0;
 }
 
 .project-phase-copy dl > div {
   display: flex;
-  gap: 0.22rem;
+  gap: var(--space-4);
   color: #626a66;
   font: var(--text-3xs)/1 var(--mono);
 }
@@ -4842,8 +4864,8 @@ button.erp-bom-row {
 .project-control-panel > header {
   display: flex;
   align-items: baseline;
-  gap: 0.7rem;
-  padding: 0.8rem 1rem;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
   border-bottom: 1px solid #303633;
 }
 
@@ -4859,13 +4881,13 @@ button.erp-bom-row {
 }
 
 .project-control-body {
-  padding: 1.1rem;
+  padding: var(--space-18);
 }
 
 .project-control-record > span {
   display: inline-block;
-  margin-bottom: 0.65rem;
-  padding: 0.25rem 0.38rem;
+  margin-bottom: var(--space-10);
+  padding: var(--space-4) var(--space-6);
   border: 1px solid #4b514e;
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.07em;
@@ -4881,7 +4903,7 @@ button.erp-bom-row {
 
 .project-control-record > p,
 .project-control-empty {
-  margin: 0.55rem 0 0;
+  margin: var(--space-8) 0 0;
   color: #8d9590;
   font-size: var(--text-2xs);
   line-height: 1.55;
@@ -4889,7 +4911,7 @@ button.erp-bom-row {
 
 .project-control-record > small {
   display: block;
-  margin-top: 0.75rem;
+  margin-top: var(--space-12);
   color: #626a66;
   font: var(--text-3xs)/1.3 var(--mono);
   text-transform: uppercase;
@@ -4899,7 +4921,7 @@ button.erp-bom-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1rem;
+  padding: 0 var(--space-16);
   border: 0;
   border-top: 1px solid #303633;
   font: 700 var(--text-3xs)/1 var(--mono);
@@ -4907,7 +4929,7 @@ button.erp-bom-row {
 }
 .project-evidence-overview {
   display: grid;
-  gap: 0.8rem;
+  gap: var(--space-12);
 }
 
 .project-evidence-routes {
@@ -4921,8 +4943,8 @@ button.erp-bom-row {
   min-height: 150px;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 1.15rem;
+  gap: var(--space-12);
+  padding: var(--space-18);
   border: 0;
   border-right: 1px solid #353b38;
   color: inherit;
@@ -4949,7 +4971,7 @@ button.erp-bom-row {
 
 .project-evidence-route p {
   min-height: 3.4em;
-  margin: 0.5rem 0 0.75rem;
+  margin: var(--space-8) 0 var(--space-12);
   color: #7e8782;
   font-size: var(--text-3xs);
   line-height: 1.55;
@@ -4972,7 +4994,7 @@ button.erp-bom-row {
 }
 
 .project-technical-record summary {
-  padding: 0.65rem 0.8rem;
+  padding: var(--space-10) var(--space-12);
   font: 700 var(--text-3xs)/1 var(--mono);
   text-transform: uppercase;
   cursor: pointer;
@@ -4987,7 +5009,7 @@ button.erp-bom-row {
 
 .project-technical-record dl > div {
   min-width: 0;
-  padding: 0.7rem 0.8rem;
+  padding: var(--space-12) var(--space-12);
   border-right: 1px solid #303633;
 }
 
@@ -4996,7 +5018,7 @@ button.erp-bom-row {
 }
 
 .project-technical-record dt {
-  margin-bottom: 0.35rem;
+  margin-bottom: var(--space-6);
   color: #626a66;
   font: var(--text-3xs)/1 var(--mono);
 }
@@ -5010,19 +5032,19 @@ button.erp-bom-row {
 }
 
 .project-workspace-page .thread-workspace-meta {
-  padding-bottom: 0.75rem;
+  padding-bottom: var(--space-12);
   border-bottom: 1px solid #292f2d;
 }
 
 .project-verification-metrics.mcp-view-metrics {
-  margin: 0 0 0.8rem;
+  margin: 0 0 var(--space-12);
   border: 1px solid var(--line);
 }
 
 .project-work-ribbon {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 0 0 0.85rem;
+  margin: 0 0 var(--space-14);
   border: 1px solid #353b38;
   background: #101413;
 }
@@ -5032,8 +5054,8 @@ button.erp-bom-row {
   min-height: 92px;
   display: grid;
   align-content: center;
-  gap: 0.3rem;
-  padding: 0.8rem 1rem;
+  gap: var(--space-4);
+  padding: var(--space-12) var(--space-16);
   border-right: 1px solid #353b38;
 }
 
@@ -5065,7 +5087,7 @@ button.erp-bom-row {
 .project-operations {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
-  gap: 0.8rem;
+  gap: var(--space-12);
 }
 
 .project-operations-panel,
@@ -5077,7 +5099,7 @@ button.erp-bom-row {
 .project-operations-panel > header,
 .project-work-plan > header {
   min-height: 68px;
-  padding: 0.8rem 1rem;
+  padding: var(--space-12) var(--space-16);
   border-bottom: 1px solid #303633;
 }
 
@@ -5090,8 +5112,8 @@ button.erp-bom-row {
 .project-run-list li {
   display: grid;
   grid-template-columns: 9px minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0.85rem 1rem;
+  gap: var(--space-12);
+  padding: var(--space-14) var(--space-16);
   border-bottom: 1px solid #292f2d;
 }
 
@@ -5102,7 +5124,7 @@ button.erp-bom-row {
 .project-run-list li > i {
   width: 7px;
   aspect-ratio: 1;
-  margin-top: 0.18rem;
+  margin-top: var(--space-2);
   border-radius: 50%;
   background: #737c77;
 }
@@ -5130,12 +5152,12 @@ button.erp-bom-row {
 
 .project-run-list strong {
   display: block;
-  margin-top: 0.28rem;
+  margin-top: var(--space-4);
   font-size: var(--text-xs);
 }
 
 .project-run-list p {
-  margin: 0.35rem 0;
+  margin: var(--space-6) 0;
   color: #8a928d;
   font-size: var(--text-3xs);
   line-height: 1.5;
@@ -5157,8 +5179,8 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.75rem;
+  gap: var(--space-10);
+  padding: var(--space-12);
   border-right: 1px solid #292f2d;
   border-bottom: 1px solid #292f2d;
 }
@@ -5181,7 +5203,7 @@ button.erp-bom-row {
 }
 
 .project-tool-matrix small {
-  margin-top: 0.25rem;
+  margin-top: var(--space-4);
   color: #737c77;
   font-size: var(--text-3xs);
 }
@@ -5215,7 +5237,7 @@ button.erp-bom-row {
   min-width: 0;
   grid-template-columns: 70px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-12);
   border-right: 1px solid #292f2d;
   border-bottom: 1px solid #292f2d;
 }
@@ -5243,7 +5265,7 @@ button.erp-bom-row {
 
 .project-operations-empty {
   margin: 0;
-  padding: 1rem;
+  padding: var(--space-16);
   color: #78817c;
   font-size: var(--text-2xs);
 }
@@ -5264,8 +5286,8 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.2rem;
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-20);
   border-bottom: 1px solid #353a34;
 }
 
@@ -5281,7 +5303,7 @@ button.erp-bom-row {
   background: rgba(216, 169, 74, 0.05);
 }
 .decision-center-header p {
-  margin: 0 0 0.35rem;
+  margin: 0 0 var(--space-6);
   color: var(--amber);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.13em;
@@ -5295,7 +5317,7 @@ button.erp-bom-row {
 .decision-center-header > div:nth-child(2) > span {
   display: block;
   max-width: 720px;
-  margin-top: 0.4rem;
+  margin-top: var(--space-6);
   color: #7f8782;
   font-size: var(--text-3xs);
   line-height: 1.5;
@@ -5306,7 +5328,7 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(82px, 1fr));
   margin: 0;
-  padding-left: 1.2rem;
+  padding-left: var(--space-20);
   border-left: 1px solid #353a34;
 }
 
@@ -5314,9 +5336,9 @@ button.erp-bom-row {
   min-width: 0;
   display: grid;
   align-content: center;
-  gap: 0.35rem;
+  gap: var(--space-6);
   min-height: 52px;
-  padding: 0 0.75rem;
+  padding: 0 var(--space-12);
   border-right: 1px solid #30352f;
 }
 
@@ -5355,9 +5377,9 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.8rem;
+  gap: var(--space-12);
   min-width: 0;
-  padding: 0.8rem 1.1rem;
+  padding: var(--space-12) var(--space-18);
   border-bottom: 1px solid #30352f;
   background: rgba(116, 171, 173, 0.025);
 }
@@ -5375,7 +5397,7 @@ button.erp-bom-row {
 .decision-review-brief > div {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: var(--space-4);
 }
 
 .decision-review-brief p {
@@ -5397,7 +5419,7 @@ button.erp-bom-row {
 }
 
 .decision-review-brief > b {
-  padding: 0.35rem 0.5rem;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid #414944;
   color: #929a95;
   font: 700 var(--text-3xs)/1 var(--mono);
@@ -5435,11 +5457,11 @@ button.erp-bom-row {
 .decision-review-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: var(--space-8);
 }
 .decision-secondary-button {
   min-height: 38px;
-  padding: 0 0.9rem;
+  padding: 0 var(--space-14);
   border: 1px solid #474e49;
   font: 700 var(--text-3xs)/1 var(--mono);
   cursor: pointer;
@@ -5448,12 +5470,12 @@ button.erp-bom-row {
   cursor: not-allowed;
 }
 .project-run-lifecycle {
-  margin-top: 0.65rem;
+  margin-top: var(--space-10);
   border-top: 1px solid #303633;
 }
 
 .project-run-lifecycle > summary {
-  padding: 0.55rem 0;
+  padding: var(--space-8) 0;
   color: #7b837e;
   font: var(--text-3xs)/1 var(--mono);
   cursor: pointer;
@@ -5461,37 +5483,37 @@ button.erp-bom-row {
 
 .project-run-lifecycle ol {
   margin: 0;
-  padding: 0 0 0 0.2rem;
+  padding: 0 0 0 var(--space-4);
   list-style: none;
 }
 
 .project-run-list .project-run-lifecycle li {
   min-height: 0;
   grid-template-columns: 7px minmax(0, 1fr);
-  gap: 0.55rem;
-  padding: 0.5rem 0;
+  gap: var(--space-8);
+  padding: var(--space-8) 0;
   border-bottom: 0;
 }
 
 .project-run-list .project-run-lifecycle li > i {
   width: 6px;
-  margin-top: 0.2rem;
+  margin-top: var(--space-4);
 }
 
 .project-run-lifecycle li span {
-  margin-top: 0.2rem;
+  margin-top: var(--space-4);
   color: #626a65;
   font-size: var(--text-3xs);
 }
 
 .project-run-lifecycle li p {
-  margin: 0.25rem 0 0;
+  margin: var(--space-4) 0 0;
   font-size: var(--text-3xs);
 }
 
 .project-run-detail,
 .project-run-failure {
-  margin: 0.4rem 0 0;
+  margin: var(--space-6) 0 0;
   color: #767e79;
   font-size: var(--text-3xs);
 }
@@ -5510,8 +5532,8 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: 70px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.7rem 0.85rem;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-14);
 }
 
 .project-work-item-record > span,
@@ -5625,7 +5647,7 @@ button.erp-bom-row {
   }
 
   .project-objective-copy {
-    padding: 1.25rem;
+    padding: var(--space-20);
   }
 
   .project-status-seal {
@@ -5705,7 +5727,7 @@ button.erp-bom-row {
     grid-column: 1 / -1;
     min-width: 0;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    padding: 0.7rem 0 0;
+    padding: var(--space-12) 0 0;
     border-top: 1px solid #30352f;
     border-left: 0;
   }
@@ -5737,8 +5759,8 @@ button.erp-bom-row {
 
 @media (max-width: 440px) {
   .decision-center-header {
-    padding-right: 0.75rem;
-    padding-left: 0.75rem;
+    padding-right: var(--space-12);
+    padding-left: var(--space-12);
   }
   .decision-center-meter dt {
     font-size: var(--text-3xs);
@@ -5750,8 +5772,8 @@ button.erp-bom-row {
 
   .decision-review-brief {
     grid-template-columns: 1fr;
-    padding-right: 0.75rem;
-    padding-left: 0.75rem;
+    padding-right: var(--space-12);
+    padding-left: var(--space-12);
   }
 
   .decision-review-brief > b {
@@ -5839,7 +5861,7 @@ button.erp-bom-row {
 }
 
 .discovery-kicker {
-  margin: 0 0 1.15rem;
+  margin: 0 0 var(--space-18);
   color: var(--discovery-accent);
   font-size: var(--text-3xs);
   font-weight: 800;
@@ -5853,11 +5875,11 @@ button.erp-bom-row {
 }
 
 .discovery-introduction {
-  margin: 1.35rem 0 0;
+  margin: var(--space-20) 0 0;
 }
 
 .discovery-status-badge {
-  margin-top: 0.1rem;
+  margin-top: var(--space-2);
   white-space: nowrap;
 }
 
@@ -5871,7 +5893,7 @@ button.erp-bom-row {
 }
 
 .discovery-intent p {
-  margin: 0 0 0.85rem;
+  margin: 0 0 var(--space-14);
   color: var(--discovery-green);
   font-size: var(--text-3xs);
   font-weight: 800;
@@ -5894,7 +5916,7 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: baseline;
-  gap: 0.35rem 1rem;
+  gap: var(--space-6) var(--space-16);
 }
 
 .discovery-progress-copy > span {
@@ -5945,7 +5967,7 @@ button.erp-bom-row {
 
 .discovery-question-card .mcp-view-card-header {
   align-items: start;
-  gap: 1.5rem;
+  gap: var(--space-24);
   margin: 0 0 clamp(1.4rem, 3vw, 2.5rem);
 }
 
@@ -5954,7 +5976,7 @@ button.erp-bom-row {
 }
 
 .discovery-question-card .mcp-view-card-eyebrow {
-  margin-bottom: 0.85rem;
+  margin-bottom: var(--space-14);
   color: var(--discovery-accent);
   font-size: var(--text-3xs);
   letter-spacing: 0.16em;
@@ -5970,13 +5992,13 @@ button.erp-bom-row {
 .discovery-why {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
-  gap: 1rem;
+  gap: var(--space-16);
   max-width: 760px;
-  padding: 1rem 0 1.5rem;
+  padding: var(--space-16) 0 var(--space-24);
 }
 
 .discovery-why > span {
-  padding-top: 0.18rem;
+  padding-top: var(--space-2);
   color: #626963;
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.14em;
@@ -5988,17 +6010,17 @@ button.erp-bom-row {
 }
 
 .discovery-why p {
-  margin: 0.4rem 0 0;
+  margin: var(--space-6) 0 0;
   font-size: var(--text-md);
   line-height: 1.58;
 }
 
 .discovery-recommendation {
   display: grid;
-  gap: 0.48rem;
+  gap: var(--space-8);
   max-width: 840px;
   margin: 0 0 clamp(1.5rem, 3vw, 2.5rem) 42px;
-  padding: 1rem 1.15rem 1.1rem;
+  padding: var(--space-16) var(--space-18) var(--space-18);
   border: 1px solid rgba(159, 196, 90, 0.27);
   border-left: 2px solid var(--discovery-green);
 }
@@ -6007,7 +6029,7 @@ button.erp-bom-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-16);
 }
 
 .discovery-recommendation-heading > span {
@@ -6031,10 +6053,10 @@ button.erp-bom-row {
 
 .discovery-agent-starter {
   display: grid;
-  gap: 0.28rem;
+  gap: var(--space-4);
   max-width: 680px;
-  margin-top: 0.25rem;
-  padding-top: 0.7rem;
+  margin-top: var(--space-4);
+  padding-top: var(--space-12);
   border-top: 1px solid rgba(159, 196, 90, 0.2);
 }
 
@@ -6054,7 +6076,7 @@ button.erp-bom-row {
   line-height: 1.4;
 }
 .discovery-evidence-plan {
-  margin-top: 1rem;
+  margin-top: var(--space-16);
   font-size: var(--text-sm);
 }
 
@@ -6065,9 +6087,9 @@ button.erp-bom-row {
 
 .discovery-evidence-plan ul {
   display: grid;
-  gap: 0.35rem;
-  margin: 0.75rem 0 0;
-  padding-left: 1.2rem;
+  gap: var(--space-6);
+  margin: var(--space-12) 0 0;
+  padding-left: var(--space-20);
 }
 .discovery-state.mcp-view-state {
   min-height: 12rem;
@@ -6087,8 +6109,8 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 1rem;
-  padding: 1.15rem 1.25rem;
+  gap: var(--space-16);
+  padding: var(--space-18) var(--space-20);
   cursor: pointer;
   list-style: none;
 }
@@ -6099,7 +6121,7 @@ button.erp-bom-row {
 
 .discovery-brief > summary span {
   display: grid;
-  gap: 0.25rem;
+  gap: var(--space-4);
 }
 
 .discovery-brief > summary small {
@@ -6120,7 +6142,7 @@ button.erp-bom-row {
 
 .discovery-brief > summary em::after {
   display: inline-block;
-  margin-left: 0.7rem;
+  margin-left: var(--space-12);
   color: var(--discovery-accent);
   content: "+";
   font: 700 var(--text-md)/1 var(--mono);
@@ -6137,12 +6159,12 @@ button.erp-bom-row {
 
 .discovery-brief-objective {
   max-width: 800px;
-  margin-bottom: 2rem;
+  margin-bottom: var(--space-32);
 }
 
 .discovery-brief-objective > p,
 .discovery-brief-group > header p {
-  margin: 0 0 0.55rem;
+  margin: 0 0 var(--space-8);
   color: var(--discovery-accent);
   font-size: var(--text-3xs);
   font-weight: 800;
@@ -6169,20 +6191,20 @@ button.erp-bom-row {
 
 .discovery-brief-grid > section {
   min-width: 0;
-  padding: 1rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
 }
 
 .discovery-brief-grid h3 {
-  margin: 0 0 0.65rem;
+  margin: 0 0 var(--space-10);
   font-size: var(--text-sm);
   font-weight: 700;
 }
 
 .discovery-brief-grid ul {
   display: grid;
-  gap: 0.38rem;
+  gap: var(--space-6);
   margin: 0;
-  padding-left: 1rem;
+  padding-left: var(--space-16);
   font-size: var(--text-sm);
   line-height: 1.5;
 }
@@ -6193,11 +6215,11 @@ button.erp-bom-row {
 }
 
 .discovery-brief-group {
-  margin-top: 2rem;
+  margin-top: var(--space-32);
 }
 
 .discovery-brief-group > header {
-  margin-bottom: 0.8rem;
+  margin-bottom: var(--space-12);
 }
 
 .discovery-brief-group > header h3 {
@@ -6207,17 +6229,17 @@ button.erp-bom-row {
 
 .discovery-compliance-note,
 .discovery-brief-boundary {
-  margin: 0.85rem 0 0;
+  margin: var(--space-14) 0 0;
   font-size: var(--text-xs);
   line-height: 1.5;
 }
 
 .discovery-brief-boundary {
-  padding-left: 0.8rem;
+  padding-left: var(--space-12);
   border-left: 2px solid #555b56;
 }
 .discovery-brief-empty.mcp-view-empty {
-  padding: 1.5rem;
+  padding: var(--space-24);
   border: 1px dashed #3a403c;
   text-align: center;
 }
@@ -6233,7 +6255,7 @@ button.erp-bom-row {
 
   .discovery-progress {
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: var(--space-16);
   }
 
   .discovery-progress-line {
@@ -6247,7 +6269,7 @@ button.erp-bom-row {
 
 @media (max-width: 620px) {
   .discovery-workbench {
-    padding: 1rem 0.75rem 3rem;
+    padding: var(--space-16) var(--space-12) var(--space-48);
     border: 0;
   }
 
@@ -6259,7 +6281,7 @@ button.erp-bom-row {
   .discovery-intent,
   .discovery-progress,
   .discovery-focus {
-    padding-left: 0.75rem;
+    padding-left: var(--space-12);
   }
 
   .discovery-header h1 {
@@ -6274,7 +6296,7 @@ button.erp-bom-row {
   }
 
   .discovery-question-card.mcp-view-card {
-    padding: 1.2rem 1rem 1.4rem;
+    padding: var(--space-20) var(--space-16) var(--space-24);
   }
 
   .discovery-question-card .mcp-view-card-header,
@@ -6299,7 +6321,7 @@ button.erp-bom-row {
   }
 
   .discovery-brief {
-    margin-left: 0.75rem;
+    margin-left: var(--space-12);
   }
 
   .discovery-brief > summary {
@@ -6346,7 +6368,7 @@ button.erp-bom-row {
 /* The Project tab owns framing: there is no separate discovery page. */
 .project-framing {
   display: grid;
-  gap: 1rem;
+  gap: var(--space-16);
   padding: clamp(1rem, 2vw, 1.5rem);
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel) 94%, white 6%);
@@ -6354,7 +6376,7 @@ button.erp-bom-row {
 
 .project-framing .project-section-label > span {
   align-self: start;
-  padding: 0.35rem 0.55rem;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid var(--line);
   color: var(--muted);
   font: 700 var(--text-3xs)/1.2 var(--mono);
@@ -6375,19 +6397,19 @@ button.erp-bom-row {
 .project-framing-sections {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 0.75rem;
+  gap: var(--space-12);
 }
 
 .project-framing-sections > section {
   min-width: 0;
-  padding: 0.85rem;
+  padding: var(--space-14);
   border: 1px solid var(--line);
   background: var(--panel-raised);
 }
 
 .project-framing-sections h4,
 .project-framing-questions > p {
-  margin: 0 0 0.6rem;
+  margin: 0 0 var(--space-10);
   color: var(--muted);
   font: 700 var(--text-3xs)/1.2 var(--mono);
   letter-spacing: 0.06em;
@@ -6397,9 +6419,9 @@ button.erp-bom-row {
 .project-framing-sections ul,
 .project-framing-questions ol {
   display: grid;
-  gap: 0.55rem;
+  gap: var(--space-8);
   margin: 0;
-  padding-left: 1.05rem;
+  padding-left: var(--space-16);
 }
 
 .project-framing-sections li {
@@ -6411,7 +6433,7 @@ button.erp-bom-row {
 .project-framing-boundary,
 .project-framing-empty {
   margin: 0;
-  padding: 0.85rem 1rem;
+  padding: var(--space-14) var(--space-16);
   border-left: 3px solid var(--blue);
   color: var(--muted);
   background: color-mix(in srgb, var(--blue) 7%, transparent);
@@ -6419,11 +6441,11 @@ button.erp-bom-row {
 }
 
 .project-framing-questions {
-  padding-top: 0.25rem;
+  padding-top: var(--space-4);
 }
 
 .project-framing-questions li {
-  padding-left: 0.25rem;
+  padding-left: var(--space-4);
 }
 
 .project-framing-questions strong,
@@ -6436,7 +6458,7 @@ button.erp-bom-row {
 }
 
 .project-framing-questions span {
-  margin-top: 0.2rem;
+  margin-top: var(--space-4);
   color: var(--muted);
   font-size: var(--text-xs);
 }
@@ -6454,7 +6476,7 @@ button.erp-bom-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-16);
   width: min(100%, var(--page-max));
   min-height: 54px;
   margin: 0 auto;
@@ -6466,7 +6488,7 @@ button.erp-bom-row {
 .discovery-preview-bar > div {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: var(--space-12);
 }
 
 .discovery-preview-bar > div:first-child > span {
@@ -6480,7 +6502,7 @@ button.erp-bom-row {
 
 .discovery-preview-bar p {
   display: grid;
-  gap: 0.15rem;
+  gap: var(--space-2);
   margin: 0;
 }
 
@@ -6525,7 +6547,7 @@ button.erp-bom-row {
   grid-template-columns: auto minmax(0, 460px);
   align-items: start;
   justify-content: center;
-  gap: 1rem;
+  gap: var(--space-16);
   min-height: calc(100vh - 54px);
   padding: clamp(6rem, 18vh, 12rem) 1.25rem 4rem;
 }
@@ -6552,7 +6574,7 @@ button.erp-bom-row {
 }
 
 .discovery-load-state p {
-  margin: 0.65rem 0 1rem;
+  margin: var(--space-10) 0 var(--space-16);
   font-size: var(--text-base);
   line-height: 1.55;
 }
@@ -6574,7 +6596,7 @@ button.erp-bom-row {
 
 @media (max-width: 620px) {
   .discovery-preview-bar {
-    padding-inline: 0.85rem;
+    padding-inline: var(--space-14);
     border-inline: 0;
   }
 
@@ -6708,7 +6730,7 @@ button.erp-bom-row {
 }
 .thread-inspector-toggle {
   min-height: 30px;
-  padding: 0 0.7rem;
+  padding: 0 var(--space-12);
   border: 1px solid var(--thread-border-strong);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -7156,11 +7178,11 @@ button.erp-bom-row {
    within the first reading window, while detail remains available on demand. */
 .discovery-workbench {
   padding-top: clamp(0.85rem, 2.4vw, 2.2rem);
-  padding-bottom: 3.5rem;
+  padding-bottom: var(--space-56);
 }
 
 .discovery-header {
-  gap: 1.25rem;
+  gap: var(--space-20);
   padding-bottom: clamp(1.25rem, 3vw, 2.4rem);
 }
 
@@ -7171,7 +7193,7 @@ button.erp-bom-row {
 
 .discovery-introduction {
   max-width: 590px;
-  margin-top: 0.85rem;
+  margin-top: var(--space-14);
   font-size: clamp(0.9rem, 1.2vw, 1rem);
   line-height: 1.55;
 }
@@ -7183,7 +7205,7 @@ button.erp-bom-row {
 }
 
 .discovery-intent p {
-  margin-bottom: 0.55rem;
+  margin-bottom: var(--space-8);
 }
 
 .discovery-intent blockquote {
@@ -7194,9 +7216,9 @@ button.erp-bom-row {
 
 .discovery-progress {
   grid-template-columns: minmax(0, 1fr) 140px;
-  gap: 1.2rem;
-  padding-top: 0.85rem;
-  padding-bottom: 0.85rem;
+  gap: var(--space-20);
+  padding-top: var(--space-14);
+  padding-bottom: var(--space-14);
 }
 
 .discovery-focus {
@@ -7206,10 +7228,10 @@ button.erp-bom-row {
 .discovery-conversation-record {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
-  gap: 0.65rem;
+  gap: var(--space-10);
   max-width: 760px;
   margin: 0 0 0 clamp(1rem, 3vw, 2.7rem);
-  padding: 0.7rem 0.85rem;
+  padding: var(--space-12) var(--space-14);
   border-left: 2px solid var(--cyan);
   color: #48635e;
   background: #edf5f5;
@@ -7238,8 +7260,8 @@ button.erp-bom-row {
 
 .discovery-conversation-prompt {
   max-width: 760px;
-  margin: 0 0 1rem;
-  padding: 0.6rem 0.75rem;
+  margin: 0 0 var(--space-16);
+  padding: var(--space-10) var(--space-12);
   border-left: 2px solid var(--cyan);
   color: #49635f;
   background: #edf5f5;
@@ -7249,7 +7271,7 @@ button.erp-bom-row {
 
 .discovery-conversation-prompt > span {
   display: block;
-  margin-bottom: 0.28rem;
+  margin-bottom: var(--space-4);
   color: var(--cyan);
   font: 700 var(--text-3xs)/1.25 var(--mono);
   letter-spacing: 0.11em;
@@ -7265,14 +7287,14 @@ button.erp-bom-row {
 
 .discovery-option-context {
   max-width: 840px;
-  margin: 1rem 0 0 42px;
-  padding: 0.9rem 1rem;
+  margin: var(--space-16) 0 0 42px;
+  padding: var(--space-14) var(--space-16);
   border: 1px solid var(--line);
   background: #f7f5ef;
 }
 
 .discovery-option-context h2 {
-  margin: 0 0 0.65rem;
+  margin: 0 0 var(--space-10);
   color: #5c6b65;
   font: 700 var(--text-3xs)/1.35 var(--mono);
   letter-spacing: 0.1em;
@@ -7282,7 +7304,7 @@ button.erp-bom-row {
 .discovery-option-context ul {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem 1rem;
+  gap: var(--space-8) var(--space-16);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -7290,7 +7312,7 @@ button.erp-bom-row {
 
 .discovery-option-context li {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -7318,7 +7340,7 @@ button.erp-bom-row {
   }
 
   .discovery-option-context {
-    margin-top: 0.85rem;
+    margin-top: var(--space-14);
   }
 
   .discovery-option-context ul {
@@ -7341,8 +7363,8 @@ button.erp-bom-row {
 .thread-workbench .decision-center[data-surface] .decision-center-header {
   min-height: 0;
   grid-template-columns: 32px minmax(0, 1fr) auto;
-  gap: 0.8rem;
-  padding: 0.9rem 1rem;
+  gap: var(--space-12);
+  padding: var(--space-14) var(--space-16);
   border-color: var(--thread-border);
   background: transparent;
 }
@@ -7356,7 +7378,7 @@ button.erp-bom-row {
 }
 
 .thread-workbench .decision-center[data-surface] .decision-center-header p {
-  margin-bottom: 0.22rem;
+  margin-bottom: var(--space-4);
   color: var(--thread-orange);
   font-size: var(--text-3xs);
 }
@@ -7368,7 +7390,7 @@ button.erp-bom-row {
 
 .thread-workbench .decision-center[data-surface] .decision-center-header > div:nth-child(2) > span {
   max-width: 660px;
-  margin-top: 0.3rem;
+  margin-top: var(--space-4);
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.45;
@@ -7377,14 +7399,14 @@ button.erp-bom-row {
 .thread-workbench .decision-center[data-surface] .decision-center-meter {
   min-width: 0;
   grid-template-columns: repeat(2, minmax(4.65rem, 5.4rem));
-  padding-left: 0.7rem;
+  padding-left: var(--space-12);
   border-color: var(--thread-border);
 }
 
 .thread-workbench .decision-center[data-surface] .decision-center-meter > div {
   min-height: 0;
-  gap: 0.2rem;
-  padding: 0 0.65rem;
+  gap: var(--space-4);
+  padding: 0 var(--space-10);
   border-color: var(--thread-border);
 }
 
@@ -7422,8 +7444,8 @@ button.erp-bom-row {
 
 .thread-workbench .decision-center[data-surface] .decision-review-brief {
   grid-template-columns: 28px minmax(0, 1fr) auto;
-  gap: 0.7rem;
-  padding: 0.8rem 1rem;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
   border-color: var(--thread-border);
   background: #f7f5ef;
 }
@@ -7488,7 +7510,7 @@ button.erp-bom-row {
 }
 .thread-workbench .decision-center[data-surface] .decision-secondary-button {
   min-height: 34px;
-  padding-inline: 0.72rem;
+  padding-inline: var(--space-12);
   font-size: var(--text-3xs);
 }
 .decision-notification-list {
@@ -7506,9 +7528,9 @@ button.erp-bom-row {
 .thread-workbench .decision-review-notification {
   position: relative;
   display: grid;
-  gap: 0.85rem;
+  gap: var(--space-14);
   min-width: 0;
-  padding: 1rem 1.1rem 0.95rem;
+  padding: var(--space-16) var(--space-18) var(--space-16);
   border-left: 3px solid var(--thread-orange);
   background:
     linear-gradient(90deg, rgba(169, 95, 40, 0.045), transparent 26%),
@@ -7519,13 +7541,13 @@ button.erp-bom-row {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 0.8rem;
+  gap: var(--space-12);
 }
 
 .thread-workbench .decision-review-notification > header > div {
   min-width: 0;
   display: grid;
-  gap: 0.28rem;
+  gap: var(--space-4);
 }
 
 .thread-workbench .decision-review-notification > header span {
@@ -7543,7 +7565,7 @@ button.erp-bom-row {
 
 .thread-workbench .decision-review-notification > header small {
   flex: 0 0 auto;
-  padding: 0.28rem 0.42rem;
+  padding: var(--space-4) var(--space-6);
   border: 1px solid var(--thread-border);
   color: var(--thread-muted);
   background: #f5f2eb;
@@ -7555,7 +7577,7 @@ button.erp-bom-row {
 .thread-workbench .decision-review-notification blockquote {
   max-width: 58rem;
   margin: 0;
-  padding-left: 0.75rem;
+  padding-left: var(--space-12);
   border-left: 2px solid rgba(169, 95, 40, 0.42);
   color: var(--thread-ink);
   font-family: var(--serif);
@@ -7575,14 +7597,14 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
-  padding: 0.62rem 0;
+  padding: var(--space-10) 0;
   border-top: 1px solid var(--thread-border);
   border-bottom: 1px solid var(--thread-border);
 }
 
 .thread-workbench .decision-notification-scope > div {
   min-width: 0;
-  padding: 0 0.75rem;
+  padding: 0 var(--space-12);
   border-left: 1px solid var(--thread-border);
 }
 
@@ -7592,7 +7614,7 @@ button.erp-bom-row {
 }
 
 .thread-workbench .decision-notification-scope dt {
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--space-4);
   color: var(--thread-muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.08em;
@@ -7612,7 +7634,7 @@ button.erp-bom-row {
 .thread-workbench .decision-review-actions {
   justify-content: flex-start;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-8);
 }
 
 .thread-workbench .decision-review-actions .decision-secondary-button:hover,
@@ -7624,7 +7646,7 @@ button.erp-bom-row {
 .thread-workbench .decision-review-guidance {
   display: block;
   max-width: 62rem;
-  padding-top: 0.15rem;
+  padding-top: var(--space-2);
   color: var(--thread-muted);
   font-size: var(--text-3xs);
   line-height: 1.5;
@@ -7633,13 +7655,13 @@ button.erp-bom-row {
 @media (max-width: 720px) {
   .thread-workbench .decision-center[data-surface] .decision-center-header {
     grid-template-columns: 28px minmax(0, 1fr);
-    padding: 0.85rem;
+    padding: var(--space-14);
   }
 
   .thread-workbench .decision-center[data-surface] .decision-center-meter {
     grid-column: 1 / -1;
     justify-content: start;
-    padding: 0.65rem 0 0;
+    padding: var(--space-10) 0 0;
     border-top: 1px solid var(--thread-border);
     border-left: 0;
   }
@@ -7650,7 +7672,7 @@ button.erp-bom-row {
 
   .thread-workbench .decision-center[data-surface] .decision-review-brief {
     grid-template-columns: 26px minmax(0, 1fr);
-    padding: 0.8rem 0.85rem;
+    padding: var(--space-12) var(--space-14);
   }
 
   .thread-workbench .decision-center[data-surface] .decision-review-brief > button {
@@ -7659,12 +7681,12 @@ button.erp-bom-row {
   }
 
   .thread-workbench .decision-review-notification {
-    padding: 0.9rem 0.85rem;
+    padding: var(--space-14) var(--space-14);
   }
 
   .thread-workbench .decision-notification-scope {
     grid-template-columns: 1fr;
-    gap: 0.55rem;
+    gap: var(--space-8);
   }
 
   .thread-workbench .decision-notification-scope > div,
@@ -7672,7 +7694,7 @@ button.erp-bom-row {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: var(--space-12);
     padding: 0;
     border: 0;
   }
@@ -7712,13 +7734,13 @@ button.erp-bom-row {
 }
 
 .thread-workbench .thread-kicker {
-  margin-bottom: 0.42rem;
+  margin-bottom: var(--space-6);
 }
 
 .thread-workbench .project-navigation {
   display: flex;
   align-items: center;
-  gap: 0.16rem;
+  gap: var(--space-2);
   padding: 0.3rem clamp(0.65rem, 2vw, 1.35rem);
   border-bottom-color: var(--thread-border);
   background: rgba(255, 253, 250, 0.9);
@@ -7733,8 +7755,8 @@ button.erp-bom-row {
   grid-template-rows: auto auto;
   align-content: center;
   justify-items: center;
-  gap: 0.12rem;
-  padding: 0.4rem 0.6rem;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-10);
   border: 0;
   color: var(--thread-muted);
   text-align: center;
@@ -7790,11 +7812,11 @@ button.erp-bom-row {
 }
 
 .project-workspace-page .thread-workspace-meta {
-  margin-bottom: 0.65rem;
+  margin-bottom: var(--space-10);
 }
 
 .project-activity-brief {
-  margin: 0 0 0.72rem;
+  margin: 0 0 var(--space-12);
   border: 1px solid var(--thread-border);
   background: var(--thread-panel);
 }
@@ -7804,8 +7826,8 @@ button.erp-bom-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.75rem;
+  gap: var(--space-10);
+  padding: var(--space-8) var(--space-12);
   color: var(--thread-muted);
   cursor: pointer;
   list-style: none;
@@ -7852,18 +7874,18 @@ button.erp-bom-row {
 }
 
 .project-activity-brief > div {
-  padding: 0.72rem;
+  padding: var(--space-12);
 }
 
 .project-activity-brief .project-work-ribbon {
-  margin-bottom: 0.72rem;
+  margin-bottom: var(--space-12);
 }
 
 .thread-workbench .thread-feed-lineage-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.55rem;
+  gap: var(--space-8);
 }
 
 .thread-workbench .thread-feed-lineage-actions > span {
@@ -7874,7 +7896,7 @@ button.erp-bom-row {
 
 .thread-workbench .thread-feed-lineage-actions button {
   min-height: 27px;
-  padding: 0 0.55rem;
+  padding: 0 var(--space-8);
   border: 1px solid var(--thread-border-strong);
   color: var(--thread-ink);
   background: var(--thread-panel);
@@ -7900,7 +7922,7 @@ button.erp-bom-row {
 
 .thread-workbench .thread-graph {
   display: grid;
-  gap: 0.72rem;
+  gap: var(--space-12);
 }
 
 .thread-workbench .thread-graph-controls {
@@ -7908,8 +7930,8 @@ button.erp-bom-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+  gap: var(--space-10);
+  padding: var(--space-6) var(--space-6) var(--space-6) var(--space-12);
   border: 1px solid var(--thread-border);
   color: var(--thread-muted);
   background: rgba(255, 253, 250, 0.88);
@@ -7921,14 +7943,14 @@ button.erp-bom-row {
 .thread-workbench .thread-graph-controls > div {
   display: inline-flex;
   align-items: center;
-  gap: 0.24rem;
+  gap: var(--space-4);
 }
 
 .thread-workbench .thread-graph-controls button,
 .thread-workbench .thread-graph-expand-button,
 .thread-workbench .thread-graph-focus-close {
   min-height: 28px;
-  padding: 0 0.62rem;
+  padding: 0 var(--space-10);
   border: 1px solid var(--thread-border-strong);
   color: var(--thread-ink);
   background: var(--thread-panel);
@@ -8053,8 +8075,8 @@ button.erp-bom-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
-  padding: 0.65rem 0.8rem;
+  gap: var(--space-12);
+  padding: var(--space-10) var(--space-12);
   border-bottom: 1px solid var(--thread-border);
   background: var(--thread-panel-muted);
 }
@@ -8062,7 +8084,7 @@ button.erp-bom-row {
 .thread-evidence-context > header > div {
   min-width: 0;
   display: grid;
-  gap: 0.25rem;
+  gap: var(--space-4);
 }
 
 .thread-evidence-context > header small,
@@ -8087,7 +8109,7 @@ button.erp-bom-row {
 }
 
 .thread-evidence-context .thread-graph {
-  padding: 0.75rem;
+  padding: var(--space-12);
 }
 
 .thread-evidence-context .thread-graph-viewport {
@@ -8115,12 +8137,12 @@ button.erp-bom-row {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 1.2rem;
-  padding: 0.8rem 0 0.95rem;
+  gap: var(--space-20);
+  padding: var(--space-12) 0 var(--space-16);
 }
 
 .thread-graph-focus-header p {
-  margin: 0 0 0.35rem;
+  margin: 0 0 var(--space-6);
   color: var(--thread-orange);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.12em;
@@ -8138,7 +8160,7 @@ button.erp-bom-row {
 .thread-graph-focus-header > div:first-child > span {
   display: block;
   max-width: 49rem;
-  margin-top: 0.5rem;
+  margin-top: var(--space-8);
   color: var(--thread-muted);
   font-size: var(--text-xs);
   line-height: 1.45;
@@ -8147,7 +8169,7 @@ button.erp-bom-row {
 .thread-graph-focus-actions {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: var(--space-10);
   flex: 0 0 auto;
 }
 
@@ -8190,7 +8212,7 @@ button.erp-bom-row {
 }
 
 .thread-graph-focus-body .thread-graph-legend {
-  margin-bottom: 0.65rem;
+  margin-bottom: var(--space-10);
 }
 
 .thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
@@ -8209,9 +8231,9 @@ button.erp-bom-row {
 .planning-baseline-notice {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr);
-  gap: 0.9rem;
+  gap: var(--space-14);
   align-items: start;
-  padding: 1rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
   border: 1px solid var(--thread-border);
   border-left: 3px solid var(--thread-orange);
   background: #fff7ed;
@@ -8231,7 +8253,7 @@ button.erp-bom-row {
 
 .planning-baseline-notice p,
 .planning-next-step p:first-child {
-  margin: 0 0 0.36rem;
+  margin: 0 0 var(--space-6);
   color: var(--thread-orange);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.1em;
@@ -8247,7 +8269,7 @@ button.erp-bom-row {
 .planning-baseline-notice span {
   display: block;
   max-width: 780px;
-  margin-top: 0.43rem;
+  margin-top: var(--space-6);
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.55;
@@ -8262,15 +8284,15 @@ button.erp-bom-row {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.1rem 0.9rem;
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-18) var(--space-14);
   border-bottom: 1px solid var(--thread-border);
 }
 
 .planning-baseline-activity p,
 .planning-baseline-run-copy small,
 .planning-baseline-live small {
-  margin: 0 0 0.36rem;
+  margin: 0 0 var(--space-6);
   color: var(--thread-orange);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.1em;
@@ -8284,7 +8306,7 @@ button.erp-bom-row {
 
 .planning-baseline-state {
   flex: 0 0 auto;
-  padding: 0.33rem 0.48rem;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid var(--thread-border-strong);
   color: var(--thread-muted);
   font: 700 var(--text-3xs)/1 var(--mono);
@@ -8309,9 +8331,9 @@ button.erp-bom-row {
 .planning-baseline-run {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
+  gap: var(--space-16);
   align-items: end;
-  padding: 0.95rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
 }
 
 .planning-baseline-run-copy small,
@@ -8327,7 +8349,7 @@ button.erp-bom-row {
 
 .planning-baseline-run-copy span {
   display: block;
-  margin-top: 0.28rem;
+  margin-top: var(--space-4);
   color: var(--thread-muted);
   font-size: var(--text-3xs);
   text-transform: capitalize;
@@ -8335,7 +8357,7 @@ button.erp-bom-row {
 
 .planning-baseline-run-times {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-16);
   margin: 0;
 }
 
@@ -8356,14 +8378,14 @@ button.erp-bom-row {
 }
 
 .planning-baseline-run-times dd {
-  margin-top: 0.28rem;
+  margin-top: var(--space-4);
   color: var(--thread-ink);
   font: 700 var(--text-3xs)/1.2 var(--mono);
 }
 
 .planning-baseline-empty {
   margin: 0;
-  padding: 0.95rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.5;
@@ -8373,9 +8395,9 @@ button.erp-bom-row {
 .planning-baseline-live ol {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem 0.75rem;
+  gap: var(--space-8) var(--space-12);
   margin: 0;
-  padding: 0.7rem 1.1rem;
+  padding: var(--space-12) var(--space-18);
   border-top: 1px solid var(--thread-border);
   list-style: none;
 }
@@ -8384,7 +8406,7 @@ button.erp-bom-row {
 .planning-baseline-live li {
   display: inline-flex;
   align-items: center;
-  gap: 0.32rem;
+  gap: var(--space-6);
   color: var(--thread-muted);
   font: 700 var(--text-3xs)/1.25 var(--mono);
 }
@@ -8406,8 +8428,8 @@ button.erp-bom-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.7rem 1.1rem 0;
+  gap: var(--space-16);
+  padding: var(--space-12) var(--space-18) 0;
 }
 
 .planning-baseline-live > div span {
@@ -8438,7 +8460,7 @@ button.erp-bom-row {
 
 .planning-empty-path {
   margin: 0;
-  padding: 1rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
   border: 1px dashed var(--thread-border-strong);
   color: var(--thread-muted);
   background: var(--thread-panel);
@@ -8461,15 +8483,15 @@ button.erp-bom-row {
 .planning-work-list li {
   display: grid;
   grid-template-columns: minmax(105px, 0.3fr) minmax(0, 1fr) auto;
-  gap: 0.9rem;
+  gap: var(--space-14);
   align-items: start;
-  padding: 0.95rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
   border-top: 1px solid var(--thread-border);
 }
 
 .planning-work-list li > span,
 .planning-work-list li > b {
-  padding-top: 0.1rem;
+  padding-top: var(--space-2);
   color: var(--thread-muted);
   font: 700 var(--text-3xs)/1.25 var(--mono);
   letter-spacing: 0.055em;
@@ -8493,7 +8515,7 @@ button.erp-bom-row {
 }
 
 .planning-work-list li p {
-  margin: 0.32rem 0 0;
+  margin: var(--space-6) 0 0;
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.45;
@@ -8501,16 +8523,16 @@ button.erp-bom-row {
 
 .planning-work-list li small {
   display: block;
-  margin-top: 0.38rem;
+  margin-top: var(--space-6);
   color: var(--thread-muted);
   font: 700 var(--text-3xs)/1.3 var(--mono);
 }
 .planning-next-step {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
-  gap: 1.5rem;
+  gap: var(--space-24);
   align-items: center;
-  padding: 1.15rem;
+  padding: var(--space-18);
   border: 1px solid var(--thread-border);
   background: var(--thread-panel-muted);
 }
@@ -8536,9 +8558,9 @@ button.erp-bom-row {
 .documentary-baseline-notice {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr);
-  gap: 0.9rem;
+  gap: var(--space-14);
   align-items: start;
-  padding: 1rem 1.1rem;
+  padding: var(--space-16) var(--space-18);
   border: 1px solid var(--thread-border);
   border-left: 3px solid var(--thread-green);
   background: #eef6ef;
@@ -8560,7 +8582,7 @@ button.erp-bom-row {
 .documentary-record-card > header p,
 .documentary-boundary-card > p,
 .documentary-next-step p:first-child {
-  margin: 0 0 0.36rem;
+  margin: 0 0 var(--space-6);
   color: var(--thread-green);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.1em;
@@ -8578,7 +8600,7 @@ button.erp-bom-row {
 .documentary-baseline-notice span {
   display: block;
   max-width: 780px;
-  margin-top: 0.43rem;
+  margin-top: var(--space-6);
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.55;
@@ -8603,15 +8625,15 @@ button.erp-bom-row {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.95rem 1.1rem 0.75rem;
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-18) var(--space-12);
   border-bottom: 1px solid rgba(103, 134, 155, 0.24);
 }
 
 .documentary-technical-start > header p,
 .documentary-technical-start article small,
 .documentary-technical-start footer {
-  margin: 0 0 0.36rem;
+  margin: 0 0 var(--space-6);
   color: #477593;
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.1em;
@@ -8625,7 +8647,7 @@ button.erp-bom-row {
 
 .documentary-technical-start-state {
   flex: 0 0 auto;
-  padding: 0.33rem 0.48rem;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid #8baec3;
   color: #285a7a;
   background: #e8f2f8;
@@ -8642,7 +8664,7 @@ button.erp-bom-row {
 .documentary-technical-start-message,
 .documentary-technical-start-empty {
   margin: 0;
-  padding: 0.76rem 1.1rem;
+  padding: var(--space-12) var(--space-18);
   color: var(--thread-muted);
   font-size: var(--text-xs);
   line-height: 1.55;
@@ -8652,14 +8674,14 @@ button.erp-bom-row {
   display: grid;
   gap: 0;
   margin: 0;
-  padding: 0.1rem 1.1rem 0.8rem;
+  padding: var(--space-2) var(--space-18) var(--space-12);
   list-style: none;
 }
 
 .documentary-technical-start-feed > li {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
-  gap: 0.7rem;
+  gap: var(--space-12);
   min-width: 0;
 }
 
@@ -8686,7 +8708,7 @@ button.erp-bom-row {
   z-index: 1;
   width: 9px;
   height: 9px;
-  margin-top: 1.12rem;
+  margin-top: var(--space-18);
   border: 2px solid #6e98b2;
   border-radius: 999px;
   background: #f5f9fc;
@@ -8705,8 +8727,8 @@ button.erp-bom-row {
 
 .documentary-technical-start article {
   min-width: 0;
-  margin: 0.45rem 0;
-  padding: 0.72rem 0.8rem;
+  margin: var(--space-8) 0;
+  padding: var(--space-12) var(--space-12);
   border: 1px solid rgba(103, 134, 155, 0.25);
   background: var(--thread-panel);
 }
@@ -8714,7 +8736,7 @@ button.erp-bom-row {
 .documentary-technical-start article > header {
   display: grid;
   grid-template-columns: 25px minmax(0, 1fr) auto;
-  gap: 0.58rem;
+  gap: var(--space-10);
   align-items: center;
 }
 
@@ -8731,7 +8753,7 @@ button.erp-bom-row {
 
 .documentary-technical-start article small {
   display: block;
-  margin-bottom: 0.16rem;
+  margin-bottom: var(--space-2);
   color: #477593;
   font-size: var(--text-3xs);
 }
@@ -8752,14 +8774,14 @@ button.erp-bom-row {
 }
 
 .documentary-technical-start article > p {
-  margin: 0.52rem 0 0 31px;
+  margin: var(--space-8) 0 0 31px;
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.45;
 }
 
 .documentary-technical-start article > p.documentary-technical-start-relation {
-  margin-top: 0.48rem;
+  margin-top: var(--space-8);
   color: #477593;
   font: 600 var(--text-3xs)/1.35 var(--mono);
 }
@@ -8767,7 +8789,7 @@ button.erp-bom-row {
 .documentary-technical-start footer {
   display: block;
   margin: 0;
-  padding: 0.75rem 1.1rem;
+  padding: var(--space-12) var(--space-18);
   border-top: 1px solid rgba(103, 134, 155, 0.22);
   color: var(--thread-muted);
   font: 500 var(--text-3xs)/1.5 var(--mono);
@@ -8782,8 +8804,8 @@ button.erp-bom-row {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.1rem 0.9rem;
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-18) var(--space-14);
   border-bottom: 1px solid var(--thread-border);
   background: linear-gradient(90deg, rgba(54, 117, 83, 0.08), transparent 44%);
 }
@@ -8794,7 +8816,7 @@ button.erp-bom-row {
 
 .documentary-record-state {
   flex: 0 0 auto;
-  padding: 0.33rem 0.48rem;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid #96bd9f;
   color: #245b3b;
   background: #eef6ef;
@@ -8811,7 +8833,7 @@ button.erp-bom-row {
 
 .documentary-record-facts > div {
   min-width: 0;
-  padding: 0.9rem 1.1rem;
+  padding: var(--space-14) var(--space-18);
   border-right: 1px solid var(--thread-border);
 }
 
@@ -8828,7 +8850,7 @@ button.erp-bom-row {
 }
 
 .documentary-record-facts dd {
-  margin: 0.34rem 0 0;
+  margin: var(--space-6) 0 0;
   overflow: hidden;
   color: var(--thread-ink);
   font-size: var(--text-2xs);
@@ -8839,12 +8861,12 @@ button.erp-bom-row {
 .documentary-boundary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  gap: var(--space-16);
 }
 
 .documentary-boundary-card {
   min-width: 0;
-  padding: 1.1rem;
+  padding: var(--space-18);
   border: 1px solid var(--thread-border);
   background: var(--thread-panel);
 }
@@ -8868,15 +8890,15 @@ button.erp-bom-row {
 
 .documentary-boundary-card ul {
   display: grid;
-  gap: 0.48rem;
-  margin: 0.8rem 0 0;
+  gap: var(--space-8);
+  margin: var(--space-12) 0 0;
   padding: 0;
   list-style: none;
 }
 
 .documentary-boundary-card li {
   position: relative;
-  padding-left: 0.9rem;
+  padding-left: var(--space-14);
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.45;
@@ -8896,9 +8918,9 @@ button.erp-bom-row {
 .documentary-next-step {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
-  gap: 1.5rem;
+  gap: var(--space-24);
   align-items: center;
-  padding: 1.15rem;
+  padding: var(--space-18);
   border: 1px solid var(--thread-border);
   background: var(--thread-panel-muted);
 }
@@ -8981,7 +9003,7 @@ button.erp-bom-row {
   .thread-workbench .project-navigation :is(button, a) {
     min-width: max-content;
     flex: 0 0 auto;
-    padding-inline: 0.7rem;
+    padding-inline: var(--space-12);
   }
 
   .thread-workbench .thread-graph-controls,
@@ -9035,7 +9057,7 @@ button.erp-bom-row {
 @media (max-width: 540px) {
   .planning-work-list li {
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.5rem;
+    gap: var(--space-8);
   }
 
   .planning-work-list li > b {
