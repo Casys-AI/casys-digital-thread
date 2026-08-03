@@ -18,6 +18,11 @@ export class FileApprovedDiscoveryBaselineCaptureStore {
     return `casys://approved-discovery-capture/sha256/${digest}`;
   }
 
+  uriForBrief(fingerprint: ContentFingerprint): string {
+    const digest = sha256Digest(fingerprint);
+    return `casys://approved-brief-capture/sha256/${digest}`;
+  }
+
   pathFor(fingerprint: ContentFingerprint): string {
     return `${this.directory.replace(/\/$/, "")}/${sha256Digest(fingerprint)}.json`;
   }

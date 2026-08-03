@@ -298,15 +298,8 @@ async function resolveActiveDiscovery(
   options: DiscoveryWorkbenchHandlerOptions,
 ): Promise<ActiveDiscoveryTarget> {
   const focus = await options.focus?.get(options.workspaceId ?? "primary");
-  if (focus?.target.kind === "project") {
+  if (focus) {
     return { kind: "project", projectId: focus.target.projectId };
-  }
-  if (focus?.target.kind === "discovery") {
-    return {
-      kind: "discovery",
-      discoveryId: focus.target.discoveryId,
-      focusRevision: focus.revision,
-    };
   }
   return {
     kind: "discovery",

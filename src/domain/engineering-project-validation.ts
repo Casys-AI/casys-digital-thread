@@ -1,6 +1,7 @@
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
+  EngineeringApprovedBriefBasis,
   EngineeringApprovedDiscoveryBasis,
   EngineeringBlocker,
   EngineeringDecision,
@@ -12,6 +13,12 @@ import type {
   EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "./engineering-project.ts";
+import {
+  currentProjectAnswer,
+  type EngineeringProjectFraming,
+  projectBriefObjective,
+  type ProjectBriefRevision,
+} from "./project-brief.ts";
 import type { ContentFingerprint, ThreadSnapshot } from "./thread-snapshot.ts";
 
 export interface EngineeringProjectValidationIssue {
@@ -71,7 +78,14 @@ export function collectEngineeringProjectIssues(
       "approvals",
       "blockers",
     ],
-    ["previous", "commandReceipts", "discoveryHandoff", "plan", "planChanges"],
+    [
+      "previous",
+      "commandReceipts",
+      "discoveryHandoff",
+      "framing",
+      "plan",
+      "planChanges",
+    ],
     issues,
   );
   if (!root) return issues;
@@ -88,11 +102,14 @@ export function collectEngineeringProjectIssues(
     validatePrevious(root.previous, "$.previous", issues);
   }
   validateProjectIdentity(root.project, "$.project", issues);
+  if (root.framing !== undefined) {
+    validateProjectFraming(root.framing, "$.framing", issues);
+  }
   if (root.discoveryHandoff !== undefined) {
     validateDiscoveryHandoff(root.discoveryHandoff, "$.discoveryHandoff", issues);
   }
   if (root.plan !== undefined) {
-    validateProjectPlan(root.plan, "$.plan", issues);
+    validateProjectPlan(root.plan, "$.plan", issues, schemaVersion);
   }
   if (root.planChanges !== undefined) {
     validateArray(root.planChanges, "$.planChanges", issues, validateProjectChange);
@@ -209,8 +226,8 @@ function engineeringProjectSchemaVersion(
   path: string,
   issues: EngineeringProjectValidationIssue[],
 ): EngineeringProjectSchemaVersion | undefined {
-  if (value === "1.0" || value === "2.0") return value;
-  issue(issues, "invalid_enum", path, "must be 1.0 or 2.0");
+  if (value === "1.0" || value === "2.0" || value === "3.0") return value;
+  issue(issues, "invalid_enum", path, "must be 1.0, 2.0 or 3.0");
   return undefined;
 }
 
@@ -240,6 +257,354 @@ function validateProjectIdentity(
   if (!objective) return;
   nonEmptyString(objective.title, `${path}.objective.title`, issues);
   nonEmptyString(objective.statement, `${path}.objective.statement`, issues);
+}
+
+function validateProjectFraming(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["intent", "questions", "answers"],
+    [
+      "currentBrief",
+      "currentBriefApproval",
+      "proposedBrief",
+      "proposalReview",
+    ],
+    issues,
+  );
+  if (!input) return;
+  validateProjectIntent(input.intent, `${path}.intent`, issues);
+  validateArray(input.questions, `${path}.questions`, issues, validateProjectQuestion);
+  validateArray(input.answers, `${path}.answers`, issues, validateProjectAnswer);
+  if (input.currentBrief !== undefined) {
+    validateProjectBriefRevision(
+      input.currentBrief,
+      `${path}.currentBrief`,
+      issues,
+    );
+  }
+  if (input.proposedBrief !== undefined) {
+    validateProjectBriefRevision(
+      input.proposedBrief,
+      `${path}.proposedBrief`,
+      issues,
+    );
+  }
+  if (input.currentBriefApproval !== undefined) {
+    validateProjectBriefReview(
+      input.currentBriefApproval,
+      `${path}.currentBriefApproval`,
+      issues,
+    );
+  }
+  if (input.proposalReview !== undefined) {
+    validateProjectBriefReview(
+      input.proposalReview,
+      `${path}.proposalReview`,
+      issues,
+    );
+  }
+}
+
+function validateProjectIntent(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["statement", "source", "capturedAt", "capturedBy"],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.statement, `${path}.statement`, issues);
+  const source = exactRecord(
+    input.source,
+    `${path}.source`,
+    ["kind", "reference"],
+    [],
+    issues,
+  );
+  if (source) {
+    oneOf(source.kind, ["human", "document"], `${path}.source.kind`, issues);
+    nonEmptyString(source.reference, `${path}.source.reference`, issues);
+  }
+  isoDateTime(input.capturedAt, `${path}.capturedAt`, issues);
+  validateCommandActor(input.capturedBy, `${path}.capturedBy`, issues);
+}
+
+function validateProjectQuestion(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "id",
+      "prompt",
+      "whyItMatters",
+      "recommendation",
+      "options",
+      "allowUnknown",
+      "risk",
+      "evidenceNeeded",
+      "proposedAt",
+      "proposedBy",
+    ],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.id, `${path}.id`, issues);
+  nonEmptyString(input.prompt, `${path}.prompt`, issues);
+  nonEmptyString(input.whyItMatters, `${path}.whyItMatters`, issues);
+  const recommendation = exactRecord(
+    input.recommendation,
+    `${path}.recommendation`,
+    ["value", "rationale", "confidence"],
+    [],
+    issues,
+  );
+  if (recommendation) {
+    nonEmptyString(recommendation.value, `${path}.recommendation.value`, issues);
+    nonEmptyString(
+      recommendation.rationale,
+      `${path}.recommendation.rationale`,
+      issues,
+    );
+    oneOf(
+      recommendation.confidence,
+      ["low", "medium", "high"],
+      `${path}.recommendation.confidence`,
+      issues,
+    );
+  }
+  validateArray(
+    input.options,
+    `${path}.options`,
+    issues,
+    (option, optionPath, optionIssues) => {
+      const record = exactRecord(
+        option,
+        optionPath,
+        ["value", "label", "consequences"],
+        [],
+        optionIssues,
+      );
+      if (!record) return;
+      nonEmptyString(record.value, `${optionPath}.value`, optionIssues);
+      nonEmptyString(record.label, `${optionPath}.label`, optionIssues);
+      nonEmptyString(
+        record.consequences,
+        `${optionPath}.consequences`,
+        optionIssues,
+      );
+    },
+  );
+  if (typeof input.allowUnknown !== "boolean") {
+    issue(
+      issues,
+      "invalid_type",
+      `${path}.allowUnknown`,
+      "must be a boolean",
+    );
+  }
+  oneOf(
+    input.risk,
+    ["reversible", "material", "safety-critical", "regulatory"],
+    `${path}.risk`,
+    issues,
+  );
+  stringArray(input.evidenceNeeded, `${path}.evidenceNeeded`, issues);
+  isoDateTime(input.proposedAt, `${path}.proposedAt`, issues);
+  validateCommandActor(input.proposedBy, `${path}.proposedBy`, issues);
+}
+
+function validateProjectAnswer(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "questionId", "kind", "source", "recordedAt", "recordedBy"],
+    ["value", "explanation", "supersedesAnswerId"],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.id, `${path}.id`, issues);
+  nonEmptyString(input.questionId, `${path}.questionId`, issues);
+  oneOf(input.kind, ["provided", "unknown"], `${path}.kind`, issues);
+  if (input.kind === "provided") {
+    nonEmptyString(input.value, `${path}.value`, issues);
+  } else if (input.value !== undefined) {
+    issue(
+      issues,
+      "unknown_has_value",
+      `${path}.value`,
+      "must be absent for an unknown answer",
+    );
+  }
+  optionalNonEmptyString(input.explanation, `${path}.explanation`, issues);
+  optionalNonEmptyString(
+    input.supersedesAnswerId,
+    `${path}.supersedesAnswerId`,
+    issues,
+  );
+  const source = exactRecord(
+    input.source,
+    `${path}.source`,
+    ["kind", "reference"],
+    [],
+    issues,
+  );
+  if (source) {
+    oneOf(
+      source.kind,
+      ["human", "tool", "document", "expert"],
+      `${path}.source.kind`,
+      issues,
+    );
+    nonEmptyString(source.reference, `${path}.source.reference`, issues);
+  }
+  isoDateTime(input.recordedAt, `${path}.recordedAt`, issues);
+  validateCommandActor(input.recordedBy, `${path}.recordedBy`, issues);
+}
+
+function validateProjectBriefRevision(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "briefId",
+      "id",
+      "revision",
+      "items",
+      "proposedAt",
+      "proposedBy",
+    ],
+    ["previous"],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.briefId, `${path}.briefId`, issues);
+  nonEmptyString(input.id, `${path}.id`, issues);
+  positiveInteger(input.revision, `${path}.revision`, issues);
+  if (input.previous !== undefined) {
+    validatePrevious(input.previous, `${path}.previous`, issues);
+  }
+  validateArray(input.items, `${path}.items`, issues, validateProjectBriefItem);
+  isoDateTime(input.proposedAt, `${path}.proposedAt`, issues);
+  validateCommandActor(input.proposedBy, `${path}.proposedBy`, issues);
+}
+
+function validateProjectBriefItem(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "kind", "statement", "sourceRefs"],
+    ["owner", "reviewTrigger"],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.id, `${path}.id`, issues);
+  oneOf(
+    input.kind,
+    [
+      "objective",
+      "primary-user",
+      "mission-scenario",
+      "operating-environment",
+      "success-criterion",
+      "constraint",
+      "exclusion",
+      "intended-market",
+      "manufacturing-jurisdiction",
+      "operating-jurisdiction",
+      "compliance-target",
+      "verification-activity",
+      "manufacturing-evidence",
+      "observed-fact",
+      "assumption",
+      "open-question",
+      "proposed-decision",
+    ],
+    `${path}.kind`,
+    issues,
+  );
+  nonEmptyString(input.statement, `${path}.statement`, issues);
+  validateArray(
+    input.sourceRefs,
+    `${path}.sourceRefs`,
+    issues,
+    (source, sourcePath, sourceIssues) => {
+      const record = exactRecord(
+        source,
+        sourcePath,
+        ["kind", "reference"],
+        [],
+        sourceIssues,
+      );
+      if (!record) return;
+      oneOf(
+        record.kind,
+        ["intent", "answer", "tool", "document", "expert"],
+        `${sourcePath}.kind`,
+        sourceIssues,
+      );
+      nonEmptyString(record.reference, `${sourcePath}.reference`, sourceIssues);
+    },
+  );
+  optionalNonEmptyString(input.owner, `${path}.owner`, issues);
+  optionalNonEmptyString(input.reviewTrigger, `${path}.reviewTrigger`, issues);
+}
+
+function validateProjectBriefReview(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "briefSnapshotId",
+      "briefRevision",
+      "status",
+      "inputFingerprint",
+      "requestedAt",
+    ],
+    ["decidedAt", "decidedBy", "rationale"],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.briefSnapshotId, `${path}.briefSnapshotId`, issues);
+  positiveInteger(input.briefRevision, `${path}.briefRevision`, issues);
+  oneOf(input.status, ["pending", "approved", "rejected"], `${path}.status`, issues);
+  validateFingerprint(input.inputFingerprint, `${path}.inputFingerprint`, issues);
+  isoDateTime(input.requestedAt, `${path}.requestedAt`, issues);
+  optionalIsoDateTime(input.decidedAt, `${path}.decidedAt`, issues);
+  if (input.decidedBy !== undefined) {
+    validateCommandActor(input.decidedBy, `${path}.decidedBy`, issues);
+  }
+  optionalNonEmptyString(input.rationale, `${path}.rationale`, issues);
 }
 
 function validateDiscoveryHandoff(
@@ -280,6 +645,7 @@ function validateProjectPlan(
   value: unknown,
   path: string,
   issues: EngineeringProjectValidationIssue[],
+  schemaVersion: EngineeringProjectSchemaVersion | undefined,
 ): void {
   const input = exactRecord(
     value,
@@ -295,9 +661,49 @@ function validateProjectPlan(
     `${path}.startingPoint`,
     issues,
   );
-  validateApprovedDiscoveryBasis(input.basis, `${path}.basis`, issues);
+  if (schemaVersion === "3.0") {
+    validateApprovedBriefBasis(input.basis, `${path}.basis`, issues);
+  } else {
+    validateApprovedDiscoveryBasis(input.basis, `${path}.basis`, issues);
+  }
   isoDateTime(input.publishedAt, `${path}.publishedAt`, issues);
   validateCommandActor(input.publishedBy, `${path}.publishedBy`, issues);
+}
+
+function validateApprovedBriefBasis(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "kind",
+      "projectId",
+      "projectSnapshotId",
+      "projectRevision",
+      "briefId",
+      "briefSnapshotId",
+      "briefRevision",
+      "approvedBriefFingerprint",
+    ],
+    [],
+    issues,
+  );
+  if (!input) return;
+  literal(input.kind, "approved-brief", `${path}.kind`, issues);
+  nonEmptyString(input.projectId, `${path}.projectId`, issues);
+  nonEmptyString(input.projectSnapshotId, `${path}.projectSnapshotId`, issues);
+  positiveInteger(input.projectRevision, `${path}.projectRevision`, issues);
+  nonEmptyString(input.briefId, `${path}.briefId`, issues);
+  nonEmptyString(input.briefSnapshotId, `${path}.briefSnapshotId`, issues);
+  positiveInteger(input.briefRevision, `${path}.briefRevision`, issues);
+  validateFingerprint(
+    input.approvedBriefFingerprint,
+    `${path}.approvedBriefFingerprint`,
+    issues,
+  );
 }
 
 function validateProjectChange(
@@ -575,8 +981,22 @@ function validateOperationBinding(
   if (!source) return;
   switch (source.kind) {
     case "approved-discovery":
+    case "approved-brief":
       return;
     case "discovery-answer": {
+      const withAnswer = exactRecord(
+        input.source,
+        `${path}.source`,
+        ["kind", "answerId"],
+        [],
+        issues,
+      );
+      if (withAnswer) {
+        nonEmptyString(withAnswer.answerId, `${path}.source.answerId`, issues);
+      }
+      return;
+    }
+    case "project-answer": {
       const withAnswer = exactRecord(
         input.source,
         `${path}.source`,
@@ -625,7 +1045,7 @@ function validateOperationBinding(
         issues,
         "invalid_enum",
         `${path}.source.kind`,
-        "must be approved-discovery, discovery-answer, decision-parameter or thread-entity",
+        "must be approved-brief, project-answer, decision-parameter or thread-entity",
       );
   }
 }
@@ -956,6 +1376,12 @@ function validateCommandReceipt(
   oneOf(
     input.type,
     [
+      "project.start",
+      "project.question-propose",
+      "project.answer-record",
+      "project.brief-propose",
+      "project.brief-approve",
+      "project.brief-reject",
       "project.create-from-discovery",
       "project.plan-publish",
       "project.change-append",
@@ -1108,7 +1534,12 @@ function validateEngineeringBasis(
       "discoveryId",
       "snapshotId",
       "revision",
+      "projectId",
+      "projectSnapshotId",
+      "projectRevision",
       "briefId",
+      "briefSnapshotId",
+      "briefRevision",
       "approvedBriefFingerprint",
       "subjectId",
     ],
@@ -1117,6 +1548,10 @@ function validateEngineeringBasis(
   if (!input) return;
   if (input.kind === "approved-discovery") {
     validateApprovedDiscoveryBasis(value, path, issues);
+    return;
+  }
+  if (input.kind === "approved-brief") {
+    validateApprovedBriefBasis(value, path, issues);
     return;
   }
   if (input.kind === "thread-snapshot") {
@@ -1137,7 +1572,7 @@ function validateEngineeringBasis(
     issues,
     "invalid_enum",
     `${path}.kind`,
-    "must be approved-discovery or thread-snapshot",
+    "must be approved-brief or thread-snapshot",
   );
 }
 
@@ -1192,7 +1627,9 @@ function validateInvariants(
     "$.threadSnapshots",
     issues,
   );
-  const expectedCommandReceiptCount = project.discoveryHandoff
+  const createdByCommand = project.schemaVersion === "3.0" ||
+    project.discoveryHandoff !== undefined;
+  const expectedCommandReceiptCount = createdByCommand
     ? project.revision
     : Math.max(0, project.revision - 1);
   if ((project.commandReceipts?.length ?? 0) !== expectedCommandReceiptCount) {
@@ -1200,8 +1637,8 @@ function validateInvariants(
       issues,
       "incomplete_command_history",
       "$.commandReceipts",
-      project.discoveryHandoff
-        ? "must contain the discovery handoff receipt and one receipt for every later command revision"
+      createdByCommand
+        ? "must contain the project-start receipt and one receipt for every later command revision"
         : "must contain exactly one durable receipt for every command-created revision",
     );
   }
@@ -1224,7 +1661,10 @@ function validateInvariants(
     issues,
   );
 
-  if (project.threadSnapshots.length === 0 && !project.discoveryHandoff) {
+  if (
+    project.threadSnapshots.length === 0 && !project.discoveryHandoff &&
+    project.schemaVersion !== "3.0"
+  ) {
     issue(
       issues,
       "missing_thread_snapshot",
@@ -1238,6 +1678,48 @@ function validateInvariants(
       "missing_reference",
       "$.discoveryHandoff",
       "a V2 project must retain the approved discovery handoff that anchors its first run",
+    );
+  }
+  if (project.schemaVersion === "3.0") {
+    if (!project.framing) {
+      issue(
+        issues,
+        "missing_reference",
+        "$.framing",
+        "a V3 project owns its living brief from the first revision",
+      );
+    } else {
+      validateProjectFramingInvariants(project, project.framing, issues);
+    }
+    if (project.discoveryHandoff) {
+      issue(
+        issues,
+        "schema_version_mismatch",
+        "$.discoveryHandoff",
+        "a V3 project starts directly and cannot carry a discovery handoff",
+      );
+    }
+    if (
+      project.revision === 1 && (
+        project.threadSnapshots.length > 0 || project.phases.length > 0 ||
+        project.workItems.length > 0 || project.agentRuns.length > 0 ||
+        project.decisions.length > 0 || project.approvals.length > 0 ||
+        project.blockers.length > 0 || project.plan !== undefined
+      )
+    ) {
+      issue(
+        issues,
+        "project_start_scope",
+        "$",
+        "an initial V3 project contains intent only and cannot fabricate planning or technical state",
+      );
+    }
+  } else if (project.framing) {
+    issue(
+      issues,
+      "schema_version_mismatch",
+      "$.framing",
+      "living project framing belongs only to V3 projects",
     );
   }
   if (project.discoveryHandoff) {
@@ -1564,6 +2046,389 @@ function validateInvariants(
   );
 }
 
+function validateProjectFramingInvariants(
+  project: EngineeringProjectSnapshot,
+  framing: EngineeringProjectFraming,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  if (Date.parse(framing.intent.capturedAt) > Date.parse(project.generatedAt)) {
+    issue(
+      issues,
+      "invalid_chronology",
+      "$.framing.intent.capturedAt",
+      "cannot be later than the current project revision",
+    );
+  }
+  requireUnique(framing.questions, (item) => item.id, "$.framing.questions", issues);
+  requireUnique(framing.answers, (item) => item.id, "$.framing.answers", issues);
+  const questionById = new Map(framing.questions.map((item) => [item.id, item]));
+  const answerById = new Map(framing.answers.map((item) => [item.id, item]));
+  const superseded = new Set<string>();
+  framing.questions.forEach((question, index) => {
+    uniqueStrings(
+      question.options.map((option) => option.value),
+      `$.framing.questions[${index}].options`,
+      issues,
+    );
+    if (question.options.length === 0) {
+      issue(
+        issues,
+        "missing_question_option",
+        `$.framing.questions[${index}].options`,
+        "must contain at least one bounded option",
+      );
+    }
+    if (
+      !question.options.some((option) => option.value === question.recommendation.value)
+    ) {
+      issue(
+        issues,
+        "unselectable_recommendation",
+        `$.framing.questions[${index}].recommendation.value`,
+        "must match one bounded option value",
+      );
+    }
+  });
+  framing.answers.forEach((answer, index) => {
+    const question = questionById.get(answer.questionId);
+    if (!question) {
+      issue(
+        issues,
+        "unknown_question",
+        `$.framing.answers[${index}].questionId`,
+        "does not resolve to a project question",
+      );
+    } else if (answer.kind === "unknown" && !question.allowUnknown) {
+      issue(
+        issues,
+        "unknown_not_allowed",
+        `$.framing.answers[${index}].kind`,
+        "the question does not permit an unknown answer",
+      );
+    } else if (
+      answer.kind === "provided" &&
+      !question.options.some((option) => option.value === answer.value)
+    ) {
+      issue(
+        issues,
+        "unselectable_answer",
+        `$.framing.answers[${index}].value`,
+        "must match one bounded question option value",
+      );
+    }
+    if (answer.recordedBy.origin === "human" && answer.source.kind !== "human") {
+      issue(
+        issues,
+        "false_human_source",
+        `$.framing.answers[${index}].source.kind`,
+        "a directly recorded human answer must declare a human source",
+      );
+    }
+    if (!answer.supersedesAnswerId) return;
+    const previous = answerById.get(answer.supersedesAnswerId);
+    if (
+      !previous || previous.questionId !== answer.questionId ||
+      framing.answers.indexOf(previous) >= index
+    ) {
+      issue(
+        issues,
+        "invalid_supersession",
+        `$.framing.answers[${index}].supersedesAnswerId`,
+        "must resolve to an earlier answer for the same question",
+      );
+    }
+    if (superseded.has(answer.supersedesAnswerId)) {
+      issue(
+        issues,
+        "answer_superseded_twice",
+        `$.framing.answers[${index}].supersedesAnswerId`,
+        "an answer may be superseded only once",
+      );
+    }
+    superseded.add(answer.supersedesAnswerId);
+  });
+  for (const question of framing.questions) {
+    const active = framing.answers.filter((answer) =>
+      answer.questionId === question.id && !superseded.has(answer.id)
+    );
+    if (active.length > 1) {
+      issue(
+        issues,
+        "ambiguous_current_answer",
+        "$.framing.answers",
+        `question ${question.id} has more than one current answer`,
+      );
+    }
+  }
+
+  if (framing.currentBrief) {
+    validateProjectBriefInvariants(
+      project,
+      framing,
+      framing.currentBrief,
+      "$.framing.currentBrief",
+      issues,
+    );
+  }
+  if (framing.proposedBrief) {
+    validateProjectBriefInvariants(
+      project,
+      framing,
+      framing.proposedBrief,
+      "$.framing.proposedBrief",
+      issues,
+    );
+  }
+  if (
+    framing.currentBrief && framing.proposedBrief &&
+    framing.proposedBrief.revision <= framing.currentBrief.revision
+  ) {
+    issue(
+      issues,
+      "non_contiguous_revision",
+      "$.framing.proposedBrief.revision",
+      "must be newer than the current approved brief",
+    );
+  }
+
+  if (Boolean(framing.currentBrief) !== Boolean(framing.currentBriefApproval)) {
+    issue(
+      issues,
+      "missing_review_scope",
+      "$.framing",
+      "currentBrief and currentBriefApproval must be present together",
+    );
+  }
+  if (Boolean(framing.proposedBrief) !== Boolean(framing.proposalReview)) {
+    issue(
+      issues,
+      "missing_review_scope",
+      "$.framing",
+      "proposedBrief and proposalReview must be present together",
+    );
+  }
+  if (framing.currentBrief && framing.currentBriefApproval) {
+    validateBriefReviewBinding(
+      framing.currentBrief,
+      framing.currentBriefApproval,
+      "$.framing.currentBriefApproval",
+      true,
+      issues,
+    );
+    const objective = projectBriefObjective(framing.currentBrief);
+    if (
+      project.project.objective.title !== objective ||
+      project.project.objective.statement !== objective
+    ) {
+      issue(
+        issues,
+        "brief_objective_mismatch",
+        "$.project.objective",
+        "must mirror the current canonical brief objective",
+      );
+    }
+  }
+  if (framing.proposedBrief && framing.proposalReview) {
+    validateBriefReviewBinding(
+      framing.proposedBrief,
+      framing.proposalReview,
+      "$.framing.proposalReview",
+      false,
+      issues,
+    );
+  }
+}
+
+function validateBriefReviewBinding(
+  brief: ProjectBriefRevision,
+  review:
+    | EngineeringProjectFraming["currentBriefApproval"]
+    | EngineeringProjectFraming["proposalReview"],
+  path: string,
+  approved: boolean,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  if (!review) return;
+  if (
+    review.briefSnapshotId !== brief.id ||
+    review.briefRevision !== brief.revision
+  ) {
+    issue(
+      issues,
+      "review_brief_mismatch",
+      path,
+      "must reference the exact reviewed brief revision",
+    );
+  }
+  if (approved && review.status !== "approved") {
+    issue(issues, "review_status_mismatch", `${path}.status`, "must be approved");
+  }
+  if (!approved && review.status === "approved") {
+    issue(
+      issues,
+      "review_status_mismatch",
+      `${path}.status`,
+      "a proposal review cannot already be approved",
+    );
+  }
+  const decided = review.status !== "pending";
+  if (
+    !decided &&
+    (review.decidedAt || review.decidedBy || review.rationale)
+  ) {
+    issue(
+      issues,
+      "pending_review_has_decision",
+      path,
+      "a pending brief review cannot contain decision fields",
+    );
+  }
+  if (
+    decided &&
+    (!review.decidedAt || !review.decidedBy || !review.rationale)
+  ) {
+    issue(
+      issues,
+      "incomplete_review_decision",
+      path,
+      "a decided brief review requires time, human actor and rationale",
+    );
+  }
+  if (review.decidedBy?.origin === "agent") {
+    issue(
+      issues,
+      "agent_review_forbidden",
+      `${path}.decidedBy.origin`,
+      "an agent cannot approve or reject the project brief",
+    );
+  }
+  chronological(
+    review.requestedAt,
+    review.decidedAt,
+    `${path}.decidedAt`,
+    issues,
+  );
+}
+
+function validateProjectBriefInvariants(
+  project: EngineeringProjectSnapshot,
+  framing: EngineeringProjectFraming,
+  brief: ProjectBriefRevision,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const expectedBriefId = `${project.project.id}:brief`;
+  if (brief.briefId !== expectedBriefId) {
+    issue(
+      issues,
+      "brief_identity_mismatch",
+      `${path}.briefId`,
+      `must equal ${expectedBriefId}`,
+    );
+  }
+  if (brief.revision === 1 && brief.previous) {
+    issue(
+      issues,
+      "unexpected_previous",
+      `${path}.previous`,
+      "must be absent at brief revision 1",
+    );
+  } else if (
+    brief.revision > 1 &&
+    (!brief.previous || brief.previous.revision !== brief.revision - 1)
+  ) {
+    issue(
+      issues,
+      "non_contiguous_revision",
+      `${path}.previous`,
+      "must reference the immediately preceding brief revision",
+    );
+  }
+  if (Date.parse(brief.proposedAt) > Date.parse(project.generatedAt)) {
+    issue(
+      issues,
+      "invalid_chronology",
+      `${path}.proposedAt`,
+      "cannot be later than the current project revision",
+    );
+  }
+  requireUnique(brief.items, (item) => item.id, `${path}.items`, issues);
+  const objective = brief.items.filter((item) => item.kind === "objective");
+  if (objective.length !== 1) {
+    issue(
+      issues,
+      "invalid_brief_objective",
+      `${path}.items`,
+      "must contain exactly one objective",
+    );
+  }
+  if (!brief.items.some((item) => item.kind === "mission-scenario")) {
+    issue(
+      issues,
+      "missing_brief_section",
+      `${path}.items`,
+      "must contain at least one mission scenario",
+    );
+  }
+  if (!brief.items.some((item) => item.kind === "success-criterion")) {
+    issue(
+      issues,
+      "missing_brief_section",
+      `${path}.items`,
+      "must contain at least one success criterion",
+    );
+  }
+  brief.items.forEach((item, index) => {
+    const itemPath = `${path}.items[${index}]`;
+    if (item.sourceRefs.length === 0) {
+      issue(
+        issues,
+        "missing_source",
+        `${itemPath}.sourceRefs`,
+        "every brief item must retain at least one source",
+      );
+    }
+    for (const [sourceIndex, source] of item.sourceRefs.entries()) {
+      if (
+        source.kind === "answer" &&
+        !framing.answers.some((answer) =>
+          answer.id === source.reference &&
+          currentProjectAnswer(framing, answer.questionId)?.id === answer.id
+        )
+      ) {
+        issue(
+          issues,
+          "stale_brief_source",
+          `${itemPath}.sourceRefs[${sourceIndex}]`,
+          "must reference one current project answer",
+        );
+      }
+    }
+    if (item.kind === "assumption" && (!item.owner || !item.reviewTrigger)) {
+      issue(
+        issues,
+        "incomplete_assumption",
+        itemPath,
+        "an assumption requires both owner and reviewTrigger",
+      );
+    }
+    if (
+      item.kind === "observed-fact" &&
+      !item.sourceRefs.some((source) =>
+        source.kind === "tool" || source.kind === "document" ||
+        source.kind === "expert"
+      )
+    ) {
+      issue(
+        issues,
+        "unobserved_fact",
+        `${itemPath}.sourceRefs`,
+        "an observed fact requires a tool, document or expert source",
+      );
+    }
+  });
+}
+
 function validatePlanInvariants(
   project: EngineeringProjectSnapshot,
   issues: EngineeringProjectValidationIssue[],
@@ -1571,30 +2436,45 @@ function validatePlanInvariants(
   const plan = project.plan;
   const path = "$.plan";
   if (!plan) return;
-  if (!project.discoveryHandoff) {
-    issue(
-      issues,
-      "missing_reference",
-      path,
-      "an agent-published plan requires an approved discovery handoff",
-    );
-    return;
-  }
-  const handoff = project.discoveryHandoff;
-  if (
-    plan.basis.discoveryId !== handoff.discoveryId ||
-    plan.basis.snapshotId !== handoff.snapshotId ||
-    plan.basis.revision !== handoff.revision ||
-    plan.basis.briefId !== handoff.briefId ||
-    fingerprintKey(plan.basis.approvedBriefFingerprint) !==
-      fingerprintKey(handoff.approvedBriefFingerprint)
-  ) {
-    issue(
-      issues,
-      "approval_scope_mismatch",
-      `${path}.basis`,
-      "must exactly match the immutable approved discovery handoff",
-    );
+  if (project.schemaVersion === "3.0") {
+    const expected = approvedBriefBasisForProject(project);
+    if (
+      plan.basis.kind !== "approved-brief" || !expected ||
+      !sameApprovedBriefBasis(plan.basis, expected)
+    ) {
+      issue(
+        issues,
+        "approval_scope_mismatch",
+        `${path}.basis`,
+        "must exactly match the current human-approved project brief",
+      );
+    }
+  } else {
+    if (!project.discoveryHandoff || plan.basis.kind !== "approved-discovery") {
+      issue(
+        issues,
+        "missing_reference",
+        path,
+        "a historical V2 plan requires its approved discovery handoff",
+      );
+      return;
+    }
+    const handoff = project.discoveryHandoff;
+    if (
+      plan.basis.discoveryId !== handoff.discoveryId ||
+      plan.basis.snapshotId !== handoff.snapshotId ||
+      plan.basis.revision !== handoff.revision ||
+      plan.basis.briefId !== handoff.briefId ||
+      fingerprintKey(plan.basis.approvedBriefFingerprint) !==
+        fingerprintKey(handoff.approvedBriefFingerprint)
+    ) {
+      issue(
+        issues,
+        "approval_scope_mismatch",
+        `${path}.basis`,
+        "must exactly match the immutable approved discovery handoff",
+      );
+    }
   }
   if (plan.publishedBy.origin !== "agent") {
     issue(
@@ -1819,10 +2699,49 @@ function validateRunBasisInvariant(
   const path = `$.agentRuns[${index}]`;
   const basis = run.basis;
   if (!basis) return;
+  if (basis.kind === "approved-brief") {
+    const plan = project.plan;
+    if (
+      !plan || plan.basis.kind !== "approved-brief" ||
+      !sameApprovedBriefBasis(basis, plan.basis)
+    ) {
+      issue(
+        issues,
+        "approval_scope_mismatch",
+        `${path}.basis`,
+        "an approved-brief run must use the exact published plan basis",
+      );
+    }
+    const workItem = workById.get(run.workItemId);
+    if (
+      !workItem?.operation ||
+      workItem.operation.id !== "baseline.from-approved-brief" ||
+      workItem.operation.version !== "1"
+    ) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.workItemId`,
+        "an approved-brief basis is valid only for baseline.from-approved-brief@1",
+      );
+    }
+    if (!run.resultSnapshot && project.threadSnapshots.length > 0) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.basis`,
+        "an approved-brief run cannot remain active after its documentary ThreadSnapshot exists",
+      );
+    }
+    return;
+  }
   if (basis.kind !== "approved-discovery") return;
 
   const plan = project.plan;
-  if (!plan || !sameApprovedDiscoveryBasis(basis, plan.basis)) {
+  if (
+    !plan || plan.basis.kind !== "approved-discovery" ||
+    !sameApprovedDiscoveryBasis(basis, plan.basis)
+  ) {
     issue(
       issues,
       "approval_scope_mismatch",
@@ -1863,6 +2782,51 @@ function sameApprovedDiscoveryBasis(
     left.briefId === right.briefId &&
     fingerprintKey(left.approvedBriefFingerprint) ===
       fingerprintKey(right.approvedBriefFingerprint);
+}
+
+function sameApprovedBriefBasis(
+  left: EngineeringApprovedBriefBasis,
+  right: EngineeringApprovedBriefBasis,
+): boolean {
+  return left.projectId === right.projectId &&
+    left.projectSnapshotId === right.projectSnapshotId &&
+    left.projectRevision === right.projectRevision &&
+    left.briefId === right.briefId &&
+    left.briefSnapshotId === right.briefSnapshotId &&
+    left.briefRevision === right.briefRevision &&
+    fingerprintKey(left.approvedBriefFingerprint) ===
+      fingerprintKey(right.approvedBriefFingerprint);
+}
+
+function approvedBriefBasisForProject(
+  project: EngineeringProjectSnapshot,
+): EngineeringApprovedBriefBasis | undefined {
+  const framing = project.framing;
+  const brief = framing?.currentBrief;
+  const review = framing?.currentBriefApproval;
+  if (
+    !brief || !review || review.status !== "approved" ||
+    review.briefSnapshotId !== brief.id ||
+    review.briefRevision !== brief.revision ||
+    !review.decidedAt || review.decidedBy?.origin !== "human"
+  ) return undefined;
+  const receipt = [...(project.commandReceipts ?? [])].reverse().find((item) =>
+    item.type === "project.brief-approve" &&
+    Date.parse(item.appliedAt) === Date.parse(review.decidedAt!) &&
+    item.actor.id === review.decidedBy?.id &&
+    item.actor.origin === review.decidedBy?.origin
+  );
+  if (!receipt) return undefined;
+  return {
+    kind: "approved-brief",
+    projectId: project.project.id,
+    projectSnapshotId: receipt.resultingSnapshot.snapshotId,
+    projectRevision: receipt.resultingSnapshot.revision,
+    briefId: brief.briefId,
+    briefSnapshotId: brief.id,
+    briefRevision: brief.revision,
+    approvedBriefFingerprint: review.inputFingerprint,
+  };
 }
 
 function validateRunInvariant(
@@ -2235,7 +3199,10 @@ function validateCommandReceiptInvariant(
   issues: EngineeringProjectValidationIssue[],
 ): void {
   const path = `$.commandReceipts[${index}]`;
-  const firstCommandRevision = project.discoveryHandoff ? 1 : 2;
+  const firstCommandRevision = project.schemaVersion === "3.0" ||
+      project.discoveryHandoff
+    ? 1
+    : 2;
   if (
     receipt.resultingSnapshot.revision < firstCommandRevision ||
     receipt.resultingSnapshot.revision > project.revision
@@ -2277,6 +3244,23 @@ function validateCommandReceiptInvariant(
       "the first command receipt for a discovery handoff must create the project",
     );
   }
+  const isProjectStart = project.schemaVersion === "3.0" && index === 0;
+  if (isProjectStart && receipt.type !== "project.start") {
+    issue(
+      issues,
+      "invalid_project_start_receipt",
+      `${path}.type`,
+      "the first V3 receipt must create the project from its reported intent",
+    );
+  }
+  if (!isProjectStart && receipt.type === "project.start") {
+    issue(
+      issues,
+      "invalid_project_start_receipt",
+      `${path}.type`,
+      "project.start is valid only for the first V3 revision",
+    );
+  }
   const isDiscoveryHandoffCreation = project.discoveryHandoff !== undefined &&
     index === 0;
   // The brief approval remains human-owned in discoveryHandoff.approvedBy.
@@ -2292,7 +3276,9 @@ function validateCommandReceiptInvariant(
   }
   if (
     (receipt.type === "project.plan-publish" ||
-      receipt.type === "project.change-append") &&
+      receipt.type === "project.change-append" ||
+      receipt.type === "project.question-propose" ||
+      receipt.type === "project.brief-propose") &&
     receipt.actor.origin !== "agent"
   ) {
     issue(
@@ -2300,6 +3286,18 @@ function validateCommandReceiptInvariant(
       "command_authority_mismatch",
       `${path}.actor.origin`,
       `${receipt.type} requires agent authority`,
+    );
+  }
+  if (
+    (receipt.type === "project.brief-approve" ||
+      receipt.type === "project.brief-reject") &&
+    receipt.actor.origin !== "human"
+  ) {
+    issue(
+      issues,
+      "command_authority_mismatch",
+      `${path}.actor.origin`,
+      `${receipt.type} requires human authority`,
     );
   }
   if (
@@ -2314,7 +3312,7 @@ function validateCommandReceiptInvariant(
     );
   }
   if (
-    isDiscoveryHandoffCreation && project.revision === 1 &&
+    (isDiscoveryHandoffCreation || isProjectStart) && project.revision === 1 &&
     Date.parse(receipt.appliedAt) !== Date.parse(project.generatedAt)
   ) {
     issue(
@@ -2325,7 +3323,7 @@ function validateCommandReceiptInvariant(
     );
   }
   if (
-    isDiscoveryHandoffCreation &&
+    (isDiscoveryHandoffCreation || isProjectStart) &&
     Date.parse(receipt.issuedAt) > Date.parse(receipt.appliedAt)
   ) {
     issue(

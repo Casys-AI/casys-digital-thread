@@ -2,6 +2,7 @@ import {
   type EngineeringAgentRun,
   type EngineeringAgentRunStatus,
   type EngineeringApproval,
+  type EngineeringApprovedBriefBasis,
   type EngineeringApprovedDiscoveryBasis,
   type EngineeringBasisRef,
   type EngineeringCommandActor,
@@ -26,6 +27,7 @@ import { fingerprintsEqual, sha256Fingerprint } from "./deterministic-json.ts";
 import type { ContentFingerprint } from "./thread-snapshot.ts";
 import type { ProjectDiscoveryRevisionStore } from "./project-discovery-command-service.ts";
 import type { ProjectDiscoverySnapshot } from "./project-discovery.ts";
+import { currentProjectAnswer } from "./project-brief.ts";
 
 export interface EngineeringProjectRevisionStore {
   get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
@@ -228,7 +230,8 @@ export interface EngineeringProjectQueueEligibility {
 }
 
 export interface EngineeringProjectPlanningDependencies {
-  readonly discoveries: Pick<ProjectDiscoveryRevisionStore, "getRevision">;
+  /** Historical V2 reader. New V3 projects resolve their brief in-project. */
+  readonly discoveries?: Pick<ProjectDiscoveryRevisionStore, "getRevision">;
   readonly operations: EngineeringProjectPlanOperationRegistry;
   /**
    * Optional, code-owned admission gate for a particular reviewed V2 run.
@@ -254,7 +257,7 @@ export interface EngineeringProjectCompletionEvidenceValidator {
 export interface EngineeringProjectInitialCompletionEvidenceValidator {
   validateInitial(
     runId: string,
-    basis: EngineeringApprovedDiscoveryBasis,
+    basis: EngineeringApprovedDiscoveryBasis | EngineeringApprovedBriefBasis,
     operation: EngineeringOperationRef,
     resultSnapshot: EngineeringThreadSnapshotRef,
     evidenceRefs: readonly EngineeringThreadEntityRef[],
@@ -320,20 +323,11 @@ export class EngineeringProjectCommandService {
             "Project-plan publication is unavailable because no reviewed operation registry is configured.",
           );
         }
-        assertV2DiscoveryPlanningProject(draft);
+        assertPlanningProject(draft);
         assertPlanningCanChange(draft);
         validatePlanCommand(command);
-        const handoff = draft.discoveryHandoff;
-        if (!handoff) {
-          invalidTransition(
-            "Only a project created from an approved discovery can receive an initial agent plan.",
-          );
-        }
-        const discovery = await planning.discoveries.getRevision(
-          handoff.discoveryId,
-          handoff.revision,
-        );
-        const exactDiscovery = assertExactApprovedDiscoveryHandoff(draft, discovery);
+        const planningContext = await planningBasisForProject(draft, planning);
+        const basis = planningContext.basis;
 
         const phaseIds = new Set(command.phases.map((phase) => phase.id));
         const workItemIds = new Set(command.workItems.map((workItem) => workItem.id));
@@ -350,7 +344,11 @@ export class EngineeringProjectCommandService {
               `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${command.startingPoint}.`,
             );
           }
-          assertPlanBindingsResolveToDiscovery(resolved.bindings, exactDiscovery);
+          assertPlanBindingsResolve(
+            draft,
+            resolved.bindings,
+            planningContext.discovery,
+          );
           assertPlanWorkItemReferences(
             item,
             phaseIds,
@@ -416,14 +414,7 @@ export class EngineeringProjectCommandService {
 
         const plan: EngineeringProjectPlan = {
           startingPoint: command.startingPoint,
-          basis: {
-            kind: "approved-discovery",
-            discoveryId: handoff.discoveryId,
-            snapshotId: handoff.snapshotId,
-            revision: handoff.revision,
-            briefId: handoff.briefId,
-            approvedBriefFingerprint: structuredClone(handoff.approvedBriefFingerprint),
-          },
+          basis,
           publishedAt: appliedAt,
           publishedBy: actor(origin),
         };
@@ -463,19 +454,14 @@ export class EngineeringProjectCommandService {
             "Project-change publication is unavailable because no reviewed operation registry is configured.",
           );
         }
-        assertV2DiscoveryPlanningProject(draft);
+        assertPlanningProject(draft);
         assertChangeCanAppend(draft);
         validateChangeCommand(command);
         const currentHead = assertCurrentThreadSnapshotHead(
           draft,
           command.baseSnapshot,
         );
-        const handoff = draft.discoveryHandoff!;
-        const discovery = await planning.discoveries.getRevision(
-          handoff.discoveryId,
-          handoff.revision,
-        );
-        const exactDiscovery = assertExactApprovedDiscoveryHandoff(draft, discovery);
+        const planningContext = await planningBasisForProject(draft, planning);
         const startingPoint = draft.plan!.startingPoint;
 
         const existingPhaseIds = new Set(draft.phases.map((phase) => phase.id));
@@ -517,7 +503,11 @@ export class EngineeringProjectCommandService {
               `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${startingPoint}.`,
             );
           }
-          assertPlanBindingsResolveToDiscovery(resolved.bindings, exactDiscovery);
+          assertPlanBindingsResolve(
+            draft,
+            resolved.bindings,
+            planningContext.discovery,
+          );
           assertChangeWorkItemReferences(
             item,
             phaseIds,
@@ -697,7 +687,7 @@ export class EngineeringProjectCommandService {
           inputFingerprint: structuredClone(decision.inputFingerprint),
         };
       });
-      const queued = draft.schemaVersion === "2.0"
+      const queued = draft.schemaVersion !== "1.0"
         ? await queueV2Run(
           draft,
           command,
@@ -776,7 +766,7 @@ export class EngineeringProjectCommandService {
       "completed",
       async (run, appliedAt, draft) => {
         assertExactResultEvidence(draft, command.resultSnapshot, command.evidenceRefs);
-        if (draft.schemaVersion === "2.0") {
+        if (draft.schemaVersion !== "1.0") {
           const basis = run.basis;
           if (!basis) {
             invalidInput(
@@ -789,6 +779,20 @@ export class EngineeringProjectCommandService {
             if (!this.initialEvidenceValidator) {
               invalidInput(
                 "Initial completion validation is unavailable; refusing to publish a discovery-derived documentary baseline.",
+              );
+            }
+            await this.initialEvidenceValidator.validateInitial(
+              run.id,
+              basis,
+              workItem.operation!,
+              command.resultSnapshot,
+              command.evidenceRefs,
+            );
+          } else if (basis.kind === "approved-brief") {
+            assertInitialV3CompletionBasis(draft, workItem, basis);
+            if (!this.initialEvidenceValidator) {
+              invalidInput(
+                "Initial completion validation is unavailable; refusing to publish a brief-derived documentary baseline.",
               );
             }
             await this.initialEvidenceValidator.validateInitial(
@@ -1052,9 +1056,18 @@ export class EngineeringProjectCommandService {
 }
 
 function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
-  if (!draft.discoveryHandoff) {
+  if (draft.schemaVersion === "2.0" && !draft.discoveryHandoff) {
     invalidTransition(
-      "Only a project created from an approved discovery can receive an initial agent plan.",
+      "A historical V2 project requires its approved discovery handoff before planning.",
+    );
+  }
+  if (
+    draft.schemaVersion === "3.0" &&
+    (!draft.framing?.currentBrief ||
+      draft.framing.currentBriefApproval?.status !== "approved")
+  ) {
+    invalidTransition(
+      "A project requires a current human-approved brief before planning.",
     );
   }
   if (draft.threadSnapshots.length > 0) {
@@ -1092,9 +1105,12 @@ function assertChangeCanAppend(draft: EngineeringProjectSnapshot): void {
   }
   const completedBaseline = draft.agentRuns.some((run) => {
     const workItem = draft.workItems.find((item) => item.id === run.workItemId);
-    return run.status === "completed" && run.basis?.kind === "approved-discovery" &&
-      workItem?.operation?.id === "baseline.from-approved-discovery" &&
-      workItem.operation.version === "1";
+    return run.status === "completed" &&
+      ((run.basis?.kind === "approved-discovery" &&
+        workItem?.operation?.id === "baseline.from-approved-discovery") ||
+        (run.basis?.kind === "approved-brief" &&
+          workItem?.operation?.id === "baseline.from-approved-brief")) &&
+      workItem?.operation?.version === "1";
   });
   if (!completedBaseline || draft.threadSnapshots.length === 0) {
     invalidTransition(
@@ -1108,17 +1124,26 @@ function assertChangeCanAppend(draft: EngineeringProjectSnapshot): void {
   }
 }
 
-function assertV2DiscoveryPlanningProject(
+function assertPlanningProject(
   draft: EngineeringProjectSnapshot,
 ): void {
-  if (draft.schemaVersion !== "2.0") {
+  if (draft.schemaVersion === "1.0") {
     invalidTransition(
-      "V1 project history is read-only for discovery planning; create a new V2 project from an approved discovery instead.",
+      "V1 project history is read-only for planning; start a new project from intent instead.",
     );
   }
-  if (!draft.discoveryHandoff) {
+  if (draft.schemaVersion === "2.0" && !draft.discoveryHandoff) {
     invalidTransition(
-      "A V2 project plan requires an approved discovery handoff.",
+      "A historical V2 project plan requires its approved discovery handoff.",
+    );
+  }
+  if (
+    draft.schemaVersion === "3.0" &&
+    (!draft.framing?.currentBrief ||
+      draft.framing.currentBriefApproval?.status !== "approved")
+  ) {
+    invalidTransition(
+      "A project plan requires a current human-approved project brief.",
     );
   }
 }
@@ -1289,9 +1314,25 @@ function immutableQueueEligibilityBasis(
 ): EngineeringBasisRef {
   if (basis.kind === "approved-discovery") {
     const plannedBasis = project.plan?.basis;
-    if (!plannedBasis || !sameApprovedDiscoveryBasis(basis, plannedBasis)) {
+    if (
+      !plannedBasis || plannedBasis.kind !== "approved-discovery" ||
+      !sameApprovedDiscoveryBasis(basis, plannedBasis)
+    ) {
       invalidInput(
         "The reviewed approved-discovery basis is unavailable for queue-eligibility validation.",
+      );
+    }
+    return plannedBasis;
+  }
+
+  if (basis.kind === "approved-brief") {
+    const plannedBasis = project.plan?.basis;
+    if (
+      !plannedBasis || plannedBasis.kind !== "approved-brief" ||
+      !sameApprovedBriefBasis(basis, plannedBasis)
+    ) {
+      invalidInput(
+        "The reviewed approved-brief basis is unavailable for queue-eligibility validation.",
       );
     }
     return plannedBasis;
@@ -1320,7 +1361,10 @@ function assertV2QueueBasis(
   }
   if (basis.kind === "approved-discovery") {
     const plan = draft.plan;
-    if (!plan || !sameApprovedDiscoveryBasis(basis, plan.basis)) {
+    if (
+      !plan || plan.basis.kind !== "approved-discovery" ||
+      !sameApprovedDiscoveryBasis(basis, plan.basis)
+    ) {
       invalidInput(
         "The approved-discovery run basis must exactly match the published project plan basis.",
       );
@@ -1340,6 +1384,31 @@ function assertV2QueueBasis(
     }
     return structuredClone(basis);
   }
+  if (basis.kind === "approved-brief") {
+    const plan = draft.plan;
+    if (
+      !plan || plan.basis.kind !== "approved-brief" ||
+      !sameApprovedBriefBasis(basis, plan.basis)
+    ) {
+      invalidInput(
+        "The approved-brief run basis must exactly match the published project plan basis.",
+      );
+    }
+    if (
+      workItem.operation?.id !== "baseline.from-approved-brief" ||
+      workItem.operation.version !== "1"
+    ) {
+      invalidTransition(
+        "An approved-brief basis is valid only for baseline.from-approved-brief@1.",
+      );
+    }
+    if (draft.threadSnapshots.length !== 0) {
+      invalidTransition(
+        "An approved-brief basis is valid only before the first documentary ThreadSnapshot exists.",
+      );
+    }
+    return structuredClone(basis);
+  }
   if (basis.kind === "thread-snapshot") {
     assertThreadSnapshotBasisInput(basis);
     if (
@@ -1353,7 +1422,9 @@ function assertV2QueueBasis(
     assertDeclaredSnapshot(draft, basis);
     return structuredClone(basis);
   }
-  invalidInput("basis.kind must be approved-discovery or thread-snapshot.");
+  invalidInput(
+    "basis.kind must be approved-brief, approved-discovery or thread-snapshot.",
+  );
 }
 
 function assertThreadSnapshotBasisInput(
@@ -1390,13 +1461,30 @@ function sameApprovedDiscoveryBasis(
     fingerprintsEqual(left.approvedBriefFingerprint, right.approvedBriefFingerprint);
 }
 
+function sameApprovedBriefBasis(
+  left: EngineeringApprovedBriefBasis,
+  right: EngineeringApprovedBriefBasis,
+): boolean {
+  return left.projectId === right.projectId &&
+    left.projectSnapshotId === right.projectSnapshotId &&
+    left.projectRevision === right.projectRevision &&
+    left.briefId === right.briefId &&
+    left.briefSnapshotId === right.briefSnapshotId &&
+    left.briefRevision === right.briefRevision &&
+    fingerprintsEqual(
+      left.approvedBriefFingerprint,
+      right.approvedBriefFingerprint,
+    );
+}
+
 function assertInitialV2CompletionBasis(
   draft: EngineeringProjectSnapshot,
   workItem: EngineeringWorkItem,
   basis: EngineeringApprovedDiscoveryBasis,
 ): void {
   if (
-    !draft.plan || !sameApprovedDiscoveryBasis(basis, draft.plan.basis) ||
+    !draft.plan || draft.plan.basis.kind !== "approved-discovery" ||
+    !sameApprovedDiscoveryBasis(basis, draft.plan.basis) ||
     workItem.operation?.id !== "baseline.from-approved-discovery" ||
     workItem.operation.version !== "1"
   ) {
@@ -1407,6 +1495,28 @@ function assertInitialV2CompletionBasis(
   if (draft.threadSnapshots.length !== 0) {
     invalidTransition(
       "A discovery-derived initial result cannot be published after a documentary ThreadSnapshot exists.",
+    );
+  }
+}
+
+function assertInitialV3CompletionBasis(
+  draft: EngineeringProjectSnapshot,
+  workItem: EngineeringWorkItem,
+  basis: EngineeringApprovedBriefBasis,
+): void {
+  if (
+    !draft.plan || draft.plan.basis.kind !== "approved-brief" ||
+    !sameApprovedBriefBasis(basis, draft.plan.basis) ||
+    workItem.operation?.id !== "baseline.from-approved-brief" ||
+    workItem.operation.version !== "1"
+  ) {
+    invalidInput(
+      "A brief-derived initial result must complete the exact published baseline.from-approved-brief@1 operation.",
+    );
+  }
+  if (draft.threadSnapshots.length !== 0) {
+    invalidTransition(
+      "A brief-derived initial result cannot be published after a documentary ThreadSnapshot exists.",
     );
   }
 }
@@ -1543,6 +1653,80 @@ function assertExactApprovedDiscoveryHandoff(
   return discovery;
 }
 
+async function planningBasisForProject(
+  project: EngineeringProjectSnapshot,
+  planning: EngineeringProjectPlanningDependencies,
+): Promise<{
+  readonly basis: EngineeringApprovedBriefBasis | EngineeringApprovedDiscoveryBasis;
+  readonly discovery?: ProjectDiscoverySnapshot;
+}> {
+  if (project.schemaVersion === "3.0") {
+    return { basis: approvedBriefBasisForProject(project) };
+  }
+  const handoff = project.discoveryHandoff;
+  if (!handoff || !planning.discoveries) {
+    invalidTransition(
+      "The exact historical discovery reader required by this V2 project is unavailable.",
+    );
+  }
+  const discovery = await planning.discoveries.getRevision(
+    handoff.discoveryId,
+    handoff.revision,
+  );
+  const exactDiscovery = assertExactApprovedDiscoveryHandoff(project, discovery);
+  return {
+    basis: {
+      kind: "approved-discovery",
+      discoveryId: handoff.discoveryId,
+      snapshotId: handoff.snapshotId,
+      revision: handoff.revision,
+      briefId: handoff.briefId,
+      approvedBriefFingerprint: structuredClone(handoff.approvedBriefFingerprint),
+    },
+    discovery: exactDiscovery,
+  };
+}
+
+function approvedBriefBasisForProject(
+  project: EngineeringProjectSnapshot,
+): EngineeringApprovedBriefBasis {
+  const framing = project.framing;
+  const brief = framing?.currentBrief;
+  const review = framing?.currentBriefApproval;
+  if (
+    project.schemaVersion !== "3.0" || !brief || !review ||
+    review.status !== "approved" || !review.decidedAt ||
+    review.decidedBy?.origin !== "human" ||
+    review.briefSnapshotId !== brief.id ||
+    review.briefRevision !== brief.revision
+  ) {
+    invalidTransition(
+      "The project has no exact human-approved canonical brief for planning.",
+    );
+  }
+  const receipt = [...(project.commandReceipts ?? [])].reverse().find((item) =>
+    item.type === "project.brief-approve" &&
+    Date.parse(item.appliedAt) === Date.parse(review.decidedAt!) &&
+    item.actor.id === review.decidedBy?.id &&
+    item.actor.origin === "human"
+  );
+  if (!receipt) {
+    invalidTransition(
+      "The canonical brief is not anchored by an exact human approval receipt.",
+    );
+  }
+  return {
+    kind: "approved-brief",
+    projectId: project.project.id,
+    projectSnapshotId: receipt.resultingSnapshot.snapshotId,
+    projectRevision: receipt.resultingSnapshot.revision,
+    briefId: brief.briefId,
+    briefSnapshotId: brief.id,
+    briefRevision: brief.revision,
+    approvedBriefFingerprint: structuredClone(review.inputFingerprint),
+  };
+}
+
 function resolvePlanOperation(
   operations: EngineeringProjectPlanOperationRegistry,
   operation: EngineeringOperationRef,
@@ -1558,16 +1742,49 @@ function resolvePlanOperation(
   }
 }
 
-function assertPlanBindingsResolveToDiscovery(
+function assertPlanBindingsResolve(
+  project: EngineeringProjectSnapshot,
   bindings: readonly EngineeringOperationInputBinding[],
-  discovery: ProjectDiscoverySnapshot,
+  discovery?: ProjectDiscoverySnapshot,
 ): void {
   for (const binding of bindings) {
+    if (binding.source.kind === "approved-brief") {
+      if (
+        project.schemaVersion !== "3.0" ||
+        !project.framing?.currentBrief ||
+        project.framing.currentBriefApproval?.status !== "approved"
+      ) {
+        invalidInput(
+          `Operation binding ${binding.name} requires the current human-approved project brief.`,
+        );
+      }
+      continue;
+    }
+    if (binding.source.kind === "project-answer") {
+      const answerId = binding.source.answerId;
+      const answer = project.framing
+        ? project.framing.answers.find((item) =>
+          item.id === answerId &&
+          currentProjectAnswer(project.framing!, item.questionId)?.id === item.id
+        )
+        : undefined;
+      if (!answer || answer.kind !== "provided") {
+        invalidInput(
+          `Operation binding ${binding.name} must reference one current provided project answer.`,
+        );
+      }
+      continue;
+    }
+    if (binding.source.kind === "approved-discovery" && !discovery) {
+      invalidInput(
+        `Operation binding ${binding.name} requires a historical approved discovery.`,
+      );
+    }
     if (binding.source.kind !== "discovery-answer") continue;
     const answerId = binding.source.answerId;
-    const answer = discovery.answers.find((item) => item.id === answerId);
+    const answer = discovery?.answers.find((item) => item.id === answerId);
     if (
-      !answer || answer.kind !== "provided" ||
+      !discovery || !answer || answer.kind !== "provided" ||
       discovery.answers.some((item) => item.supersedesAnswerId === answer.id)
     ) {
       invalidInput(

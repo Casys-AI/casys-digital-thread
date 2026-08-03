@@ -12,20 +12,23 @@ provide observable engineering facts.
 ## Start from the current truth
 
 1. For an existing project, read `project_snapshot` before asking questions.
-2. For a new idea, restate the intended outcome as a provisional brief. Do not
-   silently promote it to a requirement or approved project.
-3. Inspect available engineering evidence and tools before asking for facts which
-   CAD, SysML, simulation, ERP, supplier, or regulatory sources can establish.
-4. Separate every statement into one of: human intent, observed fact, calculated
-   result, external evidence, provisional assumption, or approved decision.
+2. For a new idea, call `project_start` immediately with the reported intent. The
+   project exists from that first revision; restate the intended outcome as provisional
+   framing and do not silently promote it to a requirement or approved brief.
+3. Inspect available engineering evidence and tools before asking for facts which CAD,
+   SysML, simulation, ERP, supplier, or regulatory sources can establish.
+4. Separate every statement into one of: human intent, observed fact, calculated result,
+   external evidence, provisional assumption, or approved decision.
 
-If the control plane cannot yet persist a new project or question, say so. Keep the
-draft in the response instead of disguising it as canonical state.
+Use `project_question_propose` for a durable guidance question and
+`project_answer_record` for its sourced answer. Use `project_brief_propose` only when
+the current framing is coherent enough to review. The pending proposal is not the
+canonical brief until `project_brief_confirm` succeeds through exact human elicitation.
 
 ## Conduct an adaptive interview
 
-Ask one question at a time unless two questions are inseparable. Start with mission
-and operating context; derive technical questions only after those answers make them
+Ask one question at a time unless two questions are inseparable. Start with mission and
+operating context; derive technical questions only after those answers make them
 relevant. Do not run a fixed domain questionnaire.
 
 Every question must include:
@@ -42,31 +45,31 @@ When the human does not know:
 - adopt a clearly labelled provisional assumption only when it is low-risk and
   reversible;
 - keep high-impact, safety, compliance, or expensive choices unresolved;
-- identify the tool result, test, supplier quote, standard, or expert review needed
-  to resolve them.
+- identify the tool result, test, supplier quote, standard, or expert review needed to
+  resolve them.
 
 Read [question-and-evidence-contract.md](references/question-and-evidence-contract.md)
 when preparing question cards, a project brief, or cost evidence.
 
 ## Prepare decisions for review
 
-Use `project_decision_propose` only when a declared decision has a concrete,
-typed recommendation. Bind it to the exact project revision and evidence exposed by
-the control plane. Explain assumptions and downstream impact in the proposal summary.
+Use `project_decision_propose` only when a declared decision has a concrete, typed
+recommendation. Bind it to the exact project revision and evidence exposed by the
+control plane. Explain assumptions and downstream impact in the proposal summary.
 
-Never decide on the human's behalf, impersonate a reviewer, or manufacture evidence
-to unblock a run. When an exact consequential decision needs human authority, call
-the corresponding confirmation tool: MCP elicitation asks in the paired conversation
-and only its verified retry records the human outcome.
+Never decide on the human's behalf, impersonate a reviewer, or manufacture evidence to
+unblock a run. When an exact consequential decision needs human authority, call the
+corresponding confirmation tool: MCP elicitation asks in the paired conversation and
+only its verified retry records the human outcome.
 
-For a newly handed-off discovery project with no technical baseline, use
-`project_plan_publish` to declare the smallest bounded path, its registered
-operations, and any genuinely required decisions. Never invent an operation
-identifier, provider/tool name, raw provider argument, script, file path, or
-technical evidence in that plan. Once a registered work item is ready, use
-`project_agent_run_queue`; the server derives its run id, summary and exact basis.
-The agent may then execute that bounded operation. A plan never grants permission
-to invent an operation or bypass a still-unresolved human decision.
+For a project whose canonical brief is approved but has no technical baseline, use
+`project_plan_publish` to declare the smallest bounded path, its registered operations,
+and any genuinely required decisions. Never invent an operation identifier,
+provider/tool name, raw provider argument, script, file path, or technical evidence in
+that plan. Once a registered work item is ready, use `project_agent_run_queue`; the
+server derives its run id, summary and exact basis. The agent may then execute that
+bounded operation. A plan never grants permission to invent an operation or bypass a
+still-unresolved human decision.
 
 After the documentary baseline has produced a `ThreadSnapshot`, use the agent-only
 `project_change_append` command for the next bounded change. Read `project_snapshot`
@@ -78,9 +81,9 @@ change's provenance anchor, not a V2 run input; queueing still derives the run's
 add the SysON container seed and the separately bounded architecture operation, in that
 dependency order.
 
-If a needed decision has not been declared outside that unexecuted planning
-state, present it as a proposed question until the control plane offers an
-authorized way to persist it.
+If a needed decision has not been declared outside that unexecuted planning state,
+present it as a proposed question until the control plane offers an authorized way to
+persist it.
 
 ## Plan the engineering loop
 
@@ -91,10 +94,9 @@ bounded operation -> observed/calculated evidence -> impact evaluation
                   -> correction or recomputation proposal -> human review when consequential
 ```
 
-The agent may revise a plan that has not begun execution when new discovery
-information changes the best next step. Once a run, approval, or technical
-evidence exists, preserve that history and propose the next bounded change
-instead of rewriting it.
+The agent may revise a plan that has not begun execution when new framing information
+changes the best next step. Once a run, approval, or technical evidence exists, preserve
+that history and propose the next bounded change instead of rewriting it.
 
 For each approved objective, derive the smallest useful loop:
 
@@ -126,10 +128,10 @@ claim is review-ready only when its sources and assumptions are inspectable.
 
 ## Route compliance by jurisdiction
 
-Ask where the product is intended to be manufactured, supplied, and operated;
-these may be different jurisdictions. Do not ask a beginner to select a legal
-category or certification path. Derive candidate applicability from the intended
-use, then explain it for review.
+Ask where the product is intended to be manufactured, supplied, and operated; these may
+be different jurisdictions. Do not ask a beginner to select a legal category or
+certification path. Derive candidate applicability from the intended use, then explain
+it for review.
 
 For every candidate obligation, record the jurisdiction, issuing authority, exact
 source, publication or effective date, applicability rationale, and evidence still
@@ -154,5 +156,5 @@ Return a compact state update containing:
 
 Persist proposals, confirmations and results through the control plane. The paired
 conversation is the command and decision surface; the read-only Workbench is the
-durable, live projection where the person can inspect the organized dossier, lineage
-and evidence without repeating the same action in a second interface.
+durable, live projection where the person can inspect the organized dossier, lineage and
+evidence without repeating the same action in a second interface.

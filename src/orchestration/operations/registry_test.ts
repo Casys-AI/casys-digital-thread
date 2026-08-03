@@ -11,18 +11,18 @@ import {
   INSPECTION_DRONE_ARCHITECTURE_OPERATION,
 } from "../../domain/inspection-drone-architecture.ts";
 
-Deno.test("the V1 intake registry exposes exactly reviewed operation revisions", () => {
+Deno.test("the intake registry starts a new idea from the approved project brief", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
   const cad = getRegisteredIntakeOperation("existing-cad")!;
   const product = getRegisteredIntakeOperation("existing-product")!;
 
-  assertEquals(`${idea.id}@${idea.version}`, "baseline.from-approved-discovery@1");
+  assertEquals(`${idea.id}@${idea.version}`, "baseline.from-approved-brief@1");
   assertEquals(`${cad.id}@${cad.version}`, "baseline.capture-existing-cad@1");
   assertEquals(
     `${product.id}@${product.version}`,
     "baseline.capture-existing-product@1",
   );
-  assertEquals(idea.allowedBasisKinds, ["approved-discovery"]);
+  assertEquals(idea.allowedBasisKinds, ["approved-brief"]);
   assertEquals(idea.workItemKind, "define");
   assertEquals(idea.execution, "trusted");
   assertEquals(idea.title, "Create the engineering baseline");
@@ -73,8 +73,8 @@ Deno.test("operation declarations cannot mutate the code-owned registry", () => 
   (first.bindings[0].allowedSourceKinds as string[]).push("discovery-answer");
 
   const second = getRegisteredIntakeOperation("idea-or-spec")!;
-  assertEquals(second.allowedBasisKinds, ["approved-discovery"]);
-  assertEquals(second.bindings[0].allowedSourceKinds, ["approved-discovery"]);
+  assertEquals(second.allowedBasisKinds, ["approved-brief"]);
+  assertEquals(second.bindings[0].allowedSourceKinds, ["approved-brief"]);
 });
 
 Deno.test("a reviewed operation can enter a plan before its execution basis exists", () => {

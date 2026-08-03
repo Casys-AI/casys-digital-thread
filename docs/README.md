@@ -12,14 +12,10 @@ categories deliberately answer different questions.
 
 ## How-to guides — achieve a focused task
 
-- [Preview a guided project discovery](how-to/preview-project-discovery.md) starts the
-  MCP-authored pre-project conversation, opens the calm live dossier projection, and
-  explains chat-based human confirmation and approved-brief-to-project handoff through
-  MCP elicitation.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
-  assembles the observed CM-01 branches, starts the single-shell Preact product surface,
-  follows agent activity into live evidence and SysON context, and explains why the
-  cockpit observes while the paired conversation controls bounded provider work.
+  starts the single-shell Preact product surface, follows a project from its living
+  brief into activity and evidence, and explains why the cockpit observes while the
+  paired conversation controls bounded provider work.
 - [Assemble the CoffeeMachine CM-01 thread](how-to/assemble-coffee-machine-thread.md)
   bootstraps the reviewed SysON, Modelica, and ERPNext branches; explicit runners add
   CAD and the approved DripTray mechanical revision without manufacturing unrelated
@@ -59,10 +55,9 @@ categories deliberately answer different questions.
   execution runs, documentary bootstrap, the first bounded SysON model seed, immutable
   revisions, command receipts, authority, and exact references into immutable thread
   evidence.
-- [ProjectDiscoverySnapshot contract](reference/project-discovery.md) defines the
-  separate pre-project intent, guided questions, sourced answers, proposed brief,
-  immutable revisions, MCP authoring surface, chat confirmation, and project-shell
-  handoff.
+- [Living project brief](reference/project-brief.md) defines intent, guided questions,
+  sourced answers, proposal versus canonical truth, exact human confirmation, and the
+  approved-brief documentary baseline inside one project.
 - [Candidate mechanical-analysis declaration](reference/mechanical-proof-case.md)
   defines the strict non-executable CM-01 input schema, its limited identity binding,
   and the missing receipt boundary before it can attest a fail-closed execution.

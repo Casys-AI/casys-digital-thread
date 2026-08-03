@@ -7,6 +7,7 @@ import type { EngineeringProjectSnapshot } from "../domain/engineering-project.t
 import {
   APPROVED_DISCOVERY_BASELINE_OPERATION,
 } from "../orchestration/operations/approved-discovery-baseline.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
 import {
   INSPECTION_DRONE_ARCHITECTURE_OPERATION,
 } from "../domain/inspection-drone-architecture.ts";
@@ -83,7 +84,10 @@ export class RegisteredProjectRunExecutor {
         "The requested run does not identify a registered executable operation.",
       );
     }
-    if (sameOperation(operation, APPROVED_DISCOVERY_BASELINE_OPERATION)) {
+    if (
+      sameOperation(operation, APPROVED_BRIEF_BASELINE_OPERATION) ||
+      sameOperation(operation, APPROVED_DISCOVERY_BASELINE_OPERATION)
+    ) {
       return await this.#baseline.execute(origin, command);
     }
     if (sameOperation(operation, SYSON_MODEL_SEED_OPERATION)) {

@@ -140,9 +140,8 @@ deno task start                  # http://127.0.0.1:3020/mcp
 deno task preview:browser        # http://127.0.0.1:3021/
 # Canonical product shell: one Project tab from first brief to technical proof.
 deno task preview:cockpit --port=5175  # http://127.0.0.1:5175/
-# Direct component previews remain available for development and diagnosis.
+# Direct thread preview remains available for development and diagnosis.
 deno task preview:thread              # http://127.0.0.1:5173/
-deno task preview:discovery           # http://127.0.0.1:5174/?discovery=drone-concept
 # Reassemble only when deliberately producing new local evidence:
 deno task thread:assemble
 ```
@@ -152,16 +151,17 @@ local MCP Apps test harness, not the product Workbench.
 
 The product surface is one native Preact cockpit. Its **Project** tab begins as the
 living project brief and evolves into the project path and current engineering record;
-there is no separate Discovery page in the product. Confirmation and project creation
-remain in the paired conversation. Underneath that single shell, the backend preserves
-immutable intake revisions and later project revisions rather than overwriting audit
-history. The cockpit's atomic engineering document has an explicit surface: `planning`
-carries durable project intent before any technical baseline exists, while `evidence`
-combines that intent with the current technical projection (`ThreadSnapshot` plus
-provisional live overlay) and an explicit `aligned`/`thread-ahead` signal. The cockpit
-is organized as **Project**, **Activity**, **Product**, **Evidence**, and **Execution**
-so project objective and review, agent activity, physical structure, technical proof,
-and execution records no longer compete in one lineage screen.
+there is no separate Discovery page in the product. Project creation, brief review and
+every consequential confirmation remain in the paired conversation. The project exists
+from the first plain-language intent; its questions, sourced answers, proposed brief and
+approved canonical brief are immutable revisions of that same project. The cockpit's
+atomic engineering document has an explicit surface: `planning` carries durable project
+intent before any technical baseline exists, while `evidence` combines that intent with
+the current technical projection (`ThreadSnapshot` plus provisional live overlay) and an
+explicit `aligned`/`thread-ahead` signal. The cockpit is organized as **Project**,
+**Activity**, **Product**, **Evidence**, and **Execution** so project objective and
+review, agent activity, physical structure, technical proof, and execution records no
+longer compete in one lineage screen.
 
 `GET /api/thread/workbench` and its SSE stream are passive. The cockpit has no command
 or provider authority: it reads immutable project revisions and live projections only.
@@ -172,26 +172,23 @@ the agent cannot choose an unregistered provider call, confirm its own proposal,
 a raw provider response into canonical thread truth. A technical run completes only
 after its exact evidence has been persisted, read back, and attached.
 
-Internally, new product ideas begin as immutable revisions of a
-`ProjectDiscoverySnapshot`, not as fabricated technical evidence. This is a provenance
-boundary, not a second user-facing workspace: the latest revision is rendered as the
-current brief in the same **Project** tab. Agents prepare one bounded question at a
-time, record a sourced answer, and revise the brief through `project_discovery_*` MCP
-tools. The person confirms or corrects it in the paired conversation. On confirmation,
-`project_discovery_brief_confirm` uses signed MRTR elicitation and the agent may then
-call `project_discovery_project_create`; the domain handoff creates only a schema-`2.0`
-engineering project shell from the exact confirmed brief while retaining its
-fingerprint. The same Project tab then follows the engineering project's current
-revision, path, activity and evidence while the approved intake remains traceable.
+New product ideas begin immediately as schema-`3.0` `EngineeringProjectSnapshot`
+revisions, not as a separate intake aggregate and never as fabricated technical
+evidence. Agents use `project_start`, `project_question_propose`,
+`project_answer_record`, and `project_brief_propose` to build the living brief inside
+the project. `project_brief_confirm` uses signed MRTR elicitation in the paired
+conversation. A proposal never replaces the canonical brief until the exact revision and
+fingerprint are human-approved. The same **Project** tab follows this framing, the later
+path, activity, lineage, and evidence without a Discovery handoff or page.
 
 For an idea/specification project, the first ready work item is the reviewed
-`baseline.from-approved-discovery@1` operation. The agent presents the exact bounded run
-and obtains any consequential human authorization in the conversation through signed
-elicitation; the backend then captures the exact approved discovery and reviewed plan as
-an immutable, SHA-256-addressed document, then records the root `ThreadSnapshot` r1.
-This is a **documentary, pre-technical baseline**: it proves the handoff and plan
-provenance, not a SysML model, CAD geometry, FEA result, measurement, requirement
-verdict, conformity, or certification.
+`baseline.from-approved-brief@1` operation. The agent presents the exact bounded run and
+obtains any consequential human authorization in the conversation through signed
+elicitation; the backend then captures the exact approved brief and reviewed plan as an
+immutable, SHA-256-addressed document, then records the root `ThreadSnapshot` r1. This
+is a **documentary, pre-technical baseline**: it proves the brief and plan provenance,
+not a SysML model, CAD geometry, FEA result, measurement, requirement verdict,
+conformity, or certification.
 
 The first implemented provider-backed operation is `architecture.seed-syson-model@1`. It
 accepts only that exact documentary r1 and uses a server-fixed SysON sequence to create
@@ -208,8 +205,8 @@ provider evidence, and exact bindings.
 The source tree also implements the next guarded operation,
 `architecture.author-inspection-drone@1`. It can insert one fixed, high-level
 inspection-drone SysML fragment into the exact empty r2 container only when the same
-approved discovery explicitly says `primary-mission = inspection-controlled` and
-`payload-class = light-inspection-camera`. After the documentary baseline, the agent
+historical approved discovery explicitly says `primary-mission = inspection-controlled`
+and `payload-class = light-inspection-camera`. After the documentary baseline, the agent
 records it in a separate append-only project change, bound to the exact current thread
 snapshot. Its execution basis is the exact r2 snapshot. It records an insertion
 attestation and narrow read-back before it could publish r3. This is not released into

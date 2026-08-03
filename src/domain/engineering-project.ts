@@ -1,5 +1,6 @@
 import type { ContentFingerprint, ThreadEntityKind } from "./thread-snapshot.ts";
 import type { IsoDateTime } from "./types.ts";
+import type { EngineeringProjectFraming } from "./project-brief.ts";
 
 /**
  * Immutable, transport-independent intent and execution state for one
@@ -8,11 +9,11 @@ import type { IsoDateTime } from "./types.ts";
  */
 
 /**
- * V1 remains the immutable CM-01 history format. New projects created from a
- * human-approved discovery handoff are V2: their first run is anchored to the
- * approved discovery, then every later run is anchored to a ThreadSnapshot.
+ * V1 and V2 remain immutable history formats. New projects are V3: they exist
+ * from first intent, own their living brief, anchor the documentary baseline to
+ * its exact human-approved revision, then anchor later runs to ThreadSnapshots.
  */
-export type EngineeringProjectSchemaVersion = "1.0" | "2.0";
+export type EngineeringProjectSchemaVersion = "1.0" | "2.0" | "3.0";
 
 export interface EngineeringProjectPreviousSnapshot {
   readonly snapshotId: string;
@@ -34,6 +35,12 @@ export interface EngineeringProjectIdentity {
 export type EngineeringCommandOriginKind = "human" | "agent";
 
 export type EngineeringProjectCommandName =
+  | "project.start"
+  | "project.question-propose"
+  | "project.answer-record"
+  | "project.brief-propose"
+  | "project.brief-approve"
+  | "project.brief-reject"
   | "project.create-from-discovery"
   | "project.plan-publish"
   | "project.change-append"
@@ -121,6 +128,18 @@ export interface EngineeringApprovedDiscoveryBasis {
   readonly approvedBriefFingerprint: ContentFingerprint;
 }
 
+/** Exact human-approved brief within one immutable V3 project revision. */
+export interface EngineeringApprovedBriefBasis {
+  readonly kind: "approved-brief";
+  readonly projectId: string;
+  readonly projectSnapshotId: string;
+  readonly projectRevision: number;
+  readonly briefId: string;
+  readonly briefSnapshotId: string;
+  readonly briefRevision: number;
+  readonly approvedBriefFingerprint: ContentFingerprint;
+}
+
 /** Exact ThreadSnapshot state used after the first V2 documentary baseline. */
 export interface EngineeringThreadSnapshotBasis extends EngineeringThreadSnapshotRef {
   readonly kind: "thread-snapshot";
@@ -137,6 +156,7 @@ export interface EngineeringThreadSnapshotBasis extends EngineeringThreadSnapsho
  */
 export type EngineeringBasisRef =
   | EngineeringApprovedDiscoveryBasis
+  | EngineeringApprovedBriefBasis
   | EngineeringThreadSnapshotBasis;
 
 /**
@@ -147,6 +167,17 @@ export type EngineeringOperationInputBinding =
   | {
     readonly name: string;
     readonly source: { readonly kind: "approved-discovery" };
+  }
+  | {
+    readonly name: string;
+    readonly source: { readonly kind: "approved-brief" };
+  }
+  | {
+    readonly name: string;
+    readonly source: {
+      readonly kind: "project-answer";
+      readonly answerId: string;
+    };
   }
   | {
     readonly name: string;
@@ -179,12 +210,12 @@ export interface EngineeringOperationRef {
 }
 
 /**
- * Agent-published planning metadata. It names the exact approved discovery
- * that grounded the path and carries no technical evidence or authorization.
+ * Agent-published planning metadata. V3 names the exact approved living brief;
+ * V2 discovery bases remain readable as immutable historical records.
  */
 export interface EngineeringProjectPlan {
   readonly startingPoint: EngineeringProjectStartingPoint;
-  readonly basis: EngineeringApprovedDiscoveryBasis;
+  readonly basis: EngineeringApprovedDiscoveryBasis | EngineeringApprovedBriefBasis;
   readonly publishedAt: IsoDateTime;
   readonly publishedBy: EngineeringCommandActor;
 }
@@ -391,6 +422,8 @@ export interface EngineeringProjectSnapshot {
   readonly previous?: EngineeringProjectPreviousSnapshot;
   readonly generatedAt: IsoDateTime;
   readonly project: EngineeringProjectIdentity;
+  /** Required for V3: the living, versioned intent owned by this project. */
+  readonly framing?: EngineeringProjectFraming;
   /**
    * Present only for a project born from a human-approved discovery handoff.
    * Existing projects retain their own independently established provenance.

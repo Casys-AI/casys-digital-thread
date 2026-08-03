@@ -5,6 +5,12 @@ import type {
   EngineeringProjectPhase,
   EngineeringWorkItem,
 } from "../../../domain/engineering-project.ts";
+import {
+  currentProjectAnswer,
+  engineeringProjectFramingStatus,
+  projectBriefItems,
+  type ProjectBriefRevision,
+} from "../../../domain/project-brief.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
 import type { EngineeringPlanningWorkbenchSnapshot } from "../thread/types.ts";
 import { BaselineRunActivity } from "./baseline-run-activity.tsx";
@@ -34,6 +40,24 @@ export function PlanningWorkbench({
   const items = sortWorkItems(project.workItems, project.phases);
   const hasPath = phases.length > 0;
   const baseline = workbench.planning.technicalBaseline;
+  const framing = project.framing;
+  const framingStatus = framing
+    ? engineeringProjectFramingStatus(framing)
+    : undefined;
+  const displayedBrief = framing?.proposedBrief ?? framing?.currentBrief;
+  const displayedObjective = displayedBrief
+    ? projectBriefItems(displayedBrief, "objective")[0]?.statement
+    : framing?.intent.statement ?? project.project.objective.statement;
+  const projectStateLabel = framingStatus && framingStatus !== "approved"
+    ? framingStatusLabel(framingStatus)
+    : projectBriefStatusLabel(brief);
+  const projectStateDetail = hasPath
+    ? `${brief.completedPhases}/${brief.phases.length} phase gates satisfied`
+    : framingStatus === "awaiting-review"
+    ? "Review the brief before planning"
+    : framingStatus === "revision-requested"
+    ? "Continue refining it with the agent"
+    : "Shape the brief with the agent";
 
   return (
     <div class="thread-workbench mcp-view-surface planning-workbench">
@@ -65,7 +89,7 @@ export function PlanningWorkbench({
           </div>
           <div class="thread-session-change">
             <small>PROJECT STATE</small>
-            <strong>{projectBriefStatusLabel(brief)}</strong>
+            <strong>{projectStateLabel}</strong>
           </div>
           <dl class="thread-session-facts">
             <div>
@@ -86,26 +110,44 @@ export function PlanningWorkbench({
             <strong>{String(project.revision).padStart(2, "0")}</strong>
           </div>
           <div class="project-objective-copy">
-            <p>CURRENT PROJECT BRIEF</p>
+            <p>
+              {framingStatus === "awaiting-review"
+                ? "BRIEF PROPOSED FOR REVIEW"
+                : framingStatus === "revision-requested"
+                ? "BRIEF REVISION REQUESTED"
+                : framingStatus === "approved"
+                ? "CANONICAL PROJECT BRIEF"
+                : "INITIAL PROJECT INTENT"}
+            </p>
             <h3 id="project-objective-title">
-              {project.project.objective.title}
+              {displayedObjective}
             </h3>
-            <blockquote>{project.project.objective.statement}</blockquote>
+            <blockquote>
+              {framing?.intent.statement ?? project.project.objective.statement}
+            </blockquote>
           </div>
           <div
             class="project-status-seal"
             data-tone={projectStatusTone(brief.status)}
-            aria-label={`Project status: ${projectBriefStatusLabel(brief)}`}
+            aria-label={`Project status: ${projectStateLabel}`}
           >
             <i aria-hidden="true" />
             <span>PROJECT STATE</span>
-            <strong>{projectBriefStatusLabel(brief)}</strong>
-            <small>
-              {brief.completedPhases}/{brief.phases.length}{" "}
-              phase gates satisfied
-            </small>
+            <strong>{projectStateLabel}</strong>
+            <small>{projectStateDetail}</small>
           </div>
         </section>
+
+        {framing && (
+          <ProjectFraming
+            projectId={project.project.id}
+            brief={displayedBrief}
+            status={framingStatus!}
+            questions={framing.questions.filter((question) =>
+              currentProjectAnswer(framing, question.id) === undefined
+            )}
+          />
+        )}
 
         <section
           class="planning-baseline-notice"
@@ -140,7 +182,7 @@ export function PlanningWorkbench({
             <span>
               {hasPath
                 ? "This path is durable planning intent. It is not proof that a technical operation ran."
-                : "The approved discovery is linked to this project, but no work path or technical evidence is recorded yet."}
+                : "The project brief is being shaped with the agent. No work path or technical evidence is recorded yet."}
             </span>
           </header>
           {hasPath
@@ -237,11 +279,16 @@ export function PlanningWorkbench({
                 <dd>{startingPointLabel(project.plan.startingPoint)}</dd>
               </div>
               <div>
-                <dt>Approved discovery</dt>
+                <dt>
+                  {project.plan.basis.kind === "approved-brief"
+                    ? "Approved brief"
+                    : "Historical discovery"}
+                </dt>
                 <dd>
                   <code>
-                    {project.plan.basis.discoveryId}@{project.plan.basis
-                      .revision}
+                    {project.plan.basis.kind === "approved-brief"
+                      ? `${project.plan.basis.briefId}@${project.plan.basis.briefRevision}`
+                      : `${project.plan.basis.discoveryId}@${project.plan.basis.revision}`}
                   </code>
                 </dd>
               </div>
@@ -255,6 +302,109 @@ export function PlanningWorkbench({
       </main>
     </div>
   );
+}
+
+function ProjectFraming({
+  projectId,
+  brief,
+  status,
+  questions,
+}: {
+  projectId: string;
+  brief?: ProjectBriefRevision;
+  status: ReturnType<typeof engineeringProjectFramingStatus>;
+  questions: NonNullable<
+    EngineeringPlanningWorkbenchSnapshot["project"]["framing"]
+  >["questions"];
+}): JSX.Element {
+  const sections = brief
+    ? [{
+      title: "Mission",
+      items: projectBriefItems(brief, "mission-scenario"),
+    }, {
+      title: "Success criteria",
+      items: projectBriefItems(brief, "success-criterion"),
+    }, {
+      title: "Constraints",
+      items: projectBriefItems(brief, "constraint"),
+    }, {
+      title: "Out of scope",
+      items: projectBriefItems(brief, "exclusion"),
+    }, {
+      title: "Assumptions to verify",
+      items: projectBriefItems(brief, "assumption"),
+    }, {
+      title: "Compliance targets",
+      items: projectBriefItems(brief, "compliance-target"),
+    }].filter((section) => section.items.length > 0)
+    : [];
+  return (
+    <section class="project-framing" aria-labelledby="project-framing-title">
+      <header class="project-section-label">
+        <div>
+          <p>LIVING PROJECT BRIEF</p>
+          <h3 id="project-framing-title">
+            One project, from first intent onward
+          </h3>
+        </div>
+        <span data-state={status}>{framingStatusLabel(status)}</span>
+      </header>
+      {brief
+        ? (
+          <>
+            <div class="project-framing-sections">
+              {sections.map((section) => (
+                <section key={section.title}>
+                  <h4>{section.title}</h4>
+                  <ul>
+                    {section.items.map((item) => (
+                      <li key={item.id}>{item.statement}</li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+            <p class="project-framing-boundary">
+              {status === "awaiting-review"
+                ? "Review this proposal in the paired conversation. It does not replace the canonical brief until you confirm the exact revision."
+                : status === "revision-requested"
+                ? "Continue the conversation with the agent; the last approved brief remains canonical while this proposal is corrected."
+                : "This approved brief anchors planning. Later technical facts stay in SysML, CAD, simulation and evidence records linked to this project."}
+            </p>
+          </>
+        )
+        : (
+          <p class="project-framing-empty">
+            Project {projectId}{" "}
+            already exists. Continue describing the product in the paired
+            conversation; the agent will add focused questions and consolidate
+            the first reviewable brief here.
+          </p>
+        )}
+      {questions.length > 0 && (
+        <section class="project-framing-questions">
+          <p>QUESTIONS TO DISCUSS WITH THE AGENT</p>
+          <ol>
+            {questions.slice(0, 3).map((question) => (
+              <li key={question.id}>
+                <strong>{question.prompt}</strong>
+                <span>{question.whyItMatters}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    </section>
+  );
+}
+
+function framingStatusLabel(
+  status: ReturnType<typeof engineeringProjectFramingStatus>,
+): string {
+  if (status === "awaiting-review") return "Ready for conversation review";
+  if (status === "revision-requested") return "Revision requested";
+  if (status === "approved") return "Approved intent";
+  return "Framing with agent";
 }
 
 function PlanningWorkItem({

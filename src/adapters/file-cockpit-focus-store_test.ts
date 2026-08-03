@@ -9,15 +9,18 @@ Deno.test("file cockpit focus keeps an append-only CAS target and exact retries"
   const directory = await Deno.makeTempDir({ prefix: "cockpit-focus-" });
   try {
     const store = new FileCockpitFocusStore(directory);
-    const first = focus(1, "focus-discovery", {
-      kind: "discovery",
-      discoveryId: "drone-concept",
+    const first = focus(1, "focus-drone", {
+      kind: "project",
+      projectId: "drone-concept",
     });
     assertEquals(await store.select(first, 0), first);
     assertEquals(await store.select(first, 0), first);
     await assertRejects(
       () =>
-        store.select({ ...first, target: { kind: "project", projectId: "drone" } }, 0),
+        store.select({
+          ...first,
+          target: { kind: "project", projectId: "other" },
+        }, 0),
       CockpitFocusConflictError,
       "different arguments",
     );
@@ -33,7 +36,11 @@ Deno.test("file cockpit focus keeps an append-only CAS target and exact retries"
       "cannot be reused after later focus revision 2",
     );
     await assertRejects(
-      () => store.select(focus(3, "stale", { kind: "project", projectId: "other" }), 1),
+      () =>
+        store.select(
+          focus(3, "stale", { kind: "project", projectId: "other" }),
+          1,
+        ),
       CockpitFocusConflictError,
       "current revision is 2",
     );
@@ -42,13 +49,50 @@ Deno.test("file cockpit focus keeps an append-only CAS target and exact retries"
   }
 });
 
+Deno.test("new project focus can extend a journal with retired discovery history", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "cockpit-focus-history-",
+  });
+  try {
+    const workspace = `${directory}/primary`;
+    await Deno.mkdir(workspace, { recursive: true });
+    await Deno.writeTextFile(
+      `${workspace}/0000000001.json`,
+      JSON.stringify({
+        schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,
+        workspaceId: "primary",
+        revision: 1,
+        commandId: "historical-discovery-focus",
+        selectedAt: "2026-08-02T12:00:00.000Z",
+        selectedBy: { kind: "agent", actorId: "mcp:test@1" },
+        target: { kind: "discovery", discoveryId: "retired-discovery" },
+      }),
+    );
+    const current = focus(2, "historical-project-focus", {
+      kind: "project",
+      projectId: "old-project",
+    });
+    await Deno.writeTextFile(
+      `${workspace}/0000000002.json`,
+      JSON.stringify(current),
+    );
+
+    const store = new FileCockpitFocusStore(directory);
+    const next = focus(3, "select-v3-project", {
+      kind: "project",
+      projectId: "inspection-drone-v3",
+    });
+    assertEquals(await store.select(next, 2), next);
+    assertEquals((await store.get("primary"))?.target, next.target);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 function focus(
   revision: number,
   commandId: string,
-  target: { kind: "discovery"; discoveryId: string } | {
-    kind: "project";
-    projectId: string;
-  },
+  target: { kind: "project"; projectId: string },
 ) {
   return {
     schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,

@@ -104,39 +104,30 @@ Deno.test("Discovery Workbench SSE emits the full snapshot when a revision advan
   });
 });
 
-Deno.test("Discovery Workbench active route follows focus and signals a full-surface transition", async () => {
+Deno.test("standalone Discovery preview refuses to impersonate a selected project", async () => {
   await withDiscovery(async ({ store }) => {
-    const focus = new MutableFocus(focusSnapshot({
-      kind: "discovery",
-      discoveryId: DISCOVERY_ID,
-    }));
+    const focus = new MutableFocus();
+    focus.value = focusSnapshot({ kind: "project", projectId: "drone-project" });
     const handler = createDiscoveryWorkbenchHandler({
       discoveries: store,
       html: "unused",
       focus,
       workspaceId: "primary",
+      fallbackDiscoveryId: DISCOVERY_ID,
       pollIntervalMs: 2,
     });
     const read = await handler(
       new Request("http://localhost/api/project-discoveries/active"),
     );
-    assertEquals(read.status, 200);
-    assertEquals((await read.json()).discoveryId, DISCOVERY_ID);
+    assertEquals(read.status, 409);
+    assertEquals((await read.json()).projectId, "drone-project");
     const stream = await handler(
       new Request(
         "http://localhost/api/project-discoveries/active/events",
-        { headers: { "Last-Event-ID": "1:drone-concept:1" } },
       ),
     );
-    const reader = stream.body!.getReader();
-    try {
-      focus.value = focusSnapshot({ kind: "project", projectId: "drone-project" }, 2);
-      const event = new TextDecoder().decode(await readChunk(reader));
-      assertStringIncludes(event, "event: cockpit-focus");
-      assertStringIncludes(event, '"kind":"project"');
-    } finally {
-      await reader.cancel();
-    }
+    assertEquals(stream.status, 409);
+    assertEquals((await stream.json()).projectId, "drone-project");
   });
 });
 

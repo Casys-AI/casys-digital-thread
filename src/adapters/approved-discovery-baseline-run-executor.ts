@@ -6,6 +6,7 @@ import {
 } from "../domain/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
+  EngineeringApprovedBriefBasis,
   EngineeringApprovedDiscoveryBasis,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
@@ -19,6 +20,10 @@ import {
   APPROVED_DISCOVERY_BASELINE_OPERATION,
   materializeApprovedDiscoveryBaseline,
 } from "../orchestration/operations/approved-discovery-baseline.ts";
+import {
+  APPROVED_BRIEF_BASELINE_OPERATION,
+  materializeApprovedBriefBaseline,
+} from "../orchestration/operations/approved-brief-baseline.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
 import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-discovery-baseline-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
@@ -26,6 +31,12 @@ import type { EngineeringProjectRunLease } from "./file-engineering-project-run-
 type ApprovedDiscoveryBaselineMaterialization = Awaited<
   ReturnType<typeof materializeApprovedDiscoveryBaseline>
 >;
+type ApprovedBriefBaselineMaterialization = Awaited<
+  ReturnType<typeof materializeApprovedBriefBaseline>
+>;
+type DocumentaryBaselineMaterialization =
+  | ApprovedDiscoveryBaselineMaterialization
+  | ApprovedBriefBaselineMaterialization;
 type ExactSnapshotPresence = "exact" | "absent" | "unknown";
 
 export interface ApprovedDiscoveryBaselineRunExecutorCommand {
@@ -107,7 +118,7 @@ export class ApprovedDiscoveryBaselineRunExecutor {
   ): Promise<EngineeringProjectSnapshot> {
     let snapshotPersisted = false;
     let claimSucceeded = false;
-    let materialized: ApprovedDiscoveryBaselineMaterialization | undefined;
+    let materialized: DocumentaryBaselineMaterialization | undefined;
     try {
       // Reject an ineligible run before claiming it.  Claiming first would
       // mutate an arbitrary queued run (including a readable V1 project)
@@ -236,7 +247,44 @@ export class ApprovedDiscoveryBaselineRunExecutor {
     workItem: EngineeringWorkItem,
     capturedAt: string,
   ) {
-    const basis = run.basis as EngineeringApprovedDiscoveryBasis;
+    const basis = run.basis as
+      | EngineeringApprovedDiscoveryBasis
+      | EngineeringApprovedBriefBasis;
+    if (basis.kind === "approved-brief") {
+      const approvedProject = await this.#projects.getRevision(
+        basis.projectId,
+        basis.projectRevision,
+      );
+      if (
+        !approvedProject || approvedProject.id !== basis.projectSnapshotId
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "The exact project revision containing the approved brief is no longer readable.",
+        );
+      }
+      const first = await materializeApprovedBriefBaseline({
+        project,
+        approvedProject,
+        runId: run.id,
+        capturedAt,
+      });
+      const result = await materializeApprovedBriefBaseline({
+        project,
+        approvedProject,
+        runId: run.id,
+        capturedAt,
+        captureUri: this.#captures.uriForBrief(first.sha256),
+      });
+      if (
+        deterministicJson(first.capture) !== deterministicJson(result.capture) ||
+        deterministicJson(first.sha256) !== deterministicJson(result.sha256) ||
+        workItem.id !== result.capture.workItemId
+      ) {
+        throw new Error("Approved-brief baseline materialization was not stable.");
+      }
+      return result;
+    }
     const discovery = await this.#discoveries.getRevision(
       basis.discoveryId,
       basis.revision,
@@ -271,7 +319,7 @@ export class ApprovedDiscoveryBaselineRunExecutor {
   }
 
   private async assertExactPersistedSnapshot(
-    materialized: ApprovedDiscoveryBaselineMaterialization,
+    materialized: DocumentaryBaselineMaterialization,
   ): Promise<void> {
     if ((await this.exactPersistedSnapshotPresence(materialized)) !== "exact") {
       throw new Error(
@@ -281,7 +329,7 @@ export class ApprovedDiscoveryBaselineRunExecutor {
   }
 
   private async exactPersistedSnapshotPresence(
-    materialized: ApprovedDiscoveryBaselineMaterialization,
+    materialized: DocumentaryBaselineMaterialization,
   ): Promise<ExactSnapshotPresence> {
     try {
       const persisted = await this.#snapshots.get(materialized.snapshot.id);
@@ -297,7 +345,7 @@ export class ApprovedDiscoveryBaselineRunExecutor {
   private async recordFailureIfOwned(
     origin: EngineeringProjectCommandOrigin,
     command: ApprovedDiscoveryBaselineRunExecutorCommand,
-    materialized: ApprovedDiscoveryBaselineMaterialization,
+    materialized: DocumentaryBaselineMaterialization,
   ): Promise<void> {
     try {
       if ((await this.exactPersistedSnapshotPresence(materialized)) !== "absent") {
@@ -323,7 +371,7 @@ export class ApprovedDiscoveryBaselineRunExecutor {
         expectedRevision: project.revision,
         summary:
           "The documentary baseline stopped before a durable snapshot was published.",
-        code: "approved-discovery-baseline-not-published",
+        code: "documentary-baseline-not-published",
         message:
           "The initial documentary baseline could not be durably published. No technical evidence was created.",
       });
@@ -355,14 +403,14 @@ export class ApprovedDiscoveryBaselineRunExecutor {
       await this.#liveUpdates.appendOnce({
         subjectId: input.subjectId,
         runId: input.runId,
-        operationId: "baseline.from-approved-discovery",
+        operationId: "baseline.documentary",
         baseRevision: 0,
         state: input.state,
         recordedAt: input.recordedAt,
         graph: {
           nodes: [{
-            id: `${input.runId}:approved-discovery-document`,
-            ref: { kind: "artifact", id: `${input.runId}:approved-discovery-document` },
+            id: `${input.runId}:project-brief-document`,
+            ref: { kind: "artifact", id: `${input.runId}:project-brief-document` },
             entityKind: "artifact",
             artifactKind: "document",
             label: input.label,
@@ -446,7 +494,7 @@ function requireApprovedDiscoveryBaselineRun(
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "This executor may run only the exact human-queued V2 approved-discovery baseline it claimed.",
+      "This executor may run only the exact human-queued documentary baseline it claimed.",
     );
   }
   return workItem;
@@ -457,16 +505,18 @@ function requireApprovedDiscoveryBaselineShape(
   run: EngineeringAgentRun,
 ): EngineeringWorkItem {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
-  if (
-    project.schemaVersion !== "2.0" ||
-    run.basis?.kind !== "approved-discovery" ||
-    !workItem ||
-    workItem.operation?.id !== APPROVED_DISCOVERY_BASELINE_OPERATION.id ||
-    workItem.operation.version !== APPROVED_DISCOVERY_BASELINE_OPERATION.version
-  ) {
+  const historical = project.schemaVersion === "2.0" &&
+    run.basis?.kind === "approved-discovery" &&
+    workItem?.operation?.id === APPROVED_DISCOVERY_BASELINE_OPERATION.id &&
+    workItem.operation.version === APPROVED_DISCOVERY_BASELINE_OPERATION.version;
+  const current = project.schemaVersion === "3.0" &&
+    run.basis?.kind === "approved-brief" &&
+    workItem?.operation?.id === APPROVED_BRIEF_BASELINE_OPERATION.id &&
+    workItem.operation.version === APPROVED_BRIEF_BASELINE_OPERATION.version;
+  if (!workItem || (!historical && !current)) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "This executor may run only the exact human-queued V2 approved-discovery baseline.",
+      "This executor may run only an exact queued approved-brief documentary baseline.",
     );
   }
   return workItem;
@@ -483,9 +533,7 @@ function requiredRunStart(run: EngineeringAgentRun): string {
 }
 
 function snapshotReference(
-  snapshot: Awaited<
-    ReturnType<typeof materializeApprovedDiscoveryBaseline>
-  >["snapshot"],
+  snapshot: DocumentaryBaselineMaterialization["snapshot"],
 ): EngineeringThreadSnapshotRef {
   return {
     snapshotId: snapshot.id,
@@ -495,9 +543,7 @@ function snapshotReference(
 }
 
 function documentEvidenceReference(
-  snapshot: Awaited<
-    ReturnType<typeof materializeApprovedDiscoveryBaseline>
-  >["snapshot"],
+  snapshot: DocumentaryBaselineMaterialization["snapshot"],
 ): EngineeringThreadEntityRef {
   const document = snapshot.artifacts[0];
   if (!document) throw new Error("Documentary baseline has no document artifact.");

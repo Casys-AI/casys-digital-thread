@@ -5,9 +5,8 @@ surfaces it can render:
 
 - the project objective, phases, work, decisions and blockers declared by an immutable
   `EngineeringProjectSnapshot` under `config/projects/`;
-- for a new V2 project, the immutable documentary r1 of its exact approved discovery and
-  reviewed path, then the narrow r2 record of a read-back SysON container when that
-  separately authorized seed has completed;
+- for a new V3 project, its living brief from first intent, then the immutable
+  documentary r1 of its exact approved brief and reviewed path;
 - the persisted technical evidence projected from exact canonical `ThreadSnapshot`
   revisions under `state/local/thread-snapshots/`.
 
@@ -83,12 +82,12 @@ seeds the tracked **V1 CM-01** project as active revision 1 under
 commands create immutable numbered revisions there; they do not rewrite
 `config/projects/coffee-machine-cm01.project.json`.
 
-That historic CM-01 seed is not a template or fallback for a V2 discovery project. A V2
-project is configured with its own project identity, active revision directory, and
-approved-discovery store. Before it has a declared root record, the BFF returns its
-planning surface even if another thread for the same subject happens to exist locally.
+That historic CM-01 seed is not a template or fallback for a V3 project. A V3 project
+has its own identity and active revision directory from the first intent. Before it has
+a declared root record, the BFF returns its planning surface even if another thread for
+the same subject happens to exist locally.
 
-To open an already-created V2 project, name its project ID alone:
+To open an already-created V3 project, name its project ID alone:
 
 ```bash
 deno task preview:thread --project-id=<project-id>
@@ -111,18 +110,20 @@ For the paired-project flow, start one same-origin workspace shell instead:
 deno task preview:cockpit --port=5175
 ```
 
-The agent starts or resumes a discovery with `project_discovery_*`, then uses
-`cockpit_focus_set` to point workspace `primary` at that durable discovery. After the
-human-confirmed brief creates its project shell, the agent points the same workspace at
-that existing project. `cockpit_focus_snapshot` supplies the optimistic focus revision.
+The agent creates or resumes a project with `project_start` / `project_snapshot`, then
+uses `cockpit_focus_set` to point workspace `primary` at that durable project. It guides
+questions, records sourced answers, proposes the brief, and requests exact human
+confirmation in the paired conversation. Focus never changes because framing and later
+engineering work share one project identity. `cockpit_focus_snapshot` supplies the
+optimistic focus revision.
 
 The browser has no selector and no command route: it only reads durable focus. The root
 always remains the same project cockpit and the **Project** tab stays the entry point.
-Before project creation it renders the latest brief revision; after handoff it renders
-the current engineering-project revision without sending the person to another product
-page. A focus change creates no project, answer, run, tool call, evidence, or approval.
-Before an agent selects a target, workspace mode clearly says it is awaiting project
-context; it never silently falls back to CM-01.
+From project revision 1 onward it renders the living brief, then the current path and
+engineering record without sending the person to another product page. A focus change
+creates no project, answer, run, tool call, evidence, or approval. Before an agent
+selects a target, workspace mode clearly says it is awaiting project context; it never
+silently falls back to CM-01.
 
 ## Inspect the truth boundary
 

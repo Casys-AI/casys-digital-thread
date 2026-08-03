@@ -28,19 +28,17 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_snapshot",
     "project_agent_run_execute",
     "project_agent_run_queue",
+    "project_answer_record",
+    "project_brief_confirm",
+    "project_brief_propose",
     "project_change_append",
     "project_decision_approve",
     "project_decision_propose",
     "project_decision_reject",
-    "project_discovery_answer_record",
-    "project_discovery_brief_confirm",
-    "project_discovery_brief_propose",
-    "project_discovery_project_create",
-    "project_discovery_question_propose",
-    "project_discovery_snapshot",
-    "project_discovery_start",
     "project_plan_publish",
+    "project_question_propose",
     "project_snapshot",
+    "project_start",
   ]);
   try {
     const built = Deno.statSync("src/ui/dist/console/index.html").isFile;
@@ -86,19 +84,17 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_snapshot",
       "project_agent_run_execute",
       "project_agent_run_queue",
+      "project_answer_record",
+      "project_brief_confirm",
+      "project_brief_propose",
       "project_change_append",
       "project_decision_approve",
       "project_decision_propose",
       "project_decision_reject",
-      "project_discovery_answer_record",
-      "project_discovery_brief_confirm",
-      "project_discovery_brief_propose",
-      "project_discovery_project_create",
-      "project_discovery_question_propose",
-      "project_discovery_snapshot",
-      "project_discovery_start",
       "project_plan_publish",
+      "project_question_propose",
       "project_snapshot",
+      "project_start",
     ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");
     assert(snapshotTool);
@@ -285,25 +281,38 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(
         annotations.idempotentHint,
         tool.name === "project_snapshot" ||
+          tool.name === "project_start" ||
+          tool.name === "project_question_propose" ||
+          tool.name === "project_answer_record" ||
+          tool.name === "project_brief_propose" ||
+          tool.name === "project_brief_confirm" ||
           tool.name === "project_agent_run_execute" ||
           tool.name === "project_agent_run_queue" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject",
       );
     }
-    const discoveryTools = tools.filter((tool) =>
-      String(tool.name).startsWith("project_discovery_")
+    const framingTools = tools.filter((tool) =>
+      [
+        "project_start",
+        "project_question_propose",
+        "project_answer_record",
+        "project_brief_propose",
+        "project_brief_confirm",
+      ].includes(String(tool.name))
     );
-    for (const tool of discoveryTools) {
+    assertEquals(framingTools.length, 5);
+    for (const tool of framingTools) {
       const annotations = tool.annotations as Record<string, unknown>;
       assertEquals(annotations.destructiveHint, false);
       assertEquals(annotations.openWorldHint, false);
       assertEquals(annotations.idempotentHint, true);
-      assertEquals(
-        annotations.readOnlyHint,
-        tool.name === "project_discovery_snapshot",
-      );
+      assertEquals(annotations.readOnlyHint, false);
     }
+    assertEquals(
+      tools.some((tool) => String(tool.name).startsWith("project_discovery_")),
+      false,
+    );
     const focusTools = tools.filter((tool) =>
       String(tool.name).startsWith("cockpit_focus_")
     );

@@ -1,0 +1,370 @@
+import { assertEquals, assertRejects } from "@std/assert";
+import type { EngineeringProjectSnapshot } from "./engineering-project.ts";
+import {
+  EngineeringProjectCommandError,
+  EngineeringProjectCommandService,
+  type EngineeringProjectRevisionStore,
+  EngineeringProjectStoreConflictError,
+} from "./engineering-project-command-service.ts";
+import {
+  ProjectBriefCommandService,
+  type ProjectBriefMutationCommand,
+} from "./project-brief-command-service.ts";
+import type { ProjectBriefItem } from "./project-brief.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
+
+const PROJECT_ID = "inspection-drone-v3";
+const AGENT = { kind: "agent" as const, actorId: "agent:guide" };
+const HUMAN = { kind: "human" as const, actorId: "human:owner" };
+
+Deno.test("a project exists from first intent and framing stays inside it", async () => {
+  const store = new MemoryProjectStore();
+  const service = serviceFor(store);
+  const command = {
+    commandId: "start-drone",
+    projectId: PROJECT_ID,
+    projectName: "Inspection drone",
+    issuedAt: "2026-08-03T08:59:00.000Z",
+    intent: "  Build a drone that can inspect a roof safely.  ",
+    intentSource: { kind: "human" as const, reference: "conversation:turn-1" },
+  };
+
+  const project = await service.startProject(AGENT, command);
+
+  assertEquals(project.schemaVersion, "3.0");
+  assertEquals(project.revision, 1);
+  assertEquals(project.project.id, PROJECT_ID);
+  assertEquals(project.framing?.intent.statement, command.intent.trim());
+  assertEquals(project.discoveryHandoff, undefined);
+  assertEquals(project.plan, undefined);
+  assertEquals(project.threadSnapshots, []);
+
+  const replay = await service.startProject(AGENT, {
+    ...command,
+    intent: command.intent.trim(),
+  });
+  assertEquals(replay.id, project.id);
+
+  await assertCommandError(
+    () => service.startProject(AGENT, { ...command, intent: "Another product" }),
+    "command_id_conflict",
+  );
+});
+
+Deno.test("an agent builds a sourced brief but only exact human review makes it canonical", async () => {
+  const store = new MemoryProjectStore();
+  const service = serviceFor(store);
+  let project = await start(service);
+
+  project = await service.proposeQuestion(AGENT, {
+    ...context("question-mission", project.revision),
+    question: {
+      id: "mission",
+      prompt: "Which first mission should the product prove?",
+      whyItMatters: "It bounds the architecture and verification plan.",
+      recommendation: {
+        value: "roof-inspection",
+        rationale: "It is observable and can be tested incrementally.",
+        confidence: "medium",
+      },
+      options: [{
+        value: "roof-inspection",
+        label: "Roof inspection",
+        consequences: "Prioritises stable imaging near buildings.",
+      }, {
+        value: "open-field-mapping",
+        label: "Open-field mapping",
+        consequences: "Prioritises endurance and coverage.",
+      }],
+      allowUnknown: true,
+      risk: "material",
+      evidenceNeeded: ["flight-envelope analysis"],
+    },
+  });
+  project = await service.recordAnswer(AGENT, {
+    ...context("answer-mission", project.revision),
+    answer: {
+      id: "answer-mission-1",
+      questionId: "mission",
+      kind: "provided",
+      value: "roof-inspection",
+      source: { kind: "human", reference: "conversation:turn-2" },
+    },
+  });
+  project = await service.proposeBrief(AGENT, {
+    ...context("propose-brief-r1", project.revision),
+    items: briefItems("Inspect a roof safely"),
+  });
+
+  assertEquals(project.framing?.currentBrief, undefined);
+  assertEquals(project.framing?.proposalReview?.status, "pending");
+  assertEquals(project.project.objective.statement, "Build an inspection drone.");
+
+  const proposal = project.framing!.proposedBrief!;
+  const review = project.framing!.proposalReview!;
+  await assertCommandError(
+    () =>
+      service.approveBrief(AGENT, {
+        ...context("agent-cannot-approve", project.revision),
+        briefSnapshotId: proposal.id,
+        briefRevision: proposal.revision,
+        rationale: "Looks good.",
+        inputFingerprint: review.inputFingerprint,
+      }),
+    "permission_denied",
+  );
+  await assertCommandError(
+    () =>
+      service.approveBrief(HUMAN, {
+        ...context("wrong-scope", project.revision),
+        briefSnapshotId: proposal.id,
+        briefRevision: proposal.revision,
+        rationale: "Reviewed.",
+        inputFingerprint: {
+          algorithm: "sha256",
+          digest: "f".repeat(64),
+        },
+      }),
+    "approval_scope_mismatch",
+  );
+
+  project = await service.approveBrief(HUMAN, {
+    ...context("approve-brief-r1", project.revision),
+    briefSnapshotId: proposal.id,
+    briefRevision: proposal.revision,
+    rationale: "The mission and criterion reflect the conversation.",
+    inputFingerprint: review.inputFingerprint,
+  });
+
+  assertEquals(project.framing?.currentBrief?.id, proposal.id);
+  assertEquals(project.framing?.currentBriefApproval?.status, "approved");
+  assertEquals(project.framing?.proposedBrief, undefined);
+  assertEquals(project.project.objective.statement, "Inspect a roof safely");
+});
+
+Deno.test("a rejected update preserves the approved brief and stale proposals cannot be approved", async () => {
+  const store = new MemoryProjectStore();
+  const service = serviceFor(store);
+  let project = await approvedProject(service);
+  const canonicalId = project.framing!.currentBrief!.id;
+
+  project = await service.proposeBrief(AGENT, {
+    ...context("propose-brief-r2", project.revision),
+    items: briefItems("Inspect roofs and bridges safely"),
+  });
+  const rejected = project.framing!.proposedBrief!;
+  const rejectedReview = project.framing!.proposalReview!;
+  project = await service.rejectBrief(HUMAN, {
+    ...context("reject-brief-r2", project.revision),
+    briefSnapshotId: rejected.id,
+    briefRevision: rejected.revision,
+    rationale: "Bridge inspection is outside the first product scope.",
+    inputFingerprint: rejectedReview.inputFingerprint,
+  });
+
+  assertEquals(project.framing?.currentBrief?.id, canonicalId);
+  assertEquals(project.framing?.proposalReview?.status, "rejected");
+  assertEquals(project.project.objective.statement, "Inspect a roof safely");
+
+  project = await service.proposeBrief(AGENT, {
+    ...context("propose-brief-r3", project.revision),
+    items: briefItems("Inspect a roof safely with traceable evidence"),
+  });
+  const staleProposal = project.framing!.proposedBrief!;
+  const staleReview = project.framing!.proposalReview!;
+  project = await service.proposeQuestion(AGENT, {
+    ...context("intervening-question", project.revision),
+    question: {
+      id: "payload",
+      prompt: "Which payload must be carried?",
+      whyItMatters: "Payload changes mass and endurance.",
+      recommendation: {
+        value: "camera",
+        rationale: "It satisfies the current inspection mission.",
+        confidence: "high",
+      },
+      options: [{
+        value: "camera",
+        label: "Camera",
+        consequences: "Keeps the first iteration bounded.",
+      }],
+      allowUnknown: true,
+      risk: "material",
+      evidenceNeeded: ["payload mass"],
+    },
+  });
+  await assertCommandError(
+    () =>
+      service.approveBrief(HUMAN, {
+        ...context("approve-stale-brief", project.revision),
+        briefSnapshotId: staleProposal.id,
+        briefRevision: staleProposal.revision,
+        rationale: "Reviewed.",
+        inputFingerprint: staleReview.inputFingerprint,
+      }),
+    "invalid_transition",
+  );
+});
+
+Deno.test("the initial engineering plan is bound to the exact approved in-project brief", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+  );
+
+  const planned = await commands.publishPlan(AGENT, {
+    ...context("publish-initial-plan", approved.revision),
+    startingPoint: "idea-or-spec",
+    phases: [{
+      id: "phase-baseline",
+      name: "Engineering baseline",
+      description: "Record the reviewed intent before technical work begins.",
+    }],
+    workItems: [{
+      id: "record-approved-brief",
+      phaseId: "phase-baseline",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+
+  assertEquals(planned.plan?.basis.kind, "approved-brief");
+  if (planned.plan?.basis.kind !== "approved-brief") {
+    throw new Error("Expected an approved-brief plan basis.");
+  }
+  assertEquals(
+    planned.plan.basis.briefSnapshotId,
+    approved.framing?.currentBrief?.id,
+  );
+  assertEquals(planned.workItems[0]?.status, "ready");
+});
+
+async function approvedProject(service: ProjectBriefCommandService) {
+  let project = await start(service);
+  project = await service.proposeBrief(AGENT, {
+    ...context("propose-initial-brief", project.revision),
+    items: briefItems("Inspect a roof safely"),
+  });
+  const proposal = project.framing!.proposedBrief!;
+  const review = project.framing!.proposalReview!;
+  return await service.approveBrief(HUMAN, {
+    ...context("approve-initial-brief", project.revision),
+    briefSnapshotId: proposal.id,
+    briefRevision: proposal.revision,
+    rationale: "Approved for initial engineering.",
+    inputFingerprint: review.inputFingerprint,
+  });
+}
+
+function start(service: ProjectBriefCommandService) {
+  return service.startProject(AGENT, {
+    commandId: "start-project",
+    projectId: PROJECT_ID,
+    projectName: "Inspection drone",
+    issuedAt: "2026-08-03T08:59:00.000Z",
+    intent: "Build an inspection drone.",
+    intentSource: { kind: "human", reference: "conversation:turn-1" },
+  });
+}
+
+function context(
+  commandId: string,
+  expectedRevision: number,
+): ProjectBriefMutationCommand {
+  return {
+    commandId,
+    projectId: PROJECT_ID,
+    expectedRevision,
+    issuedAt: "2026-08-03T08:59:30.000Z",
+  };
+}
+
+function briefItems(objective: string): readonly ProjectBriefItem[] {
+  return [{
+    id: "objective",
+    kind: "objective",
+    statement: objective,
+    sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+  }, {
+    id: "mission-roof-inspection",
+    kind: "mission-scenario",
+    statement: "Capture usable roof imagery while maintaining safe separation.",
+    sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+  }, {
+    id: "success-controlled-flight",
+    kind: "success-criterion",
+    statement: "Complete the inspection route without loss of controlled flight.",
+    sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+  }];
+}
+
+function serviceFor(store: MemoryProjectStore): ProjectBriefCommandService {
+  return new ProjectBriefCommandService(store, () => "2026-08-03T09:00:00.000Z");
+}
+
+async function assertCommandError(
+  operation: () => Promise<unknown>,
+  code: EngineeringProjectCommandError["code"],
+): Promise<void> {
+  const error = await assertRejects(operation, EngineeringProjectCommandError);
+  assertEquals(error.code, code);
+}
+
+class MemoryProjectStore implements EngineeringProjectRevisionStore {
+  readonly #revisions = new Map<number, EngineeringProjectSnapshot>();
+
+  get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
+    const revisions = [...this.#revisions.values()].filter((snapshot) =>
+      snapshot.project.id === projectId
+    );
+    const current = revisions.sort((left, right) => right.revision - left.revision)[0];
+    return Promise.resolve(current ? structuredClone(current) : undefined);
+  }
+
+  getRevision(
+    projectId: string,
+    revision: number,
+  ): Promise<EngineeringProjectSnapshot | undefined> {
+    const snapshot = this.#revisions.get(revision);
+    return Promise.resolve(
+      snapshot?.project.id === projectId ? structuredClone(snapshot) : undefined,
+    );
+  }
+
+  createInitial(
+    snapshot: EngineeringProjectSnapshot,
+  ): Promise<EngineeringProjectSnapshot> {
+    if (this.#revisions.size > 0) {
+      throw new EngineeringProjectStoreConflictError("Already exists.");
+    }
+    this.#revisions.set(snapshot.revision, structuredClone(snapshot));
+    return Promise.resolve(structuredClone(snapshot));
+  }
+
+  async commit(
+    snapshot: EngineeringProjectSnapshot,
+    expectedRevision: number,
+  ): Promise<EngineeringProjectSnapshot> {
+    const current = await this.get(snapshot.project.id);
+    if (!current || current.revision !== expectedRevision) {
+      throw new EngineeringProjectStoreConflictError("Stale revision.");
+    }
+    this.#revisions.set(snapshot.revision, structuredClone(snapshot));
+    return structuredClone(snapshot);
+  }
+}

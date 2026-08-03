@@ -41,14 +41,13 @@ import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verif
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "./src/domain/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import {
   ProjectDiscoveryCommandError,
-  ProjectDiscoveryCommandService,
 } from "./src/domain/project-discovery-command-service.ts";
 import {
   ProjectDiscoveryHandoffError,
-  ProjectDiscoveryHandoffService,
 } from "./src/domain/project-discovery-handoff-service.ts";
 import type {
   FleetManifest,
@@ -67,6 +66,10 @@ import {
   type ProjectDiscoveryToolDependencies,
   registerProjectDiscoveryTools,
 } from "./src/tools/project-discovery.ts";
+import {
+  type ProjectBriefToolDependencies,
+  registerProjectBriefTools,
+} from "./src/tools/project-brief.ts";
 import {
   type CockpitFocusToolDependencies,
   registerCockpitFocusTools,
@@ -115,6 +118,8 @@ export interface CreateConsoleServerOptions {
   projectControl?: ProjectControlToolDependencies | false;
   /** Defaults to the same loopback-only trust boundary as project control. */
   projectDiscovery?: ProjectDiscoveryToolDependencies | false;
+  /** Living in-project brief tools; enabled by default with project control. */
+  projectBrief?: ProjectBriefToolDependencies | false;
   /** Agent-owned browser focus; omitted with project tools in fleet-only tests. */
   cockpitFocus?: CockpitFocusToolDependencies | false;
   /** Fixed in tests/deployments; local runs otherwise use a process-ephemeral key. */
@@ -162,19 +167,26 @@ export async function createConsoleServer(
     monotonicNow: options.monotonicNow,
     cacheTtlMs: options.cacheTtlMs,
   });
+  const defaultProjectTools = options.projectControl === undefined &&
+      options.projectBrief === undefined
+    ? await createProjectControl(options, syson?.mcpUrl)
+    : undefined;
   const projectControl = options.projectControl === false
     ? undefined
-    : options.projectControl ?? await createProjectControl(options, syson?.mcpUrl);
-  const projectDiscovery = options.projectDiscovery === false ||
-      (options.projectControl === false && options.projectDiscovery === undefined)
+    : options.projectControl ?? defaultProjectTools?.control;
+  const projectBrief = options.projectBrief === false
     ? undefined
-    : options.projectDiscovery ?? createProjectDiscovery(options);
-  const cockpitFocus = options.cockpitFocus === false ||
-      !projectControl || !projectDiscovery
+    : options.projectBrief ?? defaultProjectTools?.brief;
+  // Historical test seam only. The default product surface no longer creates
+  // or hands off a separate Discovery aggregate.
+  const projectDiscovery = typeof options.projectDiscovery === "object"
+    ? options.projectDiscovery
+    : undefined;
+  const cockpitFocus = options.cockpitFocus === false || !projectControl
     ? undefined
     : options.cockpitFocus ?? createCockpitFocus(options);
-  const instructions = projectControl || projectDiscovery
-    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a reviewable brief without creating technical evidence. An agent may revise the draft, but cannot self-approve it: project_discovery_brief_confirm requires an exact confirmation through MCP elicitation presented by the paired host. The signed retry protects request integrity and replay; user authentication remains the host's responsibility. After that confirmation, the agent may create only the empty project shell. cockpit_focus_set selects an already durable project or discovery for the read-only cockpit; it does not change that record. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery; every work item cites a reviewed server-side operation. The agent may queue and execute only those registered operations, with no provider name, arbitrary arguments, result payload, or fabricated evidence supplied by the caller. Consequential engineering decisions use the same host-presented MCP elicitation flow; the agent cannot call the underlying human-authority mutation directly. The cockpit is a read-only projection of project state, activity, lineage and results. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
+  const instructions = projectControl || projectBrief || projectDiscovery
+    ? "Casys engineering control plane. Fleet tools are read-only. project_start creates the engineering project from the first plain-language intent; framing, guided questions, sourced answers and the living brief remain inside that same project. An agent may revise the brief but cannot self-approve it: project_brief_confirm requires exact confirmation through MCP elicitation presented by the paired host. The signed retry protects request integrity and replay; user authentication remains the host's responsibility. project_snapshot reads the whole durable project. project_plan_publish binds reviewed work to the exact human-approved canonical brief; every work item cites a reviewed server-side operation. The agent may queue and execute only registered operations, with no provider name, arbitrary arguments, result payload, or fabricated evidence supplied by the caller. Consequential engineering decisions use the same host-presented MCP elicitation flow. cockpit_focus_set selects an already durable project for the read-only cockpit; it does not change project truth. The cockpit is a read-only projection of framing, activity, lineage and results. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -183,7 +195,7 @@ export async function createConsoleServer(
     maxConcurrent: 8,
     backpressureStrategy: "queue",
     validateSchema: true,
-    ...(projectControl || projectDiscovery
+    ...(projectControl || projectBrief || projectDiscovery
       ? {
         mrtr: {
           signingKey: options.mrtrSigningKey ?? env("MCP_MRTR_SIGNING_KEY") ??
@@ -204,7 +216,7 @@ export async function createConsoleServer(
         ? error.message
         : null,
   });
-  if (projectControl || projectDiscovery) {
+  if (projectControl || projectBrief || projectDiscovery) {
     app.use(async (context, next) => {
       if (
         context.request &&
@@ -219,6 +231,7 @@ export async function createConsoleServer(
   }
   registerControlPlaneTools(app, controlPlane);
   if (projectControl) registerProjectControlTools(app, projectControl);
+  if (projectBrief) registerProjectBriefTools(app, projectBrief);
   if (projectDiscovery) registerProjectDiscoveryTools(app, projectDiscovery);
   if (cockpitFocus) registerCockpitFocusTools(app, cockpitFocus);
   registerConsoleViewer(app);
@@ -228,7 +241,10 @@ export async function createConsoleServer(
 async function createProjectControl(
   options: CreateConsoleServerOptions,
   sysonMcpUrl?: string,
-): Promise<ProjectControlToolDependencies> {
+): Promise<{
+  readonly control: ProjectControlToolDependencies;
+  readonly brief: ProjectBriefToolDependencies;
+}> {
   const activeThreadSnapshots = new FileThreadSnapshotStore(
     options.threadSnapshotDirectory ?? DEFAULT_THREAD_SNAPSHOT_DIRECTORY,
   );
@@ -323,30 +339,20 @@ async function createProjectControl(
     })
     : undefined;
   return {
-    projects: runtime.projects,
-    commands: runtime.commands,
-    runExecutor: new RegisteredProjectRunExecutor({
+    brief: {
       projects: runtime.projects,
-      baseline,
-      sysonModelSeed,
-      inspectionDroneArchitecture,
-    }),
-  };
-}
-
-function createProjectDiscovery(
-  options: CreateConsoleServerOptions,
-): ProjectDiscoveryToolDependencies {
-  const discoveries = new FileProjectDiscoveryRevisionStore(
-    options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
-  );
-  const projects = new FileEngineeringProjectRevisionStore(
-    options.activeProjectDirectory ?? DEFAULT_ACTIVE_PROJECT_DIRECTORY,
-  );
-  return {
-    discoveries,
-    commands: new ProjectDiscoveryCommandService(discoveries),
-    handoff: new ProjectDiscoveryHandoffService(discoveries, projects),
+      commands: new ProjectBriefCommandService(runtime.projects),
+    },
+    control: {
+      projects: runtime.projects,
+      commands: runtime.commands,
+      runExecutor: new RegisteredProjectRunExecutor({
+        projects: runtime.projects,
+        baseline,
+        sysonModelSeed,
+        inspectionDroneArchitecture,
+      }),
+    },
   };
 }
 
@@ -359,9 +365,6 @@ function createCockpitFocus(
     ),
     projects: new FileEngineeringProjectRevisionStore(
       options.activeProjectDirectory ?? DEFAULT_ACTIVE_PROJECT_DIRECTORY,
-    ),
-    discoveries: new FileProjectDiscoveryRevisionStore(
-      options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
     ),
   };
 }

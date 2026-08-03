@@ -84,7 +84,7 @@ export interface EngineeringDocumentaryWorkbenchSnapshot
     readonly status: "recorded";
     readonly message: string;
     readonly record: {
-      readonly origin: "approved-discovery";
+      readonly origin: "approved-brief" | "approved-discovery";
       readonly snapshotId: string;
       readonly snapshotRevision: number;
       readonly artifactId: string;
@@ -362,7 +362,8 @@ function isDocumentaryRecord(
     "fingerprint",
     "uri",
     "recordedAt",
-  ]) && record.origin === "approved-discovery" &&
+  ]) && (record.origin === "approved-brief" ||
+    record.origin === "approved-discovery") &&
     typeof record.snapshotId === "string" &&
     typeof record.snapshotRevision === "number" &&
     Number.isSafeInteger(record.snapshotRevision) &&

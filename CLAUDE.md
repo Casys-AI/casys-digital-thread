@@ -52,8 +52,8 @@ Surfaces interactives locales (chacune rebuild son bundle puis sert un BFF loopb
 
 ```bash
 deno task preview:browser     # :3021 — harness navigateur de la Console MCP App
-deno task preview:thread      # :5173 — cockpit natif (reads/SSE passifs + commandes humaines)
-deno task preview:discovery   # :5174 — Discovery Workbench (?discovery=<id>)
+deno task preview:thread      # :5173 — cockpit projet natif (reads/SSE passifs)
+deno task preview:cockpit     # :5175 — même cockpit, port explicite de démonstration
 ```
 
 Chaîne CM-01 — **n'exécuter que pour produire délibérément de nouvelles preuves

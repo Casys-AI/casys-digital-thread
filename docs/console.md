@@ -22,7 +22,6 @@ deno task preview:browser   # http://127.0.0.1:3021/
 deno task thread:assemble
 deno task preview:cockpit --port=5175  # canonical product shell
 deno task preview:thread               # 5173, direct development preview
-deno task preview:discovery            # 5174, direct development preview
 ```
 
 The browser harness relays only the Console's reviewed read operations. The canonical
@@ -48,49 +47,43 @@ Workbench projection.
 
 | Tool                        | Authority                | Meaning                                                                                    |
 | --------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
+| `project_start`             | Agent mutation           | Create the project immediately from the reported plain-language intent                     |
 | `project_snapshot`          | Read                     | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts     |
-| `project_plan_publish`      | Agent mutation           | Publish or revise an unexecuted plan from the exact approved discovery                     |
+| `project_question_propose`  | Agent mutation           | Add one adaptive framing question and recommendation inside the project                    |
+| `project_answer_record`     | Agent or human mutation  | Record a sourced answer or explicit unknown inside the project                             |
+| `project_brief_propose`     | Agent mutation           | Propose an immutable living-brief revision without replacing canonical intent              |
+| `project_brief_confirm`     | Human elicitation        | Promote only the exact accepted brief revision to canonical project intent                 |
+| `project_plan_publish`      | Agent mutation           | Publish or revise an unexecuted plan from the exact approved canonical brief               |
 | `project_change_append`     | Agent mutation           | Append a bounded next change from the exact current thread snapshot; never replace history |
 | `project_decision_propose`  | Agent mutation           | Record a concrete typed proposal                                                           |
 | `project_decision_approve`  | Human elicitation        | Ask the person in chat to approve the exact proposal; the agent cannot self-approve        |
 | `project_decision_reject`   | Human elicitation        | Ask the person in chat to reject the exact proposal                                        |
 | `project_agent_run_queue`   | Bounded agent mutation   | Queue one ready, registered work item with server-derived run identity, basis, and summary |
-| `project_agent_run_execute` | Bounded server execution | Dispatch that exact queued registered V2 run; no arbitrary execution payload               |
+| `project_agent_run_execute` | Bounded server execution | Dispatch that exact queued registered run; no arbitrary execution payload                  |
 
 Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
 identical command ID and payload returns its immutable result; changing the request
 under the same ID is rejected. There is no generic run-lifecycle or arbitrary
 provider-execution tool.
 
-### Project discovery tools
-
-| Tool                                 | Authority         | Meaning                                                                               |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------- |
-| `project_discovery_snapshot`         | Read              | Current immutable intent, questions, answers, brief, review, and receipts             |
-| `project_discovery_start`            | Agent mutation    | Start a discovery from reported plain-language intent                                 |
-| `project_discovery_question_propose` | Agent mutation    | Persist one bounded question and recommendation                                       |
-| `project_discovery_answer_record`    | Agent mutation    | Persist the person's sourced answer, including an explicit unknown                    |
-| `project_discovery_brief_propose`    | Agent mutation    | Publish or replace the reviewable brief                                               |
-| `project_discovery_brief_confirm`    | Human elicitation | Confirm the exact pending brief through signed MRTR in the paired conversation        |
-| `project_discovery_project_create`   | Bounded handoff   | Create only the empty project shell from the exact human-confirmed discovery revision |
-
 ### Cockpit focus tools
 
-| Tool                     | Authority      | Meaning                                                                                              |
-| ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------- |
-| `cockpit_focus_snapshot` | Read           | Read the durable agent-selected target for one read-only cockpit workspace                           |
-| `cockpit_focus_set`      | Agent mutation | Point a workspace at one already durable discovery or engineering project; never changes that target |
+| Tool                     | Authority      | Meaning                                                                                  |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------- |
+| `cockpit_focus_snapshot` | Read           | Read the durable agent-selected target for one read-only cockpit workspace               |
+| `cockpit_focus_set`      | Agent mutation | Point a workspace at one already durable engineering project; never changes that project |
 
 The paired agent, not the browser, chooses what the single cockpit shell follows. The
-normal sequence is: start or resume a discovery with `project_discovery_*`, set the
-workspace focus to that discovery, obtain the person's brief confirmation through MRTR,
-create the empty project shell, then set the same workspace focus to that project.
-`cockpit_focus_snapshot` supplies the current revision; `cockpit_focus_set` requires it
-as `expectedRevision` together with a stable `commandId` and `issuedAt`.
+normal sequence is: create or resume one project, set the workspace focus to it, guide
+its living brief in conversation, and obtain the person's exact brief confirmation
+through MRTR. The focus never changes during this transition because there is no
+separate Discovery target. `cockpit_focus_snapshot` supplies the current revision;
+`cockpit_focus_set` requires it as `expectedRevision` together with a stable `commandId`
+and `issuedAt`.
 
-Focus is durable UI-routing state only. It cannot create a discovery or project, record
-an answer, approve a brief or decision, queue or execute a run, call a provider, or
-produce evidence. The cockpit remains GET/SSE-only and has no human selector yet. See
+Focus is durable UI-routing state only. It cannot create a project, record an answer,
+approve a brief or decision, queue or execute a run, call a provider, or produce
+evidence. The cockpit remains GET/SSE-only and has no human selector yet. See
 [the native Workbench preview how-to](how-to/preview-native-workbench.md#follow-the-agent-selected-workspace).
 
 ## Truth boundary
@@ -103,27 +96,27 @@ endpoint, provider credential, project mutation, or execution authority. Human i
 and consequential decisions enter through the paired MCP conversation; the cockpit only
 shows the resulting immutable state, activity, lineage, and results.
 
-The proposal, initial-planning, and change-append commands append validated immutable
+The framing, initial-planning, and change-append commands append validated immutable
 revisions under `state/local/engineering-projects/`; they do not execute a workflow or a
-provider. `project_plan_publish` is only for an unexecuted discovery handoff.
-`project_change_append` is the agent-only continuation after that baseline: it binds new
-phases, work, and required decisions to the exact current `ThreadSnapshot` through
-`baseSnapshot`, and can only add new IDs. It cannot edit prior phases, work, decisions,
-runs, or evidence. The `baseSnapshot` belongs to the change command, not to a V2 run;
-each queued V2 run still receives its server-derived exact `basis`.
-`project_agent_run_queue` derives the run ID, summary, basis, and operation from durable
-project state; the caller cannot submit those execution details.
+provider. `project_plan_publish` is only for an unexecuted project with an exact
+human-approved canonical brief. `project_change_append` is the agent-only continuation
+after that baseline: it binds new phases, work, and required decisions to the exact
+current `ThreadSnapshot` through `baseSnapshot`, and can only add new IDs. It cannot
+edit prior phases, work, decisions, runs, or evidence. The `baseSnapshot` belongs to the
+change command, not to a later run; each queued run still receives its server-derived
+exact `basis`. `project_agent_run_queue` derives the run ID, summary, basis, and
+operation from durable project state; the caller cannot submit those execution details.
 `project_agent_run_execute` is deliberately different from a generic lifecycle command:
 it dispatches one queued, registered, server-owned V2 operation. The source tree
 implements three guarded operations for the idea/spec path:
 
-1. `baseline.from-approved-discovery@1` records the exact approved discovery and plan as
-   the provider-free documentary `ThreadSnapshot` r1.
+1. `baseline.from-approved-brief@1` records the exact approved brief and plan as the
+   provider-free documentary `ThreadSnapshot` r1.
 2. `architecture.seed-syson-model@1` requires that exact r1, uses fixed server-owned
    SysON calls to create a blank project container, blank SysML document, and root
    package, reads the root back, normalizes its identities, and publishes r2.
 3. `architecture.author-inspection-drone@1` requires the exact r2 seed and the same
-   approved discovery's explicit `primary-mission = inspection-controlled` and
+   approved project framing's explicit `primary-mission = inspection-controlled` and
    `payload-class = light-inspection-camera` answers. It can insert one fixed,
    high-level architecture only into an empty root, then attests and reads it back
    before it could publish r3.
@@ -165,7 +158,7 @@ Provider-facing work belongs inside a registered bounded executor, not in public
 lifecycle calls. Such an executor owns the bounded provider calls, canonical capture,
 snapshot persistence and read-back, attachment, validation, and its internal lifecycle
 transitions. A caller cannot supply a provider/tool name, raw arguments, result
-snapshot, or evidence payload to make that happen. The public V2 baseline executor makes
+snapshot, or evidence payload to make that happen. The public V3 baseline executor makes
 no provider call; the provider-backed seed and the source-only r3 inspection-drone
 architecture operation have the closed contracts above. Any other architecture,
 requirements, CAD, simulation, measurement, or verification operation still needs its
@@ -174,13 +167,13 @@ historical evidence of a bounded loop, not a public CM-01 execution endpoint.
 
 ## Signed human elicitation
 
-`project_discovery_brief_confirm`, `project_decision_approve`, and
-`project_decision_reject` use MCP `2026-07-28` multi-round-trip requests. Their first
-call returns `input_required` with an `elicitation/create` request. The MCP host asks
-the person in the current conversation and retries the original tool call. The mutation
-is allowed only when the framework verifies the signed `requestState` and the response
-is explicitly accepted. This makes chat the human command surface without giving the
-agent self-approval authority.
+`project_brief_confirm`, `project_decision_approve`, and `project_decision_reject` use
+MCP `2026-07-28` multi-round-trip requests. Their first call returns `input_required`
+with an `elicitation/create` request. The MCP host asks the person in the current
+conversation and retries the original tool call. The mutation is allowed only when the
+framework verifies the signed `requestState` and the response is explicitly accepted.
+This makes chat the human command surface without giving the agent self-approval
+authority.
 
 Set `MCP_MRTR_SIGNING_KEY` to a stable, high-entropy server secret outside source
 control. If it is absent, the loopback server creates an ephemeral key for that process;

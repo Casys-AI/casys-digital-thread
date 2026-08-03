@@ -1,9 +1,12 @@
 # Reference: `ProjectDiscoverySnapshot` contract
 
-> **Diátaxis category: reference.** This page describes the immutable pre-project
-> contract in
+> **Historical schema 2.0 reference.** New work starts directly as an engineering
+> project and uses the living brief documented in
+> [`project-brief.md`](project-brief.md). The default MCP server and cockpit expose no
+> Discovery creation or preview surface. This page exists only to explain immutable
+> projects that were already recorded through the retired contract in
 > [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts), its MCP
-> authoring surface, and its conversation-owned human confirmation boundary.
+> authoring surface, and its former conversation-owned human confirmation boundary.
 
 `ProjectDiscoverySnapshot` owns the conversation before an engineering project exists.
 It captures a person's plain-language intent, agent-prepared questions, sourced answers,

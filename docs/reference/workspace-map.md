@@ -14,12 +14,11 @@
 | [`src/contracts/thread-workbench.ts`](../../src/contracts/thread-workbench.ts)                                                                 | Browser-safe thread presentation DTOs shared by backend and UI     |
 | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                         | Canonical linked product state                                     |
 | [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                                                 | Immutable project intent and execution-state contract              |
+| [`src/domain/project-brief.ts`](../../src/domain/project-brief.ts)                                                                             | Living brief, questions, sourced answers and exact review contract |
+| [`src/domain/project-brief-command-service.ts`](../../src/domain/project-brief-command-service.ts)                                             | Project-from-intent and brief revision command boundary            |
 | [`src/domain/syson-model-seed.ts`](../../src/domain/syson-model-seed.ts)                                                                       | Closed r1-to-r2 SysON container identity capture and materializer  |
 | [`src/domain/mechanical-proof-case.ts`](../../src/domain/mechanical-proof-case.ts)                                                             | Declaration validation and limited identity matching               |
-| [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts)                                                                     | Immutable intake revisions behind the living Project brief         |
-| [`src/adapters/project-discovery-store.ts`](../../src/adapters/project-discovery-store.ts)                                                     | Immutable discovery revision store                                 |
-| [`src/tools/project-discovery.ts`](../../src/tools/project-discovery.ts)                                                                       | Agent MCP discovery-authoring tools                                |
-| [`src/domain/project-discovery-handoff-service.ts`](../../src/domain/project-discovery-handoff-service.ts)                                     | Confirmed discovery to empty project-shell transition              |
+| [`src/tools/project-brief.ts`](../../src/tools/project-brief.ts)                                                                               | Agent MCP project framing and exact brief-confirmation tools       |
 | [`src/domain/engineering-project-validation.ts`](../../src/domain/engineering-project-validation.ts)                                           | Strict project and exact thread-reference validation               |
 | [`src/workflow/`](../../src/workflow/)                                                                                                         | Validation, compilation, execution and normalization               |
 | [`src/adapters/http-mcp-tool-client.ts`](../../src/adapters/http-mcp-tool-client.ts)                                                           | Backend-only provider calls                                        |
@@ -30,7 +29,7 @@
 | [`src/domain/engineering-project-command-service.ts`](../../src/domain/engineering-project-command-service.ts)                                 | Project transitions, authority, CAS and receipts                   |
 | [`src/adapters/engineering-project-command-runtime.ts`](../../src/adapters/engineering-project-command-runtime.ts)                             | MCP command runtime and exact evidence readers                     |
 | [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                      |
-| [`src/adapters/registered-project-run-executor.ts`](../../src/adapters/registered-project-run-executor.ts)                                     | Server-owned dispatch for exact reviewed V2 operations             |
+| [`src/adapters/registered-project-run-executor.ts`](../../src/adapters/registered-project-run-executor.ts)                                     | Server-owned dispatch for exact reviewed operations                |
 | [`src/adapters/syson-model-seed-run-executor.ts`](../../src/adapters/syson-model-seed-run-executor.ts)                                         | Fixed SysON project/document/root-package seed executor            |
 | [`src/adapters/file-syson-model-seed-capture-store.ts`](../../src/adapters/file-syson-model-seed-capture-store.ts)                             | Content-addressed normalized SysON container capture               |
 | [`src/adapters/file-syson-model-seed-attempt-store.ts`](../../src/adapters/file-syson-model-seed-attempt-store.ts)                             | Write-ahead no-blind-retry state for non-idempotent SysON writes   |
@@ -43,7 +42,6 @@
 | [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                                                       | Generated Console MCP App bundle                                   |
 | [`scripts/console-browser-harness.ts`](../../scripts/console-browser-harness.ts)                                                               | Loopback Console preview                                           |
 | [`scripts/serve-native-workbench.ts`](../../scripts/serve-native-workbench.ts)                                                                 | Passive project/thread reads and SSE dossier BFF                   |
-| [`scripts/serve-discovery-workbench.ts`](../../scripts/serve-discovery-workbench.ts)                                                           | Read-only discovery snapshot and SSE dossier BFF                   |
 | [`scripts/materialize-coffee-machine-thread.ts`](../../scripts/materialize-coffee-machine-thread.ts)                                           | Read-only CM-01 branch assembler                                   |
 | [`scripts/run-coffee-machine-build.ts`](../../scripts/run-coffee-machine-build.ts)                                                             | Explicit SysON to build123d MCP runner                             |
 | [`scripts/attach-coffee-machine-build-run.ts`](../../scripts/attach-coffee-machine-build-run.ts)                                               | Capture validation, canonical publication and reconciliation       |
@@ -53,25 +51,25 @@
 | [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)                                                   | Explicit read-only SysON inventory capture                         |
 | [`state/fixtures/`](../../state/fixtures/)                                                                                                     | Explicitly labelled demo evidence                                  |
 | `state/local/engineering-projects/`                                                                                                            | Ignored immutable active project revisions and CAS claims          |
-| `state/local/engineering-project-run-leases/`                                                                                                  | Empty local OS lock targets for one trusted V2 run; not evidence   |
+| `state/local/engineering-project-run-leases/`                                                                                                  | Empty local OS lock targets for one trusted run; not evidence      |
+| `state/local/approved-discovery-captures/`                                                                                                     | Shared content-addressed documentary baselines; V3 uses brief URIs |
 | `state/local/syson-model-seed-captures/`                                                                                                       | Content-addressed normalized r2 container captures                 |
 | `state/local/syson-model-seed-attempts/`                                                                                                       | Recovery control state for uncertain SysON writes; not evidence    |
 
 ## Local endpoints
 
-| Endpoint                    | Owner                         | Purpose                                        |
-| --------------------------- | ----------------------------- | ---------------------------------------------- |
-| `http://127.0.0.1:8180`     | SysON                         | SysML web modeler                              |
-| `http://127.0.0.1:3009/mcp` | `mcp-syson`                   | Model, constraints and evaluations             |
-| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`                 | Provider-native ERP data                       |
-| `http://127.0.0.1:3014/mcp` | `mcp-build123d`               | CAD execution and exports                      |
-| `http://127.0.0.1:3015/mcp` | `mcp-calculix`                | Meshing and static FEA                         |
-| `http://127.0.0.1:3016/mcp` | `mcp-modelica`                | Approved simulations and run records           |
-| `http://127.0.0.1:3020/mcp` | `deno task start`             | Fleet reads plus agent project control         |
-| `http://127.0.0.1:3021/`    | `deno task preview:browser`   | Console MCP App browser harness                |
-| `http://127.0.0.1:5175/`    | `deno task preview:cockpit`   | Canonical project cockpit and live Project tab |
-| `http://127.0.0.1:5173/`    | `deno task preview:thread`    | Direct engineering-view development preview    |
-| `http://127.0.0.1:5174/`    | `deno task preview:discovery` | Direct brief-view development preview          |
+| Endpoint                    | Owner                       | Purpose                                        |
+| --------------------------- | --------------------------- | ---------------------------------------------- |
+| `http://127.0.0.1:8180`     | SysON                       | SysML web modeler                              |
+| `http://127.0.0.1:3009/mcp` | `mcp-syson`                 | Model, constraints and evaluations             |
+| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`               | Provider-native ERP data                       |
+| `http://127.0.0.1:3014/mcp` | `mcp-build123d`             | CAD execution and exports                      |
+| `http://127.0.0.1:3015/mcp` | `mcp-calculix`              | Meshing and static FEA                         |
+| `http://127.0.0.1:3016/mcp` | `mcp-modelica`              | Approved simulations and run records           |
+| `http://127.0.0.1:3020/mcp` | `deno task start`           | Fleet reads plus agent project control         |
+| `http://127.0.0.1:3021/`    | `deno task preview:browser` | Console MCP App browser harness                |
+| `http://127.0.0.1:5175/`    | `deno task preview:cockpit` | Canonical project cockpit and live Project tab |
+| `http://127.0.0.1:5173/`    | `deno task preview:thread`  | Direct engineering-view development preview    |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
@@ -127,33 +125,32 @@ surface.
 `deno task start` exposes the MCP project surface used by the paired agent. Agents can
 inspect the same active project, propose an input, elicit an exact human decision in the
 conversation, queue a ready registered work item, and execute only that server-derived
-V2 run. They cannot confirm their own proposal or choose arbitrary provider calls. The
-server-owned baseline executor creates the immutable, pre-technical approved-discovery
-r1. The first provider-backed executor, `architecture.seed-syson-model@1`, accepts only
-that exact r1 and uses fixed SysON calls to create a blank project, document, and root
-package; it reads the root back, normalizes its identities, and publishes r2. Callers
-supply no arbitrary arguments or SysML text; uncertain writes are not blindly retried.
-r2 is a container identity, not an architecture, requirements, CAD, simulation,
-measurement, or verdict. The source tree also contains the guarded r3
-`architecture.author-inspection-drone@1` operation: it requires exact r2, an empty root,
-and exact approved inspection-drone discovery choices. It must be in the initial plan
-and is not released. Its separate disposable local parser/translator and model-tree
-check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, but it was not an r3
-project run and makes no CAD, physics, flight, cost, compliance, or verified-requirement
-claim.
+run. They cannot confirm their own proposal or choose arbitrary provider calls. New V3
+projects are created from first intent and the server-owned baseline executor creates
+the immutable, pre-technical approved-brief r1. The historical provider-backed executor,
+`architecture.seed-syson-model@1`, accepts only that exact r1 and uses fixed SysON calls
+to create a blank project, document, and root package; it reads the root back,
+normalizes its identities, and publishes r2. Callers supply no arbitrary arguments or
+SysML text; uncertain writes are not blindly retried. r2 is a container identity, not an
+architecture, requirements, CAD, simulation, measurement, or verdict. The source tree
+also contains the guarded r3 `architecture.author-inspection-drone@1` operation: it
+requires exact r2, an empty root, and exact approved inspection-drone discovery choices.
+It must be in the initial plan and is not released. Its separate disposable local
+parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on
+2026-08-03, but it was not an r3 project run and makes no CAD, physics, flight, cost,
+compliance, or verified-requirement claim.
 
 ## Runtime ownership
 
-| Data                         | Owner                       | Workspace access                                                                                                            |
-| ---------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| SysML and requirements       | SysON                       | Provider MCP; no automatic mutation                                                                                         |
-| CAD exports                  | `exports` volume            | Hash-attested build123d to CalculiX exchange                                                                                |
-| Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`                                                                                        |
-| ERP data                     | External ERPNext database   | Provider-native MCP from backend only                                                                                       |
-| Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench                                                                                |
-| `EngineeringProjectSnapshot` | Immutable active file store | Chat-confirmed decisions plus bounded V2 r1 baseline, r2 SysON seed, and source-only guarded r3 architecture; CAS revisions |
-| `ProjectDiscoverySnapshot`   | Immutable active file store | Agent-authored discovery plus signed human confirmation in chat; CAS revisions                                              |
-| Live engineering activity    | Append-only local JSONL     | SSE projection; never canonical authority                                                                                   |
+| Data                         | Owner                       | Workspace access                                                                         |
+| ---------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- |
+| SysML and requirements       | SysON                       | Provider MCP; no automatic mutation                                                      |
+| CAD exports                  | `exports` volume            | Hash-attested build123d to CalculiX exchange                                             |
+| Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`                                                     |
+| ERP data                     | External ERPNext database   | Provider-native MCP from backend only                                                    |
+| Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench                                             |
+| `EngineeringProjectSnapshot` | Immutable active file store | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions |
+| Live engineering activity    | Append-only local JSONL     | SSE projection; never canonical authority                                                |
 
 The Console browser harness forwards only reviewed Console tools. It is not a generic
 MCP proxy. The native browser receives ordinary linked JSON and no MCP credentials.

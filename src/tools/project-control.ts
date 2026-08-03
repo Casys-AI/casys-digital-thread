@@ -88,6 +88,21 @@ const OPERATION_BINDING_SCHEMA = {
       oneOf: [
         {
           type: "object",
+          properties: { kind: { const: "approved-brief" } },
+          required: ["kind"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            kind: { const: "project-answer" },
+            answerId: { type: "string", minLength: 1 },
+          },
+          required: ["kind", "answerId"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
           properties: { kind: { const: "approved-discovery" } },
           required: ["kind"],
           additionalProperties: false,
@@ -296,7 +311,7 @@ const projectSnapshotTool: MCPTool = {
 const projectPlanPublishTool: MCPTool = {
   name: "project_plan_publish",
   description:
-    "Publish or revise an unexecuted engineering path from this project's exact human-approved discovery brief. Each work item must cite a reviewed registered operation and state-reference bindings; its displayed title, description and kind are derived from that reviewed operation. This never calls a provider, approves a decision, queues work, or creates technical evidence.",
+    "Publish or revise an unexecuted engineering path from this project's exact human-approved canonical brief. Each work item must cite a reviewed registered operation and state-reference bindings; its displayed title, description and kind are derived from that reviewed operation. This never calls a provider, approves a decision, queues work, or creates technical evidence.",
   inputSchema: mutationSchema({
     startingPoint: {
       type: "string",
@@ -541,7 +556,7 @@ const projectDecisionRejectTool: MCPTool = {
 const projectAgentRunQueueTool: MCPTool = {
   name: "project_agent_run_queue",
   description:
-    "Queue one ready V2 work item for the agent. The caller supplies only the durable command context and work item id. The server derives the run id, summary and exact reviewed basis from the persisted project plan and thread head; it accepts no provider, tool arguments, paths, files, result payload or technical evidence.",
+    "Queue one ready reviewed work item for the agent. The caller supplies only the durable command context and work item id. The server derives the run id, summary and exact approved-brief or thread-snapshot basis from project truth; it accepts no provider, tool arguments, paths, files, result payload or technical evidence.",
   inputSchema: mutationSchema({
     workItemId: { type: "string", minLength: 1 },
   }, ["workItemId"]),
@@ -552,7 +567,7 @@ const projectAgentRunQueueTool: MCPTool = {
 const projectAgentRunExecuteTool: MCPTool = {
   name: "project_agent_run_execute",
   description:
-    "Execute one agent-queued V2 run through its exact server-owned registered executor. The call accepts no provider, tool arguments, files or result payload. Registered work may record the approved-discovery documentary baseline or create only a blank, read-back SysON project/document/root-package container; it cannot add arbitrary SysML, CAD, simulation, measurements, verification or compliance claims. Reuse the same commandId unchanged to resume an interrupted call safely.",
+    "Execute one agent-queued run through its exact server-owned registered executor. The call accepts no provider, tool arguments, files or result payload. Registered work may record the canonical project brief as a documentary baseline or run an explicitly reviewed engineering operation; it cannot add arbitrary evidence or compliance claims. Reuse the same commandId unchanged to resume an interrupted call safely.",
   inputSchema: mutationSchema({
     runId: { type: "string", minLength: 1 },
   }, ["runId"]),
@@ -723,15 +738,15 @@ function requiredQueueWorkItem(
   project: EngineeringProjectSnapshot,
   workItemId: string,
 ) {
-  if (project.schemaVersion !== "2.0") {
+  if (project.schemaVersion === "1.0") {
     throw new TypeError(
-      "project_agent_run_queue supports only V2 reviewed operations.",
+      "project_agent_run_queue does not execute historical V1 work.",
     );
   }
   const workItem = project.workItems.find((candidate) => candidate.id === workItemId);
   if (!workItem || !workItem.operation) {
     throw new TypeError(
-      `V2 work item ${workItemId} has no registered operation to queue.`,
+      `Work item ${workItemId} has no registered operation to queue.`,
     );
   }
   return workItem;
@@ -750,13 +765,16 @@ function queueExecutionBasis(
   workItem: ReturnType<typeof requiredQueueWorkItem>,
 ): { readonly basis: EngineeringBasisRef } {
   if (project.threadSnapshots.length === 0) {
+    const expectedInitialOperation = project.schemaVersion === "3.0"
+      ? "baseline.from-approved-brief"
+      : "baseline.from-approved-discovery";
     if (
       !project.plan ||
-      workItem.operation!.id !== "baseline.from-approved-discovery" ||
+      workItem.operation!.id !== expectedInitialOperation ||
       workItem.operation!.version !== "1"
     ) {
       throw new TypeError(
-        "Before a documentary baseline exists, V2 can queue only the exact published approved-discovery baseline operation.",
+        `Before a documentary baseline exists, this project can queue only ${expectedInitialOperation}@1.`,
       );
     }
     return { basis: structuredClone(project.plan.basis) };
@@ -1087,6 +1105,18 @@ function planOperationBinding(
   const source = exactRecord(record.source, `${path}.source`);
   const kind = requiredString(source.kind, `${path}.source.kind`);
   switch (kind) {
+    case "approved-brief":
+      exactKeys(source, ["kind"], [], `${path}.source`);
+      return { name, source: { kind } };
+    case "project-answer":
+      exactKeys(source, ["kind", "answerId"], [], `${path}.source`);
+      return {
+        name,
+        source: {
+          kind,
+          answerId: requiredString(source.answerId, `${path}.source.answerId`),
+        },
+      };
     case "approved-discovery":
       exactKeys(source, ["kind"], [], `${path}.source`);
       return { name, source: { kind } };
@@ -1101,7 +1131,7 @@ function planOperationBinding(
       };
     default:
       throw new TypeError(
-        `${path}.source.kind must be approved-discovery or discovery-answer in V1 planning`,
+        `${path}.source.kind must be approved-brief, project-answer, approved-discovery or discovery-answer`,
       );
   }
 }

@@ -1,7 +1,6 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import type { CockpitFocusStore } from "../adapters/file-cockpit-focus-store.ts";
 import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
-import type { ProjectDiscoverySnapshot } from "../domain/project-discovery.ts";
 import {
   COCKPIT_FOCUS_SCHEMA_VERSION,
   type CockpitFocusTarget,
@@ -28,14 +27,11 @@ export interface CockpitFocusToolDependencies {
   readonly projects: {
     get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
   };
-  readonly discoveries: {
-    get(discoveryId: string): Promise<ProjectDiscoverySnapshot | undefined>;
-  };
 }
 
 /**
- * Conversation-owned focus for the two read-only cockpit projections. It does
- * not alter discovery, planning, evidence, or human authority; it merely
+ * Conversation-owned focus for the read-only project cockpit. It does
+ * not alter framing, planning, evidence, or human authority; it merely
  * records which already durable record each BFF should follow.
  */
 export function registerCockpitFocusTools(
@@ -77,7 +73,7 @@ export function registerCockpitFocusTools(
     return {
       content: `Cockpit workspace ${workspaceId} now follows ${
         targetLabel(target)
-      }. This only changes the read-only cockpit focus; it did not create a project, change a discovery answer, execute a tool, or produce evidence.`,
+      }. This only changes the read-only cockpit focus; it did not create or change a project, execute a tool, or produce evidence.`,
       structuredContent: snapshot,
     };
   });
@@ -86,7 +82,7 @@ export function registerCockpitFocusTools(
 const cockpitFocusSnapshotTool: MCPTool = {
   name: "cockpit_focus_snapshot",
   description:
-    "Read the agent-selected durable focus for one cockpit workspace. A focus points either to an existing project for the Engineering Workbench or to an existing discovery for the Discovery Workbench; it is not engineering evidence.",
+    "Read the agent-selected durable project followed by one cockpit workspace. It is UI routing state, not engineering evidence.",
   inputSchema: {
     type: "object",
     properties: { workspaceId: workspaceIdSchema() },
@@ -100,7 +96,7 @@ const cockpitFocusSnapshotTool: MCPTool = {
 const cockpitFocusSetTool: MCPTool = {
   name: "cockpit_focus_set",
   description:
-    "Select the already durable project or discovery that the read-only cockpit workspace follows. Use project_discovery_* to start or resume discovery, then select that discovery; after an approved brief creates a project shell, select that project. This cannot mutate the selected engineering record or execute providers.",
+    "Select the already durable project that the read-only cockpit workspace follows. A project is selectable from its first framing revision. This cannot mutate project truth or execute providers.",
   inputSchema: {
     type: "object",
     properties: {
@@ -123,26 +119,13 @@ const cockpitFocusSetTool: MCPTool = {
         description: "Stable ISO timestamp preserved with commandId on retry.",
       },
       target: {
-        oneOf: [
-          {
-            type: "object",
-            properties: {
-              kind: { const: "project" },
-              projectId: { type: "string", minLength: 1, maxLength: 160 },
-            },
-            required: ["kind", "projectId"],
-            additionalProperties: false,
-          },
-          {
-            type: "object",
-            properties: {
-              kind: { const: "discovery" },
-              discoveryId: { type: "string", minLength: 1, maxLength: 160 },
-            },
-            required: ["kind", "discoveryId"],
-            additionalProperties: false,
-          },
-        ],
+        type: "object",
+        properties: {
+          kind: { const: "project" },
+          projectId: { type: "string", minLength: 1, maxLength: 160 },
+        },
+        required: ["kind", "projectId"],
+        additionalProperties: false,
       },
     },
     required: [
@@ -175,25 +158,15 @@ function targetInput(value: unknown): CockpitFocusTarget {
       projectId: requiredString(value.projectId, "target.projectId"),
     };
   }
-  if (value.kind === "discovery") {
-    return {
-      kind: "discovery",
-      discoveryId: requiredString(value.discoveryId, "target.discoveryId"),
-    };
-  }
-  throw new TypeError("target.kind must be project or discovery.");
+  throw new TypeError("target.kind must be project.");
 }
 
 async function requiredTarget(
   target: CockpitFocusTarget,
   dependencies: CockpitFocusToolDependencies,
 ): Promise<void> {
-  if (target.kind === "project") {
-    if (await dependencies.projects.get(target.projectId)) return;
-    throw new TypeError(`Engineering project ${target.projectId} was not found.`);
-  }
-  if (await dependencies.discoveries.get(target.discoveryId)) return;
-  throw new TypeError(`Project discovery ${target.discoveryId} was not found.`);
+  if (await dependencies.projects.get(target.projectId)) return;
+  throw new TypeError(`Engineering project ${target.projectId} was not found.`);
 }
 
 function agentOrigin(context: ToolHandlerContext | undefined): {
@@ -206,9 +179,7 @@ function agentOrigin(context: ToolHandlerContext | undefined): {
 }
 
 function targetLabel(target: CockpitFocusTarget): string {
-  return target.kind === "project"
-    ? `engineering project ${target.projectId}`
-    : `project discovery ${target.discoveryId}`;
+  return `engineering project ${target.projectId}`;
 }
 
 function requiredString(value: unknown, name: string): string {

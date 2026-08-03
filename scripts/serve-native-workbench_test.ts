@@ -88,17 +88,14 @@ Deno.test("native Workbench resolves the agent-selected project and its subject 
     (await response.json()).project.project.subjectId,
     "project:focus-two",
   );
-  focus.value = focusSnapshot({
-    kind: "discovery",
-    discoveryId: "drone-discovery",
-  }, 3);
+  focus.value = focusSnapshot({ kind: "project", projectId: "missing" }, 3);
   response = await handler(
     new Request("http://localhost/api/thread/workbench"),
   );
-  assertEquals(response.status, 409);
+  assertEquals(response.status, 404);
   assertEquals(
     (await response.json()).error,
-    "cockpit_focus_requires_discovery_workbench",
+    "engineering_project_not_found",
   );
 });
 
@@ -184,17 +181,13 @@ Deno.test("native Workbench focus SSE exposes only the public target on project 
   }
 });
 
-Deno.test("focused workspace root stays the canonical native cockpit across discovery and project focus", async () => {
+Deno.test("focused workspace root stays the canonical native cockpit across project focus", async () => {
   const focus = new MutableFocus();
   const handler = createFocusedWorkspaceHandler({
     focus,
     workspaceId: "primary",
     native: (request) =>
       Promise.resolve(new Response(`native:${new URL(request.url).pathname}`)),
-    discovery: (request) =>
-      Promise.resolve(
-        new Response(`discovery:${new URL(request.url).pathname}`),
-      ),
   });
   let response = await handler(new Request("http://localhost/"));
   assertEquals(response.status, 200);
@@ -204,22 +197,8 @@ Deno.test("focused workspace root stays the canonical native cockpit across disc
   );
   assertEquals(response.status, 409);
   assertEquals((await response.json()).error, "cockpit_focus_not_selected");
-  focus.value = focusSnapshot({
-    kind: "discovery",
-    discoveryId: "drone-discovery",
-  });
+  focus.value = focusSnapshot({ kind: "project", projectId: "drone" });
   response = await handler(new Request("http://localhost/"));
-  assertEquals(await response.text(), "native:/");
-  response = await handler(
-    new Request("http://localhost/native-workbench.html"),
-  );
-  assertEquals(await response.text(), "native:/");
-  focus.value = focusSnapshot({ kind: "project", projectId: "drone" }, 2);
-  response = await handler(new Request("http://localhost/"));
-  assertEquals(await response.text(), "native:/");
-  response = await handler(
-    new Request("http://localhost/discovery-workbench.html"),
-  );
   assertEquals(await response.text(), "native:/");
 });
 

@@ -1,6 +1,7 @@
 import type {
   EngineeringAgentRunStatus,
   EngineeringApprovalStatus,
+  EngineeringApprovedBriefBasis,
   EngineeringApprovedDiscoveryBasis,
   EngineeringBasisRef,
   EngineeringBlockerStatus,
@@ -217,7 +218,7 @@ function isEngineeringProjectSnapshotShape(
 function isEngineeringProjectSchemaVersion(
   value: unknown,
 ): value is EngineeringProjectSchemaVersion {
-  return value === "1.0" || value === "2.0";
+  return value === "1.0" || value === "2.0" || value === "3.0";
 }
 
 /**
@@ -232,9 +233,19 @@ function hasValidProjectProvenance(
   const plan = project.plan;
   if (handoff !== undefined && !isDiscoveryHandoff(handoff)) return false;
   if (schemaVersion === "2.0" && !isDiscoveryHandoff(handoff)) return false;
+  if (schemaVersion === "3.0") {
+    if (handoff !== undefined || !isProjectFraming(project.framing, project)) {
+      return false;
+    }
+    if (plan === undefined) return true;
+    return isEngineeringProjectPlan(plan) &&
+      isApprovedBriefBasis(plan.basis) &&
+      briefBasisMatchesFraming(plan.basis, project);
+  }
 
   if (plan === undefined) return true;
   if (!isEngineeringProjectPlan(plan)) return false;
+  if (!isApprovedDiscoveryBasis(plan.basis)) return false;
   if (!isDiscoveryHandoff(handoff)) {
     return false;
   }
@@ -303,9 +314,183 @@ function isEngineeringProjectPlan(
   return PROJECT_STARTING_POINTS.includes(
     value.startingPoint as typeof PROJECT_STARTING_POINTS[number],
   ) &&
-    isApprovedDiscoveryBasis(value.basis) &&
+    (isApprovedDiscoveryBasis(value.basis) ||
+      isApprovedBriefBasis(value.basis)) &&
     isIsoDateTime(value.publishedAt) &&
     isPlanPublisher(value.publishedBy);
+}
+
+function isApprovedBriefBasis(
+  value: unknown,
+): value is EngineeringApprovedBriefBasis {
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "kind",
+      "projectId",
+      "projectSnapshotId",
+      "projectRevision",
+      "briefId",
+      "briefSnapshotId",
+      "briefRevision",
+      "approvedBriefFingerprint",
+    ])
+  ) return false;
+  return value.kind === "approved-brief" &&
+    isNonEmptyString(value.projectId) &&
+    isNonEmptyString(value.projectSnapshotId) &&
+    isPositiveInteger(value.projectRevision) &&
+    isNonEmptyString(value.briefId) &&
+    isNonEmptyString(value.briefSnapshotId) &&
+    isPositiveInteger(value.briefRevision) &&
+    isSha256Fingerprint(value.approvedBriefFingerprint);
+}
+
+function briefBasisMatchesFraming(
+  basis: EngineeringApprovedBriefBasis,
+  project: Record<string, unknown>,
+): boolean {
+  if (!isRecord(project.project) || !isRecord(project.framing)) return false;
+  const brief = project.framing.currentBrief;
+  const approval = project.framing.currentBriefApproval;
+  if (
+    !isRecord(brief) || !isRecord(approval) ||
+    !isSha256Fingerprint(approval.inputFingerprint)
+  ) return false;
+  const fingerprint = approval.inputFingerprint as {
+    algorithm: "sha256";
+    digest: string;
+  };
+  return basis.projectId === project.project.id &&
+    basis.briefId === brief.briefId && basis.briefSnapshotId === brief.id &&
+    basis.briefRevision === brief.revision &&
+    basis.approvedBriefFingerprint.algorithm ===
+      fingerprint.algorithm &&
+    basis.approvedBriefFingerprint.digest === fingerprint.digest;
+}
+
+function isProjectFraming(
+  value: unknown,
+  project: Record<string, unknown>,
+): boolean {
+  if (!isRecord(value) || !isRecord(value.intent)) return false;
+  const intent = value.intent;
+  if (
+    !isNonEmptyString(intent.statement) || !isRecord(intent.source) ||
+    (intent.source.kind !== "human" && intent.source.kind !== "document") ||
+    !isNonEmptyString(intent.source.reference) ||
+    !isIsoDateTime(intent.capturedAt) || !isCommandActor(intent.capturedBy) ||
+    !Array.isArray(value.questions) || !Array.isArray(value.answers)
+  ) return false;
+  if (
+    !value.questions.every(isProjectQuestion) ||
+    !value.answers.every(isProjectAnswer)
+  ) {
+    return false;
+  }
+  const current = value.currentBrief;
+  const approval = value.currentBriefApproval;
+  const proposed = value.proposedBrief;
+  const proposalReview = value.proposalReview;
+  if ((current === undefined) !== (approval === undefined)) return false;
+  if ((proposed === undefined) !== (proposalReview === undefined)) return false;
+  if (current !== undefined && !isProjectBrief(current, project)) return false;
+  if (
+    approval !== undefined &&
+    (!isProjectBriefReview(approval, "approved") ||
+      !sameBriefReview(current, approval))
+  ) return false;
+  if (proposed !== undefined && !isProjectBrief(proposed, project)) {
+    return false;
+  }
+  if (
+    proposalReview !== undefined &&
+    (!isProjectBriefReview(proposalReview, "proposal") ||
+      !sameBriefReview(proposed, proposalReview))
+  ) return false;
+  return true;
+}
+
+function isProjectQuestion(value: unknown): boolean {
+  return isRecord(value) && isNonEmptyString(value.id) &&
+    isNonEmptyString(value.prompt) && isNonEmptyString(value.whyItMatters) &&
+    isRecord(value.recommendation) &&
+    isNonEmptyString(value.recommendation.value) &&
+    isNonEmptyString(value.recommendation.rationale) &&
+    ["low", "medium", "high"].includes(
+      String(value.recommendation.confidence),
+    ) &&
+    Array.isArray(value.options) && value.options.length > 0 &&
+    value.options.every((option) =>
+      isRecord(option) && isNonEmptyString(option.value) &&
+      isNonEmptyString(option.label) && isNonEmptyString(option.consequences)
+    ) && typeof value.allowUnknown === "boolean" &&
+    ["reversible", "material", "safety-critical", "regulatory"].includes(
+      String(value.risk),
+    ) && isStringArray(value.evidenceNeeded) &&
+    isIsoDateTime(value.proposedAt) && isCommandActor(value.proposedBy);
+}
+
+function isProjectAnswer(value: unknown): boolean {
+  if (
+    !isRecord(value) || !isNonEmptyString(value.id) ||
+    !isNonEmptyString(value.questionId) ||
+    (value.kind !== "provided" && value.kind !== "unknown") ||
+    !isRecord(value.source) ||
+    !["human", "tool", "document", "expert"].includes(
+      String(value.source.kind),
+    ) ||
+    !isNonEmptyString(value.source.reference) ||
+    !isIsoDateTime(value.recordedAt) || !isCommandActor(value.recordedBy)
+  ) return false;
+  return value.kind === "provided"
+    ? isNonEmptyString(value.value)
+    : value.value === undefined;
+}
+
+function isProjectBrief(
+  value: unknown,
+  project: Record<string, unknown>,
+): boolean {
+  if (!isRecord(value) || !isRecord(project.project)) return false;
+  return value.briefId === `${project.project.id}:brief` &&
+    isNonEmptyString(value.id) && isPositiveInteger(value.revision) &&
+    Array.isArray(value.items) && value.items.length > 0 &&
+    value.items.every((item) =>
+      isRecord(item) && isNonEmptyString(item.id) &&
+      isNonEmptyString(item.kind) && isNonEmptyString(item.statement) &&
+      Array.isArray(item.sourceRefs) && item.sourceRefs.length > 0
+    ) && isIsoDateTime(value.proposedAt) && isCommandActor(value.proposedBy);
+}
+
+function isProjectBriefReview(
+  value: unknown,
+  expected: "approved" | "proposal",
+): boolean {
+  if (
+    !isRecord(value) || !isNonEmptyString(value.briefSnapshotId) ||
+    !isPositiveInteger(value.briefRevision) ||
+    !isSha256Fingerprint(value.inputFingerprint) ||
+    !isIsoDateTime(value.requestedAt)
+  ) return false;
+  if (expected === "approved") {
+    const actor = value.decidedBy;
+    return value.status === "approved" && isIsoDateTime(value.decidedAt) &&
+      isCommandActor(actor) && actor.origin === "human" &&
+      isNonEmptyString(value.rationale);
+  }
+  if (value.status === "pending") {
+    return value.decidedAt === undefined && value.decidedBy === undefined;
+  }
+  const actor = value.decidedBy;
+  return value.status === "rejected" && isIsoDateTime(value.decidedAt) &&
+    isCommandActor(actor) && actor.origin === "human" &&
+    isNonEmptyString(value.rationale);
+}
+
+function sameBriefReview(brief: unknown, review: unknown): boolean {
+  return isRecord(brief) && isRecord(review) &&
+    brief.id === review.briefSnapshotId &&
+    brief.revision === review.briefRevision;
 }
 
 function isApprovedDiscoveryBasis(
@@ -378,6 +563,11 @@ function isEngineeringOperationBinding(value: unknown): boolean {
 function isEngineeringOperationBindingSource(value: unknown): boolean {
   if (!isRecord(value) || typeof value.kind !== "string") return false;
   switch (value.kind) {
+    case "approved-brief":
+      return hasExactKeys(value, ["kind"]);
+    case "project-answer":
+      return hasExactKeys(value, ["kind", "answerId"]) &&
+        isNonEmptyString(value.answerId);
     case "approved-discovery":
       return hasExactKeys(value, ["kind"]);
     case "discovery-answer":
@@ -525,14 +715,26 @@ function hasValidAgentRunInputAnchor(
   if (value.basis.kind === "approved-discovery") {
     const plan = project.plan;
     return plan !== undefined && isEngineeringProjectPlan(plan) &&
+      isApprovedDiscoveryBasis(plan.basis) &&
       sameApprovedDiscoveryBasis(value.basis, plan.basis);
+  }
+
+  if (value.basis.kind === "approved-brief") {
+    const plan = project.plan;
+    return plan !== undefined && isEngineeringProjectPlan(plan) &&
+      isApprovedBriefBasis(plan.basis) &&
+      value.basis.projectSnapshotId === plan.basis.projectSnapshotId &&
+      value.basis.briefSnapshotId === plan.basis.briefSnapshotId &&
+      value.basis.approvedBriefFingerprint.digest ===
+        plan.basis.approvedBriefFingerprint.digest;
   }
 
   return isDeclaredProjectThreadSnapshot(value.basis, project);
 }
 
 function isEngineeringBasis(value: unknown): value is EngineeringBasisRef {
-  return isApprovedDiscoveryBasis(value) || isThreadSnapshotBasis(value);
+  return isApprovedBriefBasis(value) || isApprovedDiscoveryBasis(value) ||
+    isThreadSnapshotBasis(value);
 }
 
 function isThreadSnapshotBasis(
@@ -573,7 +775,9 @@ function isThreadSnapshotRef(
     isPositiveInteger(value.revision) && isNonEmptyString(value.subjectId);
 }
 
-function isCommandActor(value: unknown): boolean {
+function isCommandActor(
+  value: unknown,
+): value is { id: string; origin: "human" | "agent" } {
   return isRecord(value) && typeof value.id === "string" &&
     (value.origin === "human" || value.origin === "agent");
 }

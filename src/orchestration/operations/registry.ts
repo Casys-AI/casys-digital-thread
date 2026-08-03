@@ -16,6 +16,7 @@ import {
  */
 
 export type EngineeringOperationBasisKind =
+  | "approved-brief"
   | "approved-discovery"
   | "thread-snapshot";
 
@@ -116,6 +117,22 @@ export class EngineeringOperationRegistryError extends Error {
 }
 
 const OPERATIONS = [
+  {
+    id: "baseline.from-approved-brief",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["approved-brief"],
+    title: "Create the engineering baseline",
+    description:
+      "Create the first reviewable engineering baseline from the canonical human-approved project brief.",
+    workItemKind: "define",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
   {
     id: "baseline.from-approved-discovery",
     version: "1",
@@ -366,6 +383,20 @@ function bindingValue(
     exactRecord(source, ["kind"], sourcePath);
     return { name, source: { kind: "approved-discovery" } };
   }
+  if (source.kind === "approved-brief") {
+    exactRecord(source, ["kind"], sourcePath);
+    return { name, source: { kind: "approved-brief" } };
+  }
+  if (source.kind === "project-answer") {
+    exactRecord(source, ["kind", "answerId"], sourcePath);
+    return {
+      name,
+      source: {
+        kind: "project-answer",
+        answerId: nonEmptyString(source.answerId, `${sourcePath}.answerId`),
+      },
+    };
+  }
   if (source.kind === "discovery-answer") {
     exactRecord(source, ["kind", "answerId"], sourcePath);
     return {
@@ -380,7 +411,10 @@ function bindingValue(
 }
 
 function basisKindValue(value: unknown, path: string): EngineeringOperationBasisKind {
-  if (value === "approved-discovery" || value === "thread-snapshot") return value;
+  if (
+    value === "approved-brief" || value === "approved-discovery" ||
+    value === "thread-snapshot"
+  ) return value;
   invalidInput(`${path} must be an approved basis kind`);
 }
 
@@ -461,6 +495,16 @@ function copyInputBinding(
   binding: EngineeringOperationInputBinding,
 ): EngineeringOperationInputBinding {
   switch (binding.source.kind) {
+    case "approved-brief":
+      return { name: binding.name, source: { kind: "approved-brief" } };
+    case "project-answer":
+      return {
+        name: binding.name,
+        source: {
+          kind: "project-answer",
+          answerId: binding.source.answerId,
+        },
+      };
     case "approved-discovery":
       return { name: binding.name, source: { kind: "approved-discovery" } };
     case "discovery-answer":

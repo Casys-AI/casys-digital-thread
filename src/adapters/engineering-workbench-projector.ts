@@ -49,7 +49,7 @@ export interface EngineeringDocumentaryWorkbenchSnapshot
     status: "recorded";
     message: string;
     record: {
-      origin: "approved-discovery";
+      origin: "approved-brief" | "approved-discovery";
       snapshotId: string;
       snapshotRevision: number;
       artifactId: string;
@@ -210,7 +210,7 @@ export function projectEngineeringWorkbenchSnapshot(
     );
   }
   if (
-    isApprovedDiscoveryDocumentaryBaseline(
+    isDocumentaryBaseline(
       project,
       thread,
       currentThreadRevision,
@@ -231,9 +231,11 @@ export function projectEngineeringWorkbenchSnapshot(
       documentary: {
         status: "recorded",
         message:
-          "The approved discovery and reviewed project path are durably captured in one exact record. This is provenance for the work ahead, not a technical result.",
+          "The canonical project brief and reviewed path are durably captured in one exact record. This is provenance for the work ahead, not a technical result.",
         record: {
-          origin: "approved-discovery",
+          origin: project.schemaVersion === "3.0"
+            ? "approved-brief"
+            : "approved-discovery",
           snapshotId: thread.id,
           snapshotRevision: currentThreadRevision,
           artifactId: document.id,
@@ -430,13 +432,13 @@ function isSysonModelSeedOperation(workItem: EngineeringWorkItem): boolean {
  * empty before this BFF can ever see the snapshot. Here we recheck every
  * browser-visible part of that same boundary before dropping the graph.
  */
-function isApprovedDiscoveryDocumentaryBaseline(
+function isDocumentaryBaseline(
   project: EngineeringProjectSnapshot,
   thread: LiveThreadWorkbenchSnapshot,
   currentThreadRevision: number,
 ): boolean {
   if (
-    project.schemaVersion !== "2.0" ||
+    (project.schemaVersion !== "2.0" && project.schemaVersion !== "3.0") ||
     project.threadSnapshots.length !== 1 ||
     currentThreadRevision !== 1 ||
     thread.source !== "observed" ||
@@ -450,12 +452,15 @@ function isApprovedDiscoveryDocumentaryBaseline(
   }
   const reference = project.threadSnapshots[0]!;
   const document = thread.artifacts[0]!;
+  const expectedProducer = project.schemaVersion === "3.0"
+    ? "baseline_from_approved_brief"
+    : "baseline_from_approved_discovery";
   return reference.snapshotId === thread.id &&
     reference.revision === currentThreadRevision &&
     reference.subjectId === thread.subject.id &&
     document.kind === "document" &&
     document.system === "casys-digital-thread" &&
-    document.producedBy === "baseline_from_approved_discovery" &&
+    document.producedBy === expectedProducer &&
     document.dependsOn.length === 0 &&
     typeof document.fingerprint === "string" && document.fingerprint.length > 0;
 }

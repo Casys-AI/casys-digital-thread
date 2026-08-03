@@ -14,11 +14,12 @@ proven impact to observe, evaluate, propose a bounded correction, and request a
 recomputation. The human reviews and authorizes consequential changes. This reference
 does not claim that the generic executor for that feedback loop exists yet.
 
-The current creation format is schema `2.0`: every new project created from an approved
-discovery handoff uses it. Schema `1.0` remains strictly readable for immutable CM-01
-history; it is not a compatibility route into the V2 first-run executor. Every value is
-JSON-compatible. Validation clones and recursively freezes the accepted value, rejects
-unknown fields, and never fills in a missing decision or engineering input.
+The current creation format is schema `3.0`: the project exists from the first intent
+and its living brief evolves inside that same immutable revision stream. Schemas `1.0`
+and `2.0` remain strictly readable historical records; neither is a creation route for
+new work. Every value is JSON-compatible. Validation clones and recursively freezes the
+accepted value, rejects unknown fields, and never fills in a missing decision or
+engineering input.
 
 ## Three truth boundaries
 
@@ -45,8 +46,9 @@ MCP surface.
 | `previous`         | Required after revision 1 and always lower than the current revision                                         |
 | `generatedAt`      | ISO 8601 UTC materialization timestamp                                                                       |
 | `project`          | Stable project ID, display name, thread subject ID, and explicit objective                                   |
-| `discoveryHandoff` | Optional exact human-confirmed discovery provenance for the agent-created initial project shell              |
-| `plan`             | Optional agent-published, unexecuted path grounded in that exact approved discovery                          |
+| `framing`          | V3 intent, questions, sourced answers, proposed brief and exact approved canonical brief                     |
+| `discoveryHandoff` | Historical V2 human-confirmed discovery provenance; absent from new V3 projects                              |
+| `plan`             | Optional agent-published path grounded in the exact approved canonical brief for V3                          |
 | `threadSnapshots`  | Exact declared `ThreadSnapshot` revisions; may be empty only before the V2 documentary baseline is published |
 | `phases`           | Ordered project phases; phase status is deliberately absent                                                  |
 | `workItems`        | Human, agent, or shared work and its explicit lifecycle state                                                |
@@ -59,7 +61,20 @@ MCP surface.
 The project revision and the referenced thread revision are independent counters. For
 example, project snapshot revision 1 may cite thread snapshot revision 5.
 
-## Discovery handoff
+## Living brief in schema 3.0
+
+Revision 1 is created by `project_start` from the reported plain-language intent. The
+same project then records adaptive questions, sourced answers, immutable brief
+proposals, and exact human review. `currentBrief` remains canonical while a newer
+`proposedBrief` is pending or rejected. Approval is bound to its exact snapshot,
+revision, and SHA-256 input fingerprint through signed MCP elicitation.
+
+The approved brief is stakeholder and planning truth, not a SysML model or technical
+result. Formal requirements, CAD, calculations, measurements, verdicts and compliance
+evidence remain owned by their linked provider and `ThreadSnapshot` records. See the
+[living project brief reference](project-brief.md).
+
+## Discovery handoff in historical schema 2.0
 
 `discoveryHandoff` records the exact discovery ID, snapshot ID and revision, approved
 brief ID and fingerprint, approval time, and human approver. The first command receipt
@@ -75,10 +90,11 @@ require their own registered operation and evidence.
 
 ## Agent-published plan and reviewed operations
 
-`plan` is present only after the agent-only `project_plan_publish` command. It records
-the starting point, the exact approved-discovery basis copied from `discoveryHandoff`,
-and server-stamped agent publisher/time. It is durable planning state, not a whole-plan
-approval, provider invocation, run authorization, or technical result.
+`plan` is present only after the agent-only `project_plan_publish` command. In V3 it
+records the starting point, exact `approved-brief` basis, and server-stamped agent
+publisher/time. Historical V2 records use an `approved-discovery` basis. It is durable
+planning state, not a whole-plan approval, provider invocation, run authorization, or
+technical result.
 
 `project_plan_publish` is deliberately limited to that unexecuted handoff. Once the
 documentary baseline has completed, an agent uses `project_change_append` to publish the
@@ -97,7 +113,8 @@ registry contains:
 
 | Starting point                                                         | Exact operation reference                |
 | ---------------------------------------------------------------------- | ---------------------------------------- |
-| Idea or specification                                                  | `baseline.from-approved-discovery@1`     |
+| New V3 idea or specification                                           | `baseline.from-approved-brief@1`         |
+| Historical V2 idea or specification                                    | `baseline.from-approved-discovery@1`     |
 | Post-baseline project change; exact documentary r1 required at runtime | `architecture.seed-syson-model@1`        |
 | Post-baseline project change; exact SysON r2 required at runtime       | `architecture.author-inspection-drone@1` |
 | Existing CAD                                                           | `baseline.capture-existing-cad@1`        |

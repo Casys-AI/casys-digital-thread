@@ -4,15 +4,10 @@
  */
 export const COCKPIT_FOCUS_SCHEMA_VERSION = "cockpit-focus/1.0" as const;
 
-export type CockpitFocusTarget =
-  | {
-    readonly kind: "discovery";
-    readonly discoveryId: string;
-  }
-  | {
-    readonly kind: "project";
-    readonly projectId: string;
-  };
+export interface CockpitFocusTarget {
+  readonly kind: "project";
+  readonly projectId: string;
+}
 
 export interface CockpitFocusSnapshot {
   readonly schemaVersion: typeof COCKPIT_FOCUS_SCHEMA_VERSION;
@@ -90,12 +85,7 @@ function validateTarget(value: unknown): void {
     nonEmptyString(value.projectId, "target.projectId");
     return;
   }
-  if (value.kind === "discovery") {
-    exactKeys(value, ["kind", "discoveryId"], "Cockpit focus discovery target");
-    nonEmptyString(value.discoveryId, "target.discoveryId");
-    return;
-  }
-  throw new TypeError("Cockpit focus target kind must be project or discovery.");
+  throw new TypeError("Cockpit focus target kind must be project.");
 }
 
 function exactKeys(

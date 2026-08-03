@@ -15,9 +15,6 @@ Deno.test("cockpit focus tools verify the selected durable target before changin
   registerCockpitFocusTools(app as unknown as McpApp, {
     focus: store,
     projects: { get: (id) => Promise.resolve(id === "drone" ? project() : undefined) },
-    discoveries: {
-      get: (id) => Promise.resolve(id === "drone-discovery" ? discovery() : undefined),
-    },
   });
   const set = app.handler("cockpit_focus_set");
   await assertRejects(
@@ -26,13 +23,13 @@ Deno.test("cockpit focus tools verify the selected durable target before changin
     "was not found",
   );
   const result = await set(
-    args({ kind: "discovery", discoveryId: "drone-discovery" }),
+    args({ kind: "project", projectId: "drone" }),
     context(),
   ) as Record<string, unknown>;
-  assertStringIncludes(result.content as string, "did not create a project");
+  assertStringIncludes(result.content as string, "did not create or change a project");
   assertEquals((result.structuredContent as CockpitFocusSnapshot).target, {
-    kind: "discovery",
-    discoveryId: "drone-discovery",
+    kind: "project",
+    projectId: "drone",
   });
   const read = await app.handler("cockpit_focus_snapshot")({
     workspaceId: "primary",
@@ -89,8 +86,4 @@ function context(): ToolHandlerContext {
 
 function project() {
   return { project: { id: "drone" } } as never;
-}
-
-function discovery() {
-  return { discoveryId: "drone-discovery" } as never;
 }

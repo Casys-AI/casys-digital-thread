@@ -32,7 +32,9 @@ export class FileCockpitFocusStore implements CockpitFocusStore {
     let entries: Deno.DirEntry[];
     try {
       entries = [];
-      for await (const entry of Deno.readDir(this.workspaceDirectory(workspaceId))) {
+      for await (
+        const entry of Deno.readDir(this.workspaceDirectory(workspaceId))
+      ) {
         entries.push(entry);
       }
     } catch (error) {
@@ -58,7 +60,9 @@ export class FileCockpitFocusStore implements CockpitFocusStore {
     const snapshot = validateCockpitFocusSnapshot(input);
     validateWorkspaceId(snapshot.workspaceId);
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
-      throw new TypeError("expectedRevision must be a non-negative safe integer.");
+      throw new TypeError(
+        "expectedRevision must be a non-negative safe integer.",
+      );
     }
     const current = await this.get(snapshot.workspaceId);
     const priorCommand = current
@@ -107,7 +111,9 @@ export class FileCockpitFocusStore implements CockpitFocusStore {
     });
     const claim = this.claimPath(snapshot.workspaceId, snapshot.revision);
     try {
-      await Deno.writeTextFile(claim, `${snapshot.commandId}\n`, { createNew: true });
+      await Deno.writeTextFile(claim, `${snapshot.commandId}\n`, {
+        createNew: true,
+      });
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
       await this.waitUntilPublished(snapshot.workspaceId, snapshot.revision);
@@ -125,7 +131,10 @@ export class FileCockpitFocusStore implements CockpitFocusStore {
         `Cockpit focus ${snapshot.workspaceId} revision ${snapshot.revision} is already claimed.`,
       );
     }
-    const revisionPath = this.revisionPath(snapshot.workspaceId, snapshot.revision);
+    const revisionPath = this.revisionPath(
+      snapshot.workspaceId,
+      snapshot.revision,
+    );
     const pending = `${revisionPath}.pending-${crypto.randomUUID()}`;
     await Deno.writeTextFile(pending, `${deterministicJson(snapshot)}\n`, {
       createNew: true,
@@ -142,7 +151,9 @@ export class FileCockpitFocusStore implements CockpitFocusStore {
       const snapshot = validateCockpitFocusSnapshot(JSON.parse(
         await Deno.readTextFile(this.revisionPath(workspaceId, revision)),
       ));
-      if (snapshot.workspaceId !== workspaceId || snapshot.revision !== revision) {
+      if (
+        snapshot.workspaceId !== workspaceId || snapshot.revision !== revision
+      ) {
         throw new Error(
           `Cockpit focus path ${workspaceId}@${revision} contains a different snapshot.`,
         );
@@ -160,10 +171,40 @@ export class FileCockpitFocusStore implements CockpitFocusStore {
     highestRevision: number,
   ): Promise<CockpitFocusSnapshot | undefined> {
     for (let revision = 1; revision <= highestRevision; revision++) {
-      const candidate = await this.readRevision(workspaceId, revision);
-      if (candidate?.commandId === commandId) return candidate;
+      const raw = await this.readRawRevision(workspaceId, revision);
+      if (raw === undefined) continue;
+      if (
+        typeof raw !== "object" || raw === null || Array.isArray(raw) ||
+        typeof (raw as Record<string, unknown>).commandId !== "string"
+      ) {
+        throw new CockpitFocusConflictError(
+          `Cockpit focus ${workspaceId} revision ${revision} is malformed.`,
+        );
+      }
+      if ((raw as Record<string, unknown>).commandId !== commandId) continue;
+      try {
+        return validateCockpitFocusSnapshot(raw);
+      } catch {
+        throw new CockpitFocusConflictError(
+          `Cockpit focus command ${commandId} belongs to an unsupported historical focus revision and cannot be reused.`,
+        );
+      }
     }
     return undefined;
+  }
+
+  private async readRawRevision(
+    workspaceId: string,
+    revision: number,
+  ): Promise<unknown | undefined> {
+    try {
+      return JSON.parse(
+        await Deno.readTextFile(this.revisionPath(workspaceId, revision)),
+      );
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
+      throw error;
+    }
   }
 
   private async waitUntilPublished(
