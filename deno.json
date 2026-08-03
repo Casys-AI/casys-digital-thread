@@ -11,8 +11,8 @@
     ]
   },
   "tasks": {
-    "start": "deno run --allow-read=config,state,src/ui --allow-write=state/local --allow-net --allow-run=docker --allow-env server.ts",
-    "dev": "deno run --watch=server.ts,src,config --allow-read=config,state,src/ui --allow-write=state/local --allow-net --allow-run=docker --allow-env server.ts",
+    "start": "deno run --allow-read=config,state,src/ui,mcp-server.yaml --allow-write=state/local --allow-net --allow-run=docker --allow-env server.ts",
+    "dev": "deno run --watch=server.ts,src,config --allow-read=config,state,src/ui,mcp-server.yaml --allow-write=state/local --allow-net --allow-run=docker --allow-env server.ts",
     "preview:browser": "deno run --allow-net=127.0.0.1 scripts/console-browser-harness.ts",
     "thread:attach-modelica": "deno run --allow-read=state/local --allow-write=state/local --allow-net=127.0.0.1 scripts/attach-observed-modelica-run.ts",
     "thread:assemble": "deno run --allow-read=config,state --allow-write=state/local --allow-net=127.0.0.1:3012,127.0.0.1:3016 scripts/materialize-coffee-machine-thread.ts",
