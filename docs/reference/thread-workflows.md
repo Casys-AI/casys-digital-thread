@@ -120,10 +120,11 @@ a closed executor contract, not a reusable YAML-node pattern.
 ## Guarded inspection-drone architecture r3 (not workflow YAML)
 
 `architecture.author-inspection-drone@1` is another closed, server-owned operation, not
-a YAML graph or a generic SysML writer. It must be included in the initial reviewed
-idea/specification plan because plans cannot be revised after r1. Its runtime basis is
-instead the exact r2 produced by `architecture.seed-syson-model@1`, whose seed capture
-must re-read and validate by hash.
+a YAML graph or a generic SysML writer. An agent can append it to a project after the
+documentary baseline with `project_change_append`: that change is bound to the exact
+current thread snapshot and can only add new phases, work, and decisions. Its runtime
+basis is instead the exact r2 produced by `architecture.seed-syson-model@1`, whose seed
+capture must re-read and validate by hash.
 
 The source implementation also re-reads the exact approved discovery behind that r1/r2
 lineage and requires both `primary-mission = inspection-controlled` and

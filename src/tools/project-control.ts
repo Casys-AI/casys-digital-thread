@@ -172,6 +172,31 @@ export function registerProjectControlTools(
     );
   });
 
+  app.registerTool(projectChangeAppendTool, async (args, context) => {
+    const common = commonMutation(args);
+    const current = await requiredProjectRevision(
+      dependencies.projects,
+      common.projectId,
+      common.expectedRevision,
+    );
+    const baseSnapshot = declaredProjectHead(current);
+    assertDeclaredProjectHead(
+      threadSnapshotReference(args.baseSnapshot, "baseSnapshot"),
+      baseSnapshot,
+    );
+    const snapshot = await dependencies.commands.appendChange(agentOrigin(context), {
+      ...common,
+      baseSnapshot,
+      phases: planPhases(args.phases),
+      workItems: planWorkItems(args.workItems),
+      requiredDecisions: planDecisions(args.requiredDecisions),
+    });
+    return projectResult(
+      `The agent-appended project change is recorded at revision ${snapshot.revision}. It adds only reviewed work anchored to the exact current thread snapshot; no engineering operation was executed.`,
+      snapshot,
+    );
+  });
+
   if (dependencies.runExecutor) {
     app.registerTool(projectAgentRunExecuteTool, async (args, context) => {
       const common = commonMutation(args);
@@ -336,6 +361,86 @@ const projectPlanPublishTool: MCPTool = {
       },
     },
   }, ["startingPoint", "phases", "workItems", "requiredDecisions"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_MUTATION_ANNOTATIONS,
+};
+
+const THREAD_SNAPSHOT_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    snapshotId: { type: "string", minLength: 1 },
+    revision: { type: "integer", minimum: 1 },
+    subjectId: { type: "string", minLength: 1 },
+  },
+  required: ["snapshotId", "revision", "subjectId"],
+  additionalProperties: false,
+} as const;
+
+const projectChangeAppendTool: MCPTool = {
+  name: "project_change_append",
+  description:
+    "Append the next bounded, reviewed engineering change after an existing exact ThreadSnapshot. The supplied baseSnapshot must exactly equal the project's current declared thread head; each work item must cite a reviewed registered operation and state-reference bindings. This never revises an existing phase, work item, decision, run or evidence record; it never calls a provider, approves a decision, queues work, or creates technical evidence. It cannot pre-plan later work whose basis does not yet exist.",
+  inputSchema: mutationSchema({
+    baseSnapshot: THREAD_SNAPSHOT_REF_SCHEMA,
+    phases: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", minLength: 1 },
+          name: { type: "string", minLength: 1 },
+          description: { type: "string", minLength: 1 },
+        },
+        required: ["id", "name", "description"],
+        additionalProperties: false,
+      },
+    },
+    workItems: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", minLength: 1 },
+          phaseId: { type: "string", minLength: 1 },
+          owner: { type: "string", enum: ["human", "agent", "shared"] },
+          dependsOnWorkItemIds: {
+            type: "array",
+            items: { type: "string", minLength: 1 },
+          },
+          decisionIds: {
+            type: "array",
+            items: { type: "string", minLength: 1 },
+          },
+          operation: OPERATION_REF_SCHEMA,
+        },
+        required: [
+          "id",
+          "phaseId",
+          "owner",
+          "dependsOnWorkItemIds",
+          "decisionIds",
+          "operation",
+        ],
+        additionalProperties: false,
+      },
+    },
+    requiredDecisions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", minLength: 1 },
+          phaseId: { type: "string", minLength: 1 },
+          title: { type: "string", minLength: 1 },
+          question: { type: "string", minLength: 1 },
+        },
+        required: ["id", "phaseId", "title", "question"],
+        additionalProperties: false,
+      },
+    },
+  }, ["baseSnapshot", "phases", "workItems", "requiredDecisions"]),
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: PROJECT_MUTATION_ANNOTATIONS,
 };
@@ -758,6 +863,38 @@ function declaredProjectHead(
     );
   }
   return structuredClone(reference);
+}
+
+function threadSnapshotReference(
+  value: unknown,
+  name: string,
+): EngineeringThreadSnapshotRef {
+  const record = exactRecord(value, name);
+  exactKeys(record, ["snapshotId", "revision", "subjectId"], [], name);
+  const snapshotId = requiredString(record.snapshotId, `${name}.snapshotId`);
+  if (snapshotId.toLowerCase() === "latest") {
+    throw new TypeError(`${name}.snapshotId cannot use the latest alias`);
+  }
+  return {
+    snapshotId,
+    revision: positiveInteger(record.revision, `${name}.revision`),
+    subjectId: requiredString(record.subjectId, `${name}.subjectId`),
+  };
+}
+
+function assertDeclaredProjectHead(
+  declared: EngineeringThreadSnapshotRef,
+  expected: EngineeringThreadSnapshotRef,
+): void {
+  if (
+    declared.snapshotId !== expected.snapshotId ||
+    declared.revision !== expected.revision ||
+    declared.subjectId !== expected.subjectId
+  ) {
+    throw new TypeError(
+      `baseSnapshot must exactly equal the current project thread head ${expected.snapshotId}@${expected.revision}.`,
+    );
+  }
 }
 
 function projectResult(content: string, snapshot: EngineeringProjectSnapshot) {

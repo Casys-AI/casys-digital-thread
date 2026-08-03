@@ -36,6 +36,7 @@ export type EngineeringCommandOriginKind = "human" | "agent";
 export type EngineeringProjectCommandName =
   | "project.create-from-discovery"
   | "project.plan-publish"
+  | "project.change-append"
   | "decision.propose"
   | "decision.approve"
   | "decision.reject"
@@ -184,6 +185,23 @@ export interface EngineeringOperationRef {
 export interface EngineeringProjectPlan {
   readonly startingPoint: EngineeringProjectStartingPoint;
   readonly basis: EngineeringApprovedDiscoveryBasis;
+  readonly publishedAt: IsoDateTime;
+  readonly publishedBy: EngineeringCommandActor;
+}
+
+/**
+ * One additive, reviewed change to a materialized project path. The command
+ * records the exact ThreadSnapshot it extended; it never restates or replaces
+ * the original plan, previous changes, execution runs or technical evidence.
+ */
+export interface EngineeringProjectChange {
+  readonly id: string;
+  /** Exact idempotency/audit command that created this append-only change. */
+  readonly commandId: string;
+  readonly baseSnapshot: EngineeringThreadSnapshotRef;
+  readonly phaseIds: readonly string[];
+  readonly workItemIds: readonly string[];
+  readonly decisionIds: readonly string[];
   readonly publishedAt: IsoDateTime;
   readonly publishedBy: EngineeringCommandActor;
 }
@@ -380,6 +398,8 @@ export interface EngineeringProjectSnapshot {
   readonly discoveryHandoff?: EngineeringProjectDiscoveryHandoff;
   /** Present once an agent publishes a bounded path from an approved discovery. */
   readonly plan?: EngineeringProjectPlan;
+  /** Append-only history of reviewed changes after the initial project path. */
+  readonly planChanges?: readonly EngineeringProjectChange[];
   readonly threadSnapshots: readonly EngineeringThreadSnapshotRef[];
   readonly phases: readonly EngineeringProjectPhase[];
   readonly workItems: readonly EngineeringWorkItem[];

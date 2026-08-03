@@ -99,7 +99,9 @@ type ActiveTargetResolution = ResolvedActiveProject | {
 async function resolveActiveProject(
   options: NativeWorkbenchHandlerOptions,
 ): Promise<ActiveTargetResolution> {
-  const focus = await options.cockpitFocus?.get(options.workspaceId ?? "primary");
+  const focus = await options.cockpitFocus?.get(
+    options.workspaceId ?? "primary",
+  );
   if (focus?.target.kind === "discovery") {
     return { kind: "discovery", discoveryId: focus.target.discoveryId };
   }
@@ -254,7 +256,9 @@ async function snapshotEventStream(
           try {
             latestProject = await resolveActiveProject(options);
           } catch (error) {
-            if (!(error instanceof NativeWorkbenchProjectNotFoundError)) throw error;
+            if (!(error instanceof NativeWorkbenchProjectNotFoundError)) {
+              throw error;
+            }
             latestProject = { kind: "discovery", discoveryId: "unavailable" };
           }
           if (latestProject.kind === "discovery") {
@@ -646,7 +650,9 @@ if (import.meta.main) {
   );
   const componentCatalogPath = argument("component-catalog") ??
     `config/thread-subjects/${subjectId}.components.json`;
-  const componentCatalog = await readOptionalComponentCatalog(componentCatalogPath);
+  const componentCatalog = await readOptionalComponentCatalog(
+    componentCatalogPath,
+  );
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(assetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
@@ -722,8 +728,9 @@ interface FocusedWorkspaceHandlerOptions {
 }
 
 /**
- * Same-origin workspace router. It selects a complete native surface rather
- * than nesting applications or allowing the browser to issue focus commands.
+ * Same-origin workspace router. The root is always the canonical native
+ * cockpit; focus selects its project or pre-approval Project-tab record.
+ * Discovery's immutable aggregate keeps its own read-only API routes.
  */
 export function createFocusedWorkspaceHandler(
   options: FocusedWorkspaceHandlerOptions,
@@ -737,12 +744,11 @@ export function createFocusedWorkspaceHandler(
       url.pathname === "/discovery-workbench.html"
     ) {
       if (request.method !== "GET") return methodNotAllowed();
-      // Keep bookmarked surface aliases honest after the paired agent moves
-      // focus: the selected complete surface owns the root, not its old URL.
+      // The canonical cockpit owns the root before and after approval. The
+      // browser reads the durable focus through its read-only API, never by a
+      // focus command or a second application URL.
       const rootRequest = url.pathname === "/" ? request : requestAtRoot(request);
-      return focus.target.kind === "project"
-        ? await options.native(rootRequest)
-        : await options.discovery(rootRequest);
+      return await options.native(rootRequest);
     }
     if (url.pathname.startsWith("/api/project-discoveries/")) {
       return await options.discovery(request);
@@ -761,7 +767,9 @@ async function readOptionalComponentCatalog(
   path: string,
 ): Promise<ThreadComponentCatalog | undefined> {
   try {
-    return validateThreadComponentCatalog(JSON.parse(await Deno.readTextFile(path)));
+    return validateThreadComponentCatalog(
+      JSON.parse(await Deno.readTextFile(path)),
+    );
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) return undefined;
     throw error;
@@ -817,7 +825,10 @@ function publicFocusTarget(target: ActiveTargetResolution): {
     : { kind: "discovery", discoveryId: target.discoveryId };
 }
 
-function cockpitFocusUnavailable(workspaceId: string, request: Request): Response {
+function cockpitFocusUnavailable(
+  workspaceId: string,
+  request: Request,
+): Response {
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) {
     return json({

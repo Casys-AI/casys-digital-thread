@@ -10,6 +10,7 @@ import {
   type EngineeringDecisionProposalParameter,
   type EngineeringOperationInputBinding,
   type EngineeringOperationRef,
+  type EngineeringProjectChange,
   type EngineeringProjectCommandName,
   type EngineeringProjectPhase,
   type EngineeringProjectPlan,
@@ -140,6 +141,20 @@ export interface PublishProjectPlanCommand extends EngineeringProjectCommandInpu
   readonly requiredDecisions: readonly PlannedEngineeringDecision[];
 }
 
+/**
+ * An additive, agent-authored change after the initial baseline exists.
+ * Existing phases, work, decisions, runs and ThreadSnapshot references are
+ * never supplied by the caller and are therefore never replaced by this
+ * command.
+ */
+export interface AppendProjectChangeCommand extends EngineeringProjectCommandInput {
+  /** Exact current project ThreadSnapshot that this bounded change extends. */
+  readonly baseSnapshot: EngineeringThreadSnapshotRef;
+  readonly phases: readonly PlannedEngineeringProjectPhase[];
+  readonly workItems: readonly PlannedEngineeringWorkItem[];
+  readonly requiredDecisions: readonly PlannedEngineeringDecision[];
+}
+
 /** The agent declares only structure; the service derives membership and order. */
 export interface PlannedEngineeringProjectPhase {
   readonly id: string;
@@ -255,6 +270,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
   ],
   agent: [
     "project.plan-publish",
+    "project.change-append",
     "decision.propose",
     "agent-run.queue",
     "agent-run.claim",
@@ -421,6 +437,168 @@ export class EngineeringProjectCommandService {
         // A bounded first-baseline operation without dependencies or decisions
         // is ready for explicit human queueing immediately. Planning never
         // queues it itself.
+        recomputeWorkReadiness(draft);
+      },
+    );
+  }
+
+  /**
+   * Append one bounded, registry-reviewed change to an already materialized
+   * V2 discovery project. This is deliberately not a plan replacement: the
+   * initial plan and all execution history stay intact in the next immutable
+   * project revision.
+   */
+  appendChange(
+    origin: EngineeringProjectCommandOrigin,
+    command: AppendProjectChangeCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    return this.apply(
+      origin,
+      "project.change-append",
+      command,
+      async (draft, appliedAt) => {
+        const planning = this.planning;
+        if (!planning) {
+          invalidInput(
+            "Project-change publication is unavailable because no reviewed operation registry is configured.",
+          );
+        }
+        assertV2DiscoveryPlanningProject(draft);
+        assertChangeCanAppend(draft);
+        validateChangeCommand(command);
+        const currentHead = assertCurrentThreadSnapshotHead(
+          draft,
+          command.baseSnapshot,
+        );
+        const handoff = draft.discoveryHandoff!;
+        const discovery = await planning.discoveries.getRevision(
+          handoff.discoveryId,
+          handoff.revision,
+        );
+        const exactDiscovery = assertExactApprovedDiscoveryHandoff(draft, discovery);
+        const startingPoint = draft.plan!.startingPoint;
+
+        const existingPhaseIds = new Set(draft.phases.map((phase) => phase.id));
+        const existingWorkItemIds = new Set(draft.workItems.map((item) => item.id));
+        const existingDecisionIds = new Set(
+          draft.decisions.map((decision) => decision.id),
+        );
+        assertNewPlanIds(
+          command.phases.map((phase) => phase.id),
+          existingPhaseIds,
+          "phase",
+        );
+        assertNewPlanIds(
+          command.workItems.map((item) => item.id),
+          existingWorkItemIds,
+          "work item",
+        );
+        assertNewPlanIds(
+          command.requiredDecisions.map((decision) => decision.id),
+          existingDecisionIds,
+          "decision",
+        );
+
+        const phaseIds = new Set(command.phases.map((phase) => phase.id));
+        const allWorkItemIds = new Set([
+          ...existingWorkItemIds,
+          ...command.workItems.map((item) => item.id),
+        ]);
+        const decisionIds = new Set(
+          command.requiredDecisions.map((decision) => decision.id),
+        );
+        const decisionsById = new Map(
+          command.requiredDecisions.map((decision) => [decision.id, decision]),
+        );
+        const resolvedWorkItems = command.workItems.map((item) => {
+          const resolved = resolvePlanOperation(planning.operations, item.operation);
+          if (resolved.operation.startingPoint !== startingPoint) {
+            invalidInput(
+              `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${startingPoint}.`,
+            );
+          }
+          assertPlanBindingsResolveToDiscovery(resolved.bindings, exactDiscovery);
+          assertChangeWorkItemReferences(
+            item,
+            phaseIds,
+            allWorkItemIds,
+            decisionIds,
+            decisionsById,
+          );
+          return {
+            ...item,
+            title: resolved.operation.title,
+            description: resolved.operation.description,
+            kind: resolved.operation.workItemKind,
+            operation: {
+              id: resolved.operation.id,
+              version: resolved.operation.version,
+              bindings: structuredClone(resolved.bindings) as Mutable<
+                EngineeringOperationInputBinding
+              >[],
+            },
+          };
+        });
+        assertPlanDependenciesAreAcyclic([
+          ...draft.workItems,
+          ...resolvedWorkItems,
+        ]);
+
+        const decisions = command.requiredDecisions.map((decision) => ({
+          id: decision.id,
+          phaseId: decision.phaseId,
+          title: decision.title,
+          question: decision.question,
+          status: "required" as const,
+          requestedAt: appliedAt,
+          inputEvidenceRefs: [],
+          approvalIds: [],
+        }));
+        const workItems = resolvedWorkItems.map((item) => ({
+          id: item.id,
+          phaseId: item.phaseId,
+          title: item.title,
+          description: item.description,
+          kind: item.kind,
+          operation: item.operation,
+          status: item.decisionIds.length
+            ? "waiting-for-decision" as const
+            : "planned" as const,
+          owner: item.owner,
+          dependsOnWorkItemIds: [...item.dependsOnWorkItemIds],
+          evidenceRefs: [],
+          decisionIds: [...item.decisionIds],
+          blockerIds: [],
+        }));
+        const phases = command.phases.map((phase, index) => ({
+          id: phase.id,
+          name: phase.name,
+          order: draft.phases.length + index + 1,
+          description: phase.description,
+          workItemIds: workItems.filter((item) => item.phaseId === phase.id).map((
+            item,
+          ) => item.id),
+          requiredDecisionIds: decisions.filter((item) => item.phaseId === phase.id)
+            .map((item) => item.id),
+          evidenceRefs: [],
+        }));
+        assertEveryPhaseHasWork(phases);
+
+        const change: Mutable<EngineeringProjectChange> = {
+          id: `change:${command.commandId}`,
+          commandId: command.commandId,
+          baseSnapshot: structuredClone(currentHead),
+          phaseIds: phases.map((phase) => phase.id),
+          workItemIds: workItems.map((item) => item.id),
+          decisionIds: decisions.map((decision) => decision.id),
+          publishedAt: appliedAt,
+          publishedBy: actor(origin),
+        };
+
+        draft.phases = [...draft.phases, ...phases];
+        draft.workItems = [...draft.workItems, ...workItems];
+        draft.decisions = [...draft.decisions, ...decisions];
+        draft.planChanges = [...(draft.planChanges ?? []), change];
         recomputeWorkReadiness(draft);
       },
     );
@@ -906,6 +1084,30 @@ function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
   }
 }
 
+function assertChangeCanAppend(draft: EngineeringProjectSnapshot): void {
+  if (!draft.plan) {
+    invalidTransition(
+      "A project change requires an already published initial project plan.",
+    );
+  }
+  const completedBaseline = draft.agentRuns.some((run) => {
+    const workItem = draft.workItems.find((item) => item.id === run.workItemId);
+    return run.status === "completed" && run.basis?.kind === "approved-discovery" &&
+      workItem?.operation?.id === "baseline.from-approved-discovery" &&
+      workItem.operation.version === "1";
+  });
+  if (!completedBaseline || draft.threadSnapshots.length === 0) {
+    invalidTransition(
+      "A project change can be appended only after the reviewed initial baseline has completed and produced a ThreadSnapshot.",
+    );
+  }
+  if (draft.agentRuns.some((run) => isActiveRunStatus(run.status))) {
+    invalidTransition(
+      "A project change cannot be appended while an agent run is active.",
+    );
+  }
+}
+
 function assertV2DiscoveryPlanningProject(
   draft: EngineeringProjectSnapshot,
 ): void {
@@ -1217,6 +1419,46 @@ function validatePlanCommand(command: PublishProjectPlanCommand): void {
   ) {
     invalidInput("startingPoint must be an approved project entry path.");
   }
+  validatePlannedChange(command);
+}
+
+function validateChangeCommand(command: AppendProjectChangeCommand): void {
+  assertThreadSnapshotBasisInput({ kind: "thread-snapshot", ...command.baseSnapshot });
+  validatePlannedChange(command);
+}
+
+function assertCurrentThreadSnapshotHead(
+  draft: EngineeringProjectSnapshot,
+  baseSnapshot: EngineeringThreadSnapshotRef,
+): EngineeringThreadSnapshotRef {
+  const head = draft.threadSnapshots.reduce<EngineeringThreadSnapshotRef | undefined>(
+    (latest, candidate) =>
+      !latest || candidate.revision > latest.revision ? candidate : latest,
+    undefined,
+  );
+  if (!head) {
+    invalidTransition(
+      "A project change requires an exact completed ThreadSnapshot as its base.",
+    );
+  }
+  if (
+    baseSnapshot.snapshotId !== head.snapshotId ||
+    baseSnapshot.revision !== head.revision ||
+    baseSnapshot.subjectId !== head.subjectId
+  ) {
+    invalidInput(
+      "Project-change baseSnapshot must exactly equal the current project ThreadSnapshot head.",
+    );
+  }
+  return structuredClone(head);
+}
+
+function validatePlannedChange(
+  command: Pick<
+    PublishProjectPlanCommand,
+    "phases" | "workItems" | "requiredDecisions"
+  >,
+): void {
   if (!Array.isArray(command.phases) || command.phases.length === 0) {
     invalidInput("phases must contain at least one declared project phase.");
   }
@@ -1253,6 +1495,18 @@ function validatePlanCommand(command: PublishProjectPlanCommand): void {
     nonEmpty(decision.phaseId, `requiredDecisions[${index}].phaseId`);
     nonEmpty(decision.title, `requiredDecisions[${index}].title`);
     nonEmpty(decision.question, `requiredDecisions[${index}].question`);
+  }
+}
+
+function assertNewPlanIds(
+  ids: readonly string[],
+  existing: ReadonlySet<string>,
+  label: string,
+): void {
+  for (const id of ids) {
+    if (existing.has(id)) {
+      invalidInput(`Project change cannot reuse existing ${label} id ${id}.`);
+    }
   }
 }
 
@@ -1347,6 +1601,42 @@ function assertPlanWorkItemReferences(
     ) {
       invalidInput(
         `Work item ${item.id} must reference a declared decision in the same phase.`,
+      );
+    }
+  }
+}
+
+/**
+ * A change may depend on completed historical work, but can only own phases
+ * and decisions introduced by that same append command. This keeps prior
+ * phase membership and review scope immutable.
+ */
+function assertChangeWorkItemReferences(
+  item: PlannedEngineeringWorkItem,
+  phaseIds: ReadonlySet<string>,
+  workItemIds: ReadonlySet<string>,
+  decisionIds: ReadonlySet<string>,
+  decisionsById: ReadonlyMap<string, PlannedEngineeringDecision>,
+): void {
+  if (!phaseIds.has(item.phaseId)) {
+    invalidInput(
+      `Project-change work item ${item.id} must reference a newly declared phase.`,
+    );
+  }
+  for (const dependencyId of item.dependsOnWorkItemIds) {
+    if (dependencyId === item.id || !workItemIds.has(dependencyId)) {
+      invalidInput(
+        `Project-change work item ${item.id} must depend only on declared project work.`,
+      );
+    }
+  }
+  for (const decisionId of item.decisionIds) {
+    const decision = decisionsById.get(decisionId);
+    if (
+      !decisionIds.has(decisionId) || !decision || decision.phaseId !== item.phaseId
+    ) {
+      invalidInput(
+        `Project-change work item ${item.id} must reference a newly declared decision in the same phase.`,
       );
     }
   }

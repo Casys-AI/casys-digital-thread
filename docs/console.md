@@ -20,12 +20,15 @@ operations; the cockpit itself remains a passive projection.
 deno task start             # http://127.0.0.1:3020/mcp
 deno task preview:browser   # http://127.0.0.1:3021/
 deno task thread:assemble
-deno task preview:thread    # http://127.0.0.1:5173/
+deno task preview:cockpit --port=5175  # canonical product shell
+deno task preview:thread               # 5173, direct development preview
+deno task preview:discovery            # 5174, direct development preview
 ```
 
-The browser harness relays only the Console's reviewed read operations. The native
-preview passively reads persisted state from `GET /api/thread/workbench` and SSE.
-Neither path starts CAD, meshing, FEA, Modelica, or a SysON mutation on page load.
+The browser harness relays only the Console's reviewed read operations. The canonical
+cockpit keeps one **Project** tab from the first living brief through the technical
+record. Its direct previews passively read persisted state through GET and SSE. Neither
+path starts CAD, meshing, FEA, Modelica, or a SysON mutation on page load.
 
 ## Tools
 
@@ -47,6 +50,7 @@ Workbench projection.
 | --------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
 | `project_snapshot`          | Read                     | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts     |
 | `project_plan_publish`      | Agent mutation           | Publish or revise an unexecuted plan from the exact approved discovery                     |
+| `project_change_append`     | Agent mutation           | Append a bounded next change from the exact current thread snapshot; never replace history |
 | `project_decision_propose`  | Agent mutation           | Record a concrete typed proposal                                                           |
 | `project_decision_approve`  | Human elicitation        | Ask the person in chat to approve the exact proposal; the agent cannot self-approve        |
 | `project_decision_reject`   | Human elicitation        | Ask the person in chat to reject the exact proposal                                        |
@@ -99,8 +103,14 @@ endpoint, provider credential, project mutation, or execution authority. Human i
 and consequential decisions enter through the paired MCP conversation; the cockpit only
 shows the resulting immutable state, activity, lineage, and results.
 
-The proposal and planning commands append validated immutable revisions under
-`state/local/engineering-projects/`; they do not execute a workflow or a provider.
+The proposal, initial-planning, and change-append commands append validated immutable
+revisions under `state/local/engineering-projects/`; they do not execute a workflow or a
+provider. `project_plan_publish` is only for an unexecuted discovery handoff.
+`project_change_append` is the agent-only continuation after that baseline: it binds new
+phases, work, and required decisions to the exact current `ThreadSnapshot` through
+`baseSnapshot`, and can only add new IDs. It cannot edit prior phases, work, decisions,
+runs, or evidence. The `baseSnapshot` belongs to the change command, not to a V2 run;
+each queued V2 run still receives its server-derived exact `basis`.
 `project_agent_run_queue` derives the run ID, summary, basis, and operation from durable
 project state; the caller cannot submit those execution details.
 `project_agent_run_execute` is deliberately different from a generic lifecycle command:
@@ -129,8 +139,9 @@ The r3 implementation is source-only and has not been released into the running 
 toolchain. Its separately authorized disposable local parser/translator and model-tree
 check passed against loopback `mcp-syson 0.5.2` on 2026-08-03; it was not an r3 project
 execution or engineering evidence. r3 makes no CAD, physics, flight, cost, compliance,
-or verified-requirement claim. It must be included in the initial reviewed plan because
-planning becomes immutable after r1, even though its execution basis is r2.
+or verified-requirement claim. The agent can add it after r1 through a reviewed,
+append-only project change bound to the exact current thread snapshot; its execution
+basis remains r2.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
 SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its

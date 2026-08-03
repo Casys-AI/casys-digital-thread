@@ -86,7 +86,7 @@ export function PlanningWorkbench({
             <strong>{String(project.revision).padStart(2, "0")}</strong>
           </div>
           <div class="project-objective-copy">
-            <p>ENGINEERING OBJECTIVE</p>
+            <p>CURRENT PROJECT BRIEF</p>
             <h3 id="project-objective-title">
               {project.project.objective.title}
             </h3>
@@ -145,7 +145,11 @@ export function PlanningWorkbench({
           </header>
           {hasPath
             ? (
-              <ol class="project-phase-rail planning-phase-rail">
+              <ol
+                class="project-phase-rail planning-phase-rail"
+                tabIndex={0}
+                aria-label="Project phases, scrolls horizontally"
+              >
                 {phases.map((item, index) => (
                   <li key={item.phase.id} data-state={item.status}>
                     <div class="project-phase-node">

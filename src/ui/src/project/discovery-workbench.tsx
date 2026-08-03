@@ -16,32 +16,38 @@ import {
   buildProjectDiscoveryView,
   discoveryConfidenceLabel,
   discoveryConfidenceTone,
+  discoveryNextStepLabel,
   discoveryRiskLabel,
   discoveryRiskTone,
 } from "./discovery-model.ts";
 
 export interface DiscoveryWorkbenchProps {
   readonly discovery: ProjectDiscoverySnapshot;
+  /** The canonical cockpit provides the page's outer project shell. */
+  readonly embedded?: boolean;
 }
 
 /**
- * A pre-engineering workspace for a human reviewing an agent-led discovery.
+ * The initial state of the Project tab while the agent and person shape the
+ * living project brief.
  * Transport and persistence deliberately stay outside this component.
  */
 export function DiscoveryWorkbench({
   discovery,
+  embedded = false,
 }: DiscoveryWorkbenchProps): JSX.Element {
   const view = buildProjectDiscoveryView(discovery);
+  const Container = embedded ? "section" : "main";
 
   return (
-    <main
+    <Container
       class="discovery-workbench mcp-view-surface"
       aria-labelledby="discovery-title"
     >
       <header class="discovery-header">
         <div class="discovery-header-copy">
-          <p class="discovery-kicker">PROJECT DISCOVERY · SHARED RECORD</p>
-          <h1 id="discovery-title">Keep the project conversation grounded</h1>
+          <p class="discovery-kicker">PROJECT BRIEF · LIVING RECORD</p>
+          <h1 id="discovery-title">Shape the project with your agent</h1>
           <p class="discovery-introduction">
             Work with the agent in your paired conversation. This page follows
             what you agree, keeps one useful question in view, and preserves the
@@ -57,7 +63,6 @@ export function DiscoveryWorkbench({
         class="discovery-intent"
         aria-labelledby="discovery-intent-title"
       >
-        <div class="discovery-intent-mark" aria-hidden="true">01</div>
         <div>
           <p>
             {discovery.intent.capturedBy.origin === "human"
@@ -84,7 +89,7 @@ export function DiscoveryWorkbench({
         </p>
       </section>
 
-      <section class="discovery-progress" aria-label="Discovery progress">
+      <section class="discovery-progress" aria-label="Project brief progress">
         <div class="discovery-progress-copy">
           <span>{view.progress.phaseLabel}</span>
           <strong>{view.progress.label}</strong>
@@ -108,7 +113,7 @@ export function DiscoveryWorkbench({
           )
           : (
             <StateMessage
-              title={view.statusLabel}
+              title={discoveryNextStepLabel(discovery.status)}
               tone={view.statusTone}
               className="discovery-state"
             >
@@ -121,7 +126,7 @@ export function DiscoveryWorkbench({
         brief={discovery.brief}
         reviewStatus={discovery.review?.status}
       />
-    </main>
+    </Container>
   );
 }
 
@@ -239,13 +244,13 @@ function DiscoveryBriefDisclosure({
   reviewStatus?: "pending" | "approved" | "rejected";
 }): JSX.Element {
   return (
-    <details class="discovery-brief">
+    <details class="discovery-brief" open={brief !== undefined}>
       <summary>
         <span>
           <small>WORKING DOCUMENT</small>
-          <strong>Draft engineering brief</strong>
+          <strong>Project brief</strong>
         </span>
-        <em>{brief ? "Available to inspect" : "Built as you answer"}</em>
+        <em>{brief ? "Current revision" : "Built as you answer"}</em>
       </summary>
       <div class="discovery-brief-body">
         {brief
@@ -320,8 +325,8 @@ function DiscoveryBriefDisclosure({
               </section>
               <p class="discovery-brief-boundary">
                 Discuss corrections, priorities and confirmation with the agent.
-                Once it records an updated brief or project step, this dossier
-                follows the shared record.
+                Once it records an updated brief or project step, this Project
+                tab follows the shared record.
               </p>
               {reviewStatus === "approved" && (
                 <StateMessage

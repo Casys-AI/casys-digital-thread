@@ -14,7 +14,7 @@ Deno.test("Discovery Workbench is a calm read-only conversation record", async (
       "AGENT RECOMMENDATION",
       "START WITH THIS REPLY",
       "Possible directions to discuss",
-      "Draft engineering brief",
+      "Project brief",
       "Discuss corrections, priorities and confirmation with the agent.",
     ]
   ) {
@@ -44,7 +44,7 @@ Deno.test("Discovery Workbench is a calm read-only conversation record", async (
   assertEquals(source.includes("<textarea"), false);
 });
 
-Deno.test("Discovery compliance remains progressive and inside the folded brief", async () => {
+Deno.test("Discovery compliance remains progressive and inside the living brief", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/discovery-workbench.tsx", import.meta.url),
   );

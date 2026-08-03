@@ -76,6 +76,118 @@ Deno.test("project_agent_run_queue derives its server-owned run command from one
   }
 });
 
+Deno.test("project_change_append anchors an append-only change to the exact current thread head", async () => {
+  const head = {
+    snapshotId: "chat-first-thread:r1",
+    revision: 1,
+    subjectId: "chat-first-subject",
+  };
+  const snapshot = projectSnapshot({ threadSnapshots: [head] });
+  const app = new CapturingApp();
+  const calls: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    dependencies(snapshot, {
+      appendChange: (origin, command) => {
+        calls.push({ origin, command: command as unknown as Record<string, unknown> });
+        return Promise.resolve(snapshot);
+      },
+    }),
+  );
+
+  const change = {
+    ...COMMON,
+    commandId: "chat-change-append-1",
+    baseSnapshot: head,
+    phases: [{
+      id: "architecture",
+      name: "System architecture",
+      description: "Create the first reviewable SysON system architecture.",
+    }],
+    workItems: [{
+      id: "seed-syson-model",
+      phaseId: "architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "architecture.seed-syson-model",
+        version: "1",
+        bindings: [{
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  };
+  const result = await app.handler("project_change_append")(
+    change,
+    clientContext(),
+  ) as Record<
+    string,
+    unknown
+  >;
+
+  assertStringIncludes(result.content as string, "adds only reviewed work");
+  assertEquals(calls, [{
+    origin: { kind: "agent", actorId: "mcp:paired-chat@1" },
+    command: {
+      ...change,
+      baseSnapshot: head,
+    },
+  }]);
+  const tool = app.tool("project_change_append");
+  assertEquals(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+  const schema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
+    "baseSnapshot",
+    "commandId",
+    "expectedRevision",
+    "issuedAt",
+    "phases",
+    "projectId",
+    "requiredDecisions",
+    "workItems",
+  ]);
+  const serialized = JSON.stringify(schema);
+  for (
+    const forbidden of [
+      "provider",
+      "toolName",
+      "mcpUrl",
+      "runId",
+      "summary",
+      "basis",
+      "resultSnapshot",
+      "evidenceRefs",
+    ]
+  ) {
+    assertEquals(
+      serialized.includes(forbidden),
+      false,
+      `${forbidden} must not be accepted by the append-only change tool`,
+    );
+  }
+
+  await assertRejects(
+    async () => {
+      await app.handler("project_change_append")({
+        ...change,
+        baseSnapshot: { ...head, revision: 2 },
+      }, clientContext());
+    },
+    TypeError,
+    "exactly equal the current project thread head",
+  );
+  assertEquals(calls.length, 1);
+});
+
 Deno.test("project decision approval and rejection require a verified human elicitation retry", async () => {
   const snapshot = projectSnapshot({ withDecision: true });
   const app = new CapturingApp();
@@ -220,7 +332,10 @@ function clientContext(): ToolHandlerContext {
 }
 
 function projectSnapshot(
-  options: { withDecision?: boolean } = {},
+  options: {
+    withDecision?: boolean;
+    threadSnapshots?: EngineeringProjectSnapshot["threadSnapshots"];
+  } = {},
 ): EngineeringProjectSnapshot {
   return {
     schemaVersion: "2.0",
@@ -246,7 +361,7 @@ function projectSnapshot(
       publishedAt: "2026-08-03T11:59:00.000Z",
       publishedBy: { id: "agent:paired-chat", origin: "agent" },
     },
-    threadSnapshots: [],
+    threadSnapshots: options.threadSnapshots ?? [],
     phases: [],
     workItems: [{
       id: "establish-baseline",

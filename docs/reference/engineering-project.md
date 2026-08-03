@@ -80,19 +80,28 @@ the starting point, the exact approved-discovery basis copied from `discoveryHan
 and server-stamped agent publisher/time. It is durable planning state, not a whole-plan
 approval, provider invocation, run authorization, or technical result.
 
-Each work item created by that command has an `operation` reference with an exact ID,
+`project_plan_publish` is deliberately limited to that unexecuted handoff. Once the
+documentary baseline has completed, an agent uses `project_change_append` to publish the
+next bounded change. The command carries an exact current `baseSnapshot` and can append
+only new phases, work items, and required decisions. It preserves the initial plan and
+all prior phases, work, decisions, approvals, runs, evidence, and thread references in
+the next immutable project revision. This is not a plan replacement and it cannot amend
+or erase historical project truth. The command's `baseSnapshot` is a change-provenance
+anchor; V2 runs continue to use their distinct, server-derived `basis` field.
+
+Each work item created by either command has an `operation` reference with an exact ID,
 version, and state-reference bindings. The code-owned registry accepts only its reviewed
 operation revisions and declared binding names/source kinds; it also supplies the
-durable work title, description, and classification shown to the reviewer. The initial
+durable work title, description, and classification shown to the reviewer. The current
 registry contains:
 
-| Starting point                                                                 | Exact operation reference                |
-| ------------------------------------------------------------------------------ | ---------------------------------------- |
-| Idea or specification                                                          | `baseline.from-approved-discovery@1`     |
-| Same initial idea/specification plan; exact documentary r1 required at runtime | `architecture.seed-syson-model@1`        |
-| Same initial idea/specification plan; exact SysON r2 required at runtime       | `architecture.author-inspection-drone@1` |
-| Existing CAD                                                                   | `baseline.capture-existing-cad@1`        |
-| Existing product                                                               | `baseline.capture-existing-product@1`    |
+| Starting point                                                         | Exact operation reference                |
+| ---------------------------------------------------------------------- | ---------------------------------------- |
+| Idea or specification                                                  | `baseline.from-approved-discovery@1`     |
+| Post-baseline project change; exact documentary r1 required at runtime | `architecture.seed-syson-model@1`        |
+| Post-baseline project change; exact SysON r2 required at runtime       | `architecture.author-inspection-drone@1` |
+| Existing CAD                                                           | `baseline.capture-existing-cad@1`        |
+| Existing product                                                       | `baseline.capture-existing-product@1`    |
 
 For this intake-only planning surface, bindings may refer only to the approved discovery
 itself or to a current provided answer in that same exact discovery. Later operation
@@ -100,18 +109,19 @@ revisions may introduce decision or thread-entity bindings only together with th
 reviewed executor contract; they are not accepted by `project_plan_publish` today.
 
 `architecture.seed-syson-model@1` and `architecture.author-inspection-drone@1` may be
-planned from the same approved discovery, but that binding is planning provenance, not a
-SysON runtime argument. Their later execution requires the exact documentary r1 and
-SysON r2 thread snapshots, respectively. The latter must already be in that initial
-plan: planning cannot be revised after r1 has been produced.
+added by the same post-baseline change, in dependency order. The change's exact current
+snapshot is provenance, not a SysON runtime argument. Their later execution requires the
+exact documentary r1 and SysON r2 thread snapshots, respectively. The agent must not
+assume a later snapshot is equivalent: queueing derives and records the exact basis for
+each bounded run.
 
 These references deliberately expose no provider, tool name, raw input, workflow, or
 evidence payload. Publishing rejects unknown revisions, wrong starting points,
 undeclared bindings, and discovery-answer bindings that are absent, no longer current,
-or not provided in the exact approved discovery revision. An agent may revise planning
-only while no baseline run, approval, blocker, concrete decision proposal, or
-completed/cancelled work exists. It cannot use a plan revision to erase execution or
-review history.
+or not provided in the exact approved discovery revision. An agent may revise the
+initial plan only while no baseline run, approval, blocker, concrete decision proposal,
+or completed/cancelled work exists. After that point it may append a bounded change, but
+cannot use either command to erase execution or review history.
 
 Three operations have trusted executors in the current V2 source slice.
 `baseline.from-approved-discovery@1` has no provider call: after the agent queues the
@@ -168,6 +178,7 @@ The first continuation is deliberately narrower than a system design:
 approved discovery + reviewed plan
   -> baseline.from-approved-discovery@1
   -> documentary ThreadSnapshot revision 1
+  -> project_change_append(baseSnapshot = exact r1)
   -> architecture.seed-syson-model@1 on that exact basis
   -> syson_project_create -> syson_model_create(root) -> syson_element_get(root)
   -> content-addressed capture + ThreadSnapshot revision 2
@@ -268,8 +279,8 @@ Every work item belongs to exactly one phase and declares:
 - evidence, decision, and blocker references.
 
 An optional `operation` is a reviewed, versioned capability reference, never a raw tool
-call or agent-authored workflow. It is present on work created by
-`project_plan_publish`; older immutable revisions may lack it and are never promoted
+call or agent-authored workflow. It is present on work created by `project_plan_publish`
+or `project_change_append`; older immutable revisions may lack it and are never promoted
 into the new execution path by implication. In the current V2 slice,
 `baseline.from-approved-discovery@1` has the provider-free documentary executor and
 `architecture.seed-syson-model@1` has the fixed SysON model-container executor. No
@@ -365,11 +376,11 @@ returns the original result; reusing the ID with different arguments is an error
 
 The surfaces grant different fixed capabilities:
 
-| Surface              | Allowed operations                                                                                         | Explicitly absent                          |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Cockpit browser      | `GET /api/thread/workbench` and snapshot SSE                                                               | Every mutation and provider call           |
-| Paired agent MCP     | Snapshot, plan, propose, signed human elicitation, server-derived queueing, and exact registered execution | Arbitrary provider calls or evidence input |
-| Provider MCP/backend | Calls selected by one registered executor, validated capture, immutable publication, and read-back         | Human intent and self-certified verdicts   |
+| Surface              | Allowed operations                                                                                                                     | Explicitly absent                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Cockpit browser      | `GET /api/thread/workbench` and snapshot SSE                                                                                           | Every mutation and provider call           |
+| Paired agent MCP     | Snapshot, initial plan, append-only change, propose, signed human elicitation, server-derived queueing, and exact registered execution | Arbitrary provider calls or evidence input |
+| Provider MCP/backend | Calls selected by one registered executor, validated capture, immutable publication, and read-back                                     | Human intent and self-certified verdicts   |
 
 The Project notification view does not expose manual technical proposals, approvals,
 revision requests, queue buttons, or fallback controls. It directs the reviewer to
@@ -381,14 +392,15 @@ Otherwise `claimedBy` is derived from the client's self-declared MCP name and ve
 it is an audit label, not proof of identity. Project mutation tools are therefore a
 loopback-only prototype surface until transport authentication is required.
 
-The agent surface is on the Console MCP server and exposes bounded planning, decision,
-queue, and execution tools. `project_decision_approve` and `project_decision_reject`
-require a signed, framework-verified MRTR retry after the MCP host elicits the person's
-response. `project_agent_run_queue` derives all execution identity and basis fields from
-the ready work item. `project_agent_run_execute` accepts only the exact queued run and
-command metadata. The backend resolves the operation and bindings from durable state;
-callers cannot supply a provider name, raw argument, workflow, result, or evidence
-reference. The browser has no complementary command surface.
+The agent surface is on the Console MCP server and exposes bounded initial planning,
+append-only project changes, decision, queue, and execution tools.
+`project_decision_approve` and `project_decision_reject` require a signed,
+framework-verified MRTR retry after the MCP host elicits the person's response.
+`project_agent_run_queue` derives all execution identity and basis fields from the ready
+work item. `project_agent_run_execute` accepts only the exact queued run and command
+metadata. The backend resolves the operation and bindings from durable state; callers
+cannot supply a provider name, raw argument, workflow, result, or evidence reference.
+The browser has no complementary command surface.
 
 `MCP_MRTR_SIGNING_KEY` signs the opaque elicitation `requestState`; it does not
 authenticate a person. Without an explicit key, loopback development uses a

@@ -68,6 +68,16 @@ technical evidence in that plan. Once a registered work item is ready, use
 The agent may then execute that bounded operation. A plan never grants permission
 to invent an operation or bypass a still-unresolved human decision.
 
+After the documentary baseline has produced a `ThreadSnapshot`, use the agent-only
+`project_change_append` command for the next bounded change. Read `project_snapshot`
+first and bind the change to its exact current `baseSnapshot`. A change can add only new
+phases, work items, and required decisions: it must not rewrite prior work, decisions,
+runs, evidence, or snapshots. Use registered operations only. `baseSnapshot` is the
+change's provenance anchor, not a V2 run input; queueing still derives the run's exact
+`basis` from durable project state. For the inspection-drone path, one such change may
+add the SysON container seed and the separately bounded architecture operation, in that
+dependency order.
+
 If a needed decision has not been declared outside that unexecuted planning
 state, present it as a proposed question until the control plane offers an
 authorized way to persist it.

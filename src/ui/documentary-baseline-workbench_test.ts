@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("documentary baseline Workbench is a quiet provenance record, not an evidence dashboard", async () => {
+Deno.test("documentary baseline stays inside the project cockpit, without pretending it has evidence", async () => {
   const source = await Deno.readTextFile(
     new URL(
       "./src/project/documentary-baseline-workbench.tsx",
@@ -13,6 +13,11 @@ Deno.test("documentary baseline Workbench is a quiet provenance record, not an e
   assertStringIncludes(source, "WHAT THIS DOES NOT PROVE");
   assertStringIncludes(source, "Exact documentary record");
   assertStringIncludes(source, "No SysML model or CAD geometry is recorded.");
+  assertStringIncludes(source, "ProjectNavigation");
+  assertStringIncludes(source, "ProjectWorkRibbon");
+  assertStringIncludes(source, "From reviewed intent to technical proof");
+  assertStringIncludes(source, "No product definition is recorded yet");
+  assertStringIncludes(source, "No verification chain is recorded yet");
 
   for (
     const forbiddenEvidenceViewer of [

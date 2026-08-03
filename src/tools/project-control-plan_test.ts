@@ -414,6 +414,186 @@ Deno.test(
   },
 );
 
+Deno.test("project_change_append appends only the next reviewed operation after a materialized baseline", async () => {
+  await withApprovedProjectShell(async ({ directory }) => {
+    const { app } = await createProjectControlTestServer(directory);
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await app.startHttp({
+      port,
+      hostname: "127.0.0.1",
+      onListen: () => {},
+    });
+    try {
+      const client = new TestMcpClient(`http://127.0.0.1:${port}/mcp`);
+      assertResult(await client.invoke("server/discover", {}));
+      const listed = assertResult(await client.invoke("tools/list", {}));
+      const tools = listed.tools as Array<Record<string, unknown>>;
+      const changeTool = tools.find((tool) => tool.name === "project_change_append");
+      assert(changeTool, "The agent must be able to append the next reviewed change.");
+      assertEquals(changeTool.annotations, {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      });
+      const changeSchema = changeTool.inputSchema as Record<string, unknown>;
+      assertEquals(
+        Object.keys(changeSchema.properties as Record<string, unknown>).sort(),
+        [
+          "baseSnapshot",
+          "commandId",
+          "expectedRevision",
+          "issuedAt",
+          "phases",
+          "projectId",
+          "requiredDecisions",
+          "workItems",
+        ],
+      );
+      const serializedSchema = JSON.stringify(changeSchema);
+      for (
+        const forbidden of [
+          "provider",
+          "toolName",
+          "mcpUrl",
+          "runId",
+          "summary",
+          "basis",
+          "resultSnapshot",
+          "evidenceRefs",
+        ]
+      ) {
+        assertEquals(
+          serializedSchema.includes(forbidden),
+          false,
+          `${forbidden} must remain absent from append-only change input`,
+        );
+      }
+
+      assertResult(
+        await client.invoke("tools/call", {
+          name: "project_plan_publish",
+          arguments: planCommand(),
+        }),
+      );
+      const queued = assertResult(
+        await client.invoke("tools/call", {
+          name: "project_agent_run_queue",
+          arguments: {
+            commandId: "mcp-change-queue-baseline-1",
+            projectId: PROJECT_ID,
+            expectedRevision: 2,
+            issuedAt: "2026-08-01T11:01:00.000Z",
+            workItemId: "create-baseline",
+          },
+        }),
+      );
+      const queuedSnapshot = queued.structuredContent as Record<string, unknown>;
+      const completed = assertResult(
+        await client.invoke("tools/call", {
+          name: "project_agent_run_execute",
+          arguments: {
+            commandId: "mcp-change-execute-baseline-1",
+            projectId: PROJECT_ID,
+            expectedRevision: queuedSnapshot.revision,
+            issuedAt: "2026-08-01T11:02:00.000Z",
+            runId: "run:mcp-change-queue-baseline-1",
+          },
+        }),
+      );
+      const materialized = completed.structuredContent as Record<string, unknown>;
+      assertEquals(materialized.revision, 6);
+      const baseSnapshot =
+        (materialized.threadSnapshots as Array<Record<string, unknown>>)[0];
+      assert(baseSnapshot);
+
+      const command = appendChangeCommand(baseSnapshot);
+      const appendedResult = assertResult(
+        await client.invoke("tools/call", {
+          name: "project_change_append",
+          arguments: command,
+        }),
+      );
+      const appended = appendedResult.structuredContent as Record<string, unknown>;
+      assertEquals(appended.revision, 7);
+      assertEquals(
+        (appended.phases as Array<Record<string, unknown>>).map((phase) => phase.id),
+        [
+          "baseline",
+          "architecture",
+        ],
+      );
+      assertEquals(
+        (appended.workItems as Array<Record<string, unknown>>).map((item) => [
+          item.id,
+          item.status,
+          item.operation,
+        ]),
+        [
+          [
+            "create-baseline",
+            "completed",
+            {
+              id: "baseline.from-approved-discovery",
+              version: "1",
+              bindings: [{
+                name: "approvedDiscovery",
+                source: { kind: "approved-discovery" },
+              }],
+            },
+          ],
+          [
+            "seed-syson-model",
+            "ready",
+            {
+              id: "architecture.seed-syson-model",
+              version: "1",
+              bindings: [{
+                name: "approvedDiscovery",
+                source: { kind: "approved-discovery" },
+              }],
+            },
+          ],
+        ],
+      );
+      const changes = appended.planChanges as Array<Record<string, unknown>>;
+      assertEquals(changes.length, 1);
+      assertEquals(changes[0]?.id, "change:mcp-change-append-1");
+      assertEquals(changes[0]?.baseSnapshot, baseSnapshot);
+      assertEquals(changes[0]?.phaseIds, ["architecture"]);
+      assertEquals(changes[0]?.workItemIds, ["seed-syson-model"]);
+      assertExists(changes[0]?.publishedAt);
+      assertEquals(changes[0]?.publishedBy, { id: "mcp:test@1", origin: "agent" });
+
+      const replay = assertResult(
+        await client.invoke("tools/call", {
+          name: "project_change_append",
+          arguments: command,
+        }),
+      );
+      assertEquals(
+        (replay.structuredContent as Record<string, unknown>).id,
+        appended.id,
+      );
+
+      const stale = await client.invoke("tools/call", {
+        name: "project_change_append",
+        arguments: {
+          ...command,
+          commandId: "mcp-change-append-stale-2",
+          expectedRevision: 7,
+          baseSnapshot: { ...baseSnapshot, revision: 99 },
+        },
+      });
+      assertToolFailure(stale, "current project thread head");
+    } finally {
+      await http.shutdown();
+    }
+  });
+});
+
 async function createProjectControlTestServer(directory: string) {
   return await createConsoleServer({
     manifest: manifestFixture(),
@@ -450,6 +630,37 @@ function planCommand() {
       decisionIds: [],
       operation: {
         id: "baseline.from-approved-discovery",
+        version: "1",
+        bindings: [{
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  };
+}
+
+function appendChangeCommand(baseSnapshot: Record<string, unknown>) {
+  return {
+    commandId: "mcp-change-append-1",
+    projectId: PROJECT_ID,
+    expectedRevision: 6,
+    issuedAt: "2026-08-02T12:01:00.000Z",
+    baseSnapshot,
+    phases: [{
+      id: "architecture",
+      name: "System architecture",
+      description: "Create the first editable system model.",
+    }],
+    workItems: [{
+      id: "seed-syson-model",
+      phaseId: "architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "architecture.seed-syson-model",
         version: "1",
         bindings: [{
           name: "approvedDiscovery",

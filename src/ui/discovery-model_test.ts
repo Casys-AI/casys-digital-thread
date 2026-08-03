@@ -209,5 +209,5 @@ Deno.test("discovery view exposes a brief as a conversation record", () => {
   assertEquals(view.activeQuestion, undefined);
   assertEquals(view.statusLabel, "Brief ready to discuss");
   assertEquals(view.progress.label, "2 topics clarified · 0 open");
-  assertEquals(view.progress.phaseLabel, "Discovery pass complete");
+  assertEquals(view.progress.phaseLabel, "Brief ready for review");
 });

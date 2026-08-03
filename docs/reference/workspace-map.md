@@ -16,7 +16,7 @@
 | [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts)                                                                 | Immutable project intent and execution-state contract              |
 | [`src/domain/syson-model-seed.ts`](../../src/domain/syson-model-seed.ts)                                                                       | Closed r1-to-r2 SysON container identity capture and materializer  |
 | [`src/domain/mechanical-proof-case.ts`](../../src/domain/mechanical-proof-case.ts)                                                             | Declaration validation and limited identity matching               |
-| [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts)                                                                     | Immutable pre-project discovery and review contract                |
+| [`src/domain/project-discovery.ts`](../../src/domain/project-discovery.ts)                                                                     | Immutable intake revisions behind the living Project brief         |
 | [`src/adapters/project-discovery-store.ts`](../../src/adapters/project-discovery-store.ts)                                                     | Immutable discovery revision store                                 |
 | [`src/tools/project-discovery.ts`](../../src/tools/project-discovery.ts)                                                                       | Agent MCP discovery-authoring tools                                |
 | [`src/domain/project-discovery-handoff-service.ts`](../../src/domain/project-discovery-handoff-service.ts)                                     | Confirmed discovery to empty project-shell transition              |
@@ -59,18 +59,19 @@
 
 ## Local endpoints
 
-| Endpoint                    | Owner                         | Purpose                                       |
-| --------------------------- | ----------------------------- | --------------------------------------------- |
-| `http://127.0.0.1:8180`     | SysON                         | SysML web modeler                             |
-| `http://127.0.0.1:3009/mcp` | `mcp-syson`                   | Model, constraints and evaluations            |
-| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`                 | Provider-native ERP data                      |
-| `http://127.0.0.1:3014/mcp` | `mcp-build123d`               | CAD execution and exports                     |
-| `http://127.0.0.1:3015/mcp` | `mcp-calculix`                | Meshing and static FEA                        |
-| `http://127.0.0.1:3016/mcp` | `mcp-modelica`                | Approved simulations and run records          |
-| `http://127.0.0.1:3020/mcp` | `deno task start`             | Fleet reads plus agent project control        |
-| `http://127.0.0.1:3021/`    | `deno task preview:browser`   | Console MCP App browser harness               |
-| `http://127.0.0.1:5173/`    | `deno task preview:thread`    | Native read-only cockpit and live SSE dossier |
-| `http://127.0.0.1:5174/`    | `deno task preview:discovery` | Read-only guided-discovery dossier            |
+| Endpoint                    | Owner                         | Purpose                                        |
+| --------------------------- | ----------------------------- | ---------------------------------------------- |
+| `http://127.0.0.1:8180`     | SysON                         | SysML web modeler                              |
+| `http://127.0.0.1:3009/mcp` | `mcp-syson`                   | Model, constraints and evaluations             |
+| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`                 | Provider-native ERP data                       |
+| `http://127.0.0.1:3014/mcp` | `mcp-build123d`               | CAD execution and exports                      |
+| `http://127.0.0.1:3015/mcp` | `mcp-calculix`                | Meshing and static FEA                         |
+| `http://127.0.0.1:3016/mcp` | `mcp-modelica`                | Approved simulations and run records           |
+| `http://127.0.0.1:3020/mcp` | `deno task start`             | Fleet reads plus agent project control         |
+| `http://127.0.0.1:3021/`    | `deno task preview:browser`   | Console MCP App browser harness                |
+| `http://127.0.0.1:5175/`    | `deno task preview:cockpit`   | Canonical project cockpit and live Project tab |
+| `http://127.0.0.1:5173/`    | `deno task preview:thread`    | Direct engineering-view development preview    |
+| `http://127.0.0.1:5174/`    | `deno task preview:discovery` | Direct brief-view development preview          |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.

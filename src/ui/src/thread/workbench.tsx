@@ -27,6 +27,10 @@ import {
   projectViewLabel,
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
+import {
+  parseProjectViewHash,
+  projectViewHash,
+} from "../project/navigation-model.ts";
 import { DocumentaryBaselineWorkbench } from "../project/documentary-baseline-workbench.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
@@ -78,8 +82,8 @@ export function ThreadWorkbench({
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
-  const [activeView, setActiveView] = useState<ProjectWorkspaceView>(
-    "overview",
+  const [activeView, setActiveView] = useState<ProjectWorkspaceView>(() =>
+    parseProjectViewHash(globalThis.location?.hash ?? "")
   );
   const [activeComponentProvider, setActiveComponentProvider] = useState<
     ThreadComponentProvider
@@ -100,6 +104,21 @@ export function ThreadWorkbench({
   const graphCanvasCloseButton = useRef<HTMLButtonElement>(null);
   const graphCanvasReturnView = useRef<ProjectWorkspaceView>("verification");
   followLiveRef.current = followLive;
+
+  // Retour arriere et avance du navigateur : le fragment fait autorite sur
+  // l'espace affiche, sinon les fleches de l'historique laissent l'URL et le
+  // cockpit desynchronises.
+  useEffect(() => {
+    const syncFromHash = () => {
+      setActiveView(parseProjectViewHash(globalThis.location?.hash ?? ""));
+    };
+    globalThis.addEventListener("popstate", syncFromHash);
+    globalThis.addEventListener("hashchange", syncFromHash);
+    return () => {
+      globalThis.removeEventListener("popstate", syncFromHash);
+      globalThis.removeEventListener("hashchange", syncFromHash);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -225,6 +244,22 @@ export function ThreadWorkbench({
     };
   }, [graphCanvasOpen]);
 
+  const changeView = (next: ProjectWorkspaceView) => {
+    setActiveView(next);
+    setGraphCanvasOpen(false);
+    // A selected record can belong to another tool surface. Keep the main
+    // workspace calm when changing context; explicit inspection reopens this.
+    setInspectorOpen(false);
+    // Le fragment suit l'espace ouvert : recharger, revenir en arriere ou
+    // partager le lien ramene au meme endroit du cockpit.
+    if (globalThis.location && globalThis.history) {
+      const hash = projectViewHash(next);
+      if (globalThis.location.hash !== hash) {
+        globalThis.history.pushState(null, "", hash);
+      }
+    }
+  };
+
   if (error) {
     return (
       <StateMessage title="Engineering project unavailable" tone="danger">
@@ -258,6 +293,8 @@ export function ThreadWorkbench({
       <DocumentaryBaselineWorkbench
         workbench={workbench}
         streamStatus={streamStatus}
+        activeView={activeView}
+        onChangeView={changeView}
       />
     );
   }
@@ -275,14 +312,6 @@ export function ThreadWorkbench({
     graphCanvasReturnView.current = activeView;
     setInspectorOpen(false);
     setGraphCanvasOpen(true);
-  };
-
-  const changeView = (next: ProjectWorkspaceView) => {
-    setActiveView(next);
-    setGraphCanvasOpen(false);
-    // A selected record can belong to another tool surface. Keep the main
-    // workspace calm when changing context; explicit inspection reopens this.
-    setInspectorOpen(false);
   };
 
   const currentDecisionEvidence = (decisionId?: string) => {

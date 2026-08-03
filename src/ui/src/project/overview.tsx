@@ -49,7 +49,7 @@ export function ProjectOverview({
           <strong>{String(project.revision).padStart(2, "0")}</strong>
         </div>
         <div class="project-objective-copy">
-          <p>ENGINEERING OBJECTIVE</p>
+          <p>CURRENT PROJECT BRIEF</p>
           <h3 id="project-objective-title">
             {project.project.objective.title}
           </h3>
@@ -88,7 +88,18 @@ export function ProjectOverview({
             Statuses are derived from recorded work, decisions and evidence.
           </span>
         </header>
-        <ol class="project-phase-rail">
+        {
+          /*
+          Sous ~900px le rail deborde et devient une zone a defilement
+          horizontal. Sans tabindex, les phases hors ecran sont inatteignables
+          au clavier seul (WCAG 2.1.1).
+        */
+        }
+        <ol
+          class="project-phase-rail"
+          tabIndex={0}
+          aria-label="Project phases, scrolls horizontally"
+        >
           {brief.phases.map((item, index) => (
             <li key={item.phase.id} data-state={item.status}>
               <div class="project-phase-node">

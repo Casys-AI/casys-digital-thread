@@ -60,7 +60,7 @@ export function buildProjectDiscoveryView(
         ? "Current question"
         : snapshot.status === "discovering"
         ? "Agent preparing the next question"
-        : "Discovery pass complete",
+        : "Brief ready for review",
     },
     statusLabel: discoveryStatusLabel(snapshot.status),
     statusMessage: discoveryStatusMessage(snapshot.status),
@@ -72,7 +72,19 @@ export function discoveryStatusLabel(status: ProjectDiscoveryStatus): string {
   if (status === "awaiting-review") return "Brief ready to discuss";
   if (status === "revision-requested") return "Revision requested";
   if (status === "approved") return "Brief confirmed";
-  return "Discovery in progress";
+  return "Project framing in progress";
+}
+
+/**
+ * Le badge d'en-tete porte deja l'etat. Le panneau central doit donc dire ce
+ * qu'il y a a faire maintenant, sinon les deux repetent le meme mot a un ecran
+ * d'intervalle et le panneau devient un cul-de-sac.
+ */
+export function discoveryNextStepLabel(status: ProjectDiscoveryStatus): string {
+  if (status === "awaiting-review") return "Discuss the draft brief";
+  if (status === "revision-requested") return "Waiting on the agent";
+  if (status === "approved") return "Follow the shared record";
+  return "Next question on the way";
 }
 
 export function discoveryStatusMessage(status: ProjectDiscoveryStatus): string {

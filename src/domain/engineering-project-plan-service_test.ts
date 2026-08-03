@@ -6,6 +6,7 @@ import {
   type EngineeringProjectSnapshot,
 } from "./engineering-project.ts";
 import {
+  type AppendProjectChangeCommand,
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectCompletionEvidenceValidator,
@@ -617,6 +618,124 @@ Deno.test("an unexecuted plan can be revised, which lets the agent adapt before 
   ]);
 });
 
+Deno.test("an agent appends a reviewed architecture change without rewriting the completed baseline", async () => {
+  const { discovery, project: baseline } = await completedInitialProject();
+  const store = new MemoryProjectStore(baseline);
+  const service = planService(
+    store,
+    discovery,
+    new RecordingInitialEvidenceValidator(),
+  );
+  const command = architectureAppendCommand(baseline);
+
+  const appended = await service.appendChange(AGENT, command);
+
+  assertEquals(appended.revision, baseline.revision + 1);
+  assertEquals(appended.plan, baseline.plan);
+  assertEquals(appended.threadSnapshots, baseline.threadSnapshots);
+  assertEquals(appended.agentRuns, baseline.agentRuns);
+  assertEquals(appended.phases.slice(0, baseline.phases.length), baseline.phases);
+  assertEquals(
+    appended.workItems.slice(0, baseline.workItems.length),
+    baseline.workItems,
+  );
+  assertEquals(appended.phases.at(-1)?.id, "architecture");
+  assertEquals(appended.workItems.at(-1)?.id, "seed-syson-model");
+  assertEquals(appended.workItems.at(-1)?.status, "ready");
+  assertEquals(appended.planChanges, [{
+    id: "change:append-drone-architecture",
+    commandId: "append-drone-architecture",
+    baseSnapshot: baseline.threadSnapshots[0],
+    phaseIds: ["architecture"],
+    workItemIds: ["seed-syson-model"],
+    decisionIds: [],
+    publishedAt: "2026-08-02T12:01:00.000Z",
+    publishedBy: { id: AGENT.actorId, origin: "agent" },
+  }]);
+  assertEquals(appended.commandReceipts?.at(-1)?.type, "project.change-append");
+
+  const replay = await service.appendChange(AGENT, command);
+  assertEquals(replay, appended);
+  assertEquals((await store.get(PROJECT_ID))?.revision, appended.revision);
+});
+
+Deno.test("a project change is revision-bound and requires the exact current ThreadSnapshot head", async () => {
+  const { discovery, project: baseline } = await completedInitialProject();
+  const store = new MemoryProjectStore(baseline);
+  const service = planService(
+    store,
+    discovery,
+    new RecordingInitialEvidenceValidator(),
+  );
+
+  await assertCommandError(
+    () => service.appendChange(HUMAN, architectureAppendCommand(baseline)),
+    "permission_denied",
+  );
+  await assertCommandError(
+    () =>
+      service.appendChange(AGENT, {
+        ...architectureAppendCommand(baseline),
+        commandId: "append-drone-architecture-wrong-head",
+        baseSnapshot: {
+          ...baseline.threadSnapshots[0],
+          revision: baseline.threadSnapshots[0].revision + 1,
+        },
+      }),
+    "invalid_input",
+  );
+  assertEquals(await store.get(PROJECT_ID), baseline);
+});
+
+Deno.test("an append is refused while an earlier project run is active", async () => {
+  const { discovery, project: baseline } = await completedInitialProject();
+  const store = new MemoryProjectStore(baseline);
+  const service = planService(
+    store,
+    discovery,
+    new RecordingInitialEvidenceValidator(),
+  );
+  let project = await service.appendChange(AGENT, architectureAppendCommand(baseline));
+  project = await service.queueRun(AGENT, {
+    ...common(project.revision, "queue-appended-seed"),
+    runId: "run:appended-seed",
+    workItemId: "seed-syson-model",
+    summary: "Queue the first system-model container.",
+    basis: { kind: "thread-snapshot", ...project.threadSnapshots[0] },
+  });
+  const before = await store.get(PROJECT_ID);
+
+  await assertCommandError(
+    () =>
+      service.appendChange(AGENT, {
+        ...architectureAppendCommand(project),
+        commandId: "append-while-seed-active",
+        phases: [{
+          id: "architecture-detail",
+          name: "System model detail",
+          description: "Declare work only after the active run has finished.",
+        }],
+        workItems: [{
+          id: "author-inspection-drone",
+          phaseId: "architecture-detail",
+          owner: "agent",
+          dependsOnWorkItemIds: ["seed-syson-model"],
+          decisionIds: [],
+          operation: {
+            id: "architecture.author-inspection-drone",
+            version: "1",
+            bindings: [{
+              name: "approvedDiscovery",
+              source: { kind: "approved-discovery" },
+            }],
+          },
+        }],
+      }),
+    "invalid_transition",
+  );
+  assertEquals(await store.get(PROJECT_ID), before);
+});
+
 Deno.test("plan publication is agent-only, revision-bound, and fails closed for unknown operations", async () => {
   const store = new MemoryProjectStore(projectShell());
   const service = planService(store, discoveryFixture());
@@ -815,6 +934,37 @@ function stagedPlanCommand(expectedRevision: number): PublishProjectPlanCommand 
         },
       },
     ],
+  };
+}
+
+function architectureAppendCommand(
+  project: EngineeringProjectSnapshot,
+): AppendProjectChangeCommand {
+  return {
+    ...common(project.revision, "append-drone-architecture"),
+    baseSnapshot: project.threadSnapshots[0],
+    phases: [{
+      id: "architecture",
+      name: "System model",
+      description:
+        "Create the first traceable system-model container from the completed baseline.",
+    }],
+    workItems: [{
+      id: "seed-syson-model",
+      phaseId: "architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: ["establish-baseline"],
+      decisionIds: [],
+      operation: {
+        id: "architecture.seed-syson-model",
+        version: "1",
+        bindings: [{
+          name: "approvedDiscovery",
+          source: { kind: "approved-discovery" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
   };
 }
 

@@ -71,15 +71,30 @@ Deno.test("native Workbench resolves the agent-selected project and its subject 
     workspaceId: "primary",
     html: "unused",
   });
-  let response = await handler(new Request("http://localhost/api/thread/workbench"));
+  let response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals(response.status, 200);
-  assertEquals((await response.json()).project.project.subjectId, "project:focus-one");
+  assertEquals(
+    (await response.json()).project.project.subjectId,
+    "project:focus-one",
+  );
   focus.value = focusSnapshot({ kind: "project", projectId: "focus-two" }, 2);
-  response = await handler(new Request("http://localhost/api/thread/workbench"));
+  response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals(response.status, 200);
-  assertEquals((await response.json()).project.project.subjectId, "project:focus-two");
-  focus.value = focusSnapshot({ kind: "discovery", discoveryId: "drone-discovery" }, 3);
-  response = await handler(new Request("http://localhost/api/thread/workbench"));
+  assertEquals(
+    (await response.json()).project.project.subjectId,
+    "project:focus-two",
+  );
+  focus.value = focusSnapshot({
+    kind: "discovery",
+    discoveryId: "drone-discovery",
+  }, 3);
+  response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals(response.status, 409);
   assertEquals(
     (await response.json()).error,
@@ -110,7 +125,9 @@ Deno.test("focused native Workbench never applies the legacy component catalog t
     },
     html: "unused",
   });
-  const response = await handler(new Request("http://localhost/api/thread/workbench"));
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals(response.status, 200);
   assertEquals(
     (await response.json()).thread.components.subjectId,
@@ -167,7 +184,7 @@ Deno.test("native Workbench focus SSE exposes only the public target on project 
   }
 });
 
-Deno.test("focused workspace root selects one complete native surface and names an absent focus", async () => {
+Deno.test("focused workspace root stays the canonical native cockpit across discovery and project focus", async () => {
   const focus = new MutableFocus();
   const handler = createFocusedWorkspaceHandler({
     focus,
@@ -175,21 +192,28 @@ Deno.test("focused workspace root selects one complete native surface and names 
     native: (request) =>
       Promise.resolve(new Response(`native:${new URL(request.url).pathname}`)),
     discovery: (request) =>
-      Promise.resolve(new Response(`discovery:${new URL(request.url).pathname}`)),
+      Promise.resolve(
+        new Response(`discovery:${new URL(request.url).pathname}`),
+      ),
   });
   let response = await handler(new Request("http://localhost/"));
   assertEquals(response.status, 200);
   assertStringIncludes(await response.text(), "has not selected");
-  response = await handler(new Request("http://localhost/api/thread/workbench"));
+  response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
   assertEquals(response.status, 409);
   assertEquals((await response.json()).error, "cockpit_focus_not_selected");
-  focus.value = focusSnapshot({ kind: "discovery", discoveryId: "drone-discovery" });
+  focus.value = focusSnapshot({
+    kind: "discovery",
+    discoveryId: "drone-discovery",
+  });
   response = await handler(new Request("http://localhost/"));
-  assertEquals(await response.text(), "discovery:/");
+  assertEquals(await response.text(), "native:/");
   response = await handler(
     new Request("http://localhost/native-workbench.html"),
   );
-  assertEquals(await response.text(), "discovery:/");
+  assertEquals(await response.text(), "native:/");
   focus.value = focusSnapshot({ kind: "project", projectId: "drone" }, 2);
   response = await handler(new Request("http://localhost/"));
   assertEquals(await response.text(), "native:/");
@@ -265,7 +289,10 @@ Deno.test("native Workbench serves a planning-only project without borrowing the
   const body = await response.json();
 
   assertEquals(response.status, 200);
-  assertEquals(response.headers.get("X-Casys-Data-Source"), "engineering-project-plan");
+  assertEquals(
+    response.headers.get("X-Casys-Data-Source"),
+    "engineering-project-plan",
+  );
   assertEquals(body.surface, "planning");
   assertEquals(body.project.threadSnapshots, []);
   assertEquals(body.planning.technicalBaseline.status, "not-created");
@@ -346,7 +373,9 @@ Deno.test("native Workbench V2 documentary BFF round-trips through the browser H
     assertEquals(client.source, "http");
     assertEquals(workbench.surface, "documentary");
     if (workbench.surface !== "documentary") {
-      throw new Error("Expected the V2 project to render as documentary provenance.");
+      throw new Error(
+        "Expected the V2 project to render as documentary provenance.",
+      );
     }
     assertEquals(workbench.project.schemaVersion, "2.0");
     assertEquals(
@@ -358,7 +387,10 @@ Deno.test("native Workbench V2 documentary BFF round-trips through the browser H
       "human",
     );
     assertEquals(workbench.documentary.record.snapshotId, thread.id);
-    assertEquals(workbench.documentary.technicalEvidence.status, "not-recorded");
+    assertEquals(
+      workbench.documentary.technicalEvidence.status,
+      "not-recorded",
+    );
   } finally {
     await server.shutdown();
   }
@@ -415,7 +447,9 @@ Deno.test("native Workbench holds an unpublished SysON seed r2 behind documentar
 Deno.test("native Workbench holds an unattached inspection-drone architecture r3 behind r2 while preserving its live feed", async () => {
   const r1 = documentaryThreadSnapshot("drone-architecture-fixture");
   const r2 = unpublishedSeedThreadSnapshot(r1);
-  const unpublishedR3 = unpublishedInspectionDroneArchitectureThreadSnapshot(r2);
+  const unpublishedR3 = unpublishedInspectionDroneArchitectureThreadSnapshot(
+    r2,
+  );
   const project = projectWithPublishingInspectionDroneArchitecture(r2);
   const liveUpdates = new LiveThreadUpdateStore();
   await liveUpdates.append({
@@ -584,7 +618,10 @@ Deno.test("native Workbench projects only filtered baseline activity before evid
   assertEquals(payload.includes("provider structured output"), false);
   assertEquals(payload.includes("provider-secret"), false);
   assertEquals(payload.includes("raw provider data"), false);
-  assertEquals(payload.includes("provider raw summary that must not be shown"), false);
+  assertEquals(
+    payload.includes("provider raw summary that must not be shown"),
+    false,
+  );
   assertEquals(payload.includes("not-the-baseline"), false);
   assertEquals("thread" in body, false);
 });
@@ -677,7 +714,10 @@ Deno.test("native Workbench does not promote a newer parallel active branch", as
     },
   };
   const handler = createNativeWorkbenchHandler({
-    store: new VersionedReadOnlyStore(parallelHead, [parallelBase, parallelHead]),
+    store: new VersionedReadOnlyStore(parallelHead, [
+      parallelBase,
+      parallelHead,
+    ]),
     projectStore: new ReadOnlyProjectStore(projectSnapshot(declared)),
     projectSnapshots: new VersionedReadOnlyStore(declared, [declared]),
     subjectId: declared.subject.id,
@@ -995,9 +1035,14 @@ Deno.test("native Workbench SSE observes a cross-process live update without a n
       recordedAt: "2026-08-01T10:00:00.000Z",
       graph: { nodes: [liveCadNode("running")], edges: [] },
     });
-    const started = new TextDecoder().decode((await responseReader.read()).value);
+    const started = new TextDecoder().decode(
+      (await responseReader.read()).value,
+    );
     assertStringIncludes(started, `id: 1:${snapshot.revision}:1`);
-    assertStringIncludes(started, '"id":"graph:artifact:coffee-machine-cad-live"');
+    assertStringIncludes(
+      started,
+      '"id":"graph:artifact:coffee-machine-cad-live"',
+    );
     assertStringIncludes(started, '"freshness":"running"');
 
     // Deno.serve's legacy lifecycle aborts request.signal after returning a
@@ -1017,7 +1062,9 @@ Deno.test("native Workbench SSE observes a cross-process live update without a n
         edges: [],
       },
     });
-    const completed = new TextDecoder().decode((await responseReader.read()).value);
+    const completed = new TextDecoder().decode(
+      (await responseReader.read()).value,
+    );
     assertStringIncludes(completed, `id: 1:${snapshot.revision}:2`);
     assertStringIncludes(completed, '"freshness":"fresh"');
     assertEquals(
@@ -1084,7 +1131,9 @@ class VersionedReadOnlyStore implements ThreadSnapshotStore {
     private readonly head: ThreadSnapshot,
     snapshots: readonly ThreadSnapshot[],
   ) {
-    this.#snapshots = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+    this.#snapshots = new Map(
+      snapshots.map((snapshot) => [snapshot.id, snapshot]),
+    );
   }
 
   get(snapshotId: string): Promise<ThreadSnapshot | undefined> {
@@ -1144,7 +1193,9 @@ class ReadOnlyProjectStore implements EngineeringProjectRevisionStore {
 class ProjectMapStore implements EngineeringProjectRevisionStore {
   #projects: Map<string, EngineeringProjectSnapshot>;
   constructor(projects: readonly EngineeringProjectSnapshot[]) {
-    this.#projects = new Map(projects.map((project) => [project.project.id, project]));
+    this.#projects = new Map(
+      projects.map((project) => [project.project.id, project]),
+    );
   }
   get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
     return Promise.resolve(this.#projects.get(projectId));
@@ -1154,7 +1205,9 @@ class ProjectMapStore implements EngineeringProjectRevisionStore {
     revision: number,
   ): Promise<EngineeringProjectSnapshot | undefined> {
     const project = this.#projects.get(projectId);
-    return Promise.resolve(project?.revision === revision ? project : undefined);
+    return Promise.resolve(
+      project?.revision === revision ? project : undefined,
+    );
   }
   createInitial(): Promise<EngineeringProjectSnapshot> {
     throw new Error("read-only");

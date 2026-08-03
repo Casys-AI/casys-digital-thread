@@ -108,7 +108,7 @@ in a separately orchestrated agent workflow.
 For the paired-project flow, start one same-origin workspace shell instead:
 
 ```bash
-deno task preview:cockpit
+deno task preview:cockpit --port=5175
 ```
 
 The agent starts or resumes a discovery with `project_discovery_*`, then uses
@@ -116,16 +116,18 @@ The agent starts or resumes a discovery with `project_discovery_*`, then uses
 human-confirmed brief creates its project shell, the agent points the same workspace at
 that existing project. `cockpit_focus_snapshot` supplies the optimistic focus revision.
 
-The browser has no selector and no command route: it only reads durable focus and
-reloads the root page when focus changes between complete Discovery and Engineering
-Workbench surfaces. A focus change creates no project, answer, run, tool call, evidence,
-or approval. Before an agent selects a target, workspace mode clearly says it is
-awaiting project context; it never silently falls back to CM-01.
+The browser has no selector and no command route: it only reads durable focus. The root
+always remains the same project cockpit and the **Project** tab stays the entry point.
+Before project creation it renders the latest brief revision; after handoff it renders
+the current engineering-project revision without sending the person to another product
+page. A focus change creates no project, answer, run, tool call, evidence, or approval.
+Before an agent selects a target, workspace mode clearly says it is awaiting project
+context; it never silently falls back to CM-01.
 
 ## Inspect the truth boundary
 
 ```bash
-curl -i http://127.0.0.1:5173/api/thread/workbench
+curl -i http://127.0.0.1:5175/api/thread/workbench
 ```
 
 For the default CM-01 technical-evidence surface, the response header contains:

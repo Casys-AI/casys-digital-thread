@@ -138,10 +138,11 @@ npm --prefix src/ui run build
 deno task start                  # http://127.0.0.1:3020/mcp
 # In a second terminal, browser host for the existing MCP App:
 deno task preview:browser        # http://127.0.0.1:3021/
-# The native shell can open the checked-in observed CM-01 baseline directly.
-deno task preview:thread
-# A separate calm surface guides a new idea before a technical project exists.
-deno task preview:discovery       # http://127.0.0.1:5174/?discovery=drone-concept
+# Canonical product shell: one Project tab from first brief to technical proof.
+deno task preview:cockpit --port=5175  # http://127.0.0.1:5175/
+# Direct component previews remain available for development and diagnosis.
+deno task preview:thread              # http://127.0.0.1:5173/
+deno task preview:discovery           # http://127.0.0.1:5174/?discovery=drone-concept
 # Reassemble only when deliberately producing new local evidence:
 deno task thread:assemble
 ```
@@ -149,16 +150,18 @@ deno task thread:assemble
 The browser host relays the Console's read-only tools to the live MCP server. It is a
 local MCP Apps test harness, not the product Workbench.
 
-The main engineering surface is one native Preact cockpit reading an
-`engineering-workbench/0.2` document from a Deno backend-for-frontend. Guided discovery
-has its own loopback Preact dossier view; confirmation and project creation remain in
-the paired conversation. The cockpit's atomic document has an explicit surface:
-`planning` carries durable project intent before any technical baseline exists, while
-`evidence` combines that intent with the current technical projection (`ThreadSnapshot`
-plus provisional live overlay) and an explicit `aligned`/`thread-ahead` signal. The
-cockpit is organized as **Project**, **Activity**, **Product**, **Evidence**, and
-**Execution** so project objective and review, agent activity, physical structure,
-technical proof, and execution records no longer compete in one lineage screen.
+The product surface is one native Preact cockpit. Its **Project** tab begins as the
+living project brief and evolves into the project path and current engineering record;
+there is no separate Discovery page in the product. Confirmation and project creation
+remain in the paired conversation. Underneath that single shell, the backend preserves
+immutable intake revisions and later project revisions rather than overwriting audit
+history. The cockpit's atomic engineering document has an explicit surface: `planning`
+carries durable project intent before any technical baseline exists, while `evidence`
+combines that intent with the current technical projection (`ThreadSnapshot` plus
+provisional live overlay) and an explicit `aligned`/`thread-ahead` signal. The cockpit
+is organized as **Project**, **Activity**, **Product**, **Evidence**, and **Execution**
+so project objective and review, agent activity, physical structure, technical proof,
+and execution records no longer compete in one lineage screen.
 
 `GET /api/thread/workbench` and its SSE stream are passive. The cockpit has no command
 or provider authority: it reads immutable project revisions and live projections only.
@@ -169,16 +172,17 @@ the agent cannot choose an unregistered provider call, confirm its own proposal,
 a raw provider response into canonical thread truth. A technical run completes only
 after its exact evidence has been persisted, read back, and attached.
 
-New product ideas begin in a separate immutable `ProjectDiscoverySnapshot`, not in an
-empty engineering project. Agents can start a discovery, prepare one bounded question at
-a time, record a sourced answer, and propose a brief through `project_discovery_*` MCP
-tools. The normal exchange happens in the paired agent conversation; the loopback
-Discovery Workbench receives the resulting snapshots live as the shared project record.
-The person confirms or corrects the brief in that conversation. On confirmation,
+Internally, new product ideas begin as immutable revisions of a
+`ProjectDiscoverySnapshot`, not as fabricated technical evidence. This is a provenance
+boundary, not a second user-facing workspace: the latest revision is rendered as the
+current brief in the same **Project** tab. Agents prepare one bounded question at a
+time, record a sourced answer, and revise the brief through `project_discovery_*` MCP
+tools. The person confirms or corrects it in the paired conversation. On confirmation,
 `project_discovery_brief_confirm` uses signed MRTR elicitation and the agent may then
 call `project_discovery_project_create`; the domain handoff creates only a schema-`2.0`
 engineering project shell from the exact confirmed brief while retaining its
-fingerprint. The Discovery Workbench remains a read-only dossier projection throughout.
+fingerprint. The same Project tab then follows the engineering project's current
+revision, path, activity and evidence while the approved intake remains traceable.
 
 For an idea/specification project, the first ready work item is the reviewed
 `baseline.from-approved-discovery@1` operation. The agent presents the exact bounded run
@@ -205,14 +209,14 @@ The source tree also implements the next guarded operation,
 `architecture.author-inspection-drone@1`. It can insert one fixed, high-level
 inspection-drone SysML fragment into the exact empty r2 container only when the same
 approved discovery explicitly says `primary-mission = inspection-controlled` and
-`payload-class = light-inspection-camera`. The operation must be present in the initial
-reviewed plan: planning becomes immutable once r1 exists, while its execution basis is
-the exact r2 snapshot. It records an insertion attestation and narrow read-back before
-it could publish r3. This is not released into the running SysON toolchain. A separate
-disposable local parser/translator and model-tree conformance check passed on 2026-08-03
-against loopback `mcp-syson 0.5.2`; it was not an r3 project execution or engineering
-evidence. The operation creates neither CAD, physics, flight behaviour, cost,
-compliance, nor a verified requirement verdict.
+`payload-class = light-inspection-camera`. After the documentary baseline, the agent
+records it in a separate append-only project change, bound to the exact current thread
+snapshot. Its execution basis is the exact r2 snapshot. It records an insertion
+attestation and narrow read-back before it could publish r3. This is not released into
+the running SysON toolchain. A separate disposable local parser/translator and
+model-tree conformance check passed on 2026-08-03 against loopback `mcp-syson 0.5.2`; it
+was not an r3 project execution or engineering evidence. The operation creates neither
+CAD, physics, flight behaviour, cost, compliance, nor a verified requirement verdict.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. In the product path,
 calculation, modeling, ERP, and evidence publication belong to agent orchestration

@@ -71,7 +71,7 @@ export function collectEngineeringProjectIssues(
       "approvals",
       "blockers",
     ],
-    ["previous", "commandReceipts", "discoveryHandoff", "plan"],
+    ["previous", "commandReceipts", "discoveryHandoff", "plan", "planChanges"],
     issues,
   );
   if (!root) return issues;
@@ -93,6 +93,9 @@ export function collectEngineeringProjectIssues(
   }
   if (root.plan !== undefined) {
     validateProjectPlan(root.plan, "$.plan", issues);
+  }
+  if (root.planChanges !== undefined) {
+    validateArray(root.planChanges, "$.planChanges", issues, validateProjectChange);
   }
   validateArray(root.threadSnapshots, "$.threadSnapshots", issues, validateSnapshotRef);
   validateArray(root.phases, "$.phases", issues, validatePhase);
@@ -293,6 +296,53 @@ function validateProjectPlan(
     issues,
   );
   validateApprovedDiscoveryBasis(input.basis, `${path}.basis`, issues);
+  isoDateTime(input.publishedAt, `${path}.publishedAt`, issues);
+  validateCommandActor(input.publishedBy, `${path}.publishedBy`, issues);
+}
+
+function validateProjectChange(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "id",
+      "commandId",
+      "baseSnapshot",
+      "phaseIds",
+      "workItemIds",
+      "decisionIds",
+      "publishedAt",
+      "publishedBy",
+    ],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.id, `${path}.id`, issues);
+  nonEmptyString(input.commandId, `${path}.commandId`, issues);
+  validateSnapshotRef(input.baseSnapshot, `${path}.baseSnapshot`, issues);
+  validateArray(
+    input.phaseIds,
+    `${path}.phaseIds`,
+    issues,
+    (item, itemPath) => nonEmptyString(item, itemPath, issues),
+  );
+  validateArray(
+    input.workItemIds,
+    `${path}.workItemIds`,
+    issues,
+    (item, itemPath) => nonEmptyString(item, itemPath, issues),
+  );
+  validateArray(
+    input.decisionIds,
+    `${path}.decisionIds`,
+    issues,
+    (item, itemPath) => nonEmptyString(item, itemPath, issues),
+  );
   isoDateTime(input.publishedAt, `${path}.publishedAt`, issues);
   validateCommandActor(input.publishedBy, `${path}.publishedBy`, issues);
 }
@@ -908,6 +958,7 @@ function validateCommandReceipt(
     [
       "project.create-from-discovery",
       "project.plan-publish",
+      "project.change-append",
       "decision.propose",
       "decision.approve",
       "decision.reject",
@@ -1225,6 +1276,7 @@ function validateInvariants(
     }
   }
   validatePlanInvariants(project, issues);
+  validatePlanChangeInvariants(project, issues);
   project.threadSnapshots.forEach((reference, index) => {
     if (reference.subjectId !== project.project.subjectId) {
       issue(
@@ -1592,6 +1644,168 @@ function validatePlanInvariants(
       "must be anchored by an agent project.plan-publish receipt",
     );
   }
+}
+
+function validatePlanChangeInvariants(
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const changes = project.planChanges ?? [];
+  if (changes.length === 0) return;
+  if (!project.plan) {
+    issue(
+      issues,
+      "missing_reference",
+      "$.planChanges",
+      "an appended project change requires an initial project plan",
+    );
+  }
+  requireUnique(changes, (change) => change.id, "$.planChanges", issues);
+  requireUnique(changes, (change) => change.commandId, "$.planChanges", issues);
+  const phaseIds = new Set<string>();
+  const workItemIds = new Set<string>();
+  const decisionIds = new Set<string>();
+  const phaseById = new Map(project.phases.map((phase) => [phase.id, phase]));
+  const workById = new Map(project.workItems.map((item) => [item.id, item]));
+  const decisionById = new Map(
+    project.decisions.map((decision) => [decision.id, decision]),
+  );
+  const snapshots = new Set(
+    project.threadSnapshots.map((snapshot) =>
+      snapshotKey(snapshot.snapshotId, snapshot.revision)
+    ),
+  );
+  changes.forEach((change, index) => {
+    const path = `$.planChanges[${index}]`;
+    if (change.publishedBy.origin !== "agent") {
+      issue(
+        issues,
+        "command_authority_mismatch",
+        `${path}.publishedBy.origin`,
+        "only an agent may append a project change",
+      );
+    }
+    if (Date.parse(change.publishedAt) > Date.parse(project.generatedAt)) {
+      issue(
+        issues,
+        "invalid_chronology",
+        `${path}.publishedAt`,
+        "cannot be later than the project snapshot generation time",
+      );
+    }
+    if (
+      !snapshots.has(
+        snapshotKey(change.baseSnapshot.snapshotId, change.baseSnapshot.revision),
+      ) || change.baseSnapshot.subjectId !== project.project.subjectId
+    ) {
+      issue(
+        issues,
+        "unknown_thread_snapshot",
+        `${path}.baseSnapshot`,
+        "must name one exact ThreadSnapshot declared by this project",
+      );
+    }
+    if (change.phaseIds.length === 0 || change.workItemIds.length === 0) {
+      issue(
+        issues,
+        "missing_plan_content",
+        path,
+        "must append at least one phase and one work item",
+      );
+    }
+    uniqueStrings(change.phaseIds, `${path}.phaseIds`, issues);
+    uniqueStrings(change.workItemIds, `${path}.workItemIds`, issues);
+    uniqueStrings(change.decisionIds, `${path}.decisionIds`, issues);
+    change.phaseIds.forEach((phaseId, phaseIndex) => {
+      if (phaseIds.has(phaseId)) {
+        issue(
+          issues,
+          "duplicate_id",
+          `${path}.phaseIds[${phaseIndex}]`,
+          "must be owned by exactly one appended project change",
+        );
+      }
+      phaseIds.add(phaseId);
+      if (!phaseById.has(phaseId)) {
+        issue(
+          issues,
+          "missing_reference",
+          `${path}.phaseIds[${phaseIndex}]`,
+          "must reference a declared project phase",
+        );
+      }
+    });
+    change.workItemIds.forEach((workItemId, workItemIndex) => {
+      if (workItemIds.has(workItemId)) {
+        issue(
+          issues,
+          "duplicate_id",
+          `${path}.workItemIds[${workItemIndex}]`,
+          "must be owned by exactly one appended project change",
+        );
+      }
+      workItemIds.add(workItemId);
+      const workItem = workById.get(workItemId);
+      if (!workItem) {
+        issue(
+          issues,
+          "missing_reference",
+          `${path}.workItemIds[${workItemIndex}]`,
+          "must reference a declared project work item",
+        );
+      } else if (!change.phaseIds.includes(workItem.phaseId)) {
+        issue(
+          issues,
+          "missing_reference",
+          `${path}.workItemIds[${workItemIndex}]`,
+          "must belong to one phase appended by the same project change",
+        );
+      }
+    });
+    change.decisionIds.forEach((decisionId, decisionIndex) => {
+      if (decisionIds.has(decisionId)) {
+        issue(
+          issues,
+          "duplicate_id",
+          `${path}.decisionIds[${decisionIndex}]`,
+          "must be owned by exactly one appended project change",
+        );
+      }
+      decisionIds.add(decisionId);
+      const decision = decisionById.get(decisionId);
+      if (!decision) {
+        issue(
+          issues,
+          "missing_reference",
+          `${path}.decisionIds[${decisionIndex}]`,
+          "must reference a declared project decision",
+        );
+      } else if (!change.phaseIds.includes(decision.phaseId)) {
+        issue(
+          issues,
+          "missing_reference",
+          `${path}.decisionIds[${decisionIndex}]`,
+          "must belong to one phase appended by the same project change",
+        );
+      }
+    });
+    const receipt = project.commandReceipts?.find((candidate) =>
+      candidate.type === "project.change-append" &&
+      candidate.commandId === change.commandId &&
+      candidate.actor.id === change.publishedBy.id &&
+      candidate.actor.origin === change.publishedBy.origin &&
+      Date.parse(candidate.appliedAt) === Date.parse(change.publishedAt) &&
+      change.id === `change:${candidate.commandId}`
+    );
+    if (!receipt) {
+      issue(
+        issues,
+        "missing_plan_receipt",
+        path,
+        "must be anchored by an agent project.change-append receipt",
+      );
+    }
+  });
 }
 
 function validateRunBasisInvariant(
@@ -2076,12 +2290,16 @@ function validateCommandReceiptInvariant(
       "project.create-from-discovery is valid only as the first receipt of a discovery handoff",
     );
   }
-  if (receipt.type === "project.plan-publish" && receipt.actor.origin !== "agent") {
+  if (
+    (receipt.type === "project.plan-publish" ||
+      receipt.type === "project.change-append") &&
+    receipt.actor.origin !== "agent"
+  ) {
     issue(
       issues,
       "command_authority_mismatch",
       `${path}.actor.origin`,
-      "project.plan-publish requires agent authority",
+      `${receipt.type} requires agent authority`,
     );
   }
   if (
