@@ -133,6 +133,38 @@ Deno.test("inspection-drone conformance uses only the fixed disposable SysON seq
   assertEquals(report.statement.includes("not engineering evidence"), true);
 });
 
+Deno.test("inspection-drone conformance refuses a model name outside SysON's exact canonicalization", async () => {
+  const client = new FixtureSysonClient({
+    documentName: "different-inspection-drone.sysml",
+  });
+
+  const report = await runInspectionDroneSysonConformance({
+    args: confirmedArgs(),
+    client,
+    uniqueSuffix: () => "cafefeed",
+  });
+
+  assertEquals(report.status, "inconclusive");
+  assertEquals(report.engineeringEvidence, "none");
+  assertEquals(report.mutation, {
+    disposableProjectCreationAttempted: true,
+    modelCreationAttempted: true,
+    fixedRecipeInsertionAttempted: false,
+    fixedRecipeInsertionAcknowledged: false,
+    cleanup: "not-attempted; retain the disposable project for operator inspection",
+  });
+  assertEquals(client.calls.map((call) => call.name), [
+    "syson_project_create",
+    "syson_model_create",
+  ]);
+  assertEquals(
+    report.failure?.includes(
+      "fixed model name or SysON's exact .sysml canonicalization",
+    ),
+    true,
+  );
+});
+
 Deno.test("inspection-drone conformance never reports a pass when the fixed insertion acknowledgement drifts", async () => {
   const client = new FixtureSysonClient({
     insertion: {
@@ -176,13 +208,21 @@ function confirmedArgs(): string[] {
 class FixtureSysonClient implements McpToolClient {
   readonly calls: McpToolCall[] = [];
   readonly #insertion: Readonly<Record<string, unknown>>;
+  readonly #documentName: string;
 
-  constructor(options: { insertion?: Readonly<Record<string, unknown>> } = {}) {
+  constructor(
+    options: {
+      insertion?: Readonly<Record<string, unknown>>;
+      documentName?: string;
+    } = {},
+  ) {
     this.#insertion = options.insertion ?? {
       inserted: true,
       parentId: "root-r3-fixture",
       text: INSPECTION_DRONE_ARCHITECTURE_SYSML,
     };
+    this.#documentName = options.documentName ??
+      "InspectionDroneArchitectureConformance.sysml";
   }
 
   callTool(call: McpToolCall): Promise<McpToolResult> {
@@ -204,7 +244,7 @@ class FixtureSysonClient implements McpToolClient {
         assertEquals(call.name, "syson_model_create");
         return {
           documentId: "document-r3-fixture",
-          documentName: "InspectionDroneArchitectureConformance",
+          documentName: this.#documentName,
           documentKind: "sysml",
           rootPackageId: "root-r3-fixture",
           rootPackageLabel: "InspectionDroneArchitectureConformanceRoot",

@@ -29,7 +29,7 @@ const ACKNOWLEDGEMENT = "CREATE_DISPOSABLE_SYSON_PROJECT";
 const DISPOSABLE_PREFIX = /^disposable-[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])?$/;
 const PROJECT_NAME_SUFFIX = /^[a-z0-9]{8,32}$/;
 const MODEL_NAME = "InspectionDroneArchitectureConformance";
-const ROOT_PACKAGE_NAME = "InspectionDroneArchitectureConformanceRoot";
+const SYSML_DOCUMENT_SUFFIX = ".sysml";
 
 const PART_USAGE_LABELS = [
   "airframe",
@@ -175,7 +175,6 @@ export async function runInspectionDroneSysonConformance(
           editing_context_id: project.editingContextId,
           name: MODEL_NAME,
           create_root_package: true,
-          root_package_name: ROOT_PACKAGE_NAME,
         },
       })).structuredContent,
       MODEL_NAME,
@@ -485,9 +484,12 @@ function parseModel(value: unknown, expectedName: string): ProviderModel {
     documentKind: identifier(root.documentKind, "model.documentKind"),
     rootPackageId: identifier(root.rootPackageId, "model.rootPackageId"),
   };
-  if (model.documentName !== expectedName) {
+  if (
+    model.documentName !== expectedName &&
+    model.documentName !== `${expectedName}${SYSML_DOCUMENT_SUFFIX}`
+  ) {
     throw new TypeError(
-      "model.documentName did not exactly match the fixed model name.",
+      "model.documentName must be the fixed model name or SysON's exact .sysml canonicalization.",
     );
   }
   return model;
