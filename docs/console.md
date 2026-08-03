@@ -90,9 +90,11 @@ retried. The r2 result records only an editable container identity, not a system
 architecture, requirement, CAD artifact, simulation, measurement, verification result,
 or compliance claim.
 
-The r3 implementation is source-only at present: it has not been released into the
-running SysON toolchain or exercised against a real SysON instance. It makes no CAD,
-physics, flight, cost, compliance, or verified-requirement claim. It must be included in
+The r3 implementation is source-only and has not been released into the running SysON
+toolchain. Its separately authorized disposable local parser/translator and model-tree
+check passed against loopback `mcp-syson 0.5.2` on 2026-08-03; it was not an r3 project
+execution or engineering evidence. r3 makes no CAD, physics, flight, cost, compliance,
+or verified-requirement claim. It must be included in
 the initial reviewed plan because planning becomes immutable after r1, even though its
 execution basis is r2.
 

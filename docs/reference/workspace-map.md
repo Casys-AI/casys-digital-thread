@@ -137,9 +137,11 @@ arbitrary arguments or SysML text; uncertain writes are not blindly retried. r2 
 container identity, not an architecture, requirements, CAD, simulation, measurement, or
 verdict. The source tree also contains the guarded r3
 `architecture.author-inspection-drone@1` operation: it requires exact r2, an empty root,
-and exact approved inspection-drone discovery choices. It must be in the initial plan,
-is not released or run against real SysON, and makes no CAD, physics, flight, cost,
-compliance, or verified-requirement claim.
+and exact approved inspection-drone discovery choices. It must be in the initial plan
+and is not released. Its separate disposable local parser/translator and model-tree
+check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, but it was not an r3
+project run and makes no CAD, physics, flight, cost, compliance, or
+verified-requirement claim.
 
 ## Runtime ownership
 

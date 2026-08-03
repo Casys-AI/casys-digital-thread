@@ -133,9 +133,11 @@ after the exact approved discovery has selected
 `payload-class = light-inspection-camera`. It accepts no caller-authored SysML or
 provider arguments; the server inserts one fixed high-level fragment only after an empty
 root readback, then records a narrow attestation and model readback before it could
-publish r3. The operation is implemented in source but has neither been released to the
-running toolchain nor exercised against a real SysON instance. It is not CAD, physics,
-flight, cost, compliance, or a verified requirement result. The two existing-CAD/product
+publish r3. The operation is implemented in source and has not been released to the
+running toolchain. Its separately authorized disposable local parser/translator and
+model-tree check passed against loopback `mcp-syson 0.5.2` on 2026-08-03; it was not an
+r3 project execution or engineering evidence. It is not CAD, physics, flight, cost,
+compliance, or a verified requirement result. The two existing-CAD/product
 registry entries remain planning descriptors until their own file/source capture and
 technical-evidence contracts exist.
 
@@ -187,8 +189,9 @@ The r3 source contract is narrower still than a design or proof loop. It can onl
 hash-valid r2 seed capture and the same approved discovery's two exact answers:
 `inspection-controlled` and `light-inspection-camera`. Its named SysML decomposition and
 high-level intent requirements are model content, not measured acceptance criteria or
-verified thread verdicts. No r3 provider mutation, real SysON conformance result, or
-release is recorded yet.
+verified thread verdicts. A retained disposable local parser/translator and model-tree
+check passed on 2026-08-03 against loopback `mcp-syson 0.5.2`; it is not an r3 project
+mutation, technical-evidence record, or release.
 
 Schema `1.0` records retain the former `baseSnapshot` field solely for historic reading.
 Schema `2.0` rejects `baseSnapshot` on a run and rejects `basis` on a V1 run: there is
@@ -397,8 +400,10 @@ canonical capture before publishing the cited root snapshot. The seed operation 
 the fixed SysON project/document/root-package sequence described above; it has a closed
 normalizer, capture, materializer, and result validator before it publishes revision 2.
 The inspection-drone operation adds only its fixed high-level fragment to the exact,
-empty r2 root after its exact discovery gates; it does not accept arbitrary SysML.
-It is code-implemented but not released or run against a real SysON instance.
+empty r2 root after its exact discovery gates; it does not accept arbitrary SysML. It is
+code-implemented but not released. Its disposable local parser/translator and model-tree
+check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, but it was not an r3
+project run or engineering evidence.
 Neither a browser queue command nor an MCP planning command is an indirect CAD, FEA,
 Modelica, SysON, or ERPNext endpoint, and no generic provider execution is available.
 
@@ -540,8 +545,12 @@ throwaway SysON project for inspection.
 Its only assertions are that the deployed parser/translator accepts the canonical text
 and exposes the expected package, five part usages, and four requirement usages on
 read-back. A `passed` report remains `engineeringEvidence: none`; it says nothing about
-CAD, physical behaviour, flight, cost, compliance, or a verified requirement. The
-harness has not been executed against SysON, so no provider conformance evidence exists.
+CAD, physical behaviour, flight, cost, compliance, or a verified requirement. On
+2026-08-03, it passed once against loopback `mcp-syson 0.5.2`, creating a retained
+disposable project/model/root, inserting the fixed fragment once, and reading back the
+expected package, direct declarations, five `PartUsage` elements, and four
+`RequirementUsage` elements. This is parser/translator and model-tree conformance only:
+it is not r3 project execution, technical evidence, or a production release.
 
 `FileEngineeringProjectRunLease` additionally holds one local advisory lock for the
 exact `(projectId, runId)` while the trusted V2 executor runs. Its retained empty file

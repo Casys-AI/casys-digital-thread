@@ -83,7 +83,9 @@ categories deliberately answer different questions.
 - [Bounded inspection-drone SysON architecture slice](rfcs/inspection-drone-syson-architecture-slice.md)
   records the proposed r3 model fragment, exact one-write executor boundary, fake-client
   test recipe, and the inert-by-default, separately authorized disposable SysON
-  parser/translator conformance harness. It has not been executed against SysON.
+  parser/translator conformance harness. It passed once against loopback `mcp-syson
+  0.5.2` on 2026-08-03; that disposable check is not an r3 project run or engineering
+  evidence.
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.

@@ -1,7 +1,7 @@
 # RFC: bounded inspection-drone SysON architecture slice
 
-Status: **Implemented in source — not released or run against real SysON**\
-Evidence: **No r3 provider evidence exists**\
+Status: **Implemented in source — not released; disposable local SysON parser/translator and model-tree check passed**\
+Evidence: **No r3 project technical evidence exists**\
 Scope: guarded V2 operation after `architecture.seed-syson-model@1`\
 Target: a controlled visual-inspection drone carrying a light inspection camera
 
@@ -119,8 +119,9 @@ reviewed operation.
 `mcp-syson` contract documents this textual form and its requirements-trace tool queries
 SysON `RequirementUsage` elements. The fragment also avoids `SI::*`, because no numeric
 unit needs it. SysON's own documentation describes textual import as a supported but
-still partial surface, so the text remains a proposed conformance target until it has
-been accepted and read back by the exact deployed SysON image. See the
+still partial surface. The fixed fragment was accepted and read back once by the
+loopback `mcp-syson 0.5.2` image on 2026-08-03; that narrow result does not release the
+operation or establish engineering evidence. See the
 [SysON textual-format documentation](https://doc.mbse-syson.org/syson/v2025.2.0/user-manual/features/import-export-textual.html).
 
 ## Server-owned call sequence
@@ -245,8 +246,11 @@ It is intentionally not a normal test-suite step: actual mode mutates a real pro
 
 It reports parser/translator and model-tree-shape conformance only. It is not CAD,
 physics, flight, cost, compliance, requirement-verification, or other engineering
-evidence. No real SysON conformance attempt has been executed yet, so no such
-conformance result exists.
+evidence. On 2026-08-03 it passed once against loopback `mcp-syson 0.5.2`, creating a
+retained disposable project/model/root, inserting the fixed fragment once, and reading
+back the expected package, direct declarations, five `PartUsage` elements, and four
+`RequirementUsage` elements. It was not an r3 EngineeringProject execution and creates
+no r3 project technical evidence or production-release claim.
 
 ## Implementation state and remaining gates
 
@@ -260,10 +264,9 @@ provider claim. The remaining gates are:
    text.
 2. Let discovery reach an approved brief with the exact `payload-class` answer, then
    create the human-owned initial plan and execute r1/r2 under their existing gates.
-3. Run the disposable SysON parser conformance check only with explicit authorization
-   and all of its local acknowledgement flags. It is required before an r3 provider
-   mutation because it is the first real test of this exact fragment against the
-   deployed parser/translator. It has not been run yet.
+3. Keep the passed disposable SysON parser conformance check as narrow provider
+   compatibility evidence only. A later r3 project mutation still requires its own
+   explicit authorization, exact r1/r2/discovery gates, durable capture, and read-back.
 4. Only after r3 is durable, review a separate CAD-frame operation; do not smuggle CAD
    or CalculiX work into architecture authoring.
 

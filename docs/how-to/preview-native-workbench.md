@@ -186,8 +186,9 @@ schema conversion or thread-head fallback.
 The source tree also contains a guarded r3 inspection-drone operation. It needs the
 exact r2 seed, an initial plan that already contains r3, an empty root, and the exact
 approved discovery choices `inspection-controlled` and `light-inspection-camera`. It is
-not released or run against a real SysON instance, so this preview does not demonstrate
-an r3 model, feed, or evidence surface.
+not released. Its disposable local parser/translator and model-tree check passed against
+loopback `mcp-syson 0.5.2` on 2026-08-03, but this preview has no r3 project run, model,
+feed, or engineering-evidence surface.
 
 Before serving planning, documentary, or evidence state, the BFF resolves every declared
 project snapshot by exact ID and validates its entity references. A missing exact
@@ -253,7 +254,9 @@ ordered interaction:
    architecture, requirements, CAD, simulation, measurement, or verdict.
 
 The source-only r3 operation is deliberately outside this live preview until it is
-released and separately conformance-tested against SysON. If later authorized, it can
+released. Its disposable local parser/translator and model-tree check passed against
+loopback `mcp-syson 0.5.2` on 2026-08-03, but the preview still has no r3 project run or
+engineering evidence. If later authorized, it can
 only follow the exact r2 above and the initial-plan/discovery gates; it never turns the
 preview into a generic SysML editor or a CAD, physics, flight, cost, compliance, or
 verification workflow.

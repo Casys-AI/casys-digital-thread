@@ -197,8 +197,10 @@ approved discovery explicitly says `primary-mission = inspection-controlled` and
 `payload-class = light-inspection-camera`. The operation must be present in the initial
 reviewed plan: planning becomes immutable once r1 exists, while its execution basis is
 the exact r2 snapshot. It records an insertion attestation and narrow read-back before
-it could publish r3. This is code-only at present: it has not been released into the
-running SysON toolchain or exercised against a real SysON instance. It creates neither
+it could publish r3. This is not released into the running SysON toolchain. A separate
+disposable local parser/translator and model-tree conformance check passed on 2026-08-03
+against loopback `mcp-syson 0.5.2`; it was not an r3 project execution or engineering
+evidence. The operation creates neither
 CAD, physics, flight behaviour, cost, compliance, nor a verified requirement verdict.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`

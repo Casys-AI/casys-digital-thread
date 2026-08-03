@@ -137,9 +137,10 @@ The source tree also contains the guarded r3
 same approved discovery's `primary-mission = inspection-controlled` and
 `payload-class = light-inspection-camera` choices, and an empty root before inserting
 one fixed high-level SysML fragment. It must be included in the initial plan because
-planning becomes immutable after r1. This r3 path has not been released or run against a
-real SysON instance, so it supplies no current SysON, CAD, physics, flight, cost,
-compliance, or verification evidence.
+planning becomes immutable after r1. This r3 path has not been released. A separate
+disposable local parser/translator and model-tree check passed against loopback
+`mcp-syson 0.5.2` on 2026-08-03, but it was not an r3 project run and supplies no current
+technical, CAD, physics, flight, cost, compliance, or verification evidence.
 
 The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
 build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It

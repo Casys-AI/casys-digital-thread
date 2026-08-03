@@ -1,6 +1,6 @@
 # RFC: Minimal agent orchestration and the operational-twin boundary
 
-Status: **Partially implemented — V2 documentary r1 and bounded SysON container r2 landed; one guarded inspection-drone r3 exists in source but awaits release and real SysON conformance; generic architecture and proof execution remain proposed**\
+Status: **Partially implemented — V2 documentary r1 and bounded SysON container r2 landed; one guarded inspection-drone r3 exists in source, awaits release, and has passed only a disposable local SysON parser/translator and model-tree check; generic architecture and proof execution remain proposed**\
 Scope: one beginner journey from initial intent or existing product material to
 reviewable engineering evidence\
 Decision horizon: V1 orchestration now; operational Digital Twin only in V2
@@ -438,8 +438,10 @@ The third source operation is deliberately not a generic architecture endpoint. 
 insert only the reviewed inspection-drone fragment into an exact empty r2 root, after
 re-reading the hash-valid seed and exact human-approved discovery answers. Its separate
 write-ahead record prevents a second insert when the provider outcome is unknown. It has
-not been released or conformance-tested against a real SysON instance, and establishes no
-CAD, physics, flight, cost, compliance, or verified-requirement evidence.
+not been released. Its separately authorized disposable local parser/translator and
+model-tree check passed against loopback `mcp-syson 0.5.2` on 2026-08-03; it was not an
+r3 project execution and establishes no CAD, physics, flight, cost, compliance, or
+verified-requirement evidence.
 
 ### 5. Keep authority simple
 
