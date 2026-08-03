@@ -73,6 +73,52 @@ const THREAD_ENTITY_KINDS = [
 export function isEngineeringProjectSnapshot(
   value: unknown,
 ): value is EngineeringProjectSnapshot {
+  return isEngineeringProjectSnapshotShape(
+    value,
+    (item, schemaVersion, project) =>
+      hasValidAgentRunInputAnchor(item, schemaVersion, project) &&
+      (item.claimedBy === undefined || isCommandActor(item.claimedBy)) &&
+      (item.waitingForDecisionIds === undefined ||
+        isStringArray(item.waitingForDecisionIds)) &&
+      (item.resultSnapshot === undefined ||
+        isThreadSnapshotRef(item.resultSnapshot)) &&
+      (item.failure === undefined || isAgentRunFailure(item.failure)) &&
+      (item.statusHistory === undefined ||
+        isArrayOf(item.statusHistory, isAgentRunTransition)),
+  );
+}
+
+/**
+ * Browser boundary check for planning and documentary workbenches before a
+ * technical evidence graph exists.
+ *
+ * The persisted project validator above intentionally requires V2 execution
+ * anchors. Those anchors, command actors and transition prose do not cross the
+ * browser boundary on the pre-technical surfaces: the BFF publishes a closed,
+ * presentation-only run summary instead. Keep this separate from the durable
+ * aggregate validator so a redacted browser projection can never be mistaken
+ * for a persisted project snapshot. It returns the shared structural type only
+ * because its redacted optional run fields remain TypeScript-compatible; code
+ * that needs persisted V2 invariants must call isEngineeringProjectSnapshot.
+ */
+export function isEngineeringPublicPretechnicalProjectSnapshot(
+  value: unknown,
+): value is EngineeringProjectSnapshot {
+  return isRecord(value) && value.commandReceipts === undefined &&
+    isEngineeringProjectSnapshotShape(
+      value,
+      (item) => isPublicPretechnicalAgentRun(item),
+    );
+}
+
+function isEngineeringProjectSnapshotShape(
+  value: unknown,
+  isValidAgentRun: (
+    item: Record<string, unknown>,
+    schemaVersion: EngineeringProjectSchemaVersion,
+    project: Record<string, unknown>,
+  ) => boolean,
+): boolean {
   if (!isRecord(value)) return false;
   const schemaVersion = value.schemaVersion;
   if (
@@ -129,17 +175,7 @@ export function isEngineeringProjectSnapshot(
         typeof item.queuedAt === "string" &&
         AGENT_RUN_STATUSES.includes(item.status as EngineeringAgentRunStatus) &&
         Array.isArray(item.evidenceRefs) &&
-        hasValidAgentRunInputAnchor(item, schemaVersion, value) &&
-        (item.claimedBy === undefined || isCommandActor(item.claimedBy)) &&
-        (item.waitingForDecisionIds === undefined ||
-          isStringArray(item.waitingForDecisionIds)) &&
-        (item.resultSnapshot === undefined ||
-          isThreadSnapshotRef(item.resultSnapshot)) &&
-        (item.failure === undefined ||
-          (isRecord(item.failure) && typeof item.failure.code === "string" &&
-            typeof item.failure.message === "string")) &&
-        (item.statusHistory === undefined ||
-          isArrayOf(item.statusHistory, isAgentRunTransition)),
+        isValidAgentRun(item, schemaVersion, value),
     ) &&
     isArrayOf(
       value.decisions,
@@ -395,6 +431,51 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+/**
+ * The pre-technical BFF exposes only these run fields. In particular, this
+ * rejects execution anchors, fingerprints, command actors, result snapshots,
+ * decision ids and status history rather than merely ignoring them.
+ */
+function isPublicPretechnicalAgentRun(value: Record<string, unknown>): boolean {
+  if (
+    !hasAllowedKeys(value, [
+      "id",
+      "workItemId",
+      "status",
+      "summary",
+      "queuedAt",
+      "startedAt",
+      "completedAt",
+      "evidenceRefs",
+      "failure",
+    ])
+  ) {
+    return false;
+  }
+  return typeof value.id === "string" && typeof value.workItemId === "string" &&
+    AGENT_RUN_STATUSES.includes(value.status as EngineeringAgentRunStatus) &&
+    typeof value.summary === "string" && isIsoDateTime(value.queuedAt) &&
+    (value.startedAt === undefined || isIsoDateTime(value.startedAt)) &&
+    (value.completedAt === undefined || isIsoDateTime(value.completedAt)) &&
+    // Before evidence exists, an execution run cannot carry an entity
+    // reference into the browser. The documentary record itself is projected
+    // separately with its explicit, bounded provenance fields.
+    Array.isArray(value.evidenceRefs) && value.evidenceRefs.length === 0 &&
+    (value.failure === undefined || isAgentRunFailure(value.failure));
+}
+
+function isAgentRunFailure(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["code", "message"]) &&
+    typeof value.code === "string" && typeof value.message === "string";
+}
+
+function hasAllowedKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
 function isIsoDateTime(value: unknown): value is string {

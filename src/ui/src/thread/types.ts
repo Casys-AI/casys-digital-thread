@@ -21,7 +21,10 @@ import type {
   ThreadRef,
   ThreadWorkbenchSnapshot,
 } from "../../../contracts/thread-workbench.ts";
-import { isEngineeringProjectSnapshot } from "../project/contract.ts";
+import {
+  isEngineeringProjectSnapshot,
+  isEngineeringPublicPretechnicalProjectSnapshot,
+} from "../project/contract.ts";
 
 export type {
   ThreadAction,
@@ -205,17 +208,18 @@ export function isEngineeringWorkbenchSnapshot(
 ): value is EngineeringWorkbenchSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<EngineeringWorkbenchSnapshot>;
-  if (
-    !(candidate.schemaVersion === "engineering-workbench/0.2") ||
-    !isEngineeringProjectSnapshot(candidate.project)
-  ) {
+  if (!(candidate.schemaVersion === "engineering-workbench/0.2")) {
     return false;
   }
   if (candidate.surface === "planning") {
-    return candidate.project.threadSnapshots.length === 0 &&
+    return isEngineeringPublicPretechnicalProjectSnapshot(candidate.project) &&
+      candidate.project.threadSnapshots.length === 0 &&
       isPlanningWorkbenchProjection(candidate.planning);
   }
   if (candidate.surface === "documentary") {
+    if (!isEngineeringPublicPretechnicalProjectSnapshot(candidate.project)) {
+      return false;
+    }
     const reference = candidate.project.threadSnapshots[0];
     return hasAllowedKeys(candidate, [
       "schemaVersion",
@@ -229,6 +233,7 @@ export function isEngineeringWorkbenchSnapshot(
       candidate.documentary.record.snapshotRevision === reference.revision;
   }
   return candidate.surface === "evidence" &&
+    isEngineeringProjectSnapshot(candidate.project) &&
     isThreadWorkbenchSnapshot(candidate.thread) &&
     !!candidate.alignment &&
     (candidate.alignment.status === "aligned" ||
