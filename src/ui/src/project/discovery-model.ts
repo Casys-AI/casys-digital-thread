@@ -27,7 +27,6 @@ export interface ProjectDiscoveryViewModel {
   readonly statusLabel: string;
   readonly statusMessage: string;
   readonly statusTone: DiscoveryTone;
-  readonly canReviewBrief: boolean;
 }
 
 /**
@@ -66,27 +65,25 @@ export function buildProjectDiscoveryView(
     statusLabel: discoveryStatusLabel(snapshot.status),
     statusMessage: discoveryStatusMessage(snapshot.status),
     statusTone: discoveryStatusTone(snapshot.status),
-    canReviewBrief: snapshot.status === "awaiting-review" &&
-      snapshot.brief !== undefined && snapshot.review?.status === "pending",
   };
 }
 
 export function discoveryStatusLabel(status: ProjectDiscoveryStatus): string {
-  if (status === "awaiting-review") return "Ready for your review";
-  if (status === "revision-requested") return "Revision in progress";
-  if (status === "approved") return "Brief approved";
+  if (status === "awaiting-review") return "Brief ready to discuss";
+  if (status === "revision-requested") return "Revision requested";
+  if (status === "approved") return "Brief confirmed";
   return "Discovery in progress";
 }
 
 export function discoveryStatusMessage(status: ProjectDiscoveryStatus): string {
   if (status === "awaiting-review") {
-    return "The agent has shaped your answers into a draft brief. Review it before technical work begins.";
+    return "The agent has shaped your answers into a draft brief. Discuss it in your paired conversation; the shared record stays visible here.";
   }
   if (status === "revision-requested") {
-    return "Your feedback is recorded. The agent is preparing a revised brief.";
+    return "The current brief remains visible. Continue in the paired conversation until the agent records a replacement.";
   }
   if (status === "approved") {
-    return "The project framing is approved. Technical planning can now start from this reviewed intent.";
+    return "The project framing is confirmed. Follow the shared record as the agent plans and records technical work.";
   }
   return "The agent is narrowing the project one meaningful question at a time.";
 }

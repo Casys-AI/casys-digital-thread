@@ -1,13 +1,19 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
 import { FileProjectDiscoveryRevisionStore } from "../adapters/project-discovery-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../adapters/engineering-project-store.ts";
 import { ProjectDiscoveryCommandService } from "../domain/project-discovery-command-service.ts";
+import { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
 
 Deno.test("project discovery MCP tools support an agent-first pre-project flow without review authority", async () => {
   const directory = await Deno.makeTempDir({
     prefix: "project-discovery-tools-",
   });
   const discoveries = new FileProjectDiscoveryRevisionStore(directory);
+  const projectDirectory = await Deno.makeTempDir({
+    prefix: "project-discovery-projects-",
+  });
+  const projects = new FileEngineeringProjectRevisionStore(projectDirectory);
   let tick = 0;
   const commands = new ProjectDiscoveryCommandService(
     discoveries,
@@ -19,7 +25,12 @@ Deno.test("project discovery MCP tools support an agent-first pre-project flow w
     manifest: { version: 1, servers: [] },
     runs: [],
     projectControl: false,
-    projectDiscovery: { discoveries, commands },
+    projectDiscovery: {
+      discoveries,
+      commands,
+      handoff: new ProjectDiscoveryHandoffService(discoveries, projects),
+    },
+    mrtrSigningKey: "a".repeat(64),
     logger: () => {},
   });
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
@@ -40,7 +51,9 @@ Deno.test("project discovery MCP tools support an agent-first pre-project flow w
     );
     assertEquals(discoveryTools.map((tool) => tool.name).sort(), [
       "project_discovery_answer_record",
+      "project_discovery_brief_confirm",
       "project_discovery_brief_propose",
+      "project_discovery_project_create",
       "project_discovery_question_propose",
       "project_discovery_snapshot",
       "project_discovery_start",
@@ -134,6 +147,61 @@ Deno.test("project discovery MCP tools support an agent-first pre-project flow w
       "pending",
     );
 
+    const inputFingerprint = (snapshot.review as Record<string, unknown>)
+      .inputFingerprint;
+    const confirmationArgs = {
+      ...common("mcp-brief-confirm", 4),
+      briefId: "brief-1",
+      inputFingerprint,
+    };
+    const inputRequired = await client.toolInputRequired(
+      "project_discovery_brief_confirm",
+      confirmationArgs,
+    );
+    assertEquals(inputRequired.resultType, "input_required");
+    assertEquals(typeof inputRequired.requestState, "string");
+    assertEquals(
+      (await discoveries.get("drone-concept-1"))?.status,
+      "awaiting-review",
+    );
+
+    result = await client.toolRetry(
+      "project_discovery_brief_confirm",
+      confirmationArgs,
+      inputRequired.requestState as string,
+      {
+        brief_confirmation: {
+          action: "accept",
+          content: { confirmed: true },
+        },
+      },
+    );
+    snapshot = result.structuredContent as Record<string, unknown>;
+    assertEquals(snapshot.revision, 5);
+    assertEquals(snapshot.status, "approved");
+    assertEquals(
+      ((snapshot.review as Record<string, unknown>).decidedBy as Record<
+        string,
+        unknown
+      >).origin,
+      "human",
+    );
+
+    const projectResult = await client.tool(
+      "project_discovery_project_create",
+      {
+        ...common("mcp-project-create", 5),
+        projectId: "drone-concept-1",
+      },
+    );
+    assertEquals(
+      ((projectResult.structuredContent as Record<string, unknown>).project as Record<
+        string,
+        unknown
+      >).id,
+      "drone-concept-1",
+    );
+
     const read = await client.tool("project_discovery_snapshot", {
       discoveryId: "drone-concept-1",
     });
@@ -141,6 +209,7 @@ Deno.test("project discovery MCP tools support an agent-first pre-project flow w
   } finally {
     await http.shutdown();
     await Deno.remove(directory, { recursive: true });
+    await Deno.remove(projectDirectory, { recursive: true });
   }
 });
 
@@ -203,9 +272,33 @@ class TestMcpClient {
     return this.call("tools/call", { name, arguments: args });
   }
 
+  toolInputRequired(name: string, args: Record<string, unknown>) {
+    return this.call(
+      "tools/call",
+      { name, arguments: args },
+      { elicitation: {} },
+      "input_required",
+    );
+  }
+
+  toolRetry(
+    name: string,
+    args: Record<string, unknown>,
+    requestState: string,
+    inputResponses: Record<string, unknown>,
+  ) {
+    return this.call(
+      "tools/call",
+      { name, arguments: args, requestState, inputResponses },
+      { elicitation: {} },
+    );
+  }
+
   async call(
     method: string,
     params: Record<string, unknown>,
+    clientCapabilities: Record<string, unknown> = {},
+    expectedResultType = "complete",
   ): Promise<Record<string, unknown>> {
     const headers: Record<string, string> = {
       accept: "application/json",
@@ -227,7 +320,7 @@ class TestMcpClient {
           ...params,
           _meta: {
             "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientCapabilities": clientCapabilities,
             "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" },
           },
         },
@@ -236,7 +329,7 @@ class TestMcpClient {
     const body = JSON.parse(await response.text()) as Record<string, unknown>;
     if (body.error) throw new Error(JSON.stringify(body.error));
     const result = body.result as Record<string, unknown>;
-    assertEquals(result.resultType, "complete");
+    assertEquals(result.resultType, expectedResultType);
     return result;
   }
 }

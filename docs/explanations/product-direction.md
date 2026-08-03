@@ -9,10 +9,12 @@ specialist.
 ## Product promise
 
 Casys Digital Thread is an agent-assisted industrial design cockpit. A person explains
-what they want to build, reviews consequential choices, and inspects evidence. The agent
-prepares technical proposals, uses engineering tools, links outputs, and reports what a
-change affects. Deterministic modelers, solvers, and constraint evaluators produce the
-facts; the language model does not certify its own work.
+what they want to build and makes consequential choices in conversation with the agent.
+The agent prepares technical proposals, orchestrates engineering tools, links outputs,
+and reports what a change affects. The cockpit is the live, organized dossier where the
+person inspects the resulting project, activity, lineage, and evidence. Deterministic
+modelers, solvers, and constraint evaluators produce the facts; the language model does
+not certify its own work.
 
 The product is not a dashboard of MCP applications. MCP is the provider protocol behind
 the product. The user-facing object is one linked project:
@@ -23,10 +25,13 @@ intent -> system model -> geometry -> physics -> requirements -> evidence -> rev
                           +------------- correction -------------+
 ```
 
-The human owns intent, expensive or safety-relevant decisions, and authorization. The
-agent owns preparation and orchestration. The interface should not ask a beginner to
-invent solver payloads, legal categories, material properties, mesh controls, or
-acceptance limits when tools or sourced guidance can prepare them for review.
+The human owns intent and expensive, safety-relevant, or release decisions. They express
+that authority in the paired conversation, including explicit MCP elicitation when a
+decision must be bound to an exact revision. The agent owns preparation, orchestration,
+and bounded tool execution. The cockpit is not a second command channel. It should not
+ask a beginner to invent solver payloads, legal categories, material properties, mesh
+controls, or acceptance limits when tools or sourced guidance can prepare them for
+review.
 
 Traceability is not the product's end state. It gives the agent a reliable feedback
 surface: observe what a change affects, evaluate named requirements, propose the
@@ -59,11 +64,14 @@ that loop, not proof that a provider has run or that a technical conclusion is t
 
 ## Beginner-first interface contract
 
-The primary experience is a shared workspace for a person and an agent, not an expert
-tool launcher.
+The primary experience is a paired agent conversation plus a shared read-only dossier,
+not an expert tool launcher or a collection of forms.
 
 - Show the project stage, the agent's current work, the next consequential review, and
   the latest evidence before exposing provider or protocol details.
+- Ask and answer in the conversation. When exact human authority is required, present
+  the bounded choice there through signed MCP elicitation and project the result into
+  the dossier.
 - Keep one primary navigation layer. Avoid nested rails, repeated section chrome, and
   multiple panels competing for the same task.
 - Use the activity feed as the chronological work surface. Selecting an event or product
@@ -93,11 +101,11 @@ does not claim that every commercial authoring capability has already been repla
 
 ## Delivery boundary
 
-| Horizon               | Honest scope                                                                                                                                                                                                        |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Verified now**      | One native engineering cockpit plus a separate guided Discovery Workbench with a live human handoff; a reviewer can authorize the documentary r1 operation from approved discovery, then the fixed SysON project/document/root-package seed recorded as r2. The seed is an editable container identity, not a design. The source tree additionally contains the guarded r3 inspection-drone architecture operation, which is not released; its separate disposable local parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, not as an r3 project run or engineering evidence. Exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence remain demonstrated separately by the CM-01 reference path, including one approved DripTray mechanical proof loop. |
-| **V1 product target** | A beginner can move from idea or imported product evidence to a reviewable project, agent-orchestrated proof cases, visible change impact, bounded correction/recompute loops, and inspectable BOM/cost evidence.                 |
-| **V2 candidate**      | Operational digital-twin instances fed by real telemetry, time-series storage, state estimation, model calibration, contextual scenario testing, and service-life decisions.                                        |
+| Horizon               | Honest scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Verified now**      | One native read-only engineering cockpit plus a separate read-only Discovery dossier; the paired MCP conversation owns brief confirmation, project creation, project decisions, and agent orchestration. Signed MRTR binds an accepted host response to the exact elicitation request; the host remains responsible for presenting it to the person. Registered operations can record documentary r1, then the fixed SysON project/document/root-package seed as r2. The seed is an editable container identity, not a design. The source tree additionally contains the guarded r3 inspection-drone architecture operation, which is not released; its separate disposable local parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, not as an r3 project run or engineering evidence. Exact SysON, CAD, Modelica, ERPNext, and CalculiX evidence remain demonstrated separately by the CM-01 reference path, including one approved DripTray mechanical proof loop. |
+| **V1 product target** | A beginner can move from idea or imported product evidence to a reviewable project, agent-orchestrated proof cases, visible change impact, bounded correction/recompute loops, and inspectable BOM/cost evidence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **V2 candidate**      | Operational digital-twin instances fed by real telemetry, time-series storage, state estimation, model calibration, contextual scenario testing, and service-life decisions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 The current Modelica branch is design-time simulation evidence. `syson_value_set` and
 constraint tools are useful primitives, but they do not constitute telemetry ingestion,
@@ -107,34 +115,35 @@ data.
 
 For a new idea or specification, the first V2 operation deliberately creates only an
 immutable documentary r1: the exact approved discovery, reviewed project path, operation
-revision, and a SHA-256 fingerprint. The reviewer authorizes that bounded recording
-step; the agent runs it and the cockpit follows its public milestones. It is useful
-provenance, not technical evidence: it creates no SysML model, CAD geometry, simulation,
-measurement, requirement result, compliance conclusion, or certification claim.
+revision, and a SHA-256 fingerprint. The agent queues and runs that bounded recording
+step; if a consequential human decision is required, it is elicited in the conversation.
+The cockpit follows the public milestones. It is useful provenance, not technical
+evidence: it creates no SysML model, CAD geometry, simulation, measurement, requirement
+result, compliance conclusion, or certification claim.
 
 The first implemented provider-backed V2 operation, `architecture.seed-syson-model@1`,
-accepts only that exact r1. Its server-fixed sequence creates a blank SysON project container, blank SysML
-document, and root package, reads the root back, normalizes the identities, and records
-the SHA-256-addressed r2 descendant. The agent cannot choose provider calls, arguments,
-SysML text, or output; an uncertain non-idempotent write is held for review rather than
-blindly retried. r2 is not a drone architecture, requirement, CAD model, simulation,
-measurement, verification result, or certification claim. Those operations still need
-their own inputs, output validators, and evidence contracts.
+accepts only that exact r1. Its server-fixed sequence creates a blank SysON project
+container, blank SysML document, and root package, reads the root back, normalizes the
+identities, and records the SHA-256-addressed r2 descendant. The agent cannot choose
+provider calls, arguments, SysML text, or output; an uncertain non-idempotent write is
+held for review rather than blindly retried. r2 is not a drone architecture,
+requirement, CAD model, simulation, measurement, verification result, or certification
+claim. Those operations still need their own inputs, output validators, and evidence
+contracts.
 
 The source-only `architecture.author-inspection-drone@1` continuation must be present in
 the initial reviewed plan because that plan cannot be revised after r1. At execution it
 requires the exact r2 seed, an empty root, and the same approved discovery's explicit
-`primary-mission = inspection-controlled` and
-`payload-class = light-inspection-camera` answers. It can insert only one fixed
-high-level SysML fragment and has not been released or tested against a real SysON
-instance. It therefore creates no current architecture evidence, CAD, physics, flight,
-cost, compliance, or verified verdict.
+`primary-mission = inspection-controlled` and `payload-class = light-inspection-camera`
+answers. It can insert only one fixed high-level SysML fragment and has not been
+released or tested against a real SysON instance. It therefore creates no current
+architecture evidence, CAD, physics, flight, cost, compliance, or verified verdict.
 
 Historic V1 projects such as CM-01 remain readable technical references. They are not
-silently converted into V2 projects, and a V2 project never borrows a convenient existing
-thread head as its first baseline. The cockpit shows the project as planning until its
-declared documentary record exists, then shows that record as a distinct surface rather
-than an empty evidence graph.
+silently converted into V2 projects, and a V2 project never borrows a convenient
+existing thread head as its first baseline. The cockpit shows the project as planning
+until its declared documentary record exists, then shows that record as a distinct
+surface rather than an empty evidence graph.
 
 ## Demo criterion
 

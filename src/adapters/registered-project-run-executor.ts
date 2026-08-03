@@ -39,7 +39,7 @@ export interface RegisteredProjectRunExecutorDependencies {
 /**
  * Server-owned dispatch over exact reviewed operation identities.
  *
- * The MCP tool calls this class with a human-queued run id only. It cannot pick
+ * The MCP tool calls this class with an agent-queued run id only. It cannot pick
  * a provider, tool, argument, file or arbitrary workflow; each concrete
  * executor still rechecks the exact project/run shape before it performs work.
  */

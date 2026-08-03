@@ -48,9 +48,7 @@ Deno.test("engineering Workbench projects the exact V2 documentary baseline with
     }],
   };
 
-  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
-    operatorCommandsEnabled: true,
-  });
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1);
 
   assertEquals(result.surface, "documentary");
   if (result.surface !== "documentary") {
@@ -70,7 +68,7 @@ Deno.test("engineering Workbench projects the exact V2 documentary baseline with
   assertEquals(result.documentary.technicalEvidence.status, "not-recorded");
   assertEquals("thread" in result, false);
   assertEquals("alignment" in result, false);
-  assertEquals(result.capabilities.operatorCommands.enabled, false);
+  assertEquals("capabilities" in result, false);
 });
 
 Deno.test("documentary Workbench exposes only the safe live SysON seed sequence", () => {
@@ -100,9 +98,7 @@ Deno.test("documentary Workbench exposes only the safe live SysON seed sequence"
     },
   ];
 
-  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
-    liveUpdates: updates,
-  });
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, updates);
 
   assertEquals(result.surface, "documentary");
   if (result.surface !== "documentary") {
@@ -143,16 +139,14 @@ Deno.test("documentary Workbench exposes only the safe live SysON seed sequence"
 Deno.test("a failed seed milestone makes the documentary cockpit require review", () => {
   const thread = documentaryThreadFixture("drone-concept");
   const project = documentaryProjectWithRunningSeed(thread);
-  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
-    liveUpdates: [
-      liveSeedUpdate(
-        4,
-        "syson_project_create",
-        "failed",
-        "2026-08-02T12:01:00.000Z",
-      ),
-    ],
-  });
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, [
+    liveSeedUpdate(
+      4,
+      "syson_project_create",
+      "failed",
+      "2026-08-02T12:01:00.000Z",
+    ),
+  ]);
 
   if (result.surface !== "documentary") {
     throw new Error("Expected the r1 project to retain its documentary surface.");
@@ -165,7 +159,7 @@ Deno.test("a failed seed milestone makes the documentary cockpit require review"
   assertEquals(result.documentary.technicalStart?.activity.steps[0]?.state, "failed");
 });
 
-Deno.test("documentary Workbench exposes only a ready SysON seed queue capability", () => {
+Deno.test("documentary Workbench remains read-only when a SysON seed is ready", () => {
   const thread = documentaryThreadFixture("drone-concept");
   const runningProject = documentaryProjectWithRunningSeed(thread);
   const project: EngineeringProjectSnapshot = {
@@ -176,18 +170,10 @@ Deno.test("documentary Workbench exposes only a ready SysON seed queue capabilit
     ),
   };
 
-  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, {
-    operatorCommandsEnabled: true,
-  });
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1);
 
   assertEquals(result.surface, "documentary");
-  assertEquals(result.capabilities.operatorCommands, {
-    enabled: true,
-    endpoint: "/api/project/commands",
-    intents: ["agent-run.queue"],
-    explicitIntentHeader: "X-Casys-Operator-Intent",
-    expectedRevision: project.revision,
-  });
+  assertEquals("capabilities" in result, false);
   if (result.surface !== "documentary") {
     throw new Error("Expected the r1 project to retain its documentary surface.");
   }

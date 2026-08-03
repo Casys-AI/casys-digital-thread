@@ -8,7 +8,7 @@ import type {
   EngineeringWorkItem,
 } from "../../../domain/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
-import { DecisionCenter, type ProjectControlProps } from "./control-center.tsx";
+import { DecisionCenter } from "./control-center.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   agentRunSummary,
@@ -19,20 +19,18 @@ import {
   workStatusLabel,
 } from "./model.ts";
 
-export interface ProjectOverviewProps extends ProjectControlProps {
-  thread: ThreadWorkbenchSnapshot;
-  onNavigate: (view: ProjectWorkspaceView) => void;
+export interface ProjectOverviewProps {
+  readonly project: EngineeringProjectSnapshot;
+  readonly thread: ThreadWorkbenchSnapshot;
+  readonly onNavigate: (view: ProjectWorkspaceView) => void;
+  readonly onOpenActivity?: (decisionId?: string) => void;
+  readonly onOpenSpecification?: (decisionId: string) => void;
 }
 
 export function ProjectOverview({
   project,
   thread,
   onNavigate,
-  capability,
-  actorId,
-  onActorIdChange,
-  feedback,
-  onCommand,
   onOpenActivity,
   onOpenSpecification,
 }: ProjectOverviewProps): JSX.Element {
@@ -73,11 +71,6 @@ export function ProjectOverview({
 
       <DecisionCenter
         project={project}
-        capability={capability}
-        actorId={actorId}
-        onActorIdChange={onActorIdChange}
-        feedback={feedback}
-        onCommand={onCommand}
         onOpenActivity={onOpenActivity}
         onOpenSpecification={onOpenSpecification}
       />
@@ -150,10 +143,10 @@ export function ProjectOverview({
         <ProjectControlPanel
           className="is-next"
           index="NEXT"
-          title="Ready after approval"
+          title="Next recorded work"
           empty="No work item is explicitly marked ready."
           onOpen={() => onNavigate("work")}
-          actionLabel="Review agent plan"
+          actionLabel="Inspect agent plan"
         >
           {brief.nextWork[0]
             ? <WorkItemSummary item={brief.nextWork[0]} />

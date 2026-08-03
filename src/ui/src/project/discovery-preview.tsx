@@ -8,37 +8,19 @@ import { Button, installMcpViewTheme } from "../mcp-view-primitives.ts";
 import {
   HttpProjectDiscoveryClient,
   type ProjectDiscoveryClient,
-  ProjectDiscoveryConflictError,
-  ProjectDiscoveryHandoffConflictError,
   type ProjectDiscoveryStreamStatus,
 } from "./discovery-client.ts";
-import { createProjectDiscoveryCommandRequest } from "./discovery-command-contract.ts";
-import {
-  createProjectDiscoveryHandoffRequest,
-  type ProjectDiscoveryHandoffRequest,
-  type ProjectDiscoveryHandoffResult,
-} from "./discovery-handoff-contract.ts";
-import {
-  type DiscoveryAnswerSelection,
-  type DiscoveryBriefReviewSelection,
-  DiscoveryWorkbench,
-} from "./discovery-workbench.tsx";
+import { DiscoveryWorkbench } from "./discovery-workbench.tsx";
 import "../styles.css";
 
 export interface DiscoveryPreviewAppProps {
   readonly client: ProjectDiscoveryClient;
-  readonly actorId: string;
 }
-
-type DiscoveryFeedback =
-  | { readonly tone: "success" | "danger"; readonly message: string }
-  | undefined;
 
 type DiscoveryTransportState = ProjectDiscoveryStreamStatus | "error";
 
 export function DiscoveryPreviewApp({
   client,
-  actorId,
 }: DiscoveryPreviewAppProps): JSX.Element {
   const [snapshot, setSnapshot] = useState<ProjectDiscoverySnapshot>();
   const [streamStatus, setStreamStatus] = useState<
@@ -47,20 +29,8 @@ export function DiscoveryPreviewApp({
     "connecting",
   );
   const [loadingError, setLoadingError] = useState<string>();
-  const [feedback, setFeedback] = useState<DiscoveryFeedback>();
-  const [busy, setBusy] = useState(false);
-  const [handoffPending, setHandoffPending] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [handoffResult, setHandoffResult] = useState<
-    ProjectDiscoveryHandoffResult
-  >();
-  const [engineeringProjectIdOccupied, setEngineeringProjectIdOccupied] =
-    useState(
-      false,
-    );
   const snapshotRef = useRef<ProjectDiscoverySnapshot>();
-  /** Retain the full command so a lost response retries with one fingerprint. */
-  const handoffCommandRef = useRef<ProjectDiscoveryHandoffRequest>();
 
   const acceptSnapshot = (incoming: ProjectDiscoverySnapshot): boolean => {
     const current = snapshotRef.current;
@@ -80,12 +50,8 @@ export function DiscoveryPreviewApp({
     const controller = new AbortController();
     let unsubscribe: (() => void) | undefined;
     snapshotRef.current = undefined;
-    handoffCommandRef.current = undefined;
     setSnapshot(undefined);
     setLoadingError(undefined);
-    setHandoffPending(false);
-    setHandoffResult(undefined);
-    setEngineeringProjectIdOccupied(false);
     setStreamStatus("connecting");
 
     client.load(controller.signal).then((initial) => {
@@ -106,149 +72,6 @@ export function DiscoveryPreviewApp({
       unsubscribe?.();
     };
   }, [client, loadAttempt]);
-
-  const runCommand = async (
-    buildCommand: (
-      current: ProjectDiscoverySnapshot,
-    ) => ReturnType<typeof createProjectDiscoveryCommandRequest>["command"],
-  ): Promise<void> => {
-    const current = snapshotRef.current;
-    if (!current || busy) return;
-    setBusy(true);
-    setFeedback(undefined);
-    try {
-      const next = await client.command(
-        createProjectDiscoveryCommandRequest({
-          commandId: createStableId("discovery-command"),
-          discoveryId: current.discoveryId,
-          expectedRevision: current.revision,
-          issuedAt: new Date().toISOString(),
-          actorId,
-          command: buildCommand(current),
-        }),
-      );
-      acceptSnapshot(next);
-      setFeedback({ tone: "success", message: "Your review was recorded." });
-    } catch (reason: unknown) {
-      if (reason instanceof ProjectDiscoveryConflictError) {
-        try {
-          const latest = await client.load();
-          acceptSnapshot(latest);
-          setFeedback({
-            tone: "danger",
-            message:
-              "The brief changed while you were reviewing it. The latest version is now shown.",
-          });
-        } catch {
-          setFeedback({
-            tone: "danger",
-            message:
-              "The brief changed and the latest version could not be reloaded.",
-          });
-        }
-      } else {
-        setFeedback({
-          tone: "danger",
-          message: reason instanceof Error
-            ? reason.message
-            : "Your review could not be recorded.",
-        });
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const answerQuestion = (selection: DiscoveryAnswerSelection) =>
-    runCommand(() => ({
-      type: "answer.record",
-      answer: {
-        id: createStableId("answer"),
-        questionId: selection.questionId,
-        kind: selection.kind,
-        ...(selection.value === undefined ? {} : { value: selection.value }),
-      },
-    }));
-
-  const reviewBrief = (selection: DiscoveryBriefReviewSelection) =>
-    runCommand(() => ({
-      type: selection.action === "approve" ? "brief.approve" : "brief.reject",
-      briefId: selection.briefId,
-      inputFingerprint: selection.inputFingerprint,
-      rationale: selection.action === "approve"
-        ? "Approved by the human reviewer in the Discovery Workbench."
-        : "The human reviewer requested a revised brief in the Discovery Workbench.",
-    }));
-
-  const createEngineeringProject = async (): Promise<void> => {
-    const current = snapshotRef.current;
-    if (
-      !current || busy || !current.brief || current.status !== "approved" ||
-      current.review?.status !== "approved" ||
-      current.review.briefId !== current.brief.id ||
-      current.review.decidedBy?.origin !== "human"
-    ) return;
-
-    const existingCommand = handoffCommandRef.current;
-    const handoffRequest =
-      existingCommand?.discoveryId === current.discoveryId &&
-        existingCommand.expectedDiscoveryRevision === current.revision
-        ? existingCommand
-        : createProjectDiscoveryHandoffRequest({
-          commandId: createStableId("engineering-project-handoff"),
-          discoveryId: current.discoveryId,
-          expectedDiscoveryRevision: current.revision,
-          issuedAt: new Date().toISOString(),
-          actorId,
-          projectId: current.discoveryId,
-          projectName: current.brief.objective,
-        });
-    handoffCommandRef.current = handoffRequest;
-
-    setBusy(true);
-    setHandoffPending(true);
-    setFeedback(undefined);
-    try {
-      const result = await client.handoff(handoffRequest);
-      setHandoffResult(result);
-      setEngineeringProjectIdOccupied(false);
-    } catch (reason: unknown) {
-      if (reason instanceof ProjectDiscoveryHandoffConflictError) {
-        if (reason.code === "stale_discovery_revision") {
-          handoffCommandRef.current = undefined;
-          try {
-            const latest = await client.load();
-            acceptSnapshot(latest);
-            setFeedback({
-              tone: "danger",
-              message:
-                "The approved brief changed before the project was created. The latest record is now shown.",
-            });
-          } catch {
-            setFeedback({
-              tone: "danger",
-              message:
-                "The approved brief changed and the latest record could not be reloaded.",
-            });
-          }
-        } else if (reason.code === "project_exists") {
-          setEngineeringProjectIdOccupied(true);
-        } else {
-          setFeedback({ tone: "danger", message: reason.message });
-        }
-      } else {
-        setFeedback({
-          tone: "danger",
-          message: reason instanceof Error
-            ? reason.message
-            : "The engineering project could not be created from this brief.",
-        });
-      }
-    } finally {
-      setHandoffPending(false);
-      setBusy(false);
-    }
-  };
 
   return (
     <div class="discovery-preview-shell">
@@ -295,29 +118,7 @@ export function DiscoveryPreviewApp({
             </div>
           </section>
         )
-        : (
-          <>
-            {feedback && (
-              <p
-                class="discovery-command-feedback"
-                data-tone={feedback.tone}
-                role={feedback.tone === "danger" ? "alert" : "status"}
-              >
-                {feedback.message}
-              </p>
-            )}
-            <DiscoveryWorkbench
-              discovery={snapshot}
-              busy={busy}
-              handoffPending={handoffPending}
-              onAnswer={answerQuestion}
-              onReviewBrief={reviewBrief}
-              onCreateEngineeringProject={createEngineeringProject}
-              engineeringProject={handoffResult}
-              engineeringProjectIdOccupied={engineeringProjectIdOccupied}
-            />
-          </>
-        )}
+        : <DiscoveryWorkbench discovery={snapshot} />}
     </div>
   );
 }
@@ -327,13 +128,6 @@ function streamStatusLabel(status: DiscoveryTransportState): string {
   if (status === "reconnecting") return "Restoring live updates";
   if (status === "error") return "Unavailable";
   return "Connecting";
-}
-
-function createStableId(prefix: string): string {
-  if (typeof crypto.randomUUID === "function") {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 const root = document.querySelector<HTMLElement>("#discovery-preview");
@@ -346,12 +140,10 @@ const requestedDiscovery = new URLSearchParams(globalThis.location.search).get(
 )?.trim();
 const discoveryId = requestedDiscovery || root.dataset.discoveryId ||
   "drone-concept";
-const actorId = root.dataset.actorId || "local-reviewer";
 const endpoint = `/api/project-discoveries/${encodeURIComponent(discoveryId)}`;
 const client = new HttpProjectDiscoveryClient(
   endpoint,
-  `${endpoint}/commands`,
   `${endpoint}/events`,
 );
 
-render(<DiscoveryPreviewApp client={client} actorId={actorId} />, root);
+render(<DiscoveryPreviewApp client={client} />, root);

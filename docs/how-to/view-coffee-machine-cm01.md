@@ -23,8 +23,8 @@ provider-free documentary r1 and the r1-to-r2 blank SysON container seed. A guar
 inspection-drone r3 exists in source and is not released. Its disposable local
 parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on
 2026-08-03, but this is not an r3 project run or engineering evidence. None is a generic
-CM-01 lifecycle. Docker Compose only starts providers; it neither
-executes the proof nor advances a project lifecycle.
+CM-01 lifecycle. Docker Compose only starts providers; it neither executes the proof nor
+advances a project lifecycle.
 
 The native cockpit is optional during execution, but useful for watching the recorded
 operations arrive in Activity:
@@ -46,10 +46,12 @@ The active immutable CM-01 history records this exact authorization chain:
 4. the historical bounded execution process claims and advances the resulting run
    internally.
 
-The fourth step was not, and is no longer, a public MCP call. A human queue is the
-authorization boundary; a registered server-owned executor owns any later provider calls,
-capture, snapshot attachment, validation, and lifecycle transitions. No such CM-01
-technical executor is exposed by the current Console MCP server.
+Those human approval and queue receipts describe this archived r6 run; they are not the
+current product interaction model. New projects express consequential decisions through
+signed MCP elicitation in chat, and the agent queues only ready registered work. A
+registered server-owned executor owns any later provider calls, capture, snapshot
+attachment, validation, and lifecycle transitions. No such CM-01 technical executor is
+exposed by the current Console MCP server.
 
 The approved CM-01 reference proposal identifies the isolated `190 x 135 x 28 mm`
 DripTray, an ABS-like concept model (`E = 2200 MPa`, `nu = 0.35`), a fully fixed rear
@@ -87,17 +89,17 @@ project run. The public V2 control plane can first materialize the provider-free
 documentary r1 from an approved discovery, then execute
 `architecture.seed-syson-model@1` only from that exact r1. That fixed server-owned seed
 creates a blank SysON project, document, and root package; reads the root back; and
-records normalized identities as r2. It accepts no arbitrary provider arguments or
-SysML text, refuses to blindly retry an uncertain creation, and creates no CM-01
-architecture, requirements, CAD, simulation, measurement, or verdict. Any CM-01
-technical operation still needs its own reviewed registered executor.
+records normalized identities as r2. It accepts no arbitrary provider arguments or SysML
+text, refuses to blindly retry an uncertain creation, and creates no CM-01 architecture,
+requirements, CAD, simulation, measurement, or verdict. Any CM-01 technical operation
+still needs its own reviewed registered executor.
 
 The source tree also has a later guarded r3 inspection-drone operation, but it is not a
 CM-01 path: it requires an exact r2 seed, exact approved inspection-drone discovery
 answers, and an empty SysON root. It is not released. Its disposable local
 parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on
-2026-08-03, but it is not an r3 project run and creates no CM-01 or general CAD, physics,
-flight, cost, compliance, or verification evidence.
+2026-08-03, but it is not an r3 project run and creates no CM-01 or general CAD,
+physics, flight, cost, compliance, or verification evidence.
 
 The command executes this backend-only chain:
 
@@ -131,8 +133,8 @@ approved constraints before reaching CAD.
 
 If the prior attempt reached build123d, CalculiX, normalization, evaluation,
 reconciliation, an unknown operation, or a different base revision, retry fails closed.
-A persisted capture also cannot be overwritten. Create a newly authorized run instead
-of treating partial engineering work as safely repeatable.
+A persisted capture also cannot be overwritten. Create a newly authorized run instead of
+treating partial engineering work as safely repeatable.
 
 ## Read the historical publication boundary
 
@@ -157,10 +159,10 @@ coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechan
 
 CalculiX consumed the exact STEP SHA-256
 `ea061880c9efc043fa0ad8475594a12c447481723e4e46dfdd7dc62a8dca3c84`, measured
-`0.10363294359363535 mm` maximum displacement and `0.5309183805726515 MPa`
-maximum von Mises stress, and SysON evaluated both limits as `pass`. Active project
-revision 10 records the run and `verify-current-mechanical-design` work item as
-`completed` against that exact r6 evidence.
+`0.10363294359363535 mm` maximum displacement and `0.5309183805726515 MPa` maximum von
+Mises stress, and SysON evaluated both limits as `pass`. Active project revision 10
+records the run and `verify-current-mechanical-design` work item as `completed` against
+that exact r6 evidence.
 
 These results validate the traced component loop and its publication contract. They do
 not promote the provisional ABS-like material to a selected production material or

@@ -304,6 +304,37 @@ Deno.test("rejected brief keeps exact history and accepts a new proposal id", as
   );
 });
 
+Deno.test("conversation can replace or invalidate a pending draft without a fake human rejection", async () => {
+  const store = new MemoryDiscoveryStore();
+  const service = serviceFor(store);
+  let discovery = await start(service);
+  discovery = await service.proposeBrief(AGENT, {
+    ...context("brief-pending-first", discovery.revision),
+    brief: brief("brief-1"),
+  });
+  const firstDraftRevision = discovery.revision;
+
+  discovery = await service.proposeBrief(AGENT, {
+    ...context("brief-pending-replacement", discovery.revision),
+    brief: brief("brief-2"),
+  });
+  assertEquals(discovery.status, "awaiting-review");
+  assertEquals(discovery.brief?.id, "brief-2");
+  assertEquals(discovery.review?.status, "pending");
+  assertEquals(
+    (await store.getRevision(DISCOVERY_ID, firstDraftRevision))?.brief?.id,
+    "brief-1",
+  );
+
+  discovery = await service.proposeQuestion(AGENT, {
+    ...context("question-invalidates-pending", discovery.revision),
+    question: question("new-context", true),
+  });
+  assertEquals(discovery.status, "discovering");
+  assertEquals(discovery.brief, undefined);
+  assertEquals(discovery.review, undefined);
+});
+
 function serviceFor(store: ProjectDiscoveryRevisionStore) {
   let tick = 0;
   return new ProjectDiscoveryCommandService(

@@ -12,15 +12,15 @@ unit-bearing observations, evaluations, violations, and actions. Supporting scri
 capture artifacts, and consumption records remain available inside lineage without
 turning the feed into a 39-row implementation log.
 
-The page is not a passive dashboard either. It is the shared control surface for an
-engineer and an agent: activity establishes what happened, lineage establishes what it
-means for the chain, and the active tool context exposes the evidence and permitted next
-actions. Execution is always distinguishable from inspection and remains gated by the
-operator.
+The page is not a static dashboard. It is the shared live dossier for an engineer and an
+agent: activity establishes what happened, lineage establishes what it means for the
+chain, and the active tool context exposes the evidence behind the next conversational
+decision. It remains read-only; execution and human authority stay in the paired agent
+conversation.
 
 ## Recommended shell
 
-- **Compact command header:** subject identity, canonical source, evidence-channel
+- **Compact project header:** subject identity, canonical source, evidence-channel
   state, current change, revision and update time. No marketing hero competes with the
   workspace.
 - **Status strip:** linked evidence, freshness, requirement coverage and named
@@ -74,10 +74,10 @@ validated browser projection, so reconnect and replay are deterministic and no
 half-written graph delta can become visible.
 
 The current server observes the immutable thread, project, and live-update stores every
-500 ms. It never invokes an MCP tool. Therefore “live” means that an assembler, an
-explicit human project command, or an agent has persisted a new revision. Provisional
-run events must remain visibly provisional and must resolve to persisted evidence before
-supporting a verdict or project completion.
+500 ms. It never invokes an MCP tool. Therefore “live” means that an assembler, an agent
+control-plane command, or a registered backend operation has persisted a new revision.
+Provisional run events must remain visibly provisional and must resolve to persisted
+evidence before supporting a verdict or project completion.
 
 `ToolInspectorPanel` is read-only by construction. It receives the latest loaded
 `ThreadWorkbenchSnapshot`, the active graph node and its optional richer record,

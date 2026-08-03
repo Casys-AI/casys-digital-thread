@@ -203,12 +203,11 @@ Deno.test("discovery view honors answer supersession and exposes one next questi
   assertEquals(view.progress.phaseLabel, "Agent preparing the next question");
 });
 
-Deno.test("discovery view exposes a brief only as a human review gate", () => {
+Deno.test("discovery view exposes a brief as a conversation record", () => {
   const view = buildProjectDiscoveryView(REVIEWABLE_DISCOVERY);
 
   assertEquals(view.activeQuestion, undefined);
-  assertEquals(view.canReviewBrief, true);
-  assertEquals(view.statusLabel, "Ready for your review");
+  assertEquals(view.statusLabel, "Brief ready to discuss");
   assertEquals(view.progress.label, "2 topics clarified · 0 open");
   assertEquals(view.progress.phaseLabel, "Discovery pass complete");
 });

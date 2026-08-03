@@ -185,7 +185,7 @@ Deno.test("browser cannot claim and a second agent cannot hijack a claimed run",
   const store = await memoryStore();
   const service = serviceFor(store);
   const project = await approveAll(service, store);
-  const queued = await service.queueRun(HUMAN, {
+  const queued = await service.queueRun(AGENT, {
     ...context("queue-verification", project.revision),
     runId: "verify-run-1",
     workItemId: "verify-current-mechanical-design",
@@ -222,10 +222,10 @@ Deno.test("browser cannot claim and a second agent cannot hijack a claimed run",
         ...context("agent-self-queue", queued.revision),
         runId: "verify-run-2",
         workItemId: "verify-current-mechanical-design",
-        summary: "Agent cannot authorize itself.",
+        summary: "A second run cannot duplicate active work.",
         baseSnapshot: baseSnapshot(queued),
       }),
-    "permission_denied",
+    "invalid_transition",
   );
   const claimed = await service.claimRun(AGENT, {
     ...context("agent-claims-run", queued.revision),

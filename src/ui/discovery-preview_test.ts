@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("discovery preview remains a single calm live review surface", async () => {
+Deno.test("discovery preview is a single live read-only dossier", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/discovery-preview.tsx", import.meta.url),
   );
@@ -8,15 +8,27 @@ Deno.test("discovery preview remains a single calm live review surface", async (
   assertStringIncludes(source, "Opening your project conversation");
   assertStringIncludes(source, "Restoring live updates");
   assertStringIncludes(source, "Project framing is temporarily unavailable");
-  assertStringIncludes(source, "<DiscoveryWorkbench");
-  assertStringIncludes(source, "onAnswer={answerQuestion}");
-  assertStringIncludes(source, "onReviewBrief={reviewBrief}");
-  assertStringIncludes(source, "onCreateEngineeringProject={createEngineeringProject}");
-  assertStringIncludes(source, "client.handoff(handoffRequest)");
-  assertStringIncludes(source, "projectId: current.discoveryId");
-  assertStringIncludes(source, "projectName: current.brief.objective");
-  assertStringIncludes(source, "handoffCommandRef.current = handoffRequest");
-  assertStringIncludes(source, "expectedRevision: current.revision");
+  assertStringIncludes(source, "<DiscoveryWorkbench discovery={snapshot} />");
+  assertStringIncludes(
+    source,
+    "client.subscribe(acceptSnapshot, setStreamStatus)",
+  );
+
+  for (
+    const removedControl of [
+      "onAnswer=",
+      "onReviewBrief=",
+      "onCreateEngineeringProject=",
+      "client.command(",
+      "client.handoff(",
+      "createProjectDiscoveryCommandRequest",
+      "createProjectDiscoveryHandoffRequest",
+      "actorId",
+      "POST",
+    ]
+  ) {
+    assertEquals(source.includes(removedControl), false, removedControl);
+  }
 
   assertEquals(source.includes("iframe"), false);
   assertEquals(source.includes("ThreadGraph"), false);

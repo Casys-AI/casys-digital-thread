@@ -1,73 +1,47 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("Discovery Workbench stays a calm one-question review surface", async () => {
+Deno.test("Discovery Workbench is a calm read-only conversation record", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/discovery-workbench.tsx", import.meta.url),
   );
 
-  assertStringIncludes(source, "PAIRED CONVERSATION · NEXT QUESTION");
-  assertStringIncludes(
-    source,
-    "Talk with the agent; review the shared record here.",
-  );
-  assertStringIncludes(source, "ANSWER WITH YOUR AGENT");
-  assertStringIncludes(source, "Why this matters");
-  assertStringIncludes(source, "AGENT RECOMMENDATION");
-  assertStringIncludes(source, "START WITH THIS REPLY");
-  assertStringIncludes(
-    source,
-    "Can you explain the trade-offs before",
-  );
-  assertStringIncludes(
-    source,
-    "Send it to the paired agent, or ask it to explain first.",
-  );
-  assertStringIncludes(source, "Possible directions to discuss");
-  assertStringIncludes(source, "I don&rsquo;t know yet");
-  assertStringIncludes(source, "Correct from cockpit");
-  assertStringIncludes(
-    source,
-    '<details class="discovery-cockpit-correction">',
-  );
-  assertStringIncludes(source, "Draft engineering brief");
-  assertStringIncludes(source, '<details class="discovery-brief"');
-  assertStringIncludes(source, "Request revision");
-  assertStringIncludes(source, "Approve brief");
-  assertStringIncludes(source, "Start engineering project");
-  assertStringIncludes(source, "Your framing is approved");
-  assertStringIncludes(source, "Initial project shell recorded");
-  assertStringIncludes(
-    source,
-    "This receipt describes the initial handoff only",
-  );
-  assertStringIncludes(source, "Project ID already occupied");
-  assertStringIncludes(
-    source,
-    "inputFingerprint: discovery.review.inputFingerprint",
-  );
+  for (
+    const expected of [
+      "PAIRED CONVERSATION · NEXT QUESTION",
+      "Talk with the agent; review the shared record here.",
+      "ANSWER WITH YOUR AGENT",
+      "Why this matters",
+      "AGENT RECOMMENDATION",
+      "START WITH THIS REPLY",
+      "Possible directions to discuss",
+      "Draft engineering brief",
+      "Discuss corrections, priorities and confirmation with the agent.",
+    ]
+  ) {
+    assertStringIncludes(source, expected);
+  }
+
+  for (
+    const removedControl of [
+      "Correct from cockpit",
+      "Request revision",
+      "Approve brief",
+      "Start engineering project",
+      "onReviewBrief",
+      "onCreateEngineeringProject",
+      "onAnswer",
+      "inputFingerprint: discovery.review.inputFingerprint",
+      "<Button",
+      "fetch(",
+    ]
+  ) {
+    assertEquals(source.includes(removedControl), false, removedControl);
+  }
 
   assertEquals(source.includes("MetricGrid"), false);
   assertEquals(source.includes("ThreadGraph"), false);
   assertEquals(source.includes("ProjectNavigation"), false);
-  assertEquals(source.includes("inputFingerprint.digest"), false);
-  assertEquals(source.includes("shortHash"), false);
-  assertEquals(source.includes("fetch("), false);
-  assertEquals(source.includes("discovery.questions.map"), false);
-  assertEquals(source.includes("Question ${"), false);
-  assertEquals(source.includes("<progress"), false);
   assertEquals(source.includes("<textarea"), false);
-
-  const correctionStart = source.indexOf(
-    '<details class="discovery-cockpit-correction">',
-  );
-  const directControlsStart = source.indexOf(
-    '<fieldset class="discovery-options"',
-  );
-  const directionsStart = source.indexOf('class="discovery-option-context"');
-
-  assertEquals(correctionStart > 0, true);
-  assertEquals(directionsStart > 0, true);
-  assertEquals(directControlsStart > correctionStart, true);
 });
 
 Deno.test("Discovery compliance remains progressive and inside the folded brief", async () => {

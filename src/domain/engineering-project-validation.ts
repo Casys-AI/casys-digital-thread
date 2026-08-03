@@ -2065,16 +2065,9 @@ function validateCommandReceiptInvariant(
   }
   const isDiscoveryHandoffCreation = project.discoveryHandoff !== undefined &&
     index === 0;
-  if (
-    isDiscoveryHandoffCreation && receipt.actor.origin !== "human"
-  ) {
-    issue(
-      issues,
-      "command_authority_mismatch",
-      `${path}.actor.origin`,
-      "project.create-from-discovery requires human authority",
-    );
-  }
+  // The brief approval remains human-owned in discoveryHandoff.approvedBy.
+  // Creating the empty project shell may then be performed by either the
+  // person or their agent; this receipt records who actually did it.
   if (!isDiscoveryHandoffCreation && receipt.type === "project.create-from-discovery") {
     issue(
       issues,

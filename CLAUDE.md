@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Casys Digital Thread — contexte projet
 
 Ce repo est **l'atelier** de la chaîne « executable digital thread » : exigence → modèle
@@ -8,6 +12,128 @@ aucune source de ces serveurs. Ce repo contient en revanche la source de la Cons
 read-only, du workflow lié et du Workbench natif (`server.ts`, `src/`). Pour éditer un
 serveur d'ingénierie, cloner son repo (`Casys-AI/mcp-syson`, `mcp-build123d`,
 `mcp-calculix`, `mcp-modelica`, `constraint-solver`).
+
+## Commandes
+
+Runtime backend : **Deno** (tâches dans `deno.json`). Bundles UI : **npm + Vite** dans
+`src/ui/`. Providers d'ingénierie : **Docker Compose**.
+
+```bash
+docker compose up -d              # topologie provider ; SysON UI sur :8180
+npm --prefix src/ui ci
+npm --prefix src/ui run build     # bundle Console MCP App → src/ui/dist/console/
+deno task start                   # serveur MCP Console + project control, :3020/mcp
+deno task dev                     # idem avec --watch sur server.ts, src, config
+```
+
+Qualité — à passer avant tout commit :
+
+```bash
+deno task check       # type-check ; liste explicite de fichiers (voir le piège plus bas)
+deno task lint
+deno task fmt         # --check seulement ; pour écrire : deno fmt <chemin>
+deno task test        # suite Deno complète : src/ + scripts/*_test.ts
+deno task check:ui    # tsc --noEmit sur src/ui
+deno task verify:thread:presentation   # gate de release : frontière mcp-view du cockpit natif
+deno task verify:evidence              # cohérence des fixtures console
+```
+
+Un seul fichier de test, ou un seul cas — les permissions doivent être reprises à la
+main, `deno task test` ne prend pas d'argument de chemin :
+
+```bash
+deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env \
+  src/domain/thread-snapshot_test.ts
+deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env \
+  src/domain/thread-snapshot_test.ts --filter "strictly JSON serializable"
+```
+
+Surfaces interactives locales (chacune rebuild son bundle puis sert un BFF loopback) :
+
+```bash
+deno task preview:browser     # :3021 — harness navigateur de la Console MCP App
+deno task preview:thread      # :5173 — cockpit natif (reads/SSE passifs + commandes humaines)
+deno task preview:discovery   # :5174 — Discovery Workbench (?discovery=<id>)
+```
+
+Chaîne CM-01 — **n'exécuter que pour produire délibérément de nouvelles preuves
+locales**, jamais « pour voir » : ces tâches appellent de vrais providers et écrivent
+des révisions immuables sous `state/local/`.
+
+```bash
+deno task thread:assemble                        # assemblage read-only des branches CM-01
+deno task thread:run-coffee-machine-build        # SysON → build123d
+deno task thread:attach-coffee-machine-build     # valide, publie, réconcilie le feed
+deno task thread:run-coffee-machine-mechanical --run-id=<id>      # run humain-autorisé
+deno task thread:attach-coffee-machine-mechanical --run-id=<id>
+deno task thread:attach-modelica
+```
+
+**Piège `deno task check`** : la tâche énumère les fichiers un par un dans `deno.json`.
+Un nouveau module non-test qui n'y est pas ajouté n'est jamais type-checké — l'oubli est
+silencieux.
+
+**Piège bundles** : `src/ui/dist/**` est **commité**. Toute modification de `src/ui/src/`
+exige de rebuilder (`build`, `build:thread`, `build:discovery`) et de commiter le bundle
+régénéré, sinon le preview et la ressource MCP servent l'ancienne UI.
+
+## Architecture du code
+
+Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
+
+| Couche                        | Rôle                                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------------------- |
+| `src/domain/`                 | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*` |
+| `src/adapters/`               | I/O : stores fichier immuables, clients MCP HTTP, sondes Docker, exécuteurs, projecteurs |
+| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning            |
+| `src/tools/`                  | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`, `project-discovery.ts` |
+| `src/workflow/`               | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                 |
+| `src/contracts/`              | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                          |
+| `src/ui/src/`                 | Preact : `project/` (cockpit, discovery, commandes), `thread/` (feed, graphe, inspecteurs) |
+| `src/testing/`                | Fixtures partagées entre suites                                                          |
+| `scripts/`                    | Entry points exécutables : BFF, runners CM-01, harness, gates de release                 |
+| `server.ts`                   | **Composition root** : c'est là que les adapters sont câblés aux services domaine        |
+
+Les invariants suivants sont structurels — les casser casse le produit, pas seulement un
+test :
+
+1. **Immutabilité + CAS** — `EngineeringProjectSnapshot`, `ProjectDiscoverySnapshot` et
+   `ThreadSnapshot` ne sont jamais mutés. Toute commande nomme la révision attendue et
+   écrit une nouvelle révision. Une révision publiée est relue avant d'être considérée
+   comme vraie.
+2. **Hash déterministe** — toute empreinte passe par `deterministicJson` /
+   `sha256Fingerprint` (`src/domain/deterministic-json.ts`) : clés triées, `undefined`
+   omis, nombres non finis rejetés. Ne jamais hasher un `JSON.stringify` brut.
+3. **Validation fail-closed** — le pattern dominant est `exactRecord(value, [clés], path)` :
+   une clé en trop *ou* en moins est un rejet. Voir `src/orchestration/operations/registry.ts`
+   pour la forme canonique (codes d'erreur typés + message sans détail provider).
+4. **Le navigateur ne reçoit jamais d'autorité MCP** — l'UI lit le dossier lié par GET/SSE
+   et ne poste aucune commande projet. Les `tools/call` restent backend-only ; le chat
+   MCP est l'interface de commande et de décision.
+5. **Loopback = garde de déploiement, pas authentification** — l'identité opérateur
+   affichée est auto-déclarée. Un binding non-loopback désactive les outils projet
+   (`server.ts:356`).
+6. **Exécuteurs serveur-fixes** — un agent ne fournit ni nom de provider, ni nom d'outil,
+   ni arguments, ni texte SysML. Il déclenche une opération enregistrée ; la séquence est
+   codée côté serveur. Les écritures non idempotentes sont journalisées avant dispatch et
+   un résultat incertain s'arrête pour revue au lieu de retenter à l'aveugle.
+
+Répartition des autorités, qui explique la plupart des refus de code : l'**agent**
+propose, planifie, met en file et exécute uniquement des opérations enregistrées ;
+l'**humain** exprime ses choix dans le chat et confirme les décisions conséquentes par
+MRTR signé ; le **serveur** possède les séquences provider et les arguments techniques.
+Le Workbench est une projection read-only. Aucun acteur ne peut prendre le rôle d'un
+autre.
+
+### Tests
+
+- `_test.ts` co-localisé à côté du module (`src/domain/foo.ts` ↔ `src/domain/foo_test.ts`).
+- Les tests UI sont des tests **Deno**, placés à la **racine de `src/ui/`** (ex.
+  `src/ui/project-model_test.ts`) et non à côté des `.tsx`. Ils importent depuis
+  `src/ui/src/` et testent les modèles (`*-model.ts`) et les contrats, pas le rendu Preact.
+  Corollaire : toute logique d'affichage non triviale vit dans un `*-model.ts` testable.
+- `@std/assert` uniquement ; noms de tests en phrases décrivant l'invariant, pas la
+  méthode (« ThreadSnapshot never accepts an observation without an explicit unit »).
 
 ## Les outils de la chaîne (MCP stateless)
 
@@ -60,12 +186,11 @@ les facettes composants à `Product`, et les runs et outils à `Execution`.
 Une idée qui n'est pas encore un projet technique vit séparément dans un
 `ProjectDiscoverySnapshot` immuable. L'agent utilise les tools `project_discovery_*`
 pour préparer une seule question bornée à la fois et proposer un brief ; l'humain mène
-l'échange normal avec l'agent, tandis que le Workbench loopback `5174` reflète le dossier
-partagé, permet la revue et ne propose une correction directe qu'en recours explicite. Aucun
-`EngineeringProjectSnapshot`, modèle SysON ou `ThreadSnapshot` vide n'est créé avant
-cette approbation. L'UE UAS est le premier exemple de conformité documenté ; il n'existe
-pas encore de moteur réglementaire mondial ni de passage automatique du brief approuvé
-au premier projet technique.
+l'échange normal avec l'agent et confirme le brief exact dans cette conversation par
+MRTR signé. Le Workbench loopback `5174` reflète seulement le dossier partagé. Après la
+confirmation, l'agent peut créer le shell projet vide ; aucun modèle SysON ni
+`ThreadSnapshot` n'est inventé par ce passage. L'UE UAS est le premier exemple de
+conformité documenté ; il n'existe pas encore de moteur réglementaire mondial.
 
 Le backend compose les données par un DAG explicite sous `config/thread-workflows/` ; la
 YAML ne décrit ni layout ni composant. Ouvrir la page ne lance aucun solver. Les MCP
@@ -98,6 +223,22 @@ ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service 
 - **Demo ≠ live** : l'exemple bracket reste un fixture de démonstration hashé, hors du
   sujet produit CM-01. Son FEA est documenté, jamais présenté comme un solve fraîchement
   exécuté ni rattaché automatiquement au thread courant.
+
+## Conventions
+
+- `deno fmt` : `lineWidth: 88`, point-virgules, guillemets doubles. Le style des
+  commentaires est explicatif — un bloc `/** */` documente *pourquoi* une frontière
+  existe, pas ce que fait la fonction.
+- Dépendances via l'import map de `deno.json` (JSR uniquement) ; `minimumDependencyAge`
+  d'un jour, sauf `@casys/mcp-server`.
+- Commits conventionnels (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`), suffixe
+  `[skip ci]` sur les commits de travail courants.
+- Documentation en Diátaxis sous `docs/` (`tutorials/`, `how-to/`, `reference/`,
+  `explanations/`). Une nouvelle frontière ou un nouveau port se documente dans
+  `docs/reference/workspace-map.md`.
+- Le vocabulaire produit compte : « demo », « unavailable », « provisional »,
+  « documentary » et « unverified » sont des labels contractuels. Ne jamais les retirer
+  d'une sortie pour la rendre plus lisible.
 
 ## État et prochaine étape
 

@@ -5,7 +5,10 @@ import type {
   ProjectDiscoveryCommandService,
   ProjectDiscoveryQuestionProposalInput,
 } from "../domain/project-discovery-command-service.ts";
+import { fingerprintsEqual } from "../domain/deterministic-json.ts";
+import type { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
 import type { ProjectDiscoverySnapshot } from "../domain/project-discovery.ts";
+import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -76,9 +79,10 @@ export interface ProjectDiscoverySnapshotReader {
 export interface ProjectDiscoveryToolDependencies {
   discoveries: ProjectDiscoverySnapshotReader;
   commands: ProjectDiscoveryCommandService;
+  handoff?: ProjectDiscoveryHandoffService;
 }
 
-/** Register agent-authoring discovery tools. Human brief review is not MCP-exposed. */
+/** Register the conversation-owned discovery and project-shell tools. */
 export function registerProjectDiscoveryTools(
   app: McpApp,
   dependencies: ProjectDiscoveryToolDependencies,
@@ -144,6 +148,73 @@ export function registerProjectDiscoveryTools(
       snapshot,
     );
   });
+
+  app.registerTool(projectDiscoveryBriefConfirmTool, async (args, context) => {
+    const common = commonMutation(args);
+    const briefId = requiredString(args.briefId, "briefId");
+    const inputFingerprint = fingerprintInput(
+      args.inputFingerprint,
+      "inputFingerprint",
+    );
+    const current = await requiredPendingBrief(
+      dependencies.discoveries,
+      common.discoveryId,
+      common.expectedRevision,
+      briefId,
+      inputFingerprint,
+    );
+    const confirmation = briefConfirmationResponse(context);
+    if (confirmation === undefined) {
+      return briefConfirmationRequest(current);
+    }
+    if (!confirmation) {
+      return discoveryResult(
+        `Brief ${briefId} was not confirmed. No project state changed; continue refining it in the paired conversation.`,
+        current,
+      );
+    }
+    const snapshot = await dependencies.commands.approveBrief(
+      elicitedHumanOrigin(context),
+      {
+        ...common,
+        briefId,
+        inputFingerprint,
+        rationale: "The paired MCP host returned an accepted confirmation response.",
+      },
+    );
+    return discoveryResult(
+      `The paired MCP host reported confirmation of brief ${briefId} at discovery revision ${snapshot.revision}. The agent may now create the empty engineering project shell; no technical evidence exists yet.`,
+      snapshot,
+    );
+  });
+
+  if (dependencies.handoff) {
+    app.registerTool(projectDiscoveryProjectCreateTool, async (args, context) => {
+      const common = commonMutation(args);
+      const projectId = requiredString(args.projectId, "projectId");
+      const discovery = await requiredApprovedBrief(
+        dependencies.discoveries,
+        common.discoveryId,
+        common.expectedRevision,
+      );
+      const project = await dependencies.handoff!.createEngineeringProject(
+        agentOrigin(context),
+        {
+          commandId: common.commandId,
+          discoveryId: common.discoveryId,
+          expectedDiscoveryRevision: common.expectedRevision,
+          issuedAt: common.issuedAt,
+          projectId,
+          projectName: discovery.brief!.objective,
+        },
+      );
+      return {
+        content:
+          `Engineering project ${project.project.id} was created from the exact human-confirmed brief. It is an empty planning shell, not a model, simulation, or proof.`,
+        structuredContent: project as unknown as Record<string, unknown>,
+      };
+    });
+  }
 }
 
 const projectDiscoverySnapshotTool: MCPTool = {
@@ -330,6 +401,43 @@ const projectDiscoveryBriefProposeTool: MCPTool = {
       additionalProperties: false,
     },
   }, ["brief"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: IDEMPOTENT_MUTATION_ANNOTATIONS,
+};
+
+const FINGERPRINT_SCHEMA = {
+  type: "object",
+  properties: {
+    algorithm: { const: "sha256" },
+    digest: { type: "string", pattern: "^[a-f0-9]{64}$" },
+  },
+  required: ["algorithm", "digest"],
+  additionalProperties: false,
+} as const;
+
+const projectDiscoveryBriefConfirmTool: MCPTool = {
+  name: "project_discovery_brief_confirm",
+  description:
+    "Ask the paired MCP host to present the exact pending brief for confirmation. The first call requests elicitation; only a signed retry whose request state verifies and whose response is accepted can approve it. The signature protects retry integrity, not user identity; the host is responsible for presenting the request to the person. Declining changes nothing.",
+  inputSchema: mutationSchema({
+    briefId: { type: "string", minLength: 1 },
+    inputFingerprint: FINGERPRINT_SCHEMA,
+  }, ["briefId", "inputFingerprint"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: IDEMPOTENT_MUTATION_ANNOTATIONS,
+};
+
+const projectDiscoveryProjectCreateTool: MCPTool = {
+  name: "project_discovery_project_create",
+  description:
+    "Create an empty engineering project shell from the exact human-confirmed discovery revision. The project name is derived server-side from the approved brief. This cannot create SysML, CAD, simulation, measurements, evidence, decisions, phases or runs.",
+  inputSchema: mutationSchema({
+    projectId: {
+      type: "string",
+      minLength: 1,
+      description: "Stable identity for the new engineering project.",
+    },
+  }, ["projectId"]),
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: IDEMPOTENT_MUTATION_ANNOTATIONS,
 };
@@ -549,6 +657,139 @@ async function requiredDiscovery(
   return snapshot;
 }
 
+async function requiredPendingBrief(
+  store: ProjectDiscoverySnapshotReader,
+  discoveryId: string,
+  expectedRevision: number,
+  briefId: string,
+  inputFingerprint: ContentFingerprint,
+): Promise<ProjectDiscoverySnapshot> {
+  const snapshot = await requiredDiscovery(store, discoveryId);
+  if (snapshot.revision !== expectedRevision) {
+    throw new TypeError(
+      `Project discovery ${discoveryId} expected revision ${expectedRevision}, current revision is ${snapshot.revision}.`,
+    );
+  }
+  if (
+    snapshot.status !== "awaiting-review" || !snapshot.brief ||
+    !snapshot.review || snapshot.review.status !== "pending" ||
+    snapshot.brief.id !== briefId || snapshot.review.briefId !== briefId ||
+    !fingerprintsEqual(snapshot.review.inputFingerprint, inputFingerprint)
+  ) {
+    throw new TypeError(
+      `Brief ${briefId} is not the exact pending brief at discovery revision ${expectedRevision}.`,
+    );
+  }
+  return snapshot;
+}
+
+async function requiredApprovedBrief(
+  store: ProjectDiscoverySnapshotReader,
+  discoveryId: string,
+  expectedRevision: number,
+): Promise<ProjectDiscoverySnapshot> {
+  const snapshot = await requiredDiscovery(store, discoveryId);
+  if (snapshot.revision !== expectedRevision) {
+    throw new TypeError(
+      `Project discovery ${discoveryId} expected revision ${expectedRevision}, current revision is ${snapshot.revision}.`,
+    );
+  }
+  if (
+    snapshot.status !== "approved" || !snapshot.brief || !snapshot.review ||
+    snapshot.review.status !== "approved" ||
+    snapshot.review.briefId !== snapshot.brief.id ||
+    snapshot.review.decidedBy?.origin !== "human"
+  ) {
+    throw new TypeError(
+      `Project discovery ${discoveryId} has no exact human-confirmed brief to hand off.`,
+    );
+  }
+  return snapshot;
+}
+
+function briefConfirmationRequest(snapshot: ProjectDiscoverySnapshot) {
+  const objective = snapshot.brief!.objective;
+  return {
+    resultType: "input_required",
+    inputRequests: {
+      brief_confirmation: {
+        method: "elicitation/create",
+        params: {
+          mode: "form",
+          message:
+            `The agent saved this project brief: “${objective}”. Confirm that this is the framing you want to use, or decline and continue the conversation.`,
+          requestedSchema: {
+            type: "object",
+            properties: {
+              confirmed: {
+                type: "boolean",
+                title: "Confirm this project brief",
+                description:
+                  "I confirm that this brief reflects the project framing agreed in the conversation.",
+              },
+            },
+            required: ["confirmed"],
+            additionalProperties: false,
+          },
+        },
+      },
+    },
+  };
+}
+
+function briefConfirmationResponse(
+  context?: ToolHandlerContext,
+): boolean | undefined {
+  if (context?.inputResponses === undefined) return undefined;
+  if (context.retryVerified !== true) {
+    throw new TypeError(
+      "Brief confirmation requires an MCP retry with verified signed request state.",
+    );
+  }
+  const response = exactRecord(
+    context.inputResponses.brief_confirmation,
+    "inputResponses.brief_confirmation",
+  );
+  exactKeys(
+    response,
+    ["action"],
+    ["content"],
+    "inputResponses.brief_confirmation",
+  );
+  const action = oneOf(
+    response.action,
+    ["accept", "decline", "cancel"] as const,
+    "inputResponses.brief_confirmation.action",
+  );
+  if (action !== "accept") return false;
+  const content = exactRecord(
+    response.content,
+    "inputResponses.brief_confirmation.content",
+  );
+  exactKeys(
+    content,
+    ["confirmed"],
+    [],
+    "inputResponses.brief_confirmation.content",
+  );
+  return requiredBoolean(
+    content.confirmed,
+    "inputResponses.brief_confirmation.content.confirmed",
+  );
+}
+
+function fingerprintInput(value: unknown, name: string): ContentFingerprint {
+  const record = exactRecord(value, name);
+  exactKeys(record, ["algorithm", "digest"], [], name);
+  if (record.algorithm !== "sha256") {
+    throw new TypeError(`${name}.algorithm must be sha256`);
+  }
+  if (typeof record.digest !== "string" || !/^[a-f0-9]{64}$/.test(record.digest)) {
+    throw new TypeError(`${name}.digest must be 64 lowercase hex characters`);
+  }
+  return { algorithm: "sha256", digest: record.digest };
+}
+
 function agentOrigin(context?: ToolHandlerContext) {
   const subject = context?.authInfo?.subject?.trim();
   if (subject) return { kind: "agent" as const, actorId: subject };
@@ -559,6 +800,23 @@ function agentOrigin(context?: ToolHandlerContext) {
     actorId: name
       ? `mcp:${name}${version ? `@${version}` : ""}`
       : "mcp:unidentified-client",
+  };
+}
+
+/**
+ * Domain authority asserted by the paired MCP host after accepted elicitation.
+ * Signed requestState proves retry integrity, not the person's identity; the
+ * host and its transport authentication remain the trust boundary.
+ */
+function elicitedHumanOrigin(context?: ToolHandlerContext) {
+  const subject = context?.authInfo?.subject?.trim();
+  const name = context?.clientInfo?.name?.trim();
+  const version = context?.clientInfo?.version?.trim();
+  const channel = subject ||
+    (name ? `${name}${version ? `@${version}` : ""}` : "client");
+  return {
+    kind: "human" as const,
+    actorId: `mcp-elicitation:${channel}`,
   };
 }
 

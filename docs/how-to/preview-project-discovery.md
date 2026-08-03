@@ -1,7 +1,7 @@
-# Preview a guided project discovery
+# Preview a conversation-driven project discovery
 
 > **Diátaxis category: how-to.** Use this guide to inspect one live, agent-authored
-> pre-project conversation before opening the technical cockpit.
+> pre-project dossier while the person and agent work in their paired conversation.
 
 ## Start the MCP control plane
 
@@ -59,9 +59,9 @@ only when the immutable revision changes. Page loads and reconnects execute no a
 engineering tool.
 
 The page is the shared record for a paired human-and-agent conversation, not a
-questionnaire. The agent asks the current question in the conversation. Once you agree
-an answer, the agent records it through MCP and the open page receives the new immutable
-revision.
+questionnaire or command console. The agent asks the current question in the
+conversation. Once you agree an answer, the agent records it through MCP and the open
+page receives the new immutable revision.
 
 The page should show:
 
@@ -69,23 +69,31 @@ The page should show:
 - exactly one read-only active question to discuss with the agent;
 - why the answer matters;
 - an agent recommendation, bounded alternatives, and their consequences;
-- one short reply starter the reviewer can send to the paired agent or use to ask
-  for an explanation before anything is recorded;
+- one short reply starter the reviewer can use in the paired conversation or replace
+  with a plain-language answer;
 - a visible `I don't know` path to discuss with the agent;
-- a folded working brief instead of a technical dashboard.
+- a working brief instead of a technical dashboard;
+- no approval, revision, handoff, or provider-execution button.
 
-`Correct from cockpit` is deliberately folded. It is a recovery path for a temporarily
-unavailable conversation or a record correction, not the normal way to work. Opening it
-reveals the bounded direct-answer controls; selecting one sends an explicit same-origin
-human command and appends a new revision. The next question appears only after an agent
-observes that revision and calls the corresponding MCP authoring tool. The SSE stream
-carries the resulting snapshot to the already-open page.
+To correct an answer or draft, tell the agent in the same conversation. It records a new
+immutable revision and the SSE stream carries the complete replacement snapshot to the
+already-open page. The cockpit never has to notify or wake the agent because it is not a
+second input channel.
 
-When the agent has enough reviewed context it may propose a brief. Only the browser
-reviewer can approve it or request a revision. After approval, one
-`Start engineering project` action is available. It sends an explicit same-origin human
-command to `POST /api/project-discoveries/:id/handoff` and creates revision 1 under
-`state/local/engineering-projects/`, with the approved brief preserved as its
-provenance. This is only a project shell: it creates no SysON model, `ThreadSnapshot`,
-simulation, technical evidence, or published agent plan, and it does not redirect to an
-empty technical cockpit.
+When the agent has enough context it calls `project_discovery_brief_propose` and tells
+you that the organized brief is available in the dossier. Confirm it or explain the
+correction in the conversation. For confirmation, the agent calls
+`project_discovery_brief_confirm`; the MCP host presents an `elicitation/create` prompt
+for that exact brief and fingerprint. An explicit confirmation approves the brief;
+declining changes nothing and the agent can prepare a replacement.
+
+After confirmation, the agent calls `project_discovery_project_create`. This creates
+revision 1 under `state/local/engineering-projects/`, with the confirmed brief preserved
+as provenance. It is only a project shell: it creates no SysON model, `ThreadSnapshot`,
+simulation, technical evidence, or published agent plan, and the dossier does not
+pretend otherwise.
+
+For a persistent server, set `MCP_MRTR_SIGNING_KEY` before `deno task start`. If it is
+absent, local development uses a process-ephemeral key, so finish any pending
+confirmation before restarting the server. The current replay store is process-local; do
+not load-balance this confirmation flow across multiple instances.

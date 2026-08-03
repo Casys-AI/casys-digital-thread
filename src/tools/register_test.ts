@@ -25,9 +25,14 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_server_detail",
     "console_snapshot",
     "project_agent_run_execute",
+    "project_agent_run_queue",
+    "project_decision_approve",
     "project_decision_propose",
+    "project_decision_reject",
     "project_discovery_answer_record",
+    "project_discovery_brief_confirm",
     "project_discovery_brief_propose",
+    "project_discovery_project_create",
     "project_discovery_question_propose",
     "project_discovery_snapshot",
     "project_discovery_start",
@@ -75,9 +80,14 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_server_detail",
       "console_snapshot",
       "project_agent_run_execute",
+      "project_agent_run_queue",
+      "project_decision_approve",
       "project_decision_propose",
+      "project_decision_reject",
       "project_discovery_answer_record",
+      "project_discovery_brief_confirm",
       "project_discovery_brief_propose",
+      "project_discovery_project_create",
       "project_discovery_question_propose",
       "project_discovery_snapshot",
       "project_discovery_start",
@@ -256,7 +266,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         ]
           .includes(String(tool.name))
       ),
-      false,
+      true,
     );
     for (const tool of projectTools) {
       const annotations = tool.annotations as Record<string, unknown>;
@@ -269,7 +279,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(
         annotations.idempotentHint,
         tool.name === "project_snapshot" ||
-          tool.name === "project_agent_run_execute",
+          tool.name === "project_agent_run_execute" ||
+          tool.name === "project_agent_run_queue" ||
+          tool.name === "project_decision_approve" ||
+          tool.name === "project_decision_reject",
       );
     }
     const discoveryTools = tools.filter((tool) =>

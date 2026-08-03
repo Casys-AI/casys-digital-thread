@@ -4,71 +4,36 @@ import type { JSX } from "preact";
 import type {
   EngineeringDecision,
   EngineeringProjectSnapshot,
-  EngineeringWorkItem,
 } from "../../../domain/engineering-project.ts";
-import type {
-  OperatorCommandCapabilities,
-  ProjectOperatorCommand,
-} from "./command-contract.ts";
-import { canQueueWorkItem, unavailableCommandReason } from "./control-model.ts";
 
-export interface ProjectCommandFeedback {
-  readonly state: "idle" | "submitting" | "success" | "conflict" | "error";
-  readonly commandKey?: string;
-  readonly message?: string;
-}
-
-/**
- * Browser controls are deliberately narrow: the agent prepares technical
- * changes, while a human can authorize an exact, already-recorded scope.
- */
-export interface ProjectControlProps {
+export interface ProjectReviewProps {
   readonly project: EngineeringProjectSnapshot;
-  readonly capability?: OperatorCommandCapabilities;
-  readonly actorId: string;
-  readonly onActorIdChange: (value: string) => void;
-  readonly feedback: ProjectCommandFeedback;
-  readonly onCommand: (
-    commandKey: string,
-    command: ProjectOperatorCommand,
-  ) => Promise<void>;
   /** Opens the live activity feed, optionally focused on this decision. */
   readonly onOpenActivity?: (decisionId?: string) => void;
-  /** Opens the specification/SysML surface for the affected decision. */
+  /** Opens the specification/SysML projection for the affected decision. */
   readonly onOpenSpecification?: (decisionId: string) => void;
 }
 
 export type ReviewNotificationsSurface = "inbox" | "activity";
 
-export interface ReviewNotificationsProps extends ProjectControlProps {
-  /** Overview gets only a handoff; Activity owns contextual review. */
-  readonly surface?: ReviewNotificationsSurface;
-}
-
-/**
- * Compatibility export for the Overview. It is intentionally only an inbox:
- * no technical fields, manual recovery, or duplicate review workspace.
- */
-export function DecisionCenter(props: ProjectControlProps): JSX.Element {
+/** A compact overview handoff to the records that explain a decision. */
+export function DecisionCenter(props: ProjectReviewProps): JSX.Element {
   return <ReviewNotifications {...props} surface="inbox" />;
 }
 
 /**
- * The same lightweight notification language is used in two places:
- * - inbox: tells a reviewer that attention is needed and hands off to Activity;
- * - activity: supplies the recorded context and a bounded authorization action.
+ * The cockpit never asks the person to authorize work. It projects the
+ * decision record and points back to the paired conversation, where the agent
+ * can ask for intent, explain a recommendation and persist the outcome.
  */
 export function ReviewNotifications({
   project,
-  capability,
-  actorId,
-  onActorIdChange,
-  feedback,
-  onCommand,
   onOpenActivity,
   onOpenSpecification,
   surface = "inbox",
-}: ReviewNotificationsProps): JSX.Element {
+}: ProjectReviewProps & {
+  readonly surface?: ReviewNotificationsSurface;
+}): JSX.Element {
   const reviewable = project.decisions.filter((decision) =>
     decision.status === "proposed"
   );
@@ -86,23 +51,25 @@ export function ReviewNotifications({
       <header class="decision-center-header">
         <div class="decision-center-index" aria-hidden="true">RN</div>
         <div>
-          <p>{isActivity ? "ACTIVITY REVIEW" : "REVIEW NOTIFICATIONS"}</p>
+          <p>{isActivity ? "DECISION RECORD" : "PROJECT SIGNALS"}</p>
           <h3 id={`review-notifications-title-${surface}`}>
-            {isActivity ? "Review what changed" : "Your attention, when needed"}
+            {isActivity
+              ? "What the agent needs you to consider"
+              : "Attention, in context"}
           </h3>
           <span>
             {isActivity
-              ? "Read the engineering activity and inspect the affected specification. Authorization remains a single, bounded human action."
-              : "The feed carries the engineering story. This inbox only alerts you when a recorded recommendation needs your judgment."}
+              ? "Read the recorded scope and evidence here; discuss the decision with the agent in your paired conversation."
+              : "The feed carries the engineering story. This summary only points to the decision records worth discussing with the agent."}
           </span>
         </div>
         <dl class="decision-center-meter">
           <div data-tone={reviewable.length > 0 ? "attention" : "quiet"}>
-            <dt>Needs review</dt>
+            <dt>To discuss</dt>
             <dd>{reviewable.length}</dd>
           </div>
           <div data-tone={agentPreparing.length > 0 ? "preparing" : "quiet"}>
-            <dt>Agent preparing</dt>
+            <dt>Preparing</dt>
             <dd>{agentPreparing.length}</dd>
           </div>
         </dl>
@@ -110,16 +77,11 @@ export function ReviewNotifications({
 
       {isActivity
         ? (
-          <ActivityReviewQueue
+          <ActivityDecisionRecord
             project={project}
-            capability={capability}
-            actorId={actorId}
-            onActorIdChange={onActorIdChange}
-            feedback={feedback}
-            onCommand={onCommand}
-            onOpenSpecification={onOpenSpecification}
             reviewable={reviewable}
             agentPreparing={agentPreparing}
+            onOpenSpecification={onOpenSpecification}
           />
         )
         : (
@@ -146,12 +108,12 @@ function ReviewInboxHandoff({
   const state = nextReview
     ? {
       tone: "proposed",
-      marker: "REVIEW REQUEST",
+      marker: "AGENT QUESTION",
       title: reviewable.length === 1
-        ? "One engineering recommendation is ready"
-        : `${reviewable.length} engineering recommendations are ready`,
+        ? "One recorded recommendation needs discussion"
+        : `${reviewable.length} recorded recommendations need discussion`,
       detail:
-        "Open Activity to see the lineage and evidence before deciding. If the scope is wrong, inspect and change it from the dedicated specification surface with the agent.",
+        "Open Activity to inspect the lineage and evidence, then continue with the agent in your paired conversation.",
       action: "Open activity",
       icon: "!",
     }
@@ -161,16 +123,16 @@ function ReviewInboxHandoff({
       marker: "AGENT PREPARING",
       title: "The agent is preparing the next recommendation",
       detail:
-        "Nothing needs a decision yet. The activity feed will show the work as it arrives.",
+        "Nothing is needed in the cockpit. The activity feed will show the record when it is ready to discuss.",
       action: "See activity",
       icon: "···",
     }
     : {
       tone: "approved",
-      marker: "NO REVIEW WAITING",
-      title: "Nothing needs your judgment right now",
+      marker: "NO QUESTION WAITING",
+      title: "No project decision needs discussion right now",
       detail:
-        "Use Activity to follow the project. New review requests will appear here when a recommendation is recorded.",
+        "Use Activity to follow the project. Your paired conversation remains the place to clarify or change intent.",
       action: "See activity",
       icon: "✓",
     };
@@ -179,7 +141,7 @@ function ReviewInboxHandoff({
     <section
       class="decision-review-brief"
       data-state={state.tone}
-      aria-label="Review notification"
+      aria-label="Project signal"
     >
       <span aria-hidden="true">{state.icon}</span>
       <div>
@@ -199,186 +161,81 @@ function ReviewInboxHandoff({
   );
 }
 
-function ActivityReviewQueue({
+function ActivityDecisionRecord({
   project,
-  capability,
-  actorId,
-  onActorIdChange,
-  feedback,
-  onCommand,
-  onOpenSpecification,
   reviewable,
   agentPreparing,
-}:
-  & Pick<
-    ProjectControlProps,
-    | "project"
-    | "capability"
-    | "actorId"
-    | "onActorIdChange"
-    | "feedback"
-    | "onCommand"
-    | "onOpenSpecification"
-  >
-  & {
-    reviewable: readonly EngineeringDecision[];
-    agentPreparing: readonly EngineeringDecision[];
-  }): JSX.Element {
-  const commandsEnabled = capability?.enabled === true;
+  onOpenSpecification,
+}: {
+  project: EngineeringProjectSnapshot;
+  reviewable: readonly EngineeringDecision[];
+  agentPreparing: readonly EngineeringDecision[];
+  onOpenSpecification?: (decisionId: string) => void;
+}): JSX.Element {
+  if (!reviewable.length) {
+    return (
+      <section
+        class="decision-review-brief"
+        data-state={agentPreparing.length > 0 ? "required" : "approved"}
+        aria-label="Decision status"
+      >
+        <span aria-hidden="true">{agentPreparing.length ? "···" : "✓"}</span>
+        <div>
+          <p>
+            {agentPreparing.length ? "AGENT PREPARING" : "NO QUESTION WAITING"}
+          </p>
+          <strong>
+            {agentPreparing.length
+              ? "The agent has not recorded a recommendation yet"
+              : "There is no recorded decision awaiting discussion"}
+          </strong>
+          <small>
+            Follow the live feed, or ask the agent about the project context in
+            your paired conversation.
+          </small>
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <>
-      {feedback.state !== "idle" && feedback.message && (
-        <div
-          class="decision-command-feedback"
-          data-state={feedback.state}
-          role={feedback.state === "error" ? "alert" : "status"}
-          aria-live="polite"
-        >
-          <i aria-hidden="true" />
-          <span>{feedback.message}</span>
-        </div>
-      )}
-
-      {reviewable.length > 0 && commandsEnabled && (
-        <details class="decision-reviewer-session">
-          <summary>
-            <span>REVIEWER IDENTITY</span>
-            <strong>
-              {actorId.trim() || "Identify yourself to authorize a decision"}
-            </strong>
-          </summary>
-          <OperatorIdentity
-            actorId={actorId}
-            onChange={onActorIdChange}
-            enabled={commandsEnabled}
+    <ol class="decision-notification-list" aria-label="Recorded decisions">
+      {reviewable.map((decision) => (
+        <li key={decision.id}>
+          <DecisionRecord
+            project={project}
+            decision={decision}
+            onOpenSpecification={onOpenSpecification}
           />
-        </details>
-      )}
-
-      {reviewable.length
-        ? (
-          <ol class="decision-notification-list" aria-label="Review requests">
-            {reviewable.map((decision) => (
-              <li key={decision.id}>
-                <ReviewNotification
-                  project={project}
-                  decision={decision}
-                  capability={capability}
-                  actorId={actorId}
-                  feedback={feedback}
-                  onCommand={onCommand}
-                  onOpenSpecification={onOpenSpecification}
-                />
-              </li>
-            ))}
-          </ol>
-        )
-        : (
-          <section
-            class="decision-review-brief"
-            data-state={agentPreparing.length > 0 ? "required" : "approved"}
-            aria-label="Review status"
-          >
-            <span aria-hidden="true">
-              {agentPreparing.length ? "···" : "✓"}
-            </span>
-            <div>
-              <p>
-                {agentPreparing.length
-                  ? "AGENT PREPARING"
-                  : "NO REVIEW WAITING"}
-              </p>
-              <strong>
-                {agentPreparing.length
-                  ? "The agent has not recorded a reviewable recommendation yet"
-                  : "There is no engineering decision awaiting review"}
-              </strong>
-              <small>
-                {agentPreparing.length
-                  ? "Follow the live feed; no technical record is required from you here."
-                  : "Keep following Activity or inspect the product specification when you want to explore the current state."}
-              </small>
-            </div>
-          </section>
-        )}
-    </>
+        </li>
+      ))}
+    </ol>
   );
 }
 
-function ReviewNotification({
+function DecisionRecord({
   project,
   decision,
-  capability,
-  actorId,
-  feedback,
-  onCommand,
   onOpenSpecification,
-}:
-  & Pick<
-    ProjectControlProps,
-    | "project"
-    | "capability"
-    | "actorId"
-    | "feedback"
-    | "onCommand"
-    | "onOpenSpecification"
-  >
-  & { decision: EngineeringDecision }): JSX.Element {
+}: {
+  project: EngineeringProjectSnapshot;
+  decision: EngineeringDecision;
+  onOpenSpecification?: (decisionId: string) => void;
+}): JSX.Element {
   const phase = project.phases.find((candidate) =>
     candidate.id === decision.phaseId
   );
   const proposal = decision.proposal;
-  const busy = feedback.state === "submitting" &&
-    feedback.commandKey?.includes(decision.id);
-  const authorizationUnavailable = decision.inputFingerprint
-    ? unavailableCommandReason({
-      enabled: capability?.enabled === true,
-      intent: "decision.approve",
-      allowedIntents: capability?.intents ?? [],
-      actorId,
-      busy: feedback.state === "submitting",
-    })
-    : "This recommendation is not bound to an exact input scope.";
-  const revisionUnavailable = decision.inputFingerprint
-    ? unavailableCommandReason({
-      enabled: capability?.enabled === true,
-      intent: "decision.reject",
-      allowedIntents: capability?.intents ?? [],
-      actorId,
-      busy: feedback.state === "submitting",
-    })
-    : "This recommendation is not bound to an exact input scope.";
-
-  const authorize = async () => {
-    if (!decision.inputFingerprint || authorizationUnavailable) return;
-    await onCommand(`decision.approve:${decision.id}`, {
-      type: "decision.approve",
-      decisionId: decision.id,
-      rationale: "Authorized after review in Activity.",
-      inputFingerprint: decision.inputFingerprint,
-    });
-  };
-
-  const requestRevision = async () => {
-    if (!decision.inputFingerprint || revisionUnavailable) return;
-    await onCommand(`decision.reject:${decision.id}`, {
-      type: "decision.reject",
-      decisionId: decision.id,
-      rationale: "Revision requested after Activity review.",
-      inputFingerprint: decision.inputFingerprint,
-    });
-  };
 
   return (
     <article
       class="decision-review-notification"
       data-state={decision.status}
-      aria-label={`Review request: ${decision.title}`}
+      aria-label={`Decision record: ${decision.title}`}
     >
       <header>
         <div>
-          <span>REVIEW REQUEST</span>
+          <span>AGENT RECOMMENDATION</span>
           <strong>{decision.title}</strong>
         </div>
         <small>{phase?.name ?? decision.phaseId}</small>
@@ -400,7 +257,7 @@ function ReviewNotification({
           </dd>
         </div>
         <div>
-          <dt>Requested</dt>
+          <dt>Recorded</dt>
           <dd>{formatDateTime(decision.requestedAt)}</dd>
         </div>
       </dl>
@@ -416,121 +273,12 @@ function ReviewNotification({
         >
           Inspect specification
         </button>
-        <button
-          type="button"
-          class="decision-reject-button"
-          onClick={requestRevision}
-          disabled={!!revisionUnavailable}
-          title={revisionUnavailable}
-        >
-          {busy ? "Requesting…" : "Request revised recommendation"}
-        </button>
-        <button
-          type="button"
-          class="decision-approve-button"
-          onClick={authorize}
-          disabled={!!authorizationUnavailable}
-          title={authorizationUnavailable}
-        >
-          {busy ? "Authorizing…" : "Authorize recorded scope"}
-        </button>
       </div>
       <small class="decision-review-guidance">
-        Need a correction? Inspect the specification and continue the project
-        conversation. A changed recommendation returns here with a new exact
-        scope.
+        Discuss this recommendation with the agent in your paired conversation.
+        The cockpit will update when the shared project record changes.
       </small>
     </article>
-  );
-}
-
-export function OperatorIdentity({ actorId, onChange, enabled }: {
-  actorId: string;
-  onChange: (value: string) => void;
-  enabled: boolean;
-}): JSX.Element {
-  return (
-    <div class="decision-operator">
-      <label>
-        <span>REVIEWING AS</span>
-        <input
-          type="text"
-          value={actorId}
-          onInput={(event) => onChange(event.currentTarget.value)}
-          placeholder="Enter your name or operator ID"
-          autocomplete="off"
-          disabled={!enabled}
-        />
-      </label>
-      <div>
-        <strong>Self-declared · not authenticated</strong>
-        <span>
-          Written to the audit record; this prototype does not verify identity.
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Kept for the Execution surface. The work brief is agent-authored and can be
- * read here, but never silently overwritten by an operator form.
- */
-export function QueueWorkItemControl(
-  props: ProjectControlProps & { item: EngineeringWorkItem; compact?: boolean },
-): JSX.Element {
-  const { project, item, capability, actorId, feedback, onCommand, compact } =
-    props;
-  const agentBrief = item.description.trim() || item.title.trim();
-  const busy = feedback.state === "submitting";
-  const eligible = canQueueWorkItem(project, item);
-  const unavailable = !agentBrief
-    ? "The agent has not prepared a work brief yet."
-    : unavailableCommandReason({
-      enabled: capability?.enabled === true,
-      intent: "agent-run.queue",
-      allowedIntents: capability?.intents ?? [],
-      actorId,
-      busy,
-    });
-
-  const authorize = async () => {
-    if (!eligible || unavailable) return;
-    await onCommand(`queue:${item.id}`, {
-      type: "agent-run.queue",
-      workItemId: item.id,
-      summary: agentBrief,
-    });
-  };
-
-  return (
-    <section class={`decision-queue-form${compact ? " is-compact" : ""}`}>
-      <div>
-        <span>READY TO AUTHORIZE</span>
-        <strong>{item.title}</strong>
-        <small>
-          Agent-prepared scope · {item.id}
-        </small>
-      </div>
-      <blockquote class="decision-agent-brief">{agentBrief}</blockquote>
-      <small class="decision-form-hint">
-        Need a different scope? Change the specification or ask the agent in the
-        project conversation to prepare a new brief before authorizing it.
-      </small>
-      <button
-        type="button"
-        class="decision-primary-button"
-        onClick={authorize}
-        disabled={!eligible || !!unavailable}
-        title={!eligible
-          ? "This work item is not ready to queue."
-          : unavailable}
-      >
-        {busy && feedback.commandKey === `queue:${item.id}`
-          ? "Authorizing…"
-          : "Authorize agent work"}
-      </button>
-    </section>
   );
 }
 

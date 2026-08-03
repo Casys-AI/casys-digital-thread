@@ -89,9 +89,9 @@ page reload.
 
 Assembly and the whole-machine CAD build do not authorize a solve. The separately
 approved CM-01 mechanical path is retained as an exact historical reference: it proves
-what the bounded DripTray loop captured, not an executable public project-control recipe.
-The Console MCP server has no public `start`, `progress`, `publish`, or `fail` lifecycle
-tools, and it does not currently expose a CM-01 technical executor.
+what the bounded DripTray loop captured, not an executable public project-control
+recipe. The Console MCP server has no public `start`, `progress`, `publish`, or `fail`
+lifecycle tools, and it does not currently expose a CM-01 technical executor.
 
 For a local maintainer auditing an already prepared historical run, the underlying
 command-side runner accepts its exact recorded run ID:
@@ -104,8 +104,8 @@ deno task thread:run-coffee-machine-mechanical \
 The runner adds or validates only the approved DripTray `1 mm` and `20 MPa` constraints,
 generates a content-addressed DripTray STEP with build123d, solves that exact SHA-256
 with CalculiX, normalizes the observations, and asks SysON for the verdicts. It persists
-a capture but is not a public MCP execution endpoint and does not authorize or complete a
-new project run.
+a capture but is not a public MCP execution endpoint and does not authorize or complete
+a new project run.
 
 The corresponding historical attachment command validates and materializes that capture:
 
@@ -114,16 +114,17 @@ deno task thread:attach-coffee-machine-mechanical \
   --run-id=<same-run-id>
 ```
 
-It saves and reads back the immutable snapshot before removing the run's provisional feed
-entries; it does not advance a project lifecycle itself. The public control plane no
-longer offers a separate MCP call to move a run into `publishing` or `completed`. Do not
-try to recreate the r6 reference by supplying a capture or evidence payload through MCP.
+It saves and reads back the immutable snapshot before removing the run's provisional
+feed entries; it does not advance a project lifecycle itself. The public control plane
+no longer offers a separate MCP call to move a run into `publishing` or `completed`. Do
+not try to recreate the r6 reference by supplying a capture or evidence payload through
+MCP.
 
-For a future technical operation, the human first queues an exact reviewed work item.
-Its registered server-owned executor must then own the provider calls, capture,
-snapshot/attachment, output validation, and internal lifecycle transitions. Until that
-executor exists, CM-01 r6 is reviewed as existing evidence rather than offered as a
-re-runnable agent workflow. See the
+For a future technical operation, the agent queues an exact ready work item whose
+operation and basis are derived by the server. Its registered executor must then own the
+provider calls, capture, snapshot/attachment, output validation, and internal lifecycle
+transitions. Until that executor exists, CM-01 r6 is reviewed as existing evidence
+rather than offered as a re-runnable agent workflow. See the
 [mechanical workflow reference](view-coffee-machine-cm01.md) for the recorded case and
 its safe-resume boundary.
 
@@ -154,10 +155,10 @@ SysON inventory contains two `RequirementUsage` elements and no mechanical
 
 The separately approved reference runner is a deliberate later mutation. It writes the
 reviewed DripTray limits (`1 mm` displacement and `20 MPa` von Mises), publishes exact
-CAD/FEA/evaluation evidence as r6, and records two passing verdicts. Those verdicts apply
-only to the isolated `190 x 135 x 28 mm` concept DripTray under its provisional ABS-like
-material and `100 N` service case. They do not verify the whole CoffeeMachine and are not
-fabrication-release or certification evidence.
+CAD/FEA/evaluation evidence as r6, and records two passing verdicts. Those verdicts
+apply only to the isolated `190 x 135 x 28 mm` concept DripTray under its provisional
+ABS-like material and `100 N` service case. They do not verify the whole CoffeeMachine
+and are not fabrication-release or certification evidence.
 
 The branches share one declared product subject, but their provenance remains bounded.
 The Modelica run is an independent versioned system scenario and the ERP observations

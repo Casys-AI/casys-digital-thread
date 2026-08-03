@@ -4,8 +4,6 @@ import { FileEngineeringProjectRevisionStore } from "../adapters/engineering-pro
 import { FileProjectDiscoveryRevisionStore } from "../adapters/project-discovery-store.ts";
 import { FileThreadSnapshotStore } from "../adapters/file-thread-snapshot-store.ts";
 import type { McpProbe } from "../adapters/http-mcp-probe.ts";
-import { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
 import type { FleetManifest, ObservedContainer, RunDetail } from "../domain/types.ts";
 import { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
 import { ProjectDiscoveryCommandService } from "../domain/project-discovery-command-service.ts";
@@ -75,16 +73,41 @@ Deno.test("project_plan_publish exposes an agent-only bounded plan contract", as
       assertEquals(JSON.stringify(schema).includes("decision-parameter"), false);
       assertEquals(JSON.stringify(schema).includes("thread-entity"), false);
 
-      const humanOnlyActions = [
+      const chatMediatedHumanActions = [
         "project_decision_approve",
         "project_decision_reject",
-        "project_agent_run_queue",
       ];
-      for (const action of humanOnlyActions) {
+      for (const action of chatMediatedHumanActions) {
         assertEquals(
           tools.some((tool) => tool.name === action),
+          true,
+          `${action} must be exposed so the paired conversation can elicit the human decision`,
+        );
+      }
+      const queueTool = tools.find((tool) => tool.name === "project_agent_run_queue");
+      assert(queueTool, "The agent must be able to queue a ready reviewed operation.");
+      const queueSchema = queueTool.inputSchema as Record<string, unknown>;
+      assertEquals(
+        Object.keys(queueSchema.properties as Record<string, unknown>).sort(),
+        ["commandId", "expectedRevision", "issuedAt", "projectId", "workItemId"],
+      );
+      const serializedQueueSchema = JSON.stringify(queueSchema);
+      for (
+        const forbidden of [
+          "provider",
+          "toolName",
+          "mcpUrl",
+          "runId",
+          "summary",
+          "basis",
+          "resultSnapshot",
+          "evidenceRefs",
+        ]
+      ) {
+        assertEquals(
+          serializedQueueSchema.includes(forbidden),
           false,
-          `${action} must remain outside the agent MCP surface`,
+          `${forbidden} must remain server-owned when queueing a run`,
         );
       }
 
@@ -223,7 +246,7 @@ Deno.test("project_plan_publish exposes an agent-only bounded plan contract", as
 });
 
 Deno.test(
-  "MCP HTTP executes a human-authorized V2 documentary baseline without provider input or technical facts",
+  "MCP HTTP queues and executes a reviewed V2 documentary baseline without provider input or technical facts",
   async () => {
     await withApprovedProjectShell(async ({ directory }) => {
       const { app } = await createProjectControlTestServer(directory);
@@ -290,47 +313,34 @@ Deno.test(
         const planned = published.structuredContent as Record<string, unknown>;
         assertEquals(planned.revision, 2);
 
-        // The human authorization remains local to the same-origin control
-        // plane.  The agent only receives the bounded execution endpoint.
-        const projects = new FileEngineeringProjectRevisionStore(
-          `${directory}/projects`,
+        const queuedResult = assertResult(
+          await client.invoke("tools/call", {
+            name: "project_agent_run_queue",
+            arguments: {
+              commandId: "mcp-queue-documentary-baseline-1",
+              projectId: PROJECT_ID,
+              expectedRevision: 2,
+              issuedAt: "2026-08-01T11:01:00.000Z",
+              workItemId: "create-baseline",
+            },
+          }),
         );
-        const project = await projects.get(PROJECT_ID);
-        assertExists(project);
-        assertExists(project.plan);
-        const queued = await new EngineeringProjectCommandService(
-          projects,
-          undefined,
-          undefined,
-          {
-            discoveries: new FileProjectDiscoveryRevisionStore(
-              `${directory}/discoveries`,
-            ),
-            operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
-          },
-        ).queueRun(
-          HUMAN,
-          {
-            commandId: "human-authorize-documentary-baseline",
-            projectId: PROJECT_ID,
-            expectedRevision: project.revision,
-            issuedAt: "2026-08-01T11:01:00.000Z",
-            runId: "run:plan-contract-documentary-baseline",
-            workItemId: "create-baseline",
-            summary: "Human authorized the documentary project baseline.",
-            basis: project.plan.basis,
-          },
-        );
+        const queued = queuedResult.structuredContent as Record<string, unknown>;
         assertEquals(queued.revision, 3);
-        assertEquals(queued.agentRuns[0]?.basis, project.plan.basis);
-        assertEquals(queued.agentRuns[0]?.baseSnapshot, undefined);
+        const queuedRuns = queued.agentRuns as Array<Record<string, unknown>>;
+        assertEquals(
+          queuedRuns[0]?.basis,
+          (planned.plan as Record<string, unknown>).basis,
+        );
+        assertEquals(queuedRuns[0]?.baseSnapshot, undefined);
+        assertEquals(queuedRuns[0]?.id, "run:mcp-queue-documentary-baseline-1");
 
         const execution = {
           commandId: "mcp-execute-documentary-baseline-1",
           projectId: PROJECT_ID,
           expectedRevision: queued.revision,
           issuedAt: "2026-08-01T11:02:00.000Z",
-          runId: "run:plan-contract-documentary-baseline",
+          runId: "run:mcp-queue-documentary-baseline-1",
         };
         const completedResult = assertResult(
           await client.invoke("tools/call", {
@@ -344,7 +354,10 @@ Deno.test(
         const completedRun = runs[0];
         assertExists(completedRun);
         assertEquals(completedRun.status, "completed");
-        assertEquals(completedRun.basis, project.plan.basis);
+        assertEquals(
+          completedRun.basis,
+          (planned.plan as Record<string, unknown>).basis,
+        );
         assertEquals(
           (completedRun.evidenceRefs as Array<unknown>).length,
           1,

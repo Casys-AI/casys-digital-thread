@@ -40,7 +40,7 @@ Deno.test("same-id in-place update preserves current focus", () => {
   assertEquals(nextLiveFocusNode(previous, incoming), undefined);
 });
 
-Deno.test("delayed SSE cannot overwrite an immediate project command response", () => {
+Deno.test("delayed SSE cannot overwrite a newer project snapshot", () => {
   const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
   const current = { ...fixture, project: { ...fixture.project, revision: 3 } };
   const delayed = { ...fixture, project: { ...fixture.project, revision: 2 } };
@@ -91,7 +91,6 @@ Deno.test("a documentary record has no live evidence overlay to compare", () => 
         message: "No technical proof is recorded.",
       },
     },
-    capabilities: fixture.capabilities,
   };
   const duplicate = structuredClone(current);
 
@@ -122,7 +121,6 @@ Deno.test("a documentary record accepts a newer closed technical-start feed", ()
       },
       technicalStart: technicalStart(4),
     },
-    capabilities: fixture.capabilities,
   };
   const newer = {
     ...current,

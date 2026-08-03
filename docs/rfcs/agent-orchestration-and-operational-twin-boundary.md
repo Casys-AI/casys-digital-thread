@@ -1,16 +1,20 @@
 # RFC: Minimal agent orchestration and the operational-twin boundary
 
-Status: **Partially implemented — V2 documentary r1 and bounded SysON container r2 landed; one guarded inspection-drone r3 exists in source, awaits release, and has passed only a disposable local SysON parser/translator and model-tree check; generic architecture and proof execution remain proposed**\
+Status: **Partially implemented — V2 documentary r1 and bounded SysON container r2
+landed; one guarded inspection-drone r3 exists in source, awaits release, and has passed
+only a disposable local SysON parser/translator and model-tree check; generic
+architecture and proof execution remain proposed**\
 Scope: one beginner journey from initial intent or existing product material to
 reviewable engineering evidence\
 Decision horizon: V1 orchestration now; operational Digital Twin only in V2
 
-Truth basis: source tree inspected on 2026-08-02. Current-state claims include the
-loopback Discovery handoff, V2 planning and exact basis, the code-owned operation
-registry, the provider-free documentary-baseline executor, one fixed provider-backed
-SysON container seed, and one source-only guarded inspection-drone r3 executor. Generic
-SysML architecture, requirements, CAD, FEA, simulation, measurement, and operational
-Digital Twin execution remain proposed.
+Truth basis: source tree inspected on 2026-08-03. Current-state claims include signed
+MRTR discovery and decision confirmation, agent-owned shell creation and registered-run
+queueing, passive cockpit projections, V2 planning and exact basis, the code-owned
+operation registry, the provider-free documentary-baseline executor, one fixed
+provider-backed SysON container seed, and one source-only guarded inspection-drone r3
+executor. Generic SysML architecture, requirements, CAD, FEA, simulation, measurement,
+and operational Digital Twin execution remain proposed.
 
 ## Decision
 
@@ -33,17 +37,19 @@ observe the affected state, evaluate it against named requirements, propose the 
 bounded correction, and request a recomputation. The person reviews the consequences and
 authorizes consequential work; neither a dashboard nor a language model is the verifier.
 
-The agent guides the conversation, proposes the project path, and executes only reviewed
-operations. The person answers understandable questions, approves the brief and
-consequential decisions, and authorizes work. Provider names, tool names, hashes, and
-execution details belong to the expert/evidence layer, not to the primary journey.
+The agent guides the conversation, proposes the project path, and queues and executes
+only registered operations. The person answers understandable questions and confirms the
+brief, consequential decisions, and releases in the same conversation. Provider names,
+tool names, hashes, and execution details belong to the expert/evidence layer, not to
+the primary journey.
 
 The implementation should keep four boundaries distinct:
 
 - the **agent skill** decides what to ask and how to explain a recommendation;
 - **MCP tools** read or mutate durable control-plane state and call engineering
   providers;
-- **human commands** record answers, approvals, rejections, and execution authorization;
+- **signed MCP elicitation** records exact consequential human confirmations in the
+  paired conversation;
 - **SSE/cockpit projections** show live and canonical state but grant no execution
   authority.
 
@@ -59,18 +65,20 @@ The beginner-facing journey is deliberately short:
    CAD, or describe an existing product. The agent asks one bounded question at a time
    and explains its recommendation in ordinary language.
 2. **Review the brief.** The agent turns sourced answers and explicit unknowns into a
-   brief. The person approves it or asks for a revision.
-3. **Open the project and see its proposed path.** The person creates the empty project
-   shell from the exact approved brief. The agent can then publish or revise an
-   unexecuted sequence of work, each item bound to a reviewed operation reference. Both
-   are planning state, not technical evidence or an authorization to run.
-4. **Authorize consequential work.** The agent proposes decisions with consequences. The
-   person approves or rejects them, then authorizes the exact next run. There is no
-   technical data-entry form in the main path.
+   brief. The person confirms it or asks for a revision in conversation; confirmation is
+   bound to the exact fingerprint through signed MCP elicitation.
+3. **See the project and its proposed path.** After confirmation, the agent creates the
+   empty project shell and publishes or revises an unexecuted sequence of work, each
+   item bound to a registered operation reference. Both are planning state, not
+   technical evidence.
+4. **Decide only what matters.** The agent proposes decisions with consequences and
+   elicits the person's exact approval or rejection in chat. Once dependencies are
+   satisfied, the agent queues the registered next run. There is no technical data-entry
+   form or cockpit command in the main path.
 5. **Watch work and review its record.** The activity feed shows bounded operations as
    they run. The first idea/spec run produces only the canonical documentary r1. The
-   next supported run records only a read-back, editable SysON container as r2; it is not
-   an architecture or proof. Failures and unresolved questions stay visible.
+   next supported run records only a read-back, editable SysON container as r2; it is
+   not an architecture or proof. Failures and unresolved questions stay visible.
 6. **Change and repeat.** A change invalidates affected evidence, the agent proposes
    recomputation, and the person reviews the new proof and impact chain.
 
@@ -108,7 +116,8 @@ policy:
 - distinguish intent, observed facts, calculated evidence, external evidence,
   assumptions, and approvals;
 - let provider tools produce evidence;
-- never let the agent approve, reject, or queue work.
+- never let the agent impersonate the person or invent authorization; use signed MCP
+  elicitation for consequential human decisions.
 
 The skill is procedure and wording. It is not an authority boundary, persistence layer,
 or executor.
@@ -118,19 +127,19 @@ or executor.
 The Console MCP server is stateless at the transport level and registers these current
 tool families:
 
-| Family    | Existing tools                                                                                                                                                      | What they really do                                               |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Fleet     | `console_snapshot`, `console_server_detail`, `console_run_list`, `console_run_detail`                                                                               | Read provider availability and recorded console runs              |
-| Discovery | `project_discovery_snapshot`, `project_discovery_start`, `project_discovery_question_propose`, `project_discovery_answer_record`, `project_discovery_brief_propose` | Build an immutable pre-project conversation and proposed brief    |
-| Project   | `project_snapshot`, `project_plan_publish`, `project_decision_propose`, `project_agent_run_execute` | Read project truth, publish bounded unexecuted planning state, and dispatch an exact human-authorized registered V2 run |
+| Family    | Existing tools                                                                                                                                                                                                                             | What they really do                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Fleet     | `console_snapshot`, `console_server_detail`, `console_run_list`, `console_run_detail`                                                                                                                                                      | Read provider availability and recorded console runs                                                |
+| Discovery | `project_discovery_snapshot`, `project_discovery_start`, `project_discovery_question_propose`, `project_discovery_answer_record`, `project_discovery_brief_propose`, `project_discovery_brief_confirm`, `project_discovery_project_create` | Build the immutable pre-project conversation, elicit exact confirmation, and create the empty shell |
+| Project   | `project_snapshot`, `project_plan_publish`, `project_decision_propose`, `project_decision_approve`, `project_decision_reject`, `project_agent_run_queue`, `project_agent_run_execute`                                                      | Read project truth, elicit exact decisions, and queue/dispatch registered operations                |
 
 `project_plan_publish` can create or revise an unexecuted plan from the exact approved
 Discovery handoff. It records only code-validated operation references and state
-bindings; it does **not** call a provider, approve a decision, queue a run, or
-materialize technical evidence. Human queueing is still the authorization boundary.
-`project_agent_run_execute` then resolves only that durable queued run; it accepts no
-provider/tool/argument/result/evidence payload from its caller. The source tree can
-dispatch three reviewed idea/spec operations:
+bindings; it does **not** call a provider, decide a proposal, queue a run, or
+materialize technical evidence. `project_agent_run_queue` separately derives a ready run
+from durable server state. `project_agent_run_execute` then resolves only that queued
+run; it accepts no provider/tool/argument/result/evidence payload from its caller. The
+source tree can dispatch three reviewed idea/spec operations:
 
 1. `baseline.from-approved-discovery@1`, which calls no provider and materializes the
    approved-discovery documentary r1; and
@@ -147,10 +156,11 @@ unknown, it fails closed for review rather than blindly retrying a possibly succ
 SysON write. r2 captures container identity only; it is not an architecture,
 requirements, CAD, simulation, measurement, verification, or compliance result.
 
-The loopback Discovery BFF now exposes a human-only
-`POST /api/project-discoveries/:id/handoff` action. It creates immutable project
-revision 1 from the exact approved brief, with no `ThreadSnapshot`, technical plan, or
-evidence. This is a human browser-authority surface, not an agent MCP planning command.
+`project_discovery_brief_confirm` uses signed MRTR elicitation so the person confirms
+the exact brief in the paired conversation. Only after that confirmation may
+`project_discovery_project_create` create immutable project revision 1, with no
+`ThreadSnapshot`, technical plan, or evidence. The Discovery BFF only projects this
+state through GET and SSE.
 
 ### Provider MCPs
 
@@ -169,19 +179,23 @@ Direct provider calls can be useful inspection results in an agent host, includi
 Apps. They are not canonical product evidence until a trusted digital-thread operation
 captures, validates, fingerprints, materializes, and publishes them.
 
-### Human command surfaces
+### Human authority in the conversation
 
-The browser command adapters correctly retain human-only authority:
+The agent prepares questions, briefs, decisions, and bounded operations. The person
+answers in ordinary language. When an exact consequential confirmation is required, the
+agent tool returns an MCP `2026-07-28` MRTR `input_required` response and the host
+presents `elicitation/create` in that conversation. A framework-verified retry records
+the human decision against the exact revision and fingerprint.
 
-| Context             | Current human actions                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------- |
-| Discovery           | Record a reported answer; approve or reject the exact brief; create its empty project shell |
-| Engineering project | Propose, approve, or reject a decision; queue an exact run                                  |
+`MCP_MRTR_SIGNING_KEY` is the server-only secret used to sign opaque `requestState`.
+Without it, loopback development generates one ephemeral key per process; a pending
+elicitation cannot survive restart. Replay consumption is process-local, so a shared key
+alone is unsafe for multiple instances. Scale-out requires a shared, durable replay
+store with atomic consume semantics. The key proves state integrity, not human identity;
+transport authentication remains a separate deployment concern.
 
-The primary product should not encourage the human decision-proposal route as a manual
-technical form. The agent should prepare proposals; the human should inspect and decide.
-The same-origin header and loopback restriction are useful prototype safeguards, but the
-recorded actor label is not authentication.
+The cockpit never becomes an alternative command surface. It organizes the resulting
+dossier, notifications, activity, lineage, and results for inspection.
 
 ### SSE and cockpit
 
@@ -207,8 +221,8 @@ results, materialize a `ThreadSnapshot`, persist it, and attach exact references
 project.
 
 That provider path is real but product-specific and CLI-driven. Calling providers
-directly still bypasses the trusted recorder/materializer; updating a run lifecycle later
-does not prove what produced the cited evidence.
+directly still bypasses the trusted recorder/materializer; updating a run lifecycle
+later does not prove what produced the cited evidence.
 
 ## Implemented V2 r1-to-r2 boundary
 
@@ -218,10 +232,10 @@ r3 follow-on is documented separately in the inspection-drone RFC:
 ```text
 exact approved discovery + reviewed plan
   ---> V2 project with an approved-discovery basis
-  ---> explicit human queue authorization
+  ---> agent queues the ready registered documentary operation
   ---> provider-free immutable documentary capture (SHA-256)
   ---> persisted/read-back root ThreadSnapshot r1
-  ---> exact thread-snapshot basis + explicit human queue authorization
+  ---> exact thread-snapshot basis + agent queues the ready registered SysON operation
   ---> fixed SysON project/document/root-package creation + root read-back
   ---> normalized identity capture + persisted/read-back ThreadSnapshot r2
 ```
@@ -237,24 +251,24 @@ basis, or minimal container contract.
 
 ### 1. Preserve the implemented approved-discovery handoff
 
-The implemented human handoff is the foundation:
+The implemented conversation-owned handoff is the foundation:
 
 ```text
-HTTP command: project.create-from-approved-discovery
+MCP tools: project_discovery_brief_confirm -> project_discovery_project_create
 domain receipt: project.create-from-discovery
 ```
 
 Preserve these invariants:
 
 - accept only an exact approved discovery revision;
-- require a human origin;
+- require a signed, verified human brief confirmation before handoff;
 - persist the approved brief fingerprint and reviewer identity;
 - create-if-absent with idempotent command receipts;
 - create no SysON element, phase, work item, evidence, or fake thread state.
 
-The UI phrases this as **Start engineering project**. It is an explicit human action,
-not a technical form. The first-party surface binds the project ID to the discovery ID
-and the project name to the approved objective.
+The agent derives the project name from the confirmed objective and creates only the
+empty shell. The cockpit reflects that new dossier state; it does not expose a handoff
+button or technical form.
 
 ### 2. Implemented: give the agent one planning command
 
@@ -325,22 +339,22 @@ publication time. Each published work item carries the exact registry ID, versio
 approved state-reference bindings. The intake planning surface accepts only
 `approved-discovery` and `discovery-answer` bindings; the broader domain binding union
 is reserved for a reviewed later operation/executor contract. Its displayed title,
-description, and work kind are derived from the registered operation rather than supplied
-by the agent. The command rejects unknown operation revisions,
-wrong entry points, undeclared bindings, and stale or superseded discovery answers.
-It cannot approve a decision, queue a run, call a provider, or attach evidence. Once a
-run, approval, blocker, non-required decision, technical evidence, or completed work
-exists, this planning command cannot replace the path.
+description, and work kind are derived from the registered operation rather than
+supplied by the agent. The command rejects unknown operation revisions, wrong entry
+points, undeclared bindings, and stale or superseded discovery answers. It cannot
+approve a decision, queue a run, call a provider, or attach evidence. Once a run,
+approval, blocker, non-required decision, technical evidence, or completed work exists,
+this planning command cannot replace the path.
 
 The registry currently contains three bounded intake operations and one bounded
 idea/spec follow-on:
 
-| Starting point or basis | Registered operation |
-| --- | --- |
-| Idea or specification | `baseline.from-approved-discovery@1` |
-| Exact documentary r1 | `architecture.seed-syson-model@1` |
-| Existing CAD | `baseline.capture-existing-cad@1` |
-| Existing product | `baseline.capture-existing-product@1` |
+| Starting point or basis | Registered operation                  |
+| ----------------------- | ------------------------------------- |
+| Idea or specification   | `baseline.from-approved-discovery@1`  |
+| Exact documentary r1    | `architecture.seed-syson-model@1`     |
+| Existing CAD            | `baseline.capture-existing-cad@1`     |
+| Existing product        | `baseline.capture-existing-product@1` |
 
 The registry is intentionally a safe planning descriptor. It exposes no provider
 selection, provider tool name, raw tool arguments, workflow definition, or evidence
@@ -411,22 +425,22 @@ interface ExecuteQueuedProjectRunInput {
 }
 ```
 
-The backend resolves all consequential detail from the human-queued run and the
-server-side operation registry. For `baseline.from-approved-discovery@1` it validates the
-exact V2 discovery basis and operation, claims the run, produces deterministic canonical
-JSON for the approved discovery and plan, SHA-256 fingerprints and persists that document,
-creates and reads back root `ThreadSnapshot` r1, validates the cited artifact, then
-completes the run. Redacted lifecycle updates may appear in the feed while it runs. It
-calls no provider.
+The backend resolves all execution detail from the agent-queued, server-derived run and
+the server-side operation registry. For `baseline.from-approved-discovery@1` it
+validates the exact V2 discovery basis and operation, claims the run, produces
+deterministic canonical JSON for the approved discovery and plan, SHA-256 fingerprints
+and persists that document, creates and reads back root `ThreadSnapshot` r1, validates
+the cited artifact, then completes the run. Redacted lifecycle updates may appear in the
+feed while it runs. It calls no provider.
 
 For `architecture.seed-syson-model@1`, it validates exact r1 and the reviewed operation,
 then executes only this server-fixed sequence: create a blank SysON project container,
 create a blank SysML document with root package, and read that root package back. The
 executor normalizes the returned identities, persists their SHA-256-addressed capture,
 creates and reads back descendant r2, then completes the run. It accepts no caller
-provider/tool choice, arguments, SysML text, file, result, or evidence payload. A durable
-write-ahead attempt precedes each non-idempotent SysON write; an unknown outcome is held
-for review and is never blindly retried.
+provider/tool choice, arguments, SysML text, file, result, or evidence payload. A
+durable write-ahead attempt precedes each non-idempotent SysON write; an unknown outcome
+is held for review and is never blindly retried.
 
 The tool is not a generic workflow upload endpoint or generic technical executor. r2 is
 only a container identity; it does not add an architecture, requirements, CAD,
@@ -445,53 +459,52 @@ verified-requirement evidence.
 
 ### 5. Keep authority simple
 
-| Action                                      |                     Agent |            Human |  SSE/cockpit |
-| ------------------------------------------- | ------------------------: | ---------------: | -----------: |
-| Ask a question and explain a recommendation |                       Yes |           Answer |      Observe |
-| Record a sourced answer                     |                       Yes |              Yes |      Observe |
-| Propose a brief                             |                       Yes |               No |      Observe |
-| Approve/reject a brief                      |                        No |              Yes |      Observe |
-| Create a project from that approval         |                 Recommend |          Confirm |      Observe |
-| Publish a project path                      |                       Yes |               No |      Observe |
-| Propose a consequential decision            |                       Yes | No in primary UX |      Observe |
-| Approve/reject a decision                   |                        No |              Yes |      Observe |
-| Authorize an exact run                      |                        No |              Yes |      Observe |
-| Execute an authorized operation             |                       Yes |               No | Observe live |
-| Create canonical evidence                   | Trusted backend operation |               No | Observe only |
-| Approve a technical verdict or release      |                        No |              Yes |      Observe |
+| Action                                      |                       Agent |                  Human in chat |  SSE/cockpit |
+| ------------------------------------------- | --------------------------: | -----------------------------: | -----------: |
+| Ask a question and explain a recommendation |                         Yes |                         Answer |      Observe |
+| Record a sourced answer                     |                         Yes |    State or correct the answer |      Observe |
+| Propose a brief                             |                         Yes |                         Review |      Observe |
+| Confirm/reject a brief                      | Initiate signed elicitation | Confirm or decline exact scope |      Observe |
+| Create a project from that confirmation     |                         Yes |                             No |      Observe |
+| Publish a project path                      |                         Yes |                             No |      Observe |
+| Propose a consequential decision            |                         Yes |                         Review |      Observe |
+| Approve/reject a decision                   | Initiate signed elicitation |             Decide exact scope |      Observe |
+| Queue and execute a registered operation    |                         Yes |  No unless a decision is asked | Observe live |
+| Create canonical evidence                   |   Trusted backend operation |                             No | Observe only |
+| Approve a technical verdict or release      | Initiate signed elicitation |             Decide exact scope |      Observe |
 
 ## V2 documentary-to-container acceptance slice
 
-The initial deployed vertical slice is not another dashboard panel. It is two
-complete, observable, deliberately bounded runs from an approved brief:
+The initial deployed vertical slice is not another dashboard panel. It is two complete,
+observable, deliberately bounded runs from an approved brief:
 
 1. use the registered discovery-to-project handoff to create the exact empty project
    shell;
 2. let the agent publish a minimal project path whose first work item is bound to one
    reviewed intake operation;
-3. let the human authorize that exact run;
+3. let the agent queue that exact registered run;
 4. let `project_agent_run_execute` create the first root `ThreadSnapshot` r1 while the
    existing feed updates live;
 5. show the immutable document and its provenance after completion;
-6. once r1 completes its declared dependency, let the human authorize the already
-   reviewed `architecture.seed-syson-model@1` work item from exact r1;
+6. once r1 completes its declared dependency, let the agent queue the registered
+   `architecture.seed-syson-model@1` work item from exact r1;
 7. let the fixed server executor create and read back only a blank SysON
    project/document/root-package container, normalize its identities, and publish r2.
 
 The path reaches those seven steps for the idea/spec starting point. r1 is deliberately
 not technical evidence: it contains no provider output, technical model, geometry,
 calculation, measurement, requirement evaluation, or compliance conclusion. r2 captures
-the read-back identity of a blank editable container, but still contains no architecture,
-requirements, CAD, simulation, measurement, or verdict. Its no-arbitrary-arguments and
-no-blind-retry boundaries make it a safe first provider-backed operation, not a generic
-SysON authoring surface. The next product increment is a separately reviewed operation
-that can attach actual model semantics or proof to that now-explicit source baseline. The
-existing CM-01 CLI flow remains a separate, product-specific demonstration of linked
-technical evidence.
+the read-back identity of a blank editable container, but still contains no
+architecture, requirements, CAD, simulation, measurement, or verdict. Its
+no-arbitrary-arguments and no-blind-retry boundaries make it a safe first
+provider-backed operation, not a generic SysON authoring surface. The next product
+increment is a separately reviewed operation that can attach actual model semantics or
+proof to that now-explicit source baseline. The existing CM-01 CLI flow remains a
+separate, product-specific demonstration of linked technical evidence.
 
-Existing-CAD and existing-product already have planning registry entries; they need their
-own safe source-capture and technical-evidence contracts before they can execute. They
-are operation variants, not separate applications or domain models.
+Existing-CAD and existing-product already have planning registry entries; they need
+their own safe source-capture and technical-evidence contracts before they can execute.
+They are operation variants, not separate applications or domain models.
 
 The resulting goal is a bounded feedback loop, not a static audit trail: observe the
 current proven state, evaluate a named consequence, propose a scoped correction,
@@ -583,20 +596,20 @@ Operational V2 must not delay or complicate the V1 beginner journey.
 
 ## Implementation map
 
-The human handoff, bounded planning, exact V2 basis, documentary r1, and fixed SysON
-container r2 are implemented. The remaining slices are deliberately separate:
+The chat-confirmed handoff, bounded planning, exact V2 basis, documentary r1, and fixed
+SysON container r2 are implemented. The remaining slices are deliberately separate:
 
-| Slice                                       | Likely files                                                                                                                             |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Human handoff                               | Implemented in the domain service, HTTP adapter, Discovery BFF, browser client/UI, validation, and focused tests                         |
-| Bounded plan + operation binding            | Implemented in `src/domain/engineering-project.ts`, validation, plan command service, `src/tools/project-control.ts`, and `server.ts`  |
-| Reviewed operation registry                 | Implemented under `src/orchestration/operations/`; baseline and exact-r1 SysON container seed are executable                            |
-| Exact bootstrap basis migration             | Implemented in `src/domain/engineering-project.ts`, validation, handoff, and command service                                              |
-| Documentary baseline executor               | Implemented with immutable capture storage, root-snapshot materialization/read-back, project command service, and narrow MCP tool        |
-| Fixed SysON container seed executor         | Implemented with server-fixed calls, root read-back, normalized capture, durable write-ahead attempts, r1-to-r2 materialization, and narrow MCP dispatch |
-| Architecture and proof executors            | Future reviewed operations with provider clients, output validators, materializers, and no-retry semantics                               |
-| Cockpit projection                          | Passive BFF/projector exposes planning/documentary/evidence state and redacted seed milestones; no provider calls in UI code              |
-| Operational V2                              | Separate operational domain/binding/store adapters plus one bounded evaluator; no raw telemetry fields in `ThreadSnapshot`               |
+| Slice                               | Likely files                                                                                                                                             |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conversation-owned handoff          | Implemented in the discovery tools, signed MRTR brief confirmation, domain handoff service, validation, and focused tests                                |
+| Bounded plan + operation binding    | Implemented in `src/domain/engineering-project.ts`, validation, plan command service, `src/tools/project-control.ts`, and `server.ts`                    |
+| Reviewed operation registry         | Implemented under `src/orchestration/operations/`; baseline and exact-r1 SysON container seed are executable                                             |
+| Exact bootstrap basis migration     | Implemented in `src/domain/engineering-project.ts`, validation, handoff, and command service                                                             |
+| Documentary baseline executor       | Implemented with immutable capture storage, root-snapshot materialization/read-back, project command service, and narrow MCP tool                        |
+| Fixed SysON container seed executor | Implemented with server-fixed calls, root read-back, normalized capture, durable write-ahead attempts, r1-to-r2 materialization, and narrow MCP dispatch |
+| Architecture and proof executors    | Future reviewed operations with provider clients, output validators, materializers, and no-retry semantics                                               |
+| Cockpit projection                  | Passive BFF/projector exposes planning/documentary/evidence state and redacted seed milestones; no provider calls in UI code                             |
+| Operational V2                      | Separate operational domain/binding/store adapters plus one bounded evaluator; no raw telemetry fields in `ThreadSnapshot`                               |
 
 The current `server.ts` also resolves a single tracked CM-01 project. A real new-product
 journey will need project/discovery lookup by requested ID rather than a hard-wired
@@ -607,12 +620,14 @@ project runtime, while preserving loopback and authority checks.
 ### Domain and authority
 
 - exact approved-discovery fingerprint is required for handoff;
-- only human origin can approve the brief, create the handoff, approve/reject decisions,
-  and authorize a run;
+- brief and project-decision approval or rejection requires a signed, framework-verified
+  MRTR retry carrying the exact human response;
+- the agent may create the project shell only after brief confirmation and may queue
+  only a ready registered operation with server-derived identity and basis;
 - exact command replay is idempotent; command-ID reuse with changed input fails;
 - a project shell may have no thread only before documentary-baseline publication and
   cannot claim completed work or evidence;
-- the agent can publish planning state but cannot approve or queue it;
+- the agent can publish planning state but cannot self-approve a human decision;
 - planning is grounded in the exact approved-discovery handoff and accepts only the
   matching registered intake operation revision and declared bindings;
 - an unknown operation, wrong entry point, undeclared binding, stale discovery answer,
@@ -632,11 +647,14 @@ project runtime, while preserving loopback and authority checks.
 - the run basis must exactly equal the approved discovery and plan basis;
 - the canonical JSON document is byte-fingerprinted, immutable, and persisted before its
   cited root `ThreadSnapshot`;
-- success reads that root snapshot back and validates the one documentary artifact before
-  project completion;
+- success reads that root snapshot back and validates the one documentary artifact
+  before project completion;
 - completion refuses missing or foreign evidence references;
 - started/completed/failed live updates are redacted and ordered;
 - reconnecting SSE or retrying the MCP command cannot repeat the operation.
+- restarting the process invalidates pending ephemeral-key MRTR requests;
+- multi-instance MRTR is unsupported until replay consumption is shared, durable, and
+  atomic.
 
 ### Fixed SysON container-seed execution
 

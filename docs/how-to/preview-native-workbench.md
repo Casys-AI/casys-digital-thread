@@ -13,9 +13,8 @@ surfaces it can render:
 
 The backend-for-frontend (BFF) chooses the applicable surface; it does not blend a
 documentary record into an empty technical graph. Its `GET` and SSE paths are passive:
-opening the page never starts an engineering tool. Its separate human-only command path
-can record an explicit review decision or work authorization, but it never calls an
-engineering provider.
+opening the page never starts an engineering tool. The cockpit has no command path;
+human intent and consequential decisions stay in the paired agent conversation.
 
 ## Prepare the clean CM-01 baseline
 
@@ -232,19 +231,18 @@ ordered interaction:
 
 1. The agent prepares a bounded project path from the exact approved discovery; this is
    planning, not an engineering result.
-2. The reviewer authorizes the documentary `baseline.from-approved-discovery@1` record.
-   It records the approved discovery and reviewed path; it does not ask the reviewer to
-   enter CAD, solver, material, legal, or requirement values.
-3. The agent executes that already-authorized, server-owned recording operation. The
-   activity area can show its public queued/running/publishing milestones, but no
-   provider payload or technical result because no provider is involved.
+2. The agent queues the documentary `baseline.from-approved-discovery@1` record from the
+   ready, registered work item. It does not ask the person to enter CAD, solver,
+   material, legal, or requirement values.
+3. The agent executes that server-owned recording operation. The activity area can show
+   its public queued/running/publishing milestones, but no provider payload or technical
+   result because no provider is involved.
 4. Once the immutable capture and root r1 are durable, the planning page becomes the
    documentary record. The reviewer can inspect the exact fingerprint.
-5. The agent can then propose the separately reviewed `architecture.seed-syson-model@1`
-   run. Once the reviewer authorizes it, the server uses its fixed SysON sequence to
-   create a blank project container, document, and root package, then reads the root
-   back. The caller provides no provider/tool selection, arguments, SysML text, or
-   output.
+5. The agent can then queue the registered `architecture.seed-syson-model@1` run. The
+   server uses its fixed SysON sequence to create a blank project container, document,
+   and root package, then reads the root back. The caller provides no provider/tool
+   selection, arguments, SysML text, or output.
 6. The executor normalizes those identities, persists and reads back its capture and r2,
    then attaches that exact r2 reference to the project before it completes the run.
    Until that attachment, the Workbench keeps showing documentary r1 plus provisional
@@ -256,59 +254,44 @@ ordered interaction:
 The source-only r3 operation is deliberately outside this live preview until it is
 released. Its disposable local parser/translator and model-tree check passed against
 loopback `mcp-syson 0.5.2` on 2026-08-03, but the preview still has no r3 project run or
-engineering evidence. If later authorized, it can
-only follow the exact r2 above and the initial-plan/discovery gates; it never turns the
-preview into a generic SysML editor or a CAD, physics, flight, cost, compliance, or
-verification workflow.
+engineering evidence. If later queued by the agent, it can only follow the exact r2
+above and the initial-plan/discovery gates; it never turns the preview into a generic
+SysML editor or a CAD, physics, flight, cost, compliance, or verification workflow.
 
 If the technical seed stops before attachment, the project remains on its documentary r1
 surface. The UI must not claim an r2 model or evidence merely because a provider write,
 authorization, or live milestone exists.
 
-## Follow a review notification
+## Follow agent work and decisions
 
 The CM-01 walkthrough below is the existing technical-evidence path. It remains useful
 for reviewing a bounded technical proof case, but it is not the V2 first-baseline flow
 above.
 
-Open **Project**. Its review-notification inbox is deliberately a light signal and a
-route into the relevant work, not a form for entering technical payloads. On a clean
-CM-01 active store it reports one bundled proof-case decision under **Agent preparing**
-and zero agent runs. `required` is not a request for the operator to invent material,
-support, load, or criterion values: it means the agent still owes one concrete,
-evidence-bound recommendation that covers the complete analysis case.
+Open **Project**. Its notification view is deliberately a light signal and a route into
+the relevant dossier, not a form or command center. On a clean CM-01 active store it
+reports one bundled proof-case decision under **Agent preparing** and zero agent runs.
+`required` is not a request for the person to invent material, support, load, or
+criterion values: it means the agent still owes one concrete, evidence-bound
+recommendation.
 
-1. When a decision becomes **Needs your review**, follow its notification to
-   **Activity**. The feed is the review context: follow the event, its upstream
-   evidence, and its downstream impact before judging the recommendation.
-2. Use the contextual record and the exact audit details only when the identifiers,
-   fingerprints, or snapshots are needed to establish scope.
-3. If the technical intent needs inspection or correction, open the affected
-   **Product**/**SysON** specification context and continue the paired agent
-   conversation. Do not capture replacement technical values in the notification inbox.
-4. When the prepared recommendation remains appropriate, identify the local reviewer and
-   issue the explicit approval. If it must change, use **Request revised
-   recommendation** in Activity after the specification review; the agent can then
-   return an evidence-bound replacement while the prior project revision remains
-   auditable.
-5. Once that meaningful gate is satisfied, authorize the already bounded work item. This
-   creates a durable `queued` run; it does not itself launch an engineering tool.
+1. When a decision becomes **Needs your review**, follow its context to **Activity**.
+   Inspect the upstream evidence and downstream impact if needed.
+2. Return to the paired conversation. Ask for an explanation, state a correction, or
+   answer the agent's exact decision prompt there.
+3. For an approval or rejection, the agent calls `project_decision_approve` or
+   `project_decision_reject`. The MCP host presents signed elicitation for the exact
+   proposal fingerprint. In a conforming host, it waits for your explicit response
+   before retrying the tool.
+4. Once work is ready, the agent calls `project_agent_run_queue`. The server derives the
+   run identity, summary, basis, and registered operation from durable state.
+5. The agent calls `project_agent_run_execute` for that exact queued run. The cockpit
+   receives progress and result projections through SSE; no page click launches a tool.
 
-Each submit is a same-origin JSON `POST /api/project/commands` carrying
-`X-Casys-Operator-Intent: explicit` and the project revision displayed in the current
-Workbench capability. A concurrent update returns a conflict; the cockpit reloads the
-new state instead of overwriting it. Static or injected preview fixtures do not expose
-the command capability and remain read-only.
-
-The browser command contract is limited to `decision.propose`, `decision.approve`,
-`decision.reject`, and `agent-run.queue`. That transport capability does not turn the
-Project inbox into a manual proposal editor: it cannot claim, publish, complete, or fail
-a run, and it receives no generic MCP endpoint or provider credential. The Console MCP
-server gives agents the complementary project snapshot, proposal, and one bounded
-`project_agent_run_execute` operation. For an exactly human-queued V2 run, it dispatches
-either the documentary baseline or, from its exact documentary r1, the fixed SysON
-container seed. It never gives an agent approval, rejection, queue, generic
-run-lifecycle, or arbitrary provider-execution authority.
+The cockpit therefore remains read-only even while the project changes. It receives no
+generic MCP endpoint or provider credential. The agent may queue and execute only a
+registered operation, cannot confirm its own proposal, and cannot supply a raw provider
+name, arguments, result snapshot, or evidence payload.
 
 The V2 executor resolves its operation, basis, bindings, capture, root snapshot, and
 completion evidence from server-owned state; callers cannot submit a tool name, raw tool
@@ -324,8 +307,8 @@ as existing evidence; it is not a generic agent lifecycle recipe.
 The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
 attention, and where to go next. The five product sections have distinct jobs:
 
-- **Project** — objective, a lightweight review-notification inbox, derived phase gates,
-  current work, next work, blockers, and routes into the relevant context;
+- **Project** — objective, lightweight notifications, derived phase gates, current work,
+  next work, blockers, and routes into the relevant context;
 - **Activity** — agent work plus the live lineage feed: the primary evidence and impact
   context for a review, never private chain-of-thought;
 - **Product** — one physical component traversed across its SysON, build123d and ERPNext
@@ -339,7 +322,7 @@ In **Activity**:
 
 - leave **Follow live** enabled so a newly persisted fact becomes active automatically;
 - when a review notification arrives, trace the recommendation through its linked
-  evidence and downstream impact before issuing a human approval or revision request;
+  evidence and downstream impact, then answer in the paired conversation;
 - read the active card's complete inline subgraph as upstream evidence → selected fact →
   downstream impact;
 - pause following or select an older card only when revisiting history;
@@ -378,11 +361,12 @@ the target environment.
 
 It proves durable project and canonical-thread validation, exact project-to-evidence
 references, explicit provider-to-subject and component identity, persisted Modelica
-observations and ERPNext BOM detail, passive read/SSE paths, a revision-bound human
-command gate, the bounded V2 documentary r1 flow, and the fixed r1-to-r2 SysON container
-seed with read-back normalized identities and no blind retry. It also proves one
-coherent native UI with shared selection and no nested Apps. The published r6 branch
-also proves exact DripTray CAD consumption and the two model-owned SysON comparisons.
+observations and ERPNext BOM detail, passive read/SSE paths, signed revision-bound human
+elicitation in the agent channel, the bounded V2 documentary r1 flow, and the fixed
+r1-to-r2 SysON container seed with read-back normalized identities and no blind retry.
+It also proves one coherent native UI with shared selection and no nested Apps. The
+published r6 branch also proves exact DripTray CAD consumption and the two model-owned
+SysON comparisons.
 
 It does **not** prove:
 
@@ -394,9 +378,8 @@ It does **not** prove:
 - a whole-machine mechanical or compliance verdict;
 - a production-material, fabrication-release, certification, or automatic correction
   claim;
-- a browser provider-execution API. The browser command route mutates only project
-  state; explicit backend runners or agents still own provider MCP calls and canonical
-  publication.
+- a browser command or provider-execution API. Explicit agent tools and registered
+  backend runners own provider MCP calls and canonical publication.
 
 The assembly groups independent branches under a reviewed CM-01 identity; it does not
 manufacture causal links between the historical whole-machine CAD, thermal, ERP, or the

@@ -42,7 +42,6 @@ export interface ToolInspectorPanelProps {
   /** Optional richer record for tabs and native full-view navigation. */
   selection?: ThreadRef;
   onSelect?: (selection: ThreadRef) => void;
-  onPrepareAction?: (action: ThreadAction) => void;
   /**
    * Navigation only. The panel never mounts a provider app or fetches data.
    * The Workbench shell decides whether a trusted native full view exists.
@@ -65,7 +64,6 @@ export function ToolInspectorPanel({
   node,
   selection,
   onSelect,
-  onPrepareAction,
   onOpenToolView,
   availableFullViews,
 }: ToolInspectorPanelProps): JSX.Element {
@@ -165,7 +163,6 @@ export function ToolInspectorPanel({
 
       <ActionSummary
         actions={context.actions}
-        onPrepare={onPrepareAction}
       />
 
       {selection && context.owner.fullViewLabel && onOpenToolView &&
@@ -444,16 +441,15 @@ function ProvenanceSummary({ artifacts, snapshot, onSelect }: {
   );
 }
 
-function ActionSummary({ actions, onPrepare }: {
+function ActionSummary({ actions }: {
   actions: ThreadAction[];
-  onPrepare?: (action: ThreadAction) => void;
 }): JSX.Element | null {
   if (!actions.length) return null;
   return (
     <section class="tool-inspector-actions">
       <div class="tool-inspector-section-title">
-        <h4>Available actions</h4>
-        <small>prepare, never auto-run</small>
+        <h4>Recorded next actions</h4>
+        <small>discuss with the agent</small>
       </div>
       {actions.map((action) => (
         <div class="tool-inspector-action" key={action.id}>
@@ -462,19 +458,9 @@ function ActionSummary({ actions, onPrepare }: {
             <strong>{action.label}</strong>
             <span>{action.description}</span>
           </div>
-          {onPrepare && (
-            <button
-              type="button"
-              disabled={action.readiness === "blocked"}
-              onClick={() => onPrepare(action)}
-            >
-              {action.readiness === "blocked"
-                ? "Blocked"
-                : action.kind === "inspect"
-                ? "Open"
-                : "Prepare"}
-            </button>
-          )}
+          <small>
+            {action.readiness === "blocked" ? "Blocked" : action.readiness}
+          </small>
         </div>
       ))}
     </section>

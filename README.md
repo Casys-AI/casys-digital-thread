@@ -10,8 +10,9 @@ the previous one, and proves the result against model-owned requirements — wit
 margins, and named conflicts.
 
 The intended user does not need to begin as a CAD, SysML, FEA, or ERP specialist. They
-state intent and review consequential choices; the agent prepares the technical work and
-the cockpit exposes its evidence progressively. The canonical V1/V2 boundary, including
+state intent and make consequential choices in the paired agent conversation. The agent
+prepares and orchestrates bounded technical work; the cockpit projects the resulting
+dossier, activity, lineage, and evidence live. The canonical V1/V2 boundary, including
 idea-first, CAD-first, and reverse-engineering entry points, is recorded in
 [the product direction](docs/explanations/product-direction.md).
 
@@ -85,6 +86,17 @@ deno task start
 The active interface is stateless MCP `2026-07-28` over `/mcp`; this workspace no longer
 ships a stdio configuration or compatibility path.
 
+Human confirmations use MCP multi-round-trip requests (MRTR): the tool asks for an
+explicit decision through `elicitation/create` in the same conversation, then accepts
+only the framework-verified retry. Set the server-only `MCP_MRTR_SIGNING_KEY` to a
+stable high-entropy key in a persistent deployment. Without it, loopback development
+generates a process-ephemeral key; any pending confirmation becomes invalid after a
+restart. The current replay protection is process-local, so this configuration is
+single-instance only. A scaled or restart-safe deployment additionally needs a shared,
+durable, atomic replay store; sharing only the signing key is insufficient. The signed
+retry proves request integrity, not who answered it: the paired MCP host and transport
+authentication remain the human-facing trust boundary.
+
 ERPNext has one provider-native MCP interface on port `3012`. The backend invokes only
 the reviewed read tools required by a workflow and projects their data into the linked
 thread; the browser never receives ERP credentials or calls ERPNext directly. The bridge
@@ -106,8 +118,12 @@ compare the declared fleet with live MCP and Docker observations; those Console 
 remain read-only. Runs also discovers persisted Modelica records through its two
 read-only tools; it never reads the sidecar's Docker volume. The same MCP server exposes
 a separate, revision-bound project-control surface for agents. It can read a project,
-publish its bounded path, propose a decision, and execute one already human-authorized
-registered operation; it cannot approve, reject, or queue work.
+publish its bounded path, propose decisions, request the person's exact confirmation in
+the conversation, and queue or execute only registered, server-owned operations.
+Elicitation preserves human authority without moving command input into the cockpit; it
+exposes no direct self-approval mutation. The MCP host must still present the
+elicitation to the person; signed MRTR state does not authenticate human presence by
+itself.
 
 For the exact, version-bound CoffeeMachine nominal run, the console also sends the
 measured temperature to `syson_constraint_evaluate` and displays the live result as a
@@ -135,53 +151,48 @@ local MCP Apps test harness, not the product Workbench.
 
 The main engineering surface is one native Preact cockpit reading an
 `engineering-workbench/0.2` document from a Deno backend-for-frontend. Guided discovery
-remains a separate loopback Preact surface that hands an approved brief into an empty
-project shell. The cockpit's atomic document has an explicit surface: `planning` carries
-durable project intent before any technical baseline exists, while `evidence` combines
-that intent with the current technical projection (`ThreadSnapshot` plus provisional live
-overlay) and an explicit `aligned`/`thread-ahead` signal. The cockpit
-is organized as **Project**, **Activity**, **Product**, **Evidence**, and **Execution**
-so project objective and review, agent activity, physical structure, technical proof,
-and execution records no longer compete in one lineage screen.
+has its own loopback Preact dossier view; confirmation and project creation remain in
+the paired conversation. The cockpit's atomic document has an explicit surface:
+`planning` carries durable project intent before any technical baseline exists, while
+`evidence` combines that intent with the current technical projection (`ThreadSnapshot`
+plus provisional live overlay) and an explicit `aligned`/`thread-ahead` signal. The
+cockpit is organized as **Project**, **Activity**, **Product**, **Evidence**, and
+**Execution** so project objective and review, agent activity, physical structure,
+technical proof, and execution records no longer compete in one lineage screen.
 
-`GET /api/thread/workbench` and its SSE stream are passive. The same-origin Decision
-Center may send an explicit `POST /api/project/commands` to propose, approve, reject, or
-queue project work. Every command names the expected project revision and writes a new
-immutable revision under `state/local/engineering-projects/`; the displayed local
-operator identity is self-declared and is not authentication. Neither this POST nor an
-MCP project-control command invokes SysON, CAD, FEA, Modelica, or ERPNext by itself.
-Engineering provider `tools/call` requests remain backend-only and require a separately
-orchestrated agent execution.
-
-The browser never receives generic MCP authority. Agents use the Console MCP server's
-project tools to observe the same project, record proposals, and act only on
-human-queued runs. Agents never receive project approval, rejection, or queue authority
-through MCP. A later technical run must still publish and read back exact evidence before
-completion; it cannot turn a raw provider response into thread truth.
+`GET /api/thread/workbench` and its SSE stream are passive. The cockpit has no command
+or provider authority: it reads immutable project revisions and live projections only.
+Agents use the Console MCP server's project tools to observe the same project, record
+proposals, obtain consequential human decisions through signed MRTR elicitation, and
+orchestrate registered operations. Provider `tools/call` requests remain backend-only;
+the agent cannot choose an unregistered provider call, confirm its own proposal, or turn
+a raw provider response into canonical thread truth. A technical run completes only
+after its exact evidence has been persisted, read back, and attached.
 
 New product ideas begin in a separate immutable `ProjectDiscoverySnapshot`, not in an
 empty engineering project. Agents can start a discovery, prepare one bounded question at
 a time, record a sourced answer, and propose a brief through `project_discovery_*` MCP
 tools. The normal exchange happens in the paired agent conversation; the loopback
 Discovery Workbench receives the resulting snapshots live as the shared project record.
-Direct browser correction is a deliberate recovery path, while brief approval or
-revision remains a human review action. The domain handoff creates a schema-`2.0`
-engineering project from the exact approved brief while retaining its fingerprint. The
-local Discovery Workbench exposes that handoff as one explicit same-origin human action.
+The person confirms or corrects the brief in that conversation. On confirmation,
+`project_discovery_brief_confirm` uses signed MRTR elicitation and the agent may then
+call `project_discovery_project_create`; the domain handoff creates only a schema-`2.0`
+engineering project shell from the exact confirmed brief while retaining its
+fingerprint. The Discovery Workbench remains a read-only dossier projection throughout.
 
 For an idea/specification project, the first ready work item is the reviewed
-`baseline.from-approved-discovery@1` operation. A human authorizes that exact run; the
-backend captures the exact approved discovery and reviewed plan as an immutable,
-SHA-256-addressed document, then records the root `ThreadSnapshot` r1. This is a
-**documentary, pre-technical baseline**: it proves the handoff and plan provenance, not
-a SysML model, CAD geometry, FEA result, measurement, requirement verdict, conformity,
-or certification.
+`baseline.from-approved-discovery@1` operation. The agent presents the exact bounded run
+and obtains any consequential human authorization in the conversation through signed
+elicitation; the backend then captures the exact approved discovery and reviewed plan as
+an immutable, SHA-256-addressed document, then records the root `ThreadSnapshot` r1.
+This is a **documentary, pre-technical baseline**: it proves the handoff and plan
+provenance, not a SysML model, CAD geometry, FEA result, measurement, requirement
+verdict, conformity, or certification.
 
-The first implemented provider-backed operation is
-`architecture.seed-syson-model@1`. It accepts only that exact documentary r1 and uses a
-server-fixed SysON sequence to create a blank
-project container, blank SysML document, and root package, then reads the root package
-back. It captures only normalized provider identities and publishes their
+The first implemented provider-backed operation is `architecture.seed-syson-model@1`. It
+accepts only that exact documentary r1 and uses a server-fixed SysON sequence to create
+a blank project container, blank SysML document, and root package, then reads the root
+package back. It captures only normalized provider identities and publishes their
 SHA-256-addressed record as descendant `ThreadSnapshot` r2. The caller supplies no
 provider name, tool name, arguments, SysML text, or result. Non-idempotent SysON writes
 are journaled before dispatch; an unknown outcome stops for review rather than blindly
@@ -200,17 +211,21 @@ the exact r2 snapshot. It records an insertion attestation and narrow read-back 
 it could publish r3. This is not released into the running SysON toolchain. A separate
 disposable local parser/translator and model-tree conformance check passed on 2026-08-03
 against loopback `mcp-syson 0.5.2`; it was not an r3 project execution or engineering
-evidence. The operation creates neither
-CAD, physics, flight behaviour, cost, compliance, nor a verified requirement verdict.
+evidence. The operation creates neither CAD, physics, flight behaviour, cost,
+compliance, nor a verified requirement verdict.
 
-Opening or refreshing the UI never launches CAD, FEA, or Modelica. `thread:assemble`
-bootstraps a local CM-01 revision from read-only SysON inventory, one persisted Modelica
-run, and reviewed ERPNext reads. The explicit build runner adds the current
-SysON-derived CAD artifacts. A separately human-approved and agent-claimed mechanical
-runner can then add exact DripTray CAD, CalculiX observations, and SysON evaluations.
-Provider execution, canonical attachment, and project completion remain separate
-operations. See the [native preview how-to](docs/how-to/preview-native-workbench.md) and
-the [ThreadSnapshot reference](docs/reference/thread-snapshot.md).
+Opening or refreshing the UI never launches CAD, FEA, or Modelica. In the product path,
+calculation, modeling, ERP, and evidence publication belong to agent orchestration
+through bounded backend tools, with chat elicitation where human authority is
+consequential. Only registered operations are executable today; a missing executor stays
+an explicit capability gap. `thread:assemble` bootstraps a local CM-01 revision from
+read-only SysON inventory, one persisted Modelica run, and reviewed ERPNext reads. The
+explicit build runner adds the current SysON-derived CAD artifacts. A separately
+human-approved and agent-claimed mechanical runner can then add exact DripTray CAD,
+CalculiX observations, and SysON evaluations. Provider execution, canonical attachment,
+and project completion remain separate operations. See the
+[native preview how-to](docs/how-to/preview-native-workbench.md) and the
+[ThreadSnapshot reference](docs/reference/thread-snapshot.md).
 
 The tracked project under
 [`config/projects/coffee-machine-cm01.project.json`](config/projects/coffee-machine-cm01.project.json)
@@ -269,28 +284,28 @@ security boundary.
 
 ## Repository map
 
-| Path                                     | Contents                                                                 |
-| ---------------------------------------- | ------------------------------------------------------------------------ |
-| `docker-compose.yml`                     | The full stack: SysON + MCP servers over HTTP                            |
-| `server.ts`, `src/`                      | Console, project control plane, thread contracts, and orchestration      |
-| `config/mcp-fleet.json`                  | Desired fleet, topology, tools, views, and trust boundaries              |
-| `config/projects/`                       | Versioned project intent plus exact observed baseline captures           |
-| `config/thread-workflows/`               | Reviewed YAML authoring prototypes compiled into typed causal DAGs       |
-| `config/thread-subjects/`                | Reviewed explicit provider-to-product identity bindings                  |
-| `config/verification-plans/`             | Versioned provisional scenario-contract plans                            |
-| `state/fixtures/`                        | Canonical, explicitly labelled console and run fixtures                  |
-| `state/local/engineering-projects/`      | Ignored immutable active project revisions and command receipts          |
+| Path                                          | Contents                                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `docker-compose.yml`                          | The full stack: SysON + MCP servers over HTTP                                      |
+| `server.ts`, `src/`                           | Console, project control plane, thread contracts, and orchestration                |
+| `config/mcp-fleet.json`                       | Desired fleet, topology, tools, views, and trust boundaries                        |
+| `config/projects/`                            | Versioned project intent plus exact observed baseline captures                     |
+| `config/thread-workflows/`                    | Reviewed YAML authoring prototypes compiled into typed causal DAGs                 |
+| `config/thread-subjects/`                     | Reviewed explicit provider-to-product identity bindings                            |
+| `config/verification-plans/`                  | Versioned provisional scenario-contract plans                                      |
+| `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                            |
+| `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                    |
 | `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence |
-| `docs/README.md`                         | Diátaxis documentation map                                               |
-| `docs/tutorials/`                        | End-to-end learning paths, including the real CoffeeMachine run          |
-| `docs/how-to/`                           | Focused operating guides for native workflows and MCP Apps               |
-| `docs/reference/`                        | Exact workspace ownership, contracts, and port lookup                    |
-| `docs/explanations/product-direction.md` | Canonical verified-now, V1, and V2 product boundary                      |
-| `docs/console.md`                        | Console resource, tools, truth model, limitations, and security boundary |
-| `docs/positioning.md`                    | Explanation: industry & SOTA positioning and references                  |
-| `docs/verification-architecture.md`      | Explanation: CoffeeMachine verification boundaries and Modelica decision |
-| `examples/bracket/`                      | The end-to-end walkthrough with real numbers                             |
-| `experiments/oracle/`                    | The oracle experiment — the project's decisive measurement               |
+| `docs/README.md`                              | Diátaxis documentation map                                                         |
+| `docs/tutorials/`                             | End-to-end learning paths, including the real CoffeeMachine run                    |
+| `docs/how-to/`                                | Focused operating guides for native workflows and MCP Apps                         |
+| `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                              |
+| `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                |
+| `docs/console.md`                             | Console resource, tools, truth model, limitations, and security boundary           |
+| `docs/positioning.md`                         | Explanation: industry & SOTA positioning and references                            |
+| `docs/verification-architecture.md`           | Explanation: CoffeeMachine verification boundaries and Modelica decision           |
+| `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                       |
+| `experiments/oracle/`                         | The oracle experiment — the project's decisive measurement                         |
 
 ## The ecosystem (public building blocks)
 

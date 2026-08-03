@@ -8,11 +8,6 @@ import type {
 import type { ThreadStreamStatus } from "../thread/client.ts";
 import type { EngineeringPlanningWorkbenchSnapshot } from "../thread/types.ts";
 import { BaselineRunActivity } from "./baseline-run-activity.tsx";
-import type {
-  OperatorCommandCapabilities,
-  ProjectOperatorCommand,
-} from "./command-contract.ts";
-import type { ProjectCommandFeedback } from "./control-center.tsx";
 import {
   buildProjectBrief,
   projectBriefStatusLabel,
@@ -29,22 +24,9 @@ import {
 export function PlanningWorkbench({
   workbench,
   streamStatus,
-  capability,
-  actorId,
-  onActorIdChange,
-  feedback,
-  onCommand,
 }: {
   workbench: EngineeringPlanningWorkbenchSnapshot;
   streamStatus: ThreadStreamStatus | "snapshot";
-  capability?: OperatorCommandCapabilities;
-  actorId: string;
-  onActorIdChange: (value: string) => void;
-  feedback: ProjectCommandFeedback;
-  onCommand: (
-    commandKey: string,
-    command: ProjectOperatorCommand,
-  ) => Promise<void>;
 }): JSX.Element {
   const project = workbench.project;
   const brief = buildProjectBrief(project);
@@ -52,14 +34,6 @@ export function PlanningWorkbench({
   const items = sortWorkItems(project.workItems, project.phases);
   const hasPath = phases.length > 0;
   const baseline = workbench.planning.technicalBaseline;
-  const readyBaseline = items.find((item) =>
-    item.status === "ready" &&
-    item.operation?.id === "baseline.from-approved-discovery" &&
-    item.operation.version === "1"
-  );
-  const canAuthorizeBaseline = capability?.enabled === true &&
-    capability.intents.includes("agent-run.queue") &&
-    readyBaseline !== undefined;
 
   return (
     <div class="thread-workbench mcp-view-surface planning-workbench">
@@ -201,8 +175,8 @@ export function PlanningWorkbench({
             )
             : (
               <p class="planning-empty-path">
-                Ask the agent to publish a bounded project path before reviewing
-                or authorizing the first engineering operation.
+                Ask the agent to publish a bounded project path in your paired
+                conversation. The recorded path will appear here.
               </p>
             )}
         </section>
@@ -232,62 +206,6 @@ export function PlanningWorkbench({
                 />
               ))}
             </ol>
-          </section>
-        )}
-
-        {canAuthorizeBaseline && readyBaseline && (
-          <section
-            class="planning-baseline-authorization"
-            aria-labelledby="planning-baseline-authorization-title"
-          >
-            <div>
-              <p>READY FOR YOUR REVIEW</p>
-              <h3 id="planning-baseline-authorization-title">
-                Authorize the first documentary baseline
-              </h3>
-              <span>
-                This records the approved discovery and reviewed project path as
-                an immutable source document. It does not call a design tool or
-                claim a technical result.
-              </span>
-            </div>
-            <label>
-              <span>Reviewer identity</span>
-              <input
-                value={actorId}
-                onInput={(event) =>
-                  onActorIdChange(
-                    (event.currentTarget as HTMLInputElement).value,
-                  )}
-                placeholder="Your name or review ID"
-                autocomplete="name"
-              />
-            </label>
-            <button
-              type="button"
-              class="planning-baseline-authorize-button"
-              disabled={!actorId.trim() || feedback.state === "submitting"}
-              onClick={() =>
-                onCommand(`queue:${readyBaseline.id}`, {
-                  type: "agent-run.queue",
-                  workItemId: readyBaseline.id,
-                  summary:
-                    "Human authorized the approved-discovery documentary baseline.",
-                })}
-            >
-              {feedback.state === "submitting"
-                ? "Recording authorization…"
-                : "Authorize documentary baseline"}
-            </button>
-            {feedback.state !== "idle" && feedback.message && (
-              <small
-                class="planning-baseline-command-feedback"
-                data-state={feedback.state}
-                role={feedback.state === "error" ? "alert" : "status"}
-              >
-                {feedback.message}
-              </small>
-            )}
           </section>
         )}
 
@@ -402,7 +320,7 @@ function nextHumanMoveMessage(status: string): string {
   if (status === "failed") {
     return "Ask the agent to explain or revise the recorded path before authorizing another bounded run. This page deliberately does not expose provider diagnostics as evidence.";
   }
-  return "You can question or correct the project intent here. The cockpit will show a documentary baseline after the first bounded operation; technical evidence remains a later, explicitly linked result.";
+  return "Discuss the project intent with the agent in your paired conversation. The cockpit will show a documentary baseline after the first bounded operation; technical evidence remains a later, explicitly linked result.";
 }
 
 function planningStreamLabel(status: ThreadStreamStatus | "snapshot"): string {

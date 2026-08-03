@@ -73,20 +73,24 @@ Deno.test("human discovery handoff creates only a provenance-bound engineering p
   });
 });
 
-Deno.test("handoff is human-only and binds the exact approved discovery revision", async () => {
+Deno.test("human or agent can hand off only the exact human-approved discovery revision", async () => {
   await withStores(async ({ discoveries, projects }) => {
     const discovery = await approvedDiscovery(discoveries);
     const service = handoffService(discoveries, projects);
 
     await assertHandoffError(
-      () => service.createEngineeringProject(AGENT, command(discovery.revision)),
-      "permission_denied",
-    );
-    await assertHandoffError(
-      () => service.createEngineeringProject(HUMAN, command(discovery.revision - 1)),
+      () => service.createEngineeringProject(AGENT, command(discovery.revision - 1)),
       "stale_discovery_revision",
     );
-    assertEquals(await projects.get(PROJECT_ID), undefined);
+    const project = await service.createEngineeringProject(
+      AGENT,
+      command(discovery.revision),
+    );
+    assertEquals(project.commandReceipts?.[0].actor, {
+      id: AGENT.actorId,
+      origin: "agent",
+    });
+    assertEquals(project.discoveryHandoff?.approvedBy.origin, "human");
   });
 });
 
@@ -219,7 +223,7 @@ Deno.test("handoff validation rejects forged technical state in the initial proj
   });
 });
 
-Deno.test("handoff receipt validation preserves human authority, singular creation, and chronology", async () => {
+Deno.test("handoff receipt validation preserves human approval, singular creation, and chronology", async () => {
   await withStores(async ({ discoveries, projects }) => {
     const discovery = await approvedDiscovery(discoveries);
     const project = await handoffService(discoveries, projects)
@@ -234,7 +238,7 @@ Deno.test("handoff receipt validation preserves human authority, singular creati
         issue.code === "command_authority_mismatch" &&
         issue.path === "$.commandReceipts[0].actor.origin"
       ),
-      true,
+      false,
     );
 
     const beforeApproval = structuredClone(project) as unknown as {

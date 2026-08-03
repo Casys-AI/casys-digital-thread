@@ -21,10 +21,6 @@ import type {
   ThreadRef,
   ThreadWorkbenchSnapshot,
 } from "../../../contracts/thread-workbench.ts";
-import {
-  type EngineeringWorkbenchCapabilities,
-  isOperatorCommandCapabilities,
-} from "../project/command-contract.ts";
 import { isEngineeringProjectSnapshot } from "../project/contract.ts";
 
 export type {
@@ -56,8 +52,6 @@ export type {
 export interface EngineeringWorkbenchBaseSnapshot {
   readonly schemaVersion: "engineering-workbench/0.2";
   readonly project: EngineeringProjectSnapshot;
-  /** Absent means read-only. Mutation is never inferred from HTTP availability. */
-  readonly capabilities?: EngineeringWorkbenchCapabilities;
 }
 
 /** Project intent and linked technical proof delivered as one atomic BFF read. */
@@ -213,12 +207,7 @@ export function isEngineeringWorkbenchSnapshot(
   const candidate = value as Partial<EngineeringWorkbenchSnapshot>;
   if (
     !(candidate.schemaVersion === "engineering-workbench/0.2") ||
-    !isEngineeringProjectSnapshot(candidate.project) ||
-    (candidate.capabilities !== undefined &&
-      (!candidate.capabilities ||
-        !isOperatorCommandCapabilities(
-          candidate.capabilities.operatorCommands,
-        )))
+    !isEngineeringProjectSnapshot(candidate.project)
   ) {
     return false;
   }
@@ -232,7 +221,6 @@ export function isEngineeringWorkbenchSnapshot(
       "schemaVersion",
       "surface",
       "project",
-      "capabilities",
       "documentary",
     ]) && candidate.project.threadSnapshots.length === 1 &&
       reference !== undefined &&

@@ -1,11 +1,7 @@
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
-import {
-  EngineeringProjectCommandError,
-  type EngineeringProjectCommandService,
-  type EngineeringProjectRevisionStore,
-} from "../src/domain/engineering-project-command-service.ts";
+import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
 import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
 import { FileApprovedDiscoveryBaselineCaptureStore } from "../src/adapters/file-approved-discovery-baseline-capture-store.ts";
@@ -14,13 +10,6 @@ import { InspectionDroneArchitectureQueueEligibility } from "../src/adapters/ins
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
-import {
-  executeOperatorProjectCommand,
-  ProjectCommandHttpError,
-  type ProjectOperatorCommandRequest,
-  readOperatorProjectCommand,
-} from "../src/adapters/engineering-project-command-http.ts";
-import { isExplicitLoopbackHostname } from "../src/adapters/loopback-host.ts";
 import {
   type EngineeringWorkbenchSnapshot,
   projectEngineeringPlanningWorkbenchSnapshot,
@@ -55,7 +44,6 @@ import {
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
   projectStore: EngineeringProjectRevisionStore;
-  projectCommands?: EngineeringProjectCommandService;
   /** EngineeringProject identity; defaults to subjectId only for CM-01 compatibility. */
   projectId?: string;
   /** Active store plus optional exact, versioned project baselines. */
@@ -116,16 +104,6 @@ export function createNativeWorkbenchHandler(
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, options);
-    }
-    if (url.pathname === "/api/project/commands") {
-      if (request.method !== "POST") return methodNotAllowed("POST");
-      if (!options.projectCommands) {
-        return json({
-          error: "operator_commands_disabled",
-          message: "Operator commands are disabled for this Workbench.",
-        }, 404);
-      }
-      return await handleOperatorCommand(request, options);
     }
     if (url.pathname === "/api/thread/workbench") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -252,71 +230,6 @@ async function snapshotEventStream(
   });
 }
 
-async function handleOperatorCommand(
-  request: Request,
-  options: NativeWorkbenchHandlerOptions,
-): Promise<Response> {
-  let command: ProjectOperatorCommandRequest | undefined;
-  try {
-    command = await readOperatorProjectCommand(request);
-    if (command.projectId !== configuredProjectId(options)) {
-      return json({
-        error: "invalid_project_command",
-        message:
-          `Command project ${command.projectId} does not match this Workbench project ${
-            configuredProjectId(options)
-          }.`,
-      }, 422);
-    }
-    const project = await executeOperatorProjectCommand(
-      options.projectCommands!,
-      options.projectStore,
-      command,
-    );
-    const snapshot = await resolveCurrentThreadSnapshot(project, options);
-    if (!snapshot && project.threadSnapshots.length > 0) {
-      return json({
-        error: "thread_snapshot_not_found",
-        subjectId: options.subjectId,
-      }, 404);
-    }
-    const projection = await projectWorkbenchSnapshot(
-      project,
-      snapshot,
-      options,
-    );
-    return json(projection, 200, {
-      "X-Casys-Data-Source": workbenchDataSource(projection),
-    });
-  } catch (error) {
-    if (error instanceof ProjectCommandHttpError) {
-      return json({ error: error.code, message: error.message }, error.status);
-    }
-    if (error instanceof EngineeringProjectCommandError) {
-      const status = error.code === "entity_not_found" ? 422 : error.httpStatus;
-      const body: Record<string, unknown> = {
-        error: error.code,
-        message: error.message,
-      };
-      if (error.code === "stale_revision" && command) {
-        body.expectedRevision = command.expectedRevision;
-        body.actualRevision = (await options.projectStore.get(command.projectId))
-          ?.revision;
-      }
-      return json(body, status);
-    }
-    console.error(
-      `Operator command failed unexpectedly: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return json({
-      error: "operator_command_failed",
-      message: "The operator command could not be applied.",
-    }, 500);
-  }
-}
-
 async function projectWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
   snapshot: ThreadSnapshot | undefined,
@@ -337,7 +250,6 @@ async function projectWorkbenchSnapshot(
     return projectEngineeringPlanningWorkbenchSnapshot(
       project,
       liveUpdates ?? (await options.liveUpdates?.list(options.subjectId) ?? []),
-      { operatorCommandsEnabled: options.projectCommands !== undefined },
     );
   }
   const declaredSnapshots = await Promise.all(
@@ -360,10 +272,7 @@ async function projectWorkbenchSnapshot(
     validatedProject,
     await projectThreadSnapshot(snapshot, options, updates),
     snapshot.revision,
-    {
-      operatorCommandsEnabled: options.projectCommands !== undefined,
-      liveUpdates: updates,
-    },
+    updates,
   );
 }
 
@@ -523,7 +432,6 @@ function waitForPoll(milliseconds: number): Promise<void> {
 
 if (import.meta.main) {
   const hostname = argument("host") ?? "127.0.0.1";
-  const operatorCommandsEnabled = isExplicitLoopbackHostname(hostname);
   const port = integerArgument("port") ?? 5173;
   const snapshotDirectory = argument("snapshot-dir") ??
     "state/local/thread-snapshots";
@@ -603,7 +511,6 @@ if (import.meta.main) {
   const handler = createNativeWorkbenchHandler({
     store,
     projectStore: projectRuntime.projects,
-    projectCommands: operatorCommandsEnabled ? projectRuntime.commands : undefined,
     projectId,
     projectSnapshots,
     subjectId,
@@ -631,9 +538,7 @@ if (import.meta.main) {
       console.log(`Discovery revisions: ${projectDiscoveryDirectory}`);
       console.log(`Documentary captures: ${approvedDiscoveryCaptureDirectory}`);
       console.log(
-        operatorCommandsEnabled
-          ? "Page loads are read-only; explicit same-origin operator commands mutate only EngineeringProject revisions."
-          : "Read-only Workbench: operator commands are disabled on a non-loopback binding.",
+        "Read-only Workbench: project commands and human decisions flow through the paired MCP conversation.",
       );
     },
   }, handler);

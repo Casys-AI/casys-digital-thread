@@ -25,10 +25,10 @@ render(
       </div>
       <div>
         <small>CASYS / INDUSTRIAL PROJECT</small>
-        <strong>Project review cockpit</strong>
+        <strong>Project evidence cockpit</strong>
       </div>
       <p>
-        The agent prepares the work · you review decisions · evidence stays
+        The agent records the work · you inspect the project · evidence stays
         traceable
       </p>
     </header>

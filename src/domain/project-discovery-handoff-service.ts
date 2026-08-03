@@ -17,9 +17,9 @@ export interface ProjectDiscoveryHandoffOrigin {
 }
 
 /**
- * Explicit human command that turns one already approved discovery into a
- * project shell. It deliberately accepts no SysON, ThreadSnapshot, evidence,
- * phase, decision or run payload.
+ * Command that turns one already human-approved discovery into a project
+ * shell. It deliberately accepts no SysON, ThreadSnapshot, evidence, phase,
+ * decision or run payload.
  */
 export interface CreateEngineeringProjectFromDiscoveryCommand {
   readonly commandId: string;
@@ -82,7 +82,7 @@ export class ProjectDiscoveryHandoffService {
     origin: ProjectDiscoveryHandoffOrigin,
     command: CreateEngineeringProjectFromDiscoveryCommand,
   ): Promise<EngineeringProjectSnapshot> {
-    assertHumanOrigin(origin);
+    validateOrigin(origin);
     const normalized = normalizeCommand(command);
     const requestFingerprint = await sha256Fingerprint({
       type: "project.create-from-discovery",
@@ -177,7 +177,7 @@ export class ProjectDiscoveryHandoffService {
       commandReceipts: [{
         commandId: normalized.commandId,
         type: "project.create-from-discovery",
-        actor: { id: origin.actorId, origin: "human" },
+        actor: { id: origin.actorId, origin: origin.kind },
         issuedAt: normalized.issuedAt,
         appliedAt,
         requestFingerprint,
@@ -295,14 +295,8 @@ function normalizeCommand(
   };
 }
 
-function assertHumanOrigin(origin: ProjectDiscoveryHandoffOrigin): void {
+function validateOrigin(origin: ProjectDiscoveryHandoffOrigin): void {
   nonEmpty(origin.actorId, "origin.actorId");
-  if (origin.kind !== "human") {
-    throw new ProjectDiscoveryHandoffError(
-      "permission_denied",
-      "Only a human origin can create an engineering project from discovery.",
-    );
-  }
 }
 
 function snapshotIdFor(

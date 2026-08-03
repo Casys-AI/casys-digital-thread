@@ -19,7 +19,7 @@ const PROJECT_VIEWS: readonly {
     id: "overview",
     index: "01",
     label: "Project",
-    description: "Start here: mission & reviews",
+    description: "Start here: mission & record",
   },
   {
     id: "work",
@@ -43,7 +43,7 @@ const PROJECT_VIEWS: readonly {
     id: "operations",
     index: "05",
     label: "Execution",
-    description: "Review runs, plans and connected tools",
+    description: "Inspect runs, plans and connected tools",
   },
 ] as const;
 

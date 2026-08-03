@@ -15,14 +15,7 @@ import {
   StateMessage,
   Toolbar,
 } from "../mcp-view-primitives.ts";
-import {
-  createProjectCommandRequest,
-  type ProjectOperatorCommand,
-} from "../project/command-contract.ts";
-import {
-  type ProjectCommandFeedback,
-  ReviewNotifications,
-} from "../project/control-center.tsx";
+import { ReviewNotifications } from "../project/control-center.tsx";
 import {
   agentRunSummary,
   buildProjectBrief,
@@ -39,7 +32,6 @@ import { ProjectOverview } from "../project/overview.tsx";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
 import {
-  ProjectCommandConflictError,
   type ThreadStreamStatus,
   type ThreadWorkbenchClient,
 } from "./client.ts";
@@ -79,12 +71,6 @@ export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
 }
 
-interface PreparedAction {
-  id: string;
-  label: string;
-  requiresConfirmation: boolean;
-}
-
 export function ThreadWorkbench({
   client,
 }: ThreadWorkbenchProps): JSX.Element {
@@ -108,13 +94,6 @@ export function ThreadWorkbench({
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [graphCanvasOpen, setGraphCanvasOpen] = useState(false);
-  const [prepared, setPrepared] = useState<PreparedAction>();
-  const [operatorId, setOperatorId] = useState("");
-  const [commandFeedback, setCommandFeedback] = useState<
-    ProjectCommandFeedback
-  >(
-    { state: "idle" },
-  );
   const [error, setError] = useState<string>();
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
   const followLiveRef = useRef(followLive);
@@ -265,95 +244,11 @@ export function ThreadWorkbench({
     );
   }
 
-  const executePlanningCommand = async (
-    commandKey: string,
-    command: ProjectOperatorCommand,
-  ) => {
-    const current = snapshotRef.current;
-    const capability = current?.capabilities?.operatorCommands;
-    const actorId = operatorId.trim();
-    if (!current || !capability?.enabled || !client.command || !actorId) {
-      setCommandFeedback({
-        state: "error",
-        commandKey,
-        message:
-          "This project is read-only or the local reviewer identity is missing.",
-      });
-      return;
-    }
-    setCommandFeedback({
-      state: "submitting",
-      commandKey,
-      message: "Recording the explicit review authorization…",
-    });
-    const request = createProjectCommandRequest({
-      command,
-      commandId: createCommandId(),
-      projectId: current.project.project.id,
-      expectedRevision: current.project.revision,
-      issuedAt: new Date().toISOString(),
-      actorId,
-    });
-    try {
-      const next = await client.command(request);
-      const latest = snapshotRef.current;
-      if (!latest || next.project.revision >= latest.project.revision) {
-        snapshotRef.current = next;
-        setWorkbench(next);
-      }
-      setCommandFeedback({
-        state: "success",
-        commandKey,
-        message:
-          "Authorization recorded. Your agent can now run the reviewed bounded operation.",
-      });
-    } catch (reason: unknown) {
-      if (reason instanceof ProjectCommandConflictError) {
-        try {
-          const refreshed = await client.load();
-          const latest = snapshotRef.current;
-          if (
-            !latest || refreshed.project.revision >= latest.project.revision
-          ) {
-            snapshotRef.current = refreshed;
-            setWorkbench(refreshed);
-          }
-          setCommandFeedback({
-            state: "conflict",
-            commandKey,
-            message:
-              "The project changed while you were reviewing it. The current state is now shown.",
-          });
-        } catch {
-          setCommandFeedback({
-            state: "error",
-            commandKey,
-            message:
-              "The authorization conflicted with a newer project revision, and the refresh failed.",
-          });
-        }
-        return;
-      }
-      setCommandFeedback({
-        state: "error",
-        commandKey,
-        message: reason instanceof Error
-          ? reason.message
-          : "The authorization could not be recorded.",
-      });
-    }
-  };
-
   if (workbench.surface === "planning") {
     return (
       <PlanningWorkbench
         workbench={workbench}
         streamStatus={streamStatus}
-        capability={workbench.capabilities?.operatorCommands}
-        actorId={operatorId}
-        onActorIdChange={setOperatorId}
-        feedback={commandFeedback}
-        onCommand={executePlanningCommand}
       />
     );
   }
@@ -363,11 +258,6 @@ export function ThreadWorkbench({
       <DocumentaryBaselineWorkbench
         workbench={workbench}
         streamStatus={streamStatus}
-        capability={workbench.capabilities?.operatorCommands}
-        actorId={operatorId}
-        onActorIdChange={setOperatorId}
-        feedback={commandFeedback}
-        onCommand={executePlanningCommand}
       />
     );
   }
@@ -375,7 +265,6 @@ export function ThreadWorkbench({
   const snapshot = workbench.thread;
   const project = workbench.project;
   const projectBrief = buildProjectBrief(project);
-  const commandCapability = workbench.capabilities?.operatorCommands;
   const evidenceContext = contextualGraphProjection(
     snapshot.graph.nodes,
     snapshot.graph.edges,
@@ -386,96 +275,6 @@ export function ThreadWorkbench({
     graphCanvasReturnView.current = activeView;
     setInspectorOpen(false);
     setGraphCanvasOpen(true);
-  };
-
-  const executeProjectCommand = async (
-    commandKey: string,
-    command: ProjectOperatorCommand,
-  ) => {
-    const current = snapshotRef.current;
-    const capability = current?.capabilities?.operatorCommands;
-    const actorId = operatorId.trim();
-    if (!current || !capability?.enabled || !client.command || !actorId) {
-      setCommandFeedback({
-        state: "error",
-        commandKey,
-        message:
-          "This project is read-only or the local operator identity is missing.",
-      });
-      return;
-    }
-    setCommandFeedback({
-      state: "submitting",
-      commandKey,
-      message: "Applying the explicit operator command…",
-    });
-    const request = createProjectCommandRequest({
-      command,
-      commandId: createCommandId(),
-      projectId: current.project.project.id,
-      expectedRevision: current.project.revision,
-      issuedAt: new Date().toISOString(),
-      actorId,
-    });
-    try {
-      const next = await client.command(request);
-      const latest = snapshotRef.current;
-      if (!latest || next.project.revision >= latest.project.revision) {
-        snapshotRef.current = next;
-        setWorkbench(next);
-      }
-      setCommandFeedback({
-        state: "success",
-        commandKey,
-        message:
-          `Command recorded at project revision ${next.project.revision}.`,
-      });
-    } catch (reason: unknown) {
-      if (reason instanceof ProjectCommandConflictError) {
-        try {
-          const refreshed = await client.load();
-          const latest = snapshotRef.current;
-          if (
-            !latest || refreshed.project.revision >= latest.project.revision
-          ) {
-            snapshotRef.current = refreshed;
-            setWorkbench(refreshed);
-          }
-          setCommandFeedback({
-            state: "conflict",
-            commandKey,
-            message: `Project revision changed${
-              reason.actualRevision !== undefined
-                ? ` to ${reason.actualRevision}`
-                : ""
-            }. The latest state was loaded; review it before trying again.`,
-          });
-        } catch {
-          setCommandFeedback({
-            state: "error",
-            commandKey,
-            message:
-              "The command conflicted with a newer revision, and the refresh failed.",
-          });
-        }
-        return;
-      }
-      setCommandFeedback({
-        state: "error",
-        commandKey,
-        message: reason instanceof Error
-          ? reason.message
-          : "The operator command could not be applied.",
-      });
-    }
-  };
-
-  const prepareAction = (action: ThreadAction) => {
-    setPrepared({
-      id: action.id,
-      label: action.label,
-      requiresConfirmation: action.requiresConfirmation,
-    });
   };
 
   const changeView = (next: ProjectWorkspaceView) => {
@@ -705,7 +504,6 @@ export function ThreadWorkbench({
                   node={selectedGraphNode}
                   selection={inspectorRecord}
                   onSelect={selectThreadElement}
-                  onPrepareAction={prepareAction}
                   onOpenToolView={openToolView}
                   availableFullViews={["syson", "build123d", "erpnext"]}
                 />
@@ -716,7 +514,6 @@ export function ThreadWorkbench({
                   snapshot={snapshot}
                   selection={inspectorRecord}
                   onSelect={selectThreadElement}
-                  onPrepare={prepareAction}
                 />
               )
               : (
@@ -895,11 +692,6 @@ export function ThreadWorkbench({
             onNavigate={changeView}
             onOpenActivity={openDecisionActivity}
             onOpenSpecification={openDecisionSpecification}
-            capability={commandCapability}
-            actorId={operatorId}
-            onActorIdChange={setOperatorId}
-            feedback={commandFeedback}
-            onCommand={executeProjectCommand}
           />
         )
         : (
@@ -944,14 +736,15 @@ export function ThreadWorkbench({
               </p>
               <div
                 class="thread-operator-contract"
-                aria-label="Operator controls"
+                aria-label="Cockpit mode"
               >
                 <span data-state={followLive ? "live" : "history"}>
                   <i aria-hidden="true" />
                   {followLive ? "Following activity" : "Reviewing history"}
                 </span>
                 <span>
-                  <b>YOUR ROLE</b> review proposals and authorize bounded work
+                  <b>YOUR ROLE</b>{" "}
+                  inspect the shared record and discuss intent with the agent
                 </span>
               </div>
             </div>
@@ -968,8 +761,8 @@ export function ThreadWorkbench({
                     {project.decisions.some((decision) =>
                         decision.status === "proposed"
                       )
-                      ? "A recommendation is ready for your review"
-                      : "Review status, current work and blockers"}
+                      ? "A recorded recommendation is ready to discuss"
+                      : "Decision status, current work and blockers"}
                   </strong>
                   <small>Open when you need the project context</small>
                 </summary>
@@ -978,11 +771,6 @@ export function ThreadWorkbench({
                   <ReviewNotifications
                     surface="activity"
                     project={project}
-                    capability={commandCapability}
-                    actorId={operatorId}
-                    onActorIdChange={setOperatorId}
-                    feedback={commandFeedback}
-                    onCommand={executeProjectCommand}
                     onOpenActivity={openDecisionActivity}
                     onOpenSpecification={openDecisionSpecification}
                   />
@@ -1091,11 +879,6 @@ export function ThreadWorkbench({
                     <ProjectOperations
                       project={project}
                       thread={snapshot}
-                      capability={commandCapability}
-                      actorId={operatorId}
-                      onActorIdChange={setOperatorId}
-                      feedback={commandFeedback}
-                      onCommand={executeProjectCommand}
                     />
                   )}
               </div>
@@ -1103,27 +886,6 @@ export function ThreadWorkbench({
             </div>
           </section>
         )}
-
-      {prepared && (
-        <div class="thread-action-notice" role="status">
-          <span aria-hidden="true">↳</span>
-          <div>
-            <strong>{prepared.label}</strong>
-            <small>
-              {prepared.requiresConfirmation
-                ? "Prepared only — operator confirmation is required before execution."
-                : "Inspection prepared — no solver or engineering tool was executed."}
-            </small>
-          </div>
-          <button
-            type="button"
-            onClick={() => setPrepared(undefined)}
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -1141,15 +903,10 @@ function shouldAcceptPlanningActivityUpdate(
     incoming.planning.activity.version > current.planning.activity.version;
 }
 
-function createCommandId(): string {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  return `command-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 function workspaceEyebrow(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
-  if (view === "work") return "AGENT ACTIVITY · HUMAN REVIEW";
+  if (view === "work") return "AGENT ACTIVITY · SHARED RECORD";
   if (view === "product") return "PRODUCT EXPLORER";
   if (view === "verification") return "EVIDENCE & IMPACT";
   return "EXECUTION HISTORY";
@@ -1289,14 +1046,13 @@ function GraphEndpoint({ label, node, onSelect }: {
   );
 }
 
-function SelectionInspector({ snapshot, selection, onSelect, onPrepare }: {
+function SelectionInspector({ snapshot, selection, onSelect }: {
   snapshot: ThreadWorkbenchSnapshot;
   selection: ThreadRef;
   onSelect: (selection: ThreadRef) => void;
-  onPrepare: (action: ThreadAction) => void;
 }): JSX.Element {
   if (selection.kind === "change") {
-    return <ChangeInspector snapshot={snapshot} onPrepare={onPrepare} />;
+    return <ChangeInspector snapshot={snapshot} />;
   }
   if (selection.kind === "artifact") {
     const artifact = snapshot.artifacts.find((item) =>
@@ -1349,7 +1105,6 @@ function SelectionInspector({ snapshot, selection, onSelect, onPrepare }: {
         snapshot={snapshot}
         violation={violation}
         onSelect={onSelect}
-        onPrepare={onPrepare}
       />
     )
     : <EmptyState>Violation not present in this snapshot.</EmptyState>;
@@ -1374,10 +1129,7 @@ function InspectorShell({ eyebrow, title, tone, children }: {
 }
 
 function ChangeInspector(
-  { snapshot, onPrepare }: {
-    snapshot: ThreadWorkbenchSnapshot;
-    onPrepare: (action: ThreadAction) => void;
-  },
+  { snapshot }: { snapshot: ThreadWorkbenchSnapshot },
 ): JSX.Element {
   const change = snapshot.change;
   const state = changeState(snapshot);
@@ -1408,7 +1160,7 @@ function ChangeInspector(
       <StateMessage title={state.title} tone={state.tone}>
         {state.message}
       </StateMessage>
-      <ActionList actions={snapshot.actions} onPrepare={onPrepare} />
+      <ActionList actions={snapshot.actions} />
     </InspectorShell>
   );
 }
@@ -1570,11 +1322,10 @@ function RequirementInspector({ snapshot, requirement, onSelect }: {
   );
 }
 
-function ViolationInspector({ snapshot, violation, onSelect, onPrepare }: {
+function ViolationInspector({ snapshot, violation, onSelect }: {
   snapshot: ThreadWorkbenchSnapshot;
   violation: ThreadViolation;
   onSelect: (selection: ThreadRef) => void;
-  onPrepare: (action: ThreadAction) => void;
 }): JSX.Element {
   const actions = snapshot.actions.filter((action) =>
     violation.proposedActionIds.includes(action.id)
@@ -1598,42 +1349,32 @@ function ViolationInspector({ snapshot, violation, onSelect, onPrepare }: {
         snapshot={snapshot}
         onSelect={onSelect}
       />
-      <ActionList actions={actions} onPrepare={onPrepare} />
+      <ActionList actions={actions} />
     </InspectorShell>
   );
 }
 
-function ActionList({ actions, onPrepare }: {
+function ActionList({ actions }: {
   actions: ThreadAction[];
-  onPrepare: (action: ThreadAction) => void;
 }): JSX.Element | null {
   if (!actions.length) return null;
   return (
     <div class="thread-actions">
       <div class="thread-relation-title">
         <span>Proposed next actions</span>
-        <small>prepare, never auto-run</small>
+        <small>discuss with the agent</small>
       </div>
       {actions.map((action, index) => (
-        <button
-          type="button"
-          key={action.id}
-          disabled={action.readiness === "blocked"}
-          onClick={() => onPrepare(action)}
-        >
+        <article key={action.id} data-readiness={action.readiness}>
           <span>{pad(index + 1)}</span>
           <div>
             <strong>{action.label}</strong>
             <small>{action.description}</small>
           </div>
           <b>
-            {action.readiness === "blocked"
-              ? "Blocked"
-              : action.kind === "inspect"
-              ? "Open"
-              : "Prepare"}
+            {action.readiness === "blocked" ? "Blocked" : action.readiness}
           </b>
-        </button>
+        </article>
       ))}
     </div>
   );

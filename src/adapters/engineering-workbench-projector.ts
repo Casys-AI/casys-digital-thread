@@ -23,7 +23,6 @@ export const ENGINEERING_WORKBENCH_SCHEMA = "engineering-workbench/0.2" as const
 export interface EngineeringWorkbenchBaseSnapshot {
   schemaVersion: typeof ENGINEERING_WORKBENCH_SCHEMA;
   project: EngineeringProjectSnapshot;
-  capabilities: EngineeringWorkbenchCapabilities;
 }
 
 /** Project intent plus a real, persisted technical evidence projection. */
@@ -175,26 +174,6 @@ export type EngineeringWorkbenchSnapshot =
   | EngineeringDocumentaryWorkbenchSnapshot
   | EngineeringPlanningWorkbenchSnapshot;
 
-export const ENGINEERING_OPERATOR_COMMAND_ENDPOINT = "/api/project/commands" as const;
-export const ENGINEERING_OPERATOR_INTENT_HEADER = "X-Casys-Operator-Intent" as const;
-
-export const ENGINEERING_OPERATOR_COMMAND_INTENTS = [
-  "decision.propose",
-  "decision.approve",
-  "decision.reject",
-  "agent-run.queue",
-] as const;
-
-export interface EngineeringWorkbenchCapabilities {
-  operatorCommands: {
-    enabled: boolean;
-    endpoint: typeof ENGINEERING_OPERATOR_COMMAND_ENDPOINT;
-    intents: readonly (typeof ENGINEERING_OPERATOR_COMMAND_INTENTS)[number][];
-    explicitIntentHeader: typeof ENGINEERING_OPERATOR_INTENT_HEADER;
-    expectedRevision: number;
-  };
-}
-
 export interface EngineeringWorkbenchAlignment {
   status: "aligned" | "thread-ahead";
   projectThreadRevision: number;
@@ -209,10 +188,7 @@ export function projectEngineeringWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
   thread: LiveThreadWorkbenchSnapshot,
   currentThreadRevision: number,
-  options: {
-    operatorCommandsEnabled?: boolean;
-    liveUpdates?: readonly LiveThreadUpdate[];
-  } = {},
+  liveUpdates: readonly LiveThreadUpdate[] = [],
 ): EngineeringEvidenceWorkbenchSnapshot | EngineeringDocumentaryWorkbenchSnapshot {
   if (project.project.subjectId !== thread.subject.id) {
     throw new Error(
@@ -243,7 +219,7 @@ export function projectEngineeringWorkbenchSnapshot(
     const document = thread.artifacts[0]!;
     const technicalStart = projectDocumentaryTechnicalStart(
       project,
-      options.liveUpdates ?? [],
+      liveUpdates,
     );
     return {
       schemaVersion: ENGINEERING_WORKBENCH_SCHEMA,
@@ -273,10 +249,6 @@ export function projectEngineeringWorkbenchSnapshot(
         },
         ...(technicalStart ? { technicalStart } : {}),
       },
-      capabilities: documentaryOperatorCommands(
-        project,
-        options.operatorCommandsEnabled === true,
-      ),
     };
   }
   return {
@@ -291,7 +263,6 @@ export function projectEngineeringWorkbenchSnapshot(
       projectThreadRevision,
       currentThreadRevision,
     },
-    capabilities: operatorCommands(project, options.operatorCommandsEnabled === true),
   };
 }
 
@@ -489,39 +460,6 @@ function isApprovedDiscoveryDocumentaryBaseline(
     typeof document.fingerprint === "string" && document.fingerprint.length > 0;
 }
 
-function operatorCommands(
-  project: EngineeringProjectSnapshot,
-  enabled: boolean,
-  intents: readonly (typeof ENGINEERING_OPERATOR_COMMAND_INTENTS)[number][] =
-    ENGINEERING_OPERATOR_COMMAND_INTENTS,
-): EngineeringWorkbenchCapabilities {
-  return {
-    operatorCommands: {
-      enabled,
-      endpoint: ENGINEERING_OPERATOR_COMMAND_ENDPOINT,
-      intents: enabled ? intents : [],
-      explicitIntentHeader: ENGINEERING_OPERATOR_INTENT_HEADER,
-      expectedRevision: project.revision,
-    },
-  };
-}
-
-/**
- * Once r1 is durable, a reviewer may authorize only the exact ready seed
- * work item. The browser still receives neither its basis nor any provider
- * input; the command service derives both from immutable project state.
- */
-function documentaryOperatorCommands(
-  project: EngineeringProjectSnapshot,
-  enabled: boolean,
-): EngineeringWorkbenchCapabilities {
-  const canQueueSeed = enabled &&
-    project.workItems.some((item) =>
-      item.status === "ready" && isSysonModelSeedOperation(item)
-    );
-  return operatorCommands(project, canQueueSeed, ["agent-run.queue"]);
-}
-
 /**
  * Project an approved discovery and an agent-published path before any
  * technical baseline exists. This deliberately accepts no ThreadSnapshot and
@@ -530,7 +468,6 @@ function documentaryOperatorCommands(
 export function projectEngineeringPlanningWorkbenchSnapshot(
   project: EngineeringProjectSnapshot,
   liveUpdates: readonly LiveThreadUpdate[] = [],
-  options: { operatorCommandsEnabled?: boolean } = {},
 ): EngineeringPlanningWorkbenchSnapshot {
   if (project.threadSnapshots.length !== 0) {
     throw new Error(
@@ -538,13 +475,6 @@ export function projectEngineeringPlanningWorkbenchSnapshot(
     );
   }
   const baselineRun = projectPlanningBaselineRun(project);
-  const queueableBaseline = project.workItems.find((item) =>
-    item.status === "ready" &&
-    item.operation?.id === "baseline.from-approved-discovery" &&
-    item.operation.version === "1"
-  );
-  const canQueueBaseline = options.operatorCommandsEnabled === true &&
-    queueableBaseline !== undefined;
   return {
     schemaVersion: ENGINEERING_WORKBENCH_SCHEMA,
     surface: "planning",
@@ -556,17 +486,6 @@ export function projectEngineeringPlanningWorkbenchSnapshot(
       },
       ...(baselineRun ? { baselineRun } : {}),
       activity: projectPlanningActivity(liveUpdates, baselineRun?.id),
-    },
-    capabilities: {
-      operatorCommands: {
-        // The only planning-time operator action is the exact ready first
-        // baseline. The browser never supplies its basis or any tool input.
-        enabled: canQueueBaseline,
-        endpoint: ENGINEERING_OPERATOR_COMMAND_ENDPOINT,
-        intents: canQueueBaseline ? ["agent-run.queue"] : [],
-        explicitIntentHeader: ENGINEERING_OPERATOR_INTENT_HEADER,
-        expectedRevision: project.revision,
-      },
     },
   };
 }

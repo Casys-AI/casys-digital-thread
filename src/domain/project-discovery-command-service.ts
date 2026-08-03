@@ -248,7 +248,7 @@ export class ProjectDiscoveryCommandService {
     command: ProposeProjectDiscoveryQuestionCommand,
   ): Promise<ProjectDiscoverySnapshot> {
     return this.apply(origin, "question.propose", command, (draft, appliedAt) => {
-      assertDiscovering(draft);
+      prepareDiscoveryEdit(draft);
       validateQuestionInput(command.question);
       if (draft.questions.some((item) => item.id === command.question.id)) {
         invalidInput(`Guided question ${command.question.id} already exists.`);
@@ -268,7 +268,7 @@ export class ProjectDiscoveryCommandService {
     command: RecordProjectDiscoveryAnswerCommand,
   ): Promise<ProjectDiscoverySnapshot> {
     return this.apply(origin, "answer.record", command, (draft, appliedAt) => {
-      assertDiscovering(draft);
+      prepareDiscoveryEdit(draft);
       validateAnswerInput(command.answer);
       if (origin.kind === "human" && command.answer.source.kind !== "human") {
         invalidInput(
@@ -321,7 +321,7 @@ export class ProjectDiscoveryCommandService {
     command: ProposeProjectDiscoveryBriefCommand,
   ): Promise<ProjectDiscoverySnapshot> {
     return this.apply(origin, "brief.propose", command, async (draft, appliedAt) => {
-      assertDiscovering(draft);
+      assertBriefProposable(draft);
       validateBriefInput(command.brief);
       if (draft.brief?.id === command.brief.id) {
         invalidInput(
@@ -611,6 +611,26 @@ function assertDiscovering(snapshot: ProjectDiscoverySnapshot): void {
       `Project discovery ${snapshot.discoveryId} cannot be edited from ${snapshot.status}.`,
     );
   }
+}
+
+/**
+ * A conversational correction supersedes a still-pending draft without
+ * pretending that a reviewer rejected it. The preceding immutable revision
+ * retains the old proposal and fingerprint; the current discovery returns to
+ * authoring until the agent publishes a replacement.
+ */
+function prepareDiscoveryEdit(snapshot: Mutable<ProjectDiscoverySnapshot>): void {
+  if (snapshot.status === "awaiting-review") {
+    delete snapshot.brief;
+    delete snapshot.review;
+    snapshot.status = "discovering";
+  }
+  assertDiscovering(snapshot);
+}
+
+function assertBriefProposable(snapshot: ProjectDiscoverySnapshot): void {
+  if (snapshot.status === "awaiting-review") return;
+  assertDiscovering(snapshot);
 }
 
 function actor(origin: ProjectDiscoveryCommandOrigin): ProjectDiscoveryActor {

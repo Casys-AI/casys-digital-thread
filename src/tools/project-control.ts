@@ -2,6 +2,7 @@ import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
 import type {
+  EngineeringBasisRef,
   EngineeringOperationInputBinding,
   EngineeringOperationRef,
   EngineeringProjectSnapshot,
@@ -9,6 +10,7 @@ import type {
   EngineeringThreadSnapshotRef,
   EngineeringWorkOwner,
 } from "../domain/engineering-project.ts";
+import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -31,6 +33,14 @@ const PROJECT_MUTATION_ANNOTATIONS = {
 
 /** Same-command retries resume the server-owned local execution safely. */
 const PROJECT_EXECUTION_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+/** Signed elicitation request state makes same-command retries safe. */
+const PROJECT_HUMAN_CONFIRMATION_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: true,
@@ -177,6 +187,30 @@ export function registerProjectControlTools(
     });
   }
 
+  app.registerTool(projectAgentRunQueueTool, async (args, context) => {
+    const common = commonMutation(args);
+    const workItemId = requiredString(args.workItemId, "workItemId");
+    const current = await requiredProjectRevision(
+      dependencies.projects,
+      common.projectId,
+      common.expectedRevision,
+    );
+    const workItem = requiredQueueWorkItem(current, workItemId);
+    const snapshot = await dependencies.commands.queueRun(agentOrigin(context), {
+      ...common,
+      runId: `run:${common.commandId}`,
+      workItemId,
+      summary: queueRunSummary(workItem),
+      ...queueExecutionBasis(current, workItem),
+    });
+    return projectResult(
+      `Agent queued the reviewed operation ${workItem.operation!.id}@${
+        workItem.operation!.version
+      } for work item ${workItemId} at project revision ${snapshot.revision}. The server derived the run id, summary and exact basis; no provider or arbitrary execution input was accepted.`,
+      snapshot,
+    );
+  });
+
   app.registerTool(projectDecisionProposeTool, async (args, context) => {
     const common = commonMutation(args);
     const current = await requiredProjectRevision(
@@ -198,6 +232,24 @@ export function registerProjectControlTools(
         requiredString(args.decisionId, "decisionId")
       } now has an agent proposal at project revision ${snapshot.revision}; human approval is still required.`,
       snapshot,
+    );
+  });
+
+  app.registerTool(projectDecisionApproveTool, async (args, context) => {
+    return await handleDecisionElicitation(
+      "approve",
+      args,
+      context,
+      dependencies,
+    );
+  });
+
+  app.registerTool(projectDecisionRejectTool, async (args, context) => {
+    return await handleDecisionElicitation(
+      "reject",
+      args,
+      context,
+      dependencies,
     );
   });
 }
@@ -291,7 +343,7 @@ const projectPlanPublishTool: MCPTool = {
 const projectDecisionProposeTool: MCPTool = {
   name: "project_decision_propose",
   description:
-    "Record an agent-authored concrete proposal for one required engineering decision. This never approves the proposal; only the human Workbench command channel can approve or reject it.",
+    "Record an agent-authored concrete proposal for one required engineering decision. This never approves the proposal; approval or rejection requires the paired host's human-facing MCP elicitation flow.",
   inputSchema: {
     type: "object",
     properties: {
@@ -335,16 +387,282 @@ const projectDecisionProposeTool: MCPTool = {
   annotations: PROJECT_MUTATION_ANNOTATIONS,
 };
 
+const FINGERPRINT_SCHEMA = {
+  type: "object",
+  properties: {
+    algorithm: { const: "sha256" },
+    digest: { type: "string", pattern: "^[a-f0-9]{64}$" },
+  },
+  required: ["algorithm", "digest"],
+  additionalProperties: false,
+} as const;
+
+const projectDecisionApproveTool: MCPTool = {
+  name: "project_decision_approve",
+  description:
+    "Ask the paired MCP host to present one exact proposed decision for confirmation. The first call requests elicitation; only a signed retry whose request state verifies and whose response is accepted records approval. The signature protects retry integrity, not user identity; the host is responsible for presenting the request to the person. The agent cannot call the underlying human-authority mutation directly.",
+  inputSchema: mutationSchema({
+    decisionId: { type: "string", minLength: 1 },
+    inputFingerprint: FINGERPRINT_SCHEMA,
+    rationale: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Concise record of why this proposal reflects the paired conversation; it is shown to the human before confirmation.",
+    },
+  }, ["decisionId", "inputFingerprint", "rationale"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_HUMAN_CONFIRMATION_ANNOTATIONS,
+};
+
+const projectDecisionRejectTool: MCPTool = {
+  name: "project_decision_reject",
+  description:
+    "Ask the paired MCP host to present one exact proposed decision and rejection rationale for confirmation. The first call requests elicitation; only a signed retry whose request state verifies and whose response is accepted records rejection. The signature protects retry integrity, not user identity; the host is responsible for presenting the request to the person. The agent cannot call the underlying human-authority mutation directly.",
+  inputSchema: mutationSchema({
+    decisionId: { type: "string", minLength: 1 },
+    inputFingerprint: FINGERPRINT_SCHEMA,
+    rationale: {
+      type: "string",
+      minLength: 1,
+      description:
+        "The correction or reason to preserve if the human confirms the rejection.",
+    },
+  }, ["decisionId", "inputFingerprint", "rationale"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_HUMAN_CONFIRMATION_ANNOTATIONS,
+};
+
+const projectAgentRunQueueTool: MCPTool = {
+  name: "project_agent_run_queue",
+  description:
+    "Queue one ready V2 work item for the agent. The caller supplies only the durable command context and work item id. The server derives the run id, summary and exact reviewed basis from the persisted project plan and thread head; it accepts no provider, tool arguments, paths, files, result payload or technical evidence.",
+  inputSchema: mutationSchema({
+    workItemId: { type: "string", minLength: 1 },
+  }, ["workItemId"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_EXECUTION_ANNOTATIONS,
+};
+
 const projectAgentRunExecuteTool: MCPTool = {
   name: "project_agent_run_execute",
   description:
-    "Execute one human-queued V2 run through its exact server-owned registered executor. The call accepts no provider, tool arguments, files or result payload. Registered work may record the approved-discovery documentary baseline or create only a blank, read-back SysON project/document/root-package container; it cannot add arbitrary SysML, CAD, simulation, measurements, verification or compliance claims. Reuse the same commandId unchanged to resume an interrupted call safely.",
+    "Execute one agent-queued V2 run through its exact server-owned registered executor. The call accepts no provider, tool arguments, files or result payload. Registered work may record the approved-discovery documentary baseline or create only a blank, read-back SysON project/document/root-package container; it cannot add arbitrary SysML, CAD, simulation, measurements, verification or compliance claims. Reuse the same commandId unchanged to resume an interrupted call safely.",
   inputSchema: mutationSchema({
     runId: { type: "string", minLength: 1 },
   }, ["runId"]),
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: PROJECT_EXECUTION_ANNOTATIONS,
 };
+
+async function handleDecisionElicitation(
+  action: "approve" | "reject",
+  args: Record<string, unknown>,
+  context: ToolHandlerContext | undefined,
+  dependencies: ProjectControlToolDependencies,
+) {
+  const common = commonMutation(args);
+  const decisionId = requiredString(args.decisionId, "decisionId");
+  const inputFingerprint = fingerprintInput(args.inputFingerprint, "inputFingerprint");
+  const rationale = requiredString(args.rationale, "rationale");
+  const current = await requiredProposedDecision(
+    dependencies.projects,
+    common.projectId,
+    common.expectedRevision,
+    decisionId,
+    inputFingerprint,
+  );
+  const confirmation = decisionConfirmationResponse(context);
+  if (confirmation === undefined) {
+    return decisionConfirmationRequest(current, decisionId, action, rationale);
+  }
+  if (!confirmation) {
+    return projectResult(
+      `Decision ${decisionId} was not ${
+        action === "approve" ? "approved" : "rejected"
+      }. No project state changed; continue the paired conversation.`,
+      current,
+    );
+  }
+  const snapshot = action === "approve"
+    ? await dependencies.commands.approveDecision(elicitedHumanOrigin(context), {
+      ...common,
+      decisionId,
+      inputFingerprint,
+      rationale,
+    })
+    : await dependencies.commands.rejectDecision(elicitedHumanOrigin(context), {
+      ...common,
+      decisionId,
+      inputFingerprint,
+      rationale,
+    });
+  return projectResult(
+    `The paired MCP host reported ${
+      action === "approve" ? "approval" : "rejection"
+    } of decision ${decisionId} through elicitation at project revision ${snapshot.revision}.`,
+    snapshot,
+  );
+}
+
+function decisionConfirmationRequest(
+  snapshot: EngineeringProjectSnapshot,
+  decisionId: string,
+  action: "approve" | "reject",
+  rationale: string,
+) {
+  const decision = snapshot.decisions.find((candidate) => candidate.id === decisionId)!;
+  const proposal = decision.proposal!;
+  const disposition = action === "approve" ? "approve" : "reject";
+  const parameters = proposal.parameters.map((parameter) =>
+    `${parameter.label}: ${String(parameter.value)}${
+      parameter.unit ? ` ${parameter.unit}` : ""
+    }`
+  ).join("; ");
+  return {
+    resultType: "input_required",
+    inputRequests: {
+      decision_confirmation: {
+        method: "elicitation/create",
+        params: {
+          mode: "form",
+          message:
+            `The agent proposes to ${disposition} “${decision.title}”. Proposal: ${proposal.summary}${
+              parameters ? `. Parameters: ${parameters}` : ""
+            }. Recorded rationale: ${rationale}. Confirm this exact ${disposition} action, or decline and continue the conversation.`,
+          requestedSchema: {
+            type: "object",
+            properties: {
+              confirmed: {
+                type: "boolean",
+                title: `Confirm decision ${disposition}`,
+                description:
+                  `I confirm that the displayed proposal and rationale should be ${
+                    action === "approve" ? "approved" : "recorded as rejected"
+                  }.`,
+              },
+            },
+            required: ["confirmed"],
+            additionalProperties: false,
+          },
+        },
+      },
+    },
+  };
+}
+
+function decisionConfirmationResponse(
+  context?: ToolHandlerContext,
+): boolean | undefined {
+  if (context?.inputResponses === undefined) return undefined;
+  if (context.retryVerified !== true) {
+    throw new TypeError(
+      "Decision confirmation requires an MCP retry with verified signed request state.",
+    );
+  }
+  const response = exactRecord(
+    context.inputResponses.decision_confirmation,
+    "inputResponses.decision_confirmation",
+  );
+  exactKeys(
+    response,
+    ["action"],
+    ["content"],
+    "inputResponses.decision_confirmation",
+  );
+  const responseAction = oneOf(
+    response.action,
+    ["accept", "decline", "cancel"] as const,
+    "inputResponses.decision_confirmation.action",
+  );
+  if (responseAction !== "accept") return false;
+  const content = exactRecord(
+    response.content,
+    "inputResponses.decision_confirmation.content",
+  );
+  exactKeys(
+    content,
+    ["confirmed"],
+    [],
+    "inputResponses.decision_confirmation.content",
+  );
+  return requiredBoolean(
+    content.confirmed,
+    "inputResponses.decision_confirmation.content.confirmed",
+  );
+}
+
+async function requiredProposedDecision(
+  store: EngineeringProjectSnapshotReader,
+  projectId: string,
+  expectedRevision: number,
+  decisionId: string,
+  inputFingerprint: ContentFingerprint,
+): Promise<EngineeringProjectSnapshot> {
+  const snapshot = await requiredProjectRevision(store, projectId, expectedRevision);
+  const decision = snapshot.decisions.find((candidate) => candidate.id === decisionId);
+  if (
+    !decision || decision.status !== "proposed" || !decision.proposal ||
+    !decision.inputFingerprint ||
+    decision.inputFingerprint.algorithm !== inputFingerprint.algorithm ||
+    decision.inputFingerprint.digest !== inputFingerprint.digest
+  ) {
+    throw new TypeError(
+      `Decision ${decisionId} is not the exact proposed decision at project revision ${expectedRevision}.`,
+    );
+  }
+  return snapshot;
+}
+
+function requiredQueueWorkItem(
+  project: EngineeringProjectSnapshot,
+  workItemId: string,
+) {
+  if (project.schemaVersion !== "2.0") {
+    throw new TypeError(
+      "project_agent_run_queue supports only V2 reviewed operations.",
+    );
+  }
+  const workItem = project.workItems.find((candidate) => candidate.id === workItemId);
+  if (!workItem || !workItem.operation) {
+    throw new TypeError(
+      `V2 work item ${workItemId} has no registered operation to queue.`,
+    );
+  }
+  return workItem;
+}
+
+function queueRunSummary(
+  workItem: ReturnType<typeof requiredQueueWorkItem>,
+): string {
+  return `Execute reviewed operation ${workItem.operation!.id}@${
+    workItem.operation!.version
+  } for ${workItem.title}.`;
+}
+
+function queueExecutionBasis(
+  project: EngineeringProjectSnapshot,
+  workItem: ReturnType<typeof requiredQueueWorkItem>,
+): { readonly basis: EngineeringBasisRef } {
+  if (project.threadSnapshots.length === 0) {
+    if (
+      !project.plan ||
+      workItem.operation!.id !== "baseline.from-approved-discovery" ||
+      workItem.operation!.version !== "1"
+    ) {
+      throw new TypeError(
+        "Before a documentary baseline exists, V2 can queue only the exact published approved-discovery baseline operation.",
+      );
+    }
+    return { basis: structuredClone(project.plan.basis) };
+  }
+  return {
+    basis: {
+      kind: "thread-snapshot",
+      ...declaredProjectHead(project),
+    },
+  };
+}
 
 function mutationSchema(
   properties: Record<string, unknown>,
@@ -383,6 +701,23 @@ function agentOrigin(context?: ToolHandlerContext) {
     actorId: name
       ? `mcp:${name}${version ? `@${version}` : ""}`
       : "mcp:unidentified-client",
+  };
+}
+
+/**
+ * Domain authority asserted by the paired MCP host after accepted elicitation.
+ * Signed requestState proves retry integrity, not the person's identity; the
+ * host and its transport authentication remain the trust boundary.
+ */
+function elicitedHumanOrigin(context?: ToolHandlerContext) {
+  const subject = context?.authInfo?.subject?.trim();
+  const name = context?.clientInfo?.name?.trim();
+  const version = context?.clientInfo?.version?.trim();
+  const channel = subject ||
+    (name ? `${name}${version ? `@${version}` : ""}` : "client");
+  return {
+    kind: "human" as const,
+    actorId: `mcp-elicitation:${channel}`,
   };
 }
 
@@ -483,6 +818,18 @@ function decisionProposal(value: unknown): {
       return result;
     }),
   };
+}
+
+function fingerprintInput(value: unknown, name: string): ContentFingerprint {
+  const record = exactRecord(value, name);
+  exactKeys(record, ["algorithm", "digest"], [], name);
+  if (record.algorithm !== "sha256") {
+    throw new TypeError(`${name}.algorithm must be sha256`);
+  }
+  if (typeof record.digest !== "string" || !/^[a-f0-9]{64}$/.test(record.digest)) {
+    throw new TypeError(`${name}.digest must be 64 lowercase hex characters`);
+  }
+  return { algorithm: "sha256", digest: record.digest };
 }
 
 function planStartingPoint(value: unknown): EngineeringProjectStartingPoint {
@@ -693,6 +1040,13 @@ function scalar(value: unknown, name: string): string | number | boolean {
   }
   if (typeof value === "number" && !Number.isFinite(value)) {
     throw new TypeError(`${name} must be finite`);
+  }
+  return value;
+}
+
+function requiredBoolean(value: unknown, name: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new TypeError(`${name} must be a boolean`);
   }
   return value;
 }

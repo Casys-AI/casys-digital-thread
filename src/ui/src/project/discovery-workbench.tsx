@@ -6,10 +6,8 @@ import type {
   ProjectDiscoveryQuestion,
   ProjectDiscoverySnapshot,
 } from "../../../domain/project-discovery.ts";
-import type { ContentFingerprint } from "../../../domain/thread-snapshot.ts";
 import {
   Badge,
-  Button,
   Card,
   EmptyState,
   StateMessage,
@@ -21,37 +19,9 @@ import {
   discoveryRiskLabel,
   discoveryRiskTone,
 } from "./discovery-model.ts";
-import type { ProjectDiscoveryHandoffResult } from "./discovery-handoff-contract.ts";
-
-export interface DiscoveryAnswerSelection {
-  readonly questionId: string;
-  readonly kind: "provided" | "unknown";
-  readonly value?: string;
-}
-
-export interface DiscoveryBriefReviewSelection {
-  readonly briefId: string;
-  readonly inputFingerprint: ContentFingerprint;
-  readonly action: "approve" | "request-revision";
-}
 
 export interface DiscoveryWorkbenchProps {
   readonly discovery: ProjectDiscoverySnapshot;
-  readonly disabled?: boolean;
-  readonly busy?: boolean;
-  /** Keeps discovery-review copy distinct from the project-handoff action. */
-  readonly handoffPending?: boolean;
-  readonly onAnswer?: (
-    selection: DiscoveryAnswerSelection,
-  ) => void | Promise<void>;
-  readonly onReviewBrief?: (
-    selection: DiscoveryBriefReviewSelection,
-  ) => void | Promise<void>;
-  readonly onCreateEngineeringProject?: () => void | Promise<void>;
-  /** A narrow handoff receipt, deliberately not a technical project snapshot. */
-  readonly engineeringProject?: ProjectDiscoveryHandoffResult;
-  /** The project id is occupied; its origin has not been verified here. */
-  readonly engineeringProjectIdOccupied?: boolean;
 }
 
 /**
@@ -60,50 +30,12 @@ export interface DiscoveryWorkbenchProps {
  */
 export function DiscoveryWorkbench({
   discovery,
-  disabled = false,
-  busy = false,
-  handoffPending = false,
-  onAnswer,
-  onReviewBrief,
-  onCreateEngineeringProject,
-  engineeringProject,
-  engineeringProjectIdOccupied = false,
 }: DiscoveryWorkbenchProps): JSX.Element {
   const view = buildProjectDiscoveryView(discovery);
-  const interactionDisabled = disabled || busy;
-
-  const answer = (selection: DiscoveryAnswerSelection): void => {
-    if (interactionDisabled || !onAnswer) return;
-    void onAnswer(selection);
-  };
-
-  const review = (
-    action: DiscoveryBriefReviewSelection["action"],
-  ): void => {
-    if (
-      interactionDisabled || !onReviewBrief || !discovery.brief ||
-      !discovery.review || !view.canReviewBrief
-    ) return;
-    void onReviewBrief({
-      briefId: discovery.brief.id,
-      inputFingerprint: discovery.review.inputFingerprint,
-      action,
-    });
-  };
-
-  const startEngineeringProject = (): void => {
-    if (
-      interactionDisabled || !onCreateEngineeringProject ||
-      !hasApprovedBrief(discovery) || engineeringProject ||
-      engineeringProjectIdOccupied
-    ) return;
-    void onCreateEngineeringProject();
-  };
 
   return (
     <main
       class="discovery-workbench mcp-view-surface"
-      aria-busy={busy}
       aria-labelledby="discovery-title"
     >
       <header class="discovery-header">
@@ -112,8 +44,8 @@ export function DiscoveryWorkbench({
           <h1 id="discovery-title">Keep the project conversation grounded</h1>
           <p class="discovery-introduction">
             Work with the agent in your paired conversation. This page follows
-            what you agree, keeps one useful question in view, and preserves
-            your final review before engineering begins.
+            what you agree, keeps one useful question in view, and preserves the
+            organized project record as the work develops.
           </p>
         </div>
         <Badge tone={view.statusTone} className="discovery-status-badge">
@@ -172,9 +104,6 @@ export function DiscoveryWorkbench({
           ? (
             <ActiveDiscoveryQuestion
               question={view.activeQuestion}
-              disabled={interactionDisabled || !onAnswer}
-              busy={busy}
-              onSelect={answer}
             />
           )
           : (
@@ -190,116 +119,16 @@ export function DiscoveryWorkbench({
 
       <DiscoveryBriefDisclosure
         brief={discovery.brief}
-        canReview={view.canReviewBrief}
-        disabled={interactionDisabled || !onReviewBrief}
-        busy={busy && !handoffPending}
         reviewStatus={discovery.review?.status}
-        onReview={review}
-      />
-
-      <EngineeringProjectHandoff
-        discovery={discovery}
-        disabled={interactionDisabled || !onCreateEngineeringProject}
-        busy={handoffPending}
-        result={engineeringProject}
-        projectIdOccupied={engineeringProjectIdOccupied}
-        onStart={startEngineeringProject}
       />
     </main>
   );
 }
 
-function EngineeringProjectHandoff({
-  discovery,
-  disabled,
-  busy,
-  result,
-  projectIdOccupied,
-  onStart,
-}: {
-  discovery: ProjectDiscoverySnapshot;
-  disabled: boolean;
-  busy: boolean;
-  result?: ProjectDiscoveryHandoffResult;
-  projectIdOccupied: boolean;
-  onStart: () => void;
-}): JSX.Element | null {
-  if (!hasApprovedBrief(discovery)) return null;
-
-  if (result) {
-    return (
-      <StateMessage
-        title="Initial project shell recorded"
-        tone="success"
-        className="discovery-handoff-result"
-      >
-        <p>{result.message}</p>
-        <p>
-          This receipt describes the initial handoff only. Open the engineering
-          project to inspect any model, simulation, or evidence added afterward.
-        </p>
-      </StateMessage>
-    );
-  }
-
-  if (projectIdOccupied) {
-    return (
-      <StateMessage
-        title="Project ID already occupied"
-        tone="danger"
-        className="discovery-handoff-result"
-      >
-        <p>
-          An engineering project already uses this discovery ID. Inspect it
-          before continuing: this screen has not verified that it came from this
-          approved brief.
-        </p>
-      </StateMessage>
-    );
-  }
-
-  return (
-    <section
-      class="discovery-handoff"
-      aria-labelledby="discovery-handoff-title"
-    >
-      <div>
-        <p class="discovery-handoff-kicker">NEXT STEP</p>
-        <h2 id="discovery-handoff-title">Your framing is approved</h2>
-        <p>
-          Start the engineering project to preserve this approved brief. This
-          creates a project shell only; it does not create a model, simulation,
-          or technical proof.
-        </p>
-      </div>
-      <Button
-        className="discovery-handoff-action"
-        disabled={disabled}
-        onClick={onStart}
-      >
-        {busy ? "Starting project…" : "Start engineering project"}
-      </Button>
-    </section>
-  );
-}
-
-function hasApprovedBrief(discovery: ProjectDiscoverySnapshot): boolean {
-  return discovery.status === "approved" && !!discovery.brief &&
-    discovery.review?.status === "approved" &&
-    discovery.review.briefId === discovery.brief.id &&
-    discovery.review.decidedBy?.origin === "human";
-}
-
 function ActiveDiscoveryQuestion({
   question,
-  disabled,
-  busy,
-  onSelect,
 }: {
   question: ProjectDiscoveryQuestion;
-  disabled: boolean;
-  busy: boolean;
-  onSelect: (selection: DiscoveryAnswerSelection) => void;
 }): JSX.Element {
   const recommendedOption = question.options.find((option) =>
     option.value === question.recommendation.value
@@ -390,58 +219,6 @@ function ActiveDiscoveryQuestion({
         </ul>
       </section>
 
-      <details class="discovery-cockpit-correction">
-        <summary>
-          <span>
-            <small>EXCEPTIONAL PATH</small>
-            <strong>Correct from cockpit</strong>
-          </span>
-          <em>Only if conversation is unavailable or the record needs help</em>
-        </summary>
-        <div>
-          <p>
-            The normal path is to answer the agent in your paired conversation.
-            Use this recovery path only when that is not possible, or when you
-            need to correct what the shared record should say.
-          </p>
-          <fieldset class="discovery-options" disabled={disabled}>
-            <legend>Record an answer directly</legend>
-            <div class="discovery-option-grid">
-              {question.options.map((option) => (
-                <Button
-                  key={option.value}
-                  className="discovery-option"
-                  disabled={disabled}
-                  onClick={() =>
-                    onSelect({
-                      questionId: question.id,
-                      kind: "provided",
-                      value: option.value,
-                    })}
-                >
-                  <span>{option.label}</span>
-                  <small>{option.consequences}</small>
-                </Button>
-              ))}
-            </div>
-            {question.allowUnknown && (
-              <Button
-                className="discovery-unknown"
-                disabled={disabled}
-                onClick={() =>
-                  onSelect({ questionId: question.id, kind: "unknown" })}
-              >
-                <span>I don&rsquo;t know yet</span>
-                <small>
-                  Keep moving without guessing. The agent will preserve this as
-                  an open question.
-                </small>
-              </Button>
-            )}
-          </fieldset>
-        </div>
-      </details>
-
       {question.evidenceNeeded.length > 0 && (
         <details class="discovery-evidence-plan">
           <summary>What the agent may verify later</summary>
@@ -450,28 +227,16 @@ function ActiveDiscoveryQuestion({
           </ul>
         </details>
       )}
-
-      {busy && (
-        <p class="discovery-busy">Saving the cockpit correction&hellip;</p>
-      )}
     </Card>
   );
 }
 
 function DiscoveryBriefDisclosure({
   brief,
-  canReview,
-  disabled,
-  busy,
   reviewStatus,
-  onReview,
 }: {
   brief?: ProjectDiscoveryBrief;
-  canReview: boolean;
-  disabled: boolean;
-  busy: boolean;
   reviewStatus?: "pending" | "approved" | "rejected";
-  onReview: (action: DiscoveryBriefReviewSelection["action"]) => void;
 }): JSX.Element {
   return (
     <details class="discovery-brief">
@@ -554,48 +319,28 @@ function DiscoveryBriefDisclosure({
                 </p>
               </section>
               <p class="discovery-brief-boundary">
-                Technical evidence and any applicable compliance path begin only
-                after you approve this framing.
+                Discuss corrections, priorities and confirmation with the agent.
+                Once it records an updated brief or project step, this dossier
+                follows the shared record.
               </p>
-              {canReview && (
-                <div class="discovery-review-actions">
-                  <div>
-                    <strong>Your review is the gate</strong>
-                    <span>
-                      Approve the intent, or ask the agent to revise the brief.
-                    </span>
-                  </div>
-                  <Button
-                    className="discovery-revise"
-                    disabled={disabled}
-                    onClick={() => onReview("request-revision")}
-                  >
-                    Request revision
-                  </Button>
-                  <Button
-                    className="discovery-approve"
-                    disabled={disabled}
-                    onClick={() => onReview("approve")}
-                  >
-                    Approve brief
-                  </Button>
-                </div>
-              )}
               {reviewStatus === "approved" && (
                 <StateMessage
-                  title="Approved by a human reviewer"
+                  title="Confirmed in the paired conversation"
                   tone="success"
                 >
-                  <p>This brief can now anchor technical planning.</p>
+                  <p>
+                    This confirmed brief anchors the project record. Follow the
+                    activity feed as the agent records technical work.
+                  </p>
                 </StateMessage>
               )}
               {reviewStatus === "rejected" && (
                 <StateMessage title="Revision requested" tone="info">
-                  <p>The agent is preparing a replacement proposal.</p>
+                  <p>
+                    Continue in the paired conversation. This version stays
+                    visible until the agent records a replacement brief.
+                  </p>
                 </StateMessage>
-              )}
-              {busy && (
-                <p class="discovery-busy">Recording your review&hellip;</p>
               )}
             </>
           )

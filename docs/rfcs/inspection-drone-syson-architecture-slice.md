@@ -1,6 +1,7 @@
 # RFC: bounded inspection-drone SysON architecture slice
 
-Status: **Implemented in source — not released; disposable local SysON parser/translator and model-tree check passed**\
+Status: **Implemented in source — not released; disposable local SysON parser/translator
+and model-tree check passed**\
 Evidence: **No r3 project technical evidence exists**\
 Scope: guarded V2 operation after `architecture.seed-syson-model@1`\
 Target: a controlled visual-inspection drone carrying a light inspection camera
@@ -33,8 +34,8 @@ verified behaviour.
 
 ## Exact eligibility
 
-The implemented source operation is `architecture.author-inspection-drone@1`. It may be queued
-only after all of the following are true:
+The implemented source operation is `architecture.author-inspection-drone@1`. It may be
+queued only after all of the following are true:
 
 1. Its exact basis is the subject's r2 `ThreadSnapshot`, produced by
    `architecture.seed-syson-model@1`.
@@ -46,8 +47,9 @@ only after all of the following are true:
    `payload-class = light-inspection-camera`. A recommendation alone is not enough.
 4. Its work item was included in the initial reviewed plan, before r1. The plan cannot
    be revised to add r3 after documentary or technical execution has begun.
-5. A human has queued this exact run. The agent can prepare and execute it, but cannot
-   approve the choice or queue it itself.
+5. The agent has queued this exact ready run through `project_agent_run_queue`; the
+   server derived its operation and r2 basis. Any missing consequential human choice
+   must already have been resolved through signed chat elicitation.
 6. A read of the seed root package shows no direct children. A non-empty root is not a
    harmless collision: this narrowly scoped executor stops for review rather than
    merging with manual or future model content.
@@ -189,12 +191,11 @@ store, and a separate write-ahead attempt store. Its normalized capture contains
   declarations;
 - no raw GraphQL payload, request ID, credentials, agent text, or provider-only UI data.
 
-The materializer creates the r3 descendant with a `sysml-model` architecture
-artifact that depends on the r2 container artifact. It may expose the named model
-artifact and its source hash in the cockpit. It must leave canonical
-`ThreadSnapshot.requirements`, evaluations, violations, observations, and proposed
-actions empty: provider-side high-level requirements are model content, not a verified
-digital-thread verdict.
+The materializer creates the r3 descendant with a `sysml-model` architecture artifact
+that depends on the r2 container artifact. It may expose the named model artifact and
+its source hash in the cockpit. It must leave canonical `ThreadSnapshot.requirements`,
+evaluations, violations, observations, and proposed actions empty: provider-side
+high-level requirements are model content, not a verified digital-thread verdict.
 
 ## Test and mock recipe for review
 

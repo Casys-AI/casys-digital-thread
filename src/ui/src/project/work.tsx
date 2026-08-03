@@ -8,12 +8,6 @@ import type {
 } from "../../../domain/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import {
-  OperatorIdentity,
-  type ProjectControlProps,
-  QueueWorkItemControl,
-} from "./control-center.tsx";
-import { canQueueWorkItem } from "./control-model.ts";
-import {
   agentRunSummary,
   buildProjectBrief,
   workOwnerLabel,
@@ -46,18 +40,18 @@ export function ProjectWorkRibbon({ project }: {
         </small>
       </div>
       <div class="project-work-ribbon-cell is-human">
-        <span>{decisionToReview ? "YOUR REVIEW" : "REVIEW STATUS"}</span>
+        <span>{decisionToReview ? "AGENT QUESTION" : "DECISION STATUS"}</span>
         <strong>
           {decisionToReview?.title ??
             (decisionBeingPrepared
               ? "Agent proposal in preparation"
-              : "Nothing needs your review")}
+              : "Nothing needs discussion")}
         </strong>
         <small>
           {decisionToReview?.question ??
             (decisionBeingPrepared
               ? `The agent still owes you a concrete proposal for ${decisionBeingPrepared.title}.`
-              : "You can monitor progress while the agent continues the approved plan.")}
+              : "Discuss any change of intent with the agent; this cockpit follows the recorded plan.")}
         </small>
       </div>
       <div class="project-work-ribbon-cell is-blocker">
@@ -72,33 +66,13 @@ export function ProjectWorkRibbon({ project }: {
 export function ProjectOperations({
   project,
   thread,
-  capability,
-  actorId,
-  onActorIdChange,
-  feedback,
-  onCommand,
-}: ProjectControlProps & {
+}: {
+  project: EngineeringProjectSnapshot;
   thread: ThreadWorkbenchSnapshot;
 }): JSX.Element {
   const systems = uniqueSystems(thread);
-  const commandsEnabled = capability?.enabled === true;
   return (
     <div class="project-operations">
-      <section class="project-operations-command-bar">
-        <OperatorIdentity
-          actorId={actorId}
-          onChange={onActorIdChange}
-          enabled={commandsEnabled}
-        />
-        <div class="project-lifecycle-contract">
-          <span>HUMAN BOUNDARY</span>
-          <strong>Review and authorize</strong>
-          <small>
-            The agent owns execution and publication. You approve its proposals
-            and release only bounded work.
-          </small>
-        </div>
-      </section>
       <section
         class="project-operations-panel"
         aria-labelledby="project-runs-title"
@@ -183,11 +157,6 @@ export function ProjectOperations({
               key={item.id}
               item={item}
               project={project}
-              capability={capability}
-              actorId={actorId}
-              onActorIdChange={onActorIdChange}
-              feedback={feedback}
-              onCommand={onCommand}
             />
           ))}
         </div>
@@ -196,8 +165,9 @@ export function ProjectOperations({
   );
 }
 
-function WorkItemRow({ item, project, ...control }: ProjectControlProps & {
+function WorkItemRow({ item, project }: {
   item: EngineeringWorkItem;
+  project: EngineeringProjectSnapshot;
 }): JSX.Element {
   const phase = project.phases.find((candidate) =>
     candidate.id === item.phaseId
@@ -205,7 +175,6 @@ function WorkItemRow({ item, project, ...control }: ProjectControlProps & {
   return (
     <article
       data-state={item.status}
-      data-queueable={canQueueWorkItem(project, item)}
     >
       <div class="project-work-item-record">
         <span>{phase?.name ?? item.phaseId}</span>
@@ -215,14 +184,6 @@ function WorkItemRow({ item, project, ...control }: ProjectControlProps & {
         </div>
         <b>{workStatusLabel(item.status)}</b>
       </div>
-      {canQueueWorkItem(project, item) && (
-        <QueueWorkItemControl
-          {...control}
-          project={project}
-          item={item}
-          compact
-        />
-      )}
     </article>
   );
 }

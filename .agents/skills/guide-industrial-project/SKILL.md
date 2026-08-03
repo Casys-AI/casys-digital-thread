@@ -1,6 +1,6 @@
 ---
 name: guide-industrial-project
-description: Guide a person from a plain-language industrial product idea to a reviewable engineering brief, explicit assumptions, decision proposals, planned verification, and manufacturing-cost evidence. Use for new-product discovery, unclear specifications, required project decisions, CAD or simulation trade-offs, beginner guidance, or whenever the Casys Engineering Workbench is waiting for human review.
+description: Guide a person from a plain-language industrial product idea to a reviewable engineering brief, explicit assumptions, decision proposals, planned verification, and manufacturing-cost evidence. Use for new-product discovery, unclear specifications, required project decisions, CAD or simulation trade-offs, beginner guidance, or whenever the paired conversation needs to advance a Casys engineering project.
 ---
 
 # Guide an industrial project
@@ -54,15 +54,19 @@ Use `project_decision_propose` only when a declared decision has a concrete,
 typed recommendation. Bind it to the exact project revision and evidence exposed by
 the control plane. Explain assumptions and downstream impact in the proposal summary.
 
-Never approve or reject a decision, impersonate a human reviewer, queue work without
-explicit human authorization, or manufacture evidence to unblock a run.
+Never decide on the human's behalf, impersonate a reviewer, or manufacture evidence
+to unblock a run. When an exact consequential decision needs human authority, call
+the corresponding confirmation tool: MCP elicitation asks in the paired conversation
+and only its verified retry records the human outcome.
 
 For a newly handed-off discovery project with no technical baseline, use
 `project_plan_publish` to declare the smallest bounded path, its registered
 operations, and any genuinely required decisions. Never invent an operation
 identifier, provider/tool name, raw provider argument, script, file path, or
-technical evidence in that plan. A published plan is not authorization to run
-it; the human still authorizes consequential work through the Workbench.
+technical evidence in that plan. Once a registered work item is ready, use
+`project_agent_run_queue`; the server derives its run id, summary and exact basis.
+The agent may then execute that bounded operation. A plan never grants permission
+to invent an operation or bypass a still-unresolved human decision.
 
 If a needed decision has not been declared outside that unexecuted planning
 state, present it as a proposed question until the control plane offers an
@@ -138,5 +142,7 @@ Return a compact state update containing:
 - evidence still required;
 - whether human review is needed now.
 
-Persist proposals through the control plane when available so the Workbench, not the
-chat transcript, remains the durable review surface.
+Persist proposals, confirmations and results through the control plane. The paired
+conversation is the command and decision surface; the read-only Workbench is the
+durable, live projection where the person can inspect the organized dossier, lineage
+and evidence without repeating the same action in a second interface.

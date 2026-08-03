@@ -114,13 +114,13 @@ The r2 capture contains only normalized project, document, and root-package iden
 It does not add a system architecture, requirements, CAD, simulation, measurement, or
 verification verdict. Before each non-idempotent SysON creation, the executor persists a
 write-ahead attempt record. If the provider outcome is unknown, it stops for explicit
-review instead of blindly retrying a possibly successful creation. This control flow is a
-closed executor contract, not a reusable YAML-node pattern.
+review instead of blindly retrying a possibly successful creation. This control flow is
+a closed executor contract, not a reusable YAML-node pattern.
 
 ## Guarded inspection-drone architecture r3 (not workflow YAML)
 
-`architecture.author-inspection-drone@1` is another closed, server-owned operation,
-not a YAML graph or a generic SysML writer. It must be included in the initial reviewed
+`architecture.author-inspection-drone@1` is another closed, server-owned operation, not
+a YAML graph or a generic SysML writer. It must be included in the initial reviewed
 idea/specification plan because plans cannot be revised after r1. Its runtime basis is
 instead the exact r2 produced by `architecture.seed-syson-model@1`, whose seed capture
 must re-read and validate by hash.
@@ -128,21 +128,21 @@ must re-read and validate by hash.
 The source implementation also re-reads the exact approved discovery behind that r1/r2
 lineage and requires both `primary-mission = inspection-controlled` and
 `payload-class = light-inspection-camera`. It first requires an empty root package,
-inserts one fixed high-level SysML fragment once, and verifies only the named package and
-direct declarations through readback. The caller cannot alter the SysML, provider,
+inserts one fixed high-level SysML fragment once, and verifies only the named package
+and direct declarations through readback. The caller cannot alter the SysML, provider,
 arguments, or result. A write-ahead record prevents an unknown write outcome from being
 replayed.
 
-This is code-only: it has not been released into the running SysON toolchain or exercised
-against a real SysON instance. The fragment is neither CAD nor an assembly, physical or
-flight simulation, cost, compliance, or a requirement verdict. It remains a closed
-executor contract rather than a reusable YAML-node pattern.
+This is code-only: it has not been released into the running SysON toolchain or
+exercised against a real SysON instance. The fragment is neither CAD nor an assembly,
+physical or flight simulation, cost, compliance, or a requirement verdict. It remains a
+closed executor contract rather than a reusable YAML-node pattern.
 
 ## First mechanical slice
 
 [`coffee-machine-mechanical-v1.yaml`](../../config/thread-workflows/coffee-machine-mechanical-v1.yaml)
-declares the solve/normalize/evaluate DAG. The CM-01 product runner surrounds it with the
-approved SysON preflight and build123d generation:
+declares the solve/normalize/evaluate DAG. The CM-01 product runner surrounds it with
+the approved SysON preflight and build123d generation:
 
 ```text
 SysON preflight ──▶ build123d STEP ──▶ CalculiX ──▶ normalization ──▶ SysON evaluation
@@ -151,9 +151,8 @@ SysON preflight ──▶ build123d STEP ──▶ CalculiX ──▶ normalizat
 
 The runner supplies `cad_step_path` and `cad_step_sha256` from the exact
 content-attested DripTray export it just generated. It accepts only CalculiX
-`static-solve` structured content schema `2.0`, whose required `inputArtifact`
-records the consumed bytes. CalculiX accepts
-`expected_step_sha256`, recomputes
+`static-solve` structured content schema `2.0`, whose required `inputArtifact` records
+the consumed bytes. CalculiX accepts `expected_step_sha256`, recomputes
 `inputArtifact.sha256`, and rejects a mismatch before solving. Material, meshing,
 support boxes, load boxes, and force components are required workflow inputs with no
 defaults.
@@ -170,7 +169,7 @@ The product boundaries are:
 - no public BFF endpoint triggers the executor; the explicit CLI runner persists a
   capture and the separate attach task persists its resulting `ThreadSnapshot`;
 - the native Workbench reads an immutable persisted `ThreadSnapshot` through passive
-  GET/SSE paths; its human project-command POST does not execute this workflow;
+  GET/SSE paths and exposes no workflow command;
 - the tracked r5 inventory has two `RequirementUsage` elements but zero mechanical
   `ConstraintUsage` elements; the approved runner's bounded SysON mutation is later
   evidence, not a rewrite of that baseline;

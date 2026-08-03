@@ -21,8 +21,8 @@ answer three questions at the same time:
 
 1. What did the agent just produce or change?
 2. What does that fact affect across the engineering chain, and why?
-3. Which prepared recommendation needs the operator to review, challenge, approve, or
-   return now?
+3. Which prepared recommendation should the person discuss or confirm next in the paired
+   conversation?
 
 Those questions share one evidence model but must not compete visually. The beginner
 view leads with current project stage, agent activity, and the next review. Technical
@@ -34,7 +34,7 @@ entry points converge on the same change-to-proof loop described in
 The primary UI object is therefore a change and its propagation, not an MCP server or a
 dashboard panel. The activity feed is the chronological backbone of the cockpit, not the
 whole product: its inline lineage explains impact, and the contextual tool surface is
-where the engineer inspects records and controls the next action.
+where the engineer inspects records. Control remains in the paired conversation.
 
 ```text
 CAD change
@@ -58,29 +58,30 @@ been recorded.
 
 The shell must never imply more autonomy than the runtime provides. A live indicator
 means that validated persisted revisions are being followed, not that raw model
-reasoning is being streamed. Browsing and inspection are immediate. Human decisions and
-queue release are explicit, revision-bound project commands; engineering tool execution
-is a separate agent operation with recorded inputs and evidence.
+reasoning is being streamed. Browsing and inspection are immediate. Human decisions are
+explicit, revision-bound confirmations elicited by MCP in the paired conversation;
+engineering tool execution is a separate bounded agent operation with recorded inputs
+and evidence.
 
 The default human role is reviewer, not technical payload author. Decision states have
 different owners in the UI: `required` means the agent is preparing a recommendation,
-`proposed` means the human has a review action, and `rejected` means the agent owes a
-revision. Only `proposed` contributes to the human review counter. **Project** exposes a
-lightweight review-notification inbox: it signals what needs attention and leads the
-reviewer to the relevant context; it is not a second technical authoring surface.
-**Activity** is where the reviewer follows the live evidence and lineage behind a
-recommendation. Inspection and any correction request start with the affected
-SysON/specification context in **Product** and the paired agent conversation, never in a
-generic decision card. Activity may record one exact-bound request for a revised
-recommendation; it never collects replacement technical values. Exact hashes and
-snapshot IDs remain available as audit context.
+`proposed` means the conversation has a review question, and `rejected` means the agent
+owes a revision. **Project** exposes a lightweight notification view: it signals what
+needs attention and leads the reviewer to the relevant context; it is neither a command
+surface nor a second technical authoring surface. **Activity** is where the reviewer
+follows the live evidence and lineage behind a recommendation. Inspection and any
+correction request start with the affected SysON/specification context in **Product**
+and the paired agent conversation, never in a generic decision card. The person requests
+a revision or confirms the recommendation in conversation; Activity only reflects the
+resulting immutable state. Exact hashes and snapshot IDs remain available as audit
+context.
 
 ## Runtime boundary
 
 ```text
-native Preact SPA                           agent MCP client
-  | GET + snapshot SSE                       | project snapshot/proposal
-  | human-only POST                          | exact queued registered execution
+native Preact SPA                           paired agent MCP client
+  | GET + snapshot SSE                       | propose / elicit / queue / execute
+  | no command authority                     | bounded registered operations only
   v                                          v
                  immutable EngineeringProject revisions
                               |
@@ -103,16 +104,16 @@ passive. A provider recomputation is a separately orchestrated agent action with
 identified change set, durable run state, and provenance.
 
 The current BFF serves the CM-01 snapshot and a same-origin SSE stream which announces
-newer persisted revisions. Its narrow same-origin POST appends only human-authorized
-project commands: propose, approve, reject, and queue. The local actor identity is
-self-declared and unauthenticated, so this remains a loopback prototype rather than a
-multi-user authorization system. The route has no provider-execution authority.
+newer persisted revisions. It exposes no product command or provider-execution
+authority. Human intent enters through the paired conversation and consequential
+decisions are bound to exact revisions through signed MCP elicitation.
 
 The same project is visible to agents through the Console MCP server. MCP exposes
-snapshot, proposal, and the narrow execution of an exact human-queued registered V2
-run, but deliberately no approval, rejection, or queue tool. Human and agent commands
-converge on one immutable active store with optimistic revision checks and durable
-idempotency receipts.
+snapshot, proposal, signed human approval or rejection elicitation, server-derived
+queueing, and narrow execution of a registered V2 run. The human never supplies tool
+names or solver payloads, and the agent cannot confirm its own proposal. Every accepted
+command converges on one immutable active store with optimistic revision checks and
+durable idempotency receipts.
 
 For a new idea/specification project, the first V2 run creates a SHA-256-addressed,
 immutable document of the exact approved discovery and reviewed plan: documentary
@@ -122,25 +123,25 @@ baseline is deliberately pre-technical: it is not a SysML model, CAD artifact,
 FEA/simulation result, measurement, requirement verdict, or conformity claim.
 
 The first implemented provider-backed V2 run, `architecture.seed-syson-model@1`, is
-intentionally just as narrow. From exact r1, a server-fixed executor creates a blank SysON project
-container, blank SysML document, and root package, then reads the root package back.
-Only normalized provider identities are captured before the immutable r2 descendant is
-published. The live activity is a small closed sequence, not a generic SysON viewer;
-the agent cannot supply a provider, tool, arguments, SysML text, or result. Each
-non-idempotent creation is durably recorded before dispatch, so an unknown outcome stops
-for review instead of being blindly retried. r2 proves only the editable container
-identity: it is not a system architecture, requirements, CAD, simulation, measurement,
-or a verdict.
+intentionally just as narrow. From exact r1, a server-fixed executor creates a blank
+SysON project container, blank SysML document, and root package, then reads the root
+package back. Only normalized provider identities are captured before the immutable r2
+descendant is published. The live activity is a small closed sequence, not a generic
+SysON viewer; the agent cannot supply a provider, tool, arguments, SysML text, or
+result. Each non-idempotent creation is durably recorded before dispatch, so an unknown
+outcome stops for review instead of being blindly retried. r2 proves only the editable
+container identity: it is not a system architecture, requirements, CAD, simulation,
+measurement, or a verdict.
 
-The source tree also contains the guarded r3
-`architecture.author-inspection-drone@1` executor. It requires that exact r2 seed, the
-same approved discovery's `primary-mission = inspection-controlled` and
-`payload-class = light-inspection-camera` choices, and an empty root before inserting
-one fixed high-level SysML fragment. It must be included in the initial plan because
-planning becomes immutable after r1. This r3 path has not been released. A separate
-disposable local parser/translator and model-tree check passed against loopback
-`mcp-syson 0.5.2` on 2026-08-03, but it was not an r3 project run and supplies no current
-technical, CAD, physics, flight, cost, compliance, or verification evidence.
+The source tree also contains the guarded r3 `architecture.author-inspection-drone@1`
+executor. It requires that exact r2 seed, the same approved discovery's
+`primary-mission = inspection-controlled` and `payload-class = light-inspection-camera`
+choices, and an empty root before inserting one fixed high-level SysML fragment. It must
+be included in the initial plan because planning becomes immutable after r1. This r3
+path has not been released. A separate disposable local parser/translator and model-tree
+check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, but it was not an r3
+project run and supplies no current technical, CAD, physics, flight, cost, compliance,
+or verification evidence.
 
 The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
 build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It
@@ -228,13 +229,12 @@ branch:
     SysON-to-ERP identities and one real build123d geometry, while exposing every
     missing facet;
 11. reloading the shell starts no engineering computation.
-12. **Project** exposes a lightweight review-notification inbox, **Activity** supplies
-    the live evidence and lineage for review, and **Product** routes specification
-    inspection and any correction request to the affected SysON context; explicit human
-    approval, rejection, and bounded work authorization still append immutable project
-    revisions;
-13. agents can advance only an already queued run, and cannot grant themselves approval
-    or queue authority;
+12. **Project** exposes a lightweight notification view, **Activity** supplies the live
+    evidence and lineage for review, and **Product** routes specification inspection to
+    the affected SysON context; correction and consequential human decisions happen in
+    the paired conversation and append immutable project revisions;
+13. agents queue and advance only registered, server-derived runs, and cannot confirm
+    their own proposals;
 14. run completion fails closed until an exact descendant snapshot contains evidence
     that is new or content-changed from the run base;
 15. the completed r6/r10 reference path keeps provider execution, canonical attachment,
@@ -252,5 +252,5 @@ fabrication-release, or certification evidence.
 ## Product rule
 
 Product behavior targets the linked model and native shell. Do not add an iframe panel,
-a presentation-only MCP, or a browser-to-provider escape hatch to compensate for missing
-orchestration.
+a presentation-only MCP, cockpit command buttons, or a browser-to-provider escape hatch
+to compensate for missing orchestration.

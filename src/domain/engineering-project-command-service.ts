@@ -256,6 +256,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
   agent: [
     "project.plan-publish",
     "decision.propose",
+    "agent-run.queue",
     "agent-run.claim",
     "agent-run.progress",
     "agent-run.publish",

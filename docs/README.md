@@ -13,13 +13,13 @@ categories deliberately answer different questions.
 ## How-to guides — achieve a focused task
 
 - [Preview a guided project discovery](how-to/preview-project-discovery.md) starts the
-  MCP-authored pre-project conversation, opens the calm live review surface, and
-  explains the human answer, brief-approval, and approved-brief-to-project handoff
-  boundaries.
+  MCP-authored pre-project conversation, opens the calm live dossier projection, and
+  explains chat-based human confirmation and approved-brief-to-project handoff through
+  MCP elicitation.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
   assembles the observed CM-01 branches, starts the single-shell Preact product surface,
-  follows review notifications into live evidence and SysON context, and explains why
-  project commands are distinct from provider calls and solves.
+  follows agent activity into live evidence and SysON context, and explains why the
+  cockpit observes while the paired conversation controls bounded provider work.
 - [Assemble the CoffeeMachine CM-01 thread](how-to/assemble-coffee-machine-thread.md)
   bootstraps the reviewed SysON, Modelica, and ERPNext branches; explicit runners add
   CAD and the approved DripTray mechanical revision without manufacturing unrelated
@@ -43,7 +43,7 @@ categories deliberately answer different questions.
 ## Reference — look up exact contracts and locations
 
 - [MCP console reference](console.md) documents the console resource, tools, evidence
-  model, agent project-control tools, and authority boundary.
+  model, agent project-control tools, signed MRTR elicitation, and authority boundary.
 - [Workspace map and local ports](reference/workspace-map.md) identifies the workflow,
   scenario-contract plan, observers, UI sources, generated bundle, harness, volumes, and
   every local endpoint.
@@ -61,8 +61,8 @@ categories deliberately answer different questions.
   evidence.
 - [ProjectDiscoverySnapshot contract](reference/project-discovery.md) defines the
   separate pre-project intent, guided questions, sourced answers, proposed brief,
-  immutable revisions, MCP authoring surface, and human-only review and project-shell
-  handoff commands.
+  immutable revisions, MCP authoring surface, chat confirmation, and project-shell
+  handoff.
 - [Candidate mechanical-analysis declaration](reference/mechanical-proof-case.md)
   defines the strict non-executable CM-01 input schema, its limited identity binding,
   and the missing receipt boundary before it can attest a fail-closed execution.
@@ -83,9 +83,10 @@ categories deliberately answer different questions.
 - [Bounded inspection-drone SysON architecture slice](rfcs/inspection-drone-syson-architecture-slice.md)
   records the proposed r3 model fragment, exact one-write executor boundary, fake-client
   test recipe, and the inert-by-default, separately authorized disposable SysON
-  parser/translator conformance harness. It passed once against loopback `mcp-syson
-  0.5.2` on 2026-08-03; that disposable check is not an r3 project run or engineering
-  evidence.
+  parser/translator conformance harness. It passed once against loopback
+  `mcp-syson
+  0.5.2` on 2026-08-03; that disposable check is not an r3 project run or
+  engineering evidence.
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.

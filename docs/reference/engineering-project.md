@@ -34,8 +34,8 @@ durable project plus the status of the first documentary baseline and redacted l
 milestones; `evidence` contains the project, projected `thread` (whose `live` field
 contains current activity), `alignment`, and explicit capabilities. `GET` and SSE create
 only a read model; they do not promote live events into thread evidence or project
-truth. A separate, narrow command route can append project revisions, but it cannot
-manufacture technical provider evidence.
+truth. Project mutations and bounded provider orchestration remain on the paired agent's
+MCP surface.
 
 ## Root fields
 
@@ -45,7 +45,7 @@ manufacture technical provider evidence.
 | `previous`         | Required after revision 1 and always lower than the current revision                                         |
 | `generatedAt`      | ISO 8601 UTC materialization timestamp                                                                       |
 | `project`          | Stable project ID, display name, thread subject ID, and explicit objective                                   |
-| `discoveryHandoff` | Optional exact approved-discovery provenance; only valid for a human-created initial project                 |
+| `discoveryHandoff` | Optional exact human-confirmed discovery provenance for the agent-created initial project shell              |
 | `plan`             | Optional agent-published, unexecuted path grounded in that exact approved discovery                          |
 | `threadSnapshots`  | Exact declared `ThreadSnapshot` revisions; may be empty only before the V2 documentary baseline is published |
 | `phases`           | Ordered project phases; phase status is deliberately absent                                                  |
@@ -69,9 +69,9 @@ different request cannot reuse its command ID or existing project ID.
 This is planning provenance, not engineering evidence. The initial handoff revision may
 have empty phases, work, decisions, runs, approvals, blockers, and `threadSnapshots`.
 Its derived status is `planned`, never a fabricated completion. An agent may later
-publish an unexecuted project path from this exact handoff. The first authorized V2 run
-can then record a documentary baseline; SysON modeling and every technical proof still
-require later authorized work and their own evidence.
+publish an unexecuted project path from this exact handoff. The first bounded V2 run can
+then record a documentary baseline; SysON modeling and every technical proof still
+require their own registered operation and evidence.
 
 ## Agent-published plan and reviewed operations
 
@@ -86,25 +86,24 @@ operation revisions and declared binding names/source kinds; it also supplies th
 durable work title, description, and classification shown to the reviewer. The initial
 registry contains:
 
-| Starting point                                                                 | Exact operation reference                    |
-| ------------------------------------------------------------------------------ | -------------------------------------------- |
-| Idea or specification                                                          | `baseline.from-approved-discovery@1`         |
-| Same initial idea/specification plan; exact documentary r1 required at runtime | `architecture.seed-syson-model@1`            |
-| Same initial idea/specification plan; exact SysON r2 required at runtime       | `architecture.author-inspection-drone@1`     |
-| Existing CAD                                                                   | `baseline.capture-existing-cad@1`            |
-| Existing product                                                               | `baseline.capture-existing-product@1`        |
+| Starting point                                                                 | Exact operation reference                |
+| ------------------------------------------------------------------------------ | ---------------------------------------- |
+| Idea or specification                                                          | `baseline.from-approved-discovery@1`     |
+| Same initial idea/specification plan; exact documentary r1 required at runtime | `architecture.seed-syson-model@1`        |
+| Same initial idea/specification plan; exact SysON r2 required at runtime       | `architecture.author-inspection-drone@1` |
+| Existing CAD                                                                   | `baseline.capture-existing-cad@1`        |
+| Existing product                                                               | `baseline.capture-existing-product@1`    |
 
 For this intake-only planning surface, bindings may refer only to the approved discovery
 itself or to a current provided answer in that same exact discovery. Later operation
 revisions may introduce decision or thread-entity bindings only together with their
 reviewed executor contract; they are not accepted by `project_plan_publish` today.
 
-`architecture.seed-syson-model@1` and
-`architecture.author-inspection-drone@1` may be planned from the same approved
-discovery, but that binding is planning provenance, not a SysON runtime argument. Their
-later execution requires the exact documentary r1 and SysON r2 thread snapshots,
-respectively. The latter must already be in that initial plan: planning cannot be
-revised after r1 has been produced.
+`architecture.seed-syson-model@1` and `architecture.author-inspection-drone@1` may be
+planned from the same approved discovery, but that binding is planning provenance, not a
+SysON runtime argument. Their later execution requires the exact documentary r1 and
+SysON r2 thread snapshots, respectively. The latter must already be in that initial
+plan: planning cannot be revised after r1 has been produced.
 
 These references deliberately expose no provider, tool name, raw input, workflow, or
 evidence payload. Publishing rejects unknown revisions, wrong starting points,
@@ -115,10 +114,10 @@ completed/cancelled work exists. It cannot use a plan revision to erase executio
 review history.
 
 Three operations have trusted executors in the current V2 source slice.
-`baseline.from-approved-discovery@1` has no provider call: after explicit human
-queueing, the trusted backend records the exact approved discovery and reviewed plan as
-a canonical JSON document, fingerprints its bytes with SHA-256, stores the bytes
-immutably, and cites that document from root thread revision 1.
+`baseline.from-approved-discovery@1` has no provider call: after the agent queues the
+ready registered work item, the trusted backend records the exact approved discovery and
+reviewed plan as a canonical JSON document, fingerprints its bytes with SHA-256, stores
+the bytes immutably, and cites that document from root thread revision 1.
 
 `architecture.seed-syson-model@1` is available only after that exact documentary root.
 Its fixed server-owned sequence is `syson_project_create`, then `syson_model_create`
@@ -129,17 +128,16 @@ supplies no provider name, tool name, or provider arguments.
 
 `architecture.author-inspection-drone@1` is available only on the exact r2 container,
 after the exact approved discovery has selected
-`primary-mission = inspection-controlled` and
-`payload-class = light-inspection-camera`. It accepts no caller-authored SysML or
-provider arguments; the server inserts one fixed high-level fragment only after an empty
-root readback, then records a narrow attestation and model readback before it could
-publish r3. The operation is implemented in source and has not been released to the
-running toolchain. Its separately authorized disposable local parser/translator and
-model-tree check passed against loopback `mcp-syson 0.5.2` on 2026-08-03; it was not an
-r3 project execution or engineering evidence. It is not CAD, physics, flight, cost,
-compliance, or a verified requirement result. The two existing-CAD/product
-registry entries remain planning descriptors until their own file/source capture and
-technical-evidence contracts exist.
+`primary-mission = inspection-controlled` and `payload-class = light-inspection-camera`.
+It accepts no caller-authored SysML or provider arguments; the server inserts one fixed
+high-level fragment only after an empty root readback, then records a narrow attestation
+and model readback before it could publish r3. The operation is implemented in source
+and has not been released to the running toolchain. Its separately authorized disposable
+local parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2`
+on 2026-08-03; it was not an r3 project execution or engineering evidence. It is not
+CAD, physics, flight, cost, compliance, or a verified requirement result. The two
+existing-CAD/product registry entries remain planning descriptors until their own
+file/source capture and technical-evidence contracts exist.
 
 ## V2 execution bases, documentary baseline, SysON seed, and guarded r3
 
@@ -300,19 +298,23 @@ no decision timestamp, actor, or rationale. Every decided approval requires all 
 Its evidence references, base snapshot, and input fingerprint must match the decision
 exactly, so approval cannot silently survive changed inputs.
 
-Approval and rejection are human-only operations. They require a rationale and the exact
-proposal fingerprint presented to the operator. An approval resolves only the blockers
-whose linked decisions are all approved. A work item becomes `ready` only when all of
-its decisions, blockers, and work-item dependencies are satisfied.
+Approval and rejection retain human provenance. The agent invokes
+`project_decision_approve` or `project_decision_reject`, but the mutation proceeds only
+after signed MCP elicitation presents the exact proposal fingerprint and the person
+confirms the choice in the paired conversation. There is no direct agent self-approval
+mutation; a conforming MCP host must present the elicitation to the person. An approval
+resolves only the blockers whose linked decisions are all approved. A work item becomes
+`ready` only when all of its decisions, blockers, and work-item dependencies are
+satisfied.
 
 The native cockpit interprets these states by owner rather than grouping them into one
 generic pending bucket: `required` and `rejected` wait on agent preparation; `proposed`
-waits on human review. Only a proposed decision is counted as a human action. The
-presentation rule is intentionally narrower than the command contract: **Project** only
-shows a lightweight review notification; **Activity** supplies the evidence and lineage
-for review; and **Product** is the SysON/specification inspection context from which a
-correction can be scoped with the agent. The Workbench exposes no general manual
-proposal or fallback data-entry form in that inbox.
+waits on a conversational human decision. The presentation rule is intentionally
+narrower than the command contract: **Project** only shows a lightweight notification;
+**Activity** supplies the evidence and lineage for review; and **Product** is the
+SysON/specification inspection context from which a correction can be scoped with the
+agent. The Workbench exposes no decision button, manual proposal, or fallback data-entry
+form.
 
 ### Blockers
 
@@ -329,9 +331,11 @@ Timestamps must follow that lifecycle, and a completed run must cite exact threa
 evidence. A V2 run binds its normalized inputs to an exact discriminated `basis` and
 SHA-256 fingerprint.
 
-Queueing is a human authorization over an already bounded `ready` work item. The command
-creates a durable `queued` run; it does not execute a provider. The agent can invoke the
-narrow executor only for that exact queued run. It claims the run before
+Queueing is an agent mutation over an already bounded `ready` work item.
+`project_agent_run_queue` derives the run identity, summary, basis, and operation from
+durable server state; the caller cannot choose a provider or submit execution payloads.
+The command creates a durable `queued` run but does not execute a provider. The agent
+can invoke the narrow executor only for that exact queued run. It claims the run before
 materialization, records redacted progress, persists the capture and resulting snapshot,
 reads the snapshot back, then completes or fails the run. `statusHistory` records public
 lifecycle facts and summaries, not chain-of-thought.
@@ -347,10 +351,9 @@ that is new or content-changed from the base. A newer parallel branch is rejecte
 
 The source-only inspection-drone r3 executor adds a narrower pre-queue gate: exact r2,
 its hash-valid seed capture, and the same approved discovery's explicit
-`primary-mission = inspection-controlled` and
-`payload-class = light-inspection-camera` answers. It then refuses a non-empty root
-rather than merging model content. Those gates do not make a real SysON run or a
-technical claim; none has been recorded for r3.
+`primary-mission = inspection-controlled` and `payload-class = light-inspection-camera`
+answers. It then refuses a non-empty root rather than merging model content. Those gates
+do not make a real SysON run or a technical claim; none has been recorded for r3.
 
 ## Command and authority surfaces
 
@@ -360,39 +363,39 @@ conflict instead of overwriting newer work. The durable receipt binds a command 
 its full request fingerprint and resulting immutable snapshot. An identical retry
 returns the original result; reusing the ID with different arguments is an error.
 
-The transports grant different fixed capabilities:
+The surfaces grant different fixed capabilities:
 
-| Surface               | Allowed project operations                                                                                                          | Explicitly absent                                    |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Passive browser reads | `GET /api/thread/workbench` and snapshot SSE                                                                                        | Every mutation and provider call                     |
-| Human browser command | Propose, approve, reject, and queue                                                                                                 | Publish a path, claim, run lifecycle, provider calls |
-| Agent MCP tools       | Snapshot, publish/revise an unexecuted plan, propose, and execute the exact human-queued registered V2 run                         | Approve, reject, queue, arbitrary provider calls     |
+| Surface              | Allowed operations                                                                                         | Explicitly absent                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Cockpit browser      | `GET /api/thread/workbench` and snapshot SSE                                                               | Every mutation and provider call           |
+| Paired agent MCP     | Snapshot, plan, propose, signed human elicitation, server-derived queueing, and exact registered execution | Arbitrary provider calls or evidence input |
+| Provider MCP/backend | Calls selected by one registered executor, validated capture, immutable publication, and read-back         | Human intent and self-certified verdicts   |
 
-`decision.propose` is a narrow command capability, not a promise of a generic browser
-data-entry workflow. The Project review inbox does not expose manual technical proposal
-or fallback controls; it directs the reviewer to Activity and, when technical work needs
-to change, to the relevant Product/SysON specification context. Approval, rejection, and
-queue authorization remain explicit human-only boundaries even when the agent prepared
-the recommendation.
-
-The human route is `POST /api/project/commands`. It accepts only exact same-origin JSON
-requests carrying `X-Casys-Operator-Intent: explicit`; the request body cannot upgrade
-its authority. Its local actor ID is self-declared and recorded for audit, but this
-prototype does **not** authenticate that identity. Do not expose the loopback service as
-an authenticated multi-user control plane.
+The Project notification view does not expose manual technical proposals, approvals,
+revision requests, queue buttons, or fallback controls. It directs the reviewer to
+Activity and the relevant Product/SysON context. The person then explains intent or
+answers the exact elicitation in the paired conversation.
 
 Agent mutation receipts use the authenticated MCP subject when one is available.
 Otherwise `claimedBy` is derived from the client's self-declared MCP name and version;
 it is an audit label, not proof of identity. Project mutation tools are therefore a
 loopback-only prototype surface until transport authentication is required.
 
-The agent surface is on the Console MCP server and exposes the bounded planning and run
-tools, including `project_agent_run_execute`. That executor accepts only project ID,
-expected revision, run ID, command ID, and issue time. It resolves the basis, operation,
-and bindings from durable server state; callers cannot supply a provider name, tool
-name, raw argument, workflow, result, or evidence reference. There is intentionally no
-MCP approval, rejection, queue, or generic provider-execution tool. Conversely, there is
-no browser command for publishing an agent path or completing a run.
+The agent surface is on the Console MCP server and exposes bounded planning, decision,
+queue, and execution tools. `project_decision_approve` and `project_decision_reject`
+require a signed, framework-verified MRTR retry after the MCP host elicits the person's
+response. `project_agent_run_queue` derives all execution identity and basis fields from
+the ready work item. `project_agent_run_execute` accepts only the exact queued run and
+command metadata. The backend resolves the operation and bindings from durable state;
+callers cannot supply a provider name, raw argument, workflow, result, or evidence
+reference. The browser has no complementary command surface.
+
+`MCP_MRTR_SIGNING_KEY` signs the opaque elicitation `requestState`; it does not
+authenticate a person. Without an explicit key, loopback development uses a
+process-ephemeral key and pending confirmations become invalid on restart. Replay state
+is currently process-local, so a shared signing key alone is not sufficient for
+multi-instance operation. That deployment needs a shared, durable replay store with
+atomic consume semantics.
 
 The source dispatcher materializes only three reviewed operations.
 `baseline.from-approved-discovery@1` has no provider invocation and persists its
@@ -403,9 +406,9 @@ The inspection-drone operation adds only its fixed high-level fragment to the ex
 empty r2 root after its exact discovery gates; it does not accept arbitrary SysML. It is
 code-implemented but not released. Its disposable local parser/translator and model-tree
 check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, but it was not an r3
-project run or engineering evidence.
-Neither a browser queue command nor an MCP planning command is an indirect CAD, FEA,
-Modelica, SysON, or ERPNext endpoint, and no generic provider execution is available.
+project run or engineering evidence. Neither MCP planning nor queueing is an indirect
+CAD, FEA, Modelica, SysON, or ERPNext endpoint, and no generic provider execution is
+available.
 
 ## CM-01 baseline
 
@@ -478,8 +481,9 @@ tracked seed, and a claimed but unpublished head fails closed.
 
 Every read validates again. Every write extends the exact current `id` and revision,
 records `previous`, and passes the full domain validator before publication. Loading or
-following the Workbench is still passive; only an explicit authorized command can
-advance project state, and no project-store method invokes an engineering provider.
+following the Workbench is still passive; only a validated agent MCP command can advance
+project state, with signed chat elicitation where human authority is required. No
+project-store method invokes an engineering provider.
 
 The V2 documentary capture bytes are a separate immutable object under
 `state/local/approved-discovery-captures/`, named by their SHA-256 digest. Existing

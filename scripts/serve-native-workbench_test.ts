@@ -3,7 +3,6 @@ import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
-import { EngineeringProjectCommandService } from "../src/domain/engineering-project-command-service.ts";
 import { validateEngineeringProjectSnapshot } from "../src/domain/engineering-project-validation.ts";
 import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
 import { INSPECTION_DRONE_ARCHITECTURE_OPERATION } from "../src/domain/inspection-drone-architecture.ts";
@@ -77,8 +76,7 @@ Deno.test("native Workbench handler serves the persisted projection without exec
   assertEquals(body.project.project.subjectId, snapshot.subject.id);
   assertEquals(body.thread.source, "observed");
   assertEquals(body.thread.requirements, []);
-  assertEquals(body.capabilities.operatorCommands.enabled, false);
-  assertEquals(body.capabilities.operatorCommands.intents, []);
+  assertEquals("capabilities" in body, false);
   assertEquals(store.latestCalls, 1);
   assertEquals(store.saveCalls, 0);
   assertEquals(projectStore.getCalls, 1);
@@ -97,6 +95,10 @@ Deno.test("native Workbench handler serves the persisted projection without exec
   );
   assertEquals(rejected.status, 405);
   assertEquals(rejected.headers.get("Allow"), "GET");
+  const commandRoute = await handler(
+    new Request("http://localhost/api/project/commands", { method: "POST" }),
+  );
+  assertEquals(commandRoute.status, 404);
 });
 
 Deno.test("native Workbench serves a planning-only project without borrowing the current thread", async () => {
@@ -121,8 +123,7 @@ Deno.test("native Workbench serves a planning-only project without borrowing the
   assertEquals(body.project.threadSnapshots, []);
   assertEquals(body.planning.technicalBaseline.status, "not-created");
   assertEquals("thread" in body, false);
-  assertEquals(body.capabilities.operatorCommands.enabled, false);
-  assertEquals(body.capabilities.operatorCommands.intents, []);
+  assertEquals("capabilities" in body, false);
   assertEquals(store.latestCalls, 0);
 });
 
@@ -910,255 +911,6 @@ Deno.test("native Workbench SSE emits a complete replacement when only the proje
   assertStringIncludes(event, '"revision":2');
   assertStringIncludes(event, `"id":"${snapshot.id}"`);
   await reader.cancel();
-});
-
-Deno.test("native Workbench applies explicit same-origin operator commands with CAS, replay, and SSE", async () => {
-  const project = validateEngineeringProjectSnapshot(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/projects/coffee-machine-cm01.project.json",
-      ),
-    ),
-  );
-  const thread = validateThreadSnapshot(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
-      ),
-    ),
-  );
-  const projectStore = new ReadOnlyProjectStore(project);
-  const commands = new EngineeringProjectCommandService(
-    projectStore,
-    undefined,
-    () => "2026-08-01T14:00:00.000Z",
-  );
-  const handler = createNativeWorkbenchHandler({
-    store: new ReadOnlyStore(thread),
-    projectStore,
-    projectCommands: commands,
-    projectSnapshots: new VersionedReadOnlyStore(thread, [thread]),
-    subjectId: project.project.id,
-    html: "unused",
-    pollIntervalMs: 5,
-  });
-  const command = {
-    schemaVersion: "engineering-project-command/1.0",
-    commandId: "operator-proposal-1",
-    projectId: project.project.id,
-    expectedRevision: 1,
-    issuedAt: "2026-08-01T21:59:58+08:00",
-    actor: { id: "engineer-erwan" },
-    command: {
-      type: "decision.propose",
-      decisionId: "review-mechanical-proof-case",
-      proposal: {
-        summary: "Use the reviewed aluminium material card.",
-        parameters: [{
-          key: "youngs-modulus",
-          label: "Young's modulus",
-          value: 69,
-          unit: "GPa",
-        }],
-      },
-    },
-  };
-
-  const applied = await handler(operatorRequest(command));
-  assertEquals(applied.status, 200);
-  const composite = await applied.json();
-  assertEquals(composite.schemaVersion, "engineering-workbench/0.2");
-  assertEquals(composite.project.revision, 2);
-  assertEquals(
-    composite.project.commandReceipts[0].issuedAt,
-    "2026-08-01T13:59:58.000Z",
-  );
-  assertEquals(composite.capabilities.operatorCommands.expectedRevision, 2);
-  assertEquals(composite.capabilities.operatorCommands.enabled, true);
-  assertEquals(
-    composite.project.decisions.find((item: { id: string }) =>
-      item.id === "review-mechanical-proof-case"
-    ).proposal.parameters[0],
-    {
-      key: "youngs-modulus",
-      label: "Young's modulus",
-      value: 69,
-      unit: "GPa",
-    },
-  );
-
-  const replay = await handler(operatorRequest(command));
-  assertEquals(replay.status, 200);
-  assertEquals((await replay.json()).project.revision, 2);
-
-  const conflict = await handler(operatorRequest({
-    ...command,
-    commandId: "stale-proposal-2",
-  }));
-  assertEquals(conflict.status, 409);
-  assertEquals(await conflict.json(), {
-    error: "stale_revision",
-    message:
-      "Engineering project coffee-machine-cm01 expected revision 1, current revision is 2.",
-    expectedRevision: 1,
-    actualRevision: 2,
-  });
-
-  const commandIdConflict = await handler(operatorRequest({
-    ...command,
-    command: {
-      ...command.command,
-      proposal: {
-        ...command.command.proposal,
-        summary: "A different retry payload.",
-      },
-    },
-  }));
-  assertEquals(commandIdConflict.status, 409);
-  assertEquals((await commandIdConflict.json()).error, "command_id_conflict");
-
-  const missingOrigin = await handler(operatorRequest(command, {
-    Origin: null,
-  }));
-  assertEquals(missingOrigin.status, 403);
-  const reboundHost = await handler(operatorRequest(command, {
-    Origin: "http://evil.example:5173",
-  }, "http://evil.example:5173/api/project/commands"));
-  assertEquals(reboundHost.status, 403);
-  assertEquals((await reboundHost.json()).error, "loopback_host_required");
-  const missingIntent = await handler(operatorRequest(command, {
-    "X-Casys-Operator-Intent": null,
-  }));
-  assertEquals(missingIntent.status, 403);
-  const wrongContentType = await handler(operatorRequest(command, {
-    "Content-Type": "text/plain",
-  }));
-  assertEquals(wrongContentType.status, 415);
-
-  let current = composite;
-  const materialFingerprint = current.project.decisions.find(
-    (item: { id: string }) => item.id === "review-mechanical-proof-case",
-  ).inputFingerprint;
-  current = await applyHumanCommand(
-    "reject-material-1",
-    2,
-    {
-      type: "decision.reject",
-      decisionId: "review-mechanical-proof-case",
-      rationale: "The material card needs a named source before approval.",
-      inputFingerprint: materialFingerprint,
-    },
-  );
-  assertEquals(
-    current.project.decisions.find((item: { id: string }) =>
-      item.id === "review-mechanical-proof-case"
-    ).status,
-    "rejected",
-  );
-
-  current = await proposeAndApprove(
-    "review-mechanical-proof-case",
-    current.project.revision,
-  );
-  assertEquals(current.project.revision, 5);
-
-  current = await applyHumanCommand(
-    "queue-mechanical-verification-1",
-    current.project.revision,
-    {
-      type: "agent-run.queue",
-      workItemId: "verify-current-mechanical-design",
-      summary: "Queue mechanical verification with all reviewed inputs.",
-    },
-  );
-  assertEquals(current.project.revision, 6);
-  assertEquals(current.project.agentRuns.at(-1), {
-    id: "run:queue-mechanical-verification-1",
-    workItemId: "verify-current-mechanical-design",
-    status: "queued",
-    summary: "Queue mechanical verification with all reviewed inputs.",
-    queuedAt: "2026-08-01T14:00:00.000Z",
-    baseSnapshot: project.threadSnapshots[0],
-    inputFingerprint: current.project.agentRuns.at(-1).inputFingerprint,
-    evidenceRefs: [],
-    statusHistory: [{
-      commandId: "queue-mechanical-verification-1",
-      status: "queued",
-      at: "2026-08-01T14:00:00.000Z",
-      actor: { id: "engineer-erwan", origin: "human" },
-      summary: "Queue mechanical verification with all reviewed inputs.",
-    }],
-  });
-  assertEquals(
-    current.project.blockers.every((item: { status: string }) =>
-      item.status === "resolved"
-    ),
-    true,
-  );
-
-  const events = await handler(
-    new Request("http://localhost/api/thread/workbench/events", {
-      headers: { "Last-Event-ID": `1:${thread.revision}:0` },
-    }),
-  );
-  const reader = events.body!.getReader();
-  const event = new TextDecoder().decode((await reader.read()).value);
-  assertStringIncludes(event, `id: 6:${thread.revision}:0`);
-  assertStringIncludes(event, '"commandId":"queue-mechanical-verification-1"');
-  await reader.cancel();
-
-  async function proposeAndApprove(
-    decisionId: string,
-    expectedRevision: number,
-  ) {
-    const proposed = await applyHumanCommand(
-      `propose-${decisionId}-${expectedRevision}`,
-      expectedRevision,
-      {
-        type: "decision.propose",
-        decisionId,
-        proposal: {
-          summary: `Reviewed proposal for ${decisionId}.`,
-          parameters: [{
-            key: "reviewed-value",
-            label: "Reviewed value",
-            value: "Defined in the controlled input record",
-          }],
-        },
-      },
-    );
-    const fingerprint = proposed.project.decisions.find(
-      (item: { id: string }) => item.id === decisionId,
-    ).inputFingerprint;
-    return await applyHumanCommand(
-      `approve-${decisionId}-${proposed.project.revision}`,
-      proposed.project.revision,
-      {
-        type: "decision.approve",
-        decisionId,
-        rationale: "Reviewed against the displayed exact input fingerprint.",
-        inputFingerprint: fingerprint,
-      },
-    );
-  }
-
-  async function applyHumanCommand(
-    commandId: string,
-    expectedRevision: number,
-    humanCommand: Record<string, unknown>,
-  ) {
-    const response = await handler(operatorRequest({
-      schemaVersion: "engineering-project-command/1.0",
-      commandId,
-      projectId: project.project.id,
-      expectedRevision,
-      issuedAt: "2026-08-01T13:59:58.000Z",
-      actor: { id: "engineer-erwan" },
-      command: humanCommand,
-    }));
-    assertEquals(response.status, 200);
-    return await response.json();
-  }
 });
 
 class ReadOnlyStore implements ThreadSnapshotStore {
@@ -1957,25 +1709,4 @@ function liveCadNode(freshness: "running" | "fresh") {
     recordedAt: "2026-08-01T10:00:00.000Z",
     selection: { kind: "artifact" as const, id: "coffee-machine-cad-live" },
   };
-}
-
-function operatorRequest(
-  body: unknown,
-  overrides: Record<string, string | null> = {},
-  url = "http://localhost/api/project/commands",
-): Request {
-  const headers = new Headers({
-    Origin: "http://localhost",
-    "Content-Type": "application/json",
-    "X-Casys-Operator-Intent": "explicit",
-  });
-  for (const [name, value] of Object.entries(overrides)) {
-    if (value === null) headers.delete(name);
-    else headers.set(name, value);
-  }
-  return new Request(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
 }

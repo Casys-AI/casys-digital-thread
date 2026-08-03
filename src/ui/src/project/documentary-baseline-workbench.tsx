@@ -4,11 +4,6 @@ import type { JSX } from "preact";
 import type { ThreadStreamStatus } from "../thread/client.ts";
 import type { EngineeringDocumentaryWorkbenchSnapshot } from "../thread/types.ts";
 import { DocumentaryTechnicalStartActivity } from "./documentary-technical-start-activity.tsx";
-import type {
-  OperatorCommandCapabilities,
-  ProjectOperatorCommand,
-} from "./command-contract.ts";
-import type { ProjectCommandFeedback } from "./control-center.tsx";
 import {
   buildProjectBrief,
   type ProjectBrief,
@@ -24,22 +19,9 @@ import {
 export function DocumentaryBaselineWorkbench({
   workbench,
   streamStatus,
-  capability,
-  actorId,
-  onActorIdChange,
-  feedback,
-  onCommand,
 }: {
   workbench: EngineeringDocumentaryWorkbenchSnapshot;
   streamStatus: ThreadStreamStatus | "snapshot";
-  capability?: OperatorCommandCapabilities;
-  actorId: string;
-  onActorIdChange: (value: string) => void;
-  feedback: ProjectCommandFeedback;
-  onCommand: (
-    commandKey: string,
-    command: ProjectOperatorCommand,
-  ) => Promise<void>;
 }): JSX.Element {
   const project = workbench.project;
   const brief = buildProjectBrief(project);
@@ -47,14 +29,6 @@ export function DocumentaryBaselineWorkbench({
   const { record } = documentary;
   const technicalStart = documentary.technicalStart;
   const statusSeal = documentaryProjectStatusSeal(brief, technicalStart);
-  const readySeed = project.workItems.find((item) =>
-    item.status === "ready" &&
-    item.operation?.id === "architecture.seed-syson-model" &&
-    item.operation.version === "1"
-  );
-  const canAuthorizeSeed = capability?.enabled === true &&
-    capability.intents.includes("agent-run.queue") && readySeed !== undefined;
-
   return (
     <div class="thread-workbench mcp-view-surface documentary-baseline-workbench">
       <header class="thread-cockpit-header">
@@ -132,62 +106,6 @@ export function DocumentaryBaselineWorkbench({
 
         {technicalStart && (
           <DocumentaryTechnicalStartActivity technicalStart={technicalStart} />
-        )}
-
-        {canAuthorizeSeed && readySeed && (
-          <section
-            class="documentary-technical-start-authorization"
-            aria-labelledby="documentary-technical-start-authorization-title"
-          >
-            <div>
-              <p>READY FOR YOUR REVIEW</p>
-              <h3 id="documentary-technical-start-authorization-title">
-                Authorize the first editable system-model container
-              </h3>
-              <span>
-                The agent can only create and read back a blank SysON project,
-                document, and root package. It will not add a drone
-                architecture, requirement, CAD model, simulation, or verdict.
-              </span>
-            </div>
-            <label>
-              <span>Reviewer identity</span>
-              <input
-                value={actorId}
-                onInput={(event) =>
-                  onActorIdChange(
-                    (event.currentTarget as HTMLInputElement).value,
-                  )}
-                placeholder="Your name or review ID"
-                autocomplete="name"
-              />
-            </label>
-            <button
-              type="button"
-              class="documentary-technical-start-authorize-button"
-              disabled={!actorId.trim() || feedback.state === "submitting"}
-              onClick={() =>
-                onCommand(`queue:${readySeed.id}`, {
-                  type: "agent-run.queue",
-                  workItemId: readySeed.id,
-                  summary:
-                    "Human authorized the bounded SysON model-container seed.",
-                })}
-            >
-              {feedback.state === "submitting"
-                ? "Recording authorization…"
-                : "Authorize model-container start"}
-            </button>
-            {feedback.state !== "idle" && feedback.message && (
-              <small
-                class="documentary-technical-start-command-feedback"
-                data-state={feedback.state}
-                role={feedback.state === "error" ? "alert" : "status"}
-              >
-                {feedback.message}
-              </small>
-            )}
-          </section>
         )}
 
         <section
@@ -281,7 +199,8 @@ export function DocumentaryBaselineWorkbench({
                 <>
                   {documentary.technicalEvidence.message}{" "}
                   Ask the agent to propose a concrete model, CAD or analysis
-                  step, then review its scope before authorizing it.
+                  step in your paired conversation. Its recorded scope and
+                  results will appear here.
                 </>
               )}
           </p>

@@ -157,15 +157,6 @@ export const COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE:
       projectThreadRevision: 1,
       currentThreadRevision: 1,
     },
-    capabilities: {
-      operatorCommands: {
-        enabled: false,
-        endpoint: "/api/project/commands",
-        intents: [],
-        explicitIntentHeader: "X-Casys-Operator-Intent",
-        expectedRevision: 1,
-      },
-    },
   };
 
 function phase(

@@ -25,6 +25,7 @@ import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-
 import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/live-thread-update-store.ts";
 import { FileProjectDiscoveryRevisionStore } from "./src/adapters/project-discovery-store.ts";
+import { FileEngineeringProjectRevisionStore } from "./src/adapters/engineering-project-store.ts";
 import { createEngineeringProjectCommandRuntime } from "./src/adapters/engineering-project-command-runtime.ts";
 import {
   FileExactThreadSnapshotDirectory,
@@ -41,6 +42,10 @@ import {
   ProjectDiscoveryCommandError,
   ProjectDiscoveryCommandService,
 } from "./src/domain/project-discovery-command-service.ts";
+import {
+  ProjectDiscoveryHandoffError,
+  ProjectDiscoveryHandoffService,
+} from "./src/domain/project-discovery-handoff-service.ts";
 import type {
   FleetManifest,
   ObservedRunCatalog,
@@ -101,6 +106,8 @@ export interface CreateConsoleServerOptions {
   projectControl?: ProjectControlToolDependencies | false;
   /** Defaults to the same loopback-only trust boundary as project control. */
   projectDiscovery?: ProjectDiscoveryToolDependencies | false;
+  /** Fixed in tests/deployments; local runs otherwise use a process-ephemeral key. */
+  mrtrSigningKey?: string;
   projectId?: string;
   projectPath?: string;
   activeProjectDirectory?: string;
@@ -151,7 +158,7 @@ export async function createConsoleServer(
     ? undefined
     : options.projectDiscovery ?? createProjectDiscovery(options);
   const instructions = projectControl || projectDiscovery
-    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a human-reviewable brief without creating technical evidence; agents can never approve or reject that brief. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery, but every work item must cite a reviewed server-side operation and the call cannot execute a provider, approve a decision, queue work or create evidence. project_agent_run_execute can only advance a human-queued, registered V2 run through a server-owned fixed executor; it accepts no provider arguments and can record only the immutable documentary baseline, a blank read-back SysON project/document/root-package identity, or one fixed high-level inspection-drone architecture in that exact empty container. It cannot add arbitrary SysML, CAD, simulation, measurement, verification or compliance proof. Agents cannot approve/reject project decisions or queue work: those human actions exist only in the same-origin Workbench command channel. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
+    ? "Casys engineering control plane. Fleet tools are read-only. project_discovery_* captures pre-project intent, guided questions, sourced answers and a reviewable brief without creating technical evidence. An agent may revise the draft, but cannot self-approve it: project_discovery_brief_confirm requires an exact confirmation through MCP elicitation presented by the paired host. The signed retry protects request integrity and replay; user authentication remains the host's responsibility. After that confirmation, the agent may create only the empty project shell. project_snapshot reads durable approved-project truth. project_plan_publish lets an agent publish or revise unexecuted planning state from an exact approved discovery; every work item cites a reviewed server-side operation. The agent may queue and execute only those registered operations, with no provider name, arbitrary arguments, result payload, or fabricated evidence supplied by the caller. Consequential engineering decisions use the same host-presented MCP elicitation flow; the agent cannot call the underlying human-authority mutation directly. The cockpit is a read-only projection of project state, activity, lineage and results. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -160,6 +167,14 @@ export async function createConsoleServer(
     maxConcurrent: 8,
     backpressureStrategy: "queue",
     validateSchema: true,
+    ...(projectControl || projectDiscovery
+      ? {
+        mrtr: {
+          signingKey: options.mrtrSigningKey ?? env("MCP_MRTR_SIGNING_KEY") ??
+            ephemeralMrtrSigningKey(),
+        },
+      }
+      : {}),
     instructions,
     logger: options.logger,
     toolErrorMapper: (error) =>
@@ -167,6 +182,7 @@ export async function createConsoleServer(
         (error.name === "ControlPlaneNotFoundError" ||
           error instanceof EngineeringProjectCommandError ||
           error instanceof ProjectDiscoveryCommandError ||
+          error instanceof ProjectDiscoveryHandoffError ||
           error instanceof TypeError)
         ? error.message
         : null,
@@ -306,9 +322,13 @@ function createProjectDiscovery(
   const discoveries = new FileProjectDiscoveryRevisionStore(
     options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
   );
+  const projects = new FileEngineeringProjectRevisionStore(
+    options.activeProjectDirectory ?? DEFAULT_ACTIVE_PROJECT_DIRECTORY,
+  );
   return {
     discoveries,
     commands: new ProjectDiscoveryCommandService(discoveries),
+    handoff: new ProjectDiscoveryHandoffService(discoveries, projects),
   };
 }
 
@@ -423,6 +443,11 @@ function env(name: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function ephemeralMrtrSigningKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 function fileExists(path: string): boolean {
