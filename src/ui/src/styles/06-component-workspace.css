@@ -1,0 +1,981 @@
+/* Facettes produit : visualiseur CAD, trace de piece, SysON, ERPNext. */
+
+.component-workspace {
+  min-width: 0;
+  border: 1px solid #303836;
+  background: rgba(12, 15, 15, 0.97);
+}
+
+.component-workspace-header,
+.provider-surface-header,
+.cad-viewer-evidence {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+}
+
+.component-workspace-header {
+  min-height: 76px;
+  padding: var(--space-14) var(--space-16);
+  border-bottom: 1px solid #303836;
+}
+
+.component-workspace-header p,
+.provider-surface-header p {
+  margin: 0 0 var(--space-4);
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.12em;
+}
+
+.component-workspace-header h4,
+.provider-surface-header h5 {
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+.component-workspace-header h4 {
+  font-size: var(--text-xl);
+}
+
+.component-workspace-count {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: end;
+  gap: var(--space-4) var(--space-10);
+}
+
+.component-workspace-count strong {
+  grid-row: 1 / span 2;
+  color: var(--green);
+  font: 500 var(--text-4xl)/0.9 var(--mono);
+}
+
+.component-workspace-count span {
+  color: var(--muted);
+  font: 600 var(--text-3xs)/1.2 var(--mono);
+  text-transform: uppercase;
+}
+
+.component-provider-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid #303836;
+}
+
+.component-provider-tabs button {
+  min-width: 0;
+  min-height: 60px;
+  display: grid;
+  align-content: center;
+  gap: var(--space-4);
+  padding: var(--space-10) var(--space-14);
+  border: 0;
+  border-right: 1px solid #303836;
+  color: var(--muted);
+  text-align: left;
+  background: #101413;
+  cursor: pointer;
+}
+
+.component-provider-tabs button:last-child {
+  border-right: 0;
+}
+.component-provider-tabs span {
+  font-weight: 800;
+}
+
+.component-provider-tabs small {
+  overflow: hidden;
+  font: 600 var(--text-3xs)/1.2 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-trace-strip {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-24);
+  padding: var(--space-12) var(--space-16);
+  border-bottom: 1px solid #303836;
+  background: #0b0e0e;
+}
+
+.part-trace-step {
+  position: relative;
+  min-width: 0;
+}
+
+.part-trace-connector {
+  position: absolute;
+  width: 1.4rem;
+  height: 1px;
+  top: 50%;
+  left: -1.4rem;
+  background: #46514c;
+}
+
+.part-trace-step button {
+  width: 100%;
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid #343c39;
+  color: var(--text-soft);
+  text-align: left;
+  background: #121615;
+  cursor: pointer;
+}
+
+.part-trace-step button[aria-current="true"] {
+  border-color: var(--green);
+}
+
+.part-trace-step button[data-state="gap"] {
+  border-style: dashed;
+  color: #b79d71;
+}
+
+.part-trace-step i {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--green);
+  border-radius: 50%;
+  color: var(--green);
+  font: normal 700 0.65rem/1 var(--mono);
+}
+
+.part-trace-step button[data-state="gap"] i {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.part-trace-step button span {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.part-trace-step small {
+  color: var(--muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.part-trace-step strong {
+  overflow: hidden;
+  font: 500 var(--text-2xs)/1.2 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.component-provider-surface {
+  min-height: 455px;
+  padding: var(--space-16);
+}
+
+.provider-surface-header {
+  min-height: 58px;
+  margin-bottom: var(--space-14);
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid #2e3633;
+}
+
+.provider-surface-header h5 {
+  font-size: var(--text-lg);
+}
+
+.provider-surface-header > code,
+.provider-surface-header > span {
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--muted);
+  font: 500 var(--text-3xs)/1.4 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-surface-header > button {
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid #3e4944;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  cursor: pointer;
+}
+
+.syson-root-node {
+  width: min(330px, 100%);
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 auto var(--space-28);
+  padding: var(--space-12) var(--space-16);
+  border: 1px solid #70806e;
+  border-left: 3px solid var(--green);
+  background: #18201b;
+}
+
+.syson-root-node::after {
+  content: "";
+  position: absolute;
+}
+
+.syson-root-node span,
+.syson-root-node small {
+  color: var(--muted);
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+}
+
+.syson-part-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-10);
+}
+
+.syson-part-grid::before {
+  content: "";
+  position: absolute;
+  height: 1.3rem;
+  top: -1.3rem;
+  left: 50%;
+  border-left: 1px solid #46514c;
+}
+
+.syson-part-grid button {
+  min-width: 0;
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4) var(--space-8);
+  padding: var(--space-10);
+  border: 1px solid #35403c;
+  color: var(--text-soft);
+  text-align: left;
+  background: #121716;
+  cursor: pointer;
+}
+
+.syson-part-grid button.is-selected,
+.erp-bom-row.is-selected {
+  border-color: var(--green);
+}
+
+.syson-part-grid button[data-state="missing"] {
+  border-style: dashed;
+}
+
+.syson-part-grid button > span {
+  color: var(--green);
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+}
+
+.syson-part-grid button strong,
+.syson-part-grid button small,
+.syson-part-grid button code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.syson-part-grid button small,
+.syson-part-grid button code {
+  grid-column: 2;
+  color: var(--muted);
+  font: 500 var(--text-3xs)/1.2 var(--mono);
+}
+
+.erp-bom-table {
+  border: 1px solid #303936;
+}
+
+.erp-bom-row {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(120px, 0.9fr) minmax(150px, 1.25fr) 48px
+    70px;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: 42px;
+  padding: var(--space-8) var(--space-10);
+  border: 0;
+  border-bottom: 1px solid #29322f;
+  color: var(--text-soft);
+  text-align: left;
+  background: #111514;
+}
+
+button.erp-bom-row {
+  cursor: pointer;
+}
+
+.erp-bom-row:last-child {
+  border-bottom: 0;
+}
+
+.erp-bom-head {
+  min-height: 32px;
+  color: var(--muted);
+  background: #191e1c;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.erp-bom-row code {
+  overflow: hidden;
+  color: #c5cdc7;
+  font-size: var(--text-3xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-bom-row strong {
+  font-size: var(--text-xs);
+}
+
+.erp-trace-state {
+  color: var(--green);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  text-transform: uppercase;
+}
+
+.erp-bom-row[data-state="missing"] .erp-trace-state {
+  color: var(--amber);
+}
+
+.cad-viewer-shell {
+  border: 1px solid #303936;
+}
+
+.cad-scope-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-12);
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid rgba(116, 171, 173, 0.32);
+  color: #939d98;
+  background: rgba(116, 171, 173, 0.055);
+}
+
+.cad-scope-notice > span {
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid rgba(116, 171, 173, 0.45);
+  color: var(--thread-blue);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.cad-scope-notice > p {
+  margin: 0;
+  font-size: var(--text-3xs);
+  line-height: 1.45;
+}
+
+.cad-viewer {
+  position: relative;
+  height: clamp(360px, 47vh, 570px);
+  overflow: hidden;
+}
+
+.cad-viewer-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.cad-viewer-canvas canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cad-viewer-state {
+  position: absolute;
+  z-index: 2;
+  right: 0.65rem;
+  bottom: 0.65rem;
+  padding: var(--space-6) var(--space-8);
+  font: 600 var(--text-3xs)/1 var(--mono);
+  pointer-events: none;
+}
+
+.cad-viewer-state[data-state="error"] {
+  color: var(--red);
+}
+
+.cad-axis {
+  position: absolute;
+  z-index: 2;
+  left: 0.7rem;
+  bottom: 0.65rem;
+  display: flex;
+  gap: var(--space-4);
+  pointer-events: none;
+}
+
+.cad-axis i {
+  width: 21px;
+  height: 21px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #3d4944;
+  font: normal 700 0.49rem/1 var(--mono);
+}
+
+.cad-viewer-evidence {
+  align-items: stretch;
+  border-top: 1px solid #303936;
+  background: #111514;
+}
+
+.cad-viewer-evidence > div {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-12);
+}
+
+.cad-viewer-evidence > div + div {
+  border-left: 1px solid #303936;
+}
+
+.cad-viewer-evidence small {
+  color: var(--muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.cad-viewer-evidence strong {
+  font-size: var(--text-xs);
+}
+
+.cad-viewer-evidence code {
+  overflow: hidden;
+  color: var(--green);
+  font-size: var(--text-3xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cad-trace-gap,
+.component-empty {
+  min-height: 370px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-12);
+  padding: var(--space-32);
+  border: 1px dashed #514737;
+  text-align: center;
+}
+
+.cad-trace-gap > span,
+.component-empty > span {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font: 700 var(--text-sm)/1 var(--mono);
+}
+
+.cad-trace-gap h5,
+.component-empty h4 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.cad-trace-gap p,
+.component-empty p {
+  max-width: 560px;
+  margin: var(--space-6) auto 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}
+
+.cad-available-parts {
+  display: grid;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
+}
+
+.cad-available-parts small {
+  color: var(--muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+}
+
+.cad-available-parts button {
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid #59634b;
+  cursor: pointer;
+}
+
+@media (max-width: 840px) {
+  .syson-part-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .part-trace-strip {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+
+  .part-trace-connector {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .component-workspace-header,
+  .provider-surface-header,
+  .cad-viewer-evidence {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .component-provider-tabs button {
+    padding-inline: var(--space-8);
+  }
+
+  .component-provider-tabs small {
+    display: none;
+  }
+
+  .component-provider-surface {
+    padding: var(--space-8);
+  }
+
+  .syson-part-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .erp-bom-table {
+    overflow-x: auto;
+  }
+
+  .erp-bom-row {
+    min-width: 630px;
+  }
+
+  .cad-viewer-evidence > div + div {
+    border-top: 1px solid #303936;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 440px) {
+  .native-preview-header {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-10);
+    padding: var(--space-10) var(--space-12);
+  }
+
+  .native-preview-brand {
+    width: 34px;
+  }
+
+  .native-preview-header small {
+    overflow: hidden;
+    font-size: var(--text-3xs);
+    letter-spacing: 0.08em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .native-preview-header strong {
+    overflow: hidden;
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .native-preview-header p {
+    display: none;
+  }
+
+  .cad-scope-notice {
+    grid-template-columns: 1fr;
+  }
+
+  .cad-scope-notice > span {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 1120px) {
+  .signal-strip {
+    grid-template-columns: repeat(5, minmax(100px, 1fr));
+  }
+
+  .server-lower {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .security-card {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+  }
+
+  .server-lower > .views {
+    border-right: 0;
+  }
+
+  .evidence-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .requirements-block {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .run-titlebar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 840px) {
+  body {
+    background-image: none;
+  }
+
+  .console-shell {
+    border-inline: 0;
+  }
+
+  .masthead {
+    align-items: flex-start;
+  }
+
+  .connection {
+    display: none;
+  }
+
+  .signal-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .signal-strip > div {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .signal-strip .signal-time {
+    grid-column: 1 / -1;
+  }
+
+  .tabs {
+    padding-inline: 0;
+    overflow-x: auto;
+  }
+
+  .tabs button {
+    min-width: 160px;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .health-score {
+    align-self: stretch;
+    justify-content: flex-end;
+  }
+
+  .server-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .server-facts > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .server-facts > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .drift-row {
+    grid-template-columns: 70px 1fr;
+  }
+
+  .runs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .run-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .run-index {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    overflow-x: auto;
+  }
+
+  .run-index button {
+    border-right: 1px solid var(--line);
+  }
+
+  .thread-cockpit-header {
+    grid-template-columns: minmax(0, 1fr) minmax(410px, 0.8fr);
+  }
+
+  .thread-graph-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-tool-drawer {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .masthead {
+    min-height: 78px;
+    padding: var(--space-16);
+  }
+
+  .brand-mark {
+    width: 42px;
+  }
+
+  .masthead .eyebrow {
+    display: none;
+  }
+
+  .masthead h1 {
+    margin: 0;
+    font-size: var(--text-xl);
+  }
+
+  .button span {
+    display: none;
+  }
+
+  .button {
+    width: 40px;
+    padding: 0;
+  }
+
+  .signal-strip > div {
+    min-height: 62px;
+  }
+
+  .tabs button {
+    min-width: 138px;
+    padding: var(--space-14);
+  }
+
+  .tabs small {
+    display: none;
+  }
+
+  .main-content {
+    padding: var(--space-16);
+  }
+
+  .section-heading h2 {
+    font-size: var(--text-2xl);
+  }
+
+  .server-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .server-state {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: var(--space-16);
+    border-top: 1px solid var(--line);
+  }
+
+  .server-sequence {
+    min-width: 46px;
+  }
+
+  .server-facts,
+  .server-lower {
+    grid-template-columns: 1fr;
+  }
+
+  .server-facts > div,
+  .server-lower > section {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .server-facts > div:last-child,
+  .server-lower > section:last-child {
+    border-bottom: 0;
+  }
+
+  .server-lower > .security-card {
+    grid-column: auto;
+  }
+
+  .drift-panel summary > span:last-child {
+    display: none;
+  }
+
+  .drift-row {
+    grid-template-columns: 1fr;
+  }
+
+  .run-index {
+    grid-template-columns: minmax(260px, 1fr);
+  }
+
+  .run-titlebar,
+  .lineage-block,
+  .requirements-block,
+  .artifacts-block {
+    padding: var(--space-16);
+  }
+
+  .run-meta {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .run-meta div {
+    min-width: 110px;
+  }
+
+  .lineage {
+    grid-template-columns: repeat(5, 190px);
+  }
+
+  .measurement-list,
+  .provenance-list {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-list li {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+
+  .artifact-list > li > code {
+    display: none;
+  }
+
+  .workbench-heading {
+    align-items: flex-start;
+  }
+
+  .workbench-runtime {
+    justify-items: start;
+  }
+
+  .thread-cockpit-header {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-cockpit-identity {
+    padding: var(--space-16);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .thread-subject-heading h2 {
+    font-size: clamp(1.45rem, 7vw, 2.15rem);
+  }
+
+  .thread-session-panel {
+    grid-template-columns: minmax(135px, 0.5fr) minmax(0, 1fr);
+  }
+
+  .thread-metrics.mcp-view-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .thread-metrics .mcp-view-metric {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .thread-metrics .mcp-view-metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .thread-metrics .mcp-view-metric:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  .thread-metrics .mcp-view-metric-detail {
+    display: none;
+  }
+
+  .thread-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .thread-workspace-heading-tools,
+  .thread-workspace-meta {
+    width: 100%;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .thread-workspace-meta {
+    flex-direction: column;
+  }
+
+  .thread-operator-contract {
+    justify-content: flex-start;
+  }
+
+  .thread-graph-stage {
+    min-height: 0;
+    padding: var(--space-8);
+  }
+
+  .thread-graph-canvas {
+    min-height: 320px;
+  }
+
+  .thread-inspector-card.mcp-view-card {
+    min-height: 0;
+  }
+
+  .thread-graph-density {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .thread-edge-route {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-edge-route > span {
+    rotate: 90deg;
+    justify-self: center;
+  }
+  .console-footer {
+    padding: 0 var(--space-16);
+  }
+
+  .console-footer span:last-child {
+    display: none;
+  }
+}

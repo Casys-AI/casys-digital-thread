@@ -1,0 +1,606 @@
+/* Le feed d'activite et le graphe de preuves. */
+
+.thread-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-16);
+  margin: 0 0 var(--space-12);
+  color: #858d88;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thread-graph-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.thread-graph-legend span::before {
+  content: "";
+  width: 18px;
+  height: 2px;
+  background: #606a65;
+}
+
+.thread-graph-legend span[data-tone="source"]::before {
+  background: var(--thread-blue);
+}
+
+.thread-graph-legend span[data-tone="focus"]::before {
+  background: var(--thread-orange);
+}
+
+.thread-graph-legend span[data-tone="impact"]::before,
+.thread-graph-legend span[data-tone="attested"]::before {
+  background: var(--thread-green);
+}
+
+.thread-graph-legend span[data-tone="attested"]::before {
+  height: 7px;
+  border: 1px solid var(--thread-green);
+  background: transparent;
+}
+
+.thread-graph-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.38fr);
+  align-items: start;
+  border: 1px solid var(--line);
+  background: #0c0f0f;
+}
+
+.thread-graph-stage {
+  min-width: 0;
+  min-height: max(570px, calc(100vh - 390px));
+  padding: clamp(0.7rem, 1.6vw, 1.2rem);
+}
+
+.thread-feed {
+  min-width: 0;
+}
+
+.thread-feed-toolbar {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid #303735;
+  background: rgba(17, 21, 20, 0.94);
+}
+
+.thread-feed-toolbar > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-8);
+  align-items: center;
+}
+
+.thread-feed-toolbar strong {
+  color: #c9cdc7;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.thread-feed-toolbar small {
+  grid-column: 2;
+  color: #69736e;
+  font: var(--text-3xs)/1.25 var(--mono);
+}
+
+.thread-live-pulse {
+  grid-row: 1 / 3;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--thread-green);
+  box-shadow: 0 0 0 4px rgba(159, 196, 90, 0.09);
+  animation: thread-live-pulse 1.8s ease-in-out infinite;
+}
+
+.thread-feed[data-follow-live="false"] .thread-live-pulse,
+.thread-feed:not([data-stream="live"]) .thread-live-pulse {
+  background: #68706c;
+  box-shadow: none;
+  animation: none;
+}
+
+.thread-feed[data-stream="reconnecting"] .thread-live-pulse {
+  background: var(--amber);
+}
+
+.thread-feed-toolbar button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 var(--space-10);
+  border: 1px solid #3c4541;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.thread-feed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thread-feed-entry {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 56px 24px minmax(0, 1fr);
+  opacity: 0;
+  animation: thread-feed-arrive 320ms ease forwards;
+}
+
+.thread-feed-time {
+  display: grid;
+  align-content: start;
+  justify-items: end;
+  gap: var(--space-4);
+  padding: var(--space-16) var(--space-8) 0 0;
+  color: #737c77;
+  font-family: var(--mono);
+}
+
+.thread-feed-time strong {
+  color: #a4aaa5;
+  font-size: var(--text-3xs);
+}
+
+.thread-feed-time span {
+  font-size: var(--text-3xs);
+  text-transform: uppercase;
+}
+
+.thread-feed-rail {
+  position: relative;
+}
+
+.thread-feed-rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 11px;
+  width: 1px;
+}
+
+.thread-feed-entry:first-child .thread-feed-rail::before {
+  top: 1.15rem;
+}
+
+.thread-feed-entry:last-child .thread-feed-rail::before {
+  bottom: calc(100% - 1.2rem);
+}
+
+.thread-feed-rail i {
+  position: absolute;
+  z-index: 1;
+  top: 1rem;
+  left: 7px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #0c0f0f;
+  border-radius: 50%;
+}
+
+.thread-feed-entry[data-active="true"] .thread-feed-rail::before {
+  background: linear-gradient(var(--thread-orange), var(--thread-blue));
+}
+
+.thread-feed-entry[data-active="true"] .thread-feed-rail i {
+  background: var(--thread-orange);
+  box-shadow: 0 0 0 1px var(--thread-orange), 0 0 0 5px rgba(217, 155, 80,
+    0.08);
+}
+
+.thread-feed-entry[data-freshness="stale"] .thread-feed-rail i,
+.thread-feed-entry[data-freshness="running"] .thread-feed-rail i {
+  background: var(--amber);
+}
+
+.thread-feed-entry[data-freshness="failed"] .thread-feed-rail i {
+  background: var(--thread-red);
+}
+
+.thread-feed-event {
+  min-width: 0;
+  padding: 0 0 var(--space-8);
+}
+
+.thread-feed-card {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: var(--space-12);
+  align-items: center;
+  padding: var(--space-12);
+  border: 1px solid #303735;
+  color: inherit;
+  text-align: left;
+  background: rgba(20, 24, 23, 0.96);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+/* Ces cartes sont des <button>. Supprimer leur anneau de focus les rendait
+   introuvables au clavier (WCAG 2.4.7). L'anneau est pose en retrait plutot
+   qu'en debord : il ne peut pas etre rogne par le defilement de la liste, et il
+   n'ecrase pas le liseré de provenance que la carte porte deja en box-shadow. */
+.thread-feed-card:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+.thread-feed-provider {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #414b46;
+  font: 800 var(--text-3xs)/1 var(--mono);
+}
+
+.thread-feed-entry[data-active="true"] .thread-feed-provider {
+  border-color: var(--thread-orange);
+  color: var(--thread-orange);
+}
+
+.thread-feed-copy {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.thread-feed-copy small {
+  overflow: hidden;
+  color: #747e79;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.thread-feed-copy strong {
+  overflow: hidden;
+  color: #deddd7;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-feed-copy > span {
+  overflow: hidden;
+  color: #929a95;
+  font: var(--text-3xs)/1.35 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-feed-meta {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-4);
+  font-family: var(--mono);
+}
+
+.thread-feed-meta i {
+  color: var(--thread-green);
+  font-size: var(--text-3xs);
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.thread-feed-meta i[data-state="stale"],
+.thread-feed-meta i[data-state="running"] {
+  color: var(--amber);
+}
+
+.thread-feed-meta i[data-state="failed"] {
+  color: var(--thread-red);
+}
+
+.thread-feed-meta b {
+  color: #69716d;
+  font-size: var(--text-3xs);
+  font-weight: 600;
+}
+
+.thread-feed-lineage {
+  margin-top: -1px;
+  border: 1px solid #3b4540;
+  border-top-color: #272d2a;
+  animation: thread-lineage-open 260ms ease both;
+  transform-origin: top;
+}
+
+.thread-feed-lineage > header {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: var(--space-10) var(--space-12);
+  border-bottom: 1px solid #2c3430;
+}
+
+.thread-feed-lineage > header > div {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.thread-feed-lineage header small {
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.thread-feed-lineage header strong {
+  color: #d4d5cf;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.thread-feed-lineage header > span {
+  color: #77817b;
+  font: var(--text-3xs)/1 var(--mono);
+}
+
+.thread-feed-lineage .thread-graph {
+  padding: var(--space-10);
+}
+
+.thread-feed-lineage .thread-graph-canvas {
+  min-height: 300px;
+  max-height: 540px;
+}
+.thread-feed-unlinked,
+.thread-feed-empty {
+  margin: 0;
+  padding: var(--space-32);
+  color: #7d8681;
+  font: var(--text-3xs)/1.55 var(--mono);
+}
+
+.thread-graph[data-animate="true"] .thread-graph-edge,
+.thread-graph[data-animate="true"] .thread-graph-node {
+  opacity: 0;
+  animation: thread-graph-compose 360ms ease forwards;
+}
+
+@keyframes thread-feed-arrive {
+  from {
+    opacity: 0;
+    translate: 0 -5px;
+  }
+  to {
+    opacity: 1;
+    translate: 0;
+  }
+}
+
+@keyframes thread-lineage-open {
+  from {
+    opacity: 0;
+    scale: 1 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes thread-graph-compose {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes thread-live-pulse {
+  50% {
+    opacity: 0.45;
+    box-shadow: 0 0 0 7px rgba(159, 196, 90, 0.025);
+  }
+}
+
+.thread-graph {
+  min-width: 0;
+  margin: 0;
+}
+
+.thread-graph-density {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin-bottom: var(--space-12);
+  padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12);
+  border-left: 2px solid #4c5753;
+  background: rgba(20, 25, 24, 0.92);
+  font: var(--text-3xs)/1.4 var(--mono);
+}
+
+.thread-graph-density-toggle {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 var(--space-10);
+  border: 1px solid #3b4541;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.thread-graph-viewport {
+  min-width: 0;
+}
+
+.thread-graph-canvas {
+  width: 100%;
+  height: auto;
+  min-height: 480px;
+  overflow: visible;
+}
+
+.thread-graph-component-boundary {
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+}
+
+.thread-graph-component-label {
+  font: 700 9px/1 var(--mono);
+  letter-spacing: 1.2px;
+}
+
+/* Aretes et noeuds sont des <g role="button"> atteignables au clavier. Le
+   `outline: none` les rendait muets au focus ; l'anneau global les rend a
+   nouveau reperables sur le canevas. */
+.thread-graph-edge {
+  cursor: pointer;
+}
+
+.thread-graph-edge-line {
+  stroke-width: 1.4;
+  transition: opacity 140ms ease, stroke 140ms ease, stroke-width 140ms ease;
+}
+
+.thread-graph-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+.thread-graph-edge-label {
+  paint-order: stroke;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  font: 700 8px/1 var(--mono);
+  letter-spacing: 0.35px;
+  pointer-events: none;
+}
+.thread-graph-edge[data-impact="upstream"] .thread-graph-edge-line {
+  stroke: var(--thread-blue);
+}
+
+.thread-graph-edge[data-impact="downstream"] .thread-graph-edge-line,
+.thread-graph-edge[data-impact="related"] .thread-graph-edge-line {
+  stroke: var(--thread-green);
+}
+
+.thread-graph-edge[data-impact="unrelated"] {
+  opacity: 0.19;
+}
+
+.thread-graph-edge[data-selected="true"] .thread-graph-edge-line,
+.thread-graph-edge:focus-visible .thread-graph-edge-line {
+  stroke: var(--thread-orange);
+  stroke-width: 3;
+}
+
+.thread-graph-edge[data-selected="true"] .thread-graph-edge-label {
+  fill: var(--thread-orange);
+}
+
+.thread-graph-edge[data-attestation="verified"] .thread-graph-edge-line {
+  stroke-dasharray: 4 3;
+}
+
+.thread-graph-node {
+  cursor: pointer;
+  transition: opacity 140ms ease;
+}
+
+.thread-graph-node-body {
+  stroke-width: 1;
+  transition: fill 140ms ease, stroke 140ms ease, stroke-width 140ms ease;
+}
+.thread-graph-node[data-selected="true"] .thread-graph-node-body {
+  stroke: var(--thread-orange);
+  stroke-width: 2.3;
+}
+
+.thread-graph-node[data-impact="upstream"] .thread-graph-node-body {
+  stroke: var(--thread-blue);
+}
+
+.thread-graph-node[data-impact="downstream"] .thread-graph-node-body,
+.thread-graph-node[data-impact="related"] .thread-graph-node-body {
+  stroke: var(--thread-green);
+}
+
+.thread-graph-node[data-impact="unrelated"] {
+  opacity: 0.22;
+}
+
+.thread-graph-node-state {
+  fill: var(--thread-green);
+}
+
+.thread-graph-node[data-freshness="stale"] .thread-graph-node-state,
+.thread-graph-node[data-freshness="running"] .thread-graph-node-state {
+  fill: var(--amber);
+}
+
+.thread-graph-node[data-freshness="failed"] .thread-graph-node-state {
+  fill: var(--thread-red);
+}
+
+.thread-graph-node[data-kind="consumption"] .thread-graph-node-body,
+.thread-graph-node[data-kind="action"] .thread-graph-node-body {
+  stroke-dasharray: 4 3;
+}
+.thread-graph-node-system,
+.thread-graph-node-kind,
+.thread-graph-node-summary {
+  font-family: var(--mono);
+}
+
+.thread-graph-node-system {
+  font-size: var(--text-3xs);
+  font-weight: 800;
+  letter-spacing: 0.7px;
+}
+
+.thread-graph-node-kind {
+  font-size: var(--text-3xs);
+  text-transform: uppercase;
+}
+
+.thread-graph-node-label {
+  font-family: var(--sans);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.thread-graph-node-summary {
+  font-size: var(--text-3xs);
+}
+
+.thread-graph-caption,
+.thread-graph-notice {
+  margin: var(--space-12) 0 0;
+  padding-left: var(--space-10);
+  border-left: 2px solid var(--amber);
+  color: #8f9691;
+  font: var(--text-3xs)/1.45 var(--mono);
+}
+
+.thread-graph-empty {
+  min-height: 26rem;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}

@@ -1,0 +1,327 @@
+/* Passage Discovery vers projet technique : baseline de planification. */
+
+/* Discovery-to-engineering handoff --------------------------------------
+
+   Planning is a first-class native surface, not an empty version of the
+   evidence graph. Keep the visual grammar familiar while making the absence
+   of technical proof immediately legible. */
+
+.planning-baseline-notice {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: var(--space-14);
+  align-items: start;
+  padding: var(--space-16) var(--space-18);
+  border: 1px solid var(--thread-border);
+  border-left: 3px solid var(--thread-orange);
+  background: #fff7ed;
+}
+
+.planning-baseline-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #d6a47b;
+  color: #8d4d20;
+  background: #fce8d5;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.planning-baseline-notice p,
+.planning-next-step p:first-child {
+  margin: 0 0 var(--space-6);
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.planning-baseline-notice h3,
+.planning-next-step h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(1rem, 1.8vw, 1.36rem)/1.12 var(--serif);
+}
+
+.planning-baseline-notice span {
+  display: block;
+  max-width: 780px;
+  margin-top: var(--space-6);
+  color: var(--thread-muted);
+  font-size: var(--text-2xs);
+  line-height: 1.55;
+}
+
+.planning-baseline-activity {
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
+}
+
+.planning-baseline-activity > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-18) var(--space-14);
+  border-bottom: 1px solid var(--thread-border);
+}
+
+.planning-baseline-activity p,
+.planning-baseline-run-copy small,
+.planning-baseline-live small {
+  margin: 0 0 var(--space-6);
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.planning-baseline-activity h3 {
+  margin: 0;
+  color: var(--thread-ink);
+  font: 500 clamp(0.96rem, 1.6vw, 1.22rem)/1.15 var(--serif);
+}
+
+.planning-baseline-state {
+  flex: 0 0 auto;
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--thread-border-strong);
+  color: var(--thread-muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.planning-baseline-activity[data-state="queued"] .planning-baseline-state,
+.planning-baseline-activity[data-state="running"] .planning-baseline-state,
+.planning-baseline-activity[data-state="publishing"] .planning-baseline-state {
+  border-color: #d6a47b;
+  color: #8d4d20;
+  background: #fff7ed;
+}
+
+.planning-baseline-activity[data-state="failed"] .planning-baseline-state {
+  border-color: #c79184;
+  color: #8d3023;
+  background: #fff2ef;
+}
+
+.planning-baseline-run {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-16);
+  align-items: end;
+  padding: var(--space-16) var(--space-18);
+}
+
+.planning-baseline-run-copy small,
+.planning-baseline-live small {
+  display: block;
+}
+
+.planning-baseline-run-copy strong {
+  display: block;
+  color: var(--thread-ink);
+  font-size: var(--text-sm);
+}
+
+.planning-baseline-run-copy span {
+  display: block;
+  margin-top: var(--space-4);
+  color: var(--thread-muted);
+  font-size: var(--text-3xs);
+  text-transform: capitalize;
+}
+
+.planning-baseline-run-times {
+  display: flex;
+  gap: var(--space-16);
+  margin: 0;
+}
+
+.planning-baseline-run-times div {
+  min-width: 64px;
+}
+
+.planning-baseline-run-times dt,
+.planning-baseline-run-times dd {
+  margin: 0;
+}
+
+.planning-baseline-run-times dt {
+  color: var(--thread-muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.planning-baseline-run-times dd {
+  margin-top: var(--space-4);
+  color: var(--thread-ink);
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+}
+
+.planning-baseline-empty {
+  margin: 0;
+  padding: var(--space-16) var(--space-18);
+  color: var(--thread-muted);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+}
+
+.planning-baseline-history,
+.planning-baseline-live ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-12);
+  margin: 0;
+  padding: var(--space-12) var(--space-18);
+  border-top: 1px solid var(--thread-border);
+  list-style: none;
+}
+
+.planning-baseline-history li,
+.planning-baseline-live li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--thread-muted);
+  font: 700 var(--text-3xs)/1.25 var(--mono);
+}
+
+.planning-baseline-history i,
+.planning-baseline-live li > i {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: var(--thread-border-strong);
+}
+
+.planning-baseline-live {
+  border-top: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+
+.planning-baseline-live > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: var(--space-12) var(--space-18) 0;
+}
+
+.planning-baseline-live > div span {
+  color: var(--thread-muted);
+  font-size: var(--text-3xs);
+}
+
+.planning-baseline-live ol {
+  border-top: 0;
+}
+
+.planning-baseline-live li[data-state="running"] > i {
+  background: var(--thread-orange);
+}
+
+.planning-baseline-live li[data-state="fresh"] > i,
+.planning-baseline-live li[data-state="reconciled"] > i {
+  background: #43866f;
+}
+
+.planning-baseline-live li[data-state="failed"] > i {
+  background: #b94b36;
+}
+
+.planning-phase-rail {
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+}
+
+.planning-empty-path {
+  margin: 0;
+  padding: var(--space-16) var(--space-18);
+  border: 1px dashed var(--thread-border-strong);
+  color: var(--thread-muted);
+  background: var(--thread-panel);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.planning-work-plan {
+  padding: 0;
+}
+
+.planning-work-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planning-work-list li {
+  display: grid;
+  grid-template-columns: minmax(105px, 0.3fr) minmax(0, 1fr) auto;
+  gap: var(--space-14);
+  align-items: start;
+  padding: var(--space-16) var(--space-18);
+  border-top: 1px solid var(--thread-border);
+}
+
+.planning-work-list li > span,
+.planning-work-list li > b {
+  padding-top: var(--space-2);
+  color: var(--thread-muted);
+  font: 700 var(--text-3xs)/1.25 var(--mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.planning-work-list li > b {
+  color: var(--thread-orange);
+  font-weight: 700;
+  text-align: right;
+}
+
+.planning-work-list li > div {
+  min-width: 0;
+}
+
+.planning-work-list li strong {
+  display: block;
+  color: var(--thread-ink);
+  font-size: var(--text-sm);
+}
+
+.planning-work-list li p {
+  margin: var(--space-6) 0 0;
+  color: var(--thread-muted);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+
+.planning-work-list li small {
+  display: block;
+  margin-top: var(--space-6);
+  color: var(--thread-muted);
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+}
+.planning-next-step {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
+  gap: var(--space-24);
+  align-items: center;
+  padding: var(--space-18);
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+
+.planning-next-step > p:last-child {
+  margin: 0;
+  color: var(--thread-muted);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}
+
+.planning-provenance {
+  margin-top: -0.35rem;
+}

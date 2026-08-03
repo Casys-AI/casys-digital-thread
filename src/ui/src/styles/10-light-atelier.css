@@ -1,0 +1,740 @@
+/* La palette claire. Ecrase les surfaces sombres definies plus haut. */
+
+/* -------------------------------------------------------------------------
+   Light atelier palette
+
+   The workbench is a place to review engineering work, not a terminal. The
+   warm paper, graphite ink and restrained copper keep its technical character
+   while letting a new reviewer read the hierarchy without visual fatigue.
+   ------------------------------------------------------------------------- */
+
+.native-preview-body,
+.discovery-preview-body {
+  color: var(--text);
+  background:
+    radial-gradient(circle at 50% -20%, rgba(169, 95, 40, 0.08), transparent
+    36rem),
+    var(--bg);
+}
+
+.native-preview-shell {
+  border-color: var(--line);
+  background: var(--surface-0);
+  box-shadow: 0 24px 70px rgba(44, 51, 45, 0.13);
+}
+
+.thread-workbench {
+  --mcp-view-text: var(--text);
+  --mcp-view-muted: var(--muted);
+  --mcp-view-border: var(--line);
+  --mcp-view-panel: var(--surface-1);
+  --mcp-view-subtle: var(--surface-2);
+  --mcp-view-accent: var(--amber);
+  --mcp-view-success: var(--green);
+  --mcp-view-warning: var(--amber);
+  --mcp-view-danger: var(--red);
+  --thread-ink: var(--text);
+  --thread-paper: var(--surface-0);
+  --thread-orange: var(--amber);
+  --thread-red: var(--red);
+  --thread-green: var(--green);
+  --thread-blue: var(--cyan);
+  --thread-panel: var(--surface-1);
+  --thread-panel-muted: var(--surface-2);
+  --thread-border: var(--line);
+  --thread-border-strong: var(--line-strong);
+  --thread-muted: var(--muted);
+  --thread-faint: var(--muted);
+  border-color: var(--thread-border);
+  color: var(--thread-ink);
+  background:
+    radial-gradient(circle at 82% -15%, rgba(169, 95, 40, 0.09), transparent
+    29rem),
+    linear-gradient(rgba(37, 53, 48, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 53, 48, 0.032) 1px, transparent 1px),
+    var(--thread-paper);
+}
+
+.thread-workbench :is(p, small, dt, dd, code, .mcp-view-metric-detail) {
+  color: var(--thread-muted);
+}
+
+.thread-workbench :is(h1, h2, h3, h4, h5, strong, b, .mcp-view-card-title) {
+  color: var(--thread-ink);
+}
+
+.thread-workbench button {
+  color: var(--thread-ink);
+}
+.thread-workbench :is(.thread-cockpit-header, .project-navigation, .thread-metrics .mcp-view-metric, .thread-operator-contract span, .thread-graph-workspace, .thread-feed-toolbar, .thread-feed-card, .thread-feed-lineage, .thread-feed-lineage > header, .thread-graph-density, .thread-tool-drawer, .thread-tool-drawer > .thread-card.mcp-view-card, .thread-tool-drawer > .thread-inspector-card.mcp-view-card, .thread-tool-drawer > .thread-edge-inspector.mcp-view-card, .thread-card.mcp-view-card, .thread-inspector-card.mcp-view-card, .component-workspace, .component-workspace-header, .component-provider-tabs button, .part-trace-strip, .part-trace-step button, .syson-root-node, .syson-part-grid button, .erp-bom-row, .erp-bom-head, .cad-viewer-shell, .cad-viewer-evidence, .project-objective, .project-phase-rail li, .project-control-panel, .project-evidence-route, .project-technical-record, .project-work-ribbon, .project-operations-panel, .project-work-plan, .decision-center) {
+  border-color: var(--thread-border);
+  background: var(--thread-panel);
+}
+
+.thread-cockpit-header {
+  background:
+    linear-gradient(90deg, rgba(169, 95, 40, 0.09), transparent 38%),
+    var(--thread-panel);
+}
+.thread-cockpit-identity,
+.thread-session-state,
+.thread-session-change,
+.thread-session-facts > div,
+.thread-metrics .mcp-view-metric,
+.project-navigation :is(button, a),
+.project-objective-index,
+.project-status-seal,
+.project-phase-rail li,
+.project-control-panel,
+.project-evidence-route,
+.project-work-ribbon-cell,
+.project-operations-panel > header,
+.project-work-plan > header,
+.project-run-list li,
+.project-tool-matrix article,
+.project-work-item-list article,
+.project-work-item-record,
+.decision-center-header,
+.decision-center-meter,
+.decision-center-meter > div {
+  border-color: var(--thread-border);
+}
+.thread-workbench :is(.thread-session-state small, .thread-session-change small, .thread-session-facts dt, .thread-metrics .mcp-view-metric-label, .thread-metrics .mcp-view-metric-unit, .thread-feed-toolbar small, .thread-feed-time, .thread-feed-copy small, .thread-feed-copy > span, .thread-feed-meta b, .thread-feed-unlinked, .thread-feed-empty, .thread-graph-density, .project-objective-copy blockquote, .project-status-seal span, .project-status-seal small, .project-phase-copy > p, .project-phase-copy dl > div, .project-phase-copy dd, .project-control-record > p, .project-control-empty, .project-control-record > small, .project-evidence-route p, .project-evidence-route small, .project-technical-record, .project-work-ribbon-cell small, .project-run-list span, .project-run-list p, .project-run-list small, .project-tool-matrix article > span, .project-tool-matrix small, .project-work-item-list article > span, .project-work-item-list article small, .project-work-item-list article > b, .decision-center-header > div:nth-child(2) > span, .decision-center-meter dt, .decision-center-meter dd, .decision-agent-preparation-copy small, .decision-review-form > header small, .decision-review-form > small, .decision-approval-journal li span, .decision-approval-journal li p, .decision-queue-form > div small, .decision-center-empty) {
+  color: var(--thread-muted);
+}
+.thread-workbench :is(.thread-coordinate, .thread-section-heading p, .thread-operator-contract b, .thread-feed-lineage header small, .thread-graph-node-system, .thread-graph-edge[data-selected="true"] .thread-graph-edge-label, .project-objective-copy > p, .project-section-label p, .project-evidence-overview > header p, .project-operations-panel > header p, .project-work-plan > header p, .project-control-panel > header span, .project-work-ribbon-cell > span, .decision-center-header p) {
+  color: var(--thread-orange);
+}
+.thread-workbench :is(.thread-operator-contract span, .thread-feed-toolbar, .thread-graph-density, .thread-feed-card, .thread-feed-lineage, .thread-feed-lineage > header, .thread-tool-drawer, .project-technical-record) {
+  box-shadow: none;
+}
+.thread-feed-toolbar button,
+.thread-graph-density-toggle,
+.thread-inspector-toggle,
+.project-control-panel > button,
+.provider-surface-header > button,
+.cad-available-parts button,
+.decision-secondary-button {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+}
+.thread-inspector-toggle {
+  min-height: 30px;
+  padding: 0 var(--space-12);
+  border: 1px solid var(--thread-border-strong);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.thread-inspector-toggle:hover,
+.thread-inspector-toggle:focus-visible,
+.thread-feed-toolbar button:hover,
+.thread-feed-toolbar button:focus-visible,
+.thread-graph-density-toggle:hover,
+.project-control-panel > button:hover,
+.provider-surface-header > button:hover,
+.cad-available-parts button:hover {
+  border-color: var(--thread-orange);
+  color: var(--thread-orange);
+  background: #fbf0e5;
+}
+
+.project-navigation {
+  background: rgba(255, 253, 250, 0.96);
+}
+
+.project-navigation :is(button, a) {
+  color: var(--thread-muted);
+}
+
+.project-navigation :is(button, a):hover {
+  color: var(--thread-ink);
+  background: #f5f1e9;
+}
+
+.project-navigation :is(button, a)[aria-current="page"] {
+  color: var(--thread-ink);
+  background: linear-gradient(90deg, #f8e9dc, transparent);
+  box-shadow: inset 0 -2px 0 var(--thread-orange);
+}
+
+.project-navigation :is(button, a) > span,
+.project-navigation :is(button, a)[aria-current="page"] > span {
+  color: var(--thread-orange);
+}
+
+.thread-graph-workspace {
+  overflow: hidden;
+}
+
+.thread-graph-stage {
+  background:
+    linear-gradient(rgba(37, 53, 48, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 53, 48, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 48% 35%, rgba(44, 113, 128, 0.08), transparent
+    32rem),
+    var(--surface-0);
+  background-size: 22px 22px, 22px 22px, auto, auto;
+}
+
+.thread-feed-card:hover,
+.thread-feed-card:focus-visible {
+  border-color: var(--thread-border-strong);
+  background: #f5f1e9;
+}
+
+.thread-feed-entry[data-active="true"] .thread-feed-card {
+  border-color: var(--thread-orange);
+  background: #f9ecdf;
+  box-shadow: inset 3px 0 var(--thread-orange);
+}
+.thread-feed-provider,
+.project-evidence-route > span,
+.project-control-record > span {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-muted);
+  background: var(--thread-panel-muted);
+}
+
+.thread-feed-rail::before,
+.project-phase-node::after {
+  background: var(--thread-border-strong);
+}
+
+.thread-feed-rail i {
+  border-color: var(--thread-panel);
+  background: #93a099;
+  box-shadow: 0 0 0 1px var(--thread-border-strong);
+}
+
+.thread-feed-lineage {
+  background: #f7f5ef;
+}
+
+.thread-feed-lineage > header,
+.thread-inspector-card.mcp-view-card {
+  background: var(--thread-panel-muted);
+}
+
+.thread-graph-component-boundary,
+.thread-feed-lineage .thread-graph-component-boundary {
+  fill: transparent;
+  stroke: #c8ccc5;
+}
+
+.thread-graph-component-label,
+.thread-feed-lineage .thread-graph-component-label {
+  fill: #65746e;
+}
+
+.thread-graph-edge-line {
+  fill: none;
+  stroke: #8b9791;
+}
+
+.thread-graph-arrow path {
+  fill: context-stroke;
+  stroke: none;
+}
+
+.thread-graph-edge-label {
+  fill: #53625c;
+  stroke: var(--surface-0);
+}
+
+.thread-graph-node-body {
+  fill: var(--surface-1);
+  stroke: #b8c0b8;
+}
+
+.thread-graph-node:hover .thread-graph-node-body,
+.thread-graph-node:focus-visible .thread-graph-node-body {
+  fill: #fff6ed;
+  stroke: var(--thread-orange);
+}
+
+.thread-graph-node[data-selected="true"] .thread-graph-node-body {
+  fill: #f9e9dc;
+}
+
+.thread-graph-node[data-kind="consumption"] .thread-graph-node-body,
+.thread-graph-node[data-kind="action"] .thread-graph-node-body {
+  fill: #f2f4ef;
+}
+
+.thread-graph-node[data-kind="requirement"] .thread-graph-node-body {
+  fill: #fff7ed;
+}
+
+.thread-graph-node-system,
+.thread-graph-node-kind,
+.thread-graph-node-summary {
+  fill: #65746e;
+}
+
+.thread-graph-node-label {
+  fill: var(--thread-ink);
+}
+
+.thread-graph-density,
+.thread-feed-toolbar,
+.thread-operator-contract span {
+  color: var(--thread-muted);
+}
+.project-control-grid,
+.project-evidence-routes,
+.project-work-ribbon,
+.project-technical-record,
+.decision-center {
+  border-color: var(--thread-border);
+}
+.project-evidence-route:hover {
+  background: #f5f1e9;
+  box-shadow: inset 0 -2px var(--thread-orange);
+}
+.project-objective {
+  background:
+    linear-gradient(115deg, rgba(169, 95, 40, 0.09), transparent 35%),
+    var(--thread-panel);
+}
+
+.project-status-seal {
+  background: #f5f2eb;
+}
+.project-phase-rail li[data-state="active"],
+.project-control-record[data-state="waiting-for-decision"] > span,
+.project-control-record[data-state="blocked"] > span {
+  border-color: rgba(169, 95, 40, 0.52);
+}
+
+.project-phase-rail li[data-state="active"] .project-phase-copy > small,
+.project-control-record[data-state="waiting-for-decision"] > span,
+.project-control-record[data-state="blocked"] > span,
+.project-work-ribbon-cell.is-human > span,
+.thread-session-facts dd[data-project-tone="attention"] {
+  color: var(--thread-orange);
+}
+
+.project-phase-rail li[data-state="completed"] .project-phase-copy > small,
+.thread-session-facts dd[data-project-tone="active"],
+.thread-session-facts dd[data-project-tone="complete"],
+.decision-center-meter [data-tone="complete"] dd {
+  color: var(--thread-green);
+}
+
+.project-phase-rail li[data-state="blocked"] .project-phase-copy > small,
+.project-work-ribbon-cell.is-blocker > span,
+.thread-session-facts dd[data-project-tone="blocked"] {
+  color: var(--thread-red);
+}
+
+.component-workspace-header {
+  background: linear-gradient(90deg, #f8f0e7, #fdfbf6);
+}
+
+.component-provider-tabs button[aria-selected="true"],
+.part-trace-step button[aria-current="true"],
+.syson-part-grid button.is-selected,
+.erp-bom-row.is-selected {
+  color: var(--thread-ink);
+  background: #e7f0e9;
+  box-shadow: inset 3px 0 var(--thread-green);
+}
+
+.cad-viewer-shell {
+  background: #edf0eb;
+}
+
+.cad-viewer-state,
+.cad-axis i {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-muted);
+  background: rgba(255, 253, 250, 0.88);
+}
+
+.cad-trace-gap,
+.component-empty {
+  border-color: #d7c5aa;
+  background: radial-gradient(circle, #fff9ef, var(--surface-2) 66%);
+}
+
+.decision-center {
+  color: var(--thread-ink);
+  background:
+    linear-gradient(130deg, rgba(169, 95, 40, 0.08), transparent 30%),
+    var(--thread-panel);
+}
+.decision-review-brief[data-state="proposed"] {
+  background: #fff5e9;
+}
+.decision-secondary-button:disabled {
+  border-color: #d6d8d2;
+  color: #8a948e;
+  background: #ecece7;
+}
+
+.discovery-workbench {
+  --mcp-view-text: var(--text);
+  --mcp-view-muted: var(--muted);
+  --mcp-view-border: var(--line);
+  --mcp-view-panel: var(--surface-1);
+  --mcp-view-subtle: var(--surface-2);
+  --mcp-view-accent: var(--amber);
+  --mcp-view-success: var(--green);
+  --mcp-view-warning: var(--amber);
+  --mcp-view-danger: var(--red);
+  --discovery-paper: var(--surface-0);
+  --discovery-ink: var(--text);
+  --discovery-accent: var(--amber);
+  --discovery-green: var(--green);
+  border-color: var(--line);
+  color: var(--discovery-ink);
+  background:
+    radial-gradient(circle at 90% -10%, rgba(169, 95, 40, 0.1), transparent
+    31rem),
+    linear-gradient(rgba(37, 53, 48, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 53, 48, 0.032) 1px, transparent 1px),
+    var(--discovery-paper);
+}
+
+.discovery-workbench::before {
+  background: rgba(169, 95, 40, 0.22);
+}
+
+.discovery-workbench :is(p, small, li, .mcp-view-state-detail) {
+  color: #65746e;
+}
+
+.discovery-workbench :is(h1, h2, h3, h4, strong, .mcp-view-card-title) {
+  color: var(--discovery-ink);
+}
+
+.discovery-header h1,
+.discovery-intent blockquote,
+.discovery-question-card .mcp-view-card-title,
+.discovery-brief-objective h2,
+.discovery-brief-group > header h3 {
+  color: var(--discovery-ink);
+}
+.discovery-introduction,
+.discovery-progress-copy > small,
+.discovery-why p,
+.discovery-recommendation > p,
+.discovery-evidence-plan,
+.discovery-brief > summary small,
+.discovery-brief > summary em,
+.discovery-brief-grid ul,
+.discovery-brief-grid section > p,
+.discovery-compliance-note,
+.discovery-brief-boundary,
+.discovery-preview-bar small,
+.discovery-transport-state,
+.discovery-load-state p {
+  color: #65746e;
+}
+.discovery-intent,
+.discovery-brief,
+.discovery-brief-body {
+  border-color: var(--line);
+}
+
+.discovery-question-card.mcp-view-card {
+  border-color: #c9c5ba;
+  background:
+    linear-gradient(120deg, rgba(169, 95, 40, 0.09), transparent 36%),
+    var(--surface-1);
+  box-shadow: inset 3px 0 var(--discovery-accent), 0 22px 60px rgba(44, 51, 45,
+    0.1);
+}
+
+.discovery-recommendation {
+  border-color: rgba(54, 117, 83, 0.32);
+  background: #edf6ee;
+}
+
+.discovery-agent-starter {
+  border-color: rgba(54, 117, 83, 0.2);
+}
+
+.discovery-agent-starter > p {
+  color: #41554b;
+}
+
+.discovery-agent-starter > p strong {
+  color: var(--discovery-ink);
+}
+
+.discovery-agent-starter > small {
+  color: #587067;
+}
+.discovery-state.mcp-view-state,
+.discovery-brief-grid > section {
+  border-color: var(--line);
+  color: var(--discovery-ink);
+  background: var(--surface-1);
+}
+
+/* Un cadre pointille est le signe conventionnel du vide « a remplir ». Ce
+   panneau porte au contraire un etat etabli : trait plein, et un liseré au ton
+   de l'etat pour que la couleur dise la meme chose que le texte. */
+.discovery-state.mcp-view-state {
+  min-height: 8.5rem;
+  border-style: solid;
+  border-left-width: 3px;
+  border-left-color: var(--muted);
+}
+
+.discovery-state.mcp-view-state[data-tone="success"] {
+  border-left-color: var(--green);
+}
+
+.discovery-state.mcp-view-state[data-tone="warning"] {
+  border-left-color: var(--amber);
+}
+
+.discovery-state.mcp-view-state[data-tone="danger"] {
+  border-left-color: var(--red);
+}
+.discovery-progress-line {
+  background: #c7cec7;
+}
+
+.discovery-progress-line i {
+  background: var(--discovery-paper);
+  box-shadow: 18px 0 0 -2px var(--discovery-green), 36px 0 0 -2px #99a59f;
+}
+
+.discovery-brief {
+  background: rgba(255, 253, 250, 0.7);
+}
+
+.discovery-brief-grid {
+  border-color: var(--line);
+  background: var(--line);
+}
+.discovery-brief-grid h3 {
+  color: var(--discovery-ink);
+}
+
+.discovery-brief-boundary {
+  border-left-color: #99a59f;
+}
+.discovery-brief-empty.mcp-view-empty {
+  border-color: #bdc3bd;
+  color: #65746e;
+  background: var(--surface-1);
+}
+
+.discovery-preview-bar {
+  border-color: var(--line);
+  color: var(--discovery-ink);
+  background: rgba(255, 253, 250, 0.94);
+}
+
+.discovery-preview-bar > div:first-child > span {
+  border-color: #c5a57e;
+  color: var(--discovery-accent);
+}
+.discovery-preview-bar strong,
+.discovery-load-state {
+  color: var(--discovery-ink);
+}
+/* Keep the preview transport present, but let the work itself own the page. */
+.native-preview-header {
+  border-bottom-color: var(--line);
+  color: var(--text);
+  background: var(--surface-0);
+  box-shadow: inset 0 2px 0 var(--text);
+}
+
+.native-preview-header small {
+  color: var(--amber);
+}
+
+.native-preview-header h1 {
+  color: var(--text);
+}
+
+.native-preview-header p {
+  color: var(--muted);
+}
+
+.native-preview-brand {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* Discovery is deliberately quieter than the cockpit: the question appears
+   within the first reading window, while detail remains available on demand. */
+.discovery-workbench {
+  padding-top: clamp(0.85rem, 2.4vw, 2.2rem);
+  padding-bottom: var(--space-56);
+}
+
+.discovery-header {
+  gap: var(--space-20);
+  padding-bottom: clamp(1.25rem, 3vw, 2.4rem);
+}
+
+.discovery-header h1 {
+  max-width: 680px;
+  font-size: clamp(2.35rem, 4.5vw, 4.35rem);
+}
+
+.discovery-introduction {
+  max-width: 590px;
+  margin-top: var(--space-14);
+  font-size: clamp(0.9rem, 1.2vw, 1rem);
+  line-height: 1.55;
+}
+
+.discovery-intent {
+  gap: clamp(0.8rem, 2vw, 1.6rem);
+  padding-top: clamp(1rem, 2.5vw, 1.7rem);
+  padding-bottom: clamp(1rem, 2.5vw, 1.7rem);
+}
+
+.discovery-intent p {
+  margin-bottom: var(--space-8);
+}
+
+.discovery-intent blockquote {
+  max-width: 720px;
+  font-size: clamp(1.2rem, 2.3vw, 1.75rem);
+  line-height: 1.25;
+}
+
+.discovery-progress {
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: var(--space-20);
+  padding-top: var(--space-14);
+  padding-bottom: var(--space-14);
+}
+
+.discovery-focus {
+  padding-top: clamp(1rem, 2.5vw, 1.75rem);
+}
+
+.discovery-conversation-record {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: var(--space-10);
+  max-width: 760px;
+  margin: 0 0 0 clamp(1rem, 3vw, 2.7rem);
+  padding: var(--space-12) var(--space-14);
+  border-left: 2px solid var(--cyan);
+  color: #48635e;
+  background: #edf5f5;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* La regle generique qui attenue les <p> du Workbench gagnait ici par
+   specificite et ramenait ce bloc teinte sous le seuil AA. */
+.discovery-workbench .discovery-conversation-record p {
+  color: inherit;
+}
+
+.discovery-conversation-record > span {
+  color: var(--cyan);
+  font: 700 var(--text-sm)/1 var(--mono);
+}
+
+.discovery-conversation-record p {
+  margin: 0;
+}
+
+.discovery-conversation-record strong {
+  color: var(--discovery-ink);
+}
+
+.discovery-conversation-prompt {
+  max-width: 760px;
+  margin: 0 0 var(--space-16);
+  padding: var(--space-10) var(--space-12);
+  border-left: 2px solid var(--cyan);
+  color: #49635f;
+  background: #edf5f5;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.discovery-conversation-prompt > span {
+  display: block;
+  margin-bottom: var(--space-4);
+  color: var(--cyan);
+  font: 700 var(--text-3xs)/1.25 var(--mono);
+  letter-spacing: 0.11em;
+}
+
+.discovery-conversation-prompt p {
+  margin: 0;
+}
+
+.discovery-conversation-prompt strong {
+  color: var(--discovery-ink);
+}
+
+.discovery-option-context {
+  max-width: 840px;
+  margin: var(--space-16) 0 0 42px;
+  padding: var(--space-14) var(--space-16);
+  border: 1px solid var(--line);
+  background: #f7f5ef;
+}
+
+.discovery-option-context h2 {
+  margin: 0 0 var(--space-10);
+  color: #5c6b65;
+  font: 700 var(--text-3xs)/1.35 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.discovery-option-context ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8) var(--space-16);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.discovery-option-context li {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.discovery-option-context strong {
+  color: var(--discovery-ink);
+  font-size: var(--text-sm);
+}
+
+.discovery-option-context span {
+  color: #687872;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+@media (max-width: 620px) {
+  .discovery-intent,
+  .discovery-progress {
+    grid-template-columns: 1fr;
+  }
+  .discovery-progress-line {
+    display: none;
+  }
+  .discovery-conversation-record,
+  .discovery-option-context {
+    margin-left: 0;
+  }
+
+  .discovery-option-context {
+    margin-top: var(--space-14);
+  }
+
+  .discovery-option-context ul {
+    grid-template-columns: 1fr;
+  }
+}
