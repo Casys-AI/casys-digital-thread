@@ -30,3 +30,10 @@ OpenCascade serializes the export timestamp into the STEP bytes. ERP stock rows 
 a golden invariant because they are time-dependent observations. The mechanical section
 retains its original concept-only boundary: it is not certification or
 fabrication-release evidence.
+
+The golden reference deliberately does not compare a changed design against the 28 mm
+DripTray measurements. The separate
+[`CM-01 V3 correction-loop proof`](../how-to/run-cm01-v3-golden-local.md#bounded-correction-loop-proof)
+checks the preceding contract instead: an exact prior snapshot is retained, CAD and
+CalculiX descendants become stale, fresh replacements carry new provenance, and an
+attempt to reuse historical descendants is rejected without calling a provider.

@@ -662,6 +662,14 @@ function threadFixture(subjectId: string): LiveThreadWorkbenchSnapshot {
       components: [],
     },
     graph: { nodes: [], edges: [] },
+    evidenceFamilyGraph: {
+      schemaVersion: "thread-evidence-family-graph/1.0",
+      asOf: { snapshotId: "thread-snapshot-r1", revision: 1 },
+      families: [],
+      edges: [],
+      omittedSelfLoops: [],
+      omittedCycleEdges: [],
+    },
     flow: [],
     artifacts: [],
     observations: [],
@@ -703,6 +711,17 @@ function documentaryThreadFixture(subjectId: string): LiveThreadWorkbenchSnapsho
       components: [],
     },
     graph: { nodes: [], edges: [] },
+    evidenceFamilyGraph: {
+      schemaVersion: "thread-evidence-family-graph/1.0",
+      asOf: {
+        snapshotId: `${subjectId}:r1:approved-discovery-baseline`,
+        revision: 1,
+      },
+      families: [],
+      edges: [],
+      omittedSelfLoops: [],
+      omittedCycleEdges: [],
+    },
     flow: [],
     artifacts: [{
       id: "approved-discovery-document-r1",

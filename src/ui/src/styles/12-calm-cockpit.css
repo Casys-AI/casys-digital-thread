@@ -223,9 +223,7 @@
   gap: var(--space-4);
 }
 
-.thread-workbench .thread-graph-controls button,
-.thread-workbench .thread-graph-expand-button,
-.thread-workbench .thread-graph-focus-close {
+.thread-workbench .thread-graph-controls button {
   min-height: 28px;
   padding: 0 var(--space-10);
   border: 1px solid var(--thread-border-strong);
@@ -244,11 +242,7 @@
 }
 
 .thread-workbench .thread-graph-controls button:hover:not(:disabled),
-.thread-workbench .thread-graph-controls button:focus-visible,
-.thread-workbench .thread-graph-expand-button:hover,
-.thread-workbench .thread-graph-expand-button:focus-visible,
-.thread-workbench .thread-graph-focus-close:hover,
-.thread-workbench .thread-graph-focus-close:focus-visible {
+.thread-workbench .thread-graph-controls button:focus-visible {
   border-color: var(--thread-orange);
   color: var(--thread-orange);
   background: #fff4ea;
@@ -396,105 +390,4 @@
 .thread-evidence-context .thread-graph-canvas {
   height: clamp(300px, 40vh, 420px);
   min-height: 0;
-}
-
-.thread-graph-focus-mode {
-  min-height: 100vh;
-  background: var(--thread-paper);
-}
-
-.thread-graph-focus-shell {
-  width: min(100%, 1600px);
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: clamp(0.8rem, 1.8vw, 1.5rem);
-}
-
-.thread-graph-focus-header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--space-20);
-  padding: var(--space-12) 0 var(--space-16);
-}
-
-.thread-graph-focus-header p {
-  margin: 0 0 var(--space-6);
-  color: var(--thread-orange);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.12em;
-}
-
-.thread-graph-focus-header h2 {
-  margin: 0;
-  color: var(--thread-ink);
-  font-family: var(--serif);
-  font-size: clamp(1.5rem, 2.7vw, 2.3rem);
-  font-weight: 400;
-  line-height: 1;
-}
-
-.thread-graph-focus-header > div:first-child > span {
-  display: block;
-  max-width: 49rem;
-  margin-top: var(--space-8);
-  color: var(--thread-muted);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-
-.thread-graph-focus-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  flex: 0 0 auto;
-}
-
-.thread-graph-focus-actions > span {
-  color: var(--thread-muted);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.thread-graph-focus-body {
-  min-height: calc(100vh - 150px);
-  padding: clamp(0.65rem, 1.5vw, 1.05rem);
-  border: 1px solid var(--thread-border);
-  background: var(--thread-panel);
-}
-
-.thread-graph-focus-workspace {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-}
-
-.thread-graph-focus-workspace.has-inspector {
-  grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
-}
-
-.thread-graph-focus-workspace > .thread-tool-drawer {
-  max-height: calc(100vh - 150px);
-  overflow: auto;
-  border: 1px solid var(--thread-border);
-  border-left: 0;
-  background: var(--thread-panel);
-  box-shadow: none;
-}
-
-.thread-graph-focus-workspace > .thread-tool-drawer > :is(.thread-card, .thread-inspector-card, .thread-edge-inspector) {
-  min-height: 0;
-}
-
-.thread-graph-focus-body .thread-graph-legend {
-  margin-bottom: var(--space-10);
-}
-
-.thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
-.thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
-  height: calc(100vh - 250px);
-  min-height: 520px;
-  max-height: none;
 }

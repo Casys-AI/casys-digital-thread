@@ -8,6 +8,6 @@
    regle vit ici une seule fois et sans !important.
    -------------------------------------------------------------------------- */
 
-.thread-workbench :is(.thread-feed-toolbar button, .thread-graph-density-toggle, .thread-drawer-tabs button, .tool-inspector-action > button, .thread-inspector-toggle, .thread-feed-lineage-actions button, .thread-graph-controls button, .thread-graph-expand-button, .thread-graph-focus-close) {
+.thread-workbench :is(.thread-feed-toolbar button, .thread-graph-density-toggle, .thread-drawer-tabs button, .tool-inspector-action > button, .thread-inspector-toggle, .thread-feed-lineage-actions button, .thread-graph-controls button) {
   font: 700 var(--text-3xs)/1 var(--mono);
 }

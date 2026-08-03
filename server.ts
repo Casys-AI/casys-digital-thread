@@ -24,6 +24,11 @@ import { FileCm01SemanticCadAttemptStore } from "./src/adapters/file-cm01-semant
 import { FileCm01SemanticCadCaptureStore } from "./src/adapters/file-cm01-semantic-cad-capture-store.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
 import { FileCm01DripTrayMechanicalCaptureStore } from "./src/adapters/file-cm01-drip-tray-mechanical-capture-store.ts";
+import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
+  CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts";
 import { FileInspectionDroneArchitectureCaptureStore } from "./src/adapters/file-inspection-drone-architecture-capture-store.ts";
 import { FileInspectionDroneArchitectureAttemptStore } from "./src/adapters/file-inspection-drone-architecture-attempt-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
@@ -52,6 +57,18 @@ import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,
   CoffeeMachineCm01V3MechanicalRunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-mechanical-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_DRIP_TRAY_HEIGHT_CORRECTION_OPERATION,
+  CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-drip-tray-height-correction-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_CAD_R2_OPERATION,
+  COFFEE_MACHINE_CM01_V3_MECHANICAL_R2_OPERATION,
+  COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_OPERATION,
+  CoffeeMachineCm01V3CadR2RunExecutor,
+  CoffeeMachineCm01V3MechanicalR2RunExecutor,
+  CoffeeMachineCm01V3MechanicalR3RunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-r2-provider-run-executor.ts";
 import { InspectionDroneArchitectureQueueEligibility } from "./src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
@@ -73,8 +90,15 @@ import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verif
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "./src/domain/coffee-machine-cm01-semantic-recipe.ts";
-import { parseCm01DripTrayMechanicalProof } from "./src/domain/cm01-drip-tray-mechanical-proof.ts";
+import {
+  parseCoffeeMachineCm01SemanticRecipe,
+  parseCoffeeMachineCm01SemanticRecipeR2,
+} from "./src/domain/coffee-machine-cm01-semantic-recipe.ts";
+import {
+  parseCm01DripTrayMechanicalProof,
+  parseCm01DripTrayMechanicalProofR2,
+  parseCm01DripTrayMechanicalProofR3,
+} from "./src/domain/cm01-drip-tray-mechanical-proof.ts";
 import { ProjectBriefCommandService } from "./src/domain/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import {
@@ -148,10 +172,28 @@ const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_ATTEMPT_DIRECTORY =
   "state/local/cm01-drip-tray-mechanical-attempts";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DIRECTORY =
   "state/local/cm01-drip-tray-mechanical-captures";
+const DEFAULT_CM01_SEMANTIC_CAD_R2_ATTEMPT_DIRECTORY =
+  "state/local/cm01-semantic-cad-r2-attempts";
+const DEFAULT_CM01_SEMANTIC_CAD_R2_CAPTURE_DIRECTORY =
+  "state/local/cm01-semantic-cad-r2-captures";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_ATTEMPT_DIRECTORY =
+  "state/local/cm01-drip-tray-mechanical-r2-attempts";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_CAPTURE_DIRECTORY =
+  "state/local/cm01-drip-tray-mechanical-r2-captures";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_ATTEMPT_DIRECTORY =
+  "state/local/cm01-drip-tray-mechanical-r3-attempts";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_CAPTURE_DIRECTORY =
+  "state/local/cm01-drip-tray-mechanical-r3-captures";
 const DEFAULT_CM01_SEMANTIC_RECIPE_PATH =
   "config/product-recipes/coffee-machine-cm01-v1.json";
+const DEFAULT_CM01_SEMANTIC_RECIPE_R2_PATH =
+  "config/product-recipes/coffee-machine-cm01-v2-drip-tray-30.json";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_PATH =
   "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R2_PATH =
+  "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-height-30-static.json";
+const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R3_PATH =
+  "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-height-30-static-r3.json";
 const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_CAPTURE_DIRECTORY =
   "state/local/inspection-drone-architecture-captures";
 const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_ATTEMPT_DIRECTORY =
@@ -202,6 +244,12 @@ export interface CreateConsoleServerOptions {
   cm01SemanticCadCaptureDirectory?: string;
   cm01DripTrayMechanicalAttemptDirectory?: string;
   cm01DripTrayMechanicalCaptureDirectory?: string;
+  cm01SemanticCadR2AttemptDirectory?: string;
+  cm01SemanticCadR2CaptureDirectory?: string;
+  cm01DripTrayMechanicalR2AttemptDirectory?: string;
+  cm01DripTrayMechanicalR2CaptureDirectory?: string;
+  cm01DripTrayMechanicalR3AttemptDirectory?: string;
+  cm01DripTrayMechanicalR3CaptureDirectory?: string;
   inspectionDroneArchitectureCaptureDirectory?: string;
   inspectionDroneArchitectureAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
@@ -493,6 +541,14 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01DripTrayHeightCorrection =
+    new CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      lease,
+      liveUpdates,
+    });
   const cm01Cad = build123dMcpUrl
     ? new CoffeeMachineCm01V3CadRunExecutor({
       projects: runtime.projects,
@@ -510,6 +566,28 @@ async function createProjectControl(
       captures: new FileCm01SemanticCadCaptureStore(
         options.cm01SemanticCadCaptureDirectory ??
           DEFAULT_CM01_SEMANTIC_CAD_CAPTURE_DIRECTORY,
+      ),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const cm01CadR2 = build123dMcpUrl
+    ? new CoffeeMachineCm01V3CadR2RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      recipe: await loadCoffeeMachineCm01SemanticRecipeR2(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      attempts: new FileCm01SemanticCadAttemptStore(
+        options.cm01SemanticCadR2AttemptDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_R2_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCm01SemanticCadCaptureStore(
+        options.cm01SemanticCadR2CaptureDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_R2_CAPTURE_DIRECTORY,
       ),
       lease,
       liveUpdates,
@@ -537,6 +615,72 @@ async function createProjectControl(
         options.cm01DripTrayMechanicalCaptureDirectory ??
           DEFAULT_CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DIRECTORY,
       ),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const cm01MechanicalR2 = build123dMcpUrl && calculixMcpUrl
+    ? new CoffeeMachineCm01V3MechanicalR2RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      proof: await loadCm01DripTrayMechanicalProofR2(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      calculix: new HttpMcpToolClient({
+        mcpUrl: calculixMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      attempts: new FileCm01DripTrayMechanicalAttemptStore(
+        options.cm01DripTrayMechanicalR2AttemptDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCm01DripTrayMechanicalCaptureStore(
+        options.cm01DripTrayMechanicalR2CaptureDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_CAPTURE_DIRECTORY,
+      ),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const cm01MechanicalR3Attempts = new FileCm01DripTrayMechanicalAttemptStore(
+    options.cm01DripTrayMechanicalR3AttemptDirectory ??
+      DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_ATTEMPT_DIRECTORY,
+  );
+  const cm01MechanicalR3Captures = new FileCm01DripTrayMechanicalCaptureStore(
+    options.cm01DripTrayMechanicalR3CaptureDirectory ??
+      DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_CAPTURE_DIRECTORY,
+  );
+  const cm01MechanicalR3IdentityRecovery =
+    new CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      capture: new Cm01DripTrayMechanicalR3CaptureRecovery(
+        cm01MechanicalR3Attempts,
+        cm01MechanicalR3Captures,
+      ),
+      proof: await loadCm01DripTrayMechanicalProofR3(),
+      lease,
+    });
+  const cm01MechanicalR3 = build123dMcpUrl && calculixMcpUrl
+    ? new CoffeeMachineCm01V3MechanicalR3RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      proof: await loadCm01DripTrayMechanicalProofR3(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      calculix: new HttpMcpToolClient({
+        mcpUrl: calculixMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      attempts: cm01MechanicalR3Attempts,
+      captures: cm01MechanicalR3Captures,
       lease,
       liveUpdates,
     })
@@ -574,16 +718,42 @@ async function createProjectControl(
               "The server has no trusted CM-01 ERPNext BOM executor configured for this run.",
           },
           {
+            operation: COFFEE_MACHINE_CM01_V3_DRIP_TRAY_HEIGHT_CORRECTION_OPERATION,
+            executor: cm01DripTrayHeightCorrection,
+          },
+          {
             operation: COFFEE_MACHINE_CM01_V3_CAD_OPERATION,
             executor: cm01Cad,
             unavailableMessage:
               "The server has no trusted CM-01 semantic CAD executor configured for this run.",
           },
           {
+            operation: COFFEE_MACHINE_CM01_V3_CAD_R2_OPERATION,
+            executor: cm01CadR2,
+            unavailableMessage:
+              "The server has no trusted CM-01 revised semantic CAD executor configured for this run.",
+          },
+          {
             operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,
             executor: cm01Mechanical,
             unavailableMessage:
               "The server has no trusted CM-01 DripTray mechanical executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_R2_OPERATION,
+            executor: cm01MechanicalR2,
+            unavailableMessage:
+              "The server has no trusted CM-01 revised DripTray mechanical executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_OPERATION,
+            executor: cm01MechanicalR3,
+            unavailableMessage:
+              "The server has no trusted CM-01 R3 DripTray recovery executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
+            executor: cm01MechanicalR3IdentityRecovery,
           },
         ],
       }),
@@ -600,11 +770,38 @@ async function loadCoffeeMachineCm01SemanticRecipe() {
   );
 }
 
+async function loadCoffeeMachineCm01SemanticRecipeR2() {
+  return parseCoffeeMachineCm01SemanticRecipeR2(
+    await loadReviewedJson(
+      DEFAULT_CM01_SEMANTIC_RECIPE_R2_PATH,
+      "CM-01 revised semantic recipe",
+    ),
+  );
+}
+
 async function loadCm01DripTrayMechanicalProof() {
   return parseCm01DripTrayMechanicalProof(
     await loadReviewedJson(
       DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_PATH,
       "CM-01 DripTray mechanical proof",
+    ),
+  );
+}
+
+async function loadCm01DripTrayMechanicalProofR2() {
+  return parseCm01DripTrayMechanicalProofR2(
+    await loadReviewedJson(
+      DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R2_PATH,
+      "CM-01 revised DripTray mechanical proof",
+    ),
+  );
+}
+
+async function loadCm01DripTrayMechanicalProofR3() {
+  return parseCm01DripTrayMechanicalProofR3(
+    await loadReviewedJson(
+      DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R3_PATH,
+      "CM-01 R3 DripTray recovery proof",
     ),
   );
 }

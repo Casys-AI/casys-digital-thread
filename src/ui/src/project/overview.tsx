@@ -9,11 +9,13 @@ import type {
 } from "../../../domain/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { DecisionCenter } from "./control-center.tsx";
+import { ProjectBriefRecord } from "./brief-record.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   agentRunSummary,
   buildProjectBrief,
-  projectBriefStatusLabel,
+  buildProjectPath,
+  projectPathStatusLabel,
   projectStatusTone,
   workOwnerLabel,
   workStatusLabel,
@@ -35,6 +37,7 @@ export function ProjectOverview({
   onOpenSpecification,
 }: ProjectOverviewProps): JSX.Element {
   const brief = buildProjectBrief(project);
+  const projectPath = buildProjectPath(project, thread);
   const leadRun = brief.activeRuns[0];
   const openBlocker = brief.openBlockers[0];
 
@@ -57,14 +60,15 @@ export function ProjectOverview({
         </div>
         <div
           class="project-status-seal"
-          data-tone={projectStatusTone(brief.status)}
-          aria-label={`Project status: ${projectBriefStatusLabel(brief)}`}
+          data-tone={projectStatusTone(projectPath.status)}
+          aria-label={`Project status: ${projectPathStatusLabel(projectPath)}`}
         >
           <i aria-hidden="true" />
           <span>PROJECT STATE</span>
-          <strong>{projectBriefStatusLabel(brief)}</strong>
+          <strong>{projectPathStatusLabel(projectPath)}</strong>
           <small>
-            {brief.completedPhases}/{brief.phases.length} phase gates satisfied
+            {projectPath.completedPhases}/{projectPath.phases.length} macro{" "}
+            gates satisfied
           </small>
         </div>
       </section>
@@ -74,6 +78,8 @@ export function ProjectOverview({
         onOpenActivity={onOpenActivity}
         onOpenSpecification={onOpenSpecification}
       />
+
+      <ProjectBriefRecord project={project} />
 
       <section
         class="project-phase-section"
@@ -85,7 +91,8 @@ export function ProjectOverview({
             <h3 id="project-phase-title">From intent to industrial proof</h3>
           </div>
           <span>
-            Statuses are derived from recorded work, decisions and evidence.
+            Macro gates only. Component revisions and retries stay with their
+            evidence lifecycle.
           </span>
         </header>
         {
@@ -100,7 +107,7 @@ export function ProjectOverview({
           tabIndex={0}
           aria-label="Project phases, scrolls horizontally"
         >
-          {brief.phases.map((item, index) => (
+          {projectPath.phases.map((item, index) => (
             <li key={item.phase.id} data-state={item.status}>
               <div class="project-phase-node">
                 <span>{String(index + 1).padStart(2, "0")}</span>
@@ -125,6 +132,19 @@ export function ProjectOverview({
                     <dt>Evidence</dt>
                     <dd>{item.evidenceCount}</dd>
                   </div>
+                  {item.lifecycle && (
+                    <div
+                      class="project-phase-lifecycle"
+                      data-state={item.lifecycle.state}
+                    >
+                      <dt>
+                        {item.lifecycle.affectedComponentIds.length > 0
+                          ? "Component"
+                          : "Lifecycle"}
+                      </dt>
+                      <dd>{projectPhaseLifecycleLabel(item.lifecycle)}</dd>
+                    </div>
+                  )}
                 </dl>
               </div>
             </li>
@@ -193,7 +213,7 @@ export function ProjectOverview({
           <EvidenceRoute
             index="A"
             title="Product definition"
-            detail={`${thread.components.components.length} reviewed component records across SysON, CAD and ERP facets.`}
+            detail={productDefinitionDetail(thread)}
             action="Explore product"
             onOpen={() => onNavigate("product")}
           />
@@ -341,6 +361,49 @@ function phaseStatusLabel(status: string): string {
   if (status === "active") return "In progress";
   if (status === "blocked") return "Blocked";
   return "Planned";
+}
+
+function projectPhaseLifecycleLabel(
+  lifecycle: NonNullable<
+    ReturnType<typeof buildProjectPath>["phases"][number]["lifecycle"]
+  >,
+): string {
+  const componentCount = lifecycle.affectedComponentIds.length;
+  const subject = componentCount > 0
+    ? `${componentCount} component${componentCount === 1 ? "" : "s"}`
+    : `${lifecycle.correctionCount} evidence update${
+      lifecycle.correctionCount === 1 ? "" : "s"
+    }`;
+  if (lifecycle.state === "current") return `${subject} updated`;
+  if (lifecycle.state === "attention") return `${subject} needs review`;
+  return `${subject} updating`;
+}
+
+function productDefinitionDetail(thread: ThreadWorkbenchSnapshot): string {
+  const labels = [
+    ...new Set(
+      thread.components.components.flatMap((component) =>
+        component.bindings.filter((binding) => binding.status === "verified")
+          .map((binding) => providerLabel(binding.provider))
+      ),
+    ),
+  ];
+  const scope = labels.length > 0
+    ? joinLabels(labels)
+    : "recorded source facets";
+  return `${thread.components.components.length} reviewed component records across ${scope}.`;
+}
+
+function providerLabel(provider: "syson" | "erpnext" | "build123d"): string {
+  if (provider === "syson") return "SysON";
+  if (provider === "build123d") return "CAD";
+  return "ERP";
+}
+
+function joinLabels(labels: readonly string[]): string {
+  if (labels.length < 2) return labels[0]!;
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
 }
 
 function formatShortDate(value: string): string {

@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   cadSurfaceCoverage,
+  correctionNodesForComponent,
   resolveCadSurface,
 } from "./src/thread/component-workspace-model.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
@@ -93,6 +94,43 @@ Deno.test("global CAD does not resolve from a label or a foreign provider", () =
   });
 
   assertEquals(resolveCadSurface(snapshot, root), undefined);
+});
+
+Deno.test("component revisions require an explicit catalog anchor", () => {
+  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const dripTray: ThreadComponent = {
+    id: "cm01-v3:drip-tray",
+    label: "DripTray",
+    kind: "part",
+    quantity: 1,
+    bindings: [],
+  };
+  snapshot.components.components = [dripTray];
+  snapshot.graph.nodes.push({
+    id: "graph:change:drip-tray-height",
+    ref: { kind: "change", id: "drip-tray-height" },
+    entityKind: "change",
+    label: "Raise DripTray to 30 mm",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "recorded correction",
+    recordedAt: "2026-08-03T12:00:00.000Z",
+    affectedComponentId: dripTray.id,
+  }, {
+    id: "graph:change:unanchored",
+    ref: { kind: "change", id: "unanchored" },
+    entityKind: "change",
+    label: "Unanchored correction",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "recorded correction",
+    recordedAt: "2026-08-03T12:01:00.000Z",
+  });
+
+  assertEquals(
+    correctionNodesForComponent(snapshot, dripTray).map((node) => node.ref.id),
+    ["drip-tray-height"],
+  );
 });
 
 function artifact(

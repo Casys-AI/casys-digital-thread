@@ -2,8 +2,10 @@ import type {
   EngineeringOperationInputBinding,
   EngineeringOperationRef,
   EngineeringProjectStartingPoint,
+  EngineeringThreadEntityRef,
   EngineeringWorkItemKind,
 } from "../../domain/engineering-project.ts";
+import type { ThreadEntityKind } from "../../domain/thread-snapshot.ts";
 import {
   INSPECTION_DRONE_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
@@ -118,6 +120,17 @@ export class EngineeringOperationRegistryError extends Error {
     this.name = "EngineeringOperationRegistryError";
   }
 }
+
+const THREAD_ENTITY_KINDS = [
+  "artifact",
+  "consumption",
+  "observation",
+  "requirement",
+  "evaluation",
+  "violation",
+  "change",
+  "action",
+] as const satisfies readonly ThreadEntityKind[];
 
 const OPERATIONS = [
   {
@@ -450,7 +463,41 @@ function bindingValue(
       },
     };
   }
+  if (source.kind === "thread-entity") {
+    exactRecord(source, ["kind", "reference"], sourcePath);
+    return {
+      name,
+      source: {
+        kind: "thread-entity",
+        reference: threadEntityReference(source.reference, `${sourcePath}.reference`),
+      },
+    };
+  }
   invalidInput(`${sourcePath}.kind must be an approved state-reference source`);
+}
+
+function threadEntityReference(
+  value: unknown,
+  path: string,
+): EngineeringThreadEntityRef {
+  const record = exactRecord(
+    value,
+    ["snapshotId", "snapshotRevision", "kind", "id"],
+    path,
+  );
+  const kind = record.kind;
+  if (!THREAD_ENTITY_KINDS.includes(kind as ThreadEntityKind)) {
+    invalidInput(`${path}.kind must be a ThreadSnapshot entity kind`);
+  }
+  return {
+    snapshotId: nonEmptyString(record.snapshotId, `${path}.snapshotId`),
+    snapshotRevision: positiveInteger(
+      record.snapshotRevision,
+      `${path}.snapshotRevision`,
+    ),
+    kind: kind as ThreadEntityKind,
+    id: nonEmptyString(record.id, `${path}.id`),
+  };
 }
 
 function basisKindValue(value: unknown, path: string): EngineeringOperationBasisKind {
@@ -495,6 +542,11 @@ function object(value: unknown, path: string): Record<string, unknown> {
 function nonEmptyString(value: unknown, path: string): string {
   if (typeof value === "string" && value.trim().length > 0) return value;
   invalidInput(`${path} must be a non-empty string`);
+}
+
+function positiveInteger(value: unknown, path: string): number {
+  if (Number.isSafeInteger(value) && (value as number) > 0) return value as number;
+  invalidInput(`${path} must be a positive integer`);
 }
 
 function invalidInput(message: string): never {
@@ -556,6 +608,14 @@ function copyInputBinding(
         source: {
           kind: "discovery-answer",
           answerId: binding.source.answerId,
+        },
+      };
+    case "thread-entity":
+      return {
+        name: binding.name,
+        source: {
+          kind: "thread-entity",
+          reference: { ...binding.source.reference },
         },
       };
     default:

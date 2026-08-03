@@ -360,6 +360,34 @@ Deno.test("the Workbench contract accepts only its explicit activity role", () =
   assertEquals(isThreadWorkbenchSnapshot(milestone), false);
 });
 
+Deno.test("the Workbench accepts only a non-empty explicit correction component anchor", () => {
+  const anchored = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  anchored.graph.nodes[0]!.affectedComponentId = "cm01-v3:drip-tray";
+  assertEquals(isThreadWorkbenchSnapshot(anchored), true);
+
+  anchored.graph.nodes[0]!.affectedComponentId = "";
+  assertEquals(isThreadWorkbenchSnapshot(anchored), false);
+
+  anchored.graph.nodes[0]!.affectedComponentId = 42 as never;
+  assertEquals(isThreadWorkbenchSnapshot(anchored), false);
+});
+
+Deno.test("the Workbench contract accepts only an exact immutable predecessor reference", () => {
+  const withPrevious = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  withPrevious.previous = {
+    snapshotId: "thread-cm01-r6",
+    revision: 6,
+  };
+  assertEquals(isThreadWorkbenchSnapshot(withPrevious), true);
+
+  withPrevious.previous = {
+    snapshotId: "thread-cm01-r6",
+    revision: 6,
+    source: "invented",
+  } as never;
+  assertEquals(isThreadWorkbenchSnapshot(withPrevious), false);
+});
+
 Deno.test("the Workbench contract requires evidence-backed component facets", () => {
   const missingComponents = JSON.parse(
     JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),
@@ -372,6 +400,13 @@ Deno.test("the Workbench contract requires evidence-backed component facets", ()
   ) as typeof COFFEE_MACHINE_THREAD_FIXTURE;
   fuzzyBinding.components.components[0].bindings[0].status = "fuzzy" as never;
   assertEquals(isThreadWorkbenchSnapshot(fuzzyBinding), false);
+
+  const partDefinition = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  partDefinition.components.components[0].bindings[0].kind = "part-definition";
+  assertEquals(isThreadWorkbenchSnapshot(partDefinition), true);
+
+  partDefinition.components.components[0].bindings[0].kind = "invented" as never;
+  assertEquals(isThreadWorkbenchSnapshot(partDefinition), false);
 });
 
 Deno.test("HTTP Workbench client performs one uncached read-only JSON GET", async () => {

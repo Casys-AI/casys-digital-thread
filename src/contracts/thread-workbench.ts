@@ -55,6 +55,11 @@ export interface ThreadGraphNode {
   /** Canonical timestamp used to order this fact in the activity feed. */
   recordedAt?: string;
   /**
+   * Optional, explicitly declared product-structure identity affected by a
+   * correction. It is a catalog id, never a friendly-name inference.
+   */
+  affectedComponentId?: string;
+  /**
    * Explicit browser-safe presentation role for a server-owned live milestone.
    * It does not change the node's engineering/provenance semantics.
    */
@@ -85,6 +90,100 @@ export interface ThreadGraphEdge {
 export interface ThreadGraph {
   nodes: ThreadGraphNode[];
   edges: ThreadGraphEdge[];
+}
+
+/**
+ * Browser-safe quotient of the canonical graph for revision-aware rendering.
+ *
+ * The raw `graph` above remains the complete auditable graph. This additional
+ * projection only folds explicit, compatible `supersedes` chains; it never
+ * changes, removes, or reclassifies canonical evidence.
+ */
+export interface ThreadEvidenceFamilyGraph {
+  schemaVersion: "thread-evidence-family-graph/1.0";
+  /** Exact canonical snapshot from which this read model was derived. */
+  asOf: {
+    snapshotId: string;
+    revision: number;
+  };
+  /** Explicit direct supersession chains, never inferred from names or bytes. */
+  families: ThreadEvidenceFamily[];
+  /** Non-self-loop edges between folded families only. */
+  edges: ThreadEvidenceFamilyGraphEdge[];
+  /** Raw edges made internal by a family and therefore omitted from the DAG. */
+  omittedSelfLoops: ThreadEvidenceFamilyOmittedSelfLoop[];
+  /** Raw edges whose inclusion would introduce a quotient-graph cycle. */
+  omittedCycleEdges: ThreadEvidenceFamilyOmittedCycleEdge[];
+}
+
+/**
+ * A family accepts only canonical artifact or requirement versions. Observed
+ * measurements and verdicts intentionally remain separate facts: neither is
+ * silently equated with a later observation or evaluation.
+ */
+export interface ThreadEvidenceFamily {
+  /** Opaque deterministic id; callers must not parse it for semantics. */
+  id: string;
+  entityKind: "artifact" | "requirement";
+  /** Present only for artifact families and identical for every member. */
+  artifactKind?: string;
+  /** Members with an explicit successor in this family. */
+  historicalRefs: ThreadGraphRef[];
+  /** Terminal members in the explicit supersession topology. */
+  currentRefs: ThreadGraphRef[];
+  /** Number of direct canonical supersession transitions in the family. */
+  revisionCount: number;
+  /** A current member is claimed only when the topology has exactly one. */
+  status: "current" | "review-required";
+  /** Required whenever the topology cannot name one current successor. */
+  reviewReason?: "divergent-successors" | "no-current-successor";
+  /**
+   * Source snapshots currently record only `supersedes`, not the reason or
+   * byte/semantic equivalence of that relation. Keep both classifications
+   * deliberately unclaimed until the domain carries explicit metadata.
+   */
+  relationship: {
+    relation: "supersedes";
+    classification: "not-recorded";
+    equivalence: "not-recorded";
+  };
+  /** Every direct canonical link that formed this family. */
+  transitions: ThreadEvidenceFamilyTransition[];
+}
+
+export interface ThreadEvidenceFamilyTransition {
+  edgeRef: ThreadEvidenceFamilyEdgeRef;
+  /** Normalized visual direction: historical member -> direct successor. */
+  historical: ThreadGraphRef;
+  successor: ThreadGraphRef;
+}
+
+/** Reference to a raw browser-safe graph edge, never a reconstructed edge. */
+export interface ThreadEvidenceFamilyEdgeRef {
+  id: string;
+  relation: ThreadGraphRelation;
+  origin: ThreadGraphEdge["origin"];
+}
+
+export interface ThreadEvidenceFamilyGraphEdge {
+  id: string;
+  fromFamilyId: string;
+  toFamilyId: string;
+  relation: ThreadGraphRelation;
+  origin: ThreadGraphEdge["origin"];
+  /** One or more raw graph edges collapsed into this quotient edge. */
+  memberEdgeRefs: ThreadEvidenceFamilyEdgeRef[];
+}
+
+export interface ThreadEvidenceFamilyOmittedSelfLoop {
+  familyId: string;
+  memberEdgeRefs: ThreadEvidenceFamilyEdgeRef[];
+}
+
+export interface ThreadEvidenceFamilyOmittedCycleEdge {
+  fromFamilyId: string;
+  toFamilyId: string;
+  memberEdgeRefs: ThreadEvidenceFamilyEdgeRef[];
 }
 
 export interface ThreadChange {
@@ -181,7 +280,12 @@ export type ThreadComponentProvider = "syson" | "erpnext" | "build123d";
 
 export interface ThreadComponentBinding {
   provider: ThreadComponentProvider;
-  kind: "part-usage" | "item" | "artifact" | "assembly-child";
+  kind:
+    | "part-definition"
+    | "part-usage"
+    | "item"
+    | "artifact"
+    | "assembly-child";
   id: string;
   label: string;
   evidenceArtifactId: string;
@@ -227,6 +331,18 @@ export interface ThreadComponentCatalog {
   components: ThreadComponent[];
 }
 
+/**
+ * Exact immutable predecessor of this projected canonical snapshot.
+ *
+ * This remains an identifier-only reference: the browser can request the
+ * matching historical projection, but this contract never embeds a second
+ * snapshot or any provider payload.
+ */
+export interface ThreadWorkbenchPreviousSnapshot {
+  snapshotId: string;
+  revision: number;
+}
+
 export interface ThreadWorkbenchSnapshot {
   /** UI projection produced from the canonical domain ThreadSnapshot. */
   schemaVersion: "thread-workbench/0.1";
@@ -237,11 +353,15 @@ export interface ThreadWorkbenchSnapshot {
     program: string;
   };
   generatedAt: string;
+  /** Present only when the canonical snapshot extends an earlier revision. */
+  previous?: ThreadWorkbenchPreviousSnapshot;
   source: "observed" | "fixture";
   sourceLabel: string;
   change: ThreadChange;
   components: ThreadComponentCatalog;
   graph: ThreadGraph;
+  /** Compact quotient of explicit evidence-version chains; raw graph remains above. */
+  evidenceFamilyGraph: ThreadEvidenceFamilyGraph;
   flow: ThreadFlowStage[];
   artifacts: ThreadArtifact[];
   observations: ThreadObservation[];

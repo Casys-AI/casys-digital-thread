@@ -1,6 +1,9 @@
 import {
+  COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_KEY,
+  COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_SCHEMA,
   COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_SCHEMA,
   type CoffeeMachineCm01SemanticRecipe,
+  type CoffeeMachineCm01SemanticRecipeR2,
 } from "./coffee-machine-cm01-semantic-recipe.ts";
 
 /**
@@ -42,8 +45,10 @@ export interface CoffeeMachineCm01CadArtifact {
 export interface CoffeeMachineCm01SemanticCadPlan {
   readonly schemaVersion: typeof COFFEE_MACHINE_CM01_SEMANTIC_CAD_PLAN_SCHEMA;
   readonly recipe: {
-    readonly schemaVersion: typeof COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_SCHEMA;
-    readonly key: "cm01-golden";
+    readonly schemaVersion:
+      | typeof COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_SCHEMA
+      | typeof COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_SCHEMA;
+    readonly key: "cm01-golden" | typeof COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_KEY;
     readonly fingerprint: CoffeeMachineCm01CadFingerprint;
   };
   readonly geometry: {
@@ -58,7 +63,7 @@ export interface CoffeeMachineCm01SemanticCadPlan {
   readonly build123d: {
     readonly tool: "build123d_export";
     readonly exportFormats: readonly ["step", "gltf", "stl"];
-    readonly exportName: "coffee-machine-cm01-v3";
+    readonly exportName: "coffee-machine-cm01-v3" | "coffee-machine-cm01-v3-r2";
     readonly scriptArtifactRole: "cad-script";
   };
   readonly artifacts: readonly [
@@ -81,9 +86,42 @@ export interface CompiledCoffeeMachineCm01SemanticCadPlan {
 export async function compileCoffeeMachineCm01SemanticCadPlan(
   recipe: CoffeeMachineCm01SemanticRecipe,
 ): Promise<CompiledCoffeeMachineCm01SemanticCadPlan> {
-  assertParsedRecipe(recipe);
+  assertParsedRecipe(
+    recipe,
+    COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_SCHEMA,
+    "cm01-golden",
+  );
+  return await compileParsedRecipe(recipe, "coffee-machine-cm01-v3");
+}
+
+/**
+ * Compile only the reviewed 30 mm DripTray follow-up recipe.
+ *
+ * This is intentionally a separate entry point: passing a V1 frozen recipe
+ * cannot silently produce a V2 CAD handoff, and no free geometry value is
+ * accepted by the compiler.
+ */
+export async function compileCoffeeMachineCm01SemanticCadPlanR2(
+  recipe: CoffeeMachineCm01SemanticRecipeR2,
+): Promise<CompiledCoffeeMachineCm01SemanticCadPlan> {
+  assertParsedRecipe(
+    recipe,
+    COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_SCHEMA,
+    COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_KEY,
+  );
+  return await compileParsedRecipe(recipe, "coffee-machine-cm01-v3-r2");
+}
+
+type ParsedCoffeeMachineCm01SemanticRecipe =
+  | CoffeeMachineCm01SemanticRecipe
+  | CoffeeMachineCm01SemanticRecipeR2;
+
+async function compileParsedRecipe(
+  recipe: ParsedCoffeeMachineCm01SemanticRecipe,
+  exportName: CoffeeMachineCm01SemanticCadPlan["build123d"]["exportName"],
+): Promise<CompiledCoffeeMachineCm01SemanticCadPlan> {
   const geometry = normalizeGeometry(recipe);
-  const script = renderBuild123dScript(geometry.components);
+  const script = renderBuild123dScript(geometry.components, exportName);
   const recipeFingerprint = await fingerprint(recipeFingerprintPayload(recipe));
   const planFingerprint = await fingerprint({
     schemaVersion: COFFEE_MACHINE_CM01_SEMANTIC_CAD_PLAN_SCHEMA,
@@ -96,7 +134,7 @@ export async function compileCoffeeMachineCm01SemanticCadPlan(
     build123d: {
       tool: "build123d_export",
       exportFormats: ["step", "gltf", "stl"],
-      exportName: "coffee-machine-cm01-v3",
+      exportName,
       scriptArtifactRole: "cad-script",
     },
   });
@@ -114,7 +152,7 @@ export async function compileCoffeeMachineCm01SemanticCadPlan(
       build123d: {
         tool: "build123d_export",
         exportFormats: ["step", "gltf", "stl"],
-        exportName: "coffee-machine-cm01-v3",
+        exportName,
         scriptArtifactRole: "cad-script",
       },
       artifacts: [
@@ -140,9 +178,12 @@ export async function compileCoffeeMachineCm01SemanticCadPlan(
  * making the CAD compiler a second recipe parser with divergent policy.
  */
 function assertParsedRecipe(
-  recipe: CoffeeMachineCm01SemanticRecipe,
-): asserts recipe is CoffeeMachineCm01SemanticRecipe {
+  recipe: ParsedCoffeeMachineCm01SemanticRecipe,
+  schemaVersion: ParsedCoffeeMachineCm01SemanticRecipe["schemaVersion"],
+  recipeKey: ParsedCoffeeMachineCm01SemanticRecipe["recipeKey"],
+): void {
   if (
+    recipe.schemaVersion !== schemaVersion || recipe.recipeKey !== recipeKey ||
     !Object.isFrozen(recipe) ||
     !Object.isFrozen(recipe.components) ||
     !recipe.components.every((component) =>
@@ -160,7 +201,7 @@ function assertParsedRecipe(
 }
 
 function normalizeGeometry(
-  recipe: CoffeeMachineCm01SemanticRecipe,
+  recipe: ParsedCoffeeMachineCm01SemanticRecipe,
 ): CoffeeMachineCm01SemanticCadPlan["geometry"] {
   return {
     unit: "mm",
@@ -191,7 +232,9 @@ function normalizeGeometry(
   };
 }
 
-function recipeFingerprintPayload(recipe: CoffeeMachineCm01SemanticRecipe): unknown {
+function recipeFingerprintPayload(
+  recipe: ParsedCoffeeMachineCm01SemanticRecipe,
+): unknown {
   return {
     schemaVersion: recipe.schemaVersion,
     recipeKey: recipe.recipeKey,
@@ -203,6 +246,7 @@ function recipeFingerprintPayload(recipe: CoffeeMachineCm01SemanticRecipe): unkn
 
 function renderBuild123dScript(
   components: readonly CoffeeMachineCm01CadGeometry[],
+  assemblyLabel: CoffeeMachineCm01SemanticCadPlan["build123d"]["exportName"],
 ): string {
   const lines = [
     "from build123d import Align, Box, Compound, Cylinder, Pos, Rot",
@@ -228,7 +272,7 @@ function renderBuild123dScript(
   }
   lines.push(
     "",
-    'result = Compound(label="coffee-machine-cm01-v3", children=components)',
+    `result = Compound(label=${pythonString(assemblyLabel)}, children=components)`,
     "",
   );
   return lines.join("\n");

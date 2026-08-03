@@ -3,6 +3,7 @@ import type {
   ThreadComponent,
   ThreadComponentBinding,
   ThreadComponentPreview,
+  ThreadGraphNode,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 
@@ -20,6 +21,24 @@ export interface CadSurfaceCoverage {
   readonly assemblySurfaces: number;
   readonly partSurfaces: number;
   readonly totalComponents: number;
+}
+
+/**
+ * Explicit correction anchors are the only route from a component to its
+ * lifecycle. Friendly labels and provider-side names are intentionally not
+ * used as a fallback.
+ */
+export function correctionNodesForComponent(
+  snapshot: ThreadWorkbenchSnapshot,
+  component: ThreadComponent,
+): readonly ThreadGraphNode[] {
+  return snapshot.graph.nodes.filter((node) =>
+    node.entityKind === "change" &&
+    node.affectedComponentId === component.id
+  ).toSorted((left, right) =>
+    (right.recordedAt ?? "").localeCompare(left.recordedAt ?? "") ||
+    left.id.localeCompare(right.id)
+  );
 }
 
 /**

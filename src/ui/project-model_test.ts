@@ -1,9 +1,13 @@
 import { assertEquals } from "@std/assert";
 import { COFFEE_MACHINE_PROJECT_FIXTURE } from "./src/project/fixture.ts";
+import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   agentRunSummary,
   buildProjectBrief,
+  buildProjectPath,
+  PROJECT_PATH_PRESENTATION_POLICY,
   projectBriefStatusLabel,
+  projectPathStatusLabel,
   projectStatusLabel,
   workOwnerLabel,
 } from "./src/project/model.ts";
@@ -36,6 +40,79 @@ Deno.test("project brief separates agent preparation from human review", () => {
   );
   assertEquals(workOwnerLabel("shared"), "Agent + human review");
   assertEquals(workOwnerLabel("human"), "Human review");
+});
+
+Deno.test("Project Path keeps a component correction and failed retry below its macro evidence stages", () => {
+  const { project, thread } = correctionPathFixture();
+  const path = buildProjectPath(project, thread);
+
+  assertEquals(PROJECT_PATH_PRESENTATION_POLICY.version, "project-path/1.0");
+  assertEquals(
+    path.phases.map((item) => item.phase.id),
+    ["cad", "verification"],
+  );
+  assertEquals(path.completedPhases, 2);
+  assertEquals(path.status, "completed");
+  assertEquals(path.phases[0]?.lifecycle, {
+    affectedComponentIds: ["component:drip-tray"],
+    correctionCount: 1,
+    revisionAttemptCount: 1,
+    state: "current",
+  });
+  assertEquals(path.phases[1]?.status, "completed");
+  assertEquals(path.phases[1]?.lifecycle, {
+    affectedComponentIds: ["component:drip-tray"],
+    correctionCount: 1,
+    revisionAttemptCount: 2,
+    state: "current",
+  });
+
+  // Raw r10-style additions must never become top-level Project Path cards.
+  assertEquals(
+    path.phases.some((item) =>
+      item.phase.id === "cm01-v3-drip-tray-height-correction" ||
+      item.phase.id === "cm01-v3-drip-tray-height-30-cad" ||
+      item.phase.id === "cm01-v3-drip-tray-height-30-mechanical" ||
+      item.phase.id === "cm01-v3-drip-tray-height-30-mechanical-r3-retry"
+    ),
+    false,
+  );
+});
+
+Deno.test("Project Path folds the exact R3 identity repair into Mechanical proof", () => {
+  const { project, thread } = correctionPathFixture({
+    includeIdentityRepair: true,
+  });
+  const path = buildProjectPath(project, thread);
+  const mechanical = path.phases.find((item) => item.phase.id === "verification");
+
+  assertEquals(
+    PROJECT_PATH_PRESENTATION_POLICY.identityRepair.operationId,
+    "repair.coffee-machine-cm01-drip-tray-mechanical-r3-identity",
+  );
+  assertEquals(path.phases.map((item) => item.phase.id), [
+    "cad",
+    "verification",
+  ]);
+  assertEquals(path.completedPhases, 2);
+  assertEquals(path.status, "completed");
+  // The shell and Overview both consume this projection, never the raw r11
+  // project status that still contains the immutable failed R2 phase.
+  assertEquals(projectPathStatusLabel(path), "Completed");
+  assertEquals(mechanical?.lifecycle, {
+    affectedComponentIds: ["component:drip-tray"],
+    correctionCount: 1,
+    revisionAttemptCount: 2,
+    identityRepairCount: 1,
+    state: "current",
+  });
+  assertEquals(
+    path.phases.some((item) =>
+      item.phase.id ===
+        "cm01-v3-drip-tray-height-30-mechanical-r3-identity-recovery"
+    ),
+    false,
+  );
 });
 
 Deno.test("browser project contract rejects a half-defined input anchor", () => {
@@ -132,6 +209,40 @@ Deno.test("browser project contract accepts the V2 documentary run and rejects V
   delete (missingFingerprint.agentRuns as Array<Record<string, unknown>>)[0]!
     .inputFingerprint;
   assertEquals(isEngineeringProjectSnapshot(missingFingerprint), false);
+});
+
+Deno.test("browser project contract accepts a V3 run anchored to its declared thread snapshot", () => {
+  const project = structuredClone(
+    COFFEE_MACHINE_PROJECT_FIXTURE,
+  ) as unknown as Record<string, unknown>;
+  const reference = (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
+  project.schemaVersion = "3.0";
+  project.agentRuns = [{
+    id: "run-v3-thread-snapshot",
+    workItemId: "work-architect",
+    status: "completed",
+    summary: "Recorded the bounded V3 technical run.",
+    queuedAt: "2026-08-03T12:00:00.000Z",
+    startedAt: "2026-08-03T12:00:01.000Z",
+    completedAt: "2026-08-03T12:00:02.000Z",
+    basis: { kind: "thread-snapshot", ...reference },
+    inputFingerprint: {
+      algorithm: "sha256",
+      digest: "d".repeat(64),
+    },
+    evidenceRefs: [],
+    resultSnapshot: reference,
+  }];
+  project.framing = canonicalBriefFraming(project);
+
+  assertEquals(isEngineeringProjectSnapshot(project), true);
+
+  const forged = structuredClone(project) as Record<string, unknown>;
+  (((forged.agentRuns as Array<Record<string, unknown>>)[0]!.basis) as Record<
+    string,
+    unknown
+  >).snapshotId = "other-thread-snapshot";
+  assertEquals(isEngineeringProjectSnapshot(forged), false);
 });
 
 Deno.test("project brief keeps a rejected decision actionable", () => {
@@ -273,5 +384,350 @@ function approvedDiscoveryHandoff(): Record<string, unknown> {
     },
     approvedAt: "2026-08-02T11:59:00.000Z",
     approvedBy: { id: "human:owner", origin: "human" },
+  };
+}
+
+function canonicalBriefFraming(
+  project: Record<string, unknown>,
+): Record<string, unknown> {
+  const projectId = (project.project as Record<string, unknown>).id as string;
+  const briefId = `${projectId}:brief`;
+  const snapshotId = `${briefId}:r1:fixture`;
+  return {
+    intent: {
+      statement: "Record one reviewable V3 engineering thread.",
+      source: { kind: "human", reference: "paired-conversation" },
+      capturedAt: "2026-08-03T11:59:00.000Z",
+      capturedBy: { id: "human:owner", origin: "human" },
+    },
+    questions: [],
+    answers: [],
+    currentBrief: {
+      briefId,
+      id: snapshotId,
+      revision: 1,
+      items: [{
+        id: "objective",
+        kind: "objective",
+        statement: "Keep a reviewable engineering record.",
+        sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+      }],
+      proposedAt: "2026-08-03T11:59:01.000Z",
+      proposedBy: { id: "agent:planner", origin: "agent" },
+    },
+    currentBriefApproval: {
+      briefSnapshotId: snapshotId,
+      briefRevision: 1,
+      status: "approved",
+      inputFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+      requestedAt: "2026-08-03T11:59:01.000Z",
+      decidedAt: "2026-08-03T11:59:02.000Z",
+      decidedBy: { id: "human:owner", origin: "human" },
+      rationale: "Confirmed in the paired conversation.",
+    },
+  };
+}
+
+function correctionPathFixture(
+  { includeIdentityRepair = false }: { includeIdentityRepair?: boolean } = {},
+) {
+  const baseProject = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const ref = (id: string) => ({
+    kind: "artifact" as const,
+    id,
+    snapshotId: "thread-correction",
+    snapshotRevision: 10,
+  });
+  const phase = (
+    id: string,
+    name: string,
+    order: number,
+    workItemId: string,
+    evidenceId?: string,
+  ) => ({
+    id,
+    name,
+    order,
+    description: `${name} through its recorded evidence.`,
+    workItemIds: [workItemId],
+    requiredDecisionIds: [],
+    evidenceRefs: evidenceId ? [ref(evidenceId)] : [],
+  });
+  const operation = (id: string, version: string, correction = false) => ({
+    id,
+    version,
+    bindings: correction
+      ? [{
+        name: "recordedCorrection",
+        source: {
+          kind: "thread-entity" as const,
+          reference: ref("correction-record"),
+        },
+      }]
+      : [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+  });
+  const work = (
+    id: string,
+    phaseId: string,
+    status: "completed" | "ready",
+    operationRef: ReturnType<typeof operation>,
+    evidenceId?: string,
+  ) => ({
+    id,
+    phaseId,
+    title: id,
+    description: id,
+    kind: "verify" as const,
+    operation: operationRef,
+    status,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: evidenceId ? [ref(evidenceId)] : [],
+    decisionIds: [],
+    blockerIds: [],
+  });
+
+  const phases = [
+    phase("cad", "CAD evidence", 1, "cad-v1", "cad-r1-step"),
+    phase(
+      "verification",
+      "Mechanical proof",
+      2,
+      "mechanical-v1",
+      "proof-r1-solve",
+    ),
+    phase(
+      "cm01-v3-drip-tray-height-correction",
+      "unrelated label must not matter",
+      3,
+      "correction",
+      "correction-record",
+    ),
+    phase(
+      "cm01-v3-drip-tray-height-30-cad",
+      "not a path gate",
+      4,
+      "cad-v2",
+      "cad-r2-step",
+    ),
+    phase(
+      "cm01-v3-drip-tray-height-30-mechanical",
+      "not a path gate",
+      5,
+      "mechanical-v2",
+    ),
+    phase(
+      "cm01-v3-drip-tray-height-30-mechanical-r3-retry",
+      "not a path gate",
+      6,
+      "mechanical-v3",
+      "proof-r3-solve",
+    ),
+  ];
+  const workItems = [
+    work(
+      "cad-v1",
+      "cad",
+      "completed",
+      operation("design.cad", "1"),
+      "cad-r1-step",
+    ),
+    work(
+      "mechanical-v1",
+      "verification",
+      "completed",
+      operation("verify.static", "1"),
+      "proof-r1-solve",
+    ),
+    work(
+      "correction",
+      "cm01-v3-drip-tray-height-correction",
+      "completed",
+      operation("design.correct", "1"),
+      "correction-record",
+    ),
+    work(
+      "cad-v2",
+      "cm01-v3-drip-tray-height-30-cad",
+      "completed",
+      operation("design.cad", "2", true),
+      "cad-r2-step",
+    ),
+    work(
+      "mechanical-v2",
+      "cm01-v3-drip-tray-height-30-mechanical",
+      "ready",
+      operation("verify.static", "2", true),
+    ),
+    work(
+      "mechanical-v3",
+      "cm01-v3-drip-tray-height-30-mechanical-r3-retry",
+      "completed",
+      operation("verify.static", "3", true),
+      "proof-r3-solve",
+    ),
+  ];
+  const agentRuns = [
+    {
+      id: "r2-failed",
+      workItemId: "mechanical-v2",
+      status: "failed" as const,
+      summary: "Provider attempt failed before evidence was published.",
+      queuedAt: "2026-08-03T12:01:00.000Z",
+      completedAt: "2026-08-03T12:02:00.000Z",
+      evidenceRefs: [],
+    },
+    {
+      id: "r3-complete",
+      workItemId: "mechanical-v3",
+      status: "completed" as const,
+      summary: "Replacement mechanical proof was recorded.",
+      queuedAt: "2026-08-03T12:03:00.000Z",
+      completedAt: "2026-08-03T12:04:00.000Z",
+      evidenceRefs: [ref("proof-r3-solve")],
+    },
+  ];
+  if (includeIdentityRepair) {
+    phases.push(
+      phase(
+        "cm01-v3-drip-tray-height-30-mechanical-r3-identity-recovery",
+        "still not a path gate",
+        7,
+        "mechanical-r3-identity-repair",
+        "proof-r3-identified-solve",
+      ),
+    );
+    workItems.push(
+      work(
+        "mechanical-r3-identity-repair",
+        "cm01-v3-drip-tray-height-30-mechanical-r3-identity-recovery",
+        "completed",
+        {
+          id: "repair.coffee-machine-cm01-drip-tray-mechanical-r3-identity",
+          version: "1",
+          bindings: [{
+            name: "historicalMechanicalR3Result",
+            source: {
+              kind: "thread-entity" as const,
+              reference: ref("proof-r3-solve"),
+            },
+          }],
+        },
+        "proof-r3-identified-solve",
+      ),
+    );
+    agentRuns.push({
+      id: "r3-identity-repair-complete",
+      workItemId: "mechanical-r3-identity-repair",
+      status: "completed" as const,
+      summary: "Correctly identified the preserved R3 evidence.",
+      queuedAt: "2026-08-03T12:05:00.000Z",
+      completedAt: "2026-08-03T12:06:00.000Z",
+      evidenceRefs: [ref("proof-r3-identified-solve")],
+    });
+  }
+  const project = {
+    ...baseProject,
+    phases,
+    workItems,
+    agentRuns,
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  };
+
+  const thread = {
+    ...structuredClone(COFFEE_MACHINE_THREAD_FIXTURE),
+    graph: {
+      nodes: [
+        graphNode("cad-r1-plan", "artifact"),
+        graphNode("cad-r1-step", "artifact"),
+        graphNode("proof-r1-proof", "artifact"),
+        graphNode("proof-r1-solve", "artifact"),
+        graphNode("correction-record", "artifact"),
+        graphNode("cad-r2-step", "artifact"),
+        graphNode("proof-r3-solve", "artifact"),
+        {
+          ...graphNode("drip-tray-correction", "change"),
+          affectedComponentId: "component:drip-tray",
+        },
+      ],
+      edges: [
+        graphEdge("cad-lineage", "cad-r1-plan", "cad-r1-step", "derived_from"),
+        graphEdge(
+          "proof-lineage",
+          "proof-r1-proof",
+          "proof-r1-solve",
+          "derived_from",
+        ),
+        graphEdge(
+          "recorded-change",
+          "drip-tray-correction",
+          "correction-record",
+          "changes",
+          "change",
+        ),
+        graphEdge(
+          "cad-corrected",
+          "cad-r1-plan",
+          "correction-record",
+          "supersedes",
+        ),
+        graphEdge(
+          "proof-corrected",
+          "proof-r1-proof",
+          "correction-record",
+          "supersedes",
+        ),
+      ],
+    },
+  };
+  if (includeIdentityRepair) {
+    thread.graph.nodes.push(graphNode("proof-r3-identified-solve", "artifact"));
+    thread.graph.edges.push(
+      graphEdge(
+        "r3-identity-supersedes",
+        "proof-r3-solve",
+        "proof-r3-identified-solve",
+        "supersedes",
+      ),
+    );
+  }
+  return { project, thread };
+}
+
+function graphNode(
+  id: string,
+  kind: "artifact" | "change",
+) {
+  return {
+    id: `graph:${kind}:${id}`,
+    ref: { kind, id },
+    entityKind: kind,
+    label: "intentionally ignored presentation label",
+    system: "test",
+    freshness: "fresh" as const,
+    summary: "test evidence",
+    recordedAt: "2026-08-03T12:00:00.000Z",
+  };
+}
+
+function graphEdge(
+  id: string,
+  from: string,
+  to: string,
+  relation: "changes" | "derived_from" | "supersedes",
+  fromKind: "artifact" | "change" = "artifact",
+) {
+  return {
+    id,
+    from: { kind: fromKind, id: from },
+    to: { kind: "artifact" as const, id: to },
+    relation,
+    rationale: "explicit test provenance",
+    origin: "provenance" as const,
   };
 }

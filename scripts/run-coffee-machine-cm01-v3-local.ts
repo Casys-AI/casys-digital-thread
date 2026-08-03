@@ -64,6 +64,12 @@ import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/
 
 export const CM01_V3_LOCAL_EXECUTION_ACKNOWLEDGEMENT =
   "EXECUTE_CM01_V3_LOCAL_RUN" as const;
+/**
+ * A separate acknowledgement is required before a local integration fixture
+ * becomes a persistent project in the same stores served by `server.ts`.
+ */
+export const CM01_V3_CANONICAL_PERSISTENCE_ACKNOWLEDGEMENT =
+  "PERSIST_CM01_V3_CANONICAL_PROJECT" as const;
 
 const PROJECT_ID = "coffee-machine-cm01-v3";
 const SUBJECT_ID = "project:coffee-machine-cm01-v3";
@@ -84,6 +90,33 @@ export interface RunCoffeeMachineCm01V3LocalOptions {
   readonly outputDirectory?: string;
   /** Local, loopback-only fleet manifest. */
   readonly manifestPath?: string;
+  /**
+   * `isolated` is the safe default. `canonical` records a new project in the
+   * stores served by server.ts, so the Cockpit can project it.
+   */
+  readonly stateScope?: "isolated" | "canonical";
+  /** Required together with `stateScope: "canonical"`. */
+  readonly canonicalAcknowledgement?: string;
+}
+
+export interface CoffeeMachineCm01V3StateDirectories {
+  readonly projects: string;
+  readonly snapshots: string;
+  readonly baselineCaptures: string;
+  readonly sysonSeedCaptures: string;
+  readonly sysonSeedAttempts: string;
+  readonly architectureCaptures: string;
+  readonly architectureAttempts: string;
+  readonly cadCaptures: string;
+  readonly cadAttempts: string;
+  readonly thermalCaptures: string;
+  readonly thermalAttempts: string;
+  readonly erpBomCaptures: string;
+  readonly erpBomRunCaptures: string;
+  readonly mechanicalCaptures: string;
+  readonly mechanicalAttempts: string;
+  readonly liveUpdates: string;
+  readonly leases: string;
 }
 
 export interface CoffeeMachineCm01V3LocalConfirmationRequired {
@@ -97,6 +130,7 @@ export interface CoffeeMachineCm01V3LocalRunResult {
   readonly status: "completed";
   readonly outputDirectory: string;
   readonly observationPath: string;
+  readonly stateScope: "isolated" | "canonical";
   readonly project: {
     readonly id: string;
     readonly subjectId: string;
@@ -131,9 +165,27 @@ export async function runCoffeeMachineCm01V3Local(
     );
   }
 
+  const stateScope = options.stateScope ?? "isolated";
+  if (
+    stateScope === "canonical" &&
+    options.canonicalAcknowledgement !==
+      CM01_V3_CANONICAL_PERSISTENCE_ACKNOWLEDGEMENT
+  ) {
+    throw new Error(
+      "Refusing canonical CM-01 V3 persistence without " +
+        `--canonical-acknowledge=${CM01_V3_CANONICAL_PERSISTENCE_ACKNOWLEDGEMENT}.`,
+    );
+  }
   const outputDirectory = requireNewOutputDirectory(
     options.outputDirectory ?? defaultOutputDirectory(),
   );
+  const state = coffeeMachineCm01V3StateDirectories({
+    outputDirectory,
+    stateScope,
+  });
+  if (stateScope === "canonical") {
+    await requireProjectAbsent(state.projects, PROJECT_ID);
+  }
   await createNewDirectory(outputDirectory);
 
   const manifest = await loadFleetManifest(
@@ -160,18 +212,16 @@ export async function runCoffeeMachineCm01V3Local(
     timeoutMs: 30_000,
   });
 
-  const projects = new FileEngineeringProjectRevisionStore(
-    `${outputDirectory}/projects`,
-  );
-  const snapshots = new FileThreadSnapshotStore(`${outputDirectory}/thread-snapshots`);
+  const projects = new FileEngineeringProjectRevisionStore(state.projects);
+  const snapshots = new FileThreadSnapshotStore(state.snapshots);
   const baselineCaptures = new FileApprovedDiscoveryBaselineCaptureStore(
-    `${outputDirectory}/approved-brief-captures`,
+    state.baselineCaptures,
   );
   const seedCaptures = new FileSysonModelSeedCaptureStore(
-    `${outputDirectory}/syson-seed-captures`,
+    state.sysonSeedCaptures,
   );
-  const liveUpdates = new FileLiveThreadUpdateStore(`${outputDirectory}/live-updates`);
-  const lease = new FileEngineeringProjectRunLease(`${outputDirectory}/leases`);
+  const liveUpdates = new FileLiveThreadUpdateStore(state.liveUpdates);
+  const lease = new FileEngineeringProjectRunLease(state.leases);
   const commands = new EngineeringProjectCommandService(
     projects,
     new ExactThreadCompletionEvidenceValidator(snapshots),
@@ -193,7 +243,9 @@ export async function runCoffeeMachineCm01V3Local(
   let project = await briefs.startProject(AGENT, {
     commandId: "local-cm01-v3-start",
     projectId: PROJECT_ID,
-    projectName: "CM-01 coffee machine V3 local integration",
+    projectName: stateScope === "canonical"
+      ? "CoffeeMachine CM-01 V3"
+      : "CM-01 coffee machine V3 local integration",
     issuedAt: now(),
     intent:
       "Exercise the bounded CM-01 V3 technical evidence path against the local MCP fleet.",
@@ -321,7 +373,7 @@ export async function runCoffeeMachineCm01V3Local(
         snapshots,
         captures: seedCaptures,
         attempts: new FileSysonModelSeedAttemptStore(
-          `${outputDirectory}/syson-seed-attempts`,
+          state.sysonSeedAttempts,
         ),
         syson,
         lease,
@@ -343,10 +395,10 @@ export async function runCoffeeMachineCm01V3Local(
         snapshots,
         seedCaptures,
         captures: new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
-          `${outputDirectory}/architecture-captures`,
+          state.architectureCaptures,
         ),
         attempts: new FileCoffeeMachineCm01V3ArchitectureAttemptStore(
-          `${outputDirectory}/architecture-attempts`,
+          state.architectureAttempts,
         ),
         recipe,
         syson,
@@ -382,10 +434,10 @@ export async function runCoffeeMachineCm01V3Local(
         recipe,
         build123d,
         attempts: new FileCm01SemanticCadAttemptStore(
-          `${outputDirectory}/cad-attempts`,
+          state.cadAttempts,
         ),
         captures: new FileCm01SemanticCadCaptureStore(
-          `${outputDirectory}/cad-captures`,
+          state.cadCaptures,
         ),
         lease,
         liveUpdates,
@@ -418,10 +470,10 @@ export async function runCoffeeMachineCm01V3Local(
         snapshots,
         capture: new Cm01NominalModelicaCaptureAdapter({ modelica }),
         attempts: new FileCm01NominalModelicaAttemptStore(
-          `${outputDirectory}/thermal-attempts`,
+          state.thermalAttempts,
         ),
         captures: new FileCm01NominalModelicaCaptureStore(
-          `${outputDirectory}/thermal-captures`,
+          state.thermalCaptures,
         ),
         lease,
         liveUpdates,
@@ -454,10 +506,10 @@ export async function runCoffeeMachineCm01V3Local(
         snapshots,
         capture: new Cm01ErpNextBomCaptureAdapter({ erpnext }),
         captures: new FileCm01ErpNextBomCaptureStore(
-          `${outputDirectory}/erp-bom-captures`,
+          state.erpBomCaptures,
         ),
         runCaptures: new FileCm01ErpNextBomRunCaptureStore(
-          `${outputDirectory}/erp-bom-run-captures`,
+          state.erpBomRunCaptures,
         ),
         lease,
         liveUpdates,
@@ -492,10 +544,10 @@ export async function runCoffeeMachineCm01V3Local(
         build123d,
         calculix,
         attempts: new FileCm01DripTrayMechanicalAttemptStore(
-          `${outputDirectory}/mechanical-attempts`,
+          state.mechanicalAttempts,
         ),
         captures: new FileCm01DripTrayMechanicalCaptureStore(
-          `${outputDirectory}/mechanical-captures`,
+          state.mechanicalCaptures,
         ),
         lease,
         liveUpdates,
@@ -527,6 +579,7 @@ export async function runCoffeeMachineCm01V3Local(
     status: "completed",
     outputDirectory,
     observationPath,
+    stateScope,
     project: {
       id: project.project.id,
       subjectId: project.project.subjectId,
@@ -535,7 +588,7 @@ export async function runCoffeeMachineCm01V3Local(
     },
     comparison,
     note:
-      "Technical local integration evidence only. The explicit fixture approval is not a production human-review record, and a matching comparison is not certification or manufacturing release.",
+      `Technical local integration evidence only (${stateScope} state scope). The explicit fixture approval is not a production human-review record, and a matching comparison is not certification or manufacturing release.`,
   };
   await Deno.writeTextFile(
     `${outputDirectory}/run-summary.json`,
@@ -711,6 +764,58 @@ function defaultOutputDirectory(): string {
   return `state/local/cm01-v3-local-runs/${suffix}`;
 }
 
+/**
+ * Returns every mutable store used by the runner. The canonical mapping is
+ * intentionally literal: it must stay aligned with the defaults in server.ts
+ * so a persistent V3 project is visible to the existing Cockpit projection.
+ */
+export function coffeeMachineCm01V3StateDirectories(input: {
+  readonly outputDirectory: string;
+  readonly stateScope: "isolated" | "canonical";
+}): CoffeeMachineCm01V3StateDirectories {
+  if (input.stateScope === "isolated") {
+    return {
+      projects: `${input.outputDirectory}/projects`,
+      snapshots: `${input.outputDirectory}/thread-snapshots`,
+      baselineCaptures: `${input.outputDirectory}/approved-brief-captures`,
+      sysonSeedCaptures: `${input.outputDirectory}/syson-seed-captures`,
+      sysonSeedAttempts: `${input.outputDirectory}/syson-seed-attempts`,
+      architectureCaptures: `${input.outputDirectory}/architecture-captures`,
+      architectureAttempts: `${input.outputDirectory}/architecture-attempts`,
+      cadCaptures: `${input.outputDirectory}/cad-captures`,
+      cadAttempts: `${input.outputDirectory}/cad-attempts`,
+      thermalCaptures: `${input.outputDirectory}/thermal-captures`,
+      thermalAttempts: `${input.outputDirectory}/thermal-attempts`,
+      erpBomCaptures: `${input.outputDirectory}/erp-bom-captures`,
+      erpBomRunCaptures: `${input.outputDirectory}/erp-bom-run-captures`,
+      mechanicalCaptures: `${input.outputDirectory}/mechanical-captures`,
+      mechanicalAttempts: `${input.outputDirectory}/mechanical-attempts`,
+      liveUpdates: `${input.outputDirectory}/live-updates`,
+      leases: `${input.outputDirectory}/leases`,
+    };
+  }
+  const root = "state/local";
+  return {
+    projects: `${root}/engineering-projects`,
+    snapshots: `${root}/thread-snapshots`,
+    baselineCaptures: `${root}/approved-discovery-captures`,
+    sysonSeedCaptures: `${root}/syson-model-seed-captures`,
+    sysonSeedAttempts: `${root}/syson-model-seed-attempts`,
+    architectureCaptures: `${root}/coffee-machine-cm01-v3-architecture-captures`,
+    architectureAttempts: `${root}/coffee-machine-cm01-v3-architecture-attempts`,
+    cadCaptures: `${root}/cm01-semantic-cad-captures`,
+    cadAttempts: `${root}/cm01-semantic-cad-attempts`,
+    thermalCaptures: `${root}/cm01-nominal-modelica-captures`,
+    thermalAttempts: `${root}/cm01-nominal-modelica-attempts`,
+    erpBomCaptures: `${root}/cm01-erpnext-bom-captures`,
+    erpBomRunCaptures: `${root}/cm01-erpnext-bom-run-captures`,
+    mechanicalCaptures: `${root}/cm01-drip-tray-mechanical-captures`,
+    mechanicalAttempts: `${root}/cm01-drip-tray-mechanical-attempts`,
+    liveUpdates: `${root}/live-thread-updates`,
+    leases: `${root}/engineering-project-run-leases`,
+  };
+}
+
 function requireNewOutputDirectory(value: string): string {
   if (value.trim() === "") throw new Error("outputDirectory must not be empty.");
   return value.replace(/\/$/, "");
@@ -726,6 +831,21 @@ async function createNewDirectory(directory: string): Promise<void> {
     if (!(error instanceof Deno.errors.NotFound)) throw error;
   }
   await Deno.mkdir(directory, { recursive: true });
+}
+
+async function requireProjectAbsent(
+  projectsDirectory: string,
+  projectId: string,
+): Promise<void> {
+  try {
+    await Deno.stat(`${projectsDirectory}/${projectId}`);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return;
+    throw error;
+  }
+  throw new Error(
+    `Refusing canonical CM-01 V3 execution because ${projectId} already exists in ${projectsDirectory}.`,
+  );
 }
 
 async function readJson(path: string): Promise<unknown> {
@@ -747,6 +867,8 @@ if (import.meta.main) {
     acknowledgement: argument("acknowledge"),
     outputDirectory: argument("output"),
     manifestPath: argument("manifest"),
+    stateScope: Deno.args.includes("--canonical") ? "canonical" : "isolated",
+    canonicalAcknowledgement: argument("canonical-acknowledge"),
   });
   console.log(JSON.stringify(result, null, 2));
   if (result.status === "completed" && !result.comparison.matches) {

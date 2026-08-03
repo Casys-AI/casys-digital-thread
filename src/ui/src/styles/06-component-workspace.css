@@ -58,6 +58,37 @@
   text-transform: uppercase;
 }
 
+.component-revision-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-10) var(--space-16);
+  border: 0;
+  border-bottom: 1px solid #303836;
+  color: #c9cdc7;
+  text-align: left;
+  background: #111716;
+  cursor: pointer;
+}
+
+.component-revision-link span {
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.component-revision-link strong {
+  font-size: var(--text-2xs);
+}
+
+.component-revision-link:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
 .component-provider-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

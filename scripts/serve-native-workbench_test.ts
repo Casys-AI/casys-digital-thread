@@ -3,6 +3,7 @@ import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
+import type { ThreadComponentCatalog } from "../src/domain/thread-component-catalog.ts";
 import type { CockpitFocusStore } from "../src/adapters/file-cockpit-focus-store.ts";
 import type { CockpitFocusSnapshot } from "../src/domain/cockpit-focus.ts";
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../src/domain/cockpit-focus.ts";
@@ -129,6 +130,70 @@ Deno.test("focused native Workbench never applies the legacy component catalog t
   assertEquals(
     (await response.json()).thread.components.subjectId,
     snapshot.subject.id,
+  );
+});
+
+Deno.test("native Workbench prefers a catalog derived from the exact projected snapshot", async () => {
+  const snapshot = await materializeAttestedMechanicalRun(capture());
+  const artifact = snapshot.artifacts.find((candidate) =>
+    candidate.producer.serverId === "build123d"
+  );
+  if (!artifact) throw new Error("Fixture has no build123d evidence artifact.");
+  const derived: ThreadComponentCatalog = {
+    schemaVersion: "thread-components/1.0",
+    authority: "workspace-declared",
+    subjectId: snapshot.subject.id,
+    rationale: "Derived from this exact snapshot revision.",
+    systemViews: {},
+    components: [{
+      id: "fixture-evidence-backed-component",
+      label: "Fixture evidence-backed component",
+      kind: "part",
+      quantity: 1,
+      bindings: [{
+        provider: "build123d",
+        kind: "artifact",
+        id: artifact.id,
+        label: artifact.name,
+        evidenceArtifactId: artifact.id,
+      }],
+    }],
+  };
+  const staticCatalog: ThreadComponentCatalog = {
+    schemaVersion: "thread-components/1.0",
+    authority: "workspace-declared",
+    subjectId: snapshot.subject.id,
+    rationale: "Static catalog that must yield to exact evidence.",
+    systemViews: {},
+    components: [],
+  };
+  const reads: string[] = [];
+  const handler = createNativeWorkbenchHandler({
+    store: new ReadOnlyStore(snapshot),
+    projectStore: new ReadOnlyProjectStore(projectSnapshot(snapshot)),
+    subjectId: snapshot.subject.id,
+    html: "unused",
+    componentCatalog: staticCatalog,
+    componentCatalogForSnapshot: (resolved) => {
+      reads.push(resolved.id);
+      return Promise.resolve(derived);
+    },
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(reads, [snapshot.id]);
+  assertEquals(
+    body.thread.components.rationale,
+    "Derived from this exact snapshot revision.",
+  );
+  assertEquals(
+    body.thread.components.components[0].bindings[0].status,
+    "verified",
   );
 });
 

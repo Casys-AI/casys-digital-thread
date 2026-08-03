@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import { COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
 import {
-  nextLiveFocusNode,
+  nextLiveActivityNode,
   shouldAcceptWorkbenchUpdate,
 } from "./src/thread/live-update.ts";
 import type {
@@ -10,7 +10,7 @@ import type {
   EngineeringEvidenceWorkbenchSnapshot,
 } from "./src/thread/types.ts";
 
-Deno.test("same-id projection focuses a genuinely new feed node", () => {
+Deno.test("same-id projection detects a genuinely new feed node without prescribing focus", () => {
   const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
   const incoming = structuredClone(previous);
   incoming.graph.nodes.push({
@@ -27,10 +27,10 @@ Deno.test("same-id projection focuses a genuinely new feed node", () => {
   });
 
   assertEquals(incoming.id, previous.id);
-  assertEquals(nextLiveFocusNode(previous, incoming)?.ref.id, "cad-live");
+  assertEquals(nextLiveActivityNode(previous, incoming)?.ref.id, "cad-live");
 });
 
-Deno.test("same-id projection focuses a server-declared live milestone", () => {
+Deno.test("same-id projection detects a server-declared live milestone", () => {
   const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
   const incoming = structuredClone(previous);
   incoming.graph.nodes.push({
@@ -47,19 +47,19 @@ Deno.test("same-id projection focuses a server-declared live milestone", () => {
   });
 
   assertEquals(
-    nextLiveFocusNode(previous, incoming)?.ref.id,
+    nextLiveActivityNode(previous, incoming)?.ref.id,
     "projector-milestone",
   );
 });
 
-Deno.test("same-id in-place update preserves current focus", () => {
+Deno.test("same-id in-place update adds no new live activity", () => {
   const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
   const incoming = structuredClone(previous);
   incoming.graph.nodes[0].freshness = "running";
   incoming.graph.nodes[0].summary = "Rereading current SysML element";
 
   assertEquals(incoming.id, previous.id);
-  assertEquals(nextLiveFocusNode(previous, incoming), undefined);
+  assertEquals(nextLiveActivityNode(previous, incoming), undefined);
 });
 
 Deno.test("delayed SSE cannot overwrite a newer project snapshot", () => {

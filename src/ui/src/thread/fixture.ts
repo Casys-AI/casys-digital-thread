@@ -242,6 +242,65 @@ export const COFFEE_MACHINE_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
         "recompute · ready",
         { kind: "artifact", id: "ART-THERMAL-017" },
       ),
+      {
+        ...graphNode(
+          { kind: "change", id: "CHG-DRIPTRAY-030" },
+          "Correction DripTray 28 → 30 mm",
+          "digital-thread",
+          "fresh",
+          "DripTray width 28 mm → 30 mm",
+          { kind: "change", id: "CHG-DRIPTRAY-030" },
+        ),
+        recordedAt: "2026-08-01T09:03:00.000Z",
+      },
+      {
+        ...graphNode(
+          { kind: "artifact", id: "ART-DRIPTRAY-FEA-028" },
+          "DripTray mechanical proof",
+          "CalculiX",
+          "stale",
+          "drip-tray/static@28 · historical",
+          { kind: "artifact", id: "ART-DRIPTRAY-FEA-028" },
+          "solver-result",
+        ),
+        recordedAt: "2026-08-01T08:47:00.000Z",
+      },
+      {
+        ...graphNode(
+          { kind: "artifact", id: "ART-DRIPTRAY-FEA-030" },
+          "DripTray mechanical proof",
+          "CalculiX",
+          "fresh",
+          "drip-tray/static@30 · recalculated",
+          { kind: "artifact", id: "ART-DRIPTRAY-FEA-030" },
+          "solver-result",
+        ),
+        recordedAt: "2026-08-01T09:03:42.000Z",
+      },
+      {
+        ...graphNode(
+          { kind: "artifact", id: "ART-THERMAL-NOMINAL-018" },
+          "Nominal thermal scenario",
+          "Modelica",
+          "fresh",
+          "thermal/nominal@18 · current",
+          { kind: "artifact", id: "ART-THERMAL-NOMINAL-018" },
+          "solver-result",
+        ),
+        recordedAt: "2026-08-01T08:58:00.000Z",
+      },
+      {
+        ...graphNode(
+          { kind: "artifact", id: "ART-BOM-CM01-018" },
+          "CM-01 manufacturing BOM",
+          "ERPNext",
+          "fresh",
+          "BOM-CM01@18 · current",
+          { kind: "artifact", id: "ART-BOM-CM01-018" },
+          "bom",
+        ),
+        recordedAt: "2026-08-01T08:57:00.000Z",
+      },
     ],
     edges: [
       structureEdge(
@@ -314,7 +373,35 @@ export const COFFEE_MACHINE_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
         "source_of",
         "The fixture explicitly identifies the Modelica artifact as the temperature source.",
       ),
+      provenanceEdge(
+        "fixture:changes:driptray-030",
+        { kind: "change", id: "CHG-DRIPTRAY-030" },
+        { kind: "artifact", id: "ART-DRIPTRAY-FEA-030" },
+        "changes",
+        "The recorded DripTray dimension correction requires this replacement proof.",
+      ),
+      provenanceEdge(
+        "fixture:supersedes:driptray-fea-030",
+        { kind: "artifact", id: "ART-DRIPTRAY-FEA-028" },
+        { kind: "artifact", id: "ART-DRIPTRAY-FEA-030" },
+        "supersedes",
+        "The 30 mm DripTray solve replaces the retained 28 mm evidence record.",
+      ),
     ],
+  },
+  // The fixture is deliberately not a substitute family projector. The live
+  // backend owns this quotient; an empty, explicitly typed projection keeps
+  // the fallback labelled and exercises the neutral compact state.
+  evidenceFamilyGraph: {
+    schemaVersion: "thread-evidence-family-graph/1.0",
+    asOf: {
+      snapshotId: "thread-cm01-chg-184",
+      revision: 1,
+    },
+    families: [],
+    edges: [],
+    omittedSelfLoops: [],
+    omittedCycleEdges: [],
   },
   flow: [
     {
@@ -450,6 +537,58 @@ export const COFFEE_MACHINE_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
         consumedFingerprint: "sha256:6ecf1199c31aa098",
         checkedAt: "2026-08-01T08:42:16.000Z",
       },
+    },
+    {
+      id: "ART-DRIPTRAY-FEA-028",
+      label: "DripTray mechanical proof",
+      kind: "CalculiX result bundle",
+      system: "CalculiX",
+      revision: "drip-tray/static@28",
+      freshness: "stale",
+      fingerprint: "sha256:driptray28historical",
+      uri: "artifact://cm01/drip-tray/r28/results.frd",
+      producedAt: "2026-08-01T08:47:00.000Z",
+      producedBy: "calculix_solve_static",
+      dependsOn: [],
+    },
+    {
+      id: "ART-DRIPTRAY-FEA-030",
+      label: "DripTray mechanical proof",
+      kind: "CalculiX result bundle",
+      system: "CalculiX",
+      revision: "drip-tray/static@30",
+      freshness: "fresh",
+      fingerprint: "sha256:driptray30recalculated",
+      uri: "artifact://cm01/drip-tray/r30/results.frd",
+      producedAt: "2026-08-01T09:03:42.000Z",
+      producedBy: "calculix_solve_static",
+      dependsOn: [],
+    },
+    {
+      id: "ART-THERMAL-NOMINAL-018",
+      label: "Nominal thermal scenario",
+      kind: "Modelica result",
+      system: "Modelica",
+      revision: "thermal/nominal@18",
+      freshness: "fresh",
+      fingerprint: "sha256:thermalnominal18",
+      uri: "artifact://cm01/thermal/nominal/r18/result.mat",
+      producedAt: "2026-08-01T08:58:00.000Z",
+      producedBy: "modelica_simulate",
+      dependsOn: [],
+    },
+    {
+      id: "ART-BOM-CM01-018",
+      label: "CM-01 manufacturing BOM",
+      kind: "ERPNext BOM",
+      system: "ERPNext",
+      revision: "BOM-CM01@18",
+      freshness: "fresh",
+      fingerprint: "sha256:bomcm0118",
+      uri: "erpnext://BOM-CM01-018",
+      producedAt: "2026-08-01T08:57:00.000Z",
+      producedBy: "erpnext_bom_get",
+      dependsOn: [],
     },
   ],
   observations: [
@@ -641,5 +780,22 @@ function structureEdge(
     rationale,
     origin: "structure",
     ...(attestation ? { attestation } : {}),
+  };
+}
+
+function provenanceEdge(
+  id: string,
+  from: ThreadGraphRef,
+  to: ThreadGraphRef,
+  relation: "changes" | "supersedes",
+  rationale: string,
+): ThreadGraphEdge {
+  return {
+    id,
+    from,
+    to,
+    relation,
+    rationale,
+    origin: "provenance",
   };
 }

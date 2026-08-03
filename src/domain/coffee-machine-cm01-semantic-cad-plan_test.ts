@@ -1,6 +1,12 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { compileCoffeeMachineCm01SemanticCadPlan } from "./coffee-machine-cm01-semantic-cad-plan.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "./coffee-machine-cm01-semantic-recipe.ts";
+import {
+  compileCoffeeMachineCm01SemanticCadPlan,
+  compileCoffeeMachineCm01SemanticCadPlanR2,
+} from "./coffee-machine-cm01-semantic-cad-plan.ts";
+import {
+  parseCoffeeMachineCm01SemanticRecipe,
+  parseCoffeeMachineCm01SemanticRecipeR2,
+} from "./coffee-machine-cm01-semantic-recipe.ts";
 
 const RECIPE_URL = new URL(
   "../../config/product-recipes/coffee-machine-cm01-v1.json",
@@ -104,6 +110,37 @@ Deno.test("CM-01 semantic CAD plan fingerprints change with reviewed recipe cont
     "$recipe.components[0].dimensions[0].value must equal 260.",
   );
   assertEquals(baseline.plan.recipe.fingerprint.algorithm, "sha256");
+});
+
+Deno.test("CM-01 R2 CAD plan is the closed 30 mm DripTray successor", async () => {
+  const corrected = structuredClone(RECIPE);
+  corrected.schemaVersion = "coffee-machine-semantic-recipe/2.0";
+  corrected.recipeKey = "cm01-drip-tray-height-30";
+  const components = corrected.components as Array<Record<string, unknown>>;
+  const dimensions = components[9]!.dimensions as Array<Record<string, unknown>>;
+  dimensions[2]!.value = 30;
+
+  const compiled = await compileCoffeeMachineCm01SemanticCadPlanR2(
+    parseCoffeeMachineCm01SemanticRecipeR2(corrected),
+  );
+  assertEquals(compiled.plan.recipe, {
+    schemaVersion: "coffee-machine-semantic-recipe/2.0",
+    key: "cm01-drip-tray-height-30",
+    fingerprint: compiled.plan.recipe.fingerprint,
+  });
+  assertEquals(compiled.plan.build123d.exportName, "coffee-machine-cm01-v3-r2");
+  assertEquals(
+    compiled.plan.geometry.components[9]?.dimensionsMm["size-z"],
+    30,
+  );
+  assertStringIncludes(
+    compiled.script,
+    "shape_9 = Box(190, 135, 30, align=(Align.CENTER, Align.CENTER, Align.CENTER))",
+  );
+  assertStringIncludes(
+    compiled.script,
+    'result = Compound(label="coffee-machine-cm01-v3-r2", children=components)',
+  );
 });
 
 Deno.test("CM-01 semantic CAD plan refuses a raw JSON object", async () => {

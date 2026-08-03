@@ -18,9 +18,14 @@ import type {
 export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.syson-architecture"
   | "cm01.cad-assembly"
+  | "cm01.drip-tray-height-correction"
+  | "cm01.cad-assembly-drip-tray-height-30"
   | "cm01.thermal-nominal"
   | "cm01.erp-bom-observation"
-  | "cm01.drip-tray-static-proof";
+  | "cm01.drip-tray-static-proof"
+  | "cm01.drip-tray-static-proof-height-30"
+  | "cm01.drip-tray-static-proof-height-30-r3"
+  | "cm01.drip-tray-static-proof-height-30-r3-identity-recovery";
 
 export type CoffeeMachineCm01V3PresentationRole =
   | "architecture"
@@ -61,7 +66,7 @@ export interface CoffeeMachineCm01V3KitQualification {
 
 export interface CoffeeMachineCm01V3OperationRef {
   readonly id: string;
-  readonly version: "1";
+  readonly version: "1" | "2" | "3";
 }
 
 /**
@@ -93,7 +98,7 @@ export interface CoffeeMachineCm01V3OperationDescriptor
 
 export interface CoffeeMachineCm01V3EngineeringKit {
   readonly kitId: CoffeeMachineCm01V3EngineeringKitId;
-  readonly kitVersion: "1";
+  readonly kitVersion: "1" | "2" | "3";
   readonly qualification: CoffeeMachineCm01V3KitQualification;
   /** Explicitly limits what a completed operation may claim. */
   readonly evidenceBoundary: string;
@@ -117,6 +122,20 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
         version: "1",
       } as const,
     ),
+    /** Records the one reviewed design correction before it schedules R2 work. */
+    dripTrayHeightCorrection: Object.freeze(
+      {
+        id: "design.correct-coffee-machine-cm01-drip-tray-height",
+        version: "1",
+      } as const,
+    ),
+    /** Strict follow-up path for the one code-owned 28 mm -> 30 mm correction. */
+    cadDripTrayHeight30: Object.freeze(
+      {
+        id: "design.build-coffee-machine-cm01-cad",
+        version: "2",
+      } as const,
+    ),
     thermal: Object.freeze(
       {
         id: "simulate.coffee-machine-cm01-thermal-nominal",
@@ -135,6 +154,27 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
         version: "1",
       } as const,
     ),
+    /** Must consume the R2 CAD result; it is never an independent repeat. */
+    mechanicalDripTrayHeight30: Object.freeze(
+      {
+        id: "verify.coffee-machine-cm01-drip-tray-mechanical",
+        version: "2",
+      } as const,
+    ),
+    /** A separate recovery contract after the recorded failed R2 attempt. */
+    mechanicalDripTrayHeight30R3: Object.freeze(
+      {
+        id: "verify.coffee-machine-cm01-drip-tray-mechanical",
+        version: "3",
+      } as const,
+    ),
+    /** Reprojects the one retained R3 capture whose R10 labels were wrong. */
+    mechanicalDripTrayHeight30R3IdentityRecovery: Object.freeze(
+      {
+        id: "repair.coffee-machine-cm01-drip-tray-mechanical-r3-identity",
+        version: "1",
+      } as const,
+    ),
   } as const satisfies Record<string, CoffeeMachineCm01V3OperationRef>,
 );
 
@@ -142,6 +182,30 @@ const APPROVED_BRIEF_BINDING = [{
   name: "approvedBrief",
   allowedSourceKinds: ["approved-brief"],
 }] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
+
+const APPROVED_BRIEF_AND_DRIP_TRAY_CORRECTION_BINDINGS = [
+  ...APPROVED_BRIEF_BINDING,
+  {
+    name: "dripTrayHeightCorrection",
+    allowedSourceKinds: ["thread-entity"],
+  },
+] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
+
+const APPROVED_BRIEF_AND_REVISED_CAD_BINDINGS = [
+  ...APPROVED_BRIEF_AND_DRIP_TRAY_CORRECTION_BINDINGS,
+  {
+    name: "revisedCadStep",
+    allowedSourceKinds: ["thread-entity"],
+  },
+] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
+
+const APPROVED_BRIEF_AND_HISTORICAL_R3_RESULT_BINDINGS = [
+  ...APPROVED_BRIEF_BINDING,
+  {
+    name: "historicalMechanicalR3Result",
+    allowedSourceKinds: ["thread-entity"],
+  },
+] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
 
 const KITS = [
   {
@@ -215,6 +279,37 @@ const KITS = [
     },
   },
   {
+    kitId: "cm01.drip-tray-height-correction",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/cm01-drip-tray-height-correction.ts",
+          purpose:
+            "Defines the one code-owned 28 mm to 30 mm DripTray correction and its bounded impact set.",
+        },
+      ],
+    },
+    evidenceBoundary:
+      "Records the reviewed CM-01 DripTray geometry correction and invalidates only bounded stale evidence. It performs no CAD, solver, thermal, ERP, manufacturing, certification, or fabrication-release operation.",
+    presentationRole: "cad",
+    activityCategory: "design",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.dripTrayHeightCorrection,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Record CM-01 30 mm DripTray correction",
+      description:
+        "Record the reviewed 28 mm to 30 mm CM-01 DripTray correction before successor CAD and mechanical evidence is recomputed.",
+      workItemKind: "design",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
     kitId: "cm01.thermal-nominal",
     kitVersion: "1",
     qualification: {
@@ -247,6 +342,43 @@ const KITS = [
       riskClass: "low",
       execution: "trusted",
       bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.cad-assembly-drip-tray-height-30",
+    kitVersion: "2",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/coffee-machine-cm01-semantic-recipe.ts",
+          purpose:
+            "Defines the closed R2 semantic recipe with DripTray size-z fixed at 30 mm.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/cm01-drip-tray-height-correction.ts",
+          purpose:
+            "Defines the code-owned 28 mm to 30 mm correction and its bounded impact set.",
+        },
+      ],
+    },
+    evidenceBoundary:
+      "Rebuilds only the reviewed CM-01 CAD evidence after the named DripTray height correction. It does not recalculate thermal behavior, refresh an ERP observation, release fabrication, or certify the product.",
+    presentationRole: "cad",
+    activityCategory: "design",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Rebuild CM-01 CAD for the 30 mm DripTray",
+      description:
+        "Generate the reviewed CM-01 CAD evidence from the exact 28 mm to 30 mm DripTray correction record.",
+      workItemKind: "design",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_DRIP_TRAY_CORRECTION_BINDINGS,
     },
   },
   {
@@ -323,6 +455,103 @@ const KITS = [
       riskClass: "consequential",
       execution: "trusted",
       bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-static-proof-height-30",
+    kitVersion: "2",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/cm01-drip-tray-mechanical-proof.ts",
+          purpose:
+            "Defines the closed R2 isolated DripTray static proof with height fixed at 30 mm.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/cm01-drip-tray-height-correction.ts",
+          purpose:
+            "Binds the mechanical recomputation to the same explicit design correction as CAD.",
+        },
+      ],
+    },
+    evidenceBoundary:
+      "Concept verification only for the isolated 30 mm CM-01 DripTray under its reviewed static case. It consumes the replacement CAD STEP; it does not re-run thermal, ERP, whole-machine, certification, durability, safety, or fabrication-release evidence.",
+    presentationRole: "verification",
+    activityCategory: "verification",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Verify the 30 mm CM-01 DripTray concept",
+      description:
+        "Evaluate the reviewed R2 isolated DripTray static proof against the exact replacement CAD STEP and correction record.",
+      workItemKind: "verify",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_REVISED_CAD_BINDINGS,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-static-proof-height-30-r3",
+    kitVersion: "3",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [{
+        kind: "reviewed-configuration",
+        path:
+          "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-height-30-static-r3.json",
+        purpose: "Defines the closed R3 recovery proof and its padded Gmsh face boxes.",
+      }],
+    },
+    evidenceBoundary:
+      "Recovery concept verification only for the isolated 30 mm CM-01 DripTray. It consumes a separately exported isolated STEP and traces, but does not consume, the retained R2 assembly STEP.",
+    presentationRole: "verification",
+    activityCategory: "verification",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30R3,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Recover the 30 mm CM-01 DripTray concept proof",
+      description:
+        "Run the reviewed R3 isolated DripTray proof after the recorded failed R2 attempt, using the exact retained correction and replacement CAD STEP.",
+      workItemKind: "verify",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_REVISED_CAD_BINDINGS,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-static-proof-height-30-r3-identity-recovery",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [{
+        kind: "reviewed-configuration",
+        path:
+          "src/adapters/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts",
+        purpose:
+          "Defines the bounded, provider-free recovery from the retained R10 naming defect to a correctly identified R3 successor.",
+      }],
+    },
+    evidenceBoundary:
+      "Identity recovery only. It reads the immutable completed R3 capture, produces a correctly named successor and preserves the malformed R10 projection as superseded history. It does not invoke build123d, CalculiX, thermal, ERP, CAD or any provider.",
+    presentationRole: "verification",
+    activityCategory: "verification",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS
+        .mechanicalDripTrayHeight30R3IdentityRecovery,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Correct the recorded CM-01 R3 mechanical evidence identity",
+      description:
+        "Reproject the retained R3 static-solve capture under its correct identity without rerunning providers or rewriting R10.",
+      workItemKind: "verify",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_HISTORICAL_R3_RESULT_BINDINGS,
     },
   },
 ] as const satisfies readonly CoffeeMachineCm01V3EngineeringKit[];

@@ -1,5 +1,9 @@
 import { assertEquals } from "@std/assert";
-import { activityFeedNodes, traceThreadLineage } from "./src/thread/feed-model.ts";
+import {
+  activityFeedNodes,
+  isActivityEntryExpanded,
+  traceThreadLineage,
+} from "./src/thread/feed-model.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -55,8 +59,67 @@ Deno.test("activity feed hides support plumbing but keeps meaningful outputs", (
   assertEquals(activityFeedNodes(nodes).map((item) => item.ref.id), [
     "stress",
     "step",
-    "change",
   ]);
+});
+
+Deno.test("activity feed promotes only a change whose target explicitly supersedes evidence", () => {
+  const correction = node("correction", "change", "2026-08-01T08:04:00.000Z");
+  const record = node(
+    "correction-record",
+    "artifact",
+    "2026-08-01T08:04:01.000Z",
+    "document",
+  );
+  const historic = node(
+    "proof-r28",
+    "artifact",
+    "2026-08-01T08:00:00.000Z",
+    "solver-result",
+  );
+  const automaticCapture = node(
+    "capture",
+    "change",
+    "2026-08-01T08:05:00.000Z",
+  );
+  const capturedArtifact = node(
+    "capture-record",
+    "artifact",
+    "2026-08-01T08:05:01.000Z",
+  );
+  const edges: ThreadGraphEdge[] = [
+    {
+      id: "recorded-correction",
+      from: correction.ref,
+      to: record.ref,
+      relation: "changes",
+      rationale: "The correction is recorded.",
+      origin: "provenance",
+    },
+    {
+      id: "supersedes-proof",
+      from: historic.ref,
+      to: record.ref,
+      relation: "supersedes",
+      rationale: "The correction replaces the historic basis.",
+      origin: "provenance",
+    },
+    {
+      id: "automatic-capture",
+      from: automaticCapture.ref,
+      to: capturedArtifact.ref,
+      relation: "changes",
+      rationale: "A snapshot extension introduced a support artifact.",
+      origin: "provenance",
+    },
+  ];
+
+  assertEquals(
+    activityFeedNodes(
+      [correction, record, historic, automaticCapture, capturedArtifact],
+      edges,
+    ).map((item) => item.ref.id),
+    ["correction", "proof-r28"],
+  );
 });
 
 Deno.test("activity feed promotes server-declared live milestones, not generic support", () => {
@@ -83,6 +146,17 @@ Deno.test("activity feed promotes server-declared live milestones, not generic s
   assertEquals(activityFeedNodes(nodes).map((item) => item.ref.id), [
     "run-7:projector-milestone",
   ]);
+});
+
+Deno.test("activity feed is collapsed until the reviewer explicitly selects an event", () => {
+  const correction = node("correction", "change");
+
+  assertEquals(isActivityEntryExpanded(undefined, correction), false);
+  assertEquals(isActivityEntryExpanded(correction.ref, correction), true);
+  assertEquals(
+    isActivityEntryExpanded({ kind: "artifact", id: "different" }, correction),
+    false,
+  );
 });
 
 function node(

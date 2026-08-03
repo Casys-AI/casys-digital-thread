@@ -10,6 +10,17 @@ export const COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_SCHEMA =
   "coffee-machine-semantic-recipe/1.0" as const;
 export const COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_KEY = "cm01-golden" as const;
 
+/**
+ * The one reviewed follow-up recipe. It is deliberately a new closed parser,
+ * rather than a parameter accepted by the V1 golden recipe: the only allowed
+ * geometry difference is the DripTray `size-z` correction from 28 mm to
+ * 30 mm. A future revision needs its own schema, key and parser contract.
+ */
+export const COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_SCHEMA =
+  "coffee-machine-semantic-recipe/2.0" as const;
+export const COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_KEY =
+  "cm01-drip-tray-height-30" as const;
+
 export type CoffeeMachineCm01GeometryTemplate =
   | "enclosure-shell"
   | "hollow-box"
@@ -65,6 +76,16 @@ export interface CoffeeMachineCm01SemanticRecipe {
     readonly unit: "mm";
   };
   readonly components: readonly CoffeeMachineCm01Component[];
+}
+
+/** Exact corrected CM-01 recipe; no arbitrary dimension inputs are admitted. */
+export interface CoffeeMachineCm01SemanticRecipeR2 extends
+  Omit<
+    CoffeeMachineCm01SemanticRecipe,
+    "schemaVersion" | "recipeKey"
+  > {
+  readonly schemaVersion: typeof COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_SCHEMA;
+  readonly recipeKey: typeof COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_KEY;
 }
 
 interface ParameterContract {
@@ -295,6 +316,40 @@ export function parseCoffeeMachineCm01SemanticRecipe(
 }
 
 /**
+ * Parse only the reviewed 28 mm -> 30 mm DripTray follow-up recipe.
+ *
+ * The V1 parser remains the authority for every unchanged component,
+ * identity, unit and placement. This parser first requires the distinct R2
+ * schema/key and the exact corrected dimension, then maps that one closed
+ * difference back through the V1 contract to prove no other geometry drift
+ * was smuggled into the revision.
+ */
+export function parseCoffeeMachineCm01SemanticRecipeR2(
+  value: unknown,
+): CoffeeMachineCm01SemanticRecipeR2 {
+  const normalizedV1 = normalizeR2RecipeToV1(value);
+  const parsedV1 = parseCoffeeMachineCm01SemanticRecipe(normalizedV1);
+  const components = structuredClone(
+    parsedV1.components,
+  ) as CoffeeMachineCm01Component[];
+  const dripTray = components[9]!;
+  const dimensions = structuredClone(
+    dripTray.dimensions,
+  ) as CoffeeMachineCm01SemanticParameter<"mm">[];
+  dimensions[2] = {
+    ...dimensions[2]!,
+    value: 30,
+  };
+  components[9] = { ...dripTray, dimensions };
+  return deepFreeze({
+    ...parsedV1,
+    schemaVersion: COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_SCHEMA,
+    recipeKey: COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_KEY,
+    components,
+  });
+}
+
+/**
  * Render one canonical UTF-8 SysML fragment from the static recipe.
  *
  * Local validation proves the data contract and byte-determinism only. A
@@ -304,6 +359,21 @@ export function parseCoffeeMachineCm01SemanticRecipe(
  */
 export function renderCoffeeMachineCm01Sysml(value: unknown): string {
   const recipe = parseCoffeeMachineCm01SemanticRecipe(value);
+  return renderCoffeeMachineCm01SysmlRecipe(recipe);
+}
+
+/** Render the fixed SysML fragment for the one reviewed 30 mm correction. */
+export function renderCoffeeMachineCm01SysmlR2(value: unknown): string {
+  const recipe = parseCoffeeMachineCm01SemanticRecipeR2(value);
+  return renderCoffeeMachineCm01SysmlRecipe(recipe);
+}
+
+function renderCoffeeMachineCm01SysmlRecipe(
+  recipe: Pick<
+    CoffeeMachineCm01SemanticRecipe,
+    "system" | "components"
+  >,
+): string {
   const lines = [
     "private import SI::*;",
     "",
@@ -346,6 +416,57 @@ export async function fingerprintCoffeeMachineCm01Sysml(
       byte.toString(16).padStart(2, "0")
     ).join(""),
   };
+}
+
+/** Hash exact R2 SysML bytes; the V1 fingerprint is intentionally not reused. */
+export async function fingerprintCoffeeMachineCm01SysmlR2(
+  value: unknown,
+): Promise<ContentFingerprint> {
+  const bytes = new TextEncoder().encode(renderCoffeeMachineCm01SysmlR2(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return {
+    algorithm: "sha256",
+    digest: [...new Uint8Array(digest)].map((byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join(""),
+  };
+}
+
+function normalizeR2RecipeToV1(value: unknown): unknown {
+  const root = record(value, "$recipe");
+  exactKeys(root, ROOT_KEYS, "$recipe");
+  exact(
+    root.schemaVersion,
+    COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_SCHEMA,
+    "$recipe.schemaVersion",
+  );
+  exact(
+    root.recipeKey,
+    COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_R2_KEY,
+    "$recipe.recipeKey",
+  );
+  const components = array(root.components, "$recipe.components");
+  const dripTray = record(components[9], "$recipe.components[9]");
+  const dimensions = array(dripTray.dimensions, "$recipe.components[9].dimensions");
+  const sizeZ = record(dimensions[2], "$recipe.components[9].dimensions[2]");
+  exact(sizeZ.semanticKey, "size-z", "$recipe.components[9].dimensions[2].semanticKey");
+  exact(
+    sizeZ.sysmlAttributeName,
+    "sizeZ",
+    "$recipe.components[9].dimensions[2].sysmlAttributeName",
+  );
+  exact(sizeZ.unit, "mm", "$recipe.components[9].dimensions[2].unit");
+  exact(sizeZ.value, 30, "$recipe.components[9].dimensions[2].value");
+
+  const normalized = structuredClone(root);
+  normalized.schemaVersion = COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_SCHEMA;
+  normalized.recipeKey = COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_KEY;
+  const normalizedComponents = normalized.components as unknown[];
+  const normalizedDripTray = normalizedComponents[9] as Record<string, unknown>;
+  const normalizedDimensions = normalizedDripTray.dimensions as unknown[];
+  const normalizedSizeZ = normalizedDimensions[2] as Record<string, unknown>;
+  normalizedSizeZ.value = 28;
+  return normalized;
 }
 
 function componentContract(

@@ -89,6 +89,44 @@ Deno.test("repeated assembly preserves one immutable head and advances from that
   assertEquals(second.snapshot.id, `${base.subject.id}:r3:capture-pressure-run`);
 });
 
+Deno.test("an extension retains a valid stale root cause when historic evidence is stale", async () => {
+  const base = await materializeAttestedMechanicalRun(capture());
+  const staleChange = base.changeSet.changes[0]!.id;
+  const staleBase = {
+    ...base,
+    freshness: {
+      status: "stale" as const,
+      changedAt: base.generatedAt,
+      reason: "Historic CAD evidence requires replacement.",
+      invalidatedByChangeIds: [staleChange],
+    },
+    artifacts: base.artifacts.map((artifact, index) =>
+      index === 0
+        ? {
+          ...artifact,
+          freshness: {
+            status: "stale" as const,
+            changedAt: base.generatedAt,
+            reason: "Historic CAD evidence requires replacement.",
+            invalidatedByChangeIds: [staleChange],
+          },
+        }
+        : artifact
+    ),
+  };
+
+  const result = applyThreadSnapshotExtension(
+    staleBase,
+    thermalExtension(base.subject.id),
+  );
+
+  assertEquals(result.freshness.status, "stale");
+  assertEquals(
+    result.freshness.reason,
+    "At least one retained entity is stale; replacement evidence is still required.",
+  );
+});
+
 function thermalExtension(subjectId: string): ThreadSnapshotExtension {
   const at = "2026-08-01T04:00:00.000Z";
   const artifactId = "modelica-evidence-demo";

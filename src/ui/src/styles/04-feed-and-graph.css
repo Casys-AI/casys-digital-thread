@@ -125,6 +125,272 @@
   text-transform: uppercase;
   cursor: pointer;
 }
+
+/*
+ * A correction is a revision trail, not a generic warning toast. The browser
+ * only renders the old -> successor relation that the thread explicitly
+ * recorded; a stale fact without that relation remains visibly unresolved.
+ */
+.thread-recompute-history {
+  margin: 0 0 var(--space-16);
+  border: 1px solid #3c4541;
+  border-left: 3px solid var(--thread-orange);
+  background: rgba(24, 29, 27, 0.97);
+}
+
+.thread-recompute-history > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: var(--space-12);
+  border-bottom: 1px solid #303735;
+}
+
+.thread-recompute-history > header > div {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.thread-recompute-history > header small,
+.thread-recompute-pending small,
+.thread-recompute-evidence small,
+.thread-recompute-bridge span,
+.thread-recompute-changes > span {
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.thread-recompute-history > header strong {
+  color: #deddd7;
+  font-size: var(--text-xs);
+}
+
+.thread-recompute-history > header > span {
+  flex: 0 0 auto;
+  color: #7f8983;
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.thread-recompute-snapshot-history,
+.thread-recompute-history-empty {
+  margin: 0;
+  padding: var(--space-10) var(--space-12);
+  border-bottom: 1px solid #303735;
+  color: #929a95;
+  font: var(--text-3xs)/1.5 var(--mono);
+}
+
+.thread-recompute-snapshot-history code {
+  color: #cbd0cc;
+  font: inherit;
+}
+
+.thread-recompute-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thread-recompute-list > li {
+  padding: var(--space-12);
+  border-bottom: 1px solid #303735;
+}
+
+.thread-recompute-list > li[data-active="true"] {
+  background: linear-gradient(90deg, rgba(217, 155, 80, 0.1), transparent 72%);
+}
+
+.thread-recompute-list > li[data-state="recomputing"] {
+  border-left: 2px solid var(--amber);
+}
+
+.thread-recompute-list > li[data-state="failed"] {
+  border-left: 2px solid var(--thread-red);
+}
+
+.thread-recompute-transition-heading {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-10);
+}
+
+.thread-recompute-transition-heading small,
+.thread-recompute-unaffected > span {
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.thread-recompute-transition-heading strong {
+  color: #deddd7;
+  font-size: var(--text-2xs);
+}
+
+.thread-recompute-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(138px, 0.46fr) minmax(0, 1fr);
+  gap: var(--space-10);
+  align-items: stretch;
+}
+
+.thread-recompute-evidence {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-10);
+  border: 1px solid #414b46;
+  color: inherit;
+  text-align: left;
+  background: #151a18;
+  cursor: pointer;
+}
+
+.thread-recompute-evidence[data-role="historic"],
+.thread-recompute-evidence[data-role="stale"] {
+  border-color: #806744;
+  background: #211d16;
+}
+
+.thread-recompute-evidence[data-role="current"][data-freshness="fresh"] {
+  border-color: #43866f;
+  background: #14231e;
+}
+
+.thread-recompute-evidence[data-freshness="running"] {
+  border-color: #b18445;
+}
+
+.thread-recompute-evidence[data-freshness="failed"] {
+  border-color: #a65043;
+}
+
+.thread-recompute-evidence:focus-visible,
+.thread-recompute-changes button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
+.thread-recompute-evidence strong {
+  overflow: hidden;
+  color: #deddd7;
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-recompute-evidence > span,
+.thread-recompute-evidence code {
+  overflow: hidden;
+  color: #929a95;
+  font: var(--text-3xs)/1.35 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-recompute-evidence code {
+  color: #69736e;
+}
+
+.thread-recompute-bridge {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: var(--space-6);
+  padding: var(--space-8) 0;
+  text-align: center;
+}
+
+.thread-recompute-bridge::before {
+  width: 100%;
+  height: 1px;
+  margin-bottom: var(--space-2);
+  background: linear-gradient(90deg, #806744, var(--thread-orange), #43866f);
+  content: "";
+}
+
+.thread-recompute-bridge small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #858d88;
+  font: var(--text-3xs)/1.35 var(--mono);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.thread-recompute-changes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  margin: var(--space-10) 0 0;
+}
+
+.thread-recompute-changes button {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  color: #c9cdc7;
+  font: 600 var(--text-3xs)/1.35 var(--mono);
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: #806744;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+}
+
+.thread-recompute-unaffected {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  margin: var(--space-10) 0 0;
+  color: #84918a;
+  font: 600 var(--text-3xs)/1.35 var(--mono);
+}
+
+.thread-recompute-unaffected b {
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid #3c4541;
+  color: #9cb9a9;
+  font: inherit;
+  font-weight: 600;
+}
+
+.thread-recompute-pending {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-12);
+  background: rgba(128, 103, 68, 0.1);
+}
+
+.thread-recompute-pending > div:first-child {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.thread-recompute-pending strong {
+  color: #deddd7;
+  font-size: var(--text-2xs);
+}
+
+.thread-recompute-pending-records {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-8);
+}
+
 .thread-feed-list {
   margin: 0;
   padding: 0;
@@ -603,4 +869,257 @@
   place-items: center;
   color: var(--muted);
   font-size: var(--text-xs);
+}
+
+/* --------------------------------------------------------------------------
+   Versioned provenance
+
+   Evidence has one graph. Explicit supersession families share one current
+   node; their canonical records and internal relations live in the inspector.
+   ----------------------------------------------------------------------- */
+
+.thread-versioned-provenance {
+  min-width: 0;
+  border: 1px solid var(--thread-border, var(--line));
+  background: var(--thread-panel, var(--surface-1));
+}
+
+.thread-versioned-provenance > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-20);
+  padding: var(--space-14) var(--space-16);
+  border-bottom: 1px solid var(--thread-border, var(--line));
+}
+
+.thread-versioned-provenance > header > div {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-5);
+}
+
+.thread-versioned-provenance > header p,
+.thread-version-history > header p {
+  margin: 0;
+  color: var(--thread-orange, var(--amber));
+  font: 700 var(--text-3xs)/1.1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.thread-versioned-provenance > header h4 {
+  margin: 0;
+  color: var(--thread-ink, var(--text));
+  font: 500 clamp(1rem, 1.65vw, 1.3rem)/1.16 var(--serif);
+}
+
+.thread-versioned-provenance > header > div > span {
+  max-width: 52rem;
+  color: var(--thread-muted, var(--muted));
+  font-size: var(--text-xs);
+  line-height: 1.48;
+}
+
+.thread-versioned-provenance > header > span {
+  flex: 0 0 auto;
+  color: var(--thread-muted, var(--muted));
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  letter-spacing: 0.045em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.thread-versioned-provenance > .thread-graph-legend {
+  margin: 0;
+  padding: var(--space-10) var(--space-16);
+  border-bottom: 1px solid var(--thread-border, var(--line));
+}
+
+.thread-versioned-provenance > .thread-graph {
+  padding: var(--space-12);
+}
+
+.thread-versioned-provenance .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
+.thread-versioned-provenance .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
+  height: clamp(560px, 67vh, 820px);
+  min-height: 560px;
+  max-height: none;
+}
+
+.thread-graph-legend span[data-tone="mismatch"]::before {
+  height: 7px;
+  border: 1px dashed var(--thread-red);
+  background: transparent;
+}
+
+.thread-version-history {
+  border-bottom: 1px solid var(--thread-border, var(--line));
+  background: var(--thread-paper, var(--surface-0));
+}
+
+.thread-version-history > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-14) var(--space-16) var(--space-8);
+}
+
+.thread-version-history > header h4 {
+  margin: var(--space-4) 0 0;
+  color: var(--thread-ink, var(--text));
+  font: 600 var(--text-md)/1.2 var(--serif);
+}
+
+.thread-version-history > header > span {
+  color: var(--thread-green, var(--green));
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.05em;
+}
+
+.thread-version-history-intro {
+  margin: 0;
+  padding: 0 var(--space-16) var(--space-12);
+  color: var(--thread-muted, var(--muted));
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+
+.thread-version-history > ol {
+  display: grid;
+  gap: var(--space-6);
+  margin: 0;
+  padding: 0 var(--space-12) var(--space-12);
+  list-style: none;
+}
+
+.thread-version-history li button {
+  width: 100%;
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid var(--thread-border, var(--line));
+  border-left: 3px solid var(--thread-border-strong, var(--line-strong));
+  color: var(--thread-ink, var(--text));
+  text-align: left;
+  background: var(--thread-panel, var(--surface-1));
+  cursor: pointer;
+}
+
+.thread-version-history li[data-current="true"] button {
+  border-left-color: var(--thread-green, var(--green));
+}
+
+.thread-version-history li button[aria-pressed="true"],
+.thread-version-history li button:hover,
+.thread-version-history li button:focus-visible {
+  border-color: var(--thread-orange, var(--amber));
+  border-left-color: var(--thread-orange, var(--amber));
+  background: color-mix(
+    in srgb,
+    var(--thread-orange, var(--amber)) 7%,
+    var(--thread-panel, var(--surface-1))
+  );
+}
+
+.thread-version-history li small {
+  color: var(--thread-muted, var(--muted));
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.055em;
+}
+
+.thread-version-history li strong {
+  overflow: hidden;
+  color: var(--thread-ink, var(--text));
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-version-history li span {
+  overflow: hidden;
+  color: var(--thread-muted, var(--muted));
+  font: var(--text-3xs)/1.35 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-version-relations {
+  border-top: 1px solid var(--thread-border, var(--line));
+}
+
+.thread-version-relations > summary {
+  padding: var(--space-10) var(--space-16);
+  color: var(--thread-muted, var(--muted));
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.thread-version-relations[open] > summary {
+  color: var(--thread-orange, var(--amber));
+}
+
+.thread-version-relations > ul {
+  display: grid;
+  gap: var(--space-8);
+  margin: 0;
+  padding: 0 var(--space-16) var(--space-14);
+  list-style: none;
+}
+
+.thread-version-relations li {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+  padding-left: var(--space-10);
+  border-left: 2px solid var(--thread-border-strong, var(--line-strong));
+  color: var(--thread-muted, var(--muted));
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+}
+
+.thread-version-relations li strong,
+.thread-version-relations li code {
+  color: var(--thread-ink, var(--text));
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.thread-edge-history {
+  margin: var(--space-12) 0;
+  border: 1px solid var(--thread-border, var(--line));
+}
+
+@media (width <= 720px) {
+  .thread-versioned-provenance > header {
+    flex-direction: column;
+  }
+
+  .thread-versioned-provenance > header > span {
+    text-align: left;
+  }
+}
+
+@media (width <= 720px) {
+  .thread-recompute-history > header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .thread-recompute-history > header > span {
+    text-align: left;
+  }
+
+  .thread-recompute-path {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-recompute-bridge {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4) 0;
+  }
 }

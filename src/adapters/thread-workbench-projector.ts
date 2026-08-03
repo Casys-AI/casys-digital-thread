@@ -17,6 +17,13 @@ import {
   resolveThreadComponentCatalog,
   type ThreadComponentCatalog,
 } from "../domain/thread-component-catalog.ts";
+import {
+  CM01_V3_PRODUCT_STRUCTURE_IDENTITIES,
+} from "./cm01-v3-product-structure-catalog.ts";
+import {
+  CM01_DRIP_TRAY_HEIGHT_28_TO_30_CORRECTION,
+} from "../domain/cm01-drip-tray-height-correction.ts";
+import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type {
   ThreadAction,
   ThreadArtifact,
@@ -61,6 +68,8 @@ export function projectThreadWorkbenchSnapshot(
   const actions = snapshot.proposedActions.map((action) =>
     projectAction(action, context)
   );
+  const components = projectComponents(snapshot, componentCatalog);
+  const graph = projectGraph(snapshot, context, components);
 
   return {
     schemaVersion: "thread-workbench/0.1",
@@ -72,6 +81,14 @@ export function projectThreadWorkbenchSnapshot(
       program: "Program not recorded in canonical snapshot",
     },
     generatedAt: snapshot.generatedAt,
+    ...(snapshot.previous
+      ? {
+        previous: {
+          snapshotId: snapshot.previous.snapshotId,
+          revision: snapshot.previous.revision,
+        },
+      }
+      : {}),
     source: "observed",
     sourceLabel: "CANONICAL THREAD SNAPSHOT",
     change: {
@@ -86,8 +103,12 @@ export function projectThreadWorkbenchSnapshot(
       status: changeEvaluationStatus(snapshot, context),
       files: [],
     },
-    components: projectComponents(snapshot, componentCatalog),
-    graph: projectGraph(snapshot, context),
+    components,
+    graph,
+    evidenceFamilyGraph: projectEvidenceFamilyGraph(graph, {
+      snapshotId: snapshot.id,
+      revision: snapshot.revision,
+    }),
     flow: projectFlow(snapshot, context),
     artifacts,
     observations,
@@ -335,6 +356,7 @@ function projectAction(
 function projectGraph(
   snapshot: ThreadSnapshot,
   context: ProjectionContext,
+  components: ThreadWorkbenchSnapshot["components"],
 ): ThreadGraph {
   const nodes: ThreadGraphNode[] = [
     ...snapshot.changeSet.changes.map((change): ThreadGraphNode => ({
@@ -346,6 +368,7 @@ function projectGraph(
       freshness: snapshot.freshness.status,
       summary: change.kind,
       recordedAt: snapshot.changeSet.appliedAt ?? snapshot.changeSet.createdAt,
+      ...affectedComponentForChange(change.id, components),
       selection: { kind: "change", id: snapshot.changeSet.id },
     })),
     ...topologicallySortedArtifacts(snapshot.artifacts).map(
@@ -462,6 +485,28 @@ function projectGraph(
       ...projectStructuralGraphEdges(snapshot, context),
     ],
   };
+}
+
+/**
+ * A correction may anchor to a component only when both sides name the same
+ * reviewed identity. The projector deliberately does not inspect labels,
+ * artifact names, CAD children, or ERP records to guess an anchor.
+ */
+function affectedComponentForChange(
+  changeId: string,
+  components: ThreadWorkbenchSnapshot["components"],
+): Pick<ThreadGraphNode, "affectedComponentId"> | Record<never, never> {
+  const correction = CM01_DRIP_TRAY_HEIGHT_28_TO_30_CORRECTION;
+  if (changeId !== `${correction.id}:applied`) return {};
+  const identity = CM01_V3_PRODUCT_STRUCTURE_IDENTITIES.dripTray;
+  const component = components.components.find((candidate) =>
+    candidate.id === identity.componentId &&
+    candidate.bindings.some((binding) =>
+      binding.provider === identity.provider &&
+      binding.kind === identity.bindingKind && binding.status === "verified"
+    )
+  );
+  return component ? { affectedComponentId: component.id } : {};
 }
 
 function projectProvenanceGraphEdge(

@@ -108,14 +108,36 @@ export class FileCm01DripTrayMechanicalAttemptStore {
     await Deno.rename(temporary, path);
   }
 
+  /**
+   * Read the durable capture reference without opening a new provider attempt.
+   * Identity recovery uses this path specifically so a missing historical
+   * record cannot accidentally become a new dispatch marker.
+   */
+  async completedCapture(
+    input: { projectId: string; runId: string },
+  ): Promise<ContentFingerprint | undefined> {
+    const existing = await this.readExisting(input.projectId, input.runId);
+    return existing?.status === "completed" ? existing.captureFingerprint : undefined;
+  }
+
   private async required(
     projectId: string,
     runId: string,
   ): Promise<Attempt> {
+    const existing = await this.readExisting(projectId, runId);
+    if (!existing) throw new Cm01DripTrayMechanicalOutcomeUnknownError();
+    return existing;
+  }
+
+  private async readExisting(
+    projectId: string,
+    runId: string,
+  ): Promise<Attempt | undefined> {
     let text: string;
     try {
       text = await Deno.readTextFile(this.pathFor(projectId, runId));
-    } catch {
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
       throw new Cm01DripTrayMechanicalOutcomeUnknownError();
     }
     let value: unknown;

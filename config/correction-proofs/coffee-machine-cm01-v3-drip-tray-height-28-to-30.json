@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "cm01-v3-correction-proof/1.0",
+  "id": "coffee-machine-cm01-v3-drip-tray-height-28-to-30",
+  "title": "CM-01 V3 DripTray height correction provenance proof",
+  "evidenceBoundary": "Inert provenance and invalidation proof only. It performs no provider call, does not claim new CAD or CalculiX metrics, and does not update the CM-01 golden reference.",
+  "source": {
+    "proofCasePath": "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json",
+    "field": "geometry.heightMm",
+    "beforeValue": 28,
+    "afterValue": 30,
+    "unit": "mm"
+  },
+  "impact": {
+    "recomputeArtifactRoles": [
+      "cad-plan",
+      "cad-script",
+      "cad-step",
+      "calculix-static-result"
+    ],
+    "unchangedArtifactRoles": [
+      "modelica-nominal-result",
+      "erp-bom"
+    ]
+  }
+}

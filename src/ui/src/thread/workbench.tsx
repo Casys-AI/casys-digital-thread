@@ -19,7 +19,8 @@ import { ReviewNotifications } from "../project/control-center.tsx";
 import {
   agentRunSummary,
   buildProjectBrief,
-  projectBriefStatusLabel,
+  buildProjectPath,
+  projectPathStatusLabel,
   projectStatusTone,
 } from "../project/model.ts";
 import {
@@ -40,10 +41,7 @@ import {
   type ThreadWorkbenchClient,
 } from "./client.ts";
 import { activityFeedNodes } from "./feed-model.ts";
-import {
-  nextLiveFocusNode,
-  shouldAcceptWorkbenchUpdate,
-} from "./live-update.ts";
+import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
 import { ComponentWorkspace } from "./component-workspace.tsx";
@@ -52,6 +50,15 @@ import {
   type WorkbenchToolIdentity,
 } from "./tool-inspectors.tsx";
 import { resolveToolInspectorTarget } from "./tool-inspector-model.ts";
+import { EvidenceVersionHistory } from "./version-history.tsx";
+import {
+  buildVersionedProvenanceProjection,
+  type VersionedProvenanceEdgeGroup,
+  type VersionedProvenanceProjection,
+  versionedRefKey,
+  visibleGraphRef,
+  visibleGraphSelection,
+} from "./versioned-provenance-model.ts";
 import type {
   EngineeringWorkbenchSnapshot,
   ThreadAction,
@@ -97,13 +104,8 @@ export function ThreadWorkbench({
   );
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [graphCanvasOpen, setGraphCanvasOpen] = useState(false);
   const [error, setError] = useState<string>();
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
-  const followLiveRef = useRef(followLive);
-  const graphCanvasCloseButton = useRef<HTMLButtonElement>(null);
-  const graphCanvasReturnView = useRef<ProjectWorkspaceView>("verification");
-  followLiveRef.current = followLive;
 
   // Retour arriere et avance du navigateur : le fragment fait autorite sur
   // l'espace affiche, sinon les fleches de l'historique laissent l'URL et le
@@ -133,22 +135,21 @@ export function ThreadWorkbench({
         setLineageFocus(undefined);
         setGraphSelection(undefined);
         setInspectorOpen(false);
-        setGraphCanvasOpen(false);
       } else {
         const thread = next.thread;
         setSelectedComponentId(thread.components.components[0]?.id);
-        const liveNode = activityFeedNodes(thread.graph.nodes)[0];
+        const liveNode =
+          activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
         const initialSelection: ThreadRef = liveNode?.selection ??
           (thread.violations[0]
             ? { kind: "violation", id: thread.violations[0].id }
             : { kind: "change", id: thread.change.id });
         setSelection(initialSelection);
-        const initialNode = liveNode ??
-          graphNodeForSelection(thread, initialSelection);
-        setLineageFocus(initialNode?.ref);
-        setGraphSelection(
-          initialNode ? { kind: "node", ref: initialNode.ref } : undefined,
-        );
+        // The feed is a chronological journal on entry. Selection supplies
+        // a harmless inspector default only; it must not expand a 30-edge
+        // lineage before the reviewer explicitly selects an event.
+        setLineageFocus(undefined);
+        setGraphSelection(undefined);
       }
       if (client.subscribe) {
         unsubscribe = client.subscribe((incoming) => {
@@ -167,36 +168,24 @@ export function ThreadWorkbench({
             setLineageFocus(undefined);
             setGraphSelection(undefined);
             setInspectorOpen(false);
-            setGraphCanvasOpen(false);
             return;
           }
           if (previous?.surface !== "evidence") {
             const thread = incoming.thread;
             setSelectedComponentId(thread.components.components[0]?.id);
-            const liveNode = activityFeedNodes(thread.graph.nodes)[0];
+            const liveNode =
+              activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
             const initialSelection: ThreadRef = liveNode?.selection ??
               (thread.violations[0]
                 ? { kind: "violation", id: thread.violations[0].id }
                 : { kind: "change", id: thread.change.id });
             setSelection(initialSelection);
-            const initialNode = liveNode ??
-              graphNodeForSelection(thread, initialSelection);
-            setLineageFocus(initialNode?.ref);
-            setGraphSelection(
-              initialNode ? { kind: "node", ref: initialNode.ref } : undefined,
-            );
+            setLineageFocus(undefined);
+            setGraphSelection(undefined);
             return;
           }
-          if (!followLiveRef.current) return;
-          const liveNode = nextLiveFocusNode(
-            previous?.surface === "evidence" ? previous.thread : undefined,
-            incoming.thread,
-          );
-          if (!liveNode) return;
-          setLineageFocus(liveNode.ref);
-          setGraphSelection({ kind: "node", ref: liveNode.ref });
-          if (liveNode.selection) setSelection(liveNode.selection);
-          setDrawerMode("tool");
+          // Following live activity appends/reorders feed entries. It never
+          // hijacks the reader's viewport by expanding a new lineage.
         }, setStreamStatus);
       } else {
         setStreamStatus("snapshot");
@@ -215,38 +204,8 @@ export function ThreadWorkbench({
     };
   }, [client]);
 
-  useEffect(() => {
-    if (!graphCanvasOpen || typeof window === "undefined") return;
-    globalThis.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    const focusFrame = globalThis.requestAnimationFrame(() => {
-      graphCanvasCloseButton.current?.focus();
-    });
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setGraphCanvasOpen(false);
-    };
-    globalThis.addEventListener("keydown", closeOnEscape);
-    const returnView = graphCanvasReturnView.current;
-    return () => {
-      globalThis.cancelAnimationFrame(focusFrame);
-      globalThis.removeEventListener("keydown", closeOnEscape);
-      globalThis.requestAnimationFrame(() => {
-        const selector = returnView === "work"
-          ? ".thread-feed-lineage-actions button"
-          : ".thread-graph-expand-button";
-        const trigger = document.querySelector<HTMLElement>(selector) ??
-          document.querySelector<HTMLElement>(
-            ".project-navigation button[aria-current='page']",
-          );
-        trigger?.focus();
-      });
-    };
-  }, [graphCanvasOpen]);
-
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);
-    setGraphCanvasOpen(false);
     // A selected record can belong to another tool surface. Keep the main
     // workspace calm when changing context; explicit inspection reopens this.
     setInspectorOpen(false);
@@ -302,17 +261,11 @@ export function ThreadWorkbench({
   const snapshot = workbench.thread;
   const project = workbench.project;
   const projectBrief = buildProjectBrief(project);
-  const evidenceContext = contextualGraphProjection(
-    snapshot.graph.nodes,
-    snapshot.graph.edges,
-    lineageFocus,
+  const projectPath = buildProjectPath(project, snapshot);
+  const versionedProvenance = buildVersionedProvenanceProjection(
+    snapshot.graph,
+    snapshot.evidenceFamilyGraph,
   );
-
-  const openGraphCanvas = () => {
-    graphCanvasReturnView.current = activeView;
-    setInspectorOpen(false);
-    setGraphCanvasOpen(true);
-  };
 
   const currentDecisionEvidence = (decisionId?: string) => {
     const decision = decisionId
@@ -373,7 +326,6 @@ export function ThreadWorkbench({
     options: { pauseLive?: boolean; inspect?: boolean } = {},
   ) => {
     if (options.pauseLive) {
-      followLiveRef.current = false;
       setFollowLive(false);
     }
     setLineageFocus(node.ref);
@@ -413,11 +365,7 @@ export function ThreadWorkbench({
   };
 
   const changeFollowLive = (next: boolean) => {
-    followLiveRef.current = next;
     setFollowLive(next);
-    if (!next) return;
-    const liveNode = activityFeedNodes(snapshot.graph.nodes)[0];
-    if (liveNode) selectGraphNode(liveNode, { inspect: false });
   };
 
   const selectComponent = (component: ThreadComponent) => {
@@ -479,6 +427,9 @@ export function ThreadWorkbench({
   const selectedEdge = graphSelection?.kind === "edge"
     ? snapshot.graph.edges.find((edge) => edge.id === graphSelection.id)
     : undefined;
+  const selectedEdgeGroup = selectedEdge
+    ? versionedEdgeGroup(versionedProvenance, selectedEdge.id)
+    : undefined;
   const inspectorTarget = resolveToolInspectorTarget(
     snapshot,
     graphSelection,
@@ -486,6 +437,11 @@ export function ThreadWorkbench({
   );
   const selectedGraphNode = inspectorTarget.node;
   const inspectorRecord = inspectorTarget.record;
+  const selectedVersionFamily = graphSelection?.kind === "node"
+    ? versionedProvenance.familyByMemberRef.get(
+      versionedRefKey(graphSelection.ref),
+    )
+    : undefined;
 
   const inspector = (
     <aside
@@ -498,6 +454,7 @@ export function ThreadWorkbench({
           <GraphEdgeInspector
             snapshot={snapshot}
             edge={selectedEdge}
+            history={selectedEdgeGroup}
             onSelectGraphNode={selectGraphNode}
           />
         )
@@ -526,6 +483,13 @@ export function ThreadWorkbench({
                 Exact record
               </button>
             </div>
+            {selectedVersionFamily && (
+              <EvidenceVersionHistory
+                family={selectedVersionFamily}
+                selectedRef={selectedGraphNode?.ref}
+                onSelectVersion={selectGraphNode}
+              />
+            )}
             {drawerMode === "tool"
               ? (
                 <ToolInspectorPanel
@@ -555,82 +519,6 @@ export function ThreadWorkbench({
         )}
     </aside>
   );
-
-  if (graphCanvasOpen) {
-    return (
-      <div class="thread-workbench mcp-view-surface thread-graph-focus-mode">
-        <section
-          class="thread-graph-focus-shell"
-          aria-labelledby="thread-graph-focus-title"
-          role="dialog"
-          aria-modal="true"
-        >
-          <header class="thread-graph-focus-header">
-            <div>
-              <p>RECORDED EVIDENCE · FULL CANVAS</p>
-              <h2 id="thread-graph-focus-title">{project.project.name}</h2>
-              <span>
-                Follow a fact back to its recorded sources and forward to the
-                work it affects.
-              </span>
-            </div>
-            <div class="thread-graph-focus-actions">
-              <span>
-                {snapshot.graph.nodes.length} facts ·{" "}
-                {snapshot.graph.edges.length} relations
-              </span>
-              {inspectorOpen && (
-                <button
-                  type="button"
-                  class="thread-inspector-toggle"
-                  aria-controls="thread-tool-inspector"
-                  onClick={() => setInspectorOpen(false)}
-                >
-                  Close details
-                </button>
-              )}
-              <button
-                type="button"
-                class="thread-graph-focus-close"
-                ref={graphCanvasCloseButton}
-                onClick={() => setGraphCanvasOpen(false)}
-              >
-                Back to evidence
-              </button>
-            </div>
-          </header>
-          <div
-            class={`thread-graph-focus-workspace ${
-              inspectorOpen ? "has-inspector" : ""
-            }`}
-          >
-            <div class="thread-graph-focus-body">
-              <div class="thread-graph-legend" aria-label="Graph legend">
-                <span data-tone="source">upstream evidence</span>
-                <span data-tone="focus">selected fact</span>
-                <span data-tone="impact">downstream impact</span>
-                <span data-tone="attested">verified fingerprint</span>
-                <span data-tone="mismatch">fingerprint mismatch</span>
-              </div>
-              <ThreadGraph
-                nodes={snapshot.graph.nodes}
-                edges={snapshot.graph.edges}
-                selection={graphSelection}
-                focus={lineageFocus}
-                presentation="canvas"
-                initialZoom={3.25}
-                showSupporting
-                showDensityControl={false}
-                onSelectionChange={selectVerificationGraphItem}
-                onInspect={inspectVerificationGraphItem}
-              />
-            </div>
-            {inspectorOpen && inspector}
-          </div>
-        </section>
-      </div>
-    );
-  }
 
   return (
     <div class="thread-workbench mcp-view-surface">
@@ -681,8 +569,8 @@ export function ThreadWorkbench({
           <dl class="thread-session-facts">
             <div>
               <dt>Project</dt>
-              <dd data-project-tone={projectStatusTone(projectBrief.status)}>
-                {projectBriefStatusLabel(projectBrief)}
+              <dd data-project-tone={projectStatusTone(projectPath.status)}>
+                {projectPathStatusLabel(projectPath)}
               </dd>
             </div>
             <div>
@@ -739,22 +627,26 @@ export function ThreadWorkbench({
                   {projectViewLabel(activeView)} ·{" "}
                   {formatTime(snapshot.generatedAt)}
                 </span>
-                <button
-                  type="button"
-                  class="thread-inspector-toggle"
-                  aria-expanded={inspectorOpen}
-                  aria-controls="thread-tool-inspector"
-                  onClick={() => setInspectorOpen((open) => !open)}
-                >
-                  {inspectorOpen ? "Close details" : "Inspect selection"}
-                </button>
-                {activeView === "verification" && (
+                {activeView !== "verification" && (
                   <button
                     type="button"
-                    class="thread-graph-expand-button"
-                    onClick={openGraphCanvas}
+                    class="thread-inspector-toggle"
+                    aria-expanded={inspectorOpen}
+                    aria-controls="thread-tool-inspector"
+                    onClick={() => setInspectorOpen((open) => !open)}
                   >
-                    Open graph canvas
+                    {inspectorOpen ? "Close details" : "Inspect selection"}
+                  </button>
+                )}
+                {activeView === "verification" && inspectorOpen && (
+                  <button
+                    type="button"
+                    class="thread-inspector-toggle"
+                    aria-expanded="true"
+                    aria-controls="thread-tool-inspector"
+                    onClick={() => setInspectorOpen(false)}
+                  >
+                    Close details
                   </button>
                 )}
               </div>
@@ -807,19 +699,10 @@ export function ThreadWorkbench({
               </details>
             )}
             {activeView === "verification" && (
-              <>
-                <MetricGrid
-                  className="thread-metrics project-verification-metrics"
-                  items={summaryMetrics(snapshot)}
-                />
-                <div class="thread-graph-legend" aria-label="Graph legend">
-                  <span data-tone="source">upstream evidence</span>
-                  <span data-tone="focus">selected fact</span>
-                  <span data-tone="impact">downstream impact</span>
-                  <span data-tone="attested">verified fingerprint</span>
-                  <span data-tone="mismatch">fingerprint mismatch</span>
-                </div>
-              </>
+              <MetricGrid
+                className="thread-metrics project-verification-metrics"
+                items={summaryMetrics(snapshot)}
+              />
             )}
             <div
               class={`thread-graph-workspace ${
@@ -852,42 +735,58 @@ export function ThreadWorkbench({
                         setDrawerMode("tool");
                         setInspectorOpen(true);
                       }}
-                      onOpenGraphCanvas={() => {
-                        openGraphCanvas();
-                      }}
+                      onOpenGraphCanvas={() => changeView("verification")}
                     />
                   )
                   : activeView === "verification"
                   ? (
                     <section
-                      class="thread-evidence-context"
-                      aria-labelledby="thread-evidence-context-title"
+                      class="thread-versioned-provenance"
+                      aria-labelledby="thread-versioned-provenance-title"
                     >
                       <header>
                         <div>
-                          <small>SELECTED FACT · DIRECT RELATIONS</small>
-                          <strong id="thread-evidence-context-title">
-                            {evidenceContext.focus?.label ??
-                              "Recorded evidence context"}
-                          </strong>
+                          <p>CURRENT EVIDENCE MAP</p>
+                          <h4 id="thread-versioned-provenance-title">
+                            Trace the evidence behind the current design
+                          </h4>
+                          <span>
+                            Select a result, requirement or component to see
+                            what supports it and what it affects. Previous
+                            versions stay inside the selected node.
+                          </span>
                         </div>
                         <span>
-                          {evidenceContext.nodes.length} facts ·{" "}
-                          {evidenceContext.edges.length} direct relations
-                          {evidenceContext.hiddenEdgeCount > 0
-                            ? ` · ${evidenceContext.hiddenEdgeCount} more in canvas`
-                            : ""}
+                          {versionedProvenance.collapsedVersionCount > 0
+                            ? `${versionedProvenance.collapsedVersionCount} previous versions folded`
+                            : "Current evidence only"}
                         </span>
                       </header>
+                      <div
+                        class="thread-graph-legend"
+                        aria-label="Graph legend"
+                      >
+                        <span data-tone="source">upstream evidence</span>
+                        <span data-tone="focus">selected fact</span>
+                        <span data-tone="impact">downstream impact</span>
+                        <span data-tone="attested">verified fingerprint</span>
+                        <span data-tone="mismatch">fingerprint mismatch</span>
+                      </div>
                       <ThreadGraph
-                        nodes={evidenceContext.nodes}
-                        edges={evidenceContext.edges}
-                        selection={graphSelection}
-                        focus={lineageFocus}
-                        presentation="context"
-                        showSupporting
+                        nodes={versionedProvenance.graph.nodes}
+                        edges={versionedProvenance.graph.edges}
+                        selection={visibleGraphSelection(
+                          versionedProvenance,
+                          graphSelection,
+                        )}
+                        focus={visibleGraphRef(
+                          versionedProvenance,
+                          lineageFocus,
+                        )}
+                        presentation="canvas"
+                        initialZoom={2.25}
+                        showSupporting={false}
                         showDensityControl={false}
-                        ariaLabel="Direct evidence around the selected fact"
                         onSelectionChange={selectVerificationGraphItem}
                         onInspect={inspectVerificationGraphItem}
                       />
@@ -902,6 +801,10 @@ export function ThreadWorkbench({
                       onProviderChange={changeComponentProvider}
                       onComponentSelect={selectComponent}
                       onBindingSelect={inspectComponentBinding}
+                      onRevisionOpen={(node) => {
+                        selectGraphNode(node, { inspect: false });
+                        changeView("work");
+                      }}
                     />
                   )
                   : (
@@ -965,9 +868,10 @@ function workspaceDescription(
   return "See what the agent ran, what is planned next, and which tools contributed evidence to this project.";
 }
 
-function GraphEdgeInspector({ snapshot, edge, onSelectGraphNode }: {
+function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
   snapshot: ThreadWorkbenchSnapshot;
   edge: ThreadGraphEdge;
+  history?: VersionedProvenanceEdgeGroup;
   onSelectGraphNode: (node: ThreadGraphNode) => void;
 }): JSX.Element {
   const source = graphNodeByRef(snapshot, edge.from);
@@ -1027,6 +931,24 @@ function GraphEdgeInspector({ snapshot, edge, onSelectGraphNode }: {
         />
       </div>
       <KeyValueList items={facts} />
+      {history && history.members.length > 1 && (
+        <details class="thread-version-relations thread-edge-history">
+          <summary>Recorded handoffs ({history.members.length})</summary>
+          <ul>
+            {history.members.map((member, index) => (
+              <li key={member.id}>
+                <strong>
+                  {member.id === history.representative.id
+                    ? "CURRENT HANDOFF"
+                    : `EARLIER HANDOFF ${index + 1}`}
+                </strong>
+                <code>{relationLabel(member.relation)}</code>
+                <span>{member.rationale}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {edge.attestation && (
         <StateMessage
           title={edge.attestation.status === "verified"
@@ -1047,6 +969,14 @@ function GraphEdgeInspector({ snapshot, edge, onSelectGraphNode }: {
       )}
     </Card>
   );
+}
+
+function versionedEdgeGroup(
+  projection: VersionedProvenanceProjection,
+  edgeId: string,
+): VersionedProvenanceEdgeGroup | undefined {
+  const visibleId = projection.visibleEdgeIdByMemberId.get(edgeId) ?? edgeId;
+  return projection.edgeGroupByVisibleId.get(visibleId);
 }
 
 function GraphEndpoint({ label, node, onSelect }: {
@@ -1621,70 +1551,15 @@ function graphNodeByRef(
   );
 }
 
-interface ContextualGraphProjection {
-  focus?: ThreadGraphNode;
-  nodes: ThreadGraphNode[];
-  edges: ThreadGraphEdge[];
-  hiddenEdgeCount: number;
-}
-
-/** One-hop evidence preview; the dedicated canvas owns the complete graph. */
-function contextualGraphProjection(
-  nodes: ThreadGraphNode[],
-  edges: ThreadGraphEdge[],
-  focus: ThreadGraphRef | undefined,
-): ContextualGraphProjection {
-  const focusNode = focus
-    ? nodes.find((node) => sameGraphRef(node.ref, focus))
-    : nodes[0];
-  if (!focusNode) {
-    return { nodes: [], edges: [], hiddenEdgeCount: 0 };
-  }
-  const incidentEdges = edges.filter((edge) =>
-    sameGraphRef(edge.from, focusNode.ref) ||
-    sameGraphRef(edge.to, focusNode.ref)
-  ).sort((left, right) =>
-    attestationPriority(left) - attestationPriority(right) ||
-    left.id.localeCompare(right.id)
-  );
-  const visibleEdges = incidentEdges.slice(0, 6);
-  const visibleRefs = new Set<string>([
-    graphRefKey(focusNode.ref),
-    ...visibleEdges.flatMap((edge) => [
-      graphRefKey(edge.from),
-      graphRefKey(edge.to),
-    ]),
-  ]);
-  return {
-    focus: focusNode,
-    nodes: nodes.filter((node) => visibleRefs.has(graphRefKey(node.ref))),
-    edges: visibleEdges,
-    hiddenEdgeCount: incidentEdges.length - visibleEdges.length,
-  };
-}
-
-function attestationPriority(edge: ThreadGraphEdge): number {
-  if (edge.attestation?.status === "mismatch") return 0;
-  if (edge.attestation?.status === "verified") return 1;
-  return 2;
-}
-
-function sameGraphRef(
-  left: ThreadGraphRef,
-  right: ThreadGraphRef,
-): boolean {
-  return left.kind === right.kind && left.id === right.id;
-}
-
-function graphRefKey(reference: ThreadGraphRef): string {
-  return `${reference.kind}:${reference.id}`;
-}
-
 function relationTitle(relation: ThreadGraphEdge["relation"]): string {
   return relation
     .split("_")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ");
+}
+
+function relationLabel(relation: ThreadGraphEdge["relation"]): string {
+  return relation.replaceAll("_", " ");
 }
 
 function artifactFacts(artifact: ThreadArtifact): KeyValueItem[] {

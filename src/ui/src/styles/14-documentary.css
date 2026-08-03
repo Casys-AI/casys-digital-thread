@@ -458,8 +458,7 @@
     padding-inline: var(--space-12);
   }
 
-  .thread-workbench .thread-graph-controls,
-  .thread-graph-focus-header {
+  .thread-workbench .thread-graph-controls {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -472,28 +471,6 @@
   .thread-workbench .thread-feed-lineage-actions {
     align-items: flex-end;
     flex-direction: column;
-  }
-
-  .thread-graph-focus-actions {
-    width: 100%;
-    justify-content: space-between;
-    flex-wrap: wrap;
-  }
-
-  .thread-graph-focus-workspace.has-inspector {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .thread-graph-focus-workspace > .thread-tool-drawer {
-    max-height: none;
-    border-top: 0;
-    border-left: 1px solid var(--thread-border);
-  }
-
-  .thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
-  .thread-graph-focus-body .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
-    height: calc(100vh - 300px);
-    min-height: 400px;
   }
 
   .thread-evidence-context > header {

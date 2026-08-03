@@ -4,7 +4,16 @@ export type ThreadComponentProvider = "syson" | "erpnext" | "build123d";
 
 export interface ThreadComponentBinding {
   provider: ThreadComponentProvider;
-  kind: "part-usage" | "item" | "artifact" | "assembly-child";
+  /**
+   * `part-definition` is intentionally distinct from SysML `part-usage`.
+   * A catalog must not pretend an architecture declaration is an occurrence.
+   */
+  kind:
+    | "part-definition"
+    | "part-usage"
+    | "item"
+    | "artifact"
+    | "assembly-child";
   /** Exact identity owned by the provider. */
   id: string;
   label: string;
@@ -206,7 +215,7 @@ function binding(value: unknown, path: string): ThreadComponentBinding {
     ),
     kind: oneOf(
       input.kind,
-      ["part-usage", "item", "artifact", "assembly-child"],
+      ["part-definition", "part-usage", "item", "artifact", "assembly-child"],
       `${path}.kind`,
     ),
     id: nonEmpty(input.id, `${path}.id`),

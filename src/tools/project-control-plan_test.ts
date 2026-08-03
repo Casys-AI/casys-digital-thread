@@ -73,7 +73,9 @@ Deno.test("project_plan_publish exposes an agent-only bounded plan contract", as
       assertEquals(JSON.stringify(schema).includes("toolName"), false);
       assertEquals(JSON.stringify(schema).includes("mcpUrl"), false);
       assertEquals(JSON.stringify(schema).includes("decision-parameter"), false);
-      assertEquals(JSON.stringify(schema).includes("thread-entity"), false);
+      assertEquals(JSON.stringify(schema).includes("thread-entity"), true);
+      assertEquals(JSON.stringify(schema).includes("snapshotRevision"), true);
+      assertEquals(JSON.stringify(schema).includes("payload"), false);
 
       const chatMediatedHumanActions = [
         "project_decision_approve",

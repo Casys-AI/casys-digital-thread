@@ -159,8 +159,8 @@ Each executing invocation creates a new, immutable directory under
 `state/local/cm01-v3-local-runs/`; it refuses an existing output directory and never
 reads an earlier one as a fallback.
 
-If every provider branch completed but the final static projection was interrupted,
-do not rerun providers. Finalize that one explicit directory instead:
+If every provider branch completed but the final static projection was interrupted, do
+not rerun providers. Finalize that one explicit directory instead:
 
 ```bash
 deno task thread:finalize-coffee-machine-cm01-v3-local \
@@ -169,9 +169,57 @@ deno task thread:finalize-coffee-machine-cm01-v3-local \
 
 The finalizer has no MCP client and does not discover a latest run. It reads only that
 directory's persisted project and its uniquely declared final ThreadSnapshot, then
-creates `golden-observation.json` and `run-summary.json`. Existing derived files must
-be byte-for-byte identical; it never overwrites them. It cannot repair a missing or
+creates `golden-observation.json` and `run-summary.json`. Existing derived files must be
+byte-for-byte identical; it never overwrites them. It cannot repair a missing or
 incomplete provider branch.
+
+### Bounded correction-loop proof
+
+Before running a changed design through providers, the repository has one deliberately
+inert proof for the reviewed DripTray height correction (`28 mm → 30 mm`):
+
+```bash
+deno task thread:verify-coffee-machine-v3-correction-loop
+```
+
+It reads the reviewed 28 mm proof case and a small correction declaration, makes zero
+provider calls and writes no state. In memory it requires a new snapshot provenance for
+the design input, CAD plan/script/STEP, and CalculiX result; retains the corresponding
+28 mm artifacts as `stale`; and rejects a structurally valid negative control that
+attempts to relabel the old CAD/CalculiX descendants as fresh. Modelica and ERP evidence
+remain unchanged, because this correction does not declare them as dependents.
+
+This is a traceability and invalidation proof, not a 30 mm simulation result. It does
+not compare invented new measurements with the V3 golden reference, publish a project
+change, or establish that a future provider run is safe, certified, or releasable.
+
+### Bounded R3 mechanical recovery
+
+If — and only if — the canonical CM-01 project is at the recorded R9 recovery boundary
+after the failed `verify.coffee-machine-cm01-drip-tray-mechanical@2` attempt, the R3
+recovery has its own reviewed operation and its own immutable proof configuration. The
+failed R2 attempt stays visible as a failed run; it is never requeued, deleted, or used
+as fallback evidence.
+
+With the control plane running, inspect the failure first. Then invoke the dedicated,
+inert-by-default MCP driver only after the R3 operation has been registered by the
+server:
+
+```bash
+deno task thread:retry-coffee-machine-cm01-v3-mechanical-r3
+
+deno task thread:retry-coffee-machine-cm01-v3-mechanical-r3 --execute \
+  --acknowledge=EXECUTE_CM01_V3_MECHANICAL_R3_RETRY
+```
+
+The driver reads `project_snapshot` through MCP and refuses before mutation unless the
+project is the approved canonical V3 project at r9, the correction and CAD@2 runs are
+completed, the exact mechanical@2 run is failed without evidence, and no R3 retry has
+already been appended. It then appends one new R3 work item with the r9 correction and
+CAD STEP references, queues it, and executes only the registered
+`verify.coffee-machine-cm01-drip-tray-mechanical@3` operation. A successful result must
+publish exactly r10 with one artifact evidence reference. It is still an isolated
+DripTray concept proof, not a whole-machine certification or release.
 
 This harness is an isolated integration proof. Its project, snapshots, and live feed do
 **not** appear automatically in the Cockpit: the Cockpit intentionally reads only the

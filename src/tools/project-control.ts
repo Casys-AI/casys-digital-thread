@@ -7,10 +7,14 @@ import type {
   EngineeringOperationRef,
   EngineeringProjectSnapshot,
   EngineeringProjectStartingPoint,
+  EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
   EngineeringWorkOwner,
 } from "../domain/engineering-project.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
+import type {
+  ContentFingerprint,
+  ThreadEntityKind,
+} from "../domain/thread-snapshot.ts";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -80,6 +84,29 @@ const ISSUED_AT = {
     "Stable ISO timestamp for this command. Preserve it together with commandId on retry.",
 } as const;
 
+const THREAD_ENTITY_KINDS = [
+  "artifact",
+  "consumption",
+  "observation",
+  "requirement",
+  "evaluation",
+  "violation",
+  "change",
+  "action",
+] as const satisfies readonly ThreadEntityKind[];
+
+const THREAD_ENTITY_REFERENCE_SCHEMA = {
+  type: "object",
+  properties: {
+    snapshotId: { type: "string", minLength: 1 },
+    snapshotRevision: { type: "integer", minimum: 1 },
+    kind: { type: "string", enum: THREAD_ENTITY_KINDS },
+    id: { type: "string", minLength: 1 },
+  },
+  required: ["snapshotId", "snapshotRevision", "kind", "id"],
+  additionalProperties: false,
+} as const;
+
 const OPERATION_BINDING_SCHEMA = {
   type: "object",
   properties: {
@@ -114,6 +141,15 @@ const OPERATION_BINDING_SCHEMA = {
             answerId: { type: "string", minLength: 1 },
           },
           required: ["kind", "answerId"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            kind: { const: "thread-entity" },
+            reference: THREAD_ENTITY_REFERENCE_SCHEMA,
+          },
+          required: ["kind", "reference"],
           additionalProperties: false,
         },
       ],
@@ -1129,11 +1165,44 @@ function planOperationBinding(
           answerId: requiredString(source.answerId, `${path}.source.answerId`),
         },
       };
+    case "thread-entity":
+      exactKeys(source, ["kind", "reference"], [], `${path}.source`);
+      return {
+        name,
+        source: {
+          kind,
+          reference: threadEntityReference(
+            source.reference,
+            `${path}.source.reference`,
+          ),
+        },
+      };
     default:
       throw new TypeError(
-        `${path}.source.kind must be approved-brief, project-answer, approved-discovery or discovery-answer`,
+        `${path}.source.kind must be approved-brief, project-answer, approved-discovery, discovery-answer or thread-entity`,
       );
   }
+}
+
+function threadEntityReference(
+  value: unknown,
+  name: string,
+): EngineeringThreadEntityRef {
+  const record = exactRecord(value, name);
+  exactKeys(record, ["snapshotId", "snapshotRevision", "kind", "id"], [], name);
+  const kind = requiredString(record.kind, `${name}.kind`);
+  if (!THREAD_ENTITY_KINDS.includes(kind as ThreadEntityKind)) {
+    throw new TypeError(`${name}.kind must be a ThreadSnapshot entity kind`);
+  }
+  return {
+    snapshotId: requiredString(record.snapshotId, `${name}.snapshotId`),
+    snapshotRevision: positiveInteger(
+      record.snapshotRevision,
+      `${name}.snapshotRevision`,
+    ),
+    kind: kind as ThreadEntityKind,
+    id: requiredString(record.id, `${name}.id`),
+  };
 }
 
 function stringList(value: unknown, name: string): string[] {

@@ -115,36 +115,33 @@ export function applyThreadSnapshotExtension(
     rationale: "This snapshot extension introduced the captured artifact.",
   }));
   const nextRevision = base.revision + 1;
+  const status = aggregateFreshness(
+    [
+      ...base.artifacts,
+      ...base.observations,
+      ...base.requirements,
+      ...base.evaluations,
+      ...base.violations,
+      ...extension.artifacts,
+      ...extension.observations,
+      ...extension.requirements,
+      ...extension.evaluations,
+      ...extension.violations,
+    ].map((item) => item.freshness.status).concat(
+      [...base.consumptions, ...extension.consumptions].some((item) =>
+          item.status === "mismatch"
+        )
+        ? ["failed"]
+        : [],
+    ),
+  );
   const merged = {
     ...structuredClone(base),
     id: `${base.subject.id}:r${nextRevision}:${extension.id}`,
     revision: nextRevision,
     previous: { snapshotId: base.id, revision: base.revision },
     generatedAt: appliedAt,
-    freshness: {
-      status: aggregateFreshness(
-        [
-          ...base.artifacts,
-          ...base.observations,
-          ...base.requirements,
-          ...base.evaluations,
-          ...base.violations,
-          ...extension.artifacts,
-          ...extension.observations,
-          ...extension.requirements,
-          ...extension.evaluations,
-          ...extension.violations,
-        ].map((item) => item.freshness.status).concat(
-          [...base.consumptions, ...extension.consumptions].some((item) =>
-              item.status === "mismatch"
-            )
-            ? ["failed"]
-            : [],
-        ),
-      ),
-      changedAt: appliedAt,
-      invalidatedByChangeIds: [],
-    },
+    freshness: rootFreshness(status, appliedAt),
     changeSet: {
       id: extension.id,
       name: extension.name,
@@ -211,4 +208,31 @@ function aggregateFreshness(
   if (statuses.includes("running")) return "running";
   if (statuses.includes("stale")) return "stale";
   return "fresh";
+}
+
+/**
+ * A revision retains immutable historical evidence.  Its aggregate state can
+ * therefore remain stale or failed after a fresh successor branch is added;
+ * those non-fresh root states require an explicit validator-visible cause.
+ */
+function rootFreshness(
+  status: ThreadFreshnessStatus,
+  changedAt: string,
+) {
+  return {
+    status,
+    changedAt,
+    ...(status === "stale"
+      ? {
+        reason:
+          "At least one retained entity is stale; replacement evidence is still required.",
+      }
+      : status === "failed"
+      ? {
+        reason:
+          "At least one retained entity failed or reported a fingerprint mismatch.",
+      }
+      : {}),
+    invalidatedByChangeIds: [],
+  };
 }

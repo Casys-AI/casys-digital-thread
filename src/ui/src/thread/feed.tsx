@@ -2,8 +2,14 @@
 
 import type { JSX } from "preact";
 import type { ThreadStreamStatus } from "./client.ts";
-import { activityFeedNodes, refKey, traceThreadLineage } from "./feed-model.ts";
+import {
+  activityFeedNodes,
+  isActivityEntryExpanded,
+  refKey,
+  traceThreadLineage,
+} from "./feed-model.ts";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
+import { RecomputeHistoryPanel } from "./recompute.tsx";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -44,7 +50,7 @@ export function ThreadFeed({
   onInspect,
   onOpenGraphCanvas,
 }: ThreadFeedProps): JSX.Element {
-  const feedNodes = activityFeedNodes(nodes);
+  const feedNodes = activityFeedNodes(nodes, edges);
   const focusNode = focus
     ? nodes.find((node) => refKey(node.ref) === refKey(focus))
     : undefined;
@@ -87,7 +93,7 @@ export function ThreadFeed({
 
       <ol class="thread-feed-list" aria-label="Linked engineering activity">
         {entries.map((node, index) => {
-          const active = focus && refKey(node.ref) === refKey(focus);
+          const active = isActivityEntryExpanded(focus, node);
           const lineage = active
             ? traceThreadLineage(nodes, edges, focus)
             : undefined;
@@ -163,6 +169,13 @@ export function ThreadFeed({
                         )}
                       </div>
                     </header>
+                    <RecomputeHistoryPanel
+                      nodes={nodes}
+                      edges={edges}
+                      focus={node.ref}
+                      onSelectNode={(related) =>
+                        onSelectNode(related, "lineage")}
+                    />
                     {lineageCount === 0
                       ? (
                         <p class="thread-feed-unlinked">

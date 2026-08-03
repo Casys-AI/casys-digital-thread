@@ -754,7 +754,14 @@ function isDeclaredProjectThreadSnapshot(
   basis: Extract<EngineeringBasisRef, { readonly kind: "thread-snapshot" }>,
   project: Record<string, unknown>,
 ): boolean {
-  if (!isThreadSnapshotRef(basis) || !Array.isArray(project.threadSnapshots)) {
+  // A run basis is a discriminated ThreadSnapshot reference, whereas the
+  // project ledger stores the same reference without its `kind`. Do not apply
+  // the exact-key ledger validator to the discriminated basis: doing so would
+  // reject every legitimate V2/V3 technical run before the Cockpit can render
+  // its evidence.
+  if (
+    !isThreadSnapshotBasis(basis) || !Array.isArray(project.threadSnapshots)
+  ) {
     return false;
   }
   return project.threadSnapshots.some((snapshot) =>

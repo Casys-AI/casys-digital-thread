@@ -6,14 +6,15 @@ import type {
 } from "./types.ts";
 
 /**
- * Keep the operator's context stable for in-place running -> fresh updates.
- * Follow-live moves only when the projection introduces a genuinely new node.
+ * Detect a newly appended activity record without prescribing a UI focus.
+ * The Workbench follows the feed chronologically; it does not auto-expand a
+ * new lineage or overwrite an explicit reviewer selection.
  */
-export function nextLiveFocusNode(
+export function nextLiveActivityNode(
   previous: ThreadWorkbenchSnapshot | undefined,
   incoming: ThreadWorkbenchSnapshot,
 ): ThreadGraphNode | undefined {
-  const feed = activityFeedNodes(incoming.graph.nodes);
+  const feed = activityFeedNodes(incoming.graph.nodes, incoming.graph.edges);
   if (!previous) return feed[0];
   const previousKeys = new Set(previous.graph.nodes.map((node) => node.id));
   return feed.find((node) => !previousKeys.has(node.id));

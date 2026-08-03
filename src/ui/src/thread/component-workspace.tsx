@@ -11,10 +11,12 @@ import type {
   ThreadComponentBinding,
   ThreadComponentPreview,
   ThreadComponentProvider,
+  ThreadGraphNode,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 import {
   cadSurfaceCoverage,
+  correctionNodesForComponent,
   resolveCadSurface,
 } from "./component-workspace-model.ts";
 
@@ -25,6 +27,8 @@ export interface ComponentWorkspaceProps {
   onProviderChange: (provider: ThreadComponentProvider) => void;
   onComponentSelect: (component: ThreadComponent) => void;
   onBindingSelect: (binding: ThreadComponentBinding) => void;
+  /** Opens the same recorded correction context used by the Activity feed. */
+  onRevisionOpen: (node: ThreadGraphNode) => void;
 }
 
 const PROVIDERS: readonly {
@@ -44,12 +48,16 @@ export function ComponentWorkspace({
   onProviderChange,
   onComponentSelect,
   onBindingSelect,
+  onRevisionOpen,
 }: ComponentWorkspaceProps): JSX.Element {
   const components = snapshot.components.components;
   const cadCoverage = cadSurfaceCoverage(snapshot);
   const selected =
     components.find((component) => component.id === selectedComponentId) ??
       components[0];
+  const revisions = selected
+    ? correctionNodesForComponent(snapshot, selected)
+    : [];
 
   if (!selected) {
     return (
@@ -73,6 +81,20 @@ export function ComponentWorkspace({
           <span>reviewed components</span>
         </div>
       </header>
+
+      {revisions.length > 0 && (
+        <button
+          type="button"
+          class="component-revision-link"
+          onClick={() => onRevisionOpen(revisions[0]!)}
+        >
+          <span>
+            {revisions.length}{" "}
+            recorded revision{revisions.length === 1 ? "" : "s"}
+          </span>
+          <strong>View this part’s lifecycle in Activity</strong>
+        </button>
+      )}
 
       <div
         class="component-provider-tabs"
@@ -211,11 +233,12 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
   onInspect: (binding: ThreadComponentBinding) => void;
 }): JSX.Element {
   const view = snapshot.components.systemViews.syson;
+  const terminology = sysonTerminology(snapshot.components.components);
   return (
     <section class="syson-structure" aria-label="SysON product structure">
       <header class="provider-surface-header">
         <div>
-          <p>SYSML V2 · PART USAGES</p>
+          <p>SYSML V2 · {terminology.heading}</p>
           <h5>{view?.diagramLabel ?? "System structure"}</h5>
         </div>
         <code>{view?.diagramId ?? "diagram identity unavailable"}</code>
@@ -223,7 +246,9 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
       <div class="syson-root-node">
         <span>ASSEMBLY</span>
         <strong>{snapshot.subject.label}</strong>
-        <small>{snapshot.components.components.length} declared usages</small>
+        <small>
+          {snapshot.components.components.length} {terminology.countLabel}
+        </small>
       </div>
       <div class="syson-part-grid">
         {snapshot.components.components.map((component, index) => {
@@ -239,7 +264,7 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
             >
               <span>{String(index + 1).padStart(2, "0")}</span>
               <strong>{component.label}</strong>
-              <small>{binding?.label ?? "No SysON PartUsage"}</small>
+              <small>{binding?.label ?? terminology.missingLabel}</small>
               <code>{binding?.id ?? "TRACE GAP"}</code>
             </button>
           );
@@ -247,6 +272,37 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
       </div>
     </section>
   );
+}
+
+function sysonTerminology(
+  components: readonly ThreadComponent[],
+): { heading: string; countLabel: string; missingLabel: string } {
+  const kinds = new Set(
+    components.flatMap((component) =>
+      component.bindings
+        .filter((binding) => binding.provider === "syson")
+        .map((binding) => binding.kind)
+    ),
+  );
+  if (kinds.size === 1 && kinds.has("part-definition")) {
+    return {
+      heading: "PART DEFINITIONS",
+      countLabel: "declared definitions",
+      missingLabel: "No SysON PartDefinition",
+    };
+  }
+  if (kinds.size === 1 && kinds.has("part-usage")) {
+    return {
+      heading: "PART USAGES",
+      countLabel: "declared usages",
+      missingLabel: "No SysON PartUsage",
+    };
+  }
+  return {
+    heading: "PRODUCT STRUCTURE",
+    countLabel: "declared elements",
+    missingLabel: "No SysON product element",
+  };
 }
 
 function ErpBom({ snapshot, selected, onSelect, onInspect }: {

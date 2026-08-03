@@ -10,6 +10,7 @@ import {
 } from "../src/adapters/file-cockpit-focus-store.ts";
 import { FileApprovedDiscoveryBaselineCaptureStore } from "../src/adapters/file-approved-discovery-baseline-capture-store.ts";
 import { FileSysonModelSeedCaptureStore } from "../src/adapters/file-syson-model-seed-capture-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-capture-store.ts";
 import { InspectionDroneArchitectureQueueEligibility } from "../src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
@@ -51,6 +52,7 @@ import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../src/domain/thread-component-catalog.ts";
+import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../src/adapters/cm01-v3-product-structure-catalog.ts";
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
@@ -67,6 +69,13 @@ export interface NativeWorkbenchHandlerOptions {
   componentCatalog?: ThreadComponentCatalog;
   componentCatalogForSubject?: (
     subjectId: string,
+  ) => Promise<ThreadComponentCatalog | undefined>;
+  /**
+   * Snapshot-bound catalogs may only be derived from evidence in that exact
+   * revision. They take precedence over a static subject catalog when present.
+   */
+  componentCatalogForSnapshot?: (
+    snapshot: ThreadSnapshot,
   ) => Promise<ThreadComponentCatalog | undefined>;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
@@ -505,9 +514,10 @@ async function projectThreadSnapshot(
   componentCatalog: ThreadComponentCatalog | undefined,
   liveUpdates?: LiveThreadUpdate[],
 ) {
+  const evidenceCatalog = await options.componentCatalogForSnapshot?.(snapshot);
   const canonical = projectThreadWorkbenchSnapshot(
     snapshot,
-    componentCatalog ??
+    evidenceCatalog ?? componentCatalog ??
       (subjectId === options.subjectId ? options.componentCatalog : undefined),
   );
   const updates = liveUpdates ??
@@ -582,6 +592,9 @@ if (import.meta.main) {
   const sysonModelSeedCaptureDirectory = argument(
     "syson-model-seed-capture-dir",
   ) ?? "state/local/syson-model-seed-captures";
+  const cm01ArchitectureCaptureDirectory = argument(
+    "cm01-architecture-capture-dir",
+  ) ?? "state/local/coffee-machine-cm01-v3-architecture-captures";
   const html = await Deno.readTextFile(htmlPath);
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
@@ -599,6 +612,9 @@ if (import.meta.main) {
   );
   const sysonModelSeedCaptures = new FileSysonModelSeedCaptureStore(
     sysonModelSeedCaptureDirectory,
+  );
+  const cm01ArchitectureCaptures = new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
+    cm01ArchitectureCaptureDirectory,
   );
   const projectsForEligibility = new FileEngineeringProjectRevisionStore(
     activeProjectDirectory,
@@ -652,6 +668,11 @@ if (import.meta.main) {
     componentCatalogForSubject: async (resolvedSubjectId) =>
       await readOptionalComponentCatalog(
         `config/thread-subjects/${resolvedSubjectId}.components.json`,
+      ),
+    componentCatalogForSnapshot: async (snapshot) =>
+      await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+        snapshot,
+        cm01ArchitectureCaptures,
       ),
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),

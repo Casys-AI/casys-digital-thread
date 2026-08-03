@@ -212,6 +212,468 @@
   background: #f7f5ef;
 }
 
+/* Evidence revision trail -------------------------------------------------
+
+   This is a compact reading record, not a second evidence canvas. The old
+   dark, dense comparison card made immutable identifiers the first thing a
+   reviewer saw. The light treatment starts with the engineering story and
+   keeps exact refs behind a native disclosure for the moment they are useful.
+*/
+
+.thread-workbench .thread-recompute-history {
+  margin: 0 0 var(--space-16);
+  border: 1px solid var(--thread-border);
+  border-left: 3px solid var(--thread-orange);
+  background: var(--thread-panel);
+}
+
+/* A correction belongs to the affected item’s open lineage, never above the
+   chronological feed. It starts as a one-line reading aid and expands only
+   when the reviewer asks for the before/after record. */
+.thread-workbench .thread-recompute-context {
+  margin: var(--space-12) 0 0;
+}
+
+.thread-workbench .thread-recompute-cluster {
+  border: 1px solid #d8c4a8;
+  border-left: 3px solid var(--thread-orange);
+  background: #fffaf4;
+}
+
+.thread-workbench .thread-recompute-cluster > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-10) var(--space-12) var(--space-6);
+}
+
+.thread-workbench .thread-recompute-cluster > header > div {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.thread-workbench .thread-recompute-cluster > header small {
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.065em;
+}
+
+.thread-workbench .thread-recompute-cluster > header strong {
+  color: var(--thread-ink);
+  font-family: var(--serif);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.thread-workbench .thread-recompute-cluster > p {
+  margin: 0;
+  padding: 0 var(--space-12) var(--space-10);
+  color: var(--thread-muted);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+
+.thread-workbench .thread-recompute-cluster > details {
+  border-top: 1px solid #e4d6c3;
+}
+
+.thread-workbench .thread-recompute-cluster > details > summary {
+  padding: var(--space-9) var(--space-12);
+  color: #7c512e;
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  cursor: pointer;
+}
+
+.thread-workbench .thread-recompute-cluster > details[open] > summary {
+  border-bottom: 1px solid var(--thread-border);
+  background: rgba(169, 95, 40, 0.06);
+}
+
+.thread-workbench .thread-recompute-history > header {
+  align-items: center;
+  padding: var(--space-12) var(--space-14);
+  border-bottom-color: var(--thread-border);
+  background: linear-gradient(90deg, rgba(169, 95, 40, 0.075), transparent 52%);
+}
+
+.thread-workbench .thread-recompute-history > header > div {
+  gap: var(--space-4);
+}
+
+.thread-workbench .thread-recompute-history > header small,
+.thread-workbench .thread-recompute-transition-heading small,
+.thread-workbench .thread-recompute-pending small,
+.thread-workbench .thread-recompute-changes > span,
+.thread-workbench .thread-recompute-unaffected > span {
+  color: var(--thread-orange);
+}
+
+.thread-workbench .thread-recompute-history > header strong {
+  max-width: 45rem;
+  color: var(--thread-ink);
+  font-family: var(--serif);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.thread-workbench .thread-recompute-history > header > span {
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--thread-border);
+  color: var(--thread-muted);
+  background: rgba(255, 253, 250, 0.72);
+  font-size: var(--text-3xs);
+}
+
+.thread-workbench .thread-recompute-list > li {
+  padding: var(--space-14);
+  border-bottom-color: var(--thread-border);
+  background: transparent;
+}
+
+.thread-workbench .thread-recompute-list > li[data-active="true"] {
+  background: linear-gradient(90deg, rgba(169, 95, 40, 0.075), transparent 66%);
+}
+
+.thread-workbench .thread-recompute-list > li[data-state="recomputing"] {
+  border-left-color: var(--amber);
+}
+
+.thread-workbench .thread-recompute-list > li[data-state="failed"] {
+  border-left-color: var(--red);
+}
+
+.thread-workbench .thread-recompute-transition-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-12);
+  margin-bottom: var(--space-12);
+}
+
+.thread-workbench .thread-recompute-transition-heading > div {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.thread-workbench .thread-recompute-transition-heading strong {
+  color: var(--thread-ink);
+  font-family: var(--serif);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.thread-workbench .thread-recompute-status {
+  align-self: start;
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel-muted);
+  font: 700 var(--text-3xs)/1.1 var(--mono);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.thread-workbench .thread-recompute-status[data-tone="published"] {
+  border-color: rgba(54, 117, 83, 0.42);
+  color: #275d42;
+  background: var(--green-dim);
+}
+
+.thread-workbench .thread-recompute-status[data-tone="recorded"] {
+  border-color: rgba(169, 95, 40, 0.38);
+  color: #7c512e;
+  background: #fff1df;
+}
+
+.thread-workbench .thread-recompute-status[data-tone="running"],
+.thread-workbench .thread-recompute-status[data-tone="awaiting"] {
+  border-color: rgba(163, 91, 39, 0.38);
+  color: #884615;
+  background: var(--amber-dim);
+}
+
+.thread-workbench .thread-recompute-status[data-tone="failed"] {
+  border-color: rgba(182, 69, 61, 0.38);
+  color: #95342e;
+  background: var(--red-dim);
+}
+
+.thread-workbench .thread-recompute-story-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 var(--space-12);
+  border: 1px solid var(--thread-border);
+  background: var(--thread-border);
+}
+
+.thread-workbench .thread-recompute-story-facts > div {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-10) var(--space-12);
+  background: rgba(255, 253, 250, 0.84);
+}
+
+.thread-workbench .thread-recompute-story-facts dt {
+  color: var(--thread-muted);
+  font: 700 var(--text-3xs)/1.1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.thread-workbench .thread-recompute-story-facts dd {
+  margin: 0;
+  color: var(--thread-ink);
+  font-size: var(--text-xs);
+  line-height: 1.42;
+}
+
+.thread-workbench .thread-recompute-story-facts button {
+  padding: 0;
+  border: 0;
+  color: var(--thread-ink);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(169, 95, 40, 0.45);
+  text-underline-offset: 0.18em;
+  background: transparent;
+  cursor: pointer;
+}
+
+.thread-workbench .thread-recompute-story-facts button:hover,
+.thread-workbench .thread-recompute-story-facts button:focus-visible {
+  color: var(--thread-orange);
+}
+
+.thread-workbench .thread-recompute-path {
+  grid-template-columns: minmax(0, 1fr) 5.25rem minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: center;
+  margin: 0;
+}
+
+.thread-workbench .thread-recompute-evidence {
+  gap: var(--space-4);
+  padding: var(--space-10) var(--space-12);
+  border-color: var(--thread-border);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+}
+
+.thread-workbench .thread-recompute-evidence[data-role="historic"],
+.thread-workbench .thread-recompute-evidence[data-role="stale"] {
+  border-color: #d8c4a8;
+  background: #fff8ee;
+}
+
+.thread-workbench .thread-recompute-evidence[data-role="current"][data-freshness="fresh"] {
+  border-color: #b8d3bf;
+  background: #f0f7f0;
+}
+
+.thread-workbench .thread-recompute-evidence[data-freshness="running"] {
+  border-color: #d8b888;
+  background: #fff8ed;
+}
+
+.thread-workbench .thread-recompute-evidence[data-freshness="failed"] {
+  border-color: #deb1ac;
+  background: #fff4f2;
+}
+
+.thread-workbench .thread-recompute-evidence:hover,
+.thread-workbench .thread-recompute-evidence:focus-visible {
+  border-color: var(--thread-orange);
+  background: #fff1e4;
+}
+
+.thread-workbench .thread-recompute-evidence strong {
+  color: var(--thread-ink);
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.thread-workbench .thread-recompute-evidence > span {
+  overflow: visible;
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1.35 var(--mono);
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.thread-workbench .thread-recompute-bridge {
+  gap: var(--space-4);
+  padding: 0;
+}
+
+.thread-workbench .thread-recompute-bridge::before {
+  margin: 0;
+  background: linear-gradient(90deg, #caa271, var(--thread-orange), #75a384);
+}
+
+.thread-workbench .thread-recompute-bridge span {
+  color: var(--thread-muted);
+  font-size: var(--text-3xs);
+  letter-spacing: 0.04em;
+}
+
+.thread-workbench .thread-recompute-changes,
+.thread-workbench .thread-recompute-unaffected {
+  margin-top: var(--space-12);
+  color: var(--thread-muted);
+}
+
+.thread-workbench .thread-recompute-changes button {
+  color: var(--thread-ink);
+  font-family: var(--sans);
+  text-decoration-color: var(--thread-orange);
+}
+
+.thread-workbench .thread-recompute-unaffected b {
+  border-color: var(--thread-border);
+  color: #426858;
+  background: #f1f6f1;
+}
+
+.thread-workbench .thread-recompute-technical,
+.thread-workbench .thread-recompute-snapshot-history {
+  margin-top: var(--space-12);
+  border-top: 1px solid var(--thread-border);
+  color: var(--thread-muted);
+}
+
+.thread-workbench .thread-recompute-technical > summary,
+.thread-workbench .thread-recompute-snapshot-history > summary {
+  padding: var(--space-10) 0;
+  color: var(--thread-muted);
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  cursor: pointer;
+}
+
+.thread-workbench .thread-recompute-technical > summary:hover,
+.thread-workbench .thread-recompute-technical > summary:focus-visible,
+.thread-workbench .thread-recompute-snapshot-history > summary:hover,
+.thread-workbench .thread-recompute-snapshot-history > summary:focus-visible {
+  color: var(--thread-orange);
+}
+
+.thread-workbench .thread-recompute-technical > dl {
+  display: grid;
+  gap: var(--space-6);
+  margin: 0 0 var(--space-10);
+}
+
+.thread-workbench .thread-recompute-technical > dl > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.4fr) minmax(0, 1fr);
+  gap: var(--space-10);
+}
+
+.thread-workbench .thread-recompute-technical dt,
+.thread-workbench .thread-recompute-technical dd,
+.thread-workbench .thread-recompute-snapshot-history li {
+  margin: 0;
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1.35 var(--mono);
+}
+
+.thread-workbench .thread-recompute-technical code,
+.thread-workbench .thread-recompute-snapshot-history code {
+  overflow-wrap: anywhere;
+  color: #52645c;
+}
+
+.thread-workbench .thread-recompute-snapshot-history {
+  margin: 0;
+  padding: 0 var(--space-14);
+  border-bottom: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
+}
+
+.thread-workbench .thread-recompute-snapshot-history > ul {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-10);
+  padding-left: var(--space-16);
+}
+
+.thread-workbench .thread-recompute-pending {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-14);
+  border-top: 1px solid #d8c4a8;
+  background: #fff9f0;
+}
+
+.thread-workbench .thread-recompute-pending > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.thread-workbench .thread-recompute-pending > header > div {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.thread-workbench .thread-recompute-pending strong {
+  color: var(--thread-ink);
+  font-family: var(--serif);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.thread-workbench .thread-recompute-pending > p {
+  max-width: 44rem;
+  margin: 0;
+  color: var(--thread-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.thread-workbench .thread-recompute-pending-records {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+@media (width <= 720px) {
+  .thread-workbench .thread-recompute-history > header,
+  .thread-workbench .thread-recompute-pending > header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .thread-workbench .thread-recompute-story-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-workbench .thread-recompute-transition-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-workbench .thread-recompute-path {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-workbench .thread-recompute-bridge {
+    min-height: 1.4rem;
+  }
+
+  .thread-workbench .thread-recompute-technical > dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+}
+
 .thread-feed-lineage > header,
 .thread-inspector-card.mcp-view-card {
   background: var(--thread-panel-muted);
@@ -331,6 +793,12 @@
 
 .component-workspace-header {
   background: linear-gradient(90deg, #f8f0e7, #fdfbf6);
+}
+
+.component-revision-link {
+  border-color: var(--thread-border);
+  color: var(--thread-ink);
+  background: #fff8ee;
 }
 
 .component-provider-tabs button[aria-selected="true"],

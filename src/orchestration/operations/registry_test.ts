@@ -310,3 +310,110 @@ Deno.test("CM-01 V3 promotes each server-wired golden-path kit", () => {
   assertEquals(mechanical?.execution, "trusted");
   assertEquals(mechanical?.workItemKind, "verify");
 });
+
+Deno.test("CM-01 R2 correction operations accept only exact ThreadSnapshot entity bindings", () => {
+  const correction = {
+    snapshotId: "project:coffee-machine-cm01-v3:r8:correction",
+    snapshotRevision: 8,
+    kind: "artifact" as const,
+    id: "coffee-machine-cm01-v3-drip-tray-height-28-to-30:record",
+  };
+  const revisedCadStep = {
+    snapshotId: "project:coffee-machine-cm01-v3:r9:cad-r2",
+    snapshotRevision: 9,
+    kind: "artifact" as const,
+    id: "coffee-machine-cm01-v3-cad-r2-step",
+  };
+
+  const cad = validateRegisteredEngineeringOperationInput({
+    operation: {
+      id: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30.id,
+      version: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30.version,
+      bindings: [
+        { name: "approvedBrief", source: { kind: "approved-brief" } },
+        {
+          name: "dripTrayHeightCorrection",
+          source: { kind: "thread-entity", reference: correction },
+        },
+      ],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(cad.operation.execution, "trusted");
+  assertEquals(cad.bindings[1], {
+    name: "dripTrayHeightCorrection",
+    source: { kind: "thread-entity", reference: correction },
+  });
+
+  const mechanical = validateRegisteredEngineeringOperationInput({
+    operation: {
+      id: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30.id,
+      version: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30.version,
+      bindings: [
+        { name: "approvedBrief", source: { kind: "approved-brief" } },
+        {
+          name: "dripTrayHeightCorrection",
+          source: { kind: "thread-entity", reference: correction },
+        },
+        {
+          name: "revisedCadStep",
+          source: { kind: "thread-entity", reference: revisedCadStep },
+        },
+      ],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(mechanical.operation.execution, "trusted");
+  assertEquals(mechanical.bindings[2], {
+    name: "revisedCadStep",
+    source: { kind: "thread-entity", reference: revisedCadStep },
+  });
+
+  const recovery = validateRegisteredEngineeringOperationInput({
+    operation: {
+      id: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30R3.id,
+      version:
+        COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30R3.version,
+      bindings: [
+        { name: "approvedBrief", source: { kind: "approved-brief" } },
+        {
+          name: "dripTrayHeightCorrection",
+          source: { kind: "thread-entity", reference: correction },
+        },
+        {
+          name: "revisedCadStep",
+          source: { kind: "thread-entity", reference: revisedCadStep },
+        },
+      ],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(recovery.operation.version, "3");
+
+  const malformed = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          id: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30.id,
+          version: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30.version,
+          bindings: [
+            { name: "approvedBrief", source: { kind: "approved-brief" } },
+            {
+              name: "dripTrayHeightCorrection",
+              source: {
+                kind: "thread-entity",
+                reference: { ...correction, snapshotRevision: 0 },
+              },
+            },
+          ],
+        },
+        stage: "queue",
+        basisKind: "thread-snapshot",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(malformed.code, "invalid_input");
+});

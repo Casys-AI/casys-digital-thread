@@ -98,8 +98,10 @@ export function traceThreadLineage(
 }
 
 /** Selects meaningful activity cards; supporting records stay in lineage. */
-export function activityFeedNodes(nodes: ThreadGraphNode[]): ThreadGraphNode[] {
-  const latestChange = nodes.findLast((node) => node.entityKind === "change");
+export function activityFeedNodes(
+  nodes: ThreadGraphNode[],
+  edges: readonly ThreadGraphEdge[] = [],
+): ThreadGraphNode[] {
   const primary = nodes.filter((node) =>
     node.entityKind === "observation" ||
     node.entityKind === "requirement" ||
@@ -112,9 +114,50 @@ export function activityFeedNodes(nodes: ThreadGraphNode[]): ThreadGraphNode[] {
     node.activityRole === "milestone" ||
     (node.entityKind === "artifact" && isPrimaryArtifact(node.artifactKind))
   );
-  return [...primary, ...(latestChange ? [latestChange] : [])]
+  return [...primary, ...recordedCorrectionNodes(nodes, edges)]
     .filter(uniqueNode)
     .sort(compareActivityNodes);
+}
+
+/**
+ * The Activity surface is chronological by default. A lineage expands only
+ * when another workspace or an explicit feed action selected this exact fact.
+ */
+export function isActivityEntryExpanded(
+  focus: ThreadGraphRef | undefined,
+  node: ThreadGraphNode,
+): boolean {
+  return focus !== undefined && refKey(focus) === refKey(node.ref);
+}
+
+/**
+ * Only a change whose recorded target is itself an explicit `supersedes`
+ * successor is a correction event. Snapshot-extension creation records remain
+ * provenance support, even when they happen to be the newest graph changes.
+ * The browser contract has no typed change-intent field yet, so the canonical
+ * provenance rationale is the explicit distinction between those records.
+ */
+function recordedCorrectionNodes(
+  nodes: readonly ThreadGraphNode[],
+  edges: readonly ThreadGraphEdge[],
+): ThreadGraphNode[] {
+  const nodeByRef = new Map(nodes.map((node) => [refKey(node.ref), node]));
+  const correctionTargets = new Set(
+    edges.filter((edge) => edge.relation === "supersedes").map((edge) =>
+      refKey(edge.to)
+    ),
+  );
+  return edges.flatMap((edge) => {
+    if (
+      edge.relation !== "changes" || !correctionTargets.has(refKey(edge.to)) ||
+      edge.rationale ===
+        "This snapshot extension introduced the captured artifact."
+    ) {
+      return [];
+    }
+    const change = nodeByRef.get(refKey(edge.from));
+    return change?.entityKind === "change" ? [change] : [];
+  });
 }
 
 function isPrimaryArtifact(kind: string | undefined): boolean {

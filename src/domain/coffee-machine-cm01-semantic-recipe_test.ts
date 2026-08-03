@@ -1,8 +1,11 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
   fingerprintCoffeeMachineCm01Sysml,
+  fingerprintCoffeeMachineCm01SysmlR2,
   parseCoffeeMachineCm01SemanticRecipe,
+  parseCoffeeMachineCm01SemanticRecipeR2,
   renderCoffeeMachineCm01Sysml,
+  renderCoffeeMachineCm01SysmlR2,
 } from "./coffee-machine-cm01-semantic-recipe.ts";
 
 const RECIPE_URL = new URL(
@@ -178,6 +181,44 @@ Deno.test("CM-01 semantic recipe rejects drift, provider identities and unreview
     () => parseCoffeeMachineCm01SemanticRecipe(wrongUnit),
     Error,
     '$recipe.components[0].placement.translation[0].unit must equal "mm" or "deg".',
+  );
+});
+
+Deno.test("CM-01 R2 recipe permits only the reviewed 30 mm DripTray correction", async () => {
+  const corrected = cloneRecipe();
+  corrected.schemaVersion = "coffee-machine-semantic-recipe/2.0";
+  corrected.recipeKey = "cm01-drip-tray-height-30";
+  parameter(corrected, 9, "dimensions", 2).value = 30;
+
+  const recipe = parseCoffeeMachineCm01SemanticRecipeR2(corrected);
+  assertEquals(recipe.schemaVersion, "coffee-machine-semantic-recipe/2.0");
+  assertEquals(recipe.recipeKey, "cm01-drip-tray-height-30");
+  assertEquals(recipe.components[9]?.dimensions[2]?.value, 30);
+  assertEquals(Object.isFrozen(recipe), true);
+  assertStringIncludes(
+    renderCoffeeMachineCm01SysmlR2(recipe),
+    "attribute sizeZ : Real = 30 [mm];",
+  );
+  assertEquals(
+    (await fingerprintCoffeeMachineCm01SysmlR2(recipe)).digest ===
+      (await fingerprintCoffeeMachineCm01Sysml(RECIPE)).digest,
+    false,
+  );
+
+  const wrongHeight = structuredClone(corrected);
+  parameter(wrongHeight, 9, "dimensions", 2).value = 29;
+  assertThrows(
+    () => parseCoffeeMachineCm01SemanticRecipeR2(wrongHeight),
+    Error,
+    "$recipe.components[9].dimensions[2].value must equal 30.",
+  );
+
+  const unrelatedDrift = structuredClone(corrected);
+  parameter(unrelatedDrift, 0, "dimensions", 0).value = 261;
+  assertThrows(
+    () => parseCoffeeMachineCm01SemanticRecipeR2(unrelatedDrift),
+    Error,
+    "$recipe.components[0].dimensions[0].value must equal 260.",
   );
 });
 
