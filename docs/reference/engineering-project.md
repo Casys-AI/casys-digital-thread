@@ -40,23 +40,23 @@ MCP surface.
 
 ## Root fields
 
-| Field              | Contract                                                                                                     |
-| ------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `id`, `revision`   | Immutable project-snapshot identity and positive revision                                                    |
-| `previous`         | Required after revision 1 and always lower than the current revision                                         |
-| `generatedAt`      | ISO 8601 UTC materialization timestamp                                                                       |
-| `project`          | Stable project ID, display name, thread subject ID, and explicit objective                                   |
-| `framing`          | V3 intent, questions, sourced answers, proposed brief and exact approved canonical brief                     |
-| `discoveryHandoff` | Historical V2 human-confirmed discovery provenance; absent from new V3 projects                              |
-| `plan`             | Optional agent-published path grounded in the exact approved canonical brief for V3                          |
-| `threadSnapshots`  | Exact declared `ThreadSnapshot` revisions; may be empty only before the V2 documentary baseline is published |
-| `phases`           | Ordered project phases; phase status is deliberately absent                                                  |
-| `workItems`        | Human, agent, or shared work and its explicit lifecycle state                                                |
-| `agentRuns`        | Observable execution lifecycle and exact produced evidence                                                   |
-| `decisions`        | Questions or proposals requiring project authority                                                           |
-| `approvals`        | Auditable responses bound to the exact inputs approved                                                       |
-| `blockers`         | Open or resolved conditions overlaid on affected work and phases                                             |
-| `commandReceipts`  | Durable idempotency and audit ledger after a command-created revision                                        |
+| Field              | Contract                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `id`, `revision`   | Immutable project-snapshot identity and positive revision                                           |
+| `previous`         | Required after revision 1 and always lower than the current revision                                |
+| `generatedAt`      | ISO 8601 UTC materialization timestamp                                                              |
+| `project`          | Stable project ID, display name, thread subject ID, and explicit objective                          |
+| `framing`          | V3 intent, questions, sourced answers, proposed brief and exact approved canonical brief            |
+| `discoveryHandoff` | Historical V2 human-confirmed discovery provenance; absent from new V3 projects                     |
+| `plan`             | Optional agent-published path grounded in the exact approved canonical brief for V3                 |
+| `threadSnapshots`  | Exact declared `ThreadSnapshot` revisions; empty before the first documentary baseline is published |
+| `phases`           | Ordered project phases; phase status is deliberately absent                                         |
+| `workItems`        | Human, agent, or shared work and its explicit lifecycle state                                       |
+| `agentRuns`        | Observable execution lifecycle and exact produced evidence                                          |
+| `decisions`        | Questions or proposals requiring project authority                                                  |
+| `approvals`        | Auditable responses bound to the exact inputs approved                                              |
+| `blockers`         | Open or resolved conditions overlaid on affected work and phases                                    |
+| `commandReceipts`  | Durable idempotency and audit ledger after a command-created revision                               |
 
 The project revision and the referenced thread revision are independent counters. For
 example, project snapshot revision 1 may cite thread snapshot revision 5.
@@ -96,14 +96,17 @@ publisher/time. Historical V2 records use an `approved-discovery` basis. It is d
 planning state, not a whole-plan approval, provider invocation, run authorization, or
 technical result.
 
-`project_plan_publish` is deliberately limited to that unexecuted handoff. Once the
-documentary baseline has completed, an agent uses `project_change_append` to publish the
-next bounded change. The command carries an exact current `baseSnapshot` and can append
-only new phases, work items, and required decisions. It preserves the initial plan and
-all prior phases, work, decisions, approvals, runs, evidence, and thread references in
-the next immutable project revision. This is not a plan replacement and it cannot amend
-or erase historical project truth. The command's `baseSnapshot` is a change-provenance
-anchor; V2 runs continue to use their distinct, server-derived `basis` field.
+`project_plan_publish` is deliberately limited to an unexecuted project: the exact
+approved brief is the V3 planning source, while the immutable discovery handoff remains
+the historical V2 source. Once the documentary baseline has completed, an agent uses
+`project_change_append` to publish the next bounded change. The command carries an exact
+current `baseSnapshot`; every V3 change also retains the exact `approvedBriefBasis` that
+authorized it. It can append only new phases, work items, and required decisions. It
+preserves the initial plan and all prior phases, work, decisions, approvals, runs,
+evidence, and thread references in the next immutable project revision. This is not a
+plan replacement and it cannot amend or erase historical project truth. The change
+anchors are planning provenance; later runs still use their distinct, server-derived
+exact `basis`.
 
 Each work item created by either command has an `operation` reference with an exact ID,
 version, and state-reference bindings. The code-owned registry accepts only its reviewed
@@ -111,22 +114,20 @@ operation revisions and declared binding names/source kinds; it also supplies th
 durable work title, description, and classification shown to the reviewer. The current
 registry contains:
 
-| Starting point                                                         | Exact operation reference                |
-| ---------------------------------------------------------------------- | ---------------------------------------- |
-| New V3 idea or specification                                           | `baseline.from-approved-brief@1`         |
-| Historical V2 idea or specification                                    | `baseline.from-approved-discovery@1`     |
-| Post-baseline project change; exact documentary r1 required at runtime | `architecture.seed-syson-model@1`        |
-| Post-baseline project change; exact SysON r2 required at runtime       | `architecture.author-inspection-drone@1` |
-| Existing CAD                                                           | `baseline.capture-existing-cad@1`        |
-| Existing product                                                       | `baseline.capture-existing-product@1`    |
+| Starting point                                                      | Exact operation reference                |
+| ------------------------------------------------------------------- | ---------------------------------------- |
+| New V3 idea or specification                                        | `baseline.from-approved-brief@1`         |
+| V3 post-baseline change; exact documentary r1 required at runtime   | `architecture.seed-syson-model@2`        |
+| V3 post-seed change; exact SysON r2 required at runtime             | `architecture.author-inspection-drone@2` |
+| Historical V2 idea or specification                                 | `baseline.from-approved-discovery@1`     |
+| Historical V2 SysON seed, readable but no longer executable         | `architecture.seed-syson-model@1`        |
+| Historical V2 drone architecture, readable but no longer executable | `architecture.author-inspection-drone@1` |
+| Existing CAD                                                        | `baseline.capture-existing-cad@1`        |
+| Existing product                                                    | `baseline.capture-existing-product@1`    |
 
-For this intake-only planning surface, bindings may refer only to the approved discovery
-itself or to a current provided answer in that same exact discovery. Later operation
-revisions may introduce decision or thread-entity bindings only together with their
-reviewed executor contract; they are not accepted by `project_plan_publish` today.
-
-`architecture.seed-syson-model@1` and `architecture.author-inspection-drone@1` may be
-added by the same post-baseline change, in dependency order. The change's exact current
+The V3 baseline binding names only the exact human-approved brief. After r1,
+`architecture.seed-syson-model@2` and `architecture.author-inspection-drone@2` may be
+added by one append-only project change, in dependency order. The change's exact current
 snapshot is provenance, not a SysON runtime argument. Their later execution requires the
 exact documentary r1 and SysON r2 thread snapshots, respectively. The agent must not
 assume a later snapshot is equivalent: queueing derives and records the exact basis for
@@ -134,74 +135,73 @@ each bounded run.
 
 These references deliberately expose no provider, tool name, raw input, workflow, or
 evidence payload. Publishing rejects unknown revisions, wrong starting points,
-undeclared bindings, and discovery-answer bindings that are absent, no longer current,
-or not provided in the exact approved discovery revision. An agent may revise the
-initial plan only while no baseline run, approval, blocker, concrete decision proposal,
-or completed/cancelled work exists. After that point it may append a bounded change, but
-cannot use either command to erase execution or review history.
+undeclared bindings, or a brief binding that does not match the exact approved project
+revision. An agent may revise the initial plan only while no baseline run, approval,
+blocker, concrete decision proposal, or completed/cancelled work exists. After that
+point it may append a bounded change, but cannot use either command to erase execution
+or review history.
 
-Three operations have trusted executors in the current V2 source slice.
-`baseline.from-approved-discovery@1` has no provider call: after the agent queues the
-ready registered work item, the trusted backend records the exact approved discovery and
-reviewed plan as a canonical JSON document, fingerprints its bytes with SHA-256, stores
-the bytes immutably, and cites that document from root thread revision 1.
+Three operations have trusted executors in the current V3 idea/spec slice.
+`baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
+registered work item, the backend records the exact approved brief and reviewed plan as
+canonical JSON, fingerprints its bytes with SHA-256, stores them immutably, and cites
+that document from root thread revision 1.
 
-`architecture.seed-syson-model@1` is available only after that exact documentary root.
+`architecture.seed-syson-model@2` is available only after that exact documentary root.
 Its fixed server-owned sequence is `syson_project_create`, then `syson_model_create`
-with a root package, then root-package readback through `syson_element_get`. It records
-only the normalized project, document, and root-package identities in a
-content-addressed capture before it publishes and reads back revision 2. The agent
-supplies no provider name, tool name, or provider arguments.
+with a root package, then root-package readback through `syson_element_get`. Its
+`syson-model-seed-capture/2.0` preserves the exact approved-brief, project-change and
+documentary-artifact lineage alongside normalized provider identities before publishing
+revision 2. The agent supplies no provider name, tool name, provider arguments, or SysML
+text.
 
-`architecture.author-inspection-drone@1` is available only on the exact r2 container,
-after the exact approved discovery has selected
-`primary-mission = inspection-controlled` and `payload-class = light-inspection-camera`.
-It accepts no caller-authored SysML or provider arguments; the server inserts one fixed
-high-level fragment only after an empty root readback, then records a narrow attestation
-and model readback before it could publish r3. The operation is implemented in source
-and has not been released to the running toolchain. Its separately authorized disposable
-local parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2`
-on 2026-08-03; it was not an r3 project execution or engineering evidence. It is not
-CAD, physics, flight, cost, compliance, or a verified requirement result. The two
-existing-CAD/product registry entries remain planning descriptors until their own
-file/source capture and technical-evidence contracts exist.
+`architecture.author-inspection-drone@2` is available only on that exact r2 container
+and the same human-approved brief authorization chain. It accepts no caller-authored
+SysML or provider arguments; the server inserts one fixed high-level fragment only after
+an empty-root readback, then records `inspection-drone-architecture-capture/2.0` and a
+narrow model readback before publishing r3. It is not CAD, physics, flight, cost,
+compliance, or a verified requirement result. The two existing-CAD/product registry
+entries remain planning descriptors until their own file/source capture and
+technical-evidence contracts exist.
 
-## V2 execution bases, documentary baseline, SysON seed, and guarded r3
+## V3 execution bases, documentary baseline, SysON seed, and guarded r3
 
-V2 does not invent an empty technical snapshot merely to satisfy a bootstrap API. Each
+V3 does not invent an empty technical snapshot merely to satisfy a bootstrap API. Each
 run instead has one exact `basis`:
 
 ```ts
 type EngineeringBasisRef =
-  | EngineeringApprovedDiscoveryBasis
+  | EngineeringApprovedBriefBasis
   | EngineeringThreadSnapshotBasis;
 ```
 
-The `approved-discovery` arm must exactly equal the approved handoff and published plan.
-It is accepted only for `baseline.from-approved-discovery@1`, before any thread snapshot
-exists. Once that run has published its root record, the implemented SysON seed requires
-that exact revision-1 documentary `thread-snapshot` basis; `latest` is never accepted.
+The `approved-brief` arm must exactly equal the immutable human-approved brief revision
+retained by the published plan. It is accepted only for
+`baseline.from-approved-brief@1`, before any thread snapshot exists. A later
+living-brief revision does not rewrite that historical authorization. Once the baseline
+run has published its root record, the implemented SysON seed requires that exact
+revision-1 documentary `thread-snapshot` basis; `latest` is never accepted.
 
 The first result is intentionally a **documentary, pre-technical baseline**. Its single
-document artifact contains the immutable approved discovery and reviewed plan, its
-SHA-256 fingerprint, an immutable capture URI, the bounded operation revision, and its
-run provenance. It proves that the project started from that reviewed source. It does
+document artifact contains the immutable approved brief and reviewed plan, its SHA-256
+fingerprint, an immutable capture URI, the bounded operation revision, and its run
+provenance. It proves that the project started from that reviewed source. It does
 **not** prove or create a SysML model, CAD geometry, mesh, FEA result, simulation,
 measurement, requirement verdict, conformity claim, or certification.
 
 The first continuation is deliberately narrower than a system design:
 
 ```text
-approved discovery + reviewed plan
-  -> baseline.from-approved-discovery@1
+human-approved living brief + reviewed plan
+  -> baseline.from-approved-brief@1
   -> documentary ThreadSnapshot revision 1
   -> project_change_append(baseSnapshot = exact r1)
-  -> architecture.seed-syson-model@1 on that exact basis
+  -> architecture.seed-syson-model@2 on that exact basis
   -> syson_project_create -> syson_model_create(root) -> syson_element_get(root)
-  -> content-addressed capture + ThreadSnapshot revision 2
-  -> architecture.author-inspection-drone@1 on that exact r2 basis
+  -> syson-model-seed-capture/2.0 + ThreadSnapshot revision 2
+  -> architecture.author-inspection-drone@2 on that exact r2 basis
   -> guarded empty-root check -> one fixed insert -> narrow readback
-  -> content-addressed capture + ThreadSnapshot revision 3
+  -> inspection-drone-architecture-capture/2.0 + ThreadSnapshot revision 3
 ```
 
 Revision 2 adds one `sysml-model` artifact and the exact SysON project identity. Its
@@ -211,13 +211,17 @@ simulation, measurements, evaluation, violation, conformity, or certification. A
 technical operation must capture and validate its own provider evidence before it can
 make any of those claims.
 
-The r3 source contract is narrower still than a design or proof loop. It can only use a
-hash-valid r2 seed capture and the same approved discovery's two exact answers:
-`inspection-controlled` and `light-inspection-camera`. Its named SysML decomposition and
-high-level intent requirements are model content, not measured acceptance criteria or
-verified thread verdicts. A retained disposable local parser/translator and model-tree
-check passed on 2026-08-03 against loopback `mcp-syson 0.5.2`; it is not an r3 project
-mutation, technical-evidence record, or release.
+The r3 contract is narrower still than a design or proof loop. It can only use a
+hash-valid r2 seed capture and the exact approved-brief lineage inherited from r1. Its
+named SysML decomposition and high-level intent requirements are model content, not
+measured acceptance criteria or verified thread verdicts.
+
+The concrete `inspection-drone-v3` project has three agent-recorded recommended answers
+and proposed brief revision 2, but no human confirmation; it awaits exact human review.
+No r1, r2, r3, or drone CAD is therefore authorized in that real dossier. Even after r3,
+CAD requires a sourced, reviewed geometric definition and its own bounded operation. The
+CM-01 proof remains a separate CAD/physical evidence case and cannot be imported as
+drone evidence.
 
 Schema `1.0` records retain the former `baseSnapshot` field solely for historic reading.
 Schema `2.0` rejects `baseSnapshot` on a run and rejects `basis` on a V1 run: there is
@@ -298,11 +302,12 @@ Every work item belongs to exactly one phase and declares:
 An optional `operation` is a reviewed, versioned capability reference, never a raw tool
 call or agent-authored workflow. It is present on work created by `project_plan_publish`
 or `project_change_append`; older immutable revisions may lack it and are never promoted
-into the new execution path by implication. In the current V2 slice,
-`baseline.from-approved-discovery@1` has the provider-free documentary executor and
-`architecture.seed-syson-model@1` has the fixed SysON model-container executor. No
-generic technical executor exists; other operation references remain planning-only until
-a separate reviewed executor exists.
+into the new execution path by implication. In the current V3 slice,
+`baseline.from-approved-brief@1` has the provider-free documentary executor,
+`architecture.seed-syson-model@2` has the fixed brief-bound SysON model-container
+executor, and `architecture.author-inspection-drone@2` has the fixed brief-bound
+architecture executor. No generic technical executor exists; other operation references
+remain planning-only until a separate reviewed executor exists.
 
 `waiting-for-decision` requires at least one linked unresolved decision. A phase lists
 all work items assigned to it, exactly once.
@@ -377,11 +382,11 @@ run, completion requires a non-`latest` result whose revision advances the exact
 and whose complete `previous` chain reaches that base, plus at least one unique entity
 that is new or content-changed from the base. A newer parallel branch is rejected.
 
-The source-only inspection-drone r3 executor adds a narrower pre-queue gate: exact r2,
-its hash-valid seed capture, and the same approved discovery's explicit
-`primary-mission = inspection-controlled` and `payload-class = light-inspection-camera`
-answers. It then refuses a non-empty root rather than merging model content. Those gates
-do not make a real SysON run or a technical claim; none has been recorded for r3.
+The inspection-drone r3 executor adds a narrower pre-queue gate: exact r2, its
+hash-valid `syson-model-seed-capture/2.0`, the same approved-brief authorization chain,
+and an empty root. It refuses to merge model content and accepts only the fixed SysML
+recipe. Those gates authorize one bounded architecture mutation; they do not establish
+geometry, physical behaviour, flight performance, or a verified verdict.
 
 ## Command and authority surfaces
 
@@ -426,18 +431,15 @@ is currently process-local, so a shared signing key alone is not sufficient for
 multi-instance operation. That deployment needs a shared, durable replay store with
 atomic consume semantics.
 
-The source dispatcher materializes only three reviewed operations.
-`baseline.from-approved-discovery@1` has no provider invocation and persists its
-canonical capture before publishing the cited root snapshot. The seed operation has only
-the fixed SysON project/document/root-package sequence described above; it has a closed
-normalizer, capture, materializer, and result validator before it publishes revision 2.
-The inspection-drone operation adds only its fixed high-level fragment to the exact,
-empty r2 root after its exact discovery gates; it does not accept arbitrary SysML. It is
-code-implemented but not released. Its disposable local parser/translator and model-tree
-check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, but it was not an r3
-project run or engineering evidence. Neither MCP planning nor queueing is an indirect
-CAD, FEA, Modelica, SysON, or ERPNext endpoint, and no generic provider execution is
-available.
+The source dispatcher materializes only three reviewed V3 operations.
+`baseline.from-approved-brief@1` has no provider invocation and persists its canonical
+capture before publishing the cited root snapshot. `architecture.seed-syson-model@2`
+owns only the fixed SysON project/document/root-package sequence, closed capture,
+materializer, and result validator before publishing revision 2.
+`architecture.author-inspection-drone@2` adds only its fixed high-level fragment to the
+exact empty r2 root after revalidating the brief and seed lineage; it does not accept
+arbitrary SysML. Neither MCP planning nor queueing is an indirect CAD, FEA, Modelica,
+SysON, or ERPNext endpoint, and no generic provider execution is available.
 
 ## CM-01 baseline
 
@@ -553,17 +555,16 @@ revision has attached it.
 
 ### Inspection-drone architecture capture and recovery
 
-The source-only r3 operation keeps its separate normalized capture under
+The r3 operation keeps its separate normalized capture under
 `state/local/inspection-drone-architecture-captures/`, addressed by SHA-256, and its
 single-write attempt record under `state/local/inspection-drone-architecture-attempts/`.
-The capture can contain the fixed recipe/source hash, the exact r2 authorization, the
-insertion attestation, and the narrow package/declaration readback; it excludes raw
-provider payloads, credentials, caller-authored SysML, and verdicts. A `dispatched`
-write with unknown provider outcome is never replayed automatically. Once a completed
-insert has been recorded, a retry may resume only readback, materialization, and
-idempotent persistence. This recovery design has not yet been tested against a real
-SysON instance and does not establish CAD, physics, flight, cost, compliance, or
-requirements verification.
+The `inspection-drone-architecture-capture/2.0` record contains the fixed recipe/source
+hash, exact V3 approved-brief and r2 authorization, insertion attestation, and narrow
+package/declaration readback; it excludes raw provider payloads, credentials,
+caller-authored SysML, and verdicts. A `dispatched` write with unknown provider outcome
+is never replayed automatically. Once a completed insert has been recorded, a retry may
+resume only readback, materialization, and idempotent persistence. This recovery design
+does not establish CAD, physics, flight, cost, compliance, or requirements verification.
 
 ### Disposable r3 parser/translator conformance harness
 

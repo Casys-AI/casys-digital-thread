@@ -1,5 +1,10 @@
 import { deterministicJson, sha256Fingerprint } from "./deterministic-json.ts";
 import type {
+  EngineeringApprovedBriefBasis,
+  EngineeringCommandActor,
+  EngineeringThreadSnapshotRef,
+} from "./engineering-project.ts";
+import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadFreshness,
@@ -13,12 +18,18 @@ import {
 import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
 
 /** Canonical local capture of the first SysON project/document/root-package seed. */
-export const SYSON_MODEL_SEED_CAPTURE_SCHEMA = "syson-model-seed-capture/1.0" as const;
+export const SYSON_MODEL_SEED_CAPTURE_SCHEMA = "syson-model-seed-capture/2.0" as const;
 
 /** The reviewed operation that owns this narrowly bounded technical step. */
-export const SYSON_MODEL_SEED_OPERATION = {
+export const HISTORICAL_SYSON_MODEL_SEED_OPERATION = {
   id: "architecture.seed-syson-model",
   version: "1",
+} as const;
+
+/** Current V3 operation authorized by the canonical in-project brief. */
+export const SYSON_MODEL_SEED_OPERATION = {
+  id: "architecture.seed-syson-model",
+  version: "2",
 } as const;
 
 const CAPTURE_KIND = "syson-model-seed" as const;
@@ -55,6 +66,36 @@ export interface SysonModelSeedNormalizedResults {
   readonly rootPackage: SysonModelSeedRootPackageResult;
 }
 
+/**
+ * Closed planning and documentary lineage authorizing the first SysON write.
+ *
+ * The brief and plan are not technical inputs to SysON. They are retained as
+ * exact authorization anchors so the provider result can be audited back to
+ * the human-approved V3 brief and the additive project change that introduced
+ * this operation.
+ */
+export interface SysonModelSeedLineage {
+  readonly approvedBriefBasis: EngineeringApprovedBriefBasis;
+  readonly plan: {
+    readonly publishedAt: string;
+    readonly publishedBy: EngineeringCommandActor;
+  };
+  readonly projectChange: {
+    readonly id: string;
+    readonly commandId: string;
+    readonly publishedAt: string;
+    readonly publishedBy: EngineeringCommandActor;
+  };
+  readonly workItemId: string;
+  readonly baseSnapshot: EngineeringThreadSnapshotRef;
+  readonly documentaryArtifact: {
+    readonly id: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly uri: string;
+    readonly producerRunId: string;
+  };
+}
+
 export interface SysonModelSeedCapture {
   readonly schemaVersion: typeof SYSON_MODEL_SEED_CAPTURE_SCHEMA;
   readonly kind: typeof CAPTURE_KIND;
@@ -67,6 +108,7 @@ export interface SysonModelSeedCapture {
     readonly id: typeof SYSON_MODEL_SEED_OPERATION.id;
     readonly version: typeof SYSON_MODEL_SEED_OPERATION.version;
   };
+  readonly lineage: SysonModelSeedLineage;
   readonly provider: {
     readonly serverId: "syson";
     readonly tools: {
@@ -86,6 +128,8 @@ export interface SysonModelSeedCapture {
 export interface MaterializeSysonModelSeedInput {
   /** Exact documentary r1 against which this first technical result is applied. */
   readonly base: ThreadSnapshot;
+  /** Exact V3 approval, plan-change and documentary-baseline authorization. */
+  readonly lineage: SysonModelSeedLineage;
   readonly trustedRunId: string;
   readonly capturedAt: string;
   /** Result of the trusted fixed `syson_project_create` call. */
@@ -132,7 +176,8 @@ export class SysonModelSeedMaterializationError extends Error {
 export async function materializeSysonModelSeed(
   input: MaterializeSysonModelSeedInput,
 ): Promise<SysonModelSeedMaterialization> {
-  const base = requireSysonModelSeedDocumentaryBaseline(input.base);
+  const lineage = parseSysonModelSeedLineage(input.lineage, "$lineage");
+  const base = requireSysonModelSeedDocumentaryBaseline(input.base, lineage);
   const trustedRunId = stableIdentifier(input.trustedRunId, "trustedRunId");
   const capturedAt = canonicalUtcInstant(input.capturedAt, "capturedAt");
   const captureUri = optionalCaptureUri(input.captureUri);
@@ -150,6 +195,7 @@ export async function materializeSysonModelSeed(
     capturedAt,
     trustedRunId,
     operation: SYSON_MODEL_SEED_OPERATION,
+    lineage,
     provider: {
       serverId: "syson",
       tools: {
@@ -199,8 +245,9 @@ export async function materializeSysonModelSeed(
  */
 export function requireSysonModelSeedDocumentaryBaseline(
   value: ThreadSnapshot,
+  lineage: SysonModelSeedLineage,
 ): ThreadSnapshot {
-  return documentaryBaseline(value);
+  return documentaryBaseline(value, parseSysonModelSeedLineage(lineage, "$lineage"));
 }
 
 /**
@@ -219,6 +266,7 @@ export function parseSysonModelSeedCapture(value: unknown): SysonModelSeedCaptur
       "capturedAt",
       "trustedRunId",
       "operation",
+      "lineage",
       "provider",
       "normalizedResults",
     ],
@@ -275,6 +323,7 @@ export function parseSysonModelSeedCapture(value: unknown): SysonModelSeedCaptur
     root.normalizedResults,
     "$capture.normalizedResults",
   );
+  const lineage = parseSysonModelSeedLineage(root.lineage, "$capture.lineage");
 
   return {
     schemaVersion: SYSON_MODEL_SEED_CAPTURE_SCHEMA,
@@ -284,6 +333,7 @@ export function parseSysonModelSeedCapture(value: unknown): SysonModelSeedCaptur
     capturedAt,
     trustedRunId,
     operation: SYSON_MODEL_SEED_OPERATION,
+    lineage,
     provider: {
       serverId: "syson",
       tools: {
@@ -349,7 +399,10 @@ function extensionFor(
   };
 }
 
-function documentaryBaseline(value: ThreadSnapshot): ThreadSnapshot {
+function documentaryBaseline(
+  value: ThreadSnapshot,
+  lineage: SysonModelSeedLineage,
+): ThreadSnapshot {
   let base: ThreadSnapshot;
   try {
     base = validateThreadSnapshot(value);
@@ -385,14 +438,195 @@ function documentaryBaseline(value: ThreadSnapshot): ThreadSnapshot {
     document.kind !== "document" ||
     document.inputArtifactIds.length !== 0 ||
     document.producer.serverId !== "casys-digital-thread" ||
-    document.producer.tool !== "baseline_from_approved_discovery"
+    document.producer.tool !== "baseline_from_approved_brief"
   ) {
     throw invalid(
       "invalid_baseline",
-      "The first SysON model seed requires the approved-discovery documentary artifact as the current subject model reference.",
+      "The first SysON model seed requires the approved-brief documentary artifact as the current subject model reference.",
+    );
+  }
+  if (
+    lineage.baseSnapshot.snapshotId !== base.id ||
+    lineage.baseSnapshot.revision !== base.revision ||
+    lineage.baseSnapshot.subjectId !== base.subject.id ||
+    lineage.documentaryArtifact.id !== document.id ||
+    lineage.documentaryArtifact.fingerprint.algorithm !==
+      document.fingerprint.algorithm ||
+    lineage.documentaryArtifact.fingerprint.digest !== document.fingerprint.digest ||
+    lineage.documentaryArtifact.uri !== document.uri ||
+    lineage.documentaryArtifact.producerRunId !== document.producer.runId
+  ) {
+    throw invalid(
+      "invalid_baseline",
+      "The SysON model-seed lineage must name the exact approved-brief documentary snapshot and artifact.",
     );
   }
   return structuredClone(base);
+}
+
+function parseSysonModelSeedLineage(
+  value: unknown,
+  path: string,
+): SysonModelSeedLineage {
+  const root = closedRecord(
+    value,
+    [
+      "approvedBriefBasis",
+      "plan",
+      "projectChange",
+      "workItemId",
+      "baseSnapshot",
+      "documentaryArtifact",
+    ],
+    path,
+  );
+  const basis = closedRecord(
+    root.approvedBriefBasis,
+    [
+      "kind",
+      "projectId",
+      "projectSnapshotId",
+      "projectRevision",
+      "briefId",
+      "briefSnapshotId",
+      "briefRevision",
+      "approvedBriefFingerprint",
+    ],
+    `${path}.approvedBriefBasis`,
+  );
+  literal(basis.kind, "approved-brief", `${path}.approvedBriefBasis.kind`);
+  const plan = closedRecord(root.plan, ["publishedAt", "publishedBy"], `${path}.plan`);
+  const projectChange = closedRecord(
+    root.projectChange,
+    ["id", "commandId", "publishedAt", "publishedBy"],
+    `${path}.projectChange`,
+  );
+  const baseSnapshot = closedRecord(
+    root.baseSnapshot,
+    ["snapshotId", "revision", "subjectId"],
+    `${path}.baseSnapshot`,
+  );
+  const documentaryArtifact = closedRecord(
+    root.documentaryArtifact,
+    ["id", "fingerprint", "uri", "producerRunId"],
+    `${path}.documentaryArtifact`,
+  );
+  return {
+    approvedBriefBasis: {
+      kind: "approved-brief",
+      projectId: stableIdentifier(
+        basis.projectId,
+        `${path}.approvedBriefBasis.projectId`,
+      ),
+      projectSnapshotId: stableIdentifier(
+        basis.projectSnapshotId,
+        `${path}.approvedBriefBasis.projectSnapshotId`,
+      ),
+      projectRevision: positiveInteger(
+        basis.projectRevision,
+        `${path}.approvedBriefBasis.projectRevision`,
+      ),
+      briefId: stableIdentifier(basis.briefId, `${path}.approvedBriefBasis.briefId`),
+      briefSnapshotId: stableIdentifier(
+        basis.briefSnapshotId,
+        `${path}.approvedBriefBasis.briefSnapshotId`,
+      ),
+      briefRevision: positiveInteger(
+        basis.briefRevision,
+        `${path}.approvedBriefBasis.briefRevision`,
+      ),
+      approvedBriefFingerprint: parseFingerprint(
+        basis.approvedBriefFingerprint,
+        `${path}.approvedBriefBasis.approvedBriefFingerprint`,
+      ),
+    },
+    plan: {
+      publishedAt: canonicalUtcInstant(plan.publishedAt, `${path}.plan.publishedAt`),
+      publishedBy: parseActor(plan.publishedBy, `${path}.plan.publishedBy`, "agent"),
+    },
+    projectChange: {
+      id: stableIdentifier(projectChange.id, `${path}.projectChange.id`),
+      commandId: stableIdentifier(
+        projectChange.commandId,
+        `${path}.projectChange.commandId`,
+      ),
+      publishedAt: canonicalUtcInstant(
+        projectChange.publishedAt,
+        `${path}.projectChange.publishedAt`,
+      ),
+      publishedBy: parseActor(
+        projectChange.publishedBy,
+        `${path}.projectChange.publishedBy`,
+        "agent",
+      ),
+    },
+    workItemId: stableIdentifier(root.workItemId, `${path}.workItemId`),
+    baseSnapshot: {
+      snapshotId: stableIdentifier(
+        baseSnapshot.snapshotId,
+        `${path}.baseSnapshot.snapshotId`,
+      ),
+      revision: positiveInteger(
+        baseSnapshot.revision,
+        `${path}.baseSnapshot.revision`,
+      ),
+      subjectId: stableIdentifier(
+        baseSnapshot.subjectId,
+        `${path}.baseSnapshot.subjectId`,
+      ),
+    },
+    documentaryArtifact: {
+      id: stableIdentifier(
+        documentaryArtifact.id,
+        `${path}.documentaryArtifact.id`,
+      ),
+      fingerprint: parseFingerprint(
+        documentaryArtifact.fingerprint,
+        `${path}.documentaryArtifact.fingerprint`,
+      ),
+      uri: nonEmptyString(
+        documentaryArtifact.uri,
+        `${path}.documentaryArtifact.uri`,
+        "invalid_input",
+      ),
+      producerRunId: stableIdentifier(
+        documentaryArtifact.producerRunId,
+        `${path}.documentaryArtifact.producerRunId`,
+      ),
+    },
+  };
+}
+
+function parseActor(
+  value: unknown,
+  path: string,
+  expectedOrigin: EngineeringCommandActor["origin"],
+): EngineeringCommandActor {
+  const actor = closedRecord(value, ["id", "origin"], path);
+  literal(actor.origin, expectedOrigin, `${path}.origin`);
+  return { id: stableIdentifier(actor.id, `${path}.id`), origin: expectedOrigin };
+}
+
+function parseFingerprint(value: unknown, path: string): ContentFingerprint {
+  const fingerprint = closedRecord(value, ["algorithm", "digest"], path);
+  literal(fingerprint.algorithm, "sha256", `${path}.algorithm`);
+  if (
+    typeof fingerprint.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fingerprint.digest)
+  ) {
+    throw invalid(
+      "invalid_input",
+      `${path}.digest must be a lowercase SHA-256 digest.`,
+    );
+  }
+  return { algorithm: "sha256", digest: fingerprint.digest };
+}
+
+function positiveInteger(value: unknown, path: string): number {
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw invalid("invalid_input", `${path} must be a positive integer.`);
+  }
+  return value as number;
 }
 
 function normalizeResults(

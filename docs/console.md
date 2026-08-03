@@ -101,25 +101,26 @@ revisions under `state/local/engineering-projects/`; they do not execute a workf
 provider. `project_plan_publish` is only for an unexecuted project with an exact
 human-approved canonical brief. `project_change_append` is the agent-only continuation
 after that baseline: it binds new phases, work, and required decisions to the exact
-current `ThreadSnapshot` through `baseSnapshot`, and can only add new IDs. It cannot
-edit prior phases, work, decisions, runs, or evidence. The `baseSnapshot` belongs to the
-change command, not to a later run; each queued run still receives its server-derived
-exact `basis`. `project_agent_run_queue` derives the run ID, summary, basis, and
-operation from durable project state; the caller cannot submit those execution details.
+current `ThreadSnapshot` through `baseSnapshot`; a V3 change also retains the exact
+`approvedBriefBasis` that authorized it. It can only add new IDs and cannot edit prior
+phases, work, decisions, runs, or evidence. These anchors belong to the change command,
+not to a later run; each queued run still receives its server-derived exact `basis`.
+`project_agent_run_queue` derives the run ID, summary, basis, and operation from durable
+project state; the caller cannot submit those execution details.
 `project_agent_run_execute` is deliberately different from a generic lifecycle command:
-it dispatches one queued, registered, server-owned V2 operation. The source tree
-implements three guarded operations for the idea/spec path:
+it dispatches one queued, registered, server-owned operation. The source tree implements
+three guarded V3 operations for the idea/spec path:
 
 1. `baseline.from-approved-brief@1` records the exact approved brief and plan as the
    provider-free documentary `ThreadSnapshot` r1.
-2. `architecture.seed-syson-model@1` requires that exact r1, uses fixed server-owned
-   SysON calls to create a blank project container, blank SysML document, and root
-   package, reads the root back, normalizes its identities, and publishes r2.
-3. `architecture.author-inspection-drone@1` requires the exact r2 seed and the same
-   approved project framing's explicit `primary-mission = inspection-controlled` and
-   `payload-class = light-inspection-camera` answers. It can insert one fixed,
-   high-level architecture only into an empty root, then attests and reads it back
-   before it could publish r3.
+2. `architecture.seed-syson-model@2` requires that exact r1 and its approved-brief
+   lineage, uses fixed server-owned SysON calls to create a blank project container,
+   blank SysML document, and root package, reads the root back, normalizes its
+   identities into `syson-model-seed-capture/2.0`, and publishes r2.
+3. `architecture.author-inspection-drone@2` requires the exact r2 seed, the same exact
+   human-approved brief lineage, and an empty root. It can insert one fixed high-level
+   architecture, then persists `inspection-drone-architecture-capture/2.0`, attests and
+   reads it back before publishing r3.
 
 Neither caller can choose a provider, tool, argument, file, SysML text, or result.
 Before every non-idempotent SysON write is dispatched, the executor writes a durable
@@ -128,13 +129,14 @@ retried. The r2 result records only an editable container identity, not a system
 architecture, requirement, CAD artifact, simulation, measurement, verification result,
 or compliance claim.
 
-The r3 implementation is source-only and has not been released into the running SysON
-toolchain. Its separately authorized disposable local parser/translator and model-tree
-check passed against loopback `mcp-syson 0.5.2` on 2026-08-03; it was not an r3 project
-execution or engineering evidence. r3 makes no CAD, physics, flight, cost, compliance,
-or verified-requirement claim. The agent can add it after r1 through a reviewed,
-append-only project change bound to the exact current thread snapshot; its execution
-basis remains r2.
+The r3 implementation is a registered trusted operation, but r3 still makes no CAD,
+physics, flight, cost, compliance, or verified-requirement claim. The agent can add it
+after r1 through a reviewed, append-only project change bound to the exact current
+thread snapshot; its execution basis remains r2. The real `inspection-drone-v3` project
+has three agent-recorded recommended answers and proposed brief revision 2, but no human
+confirmation; it still awaits exact human review, so this sequence is not yet authorized
+there. Drone CAD must wait for a sourced and reviewed geometric definition; CM-01
+remains a separate CAD/physics proof case.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
 SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its
@@ -159,11 +161,11 @@ lifecycle calls. Such an executor owns the bounded provider calls, canonical cap
 snapshot persistence and read-back, attachment, validation, and its internal lifecycle
 transitions. A caller cannot supply a provider/tool name, raw arguments, result
 snapshot, or evidence payload to make that happen. The public V3 baseline executor makes
-no provider call; the provider-backed seed and the source-only r3 inspection-drone
-architecture operation have the closed contracts above. Any other architecture,
-requirements, CAD, simulation, measurement, or verification operation still needs its
-own reviewed executor and output contract. CM-01's mechanical r6 remains valuable
-historical evidence of a bounded loop, not a public CM-01 execution endpoint.
+no provider call; the provider-backed seed and guarded r3 inspection-drone architecture
+operation have the closed contracts above. Any other architecture, requirements, CAD,
+simulation, measurement, or verification operation still needs its own reviewed executor
+and output contract. CM-01's mechanical r6 remains valuable historical evidence of a
+bounded loop, not a public CM-01 execution endpoint.
 
 ## Signed human elicitation
 

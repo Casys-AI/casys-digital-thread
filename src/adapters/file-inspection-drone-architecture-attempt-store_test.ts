@@ -95,8 +95,9 @@ Deno.test("r3 architecture write journal treats an unreadable existing marker as
 
 Deno.test("r3 architecture write journal fsyncs the complete dispatched record before it permits insertion", async () => {
   const fileSystem = new RecordingAttemptFileSystem(3);
+  const directory = "state/local/inspection-drone-architecture-attempts";
   const store = new FileInspectionDroneArchitectureAttemptStore(
-    "attempts",
+    directory,
     fileSystem,
   );
 
@@ -104,7 +105,11 @@ Deno.test("r3 architecture write journal fsyncs the complete dispatched record b
 
   const path = store.pathFor(identity.projectId, identity.runId, identity.step);
   const fileSync = fileSystem.operations.indexOf(`sync:${path}`);
-  const directorySync = fileSystem.operations.lastIndexOf("sync-directory:attempts");
+  const directorySync = fileSystem.operations.lastIndexOf(
+    `sync-directory:${directory}`,
+  );
+  const localSync = fileSystem.operations.lastIndexOf("sync-directory:state/local");
+  const stateSync = fileSystem.operations.lastIndexOf("sync-directory:state");
   const close = fileSystem.operations.indexOf(`close:${path}`);
   assert(fileSystem.writeCalls > 1, "the test double must exercise partial writes");
   assert(fileSync >= 0, "the dispatched record must sync its bytes");
@@ -114,13 +119,50 @@ Deno.test("r3 architecture write journal fsyncs the complete dispatched record b
     "the parent directory must sync after the new dispatched record is durable",
   );
   assert(
-    fileSystem.operations.indexOf("sync-directory:.") > directorySync,
-    "a newly created attempt directory must also have its parent synced",
+    localSync > directorySync,
+    "recursive creation must durably link the attempt directory into state/local",
+  );
+  assert(
+    stateSync > localSync,
+    "recursive creation must durably link state/local into the state anchor",
+  );
+  assertEquals(
+    fileSystem.operations.includes("sync-directory:."),
+    false,
+    "the durability boundary must stop at the repository-owned state anchor",
   );
   assertEquals(
     JSON.parse(new TextDecoder().decode(fileSystem.files.get(path)!)).status,
     "dispatched",
   );
+});
+
+Deno.test("r3 architecture write journal stops an absolute directory sync chain at its state component", async () => {
+  const fileSystem = new RecordingAttemptFileSystem(1024);
+  const directory =
+    "/workspace/casys/state/local/inspection-drone-architecture-attempts";
+  const store = new FileInspectionDroneArchitectureAttemptStore(
+    directory,
+    fileSystem,
+  );
+
+  assertEquals(await store.begin(identity), { action: "dispatch" });
+
+  assertEquals(
+    fileSystem.operations.filter((operation) =>
+      operation.startsWith("sync-directory:")
+    ),
+    [
+      `sync-directory:${directory}`,
+      "sync-directory:/workspace/casys/state/local",
+      "sync-directory:/workspace/casys/state",
+    ],
+  );
+  assertEquals(
+    fileSystem.operations.includes("sync-directory:/workspace/casys"),
+    false,
+  );
+  assertEquals(fileSystem.operations.includes("sync-directory:/"), false);
 });
 
 Deno.test("r3 architecture write journal atomically replaces a dispatched record with its completed acknowledgement", async () => {

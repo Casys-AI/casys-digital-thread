@@ -2,7 +2,7 @@ import type {
   EngineeringProjectQueueEligibility,
 } from "../domain/engineering-project-command-service.ts";
 import {
-  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 } from "../domain/inspection-drone-architecture.ts";
 import {
   type InspectionDroneArchitectureEligibilityDependencies,
@@ -14,7 +14,7 @@ import {
  *
  * The generic command service invokes this before queueing a run. It leaves
  * every other registered operation alone, while r3 must re-read the exact r2
- * model seed and its r1 human-approved discovery lineage before a human
+ * model seed and its r1 human-approved canonical-brief lineage before a human
  * authorization becomes durable queue state.
  */
 export class InspectionDroneArchitectureQueueEligibility
@@ -29,14 +29,16 @@ export class InspectionDroneArchitectureQueueEligibility
     input: Parameters<EngineeringProjectQueueEligibility["validate"]>[0],
   ): Promise<void> {
     if (
-      input.operation.id !== INSPECTION_DRONE_ARCHITECTURE_OPERATION.id ||
-      input.operation.version !== INSPECTION_DRONE_ARCHITECTURE_OPERATION.version
+      input.operation.id !== INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id ||
+      input.operation.version !==
+        INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version
     ) return;
 
     if (
-      input.workItem.operation?.id !== INSPECTION_DRONE_ARCHITECTURE_OPERATION.id ||
+      input.workItem.operation?.id !==
+        INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id ||
       input.workItem.operation.version !==
-        INSPECTION_DRONE_ARCHITECTURE_OPERATION.version ||
+        INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version ||
       input.basis.kind !== "thread-snapshot"
     ) {
       throw new Error(
@@ -47,6 +49,7 @@ export class InspectionDroneArchitectureQueueEligibility
     await resolveInspectionDroneArchitectureEligibility(this.#dependencies, {
       project: input.project,
       basis: input.basis,
+      workItemId: input.workItem.id,
     });
   }
 }

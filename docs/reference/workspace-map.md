@@ -127,18 +127,20 @@ inspect the same active project, propose an input, elicit an exact human decisio
 conversation, queue a ready registered work item, and execute only that server-derived
 run. They cannot confirm their own proposal or choose arbitrary provider calls. New V3
 projects are created from first intent and the server-owned baseline executor creates
-the immutable, pre-technical approved-brief r1. The historical provider-backed executor,
-`architecture.seed-syson-model@1`, accepts only that exact r1 and uses fixed SysON calls
+the immutable, pre-technical approved-brief r1. The current provider-backed executor,
+`architecture.seed-syson-model@2`, accepts only that exact r1 and its brief-bound
+project-change lineage, then uses fixed SysON calls
 to create a blank project, document, and root package; it reads the root back,
-normalizes its identities, and publishes r2. Callers supply no arbitrary arguments or
-SysML text; uncertain writes are not blindly retried. r2 is a container identity, not an
-architecture, requirements, CAD, simulation, measurement, or verdict. The source tree
-also contains the guarded r3 `architecture.author-inspection-drone@1` operation: it
-requires exact r2, an empty root, and exact approved inspection-drone discovery choices.
-It must be in the initial plan and is not released. Its separate disposable local
-parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on
-2026-08-03, but it was not an r3 project run and makes no CAD, physics, flight, cost,
-compliance, or verified-requirement claim.
+normalizes its identities into `syson-model-seed-capture/2.0`, and publishes r2. Callers
+supply no arbitrary arguments or SysML text; uncertain writes are not blindly retried.
+r2 is a container identity, not an architecture, requirements, CAD, simulation,
+measurement, or verdict. The guarded r3
+`architecture.author-inspection-drone@2` operation requires exact r2, the same
+human-approved brief lineage, and an empty root. It records
+`inspection-drone-architecture-capture/2.0` before publishing r3 and makes no CAD,
+physics, flight, cost, compliance, or verified-requirement claim. The real
+`inspection-drone-v3` project still awaits human review and exact brief confirmation,
+so it has authorized none of these revisions yet.
 
 ## Runtime ownership
 

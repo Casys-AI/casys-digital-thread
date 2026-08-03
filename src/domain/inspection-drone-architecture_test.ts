@@ -2,6 +2,8 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   INSPECTION_DRONE_ARCHITECTURE_DECLARATIONS,
   INSPECTION_DRONE_ARCHITECTURE_SYSML,
+  INSPECTION_DRONE_ARCHITECTURE_V3_CAPTURE_SCHEMA,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
   InspectionDroneArchitectureReadbackError,
   inspectionDroneArchitectureSysmlFingerprint,
   materializeInspectionDroneArchitecture,
@@ -115,6 +117,8 @@ Deno.test("inspection-drone architecture materializes only normalized r3 evidenc
     insertion: readback.insertion,
     rootChildrenResult: input.rootChildrenResult,
     architectureChildrenResult: input.architectureChildrenResult,
+    operation: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+    authorization: v3Authorization(seed.snapshot),
   });
 
   const artifact = result.snapshot.artifacts.at(-1)!;
@@ -131,6 +135,12 @@ Deno.test("inspection-drone architecture materializes only normalized r3 evidenc
     true,
   );
   assertEquals(result.capture.insertion, readback.insertion);
+  assertEquals(
+    result.capture.schemaVersion,
+    INSPECTION_DRONE_ARCHITECTURE_V3_CAPTURE_SCHEMA,
+  );
+  assertEquals(result.capture.operation, INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION);
+  assertEquals(result.text.includes("approved-discovery"), false);
   assertEquals(result.text.includes(INSPECTION_DRONE_ARCHITECTURE_SYSML), false);
   assertEquals(result.snapshot.requirements, []);
   assertEquals(result.snapshot.evaluations, []);
@@ -163,6 +173,8 @@ Deno.test("inspection-drone architecture materializer rejects a seed capture tha
         insertion: readback.insertion,
         rootChildrenResult: input.rootChildrenResult,
         architectureChildrenResult: input.architectureChildrenResult,
+        operation: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+        authorization: v3Authorization(seed.snapshot),
       }),
     Error,
     "does not exactly match",
@@ -200,8 +212,10 @@ function happyPath() {
 }
 
 async function seededR2() {
+  const base = documentaryBaseline();
   return await materializeSysonModelSeed({
-    base: documentaryBaseline(),
+    base,
+    lineage: seedLineage(base),
     trustedRunId: "run:seed-syson-model",
     capturedAt: "2026-08-02T12:10:00.000Z",
     projectCreateResult: {
@@ -226,8 +240,8 @@ async function seededR2() {
 
 function documentaryBaseline(): ThreadSnapshot {
   const digest = "a".repeat(64);
-  const artifactId = `approved-discovery-document-${digest}`;
-  const changeSetId = `approved-discovery-baseline-${digest}`;
+  const artifactId = `approved-brief-document-${digest}`;
+  const changeSetId = `approved-brief-baseline-${digest}`;
   const changeId = `${changeSetId}:record-document`;
   return validateThreadSnapshot({
     schemaVersion: "1.0",
@@ -248,7 +262,7 @@ function documentaryBaseline(): ThreadSnapshot {
     },
     changeSet: {
       id: changeSetId,
-      name: "Record approved discovery documentary baseline",
+      name: "Record approved project brief documentary baseline",
       status: "applied",
       createdAt: "2026-08-02T12:00:00.000Z",
       appliedAt: "2026-08-02T12:00:00.000Z",
@@ -262,16 +276,16 @@ function documentaryBaseline(): ThreadSnapshot {
     },
     artifacts: [{
       id: artifactId,
-      name: "Approved discovery documentary baseline (pre-technical)",
+      name: "Approved project brief documentary baseline (pre-technical)",
       kind: "document",
       version: digest,
       fingerprint: { algorithm: "sha256", digest },
-      uri: `casys://approved-discovery-capture/sha256/${digest}`,
+      uri: `casys://approved-brief-capture/sha256/${digest}`,
       mediaType: "application/json",
       producer: {
         serverId: "casys-digital-thread",
-        tool: "baseline_from_approved_discovery",
-        runId: "run:approved-discovery-baseline",
+        tool: "baseline_from_approved_brief",
+        runId: "run:approved-brief-baseline",
       },
       inputArtifactIds: [],
       freshness: {
@@ -294,4 +308,77 @@ function documentaryBaseline(): ThreadSnapshot {
     }],
     proposedActions: [],
   });
+}
+
+const APPROVED_BRIEF_BASIS = {
+  kind: "approved-brief" as const,
+  projectId: "drone-concept",
+  projectSnapshotId: "project:drone-concept:r4",
+  projectRevision: 4,
+  briefId: "brief:drone-concept",
+  briefSnapshotId: "brief:drone-concept:r1",
+  briefRevision: 1,
+  approvedBriefFingerprint: {
+    algorithm: "sha256" as const,
+    digest: "b".repeat(64),
+  },
+};
+
+const APPROVED_BRIEF = {
+  briefId: APPROVED_BRIEF_BASIS.briefId,
+  id: APPROVED_BRIEF_BASIS.briefSnapshotId,
+  revision: 1,
+  items: [{
+    id: "mission",
+    kind: "mission-scenario" as const,
+    statement: "Perform controlled visual inspection with a light camera.",
+    sourceRefs: [{ kind: "intent" as const, reference: "conversation:turn-1" }],
+  }],
+  proposedAt: "2026-08-02T11:55:00.000Z",
+  proposedBy: { id: "agent:guide", origin: "agent" as const },
+};
+
+function seedLineage(base: ThreadSnapshot) {
+  const document = base.artifacts[0]!;
+  return {
+    approvedBriefBasis: APPROVED_BRIEF_BASIS,
+    plan: {
+      publishedAt: "2026-08-02T11:58:00.000Z",
+      publishedBy: { id: "agent:guide", origin: "agent" as const },
+    },
+    projectChange: {
+      id: "change:append-syson-seed",
+      commandId: "append-syson-seed",
+      publishedAt: "2026-08-02T12:05:00.000Z",
+      publishedBy: { id: "agent:guide", origin: "agent" as const },
+    },
+    workItemId: "seed-syson-model",
+    baseSnapshot: {
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+    documentaryArtifact: {
+      id: document.id,
+      fingerprint: document.fingerprint,
+      uri: document.uri!,
+      producerRunId: document.producer.runId,
+    },
+  };
+}
+
+function v3Authorization(base: ThreadSnapshot) {
+  const document = base.artifacts.find((artifact) => artifact.kind === "document")!;
+  return {
+    projectId: APPROVED_BRIEF_BASIS.projectId,
+    approvedBriefBasis: APPROVED_BRIEF_BASIS,
+    approvedBrief: APPROVED_BRIEF,
+    documentaryBaseline: {
+      snapshotId: base.previous!.snapshotId,
+      revision: 1 as const,
+      subjectId: base.subject.id,
+      artifactId: document.id,
+      fingerprint: document.fingerprint,
+    },
+  };
 }

@@ -85,13 +85,18 @@ Deno.test("SysON seed write journal treats an unreadable existing marker as an u
 
 Deno.test("SysON seed write journal fsyncs the complete dispatched record before it permits dispatch", async () => {
   const fileSystem = new RecordingAttemptFileSystem(3);
-  const store = new FileSysonModelSeedAttemptStore("attempts", fileSystem);
+  const directory = "state/local/syson-model-seed-attempts";
+  const store = new FileSysonModelSeedAttemptStore(directory, fileSystem);
 
   assertEquals(await store.begin(identity), { action: "dispatch" });
 
   const path = store.pathFor(identity.projectId, identity.runId, identity.step);
   const fileSync = fileSystem.operations.indexOf(`sync:${path}`);
-  const directorySync = fileSystem.operations.lastIndexOf("sync-directory:attempts");
+  const directorySync = fileSystem.operations.lastIndexOf(
+    `sync-directory:${directory}`,
+  );
+  const localSync = fileSystem.operations.lastIndexOf("sync-directory:state/local");
+  const stateSync = fileSystem.operations.lastIndexOf("sync-directory:state");
   const close = fileSystem.operations.indexOf(`close:${path}`);
   assert(fileSystem.writeCalls > 1, "the test double must exercise partial writes");
   assert(fileSync >= 0, "the dispatched record must sync its bytes");
@@ -100,10 +105,47 @@ Deno.test("SysON seed write journal fsyncs the complete dispatched record before
     directorySync > close,
     "the parent directory must sync after the new dispatched record is durable",
   );
+  assert(
+    localSync > directorySync,
+    "recursive creation must durably link the attempt directory into state/local",
+  );
+  assert(
+    stateSync > localSync,
+    "recursive creation must durably link state/local into the state anchor",
+  );
+  assertEquals(
+    fileSystem.operations.includes("sync-directory:."),
+    false,
+    "the durability boundary must stop at the repository-owned state anchor",
+  );
   assertEquals(
     JSON.parse(new TextDecoder().decode(fileSystem.files.get(path)!)).status,
     "dispatched",
   );
+});
+
+Deno.test("SysON seed write journal stops an absolute directory sync chain at its state component", async () => {
+  const fileSystem = new RecordingAttemptFileSystem(1024);
+  const directory = "/workspace/casys/state/local/syson-model-seed-attempts";
+  const store = new FileSysonModelSeedAttemptStore(directory, fileSystem);
+
+  assertEquals(await store.begin(identity), { action: "dispatch" });
+
+  assertEquals(
+    fileSystem.operations.filter((operation) =>
+      operation.startsWith("sync-directory:")
+    ),
+    [
+      `sync-directory:${directory}`,
+      "sync-directory:/workspace/casys/state/local",
+      "sync-directory:/workspace/casys/state",
+    ],
+  );
+  assertEquals(
+    fileSystem.operations.includes("sync-directory:/workspace/casys"),
+    false,
+  );
+  assertEquals(fileSystem.operations.includes("sync-directory:/"), false);
 });
 
 Deno.test("SysON seed write journal atomically replaces a dispatched record with its completed result", async () => {

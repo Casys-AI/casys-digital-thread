@@ -64,7 +64,7 @@ Deno.test("human discovery handoff creates only a provenance-bound engineering p
       actor: { id: HUMAN.actorId, origin: "human" },
       issuedAt: "2026-08-02T10:59:00.000Z",
       appliedAt: "2026-08-02T12:01:00.000Z",
-      requestFingerprint: project.commandReceipts?.[0].requestFingerprint,
+      requestFingerprint: project.commandReceipts![0]!.requestFingerprint,
       resultingSnapshot: { snapshotId: project.id, revision: 1 },
     });
     assertEquals(await discoveries.get(DISCOVERY_ID), before);

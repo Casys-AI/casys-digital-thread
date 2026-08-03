@@ -577,6 +577,11 @@ export class EngineeringProjectCommandService {
         const change: Mutable<EngineeringProjectChange> = {
           id: `change:${command.commandId}`,
           commandId: command.commandId,
+          ...(planningContext.basis.kind === "approved-brief"
+            ? {
+              approvedBriefBasis: structuredClone(planningContext.basis),
+            }
+            : {}),
           baseSnapshot: structuredClone(currentHead),
           phaseIds: phases.map((phase) => phase.id),
           workItemIds: workItems.map((item) => item.id),
@@ -1715,7 +1720,7 @@ function approvedBriefBasisForProject(
       "The canonical brief is not anchored by an exact human approval receipt.",
     );
   }
-  return {
+  const expected: EngineeringApprovedBriefBasis = {
     kind: "approved-brief",
     projectId: project.project.id,
     projectSnapshotId: receipt.resultingSnapshot.snapshotId,
@@ -1725,6 +1730,15 @@ function approvedBriefBasisForProject(
     briefRevision: brief.revision,
     approvedBriefFingerprint: structuredClone(review.inputFingerprint),
   };
+  if (
+    !receipt.approvedBriefBasis ||
+    !sameApprovedBriefBasis(receipt.approvedBriefBasis, expected)
+  ) {
+    invalidTransition(
+      "The canonical brief approval receipt does not retain its exact approved brief basis.",
+    );
+  }
+  return structuredClone(receipt.approvedBriefBasis);
 }
 
 function resolvePlanOperation(

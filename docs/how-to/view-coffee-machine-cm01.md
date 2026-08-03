@@ -18,13 +18,13 @@ deno task start
 ```
 
 The provider MCPs listen on ports `3009`, `3014`, and `3015`. The Console MCP server on
-port `3020` exposes bounded planning plus two deployed end-to-end V2 controls: the
-provider-free documentary r1 and the r1-to-r2 blank SysON container seed. A guarded
-inspection-drone r3 exists in source and is not released. Its disposable local
-parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on
-2026-08-03, but this is not an r3 project run or engineering evidence. None is a generic
-CM-01 lifecycle. Docker Compose only starts providers; it neither executes the proof nor
-advances a project lifecycle.
+port `3020` exposes the current bounded V3 idea/specification path:
+`baseline.from-approved-brief@1`, `architecture.seed-syson-model@2`, and
+`architecture.author-inspection-drone@2`. Those operations can record an approved brief,
+create its blank SysON container, and author one fixed inspection-drone architecture;
+none is a generic CM-01 lifecycle or produces CAD/physics evidence. Docker Compose only
+starts providers; it neither executes this historical proof nor advances a project
+lifecycle.
 
 The native cockpit is optional during execution, but useful for watching the recorded
 operations arrive in Activity:
@@ -85,21 +85,19 @@ deno task thread:run-coffee-machine-mechanical \
 ```
 
 This is not an MCP execution endpoint and is not a way to create or complete a new
-project run. The public V2 control plane can first materialize the provider-free
-documentary r1 from an approved discovery, then execute
-`architecture.seed-syson-model@1` only from that exact r1. That fixed server-owned seed
-creates a blank SysON project, document, and root package; reads the root back; and
-records normalized identities as r2. It accepts no arbitrary provider arguments or SysML
-text, refuses to blindly retry an uncertain creation, and creates no CM-01 architecture,
-requirements, CAD, simulation, measurement, or verdict. Any CM-01 technical operation
-still needs its own reviewed registered executor.
+project run. The V2 `baseline.from-approved-discovery@1` remains trusted only for an
+exact historical approved-discovery project. The similarly named
+`architecture.seed-syson-model@1` and `architecture.author-inspection-drone@1` revisions
+remain readable for audit but are planning-only and never dispatched. None is a route
+into the current V3 product path.
 
-The source tree also has a later guarded r3 inspection-drone operation, but it is not a
-CM-01 path: it requires an exact r2 seed, exact approved inspection-drone discovery
-answers, and an empty SysON root. It is not released. Its disposable local
-parser/translator and model-tree check passed against loopback `mcp-syson 0.5.2` on
-2026-08-03, but it is not an r3 project run and creates no CM-01 or general CAD,
-physics, flight, cost, compliance, or verification evidence.
+The current V3 path starts from the exact human-approved living brief with
+`baseline.from-approved-brief@1`, then uses `architecture.seed-syson-model@2` from exact
+r1 and `architecture.author-inspection-drone@2` from exact r2 and the same authorization
+chain. It is not a CM-01 path: those fixed operations create only a SysON container and
+one bounded inspection-drone architecture. They create no CM-01 or general CAD, physics,
+flight, cost, compliance, or verification evidence. Any new CM-01 technical operation
+still needs its own reviewed registered executor.
 
 The command executes this backend-only chain:
 

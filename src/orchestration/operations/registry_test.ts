@@ -9,7 +9,9 @@ import {
 } from "./registry.ts";
 import {
   INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 } from "../../domain/inspection-drone-architecture.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
@@ -80,11 +82,11 @@ Deno.test("operation declarations cannot mutate the code-owned registry", () => 
 Deno.test("a reviewed operation can enter a plan before its execution basis exists", () => {
   const architecture = validateRegisteredEngineeringOperationInput({
     operation: {
-      id: "architecture.seed-syson-model",
-      version: "1",
+      id: SYSON_MODEL_SEED_OPERATION.id,
+      version: SYSON_MODEL_SEED_OPERATION.version,
       bindings: [{
-        name: "approvedDiscovery",
-        source: { kind: "approved-discovery" },
+        name: "approvedBrief",
+        source: { kind: "approved-brief" },
       }],
     },
     stage: "planning",
@@ -95,18 +97,18 @@ Deno.test("a reviewed operation can enter a plan before its execution basis exis
 
   const boundedDroneArchitecture = validateRegisteredEngineeringOperationInput({
     operation: {
-      id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
-      version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+      id: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
+      version: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version,
       bindings: [{
-        name: "approvedDiscovery",
-        source: { kind: "approved-discovery" },
+        name: "approvedBrief",
+        source: { kind: "approved-brief" },
       }],
     },
     stage: "planning",
   });
   assertEquals(
     boundedDroneArchitecture.operation.id,
-    INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+    INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
   );
   assertEquals(boundedDroneArchitecture.operation.execution, "trusted");
 });
@@ -132,11 +134,11 @@ Deno.test("registered operations accept only their declared queue basis", () => 
 
   const architecture = validateRegisteredEngineeringOperationInput({
     operation: {
-      id: "architecture.seed-syson-model",
-      version: "1",
+      id: SYSON_MODEL_SEED_OPERATION.id,
+      version: SYSON_MODEL_SEED_OPERATION.version,
       bindings: [{
-        name: "approvedDiscovery",
-        source: { kind: "approved-discovery" },
+        name: "approvedBrief",
+        source: { kind: "approved-brief" },
       }],
     },
     stage: "queue",
@@ -164,11 +166,11 @@ Deno.test("registered operations accept only their declared queue basis", () => 
 
   const boundedDroneArchitecture = validateRegisteredEngineeringOperationInput({
     operation: {
-      id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
-      version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+      id: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
+      version: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version,
       bindings: [{
-        name: "approvedDiscovery",
-        source: { kind: "approved-discovery" },
+        name: "approvedBrief",
+        source: { kind: "approved-brief" },
       }],
     },
     stage: "queue",
@@ -176,8 +178,14 @@ Deno.test("registered operations accept only their declared queue basis", () => 
   });
   assertEquals(
     boundedDroneArchitecture.operation.id,
-    INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+    INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
   );
+
+  const historical = requireRegisteredEngineeringOperation({
+    id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
+    version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
+  });
+  assertEquals(historical.execution, "planning-only");
 });
 
 Deno.test("registered operations accept only exact declared state-reference inputs", () => {

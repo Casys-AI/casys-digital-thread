@@ -2,7 +2,7 @@ import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
 
 /**
  * Immutable byte store for the closed r3 capture created by
- * `architecture.author-inspection-drone@1`.
+ * `architecture.author-inspection-drone@2` (or immutable historical @1).
  *
  * The ThreadSnapshot will reference the capture by content fingerprint and
  * logical URI. This adapter owns the corresponding local content-addressed

@@ -724,12 +724,19 @@ function validateProjectChange(
       "publishedAt",
       "publishedBy",
     ],
-    [],
+    ["approvedBriefBasis"],
     issues,
   );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.commandId, `${path}.commandId`, issues);
+  if (input.approvedBriefBasis !== undefined) {
+    validateApprovedBriefBasis(
+      input.approvedBriefBasis,
+      `${path}.approvedBriefBasis`,
+      issues,
+    );
+  }
   validateSnapshotRef(input.baseSnapshot, `${path}.baseSnapshot`, issues);
   validateArray(
     input.phaseIds,
@@ -1368,7 +1375,7 @@ function validateCommandReceipt(
       "requestFingerprint",
       "resultingSnapshot",
     ],
-    [],
+    ["approvedBriefBasis"],
     issues,
   );
   if (!input) return;
@@ -1407,6 +1414,13 @@ function validateCommandReceipt(
     issues,
   );
   validatePrevious(input.resultingSnapshot, `${path}.resultingSnapshot`, issues);
+  if (input.approvedBriefBasis !== undefined) {
+    validateApprovedBriefBasis(
+      input.approvedBriefBasis,
+      `${path}.approvedBriefBasis`,
+      issues,
+    );
+  }
 }
 
 function validateBlocker(
@@ -2437,16 +2451,20 @@ function validatePlanInvariants(
   const path = "$.plan";
   if (!plan) return;
   if (project.schemaVersion === "3.0") {
-    const expected = approvedBriefBasisForProject(project);
-    if (
-      plan.basis.kind !== "approved-brief" || !expected ||
-      !sameApprovedBriefBasis(plan.basis, expected)
-    ) {
+    if (plan.basis.kind !== "approved-brief") {
       issue(
         issues,
         "approval_scope_mismatch",
         `${path}.basis`,
-        "must exactly match the current human-approved project brief",
+        "must name one exact human-approved project brief revision",
+      );
+    } else {
+      validateApprovedBriefBasisAuthorization(
+        project,
+        plan.basis,
+        `${path}.basis`,
+        plan.publishedAt,
+        issues,
       );
     }
   } else {
@@ -2557,6 +2575,24 @@ function validatePlanChangeInvariants(
   );
   changes.forEach((change, index) => {
     const path = `$.planChanges[${index}]`;
+    if (project.schemaVersion === "3.0") {
+      if (!change.approvedBriefBasis) {
+        issue(
+          issues,
+          "approval_scope_mismatch",
+          `${path}.approvedBriefBasis`,
+          "a V3 project change must retain the exact human-approved brief revision that authorized it",
+        );
+      } else {
+        validateApprovedBriefBasisAuthorization(
+          project,
+          change.approvedBriefBasis,
+          `${path}.approvedBriefBasis`,
+          change.publishedAt,
+          issues,
+        );
+      }
+    }
     if (change.publishedBy.origin !== "agent") {
       issue(
         issues,
@@ -2798,35 +2834,56 @@ function sameApprovedBriefBasis(
       fingerprintKey(right.approvedBriefFingerprint);
 }
 
-function approvedBriefBasisForProject(
+function validateApprovedBriefBasisAuthorization(
   project: EngineeringProjectSnapshot,
-): EngineeringApprovedBriefBasis | undefined {
-  const framing = project.framing;
-  const brief = framing?.currentBrief;
-  const review = framing?.currentBriefApproval;
-  if (
-    !brief || !review || review.status !== "approved" ||
-    review.briefSnapshotId !== brief.id ||
-    review.briefRevision !== brief.revision ||
-    !review.decidedAt || review.decidedBy?.origin !== "human"
-  ) return undefined;
-  const receipt = [...(project.commandReceipts ?? [])].reverse().find((item) =>
+  basis: EngineeringApprovedBriefBasis,
+  path: string,
+  authorizedAt: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  if (basis.projectId !== project.project.id) {
+    issue(
+      issues,
+      "approval_scope_mismatch",
+      `${path}.projectId`,
+      "must match this engineering project",
+    );
+  }
+  const receipt = (project.commandReceipts ?? []).find((item) =>
     item.type === "project.brief-approve" &&
-    Date.parse(item.appliedAt) === Date.parse(review.decidedAt!) &&
-    item.actor.id === review.decidedBy?.id &&
-    item.actor.origin === review.decidedBy?.origin
+    item.actor.origin === "human" &&
+    item.resultingSnapshot.snapshotId === basis.projectSnapshotId &&
+    item.resultingSnapshot.revision === basis.projectRevision
   );
-  if (!receipt) return undefined;
-  return {
-    kind: "approved-brief",
-    projectId: project.project.id,
-    projectSnapshotId: receipt.resultingSnapshot.snapshotId,
-    projectRevision: receipt.resultingSnapshot.revision,
-    briefId: brief.briefId,
-    briefSnapshotId: brief.id,
-    briefRevision: brief.revision,
-    approvedBriefFingerprint: review.inputFingerprint,
-  };
+  if (!receipt) {
+    issue(
+      issues,
+      "approval_scope_mismatch",
+      path,
+      "must resolve to an exact historical human project.brief-approve receipt",
+    );
+    return;
+  }
+  if (
+    !receipt.approvedBriefBasis ||
+    !sameApprovedBriefBasis(receipt.approvedBriefBasis, basis)
+  ) {
+    issue(
+      issues,
+      "approval_scope_mismatch",
+      path,
+      "must exactly match the approved brief basis retained by its human approval receipt",
+    );
+    return;
+  }
+  if (Date.parse(receipt.appliedAt) > Date.parse(authorizedAt)) {
+    issue(
+      issues,
+      "invalid_chronology",
+      path,
+      "cannot authorize work published before the historical brief approval",
+    );
+  }
 }
 
 function validateRunInvariant(
@@ -3199,6 +3256,72 @@ function validateCommandReceiptInvariant(
   issues: EngineeringProjectValidationIssue[],
 ): void {
   const path = `$.commandReceipts[${index}]`;
+  if (
+    receipt.approvedBriefBasis !== undefined &&
+    receipt.type !== "project.brief-approve"
+  ) {
+    issue(
+      issues,
+      "schema_version_mismatch",
+      `${path}.approvedBriefBasis`,
+      "is permitted only on a project.brief-approve receipt",
+    );
+  }
+  if (
+    project.schemaVersion === "3.0" &&
+    receipt.type === "project.brief-approve" &&
+    receipt.approvedBriefBasis === undefined
+  ) {
+    issue(
+      issues,
+      "approval_scope_mismatch",
+      `${path}.approvedBriefBasis`,
+      "is required for every V3 human brief approval",
+    );
+  }
+  if (receipt.approvedBriefBasis) {
+    const basis = receipt.approvedBriefBasis;
+    if (
+      basis.projectId !== project.project.id ||
+      basis.projectSnapshotId !== receipt.resultingSnapshot.snapshotId ||
+      basis.projectRevision !== receipt.resultingSnapshot.revision
+    ) {
+      issue(
+        issues,
+        "approval_scope_mismatch",
+        `${path}.approvedBriefBasis`,
+        "must identify this project and the exact snapshot created by the approval receipt",
+      );
+    }
+    const framing = project.framing;
+    const brief = framing?.currentBrief;
+    const approval = framing?.currentBriefApproval;
+    if (
+      brief && approval?.status === "approved" && approval.decidedAt &&
+      Date.parse(approval.decidedAt) === Date.parse(receipt.appliedAt) &&
+      approval.decidedBy?.id === receipt.actor.id &&
+      approval.decidedBy.origin === receipt.actor.origin
+    ) {
+      const expected: EngineeringApprovedBriefBasis = {
+        kind: "approved-brief",
+        projectId: project.project.id,
+        projectSnapshotId: receipt.resultingSnapshot.snapshotId,
+        projectRevision: receipt.resultingSnapshot.revision,
+        briefId: brief.briefId,
+        briefSnapshotId: brief.id,
+        briefRevision: brief.revision,
+        approvedBriefFingerprint: approval.inputFingerprint,
+      };
+      if (!sameApprovedBriefBasis(basis, expected)) {
+        issue(
+          issues,
+          "approval_scope_mismatch",
+          `${path}.approvedBriefBasis`,
+          "must exactly describe the canonical brief approved by this receipt",
+        );
+      }
+    }
+  }
   const firstCommandRevision = project.schemaVersion === "3.0" ||
       project.discoveryHandoff
     ? 1

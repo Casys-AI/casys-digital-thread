@@ -273,17 +273,21 @@ export class FileInspectionDroneArchitectureAttemptStore {
 function directoryChain(path: string): string[] {
   const result: string[] = [];
   let current = path.replace(/\/+$/, "") || ".";
-  while (!result.includes(current)) {
+  while (current !== "/" && !result.includes(current)) {
     result.push(current);
     // `state` is the repository-owned durable storage root. It exists before
     // any run (and is within the server's narrow read permission), so syncing
     // its parent would only broaden the process read scope to the workspace.
-    if (current === "state") break;
+    if (isStateDirectory(current)) break;
     const parent = parentDirectory(current);
-    if (parent === current) break;
+    if (parent === current || parent === "/") break;
     current = parent;
   }
   return result;
+}
+
+function isStateDirectory(path: string): boolean {
+  return path === "state" || path.endsWith("/state");
 }
 
 function parentDirectory(path: string): string {

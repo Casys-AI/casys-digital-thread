@@ -229,6 +229,11 @@ export interface EngineeringProjectChange {
   readonly id: string;
   /** Exact idempotency/audit command that created this append-only change. */
   readonly commandId: string;
+  /**
+   * Exact human-approved canonical brief that authorized this V3 change.
+   * Historical V2 changes predate this field and remain readable without it.
+   */
+  readonly approvedBriefBasis?: EngineeringApprovedBriefBasis;
   readonly baseSnapshot: EngineeringThreadSnapshotRef;
   readonly phaseIds: readonly string[];
   readonly workItemIds: readonly string[];
@@ -391,6 +396,11 @@ export interface EngineeringProjectCommandReceipt {
   readonly appliedAt: IsoDateTime;
   readonly requestFingerprint: ContentFingerprint;
   readonly resultingSnapshot: EngineeringProjectPreviousSnapshot;
+  /**
+   * Immutable authorization created by a V3 human brief approval. Historical
+   * receipts pre-dating the living brief intentionally omit this field.
+   */
+  readonly approvedBriefBasis?: EngineeringApprovedBriefBasis;
 }
 
 export type EngineeringBlockerKind =

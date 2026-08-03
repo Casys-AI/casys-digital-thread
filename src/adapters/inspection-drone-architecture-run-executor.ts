@@ -6,6 +6,7 @@ import {
 } from "../domain/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
+  EngineeringApprovedBriefBasis,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
@@ -13,6 +14,7 @@ import type {
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
 import { deterministicJson, fingerprintsEqual } from "../domain/deterministic-json.ts";
+import type { ProjectBriefRevision } from "../domain/project-brief.ts";
 import {
   currentProjectDiscoveryAnswer,
   type ProjectDiscoverySnapshot,
@@ -24,16 +26,22 @@ import type { ThreadSnapshotStore } from "../domain/thread-snapshot-store.ts";
 import {
   INSPECTION_DRONE_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_ARCHITECTURE_SYSML,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
   type InspectionDroneArchitectureInsertion,
   type InspectionDroneArchitectureMaterialization,
   type InspectionDroneArchitectureSeed,
   inspectionDroneArchitectureSysmlFingerprint,
+  type InspectionDroneArchitectureV3Authorization,
   materializeInspectionDroneArchitecture,
   requireEmptyInspectionDroneArchitectureRoot,
   requireInspectionDroneArchitecturePackage,
   requireInspectionDroneArchitectureSeed,
   validateInspectionDroneArchitectureInsertion,
 } from "../domain/inspection-drone-architecture.ts";
+import {
+  APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA,
+  APPROVED_BRIEF_BASELINE_OPERATION,
+} from "../orchestration/operations/approved-brief-baseline.ts";
 import {
   APPROVED_DISCOVERY_BASELINE_CAPTURE_SCHEMA,
   APPROVED_DISCOVERY_BASELINE_OPERATION,
@@ -69,7 +77,9 @@ export interface InspectionDroneArchitectureRunExecutorDependencies {
   /** Owns the exact r1, r2 and subsequently materialized r3 snapshots. */
   readonly snapshots: ThreadSnapshotStore;
   /** Re-readable r1 source; no current discovery state may substitute for it. */
-  readonly approvedDiscoveryCaptures: FileApprovedDiscoveryBaselineCaptureStore;
+  readonly approvedDiscoveryCaptures?: FileApprovedDiscoveryBaselineCaptureStore;
+  /** Re-readable V3 approved-brief capture behind the exact documentary r1. */
+  readonly approvedBriefCaptures?: FileApprovedDiscoveryBaselineCaptureStore;
   /** Re-readable r2 model-container identity required for every SysON call. */
   readonly seedCaptures: FileSysonModelSeedCaptureStore;
   /** Immutable normalized r3 evidence bytes. */
@@ -91,17 +101,37 @@ export interface InspectionDroneArchitectureRunExecutorDependencies {
  * same checks as the executor.  It does not claim, queue, or otherwise change
  * project state.
  */
-export interface InspectionDroneArchitectureEligibility {
+interface InspectionDroneArchitectureEligibilityBase {
   readonly base: ThreadSnapshot;
   readonly seedCapture: unknown;
   readonly seed: InspectionDroneArchitectureSeed;
+}
+
+export interface InspectionDroneArchitectureV2Eligibility
+  extends InspectionDroneArchitectureEligibilityBase {
+  readonly lineage: "approved-discovery-v2";
   readonly discovery: ProjectDiscoverySnapshot;
 }
 
+export interface InspectionDroneArchitectureV3Eligibility
+  extends InspectionDroneArchitectureEligibilityBase {
+  readonly lineage: "approved-brief-v3";
+  readonly authorization: InspectionDroneArchitectureV3Authorization;
+}
+
+export type InspectionDroneArchitectureEligibility =
+  | InspectionDroneArchitectureV2Eligibility
+  | InspectionDroneArchitectureV3Eligibility;
+
 /** Minimal read-only boundary used by the reusable r3 eligibility gate. */
 export interface InspectionDroneArchitectureEligibilityDependencies {
+  readonly projects: Pick<EngineeringProjectRevisionStore, "getRevision">;
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
-  readonly approvedDiscoveryCaptures: Pick<
+  readonly approvedDiscoveryCaptures?: Pick<
+    FileApprovedDiscoveryBaselineCaptureStore,
+    "read"
+  >;
+  readonly approvedBriefCaptures?: Pick<
     FileApprovedDiscoveryBaselineCaptureStore,
     "read"
   >;
@@ -120,7 +150,12 @@ export class InspectionDroneArchitectureRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
-  readonly #approvedDiscoveryCaptures: FileApprovedDiscoveryBaselineCaptureStore;
+  readonly #approvedDiscoveryCaptures:
+    | FileApprovedDiscoveryBaselineCaptureStore
+    | undefined;
+  readonly #approvedBriefCaptures:
+    | FileApprovedDiscoveryBaselineCaptureStore
+    | undefined;
   readonly #seedCaptures: FileSysonModelSeedCaptureStore;
   readonly #captures: FileInspectionDroneArchitectureCaptureStore;
   readonly #attempts: FileInspectionDroneArchitectureAttemptStore;
@@ -134,6 +169,7 @@ export class InspectionDroneArchitectureRunExecutor {
     this.#commands = dependencies.commands;
     this.#snapshots = dependencies.snapshots;
     this.#approvedDiscoveryCaptures = dependencies.approvedDiscoveryCaptures;
+    this.#approvedBriefCaptures = dependencies.approvedBriefCaptures;
     this.#seedCaptures = dependencies.seedCaptures;
     this.#captures = dependencies.captures;
     this.#attempts = dependencies.attempts;
@@ -466,13 +502,16 @@ export class InspectionDroneArchitectureRunExecutor {
   ): Promise<InspectionDroneArchitectureEligibility> {
     return await resolveInspectionDroneArchitectureEligibility(
       {
+        projects: this.#projects,
         snapshots: this.#snapshots,
         approvedDiscoveryCaptures: this.#approvedDiscoveryCaptures,
+        approvedBriefCaptures: this.#approvedBriefCaptures,
         seedCaptures: this.#seedCaptures,
       },
       {
         project,
         basis: requireThreadBasis(run),
+        workItemId: run.workItemId,
       },
     );
   }
@@ -493,6 +532,12 @@ export class InspectionDroneArchitectureRunExecutor {
       insertion,
       rootChildrenResult,
       architectureChildrenResult,
+      ...(inputs.lineage === "approved-brief-v3"
+        ? {
+          operation: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+          authorization: inputs.authorization,
+        }
+        : {}),
     });
     const result = await materializeInspectionDroneArchitecture({
       base: inputs.base,
@@ -503,6 +548,12 @@ export class InspectionDroneArchitectureRunExecutor {
       rootChildrenResult,
       architectureChildrenResult,
       captureUri: this.#captures.uriFor(first.sha256),
+      ...(inputs.lineage === "approved-brief-v3"
+        ? {
+          operation: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+          authorization: inputs.authorization,
+        }
+        : {}),
     });
     if (
       deterministicJson(first.capture) !== deterministicJson(result.capture) ||
@@ -667,13 +718,15 @@ export class InspectionDroneArchitectureRunExecutor {
  * Re-read the complete durable r1 -> r2 chain that authorizes r3 without
  * touching a provider or changing the project.  Queue-time admission and run
  * execution must call this same gate rather than separately reimplementing a
- * looser view of the discovery or model-container state.
+ * looser view of the canonical brief, historical discovery, or model-container
+ * state.
  */
 export async function resolveInspectionDroneArchitectureEligibility(
   dependencies: InspectionDroneArchitectureEligibilityDependencies,
   input: {
     readonly project: EngineeringProjectSnapshot;
     readonly basis: EngineeringThreadSnapshotBasis;
+    readonly workItemId: string;
   },
 ): Promise<InspectionDroneArchitectureEligibility> {
   const base = await requiredExactR2Snapshot(dependencies.snapshots, input.basis);
@@ -708,12 +761,49 @@ export async function resolveInspectionDroneArchitectureEligibility(
       }`,
     );
   }
-  const discovery = await requiredApprovedDroneDiscovery(
-    dependencies,
-    input.project,
-    base,
+  if (input.project.schemaVersion === "3.0") {
+    requireSeedCaptureSchema(
+      seedCapture,
+      "syson-model-seed-capture/2.0",
+      "V3 inspection-drone architecture",
+    );
+    const authorization = await requiredApprovedDroneBrief(
+      dependencies,
+      input.project,
+      base,
+      input.workItemId,
+    );
+    return {
+      lineage: "approved-brief-v3",
+      base,
+      seedCapture,
+      seed,
+      authorization,
+    };
+  }
+  if (input.project.schemaVersion === "2.0") {
+    requireSeedCaptureSchema(
+      seedCapture,
+      "syson-model-seed-capture/1.0",
+      "historical V2 inspection-drone architecture",
+    );
+    const discovery = await requiredApprovedDroneDiscovery(
+      dependencies,
+      input.project,
+      base,
+    );
+    return {
+      lineage: "approved-discovery-v2",
+      base,
+      seedCapture,
+      seed,
+      discovery,
+    };
+  }
+  throw new EngineeringProjectCommandError(
+    "invalid_input",
+    "Inspection-drone architecture requires a V3 approved-brief project or a historical V2 discovery project.",
   );
-  return { base, seedCapture, seed, discovery };
 }
 
 async function requiredExactR2Snapshot(
@@ -755,6 +845,13 @@ async function requiredApprovedDroneDiscovery(
   project: EngineeringProjectSnapshot,
   r2: ThreadSnapshot,
 ): Promise<ProjectDiscoverySnapshot> {
+  const captures = dependencies.approvedDiscoveryCaptures;
+  if (!captures) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The historical approved-discovery capture store is unavailable.",
+    );
+  }
   const r1Reference = r2.previous;
   if (!r1Reference || r1Reference.revision !== 1) {
     throw new EngineeringProjectCommandError(
@@ -808,7 +905,7 @@ async function requiredApprovedDroneDiscovery(
   }
   let text: string | undefined;
   try {
-    text = await dependencies.approvedDiscoveryCaptures.read(document.fingerprint);
+    text = await captures.read(document.fingerprint);
   } catch {
     throw new EngineeringProjectCommandError(
       "invalid_input",
@@ -826,6 +923,125 @@ async function requiredApprovedDroneDiscovery(
     project,
     document.producer.runId,
   );
+}
+
+async function requiredApprovedDroneBrief(
+  dependencies: InspectionDroneArchitectureEligibilityDependencies,
+  project: EngineeringProjectSnapshot,
+  r2: ThreadSnapshot,
+  workItemId: string,
+): Promise<InspectionDroneArchitectureV3Authorization> {
+  const captures = dependencies.approvedBriefCaptures;
+  if (!captures) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The approved-brief capture store required by V3 architecture is unavailable.",
+    );
+  }
+  const r1Reference = r2.previous;
+  if (!r1Reference || r1Reference.revision !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The V3 SysON model-container does not point to its exact documentary r1 source.",
+    );
+  }
+  let candidate: ThreadSnapshot | undefined;
+  try {
+    candidate = await dependencies.snapshots.get(r1Reference.snapshotId);
+  } catch {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The exact approved-brief documentary r1 required by V3 architecture is not readable.",
+    );
+  }
+  if (
+    !candidate || candidate.id !== r1Reference.snapshotId ||
+    candidate.revision !== 1 || candidate.subject.id !== r2.subject.id
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The exact approved-brief documentary r1 required by V3 architecture is no longer readable.",
+    );
+  }
+  let r1: ThreadSnapshot;
+  try {
+    r1 = validateThreadSnapshot(candidate);
+  } catch (error) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      `The approved-brief documentary r1 required by V3 architecture is invalid: ${
+        errorMessage(error)
+      }`,
+    );
+  }
+  const document = r1.artifacts.find((artifact) =>
+    artifact.id === r1.subject.modelArtifactId && artifact.kind === "document"
+  );
+  if (
+    r1.previous !== undefined || !document || r1.artifacts.length !== 1 ||
+    document.producer.serverId !== "casys-digital-thread" ||
+    document.producer.tool !== "baseline_from_approved_brief" ||
+    document.inputArtifactIds.length !== 0
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The V3 r1 basis does not expose the exact approved-brief documentary artifact.",
+    );
+  }
+  let text: string | undefined;
+  try {
+    text = await captures.read(document.fingerprint);
+  } catch {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The exact approved-brief capture failed its integrity check and cannot authorize SysON architecture.",
+    );
+  }
+  if (text === undefined) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The exact approved-brief capture required by V3 architecture is no longer readable.",
+    );
+  }
+  const changes = (project.planChanges ?? []).filter((change) =>
+    change.workItemIds.includes(workItemId)
+  );
+  const change = changes.length === 1 ? changes[0] : undefined;
+  const approvedBriefBasis = change?.approvedBriefBasis;
+  if (!change || !approvedBriefBasis) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "V3 architecture must be introduced by one change bound to its exact approved brief.",
+    );
+  }
+  if (approvedBriefBasis.projectId !== project.project.id) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The V3 r1 capture does not exactly match this project's identity, approved brief basis, reviewed plan, and baseline work item.",
+    );
+  }
+  const approvedBrief = approvedInspectionDroneBrief(
+    parseJson(text, "The approved-brief capture is not valid JSON."),
+    project,
+    document.producer.runId,
+    approvedBriefBasis,
+    await requiredApprovedBriefProjectRevision(
+      dependencies.projects,
+      approvedBriefBasis,
+    ),
+  );
+  return {
+    projectId: project.project.id,
+    approvedBriefBasis: structuredClone(approvedBriefBasis),
+    approvedBrief,
+    documentaryBaseline: {
+      snapshotId: r1.id,
+      revision: 1,
+      subjectId: r1.subject.id,
+      artifactId: document.id,
+      fingerprint: structuredClone(document.fingerprint),
+    },
+  };
 }
 
 class ProviderWriteOutcomeUnknownError extends Error {
@@ -889,17 +1105,19 @@ function requireInspectionDroneArchitectureShape(
 ): EngineeringWorkItem {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const bindings = workItem?.operation?.bindings;
+  const canonicalV3 = project.schemaVersion === "3.0" &&
+    workItem?.operation?.id === INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id &&
+    workItem.operation.version ===
+      INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version &&
+    bindings?.length === 1 && bindings[0]?.name === "approvedBrief" &&
+    bindings[0].source.kind === "approved-brief";
   if (
-    project.schemaVersion !== "2.0" || run.basis?.kind !== "thread-snapshot" ||
-    !workItem ||
-    workItem.operation?.id !== INSPECTION_DRONE_ARCHITECTURE_OPERATION.id ||
-    workItem.operation.version !== INSPECTION_DRONE_ARCHITECTURE_OPERATION.version ||
-    !bindings || bindings.length !== 1 || bindings[0]?.name !== "approvedDiscovery" ||
-    bindings[0].source.kind !== "approved-discovery"
+    run.basis?.kind !== "thread-snapshot" || !workItem ||
+    !canonicalV3
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "This executor may run only the exact human-queued V2 inspection-drone architecture operation.",
+      "This executor may run only the canonical V3 inspection-drone architecture @2 operation.",
     );
   }
   return workItem;
@@ -1042,6 +1260,204 @@ function approvedInspectionDroneDiscovery(
   requireDiscoveryAnswer(discovery, "primary-mission", "inspection-controlled");
   requireDiscoveryAnswer(discovery, "payload-class", "light-inspection-camera");
   return discovery;
+}
+
+async function requiredApprovedBriefProjectRevision(
+  projects: Pick<EngineeringProjectRevisionStore, "getRevision">,
+  basis: EngineeringApprovedBriefBasis,
+): Promise<EngineeringProjectSnapshot> {
+  let project: EngineeringProjectSnapshot | undefined;
+  try {
+    project = await projects.getRevision(basis.projectId, basis.projectRevision);
+  } catch {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The exact project revision carrying the architecture change's approved brief is not readable.",
+    );
+  }
+  if (
+    !project || project.schemaVersion !== "3.0" ||
+    project.project.id !== basis.projectId ||
+    project.id !== basis.projectSnapshotId ||
+    project.revision !== basis.projectRevision
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The architecture change does not resolve to its exact approved-brief project revision.",
+    );
+  }
+  const brief = project.framing?.currentBrief;
+  const approval = project.framing?.currentBriefApproval;
+  const receipt = (project.commandReceipts ?? []).find((candidate) =>
+    candidate.type === "project.brief-approve" &&
+    candidate.actor.origin === "human" &&
+    candidate.resultingSnapshot.snapshotId === basis.projectSnapshotId &&
+    candidate.resultingSnapshot.revision === basis.projectRevision &&
+    candidate.actor.id === approval?.decidedBy?.id &&
+    Date.parse(candidate.appliedAt) === Date.parse(approval?.decidedAt ?? "")
+  );
+  if (
+    !brief || !approval || approval.status !== "approved" ||
+    approval.decidedBy?.origin !== "human" || !approval.decidedAt || !receipt ||
+    approval.briefSnapshotId !== brief.id ||
+    approval.briefRevision !== brief.revision ||
+    brief.briefId !== basis.briefId ||
+    brief.id !== basis.briefSnapshotId ||
+    brief.revision !== basis.briefRevision ||
+    !fingerprintsEqual(
+      approval.inputFingerprint,
+      basis.approvedBriefFingerprint,
+    )
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The architecture change no longer resolves to its exact human-approved living brief.",
+    );
+  }
+  return project;
+}
+
+function approvedInspectionDroneBrief(
+  value: unknown,
+  project: EngineeringProjectSnapshot,
+  expectedBaselineRunId: string,
+  approvedBriefBasis: EngineeringApprovedBriefBasis,
+  approvedProject: EngineeringProjectSnapshot,
+): ProjectBriefRevision {
+  const root = closedRecord(
+    value,
+    [
+      "schemaVersion",
+      "kind",
+      "scope",
+      "statement",
+      "runId",
+      "capturedAt",
+      "operation",
+      "workItemId",
+      "projectDefinition",
+      "approvedBrief",
+    ],
+    "approved-brief capture",
+  );
+  if (
+    root.schemaVersion !== APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA ||
+    root.kind !== "approved-brief-documentary-baseline" ||
+    root.scope !== "pre-technical-documentation" ||
+    root.runId !== expectedBaselineRunId ||
+    typeof root.statement !== "string" || !root.statement.trim() ||
+    typeof root.capturedAt !== "string" || Number.isNaN(Date.parse(root.capturedAt))
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The exact V3 approved-brief capture has an invalid identity.",
+    );
+  }
+  const operation = closedRecord(
+    root.operation,
+    ["id", "version"],
+    "approved-brief capture operation",
+  );
+  if (
+    operation.id !== APPROVED_BRIEF_BASELINE_OPERATION.id ||
+    operation.version !== APPROVED_BRIEF_BASELINE_OPERATION.version
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The exact V3 r1 capture was not produced by the approved-brief baseline operation.",
+    );
+  }
+  const expectedDefinition = currentApprovedBriefBaselineDefinition(
+    project,
+    root.workItemId,
+    approvedProject.project,
+  );
+  if (
+    !expectedDefinition ||
+    !canonicallyEqual(root.projectDefinition, expectedDefinition)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The V3 r1 capture does not exactly match this project's identity, approved brief basis, reviewed plan, and baseline work item.",
+    );
+  }
+  if (
+    project.schemaVersion !== "3.0" || !project.plan ||
+    project.plan.basis.kind !== "approved-brief" ||
+    !canonicallyEqual(project.plan.basis, approvedBriefBasis) ||
+    !approvedProject.framing?.currentBrief ||
+    !canonicallyEqual(root.approvedBrief, approvedProject.framing.currentBrief)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "V3 architecture requires the exact human-approved canonical brief retained by its project change.",
+    );
+  }
+  return structuredClone(approvedProject.framing.currentBrief);
+}
+
+function currentApprovedBriefBaselineDefinition(
+  project: EngineeringProjectSnapshot,
+  captureWorkItemId: unknown,
+  approvedProjectIdentity: EngineeringProjectSnapshot["project"] = project.project,
+): {
+  readonly identity: EngineeringProjectSnapshot["project"];
+  readonly basis: EngineeringApprovedBriefBasis;
+  readonly plan: NonNullable<EngineeringProjectSnapshot["plan"]>;
+  readonly workItem: {
+    readonly id: string;
+    readonly phaseId: string;
+    readonly title: string;
+    readonly description: string;
+    readonly kind: EngineeringWorkItem["kind"];
+    readonly owner: EngineeringWorkItem["owner"];
+    readonly dependsOnWorkItemIds: readonly string[];
+    readonly operation: NonNullable<EngineeringWorkItem["operation"]>;
+  };
+} | undefined {
+  if (
+    project.schemaVersion !== "3.0" || typeof captureWorkItemId !== "string" ||
+    !project.plan || project.plan.basis.kind !== "approved-brief"
+  ) return undefined;
+  const candidates = project.workItems.filter((item) =>
+    item.operation?.id === APPROVED_BRIEF_BASELINE_OPERATION.id &&
+    item.operation.version === APPROVED_BRIEF_BASELINE_OPERATION.version
+  );
+  const workItem = candidates.length === 1 && candidates[0]?.id === captureWorkItemId
+    ? candidates[0]
+    : undefined;
+  if (!workItem?.operation) return undefined;
+  return {
+    identity: structuredClone(approvedProjectIdentity),
+    basis: structuredClone(project.plan.basis),
+    plan: structuredClone(project.plan),
+    workItem: {
+      id: workItem.id,
+      phaseId: workItem.phaseId,
+      title: workItem.title,
+      description: workItem.description,
+      kind: workItem.kind,
+      owner: workItem.owner,
+      dependsOnWorkItemIds: structuredClone(workItem.dependsOnWorkItemIds),
+      operation: structuredClone(workItem.operation),
+    },
+  };
+}
+
+function requireSeedCaptureSchema(
+  value: unknown,
+  expected: string,
+  context: string,
+): void {
+  const root = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+  if (root?.schemaVersion !== expected) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      `${context} requires ${expected} as its exact r2 seed capture.`,
+    );
+  }
 }
 
 /**

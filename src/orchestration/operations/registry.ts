@@ -6,7 +6,9 @@ import type {
 } from "../../domain/engineering-project.ts";
 import {
   INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 } from "../../domain/inspection-drone-architecture.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -161,10 +163,28 @@ const OPERATIONS = [
       "Create a traceable SysML system-model container after the approved discovery has been recorded.",
     workItemKind: "architect",
     riskClass: "consequential",
-    execution: "trusted",
+    // Immutable V2 plan history remains readable, but the current executor
+    // accepts only the brief-bound @2 contract below.
+    execution: "planning-only",
     bindings: [{
       name: "approvedDiscovery",
       allowedSourceKinds: ["approved-discovery"],
+    }],
+  },
+  {
+    id: SYSON_MODEL_SEED_OPERATION.id,
+    version: SYSON_MODEL_SEED_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Create the first editable system model",
+    description:
+      "Create a traceable SysML system-model container after the canonical project brief has been recorded as an exact documentary baseline.",
+    workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
     }],
   },
   {
@@ -179,10 +199,28 @@ const OPERATIONS = [
       "Insert one reviewed high-level inspection-drone SysML architecture into an empty, traceable SysON model container.",
     workItemKind: "architect",
     riskClass: "consequential",
-    execution: "trusted",
+    // Immutable V2 plan history remains readable, but the current executor
+    // accepts only the brief-bound @2 contract below.
+    execution: "planning-only",
     bindings: [{
       name: "approvedDiscovery",
       allowedSourceKinds: ["approved-discovery"],
+    }],
+  },
+  {
+    id: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
+    version: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Author the bounded inspection-drone architecture",
+    description:
+      "Insert one reviewed high-level inspection-drone SysML architecture into the exact V3 SysON model container authorized by the canonical project brief.",
+    workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
     }],
   },
   {

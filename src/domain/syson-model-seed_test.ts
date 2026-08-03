@@ -144,12 +144,54 @@ function seedInput(
 ) {
   return {
     base,
+    lineage: seedLineage(base),
     trustedRunId: "run:seed-syson-model",
     capturedAt: AT,
     projectCreateResult: projectCreateResult(),
     modelCreateResult: modelCreateResult(),
     rootPackageGetResult: rootPackageGetResult(),
     ...overrides,
+  };
+}
+
+function seedLineage(base: ThreadSnapshot) {
+  const document = base.artifacts[0]!;
+  return {
+    approvedBriefBasis: {
+      kind: "approved-brief" as const,
+      projectId: "drone-concept",
+      projectSnapshotId: "drone-concept:project:r3:approve-brief",
+      projectRevision: 3,
+      briefId: "drone-brief",
+      briefSnapshotId: "drone-brief:r1",
+      briefRevision: 1,
+      approvedBriefFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "b".repeat(64),
+      },
+    },
+    plan: {
+      publishedAt: "2026-08-02T11:00:00.000Z",
+      publishedBy: { id: "agent:engineering", origin: "agent" as const },
+    },
+    projectChange: {
+      id: "change:append-syson-seed",
+      commandId: "append-syson-seed",
+      publishedAt: "2026-08-02T12:05:00.000Z",
+      publishedBy: { id: "agent:engineering", origin: "agent" as const },
+    },
+    workItemId: "seed-syson-model",
+    baseSnapshot: {
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+    documentaryArtifact: {
+      id: document.id,
+      fingerprint: document.fingerprint,
+      uri: document.uri!,
+      producerRunId: document.producer.runId,
+    },
   };
 }
 
@@ -180,8 +222,8 @@ function rootPackageGetResult() {
 }
 
 function documentaryBaseline(): ThreadSnapshot {
-  const artifactId = `approved-discovery-document-${DOCUMENT_DIGEST}`;
-  const changeSetId = `approved-discovery-baseline-${DOCUMENT_DIGEST}`;
+  const artifactId = `approved-brief-document-${DOCUMENT_DIGEST}`;
+  const changeSetId = `approved-brief-baseline-${DOCUMENT_DIGEST}`;
   const changeId = `${changeSetId}:record-document`;
   return validateThreadSnapshot({
     schemaVersion: "1.0",
@@ -202,7 +244,7 @@ function documentaryBaseline(): ThreadSnapshot {
     },
     changeSet: {
       id: changeSetId,
-      name: "Record approved discovery documentary baseline",
+      name: "Record approved project brief documentary baseline",
       status: "applied",
       createdAt: "2026-08-02T12:00:00.000Z",
       appliedAt: "2026-08-02T12:00:00.000Z",
@@ -216,16 +258,16 @@ function documentaryBaseline(): ThreadSnapshot {
     },
     artifacts: [{
       id: artifactId,
-      name: "Approved discovery documentary baseline (pre-technical)",
+      name: "Approved project brief documentary baseline (pre-technical)",
       kind: "document",
       version: DOCUMENT_DIGEST,
       fingerprint: { algorithm: "sha256", digest: DOCUMENT_DIGEST },
-      uri: `casys://approved-discovery-capture/sha256/${DOCUMENT_DIGEST}`,
+      uri: `casys://approved-brief-capture/sha256/${DOCUMENT_DIGEST}`,
       mediaType: "application/json",
       producer: {
         serverId: "casys-digital-thread",
-        tool: "baseline_from_approved_discovery",
-        runId: "run:approved-discovery-baseline",
+        tool: "baseline_from_approved_brief",
+        runId: "run:approved-brief-baseline",
       },
       inputArtifactIds: [],
       freshness: {

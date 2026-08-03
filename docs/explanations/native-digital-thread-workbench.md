@@ -1,7 +1,7 @@
 # Native digital-thread Workbench: compose evidence, not applications
 
-**Status: accepted target — multi-provider CM-01 baseline plus two deployed bounded V2
-operations and one guarded source-only r3 operation, 2026-08-02**
+**Status: accepted target — native schema-3.0 project cockpit, three bounded V3
+operations, and the separate historical CM-01 technical proof, 2026-08-03**
 
 The first Workbench proved that five independent MCP Apps can be discovered,
 capability-bounded, mounted, and synchronized. It also exposed the product limit of that
@@ -103,45 +103,52 @@ never starts CAD, meshing, FEA, or physical simulation. The read and SSE paths r
 passive. A provider recomputation is a separately orchestrated agent action with an
 identified change set, durable run state, and provenance.
 
-The current BFF serves the CM-01 snapshot and a same-origin SSE stream which announces
-newer persisted revisions. It exposes no product command or provider-execution
+The current BFF serves the focused durable project and a same-origin SSE stream which
+announces newer persisted revisions. A historical CM-01 focus still resolves its exact
+technical snapshot; a new V3 focus starts on the living project brief and never falls
+back to CM-01 evidence. The BFF exposes no product command or provider-execution
 authority. Human intent enters through the paired conversation and consequential
 decisions are bound to exact revisions through signed MCP elicitation.
 
 The same project is visible to agents through the Console MCP server. MCP exposes
-snapshot, proposal, signed human approval or rejection elicitation, server-derived
-queueing, and narrow execution of a registered V2 run. The human never supplies tool
-names or solver payloads, and the agent cannot confirm its own proposal. Every accepted
-command converges on one immutable active store with optimistic revision checks and
-durable idempotency receipts.
+snapshot, proposal, signed human approval or rejection elicitation, append-only project
+changes, server-derived queueing, and narrow execution of registered V3 operations. The
+human never supplies tool names or solver payloads, and the agent cannot confirm its own
+proposal. Every accepted command converges on one immutable active store with optimistic
+revision checks and durable idempotency receipts.
 
-For a new idea/specification project, the first V2 run creates a SHA-256-addressed,
-immutable document of the exact approved discovery and reviewed plan: documentary
-`ThreadSnapshot` r1. The cockpit can show its queue, redacted live milestones, and
-resulting provenance without presenting it as a technical graph. This documentary
-baseline is deliberately pre-technical: it is not a SysML model, CAD artifact,
-FEA/simulation result, measurement, requirement verdict, or conformity claim.
+For a new idea/specification project, `baseline.from-approved-brief@1` creates a
+SHA-256-addressed immutable document of the exact human-approved living brief and
+reviewed plan: documentary `ThreadSnapshot` r1. The cockpit can show its queue, redacted
+live milestones, and resulting provenance without presenting it as a technical graph.
+This documentary baseline is deliberately pre-technical: it is not a SysML model, CAD
+artifact, FEA/simulation result, measurement, requirement verdict, or conformity claim.
 
-The first implemented provider-backed V2 run, `architecture.seed-syson-model@1`, is
-intentionally just as narrow. From exact r1, a server-fixed executor creates a blank
-SysON project container, blank SysML document, and root package, then reads the root
-package back. Only normalized provider identities are captured before the immutable r2
-descendant is published. The live activity is a small closed sequence, not a generic
-SysON viewer; the agent cannot supply a provider, tool, arguments, SysML text, or
-result. Each non-idempotent creation is durably recorded before dispatch, so an unknown
-outcome stops for review instead of being blindly retried. r2 proves only the editable
-container identity: it is not a system architecture, requirements, CAD, simulation,
-measurement, or a verdict.
+The first implemented provider-backed V3 operation, `architecture.seed-syson-model@2`,
+is intentionally just as narrow. After an append-only project change has named exact
+documentary r1, its server-fixed executor creates a blank SysON project container, blank
+SysML document, and root package, then reads the root package back. The
+`syson-model-seed-capture/2.0` binds normalized provider identities to the exact
+approved brief, documentary artifact, and project change before immutable r2 is
+published. The live activity is a small closed sequence, not a generic SysON viewer; the
+agent cannot supply a provider, tool, arguments, SysML text, or result. Each
+non-idempotent creation is durably recorded before dispatch, so an unknown outcome stops
+for review instead of being blindly retried. r2 proves only the editable container
+identity: it is not a system architecture, requirements, CAD, simulation, measurement,
+or a verdict.
 
-The source tree also contains the guarded r3 `architecture.author-inspection-drone@1`
-executor. It requires that exact r2 seed, the same approved discovery's
-`primary-mission = inspection-controlled` and `payload-class = light-inspection-camera`
-choices, and an empty root before inserting one fixed high-level SysML fragment. It must
-be included in the initial plan because planning becomes immutable after r1. This r3
-path has not been released. A separate disposable local parser/translator and model-tree
-check passed against loopback `mcp-syson 0.5.2` on 2026-08-03, but it was not an r3
-project run and supplies no current technical, CAD, physics, flight, cost, compliance,
-or verification evidence.
+The current V3 continuation, `architecture.author-inspection-drone@2`, requires that
+exact r2 seed, the same exact approved-brief authorization chain, an append-only project
+change, and an empty root before inserting one fixed high-level SysML fragment. It
+persists `inspection-drone-architecture-capture/2.0` before publishing r3. This is a
+bounded architecture record, not CAD, physics, flight, cost, compliance, or verification
+evidence.
+
+The V2 `baseline.from-approved-discovery@1` remains a trusted executor for an exact
+historical approved-discovery project. The similarly named
+`architecture.seed-syson-model@1` and `architecture.author-inspection-drone@1` revisions
+remain readable for audit but are planning-only and never dispatched. None of these V2
+operations can bootstrap or silently convert a V3 project.
 
 The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
 build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It

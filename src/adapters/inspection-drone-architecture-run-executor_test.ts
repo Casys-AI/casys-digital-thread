@@ -1,13 +1,14 @@
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
-import { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
-import { ProjectDiscoveryCommandService } from "../domain/project-discovery-command-service.ts";
+import { ProjectBriefCommandService } from "../domain/project-brief-command-service.ts";
 import {
   INSPECTION_DRONE_ARCHITECTURE_DECLARATIONS,
-  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_ARCHITECTURE_SYSML,
+  INSPECTION_DRONE_ARCHITECTURE_V3_CAPTURE_SCHEMA,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
   inspectionDroneArchitectureSysmlFingerprint,
 } from "../domain/inspection-drone-architecture.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
 import { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
@@ -36,7 +37,6 @@ import {
   InspectionDroneArchitectureRunExecutor,
   resolveInspectionDroneArchitectureEligibility,
 } from "./inspection-drone-architecture-run-executor.ts";
-import { FileProjectDiscoveryRevisionStore } from "./project-discovery-store.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
@@ -84,6 +84,15 @@ Deno.test("r3 authoring inserts only the fixed architecture after exact r1/r2 ga
     const capture = await fixture.captures.read(artifact.fingerprint);
     assertExists(capture);
     assertEquals(capture.includes(INSPECTION_DRONE_ARCHITECTURE_SYSML), false);
+    assertEquals(capture.includes("approved-discovery"), false);
+    assertEquals(
+      JSON.parse(capture).schemaVersion,
+      INSPECTION_DRONE_ARCHITECTURE_V3_CAPTURE_SCHEMA,
+    );
+    assertEquals(JSON.parse(capture).operation, {
+      id: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
+      version: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version,
+    });
     assertEquals(
       (await fixture.liveUpdates.list(completed.project.subjectId)).map((update) => [
         update.operationId,
@@ -133,6 +142,41 @@ Deno.test("r3 authoring inserts only the fixed architecture after exact r1/r2 ga
       (await fixture.liveUpdates.list(completed.project.subjectId)).length,
       9,
     );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("r3 keeps the brief revision that authorized its change when the living brief evolves", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-r3-architecture-historical-brief-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory, {
+      evolveBriefBeforeArchitectureQueue: true,
+    });
+    assertEquals(fixture.queued.framing?.currentBrief?.revision, 2);
+    const change = fixture.queued.planChanges?.find((candidate) =>
+      candidate.workItemIds.includes("author-inspection-drone")
+    );
+    assertEquals(change?.approvedBriefBasis?.briefRevision, 1);
+
+    const syson = new ArchitectureSyson();
+    const completed = await architectureExecutor(fixture, syson).execute(
+      AGENT,
+      executionCommand(fixture.queued),
+    );
+    const run = completed.agentRuns.at(-1)!;
+    const snapshot = await fixture.snapshots.get(run.resultSnapshot!.snapshotId);
+    assertExists(snapshot);
+    const capture = await fixture.captures.read(
+      snapshot.artifacts.at(-1)!.fingerprint,
+    );
+    assertExists(capture);
+    const authorization = JSON.parse(capture).authorization;
+    assertEquals(authorization.approvedBriefBasis.briefRevision, 1);
+    assertEquals(authorization.approvedBrief.revision, 1);
+    assertEquals(syson.calls.length, 4);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -382,8 +426,9 @@ Deno.test("r3 eligibility binds the r1 capture to this project's identity, plan,
     const basis = run.basis!;
     if (basis.kind !== "thread-snapshot") throw new Error("Expected an r2 basis.");
     const dependencies = {
+      projects: fixture.projects,
       snapshots: fixture.snapshots,
-      approvedDiscoveryCaptures: fixture.baselineCaptures,
+      approvedBriefCaptures: fixture.baselineCaptures,
       seedCaptures: fixture.seedCaptures,
     };
     const variants = [
@@ -398,7 +443,7 @@ Deno.test("r3 eligibility binds the r1 capture to this project's identity, plan,
       {
         ...fixture.queued,
         workItems: fixture.queued.workItems.map((item) =>
-          item.id === "record-approved-discovery"
+          item.id === "record-approved-brief"
             ? { ...item, title: "Altered documentary baseline" }
             : item
         ),
@@ -410,11 +455,49 @@ Deno.test("r3 eligibility binds the r1 capture to this project's identity, plan,
           resolveInspectionDroneArchitectureEligibility(dependencies, {
             project,
             basis,
+            workItemId: run.workItemId,
           }),
         Error,
-        "identity, approved handoff, reviewed plan, and baseline work item",
+        "identity, approved brief basis, reviewed plan, and baseline work item",
       );
     }
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("r3 @2 queue gate refuses a missing approved-brief capture before creating a run", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-r3-architecture-v3-queue-gate-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory, {
+      queueArchitecture: false,
+    });
+    const r1Reference = fixture.queued.threadSnapshots[0]!;
+    const r1 = await fixture.snapshots.get(r1Reference.snapshotId);
+    assertExists(r1);
+    const document = r1.artifacts[0]!;
+    await Deno.remove(fixture.baselineCaptures.pathFor(document.fingerprint));
+    const before = await fixture.projects.get(fixture.queued.project.id);
+    const r2 = fixture.queued.threadSnapshots.at(-1)!;
+
+    await assertRejects(
+      () =>
+        fixture.commands.queueRun(HUMAN, {
+          commandId: "human-authorize-architecture-without-v3-capture",
+          projectId: fixture.queued.project.id,
+          expectedRevision: fixture.queued.revision,
+          issuedAt: "2026-08-03T12:03:30.000Z",
+          runId: "run:author-without-v3-capture",
+          workItemId: "author-inspection-drone",
+          summary: "The exact V3 documentary authority must remain readable.",
+          basis: { kind: "thread-snapshot", ...r2 },
+        }),
+      Error,
+      "approved-brief capture required by V3 architecture is no longer readable",
+    );
+    assertEquals(await fixture.projects.get(fixture.queued.project.id), before);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -460,64 +543,6 @@ Deno.test("r3 fails closed on an uncertain insertion and never replays it", asyn
   }
 });
 
-Deno.test("r3 requires the exact approved payload choice before it calls SysON", async () => {
-  const directory = await Deno.makeTempDir({
-    prefix: "casys-r3-architecture-payload-",
-  });
-  try {
-    const fixture = await queuedArchitecture(directory, {
-      payload: "flight-only",
-      queueEligibility: false,
-    });
-    const syson = new ArchitectureSyson();
-    const executor = architectureExecutor(fixture, syson);
-
-    await assertRejects(
-      () => executor.execute(AGENT, executionCommand(fixture.queued)),
-      Error,
-      "payload-class=light-inspection-camera",
-    );
-    assertEquals(syson.calls, []);
-    const current = await fixture.projects.get(fixture.queued.project.id);
-    assertEquals(current?.agentRuns.at(-1)?.status, "queued");
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
-});
-
-Deno.test("r3 queue eligibility refuses an unapproved payload before it creates a run", async () => {
-  const directory = await Deno.makeTempDir({
-    prefix: "casys-r3-architecture-queue-eligibility-",
-  });
-  try {
-    const fixture = await queuedArchitecture(directory, {
-      payload: "flight-only",
-      queueArchitecture: false,
-    });
-    const r2 = fixture.queued.threadSnapshots.at(-1)!;
-    const before = await fixture.projects.get(fixture.queued.project.id);
-
-    await assertRejects(
-      () =>
-        fixture.commands.queueRun(HUMAN, {
-          commandId: "human-authorize-unapproved-inspection-drone-architecture",
-          projectId: fixture.queued.project.id,
-          expectedRevision: fixture.queued.revision,
-          issuedAt: "2026-08-03T12:03:30.000Z",
-          runId: "run:author-unapproved-inspection-drone",
-          workItemId: "author-inspection-drone",
-          summary: "Do not queue an architecture outside the reviewed scope.",
-          basis: { kind: "thread-snapshot", ...r2 },
-        }),
-      Error,
-      "payload-class=light-inspection-camera",
-    );
-    assertEquals(await fixture.projects.get(fixture.queued.project.id), before);
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
-});
-
 Deno.test("r3 rejects a corrupt r2 seed capture before it calls SysON", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-r3-architecture-seed-" });
   try {
@@ -553,7 +578,7 @@ function architectureExecutor(
     projects: fixture.projects,
     commands: fixture.commands,
     snapshots: fixture.snapshots,
-    approvedDiscoveryCaptures: fixture.baselineCaptures,
+    approvedBriefCaptures: fixture.baselineCaptures,
     seedCaptures: fixture.seedCaptures,
     captures: fixture.captures,
     attempts: fixture.attempts,
@@ -589,12 +614,11 @@ function executionCommand(
 async function queuedArchitecture(
   directory: string,
   options: {
-    payload?: "light-inspection-camera" | "flight-only";
     queueEligibility?: boolean;
     queueArchitecture?: boolean;
+    evolveBriefBeforeArchitectureQueue?: boolean;
   } = {},
 ) {
-  const discoveries = new FileProjectDiscoveryRevisionStore(`${directory}/discoveries`);
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
   const baselineCaptures = new FileApprovedDiscoveryBaselineCaptureStore(
@@ -609,58 +633,86 @@ async function queuedArchitecture(
     `${directory}/r3-attempts`,
   );
   const liveUpdates = new FileLiveThreadUpdateStore(`${directory}/live-updates`);
-  const discovery = await approvedDroneDiscovery(
-    discoveries,
-    options.payload ?? "light-inspection-camera",
-  );
-  const handoff = await new ProjectDiscoveryHandoffService(
-    discoveries,
-    projects,
-    () => "2026-08-03T12:00:00.000Z",
-  ).createEngineeringProject(HUMAN, {
-    commandId: "create-drone-project",
-    discoveryId: discovery.discoveryId,
-    expectedDiscoveryRevision: discovery.revision,
-    issuedAt: "2026-08-03T11:59:00.000Z",
-    projectId: "drone-review-demo",
-    projectName: "Build a reviewable controlled inspection drone demonstrator.",
-  });
   let tick = 0;
+  const now = () =>
+    new Date(Date.parse("2026-08-03T12:10:00.000Z") + ++tick * 1_000)
+      .toISOString();
+  const briefs = new ProjectBriefCommandService(projects, now);
+  let project = await briefs.startProject(AGENT, {
+    commandId: "start-drone-project",
+    projectId: "drone-review-demo",
+    projectName: "Inspection drone demonstrator",
+    issuedAt: "2026-08-03T11:59:00.000Z",
+    intent: "Build a reviewable controlled visual-inspection drone demonstrator.",
+    intentSource: { kind: "human", reference: "conversation:turn-1" },
+  });
+  project = await briefs.proposeBrief(AGENT, {
+    commandId: "propose-drone-brief",
+    projectId: project.project.id,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-03T12:00:02.000Z",
+    items: [{
+      id: "objective",
+      kind: "objective",
+      statement: "Build a reviewable controlled inspection drone.",
+      sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    }, {
+      id: "mission",
+      kind: "mission-scenario",
+      statement: "Perform controlled visual inspection with a light camera.",
+      sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    }, {
+      id: "success",
+      kind: "success-criterion",
+      statement: "Preserve traceable evidence from SysML through verification.",
+      sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    }],
+  });
+  const proposedBrief = project.framing!.proposedBrief!;
+  const proposalReview = project.framing!.proposalReview!;
+  project = await briefs.approveBrief(HUMAN, {
+    commandId: "approve-drone-brief",
+    projectId: project.project.id,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-03T12:00:04.000Z",
+    briefSnapshotId: proposedBrief.id,
+    briefRevision: proposedBrief.revision,
+    rationale: "Approved as the bounded first demonstrator.",
+    inputFingerprint: proposalReview.inputFingerprint,
+  });
   const queueEligibility = options.queueEligibility === false
     ? undefined
     : new InspectionDroneArchitectureQueueEligibility({
+      projects,
       snapshots,
-      approvedDiscoveryCaptures: baselineCaptures,
+      approvedBriefCaptures: baselineCaptures,
       seedCaptures,
     });
   const commands = new EngineeringProjectCommandService(
     projects,
     new ExactThreadCompletionEvidenceValidator(snapshots),
-    () =>
-      new Date(Date.parse("2026-08-03T12:01:00.000Z") + ++tick * 1_000)
-        .toISOString(),
+    now,
     {
-      discoveries,
-      operations: testOperationRegistry(),
+      operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
       ...(queueEligibility ? { queueEligibility } : {}),
     },
     new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
   );
-  const planned = await commands.publishPlan(AGENT, stagedPlanCommand(handoff));
+  const planned = await commands.publishPlan(AGENT, initialPlanCommand(project));
   const queuedBaseline = await commands.queueRun(HUMAN, {
     commandId: "human-authorize-documentary-baseline",
     projectId: planned.project.id,
     expectedRevision: planned.revision,
     issuedAt: "2026-08-03T12:01:30.000Z",
     runId: "run:documentary-baseline",
-    workItemId: "record-approved-discovery",
+    workItemId: "record-approved-brief",
     summary: "Human authorized the documentary baseline.",
     basis: planned.plan!.basis,
   });
   const baselineExecutor = new ApprovedDiscoveryBaselineRunExecutor({
     projects,
     commands,
-    discoveries,
+    discoveries: { getRevision: () => Promise.resolve(undefined) },
     captures: baselineCaptures,
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
@@ -674,10 +726,50 @@ async function queuedArchitecture(
     runId: "run:documentary-baseline",
   });
   const r1 = baselineCompleted.threadSnapshots[0]!;
-  const queuedSeed = await commands.queueRun(HUMAN, {
-    commandId: "human-authorize-syson-seed",
+  const architectureDeclared = await commands.appendChange(AGENT, {
+    commandId: "append-drone-architecture",
     projectId: baselineCompleted.project.id,
     expectedRevision: baselineCompleted.revision,
+    issuedAt: "2026-08-03T12:02:20.000Z",
+    baseSnapshot: r1,
+    phases: [{
+      id: "architecture",
+      name: "System model",
+      description: "Create the bounded traceable inspection-drone system model.",
+    }],
+    workItems: [{
+      id: "seed-syson-model",
+      phaseId: "architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: ["record-approved-brief"],
+      decisionIds: [],
+      operation: {
+        ...SYSON_MODEL_SEED_OPERATION,
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }, {
+      id: "author-inspection-drone",
+      phaseId: "architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: ["seed-syson-model"],
+      decisionIds: [],
+      operation: {
+        ...INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+  const queuedSeed = await commands.queueRun(HUMAN, {
+    commandId: "human-authorize-syson-seed",
+    projectId: architectureDeclared.project.id,
+    expectedRevision: architectureDeclared.revision,
     issuedAt: "2026-08-03T12:02:30.000Z",
     runId: "run:seed-syson-model",
     workItemId: "seed-syson-model",
@@ -702,12 +794,49 @@ async function queuedArchitecture(
     runId: "run:seed-syson-model",
   });
   const r2 = seedCompleted.threadSnapshots.at(-1)!;
+  let architectureProject = seedCompleted;
+  if (options.evolveBriefBeforeArchitectureQueue) {
+    architectureProject = await briefs.proposeBrief(AGENT, {
+      commandId: "propose-drone-brief-r2",
+      projectId: architectureProject.project.id,
+      expectedRevision: architectureProject.revision,
+      issuedAt: "2026-08-03T12:03:10.000Z",
+      items: [{
+        id: "objective",
+        kind: "objective",
+        statement: "Extend the reviewed drone mission without rewriting prior work.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }, {
+        id: "mission",
+        kind: "mission-scenario",
+        statement: "Perform controlled visual inspection with a light camera.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }, {
+        id: "success",
+        kind: "success-criterion",
+        statement: "Preserve traceable evidence from SysML through verification.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }],
+    });
+    const proposal = architectureProject.framing!.proposedBrief!;
+    const review = architectureProject.framing!.proposalReview!;
+    architectureProject = await briefs.approveBrief(HUMAN, {
+      commandId: "approve-drone-brief-r2",
+      projectId: architectureProject.project.id,
+      expectedRevision: architectureProject.revision,
+      issuedAt: "2026-08-03T12:03:20.000Z",
+      briefSnapshotId: proposal.id,
+      briefRevision: proposal.revision,
+      rationale: "The living brief can evolve without changing prior authorization.",
+      inputFingerprint: review.inputFingerprint,
+    });
+  }
   const queued = options.queueArchitecture === false
-    ? seedCompleted
+    ? architectureProject
     : await commands.queueRun(HUMAN, {
       commandId: "human-authorize-inspection-drone-architecture",
-      projectId: seedCompleted.project.id,
-      expectedRevision: seedCompleted.revision,
+      projectId: architectureProject.project.id,
+      expectedRevision: architectureProject.revision,
       issuedAt: "2026-08-03T12:03:30.000Z",
       runId: "run:author-inspection-drone",
       workItemId: "author-inspection-drone",
@@ -728,213 +857,35 @@ async function queuedArchitecture(
   };
 }
 
-function testOperationRegistry() {
+function initialPlanCommand(project: { project: { id: string }; revision: number }) {
   return {
-    validate(
-      input: Parameters<typeof REGISTERED_ENGINEERING_OPERATION_REGISTRY.validate>[0],
-    ) {
-      const operation = input.operation;
-      if (
-        operation.id !== INSPECTION_DRONE_ARCHITECTURE_OPERATION.id ||
-        operation.version !== INSPECTION_DRONE_ARCHITECTURE_OPERATION.version
-      ) {
-        return REGISTERED_ENGINEERING_OPERATION_REGISTRY.validate(input);
-      }
-      if (
-        operation.bindings.length !== 1 ||
-        operation.bindings[0]?.name !== "approvedDiscovery" ||
-        operation.bindings[0].source.kind !== "approved-discovery" ||
-        (input.stage === "queue" && input.basisKind !== "thread-snapshot")
-      ) {
-        throw new Error("Invalid test inspection-drone architecture operation.");
-      }
-      return {
-        operation: {
-          id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
-          version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
-          startingPoint: "idea-or-spec" as const,
-          title: "Author the bounded inspection-drone architecture",
-          description:
-            "Insert one reviewed high-level architecture into the empty SysON root.",
-          workItemKind: "architect" as const,
-          execution: "trusted" as const,
-        },
-        bindings: structuredClone(operation.bindings),
-      };
-    },
-  };
-}
-
-function stagedPlanCommand(project: { project: { id: string } }) {
-  return {
-    commandId: "agent-publish-staged-plan",
+    commandId: "agent-publish-initial-plan",
     projectId: project.project.id,
-    expectedRevision: 1,
+    expectedRevision: project.revision,
     issuedAt: "2026-08-03T12:00:30.000Z",
     startingPoint: "idea-or-spec" as const,
-    phases: [
-      {
-        id: "baseline",
-        name: "First project record",
-        description: "Record the reviewed discovery before technical work begins.",
+    phases: [{
+      id: "baseline",
+      name: "First project record",
+      description: "Record the canonical approved brief before technical work.",
+    }],
+    workItems: [{
+      id: "record-approved-brief",
+      phaseId: "baseline",
+      owner: "agent" as const,
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" as const },
+        }],
       },
-      {
-        id: "architecture",
-        name: "System model",
-        description: "Create the bounded traceable inspection-drone system model.",
-      },
-    ],
-    workItems: [
-      {
-        id: "record-approved-discovery",
-        phaseId: "baseline",
-        owner: "agent" as const,
-        dependsOnWorkItemIds: [],
-        decisionIds: [],
-        operation: {
-          id: "baseline.from-approved-discovery",
-          version: "1",
-          bindings: [{
-            name: "approvedDiscovery",
-            source: { kind: "approved-discovery" as const },
-          }],
-        },
-      },
-      {
-        id: "seed-syson-model",
-        phaseId: "architecture",
-        owner: "agent" as const,
-        dependsOnWorkItemIds: ["record-approved-discovery"],
-        decisionIds: [],
-        operation: {
-          id: "architecture.seed-syson-model",
-          version: "1",
-          bindings: [{
-            name: "approvedDiscovery",
-            source: { kind: "approved-discovery" as const },
-          }],
-        },
-      },
-      {
-        id: "author-inspection-drone",
-        phaseId: "architecture",
-        owner: "agent" as const,
-        dependsOnWorkItemIds: ["seed-syson-model"],
-        decisionIds: [],
-        operation: {
-          id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
-          version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
-          bindings: [{
-            name: "approvedDiscovery",
-            source: { kind: "approved-discovery" as const },
-          }],
-        },
-      },
-    ],
+    }],
     requiredDecisions: [],
   };
-}
-
-async function approvedDroneDiscovery(
-  store: FileProjectDiscoveryRevisionStore,
-  payload: "light-inspection-camera" | "flight-only",
-) {
-  let tick = 0;
-  const service = new ProjectDiscoveryCommandService(
-    store,
-    () =>
-      new Date(Date.parse("2026-08-03T10:00:00.000Z") + ++tick * 1_000)
-        .toISOString(),
-  );
-  let discovery = await service.start(HUMAN, {
-    commandId: "start-drone-discovery",
-    discoveryId: "drone-review-discovery",
-    issuedAt: "2026-08-03T09:59:00.000Z",
-    intent: "Build a reviewable controlled visual-inspection drone demonstrator.",
-  });
-  for (
-    const question of [
-      {
-        id: "primary-mission",
-        value: "inspection-controlled",
-        label: "Controlled inspection",
-      },
-      {
-        id: "payload-class",
-        value: payload,
-        label: payload === "light-inspection-camera" ? "Light camera" : "Flight only",
-      },
-    ]
-  ) {
-    discovery = await service.proposeQuestion(AGENT, {
-      commandId: `propose-${question.id}`,
-      discoveryId: discovery.discoveryId,
-      expectedRevision: discovery.revision,
-      issuedAt: "2026-08-03T09:59:10.000Z",
-      question: {
-        id: question.id,
-        prompt: question.label,
-        whyItMatters: "It bounds the first reviewed architecture slice.",
-        recommendation: {
-          value: question.value,
-          rationale: "The review selected this bounded demonstration scope.",
-          confidence: "high",
-        },
-        options: [{
-          value: question.value,
-          label: question.label,
-          consequences: "This fixture uses the selected bounded scope.",
-        }],
-        allowUnknown: false,
-        risk: "material",
-        evidenceNeeded: [],
-      },
-    });
-    discovery = await service.recordAnswer(HUMAN, {
-      commandId: `answer-${question.id}`,
-      discoveryId: discovery.discoveryId,
-      expectedRevision: discovery.revision,
-      issuedAt: "2026-08-03T09:59:20.000Z",
-      answer: {
-        id: `answer-${question.id}`,
-        questionId: question.id,
-        kind: "provided",
-        value: question.value,
-        explanation: "Human review selected this bounded option.",
-        source: { kind: "human", reference: "human:reviewer" },
-      },
-    });
-  }
-  discovery = await service.proposeBrief(AGENT, {
-    commandId: "propose-drone-brief",
-    discoveryId: discovery.discoveryId,
-    expectedRevision: discovery.revision,
-    issuedAt: "2026-08-03T09:59:30.000Z",
-    brief: {
-      id: "drone-brief-v1",
-      objective: "Build a reviewable controlled inspection drone demonstrator.",
-      missionScenarios: ["Controlled visual inspection"],
-      successCriteria: ["Create a reviewable engineering record"],
-      constraints: ["No provider execution before a reviewed plan"],
-      intendedMarkets: ["To be confirmed"],
-      manufacturingJurisdictions: ["To be confirmed"],
-      operatingJurisdictions: ["To be confirmed"],
-      complianceTargets: ["Identify applicable evidence"],
-      verificationPlan: ["Plan technical verification after baseline"],
-      exclusions: ["No certification or flight claim"],
-      assumptions: ["Controlled demonstrator"],
-      openQuestions: [],
-    },
-  });
-  return await service.approveBrief(HUMAN, {
-    commandId: "approve-drone-brief",
-    discoveryId: discovery.discoveryId,
-    expectedRevision: discovery.revision,
-    issuedAt: "2026-08-03T09:59:40.000Z",
-    briefId: discovery.brief!.id,
-    rationale: "The bounded brief is clear enough to create a project path.",
-    inputFingerprint: discovery.review!.inputFingerprint,
-  });
 }
 
 class SeedSyson implements McpToolClient {

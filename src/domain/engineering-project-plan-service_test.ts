@@ -388,16 +388,14 @@ Deno.test("a SysON seed can be planned but cannot be queued from discovery", asy
   );
 });
 
-Deno.test("a staged V2 plan unlocks the SysON seed only after its documentary baseline", async () => {
+Deno.test("a historical staged V2 seed stays non-executable after its documentary baseline", async () => {
   const discovery = discoveryFixture();
   const store = new MemoryProjectStore(projectShell());
   const initialValidator = new RecordingInitialEvidenceValidator();
-  const descendantValidator = new RecordingThreadEvidenceValidator();
   const service = planService(
     store,
     discovery,
     initialValidator,
-    descendantValidator,
   );
   let project = await service.publishPlan(AGENT, stagedPlanCommand(1));
   assertEquals(project.workItems.map((item) => [item.id, item.status]), [
@@ -479,63 +477,18 @@ Deno.test("a staged V2 plan unlocks the SysON seed only after its documentary ba
     "invalid_input",
   );
 
-  project = await service.queueRun(HUMAN, {
-    ...common(project.revision, "queue-syson-seed"),
-    runId: "run:seed-syson-model",
-    workItemId: "seed-syson-model",
-    summary: "Queue the exact post-baseline system-model seed.",
-    basis: { kind: "thread-snapshot", ...base },
-  });
-  project = await service.claimRun(AGENT, {
-    ...common(project.revision, "claim-syson-seed"),
-    runId: "run:seed-syson-model",
-    summary: "Agent claims the post-baseline system-model seed.",
-  });
-  project = await service.publishRun(AGENT, {
-    ...common(project.revision, "publish-syson-seed"),
-    runId: "run:seed-syson-model",
-    summary: "The system-model result is ready for validation.",
-  });
-  const evidenceRefs = [{
-    snapshotId: `${PROJECT_ID}:thread:r2:refined`,
-    snapshotRevision: 2,
-    kind: "artifact" as const,
-    id: "refined-baseline-manifest",
-  }];
   await assertCommandError(
     () =>
-      service.completeRun(AGENT, {
-        ...common(project.revision, "complete-syson-seed-same-id"),
-        runId: "run:seed-syson-model",
-        summary: "Attempt to publish a non-descendant system-model result.",
-        resultSnapshot: {
-          snapshotId: base.snapshotId,
-          revision: base.revision + 1,
-          subjectId: base.subjectId,
-        },
-        evidenceRefs,
+      service.queueRun(HUMAN, {
+        ...common(project.revision, "queue-historical-syson-seed"),
+        runId: "run:historical-seed-syson-model",
+        workItemId: "seed-syson-model",
+        summary: "Historical @1 work stays readable but cannot create a new run.",
+        basis: { kind: "thread-snapshot", ...base },
       }),
-    "invalid_input",
+    "invalid_transition",
   );
-  assertEquals(descendantValidator.calls, 0);
-
-  project = await service.completeRun(AGENT, {
-    ...common(project.revision, "complete-syson-seed"),
-    runId: "run:seed-syson-model",
-    summary: "Publish a true descendant system-model result.",
-    resultSnapshot: {
-      snapshotId: `${PROJECT_ID}:thread:r2:refined`,
-      revision: 2,
-      subjectId: base.subjectId,
-    },
-    evidenceRefs,
-  });
-  assertEquals(descendantValidator.calls, 1);
-  assertEquals(descendantValidator.lastBase, base);
-  assertEquals(project.agentRuns.at(-1)?.basis, {
-    kind: "thread-snapshot",
-    ...base,
-  });
+  assertEquals((await store.get(PROJECT_ID))?.revision, project.revision);
 });
 
 Deno.test("V2 queue revalidates a persisted post-baseline operation against its concrete basis", async () => {
@@ -687,7 +640,7 @@ Deno.test("a project change is revision-bound and requires the exact current Thr
   assertEquals(await store.get(PROJECT_ID), baseline);
 });
 
-Deno.test("an append is refused while an earlier project run is active", async () => {
+Deno.test("a historical appended operation cannot create an active run", async () => {
   const { discovery, project: baseline } = await completedInitialProject();
   const store = new MemoryProjectStore(baseline);
   const service = planService(
@@ -695,41 +648,20 @@ Deno.test("an append is refused while an earlier project run is active", async (
     discovery,
     new RecordingInitialEvidenceValidator(),
   );
-  let project = await service.appendChange(AGENT, architectureAppendCommand(baseline));
-  project = await service.queueRun(AGENT, {
-    ...common(project.revision, "queue-appended-seed"),
-    runId: "run:appended-seed",
-    workItemId: "seed-syson-model",
-    summary: "Queue the first system-model container.",
-    basis: { kind: "thread-snapshot", ...project.threadSnapshots[0] },
-  });
+  const project = await service.appendChange(
+    AGENT,
+    architectureAppendCommand(baseline),
+  );
   const before = await store.get(PROJECT_ID);
 
   await assertCommandError(
     () =>
-      service.appendChange(AGENT, {
-        ...architectureAppendCommand(project),
-        commandId: "append-while-seed-active",
-        phases: [{
-          id: "architecture-detail",
-          name: "System model detail",
-          description: "Declare work only after the active run has finished.",
-        }],
-        workItems: [{
-          id: "author-inspection-drone",
-          phaseId: "architecture-detail",
-          owner: "agent",
-          dependsOnWorkItemIds: ["seed-syson-model"],
-          decisionIds: [],
-          operation: {
-            id: "architecture.author-inspection-drone",
-            version: "1",
-            bindings: [{
-              name: "approvedDiscovery",
-              source: { kind: "approved-discovery" },
-            }],
-          },
-        }],
+      service.queueRun(AGENT, {
+        ...common(project.revision, "queue-historical-appended-seed"),
+        runId: "run:historical-appended-seed",
+        workItemId: "seed-syson-model",
+        summary: "Historical @1 work is not a route into the V3 executor.",
+        basis: { kind: "thread-snapshot", ...project.threadSnapshots[0] },
       }),
     "invalid_transition",
   );
@@ -1174,20 +1106,6 @@ class RecordingInitialEvidenceValidator
     this.lastRunId = runId;
     this.lastBasis = structuredClone(basis);
     this.lastOperation = structuredClone(operation);
-    return Promise.resolve();
-  }
-}
-
-class RecordingThreadEvidenceValidator
-  implements EngineeringProjectCompletionEvidenceValidator {
-  calls = 0;
-  lastBase?: { snapshotId: string; revision: number; subjectId: string };
-
-  validate(
-    base: { snapshotId: string; revision: number; subjectId: string },
-  ): Promise<void> {
-    this.calls++;
-    this.lastBase = structuredClone(base);
     return Promise.resolve();
   }
 }

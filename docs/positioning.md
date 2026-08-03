@@ -92,9 +92,9 @@ Key references:
 They **close the loop**: generate → physics feedback → revise, and they measure the
 improvement. On the maturity scale this project sits at "grounded, tool-verified" for
 one bounded proof case; the reusable correction loop is not yet closed. V1 must first
-generalize proof cases, connect approved discovery to technical work, and make change,
-impact, evidence, and review legible to a beginner. `experiments/oracle/` can then
-measure the modeling agent's correction rate with and without the oracle chain;
+generalize proof cases, connect the approved living brief to technical work, and make
+change, impact, evidence, and review legible to a beginner. `experiments/oracle/` can
+then measure the modeling agent's correction rate with and without the oracle chain;
 Hephaestus-CCX provides a ready-made evaluation protocol rather than one to invent.
 
 ## The pitch, in one line

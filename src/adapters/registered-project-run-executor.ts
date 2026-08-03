@@ -9,7 +9,7 @@ import {
 } from "../orchestration/operations/approved-discovery-baseline.ts";
 import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
 import {
-  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 } from "../domain/inspection-drone-architecture.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
 import type { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
@@ -99,7 +99,7 @@ export class RegisteredProjectRunExecutor {
       }
       return await this.#sysonModelSeed.execute(origin, command);
     }
-    if (sameOperation(operation, INSPECTION_DRONE_ARCHITECTURE_OPERATION)) {
+    if (sameOperation(operation, INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION)) {
       if (!this.#inspectionDroneArchitecture) {
         throw new EngineeringProjectCommandError(
           "invalid_transition",

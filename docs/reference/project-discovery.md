@@ -65,9 +65,9 @@ worldwide regulatory resolver. The simple jurisdiction fields keep the discovery
 portable while the detailed, versioned compliance-case model remains a later layer; see
 [Compliance evidence cases](../explanations/compliance-evidence-cases.md).
 
-## Agent MCP surface
+## Historical agent MCP surface
 
-The Console server at `http://127.0.0.1:3020/mcp` exposes:
+Before V3 made the living project brief canonical, the Console server exposed:
 
 - `project_discovery_start`;
 - `project_discovery_snapshot`;
@@ -77,10 +77,11 @@ The Console server at `http://127.0.0.1:3020/mcp` exposes:
 - `project_discovery_brief_confirm`;
 - `project_discovery_project_create`.
 
-All mutations use a stable `commandId`, `issuedAt`, and optimistic `expectedRevision`.
-The MCP subject or client identity is recorded as the agent actor for authoring and
-handoff. A still-pending brief may be superseded directly by a new agent proposal after
-the person corrects it in conversation; no browser-side revision request is required.
+These tools are not part of the default MCP surface anymore. Historical mutations used a
+stable `commandId`, `issuedAt`, and optimistic `expectedRevision`. The MCP subject or
+client identity is recorded as the agent actor for authoring and handoff. A
+still-pending brief may be superseded directly by a new agent proposal after the person
+corrects it in conversation; no browser-side revision request is required.
 
 `project_discovery_brief_confirm` is different from an ordinary agent mutation. Its
 first call returns an MCP `2026-07-28` MRTR `input_required` result containing an
@@ -124,12 +125,12 @@ person confirms the brief and the agent creates the empty project shell through 
 normal `project_discovery_project_create` handoff, the agent may select that project in
 the same workspace instead.
 
-A focus is not part of `ProjectDiscoverySnapshot`, does not alter any discovery revision,
-and is never a confirmation, approval, plan, run, provider call, or evidence record.
-It only tells the passive single-shell cockpit which existing dossier to read. The
-browser has no project selector or mutation route; selection stays in the paired agent
-conversation. See [the Console reference](../console.md#cockpit-focus-tools) for the
-two focus-tool contracts.
+A focus is not part of `ProjectDiscoverySnapshot`, does not alter any discovery
+revision, and is never a confirmation, approval, plan, run, provider call, or evidence
+record. It only tells the passive single-shell cockpit which existing dossier to read.
+The browser has no project selector or mutation route; selection stays in the paired
+agent conversation. See [the Console reference](../console.md#cockpit-focus-tools) for
+the two focus-tool contracts.
 
 ## MRTR runtime boundary
 

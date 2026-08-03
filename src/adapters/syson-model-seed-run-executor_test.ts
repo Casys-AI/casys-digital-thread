@@ -1,8 +1,15 @@
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
-import { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
-import { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
-import { ProjectDiscoveryCommandService } from "../domain/project-discovery-command-service.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
+import {
+  EngineeringProjectCommandService,
+  type EngineeringProjectPlanOperationRegistry,
+} from "../domain/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../domain/project-brief-command-service.ts";
+import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
+import {
+  REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+  type RegisteredEngineeringOperation,
+  type RegisteredEngineeringOperationInput,
+} from "../orchestration/operations/registry.ts";
 import { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
@@ -13,7 +20,6 @@ import { FileSysonModelSeedAttemptStore } from "./file-syson-model-seed-attempt-
 import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
 import { FileLiveThreadUpdateStore } from "./live-thread-update-store.ts";
-import { FileProjectDiscoveryRevisionStore } from "./project-discovery-store.ts";
 import type {
   McpToolCall,
   McpToolClient,
@@ -24,6 +30,56 @@ import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
 const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
+const V3_SEED_OPERATION: RegisteredEngineeringOperation = {
+  id: "architecture.seed-syson-model",
+  version: "2",
+  startingPoint: "idea-or-spec",
+  allowedBasisKinds: ["thread-snapshot"],
+  title: "Create the first editable system model",
+  description:
+    "Create a traceable SysML system-model container after the approved brief baseline.",
+  workItemKind: "architect",
+  riskClass: "consequential",
+  execution: "trusted",
+  bindings: [{ name: "approvedBrief", allowedSourceKinds: ["approved-brief"] }],
+};
+const TEST_OPERATION_REGISTRY: EngineeringProjectPlanOperationRegistry = {
+  validate(input) {
+    const candidate = input as {
+      operation?: {
+        id?: unknown;
+        version?: unknown;
+        bindings?: unknown;
+      };
+      stage?: unknown;
+      basisKind?: unknown;
+    };
+    if (!isV3Seed(candidate.operation ?? {})) {
+      return REGISTERED_ENGINEERING_OPERATION_REGISTRY.validate(
+        input as RegisteredEngineeringOperationInput,
+      );
+    }
+    const bindings = candidate.operation?.bindings;
+    if (
+      (candidate.stage !== "planning" && candidate.stage !== "queue") ||
+      (candidate.stage === "queue" && candidate.basisKind !== "thread-snapshot") ||
+      !Array.isArray(bindings) || bindings.length !== 1 ||
+      bindings[0]?.name !== "approvedBrief" ||
+      bindings[0]?.source?.kind !== "approved-brief"
+    ) throw new Error("Invalid V3 SysON seed operation input.");
+    return {
+      operation: V3_SEED_OPERATION,
+      stage: candidate.stage,
+      ...(candidate.stage === "queue" ? { basisKind: "thread-snapshot" as const } : {}),
+      bindings: structuredClone(bindings),
+    };
+  },
+};
+
+function isV3Seed(reference: { id?: unknown; version?: unknown }): boolean {
+  return reference.id === V3_SEED_OPERATION.id &&
+    reference.version === V3_SEED_OPERATION.version;
+}
 
 Deno.test("trusted SysON seed creates only the read-back model container and publishes r2", async () => {
   const directory = await Deno.makeTempDir({ prefix: "casys-syson-seed-executor-" });
@@ -136,6 +192,7 @@ Deno.test("a non-documentary seed basis cannot claim a run or call SysON", async
     assertExists(documentary);
     const laterTechnicalSnapshot = await materializeSysonModelSeed({
       base: documentary,
+      lineage: seedLineage(fixture.queued, documentary),
       trustedRunId: "another-trusted-run",
       capturedAt: "2026-08-02T12:04:00.000Z",
       projectCreateResult: {
@@ -207,7 +264,7 @@ Deno.test("a non-documentary seed basis cannot claim a run or call SysON", async
     await assertRejects(
       () => executor.execute(AGENT, execution),
       Error,
-      "requires the exact documentary ThreadSnapshot revision 1 root",
+      "must be the unique completed baseline.from-approved-brief@1 result",
     );
     assertEquals(syson.calls, []);
     const after = await fixture.projects.get(fixture.queued.project.id);
@@ -215,6 +272,58 @@ Deno.test("a non-documentary seed basis cannot claim a run or call SysON", async
     assertEquals(after.revision, current.revision);
     assertEquals(
       after.agentRuns.find((run) => run.id === execution.runId)?.status,
+      "queued",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("a seed whose exact brief revision is not human-approved cannot claim or call SysON", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-syson-seed-unapproved-brief-",
+  });
+  try {
+    const fixture = await queuedSeed(directory);
+    const basis = fixture.queued.plan!.basis;
+    if (basis.kind !== "approved-brief") throw new Error("Expected V3 brief basis.");
+    const approved = await fixture.projects.getRevision(
+      basis.projectId,
+      basis.projectRevision,
+    );
+    assertExists(approved);
+    const unapproved = {
+      ...approved,
+      framing: {
+        ...approved.framing!,
+        currentBriefApproval: {
+          ...approved.framing!.currentBriefApproval!,
+          decidedBy: { id: "agent:impostor", origin: "agent" as const },
+        },
+      },
+    };
+    const projectStore = Object.create(
+      fixture.projects,
+    ) as typeof fixture.projects;
+    projectStore.getRevision = (projectId: string, revision: number) =>
+      Promise.resolve(
+        projectId === basis.projectId && revision === basis.projectRevision
+          ? structuredClone(unapproved)
+          : undefined,
+      );
+    const syson = new FakeSysonClient();
+    const executor = seedExecutor(fixture, syson, projectStore);
+    const execution = executionCommand(fixture.queued);
+
+    await assertRejects(
+      () => executor.execute(AGENT, execution),
+      Error,
+      "exact human-approved living brief",
+    );
+    assertEquals(syson.calls, []);
+    assertEquals(
+      (await fixture.projects.get(fixture.queued.project.id))?.agentRuns.at(-1)
+        ?.status,
       "queued",
     );
   } finally {
@@ -252,7 +361,6 @@ function executionCommand(queued: Awaited<ReturnType<typeof queuedSeed>>["queued
 }
 
 async function queuedSeed(directory: string) {
-  const discoveries = new FileProjectDiscoveryRevisionStore(`${directory}/discoveries`);
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
   const baselineCaptures = new FileApprovedDiscoveryBaselineCaptureStore(
@@ -261,44 +369,88 @@ async function queuedSeed(directory: string) {
   const seedCaptures = new FileSysonModelSeedCaptureStore(`${directory}/seed-captures`);
   const attempts = new FileSysonModelSeedAttemptStore(`${directory}/seed-attempts`);
   const liveUpdates = new FileLiveThreadUpdateStore(`${directory}/live-updates`);
-  const discovery = await approvedDiscovery(discoveries);
-  const handoff = await new ProjectDiscoveryHandoffService(
-    discoveries,
-    projects,
-    () => "2026-08-02T12:00:00.000Z",
-  ).createEngineeringProject(HUMAN, {
-    commandId: "create-drone-project",
-    discoveryId: discovery.discoveryId,
-    expectedDiscoveryRevision: discovery.revision,
-    issuedAt: "2026-08-02T11:59:00.000Z",
-    projectId: "drone-review-demo",
-    projectName: "Build a reviewable drone demonstrator.",
-  });
   let tick = 0;
+  const now = () =>
+    new Date(Date.parse("2026-08-02T12:00:00.000Z") + ++tick * 1_000)
+      .toISOString();
+  const briefs = new ProjectBriefCommandService(projects, now);
+  let project = await briefs.startProject(AGENT, {
+    commandId: "start-drone-project",
+    projectId: "drone-review-demo",
+    projectName: "Inspection drone",
+    issuedAt: "2026-08-02T11:59:00.000Z",
+    intent: "Build a reviewable drone demonstrator.",
+    intentSource: { kind: "human", reference: "conversation:turn-1" },
+  });
+  project = await briefs.proposeBrief(AGENT, {
+    ...context("propose-drone-brief", project.revision),
+    items: [{
+      id: "objective",
+      kind: "objective",
+      statement: "Build a reviewable drone demonstrator.",
+      sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    }, {
+      id: "mission",
+      kind: "mission-scenario",
+      statement: "Demonstrate stable controlled inspection flight.",
+      sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    }, {
+      id: "success",
+      kind: "success-criterion",
+      statement: "Create a reviewable engineering record.",
+      sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    }],
+  });
+  project = await briefs.approveBrief(HUMAN, {
+    ...context("approve-drone-brief", project.revision),
+    briefSnapshotId: project.framing!.proposedBrief!.id,
+    briefRevision: project.framing!.proposedBrief!.revision,
+    rationale: "The brief is clear enough for bounded engineering.",
+    inputFingerprint: project.framing!.proposalReview!.inputFingerprint,
+  });
   const commands = new EngineeringProjectCommandService(
     projects,
     new ExactThreadCompletionEvidenceValidator(snapshots),
-    () =>
-      new Date(Date.parse("2026-08-02T12:01:00.000Z") + ++tick * 1_000)
-        .toISOString(),
-    { discoveries, operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    now,
+    { operations: TEST_OPERATION_REGISTRY },
     new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
   );
-  const planned = await commands.publishPlan(AGENT, stagedPlanCommand(handoff));
-  const queuedBaseline = await commands.queueRun(HUMAN, {
-    commandId: "human-authorize-documentary-baseline",
-    projectId: planned.project.id,
-    expectedRevision: planned.revision,
-    issuedAt: "2026-08-02T12:01:30.000Z",
+  project = await commands.publishPlan(AGENT, {
+    ...context("publish-initial-plan", project.revision),
+    startingPoint: "idea-or-spec",
+    phases: [{
+      id: "baseline",
+      name: "First project record",
+      description: "Record the approved brief before technical work begins.",
+    }],
+    workItems: [{
+      id: "record-approved-brief",
+      phaseId: "baseline",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+  const queuedBaseline = await commands.queueRun(AGENT, {
+    ...context("queue-documentary-baseline", project.revision),
     runId: "run:documentary-baseline",
-    workItemId: "record-approved-discovery",
-    summary: "Human authorized the documentary baseline.",
-    basis: planned.plan!.basis,
+    workItemId: "record-approved-brief",
+    summary: "Record the approved brief documentary baseline.",
+    basis: project.plan!.basis,
   });
   const baselineExecutor = new ApprovedDiscoveryBaselineRunExecutor({
     projects,
     commands,
-    discoveries,
+    discoveries: { getRevision: () => Promise.resolve(undefined) },
     captures: baselineCaptures,
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
@@ -313,14 +465,37 @@ async function queuedSeed(directory: string) {
     runId: "run:documentary-baseline",
   });
   const base = baselineCompleted.threadSnapshots[0]!;
-  const queued = await commands.queueRun(HUMAN, {
-    commandId: "human-authorize-syson-seed",
+  project = await commands.appendChange(AGENT, {
+    ...context("append-syson-seed", baselineCompleted.revision),
+    baseSnapshot: base,
+    phases: [{
+      id: "architecture",
+      name: "System model",
+      description: "Create the first traceable system-model container.",
+    }],
+    workItems: [{
+      id: "seed-syson-model",
+      phaseId: "architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: ["record-approved-brief"],
+      decisionIds: [],
+      operation: {
+        id: "architecture.seed-syson-model",
+        version: "2",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+  const queued = await commands.queueRun(AGENT, {
+    ...context("queue-syson-seed", project.revision),
     projectId: baselineCompleted.project.id,
-    expectedRevision: baselineCompleted.revision,
-    issuedAt: "2026-08-02T12:03:00.000Z",
     runId: "run:seed-syson-model",
     workItemId: "seed-syson-model",
-    summary: "Human authorized the first editable system model container.",
+    summary: "Create the first editable system model container.",
     basis: { kind: "thread-snapshot", ...base },
   });
   return {
@@ -335,105 +510,57 @@ async function queuedSeed(directory: string) {
   };
 }
 
-function stagedPlanCommand(project: { project: { id: string } }) {
+function context(commandId: string, expectedRevision: number) {
   return {
-    commandId: "agent-publish-staged-plan",
-    projectId: project.project.id,
-    expectedRevision: 1,
-    issuedAt: "2026-08-02T12:00:30.000Z",
-    startingPoint: "idea-or-spec" as const,
-    phases: [
-      {
-        id: "baseline",
-        name: "First project record",
-        description: "Record the reviewed discovery before technical work begins.",
-      },
-      {
-        id: "architecture",
-        name: "System model",
-        description: "Create the first traceable system-model container.",
-      },
-    ],
-    workItems: [
-      {
-        id: "record-approved-discovery",
-        phaseId: "baseline",
-        owner: "agent" as const,
-        dependsOnWorkItemIds: [],
-        decisionIds: [],
-        operation: {
-          id: "baseline.from-approved-discovery",
-          version: "1",
-          bindings: [{
-            name: "approvedDiscovery",
-            source: { kind: "approved-discovery" as const },
-          }],
-        },
-      },
-      {
-        id: "seed-syson-model",
-        phaseId: "architecture",
-        owner: "agent" as const,
-        dependsOnWorkItemIds: ["record-approved-discovery"],
-        decisionIds: [],
-        operation: {
-          id: "architecture.seed-syson-model",
-          version: "1",
-          bindings: [{
-            name: "approvedDiscovery",
-            source: { kind: "approved-discovery" as const },
-          }],
-        },
-      },
-    ],
-    requiredDecisions: [],
+    commandId,
+    projectId: "drone-review-demo",
+    expectedRevision,
+    issuedAt: "2026-08-02T11:59:30.000Z",
   };
 }
 
-async function approvedDiscovery(store: FileProjectDiscoveryRevisionStore) {
-  let tick = 0;
-  const service = new ProjectDiscoveryCommandService(
-    store,
-    () =>
-      new Date(Date.parse("2026-08-02T10:00:00.000Z") + ++tick * 1_000)
-        .toISOString(),
-  );
-  let discovery = await service.start(HUMAN, {
-    commandId: "start-drone-discovery",
-    discoveryId: "drone-review-discovery",
-    issuedAt: "2026-08-02T09:59:00.000Z",
-    intent: "Build a reviewable drone demonstrator.",
-  });
-  discovery = await service.proposeBrief(AGENT, {
-    commandId: "propose-drone-brief",
-    discoveryId: discovery.discoveryId,
-    expectedRevision: discovery.revision,
-    issuedAt: "2026-08-02T09:59:10.000Z",
-    brief: {
-      id: "drone-brief-v1",
-      objective: "Build a reviewable drone demonstrator.",
-      missionScenarios: ["Demonstrate stable controlled flight"],
-      successCriteria: ["Create a reviewable engineering record"],
-      constraints: ["No provider execution before a reviewed plan"],
-      intendedMarkets: ["To be confirmed"],
-      manufacturingJurisdictions: ["To be confirmed"],
-      operatingJurisdictions: ["To be confirmed"],
-      complianceTargets: ["Identify applicable evidence"],
-      verificationPlan: ["Plan technical verification after baseline"],
-      exclusions: ["No certification claim"],
-      assumptions: ["Controlled demonstrator"],
-      openQuestions: ["Payload remains open"],
+function seedLineage(
+  project: EngineeringProjectSnapshot,
+  base: NonNullable<
+    Awaited<ReturnType<FileThreadSnapshotStore["get"]>>
+  >,
+) {
+  const plan = project.plan!;
+  if (plan.basis.kind !== "approved-brief") {
+    throw new Error("Expected approved-brief plan basis.");
+  }
+  const change = project.planChanges!.find((item) =>
+    item.workItemIds.includes("seed-syson-model")
+  )!;
+  if (!change.approvedBriefBasis) {
+    throw new Error("Expected approved-brief project-change basis.");
+  }
+  const document = base.artifacts[0]!;
+  return {
+    approvedBriefBasis: structuredClone(change.approvedBriefBasis),
+    plan: {
+      publishedAt: plan.publishedAt,
+      publishedBy: structuredClone(plan.publishedBy),
     },
-  });
-  return await service.approveBrief(HUMAN, {
-    commandId: "approve-drone-brief",
-    discoveryId: discovery.discoveryId,
-    expectedRevision: discovery.revision,
-    issuedAt: "2026-08-02T09:59:20.000Z",
-    briefId: discovery.brief!.id,
-    rationale: "The brief is clear enough to create a bounded project path.",
-    inputFingerprint: discovery.review!.inputFingerprint,
-  });
+    projectChange: {
+      id: change.id,
+      commandId: change.commandId,
+      publishedAt: change.publishedAt,
+      publishedBy: structuredClone(change.publishedBy),
+    },
+    workItemId: "seed-syson-model",
+    baseSnapshot: {
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+    documentaryArtifact: {
+      id: document.id,
+      fingerprint: structuredClone(document.fingerprint),
+      uri: document.uri!,
+      producerRunId: document.producer.runId,
+    },
+  };
 }
 
 class FakeSysonClient implements McpToolClient {

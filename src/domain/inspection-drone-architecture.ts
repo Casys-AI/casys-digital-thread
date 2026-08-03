@@ -7,6 +7,8 @@ import {
   parseSysonModelSeedCapture,
   type SysonModelSeedCapture,
 } from "./syson-model-seed.ts";
+import type { EngineeringApprovedBriefBasis } from "./engineering-project.ts";
+import type { ProjectBriefRevision } from "./project-brief.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
   type ThreadSnapshotExtension,
@@ -24,6 +26,8 @@ import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
 /** Immutable normalized capture produced by the bounded r3 operation. */
 export const INSPECTION_DRONE_ARCHITECTURE_CAPTURE_SCHEMA =
   "inspection-drone-architecture-capture/1.0" as const;
+export const INSPECTION_DRONE_ARCHITECTURE_V3_CAPTURE_SCHEMA =
+  "inspection-drone-architecture-capture/2.0" as const;
 
 const CAPTURE_KIND = "inspection-drone-architecture" as const;
 const CAPTURE_SCOPE = "bounded-sysml-architecture" as const;
@@ -81,6 +85,12 @@ export const INSPECTION_DRONE_ARCHITECTURE_OPERATION = {
   version: "1",
 } as const;
 
+/** V3 operation authorized by the canonical in-project brief lineage. */
+export const INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION = {
+  id: "architecture.author-inspection-drone",
+  version: "2",
+} as const;
+
 /** Direct names expected below the single inserted architecture package. */
 export const INSPECTION_DRONE_ARCHITECTURE_DECLARATIONS = [
   "InspectionDrone",
@@ -133,23 +143,52 @@ export interface InspectionDroneArchitectureRecipe {
  * read-back only; raw provider payloads, the source recipe text and caller
  * input are deliberately excluded.
  */
-export interface InspectionDroneArchitectureCapture {
-  readonly schemaVersion: typeof INSPECTION_DRONE_ARCHITECTURE_CAPTURE_SCHEMA;
+interface InspectionDroneArchitectureCaptureBase {
   readonly kind: typeof CAPTURE_KIND;
   readonly scope: typeof CAPTURE_SCOPE;
   readonly statement: typeof CAPTURE_STATEMENT;
   readonly capturedAt: string;
   readonly trustedRunId: string;
-  readonly operation: {
-    readonly id: typeof INSPECTION_DRONE_ARCHITECTURE_OPERATION.id;
-    readonly version: typeof INSPECTION_DRONE_ARCHITECTURE_OPERATION.version;
-  };
   readonly seed: InspectionDroneArchitectureSeed;
   readonly recipe: InspectionDroneArchitectureRecipe;
   readonly insertion: InspectionDroneArchitectureInsertion;
   readonly architecturePackage: InspectionDroneArchitectureElement;
   readonly declarations: readonly InspectionDroneArchitectureElement[];
 }
+
+export interface InspectionDroneArchitectureV2Capture
+  extends InspectionDroneArchitectureCaptureBase {
+  readonly schemaVersion: typeof INSPECTION_DRONE_ARCHITECTURE_CAPTURE_SCHEMA;
+  readonly operation: {
+    readonly id: typeof INSPECTION_DRONE_ARCHITECTURE_OPERATION.id;
+    readonly version: typeof INSPECTION_DRONE_ARCHITECTURE_OPERATION.version;
+  };
+}
+
+export interface InspectionDroneArchitectureV3Authorization {
+  readonly projectId: string;
+  readonly approvedBriefBasis: EngineeringApprovedBriefBasis;
+  readonly approvedBrief: ProjectBriefRevision;
+  readonly documentaryBaseline: {
+    readonly snapshotId: string;
+    readonly revision: 1;
+    readonly subjectId: string;
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+  };
+}
+
+export interface InspectionDroneArchitectureV3Capture
+  extends InspectionDroneArchitectureCaptureBase {
+  readonly schemaVersion: typeof INSPECTION_DRONE_ARCHITECTURE_V3_CAPTURE_SCHEMA;
+  readonly operation: typeof INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION;
+  /** Closed V3 authorization chain; no Discovery answer or capture is copied. */
+  readonly authorization: InspectionDroneArchitectureV3Authorization;
+}
+
+export type InspectionDroneArchitectureCapture =
+  | InspectionDroneArchitectureV2Capture
+  | InspectionDroneArchitectureV3Capture;
 
 export interface MaterializeInspectionDroneArchitectureInput {
   /** Exact r2 SysON model-container ThreadSnapshot bound to the queued run. */
@@ -166,6 +205,9 @@ export interface MaterializeInspectionDroneArchitectureInput {
   readonly architectureChildrenResult: unknown;
   /** Logical content-addressed URI allocated by the persistence adapter. */
   readonly captureUri?: string;
+  /** Omitted only for immutable historical V2/@1 replay. */
+  readonly operation?: typeof INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION;
+  readonly authorization?: InspectionDroneArchitectureV3Authorization;
 }
 
 export interface InspectionDroneArchitectureMaterialization {
@@ -280,6 +322,7 @@ export async function materializeInspectionDroneArchitecture(
     input.base,
     input.seedCapture,
   );
+  const parsedSeedCapture = parseSysonModelSeedCapture(input.seedCapture);
   const trustedRunId = stableIdentifier(input.trustedRunId, "trustedRunId");
   const capturedAt = canonicalUtcInstant(input.capturedAt, "capturedAt");
   const captureUri = optionalCaptureUri(input.captureUri);
@@ -305,20 +348,40 @@ export async function materializeInspectionDroneArchitecture(
     );
   }
 
-  const capture: InspectionDroneArchitectureCapture = {
-    schemaVersion: INSPECTION_DRONE_ARCHITECTURE_CAPTURE_SCHEMA,
-    kind: CAPTURE_KIND,
-    scope: CAPTURE_SCOPE,
-    statement: CAPTURE_STATEMENT,
-    capturedAt,
-    trustedRunId,
-    operation: INSPECTION_DRONE_ARCHITECTURE_OPERATION,
-    seed,
-    recipe,
-    insertion: readback.insertion,
-    architecturePackage: readback.architecturePackage,
-    declarations: readback.declarations,
-  };
+  const capture: InspectionDroneArchitectureCapture = input.operation
+    ? {
+      schemaVersion: INSPECTION_DRONE_ARCHITECTURE_V3_CAPTURE_SCHEMA,
+      kind: CAPTURE_KIND,
+      scope: CAPTURE_SCOPE,
+      statement: CAPTURE_STATEMENT,
+      capturedAt,
+      trustedRunId,
+      operation: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+      authorization: normalizedV3Authorization(
+        input.authorization,
+        input.base,
+        parsedSeedCapture,
+      ),
+      seed,
+      recipe,
+      insertion: readback.insertion,
+      architecturePackage: readback.architecturePackage,
+      declarations: readback.declarations,
+    }
+    : {
+      schemaVersion: INSPECTION_DRONE_ARCHITECTURE_CAPTURE_SCHEMA,
+      kind: CAPTURE_KIND,
+      scope: CAPTURE_SCOPE,
+      statement: CAPTURE_STATEMENT,
+      capturedAt,
+      trustedRunId,
+      operation: INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+      seed,
+      recipe,
+      insertion: readback.insertion,
+      architecturePackage: readback.architecturePackage,
+      declarations: readback.declarations,
+    };
   const text = deterministicJson(capture);
   const bytes = new TextEncoder().encode(text);
   const sha256 = await sha256Fingerprint(capture);
@@ -412,6 +475,29 @@ export async function requireInspectionDroneArchitectureSeed(
     throw materializationInvalid(
       "invalid_seed",
       "The r2 SysON model-seed capture does not exactly match its model-container artifact.",
+    );
+  }
+  const documentaryArtifact = base.artifacts.find((artifact) =>
+    artifact.id === seedCapture.lineage.documentaryArtifact.id &&
+    artifact.kind === "document"
+  );
+  if (
+    !base.previous ||
+    seedCapture.lineage.baseSnapshot.snapshotId !== base.previous.snapshotId ||
+    seedCapture.lineage.baseSnapshot.revision !== base.previous.revision ||
+    seedCapture.lineage.baseSnapshot.subjectId !== base.subject.id ||
+    !documentaryArtifact ||
+    !fingerprintsEqual(
+      documentaryArtifact.fingerprint,
+      seedCapture.lineage.documentaryArtifact.fingerprint,
+    ) ||
+    documentaryArtifact.producer.tool !== "baseline_from_approved_brief" ||
+    documentaryArtifact.producer.runId !==
+      seedCapture.lineage.documentaryArtifact.producerRunId
+  ) {
+    throw materializationInvalid(
+      "invalid_seed",
+      "The r2 seed capture does not preserve the exact approved-brief documentary lineage inherited by its ThreadSnapshot.",
     );
   }
   return {
@@ -545,6 +631,61 @@ function normalizedInsertion(
     parentId: rootPackageId,
     textSha256: { algorithm: "sha256", digest: fingerprint.digest },
   };
+}
+
+function normalizedV3Authorization(
+  value: InspectionDroneArchitectureV3Authorization | undefined,
+  base: ThreadSnapshot,
+  seedCapture: SysonModelSeedCapture,
+): InspectionDroneArchitectureV3Authorization {
+  if (!value) {
+    throw materializationInvalid(
+      "invalid_seed",
+      "V3 inspection-drone architecture requires its exact approved-brief authorization chain.",
+    );
+  }
+  const projectId = stableIdentifier(value.projectId, "authorization.projectId");
+  const basis = value.approvedBriefBasis;
+  const brief = value.approvedBrief;
+  const baseline = value.documentaryBaseline;
+  if (
+    basis.kind !== "approved-brief" || basis.projectId !== projectId ||
+    brief.briefId !== basis.briefId || brief.id !== basis.briefSnapshotId ||
+    brief.revision !== basis.briefRevision ||
+    !fingerprintsEqual(
+      basis.approvedBriefFingerprint,
+      seedCapture.lineage.approvedBriefBasis.approvedBriefFingerprint,
+    ) ||
+    deterministicJson(basis) !==
+      deterministicJson(seedCapture.lineage.approvedBriefBasis) ||
+    baseline.revision !== 1 || !base.previous ||
+    base.previous.snapshotId !== baseline.snapshotId ||
+    base.previous.revision !== baseline.revision ||
+    base.subject.id !== baseline.subjectId
+  ) {
+    throw materializationInvalid(
+      "invalid_seed",
+      "V3 architecture authorization must match the exact approved brief and documentary r1 behind the r2 seed.",
+    );
+  }
+  const document = base.artifacts.find((artifact) =>
+    artifact.id === baseline.artifactId && artifact.kind === "document"
+  );
+  if (
+    !document || document.producer.tool !== "baseline_from_approved_brief" ||
+    !fingerprintsEqual(document.fingerprint, baseline.fingerprint) ||
+    baseline.artifactId !== seedCapture.lineage.documentaryArtifact.id ||
+    !fingerprintsEqual(
+      baseline.fingerprint,
+      seedCapture.lineage.documentaryArtifact.fingerprint,
+    )
+  ) {
+    throw materializationInvalid(
+      "invalid_seed",
+      "V3 architecture authorization does not resolve to the approved-brief documentary artifact inherited by r2.",
+    );
+  }
+  return structuredClone(value);
 }
 
 function inspectionDroneArchitectureExtension(

@@ -14,6 +14,7 @@ import { InspectionDroneArchitectureQueueEligibility } from "../src/adapters/ins
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
 import {
   type EngineeringWorkbenchSnapshot,
   projectEngineeringPlanningWorkbenchSnapshot,
@@ -26,8 +27,14 @@ import {
 } from "../src/adapters/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/syson-model-seed.ts";
-import { INSPECTION_DRONE_ARCHITECTURE_OPERATION } from "../src/domain/inspection-drone-architecture.ts";
+import {
+  HISTORICAL_SYSON_MODEL_SEED_OPERATION,
+  SYSON_MODEL_SEED_OPERATION,
+} from "../src/domain/syson-model-seed.ts";
+import {
+  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
+} from "../src/domain/inspection-drone-architecture.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -452,8 +459,10 @@ async function resolveCurrentThreadSnapshot(
 }
 
 const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
+  HISTORICAL_SYSON_MODEL_SEED_OPERATION,
   SYSON_MODEL_SEED_OPERATION,
   INSPECTION_DRONE_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 ] as const;
 
 function hasUnattachedDurableProjectOperation(
@@ -591,6 +600,9 @@ if (import.meta.main) {
   const sysonModelSeedCaptures = new FileSysonModelSeedCaptureStore(
     sysonModelSeedCaptureDirectory,
   );
+  const projectsForEligibility = new FileEngineeringProjectRevisionStore(
+    activeProjectDirectory,
+  );
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
     trackedManifestPath: projectPath,
@@ -600,8 +612,10 @@ if (import.meta.main) {
       discoveries,
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
       queueEligibility: new InspectionDroneArchitectureQueueEligibility({
+        projects: projectsForEligibility,
         snapshots: projectSnapshots,
         approvedDiscoveryCaptures: captures,
+        approvedBriefCaptures: captures,
         seedCaptures: sysonModelSeedCaptures,
       }),
     },

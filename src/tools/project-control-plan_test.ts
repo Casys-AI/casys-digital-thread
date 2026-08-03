@@ -7,10 +7,12 @@ import type { McpProbe } from "../adapters/http-mcp-probe.ts";
 import type { FleetManifest, ObservedContainer, RunDetail } from "../domain/types.ts";
 import { ProjectDiscoveryHandoffService } from "../domain/project-discovery-handoff-service.ts";
 import { ProjectDiscoveryCommandService } from "../domain/project-discovery-command-service.ts";
+import { ProjectBriefCommandService } from "../domain/project-brief-command-service.ts";
 import { createConsoleServer } from "../../server.ts";
 
 const DISCOVERY_ID = "plan-contract-discovery";
 const PROJECT_ID = "plan-contract-project";
+const V3_PROJECT_ID = "plan-contract-project-v3";
 const HUMAN = { kind: "human" as const, actorId: "human:operator" };
 const AGENT = { kind: "agent" as const, actorId: "agent:planner" };
 
@@ -414,6 +416,122 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "MCP HTTP plans and materializes the exact human-approved V3 project brief",
+  async () => {
+    await withApprovedV3Project(async ({ directory, approved }) => {
+      const { app } = await createProjectControlTestServer(
+        directory,
+        V3_PROJECT_ID,
+      );
+      const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+      const port = (listener.addr as Deno.NetAddr).port;
+      listener.close();
+      const http = await app.startHttp({
+        port,
+        hostname: "127.0.0.1",
+        onListen: () => {},
+      });
+      try {
+        const client = new TestMcpClient(`http://127.0.0.1:${port}/mcp`);
+        assertResult(await client.invoke("server/discover", {}));
+
+        const publishedResult = assertResult(
+          await client.invoke("tools/call", {
+            name: "project_plan_publish",
+            arguments: v3PlanCommand(approved.revision),
+          }),
+        );
+        const published = publishedResult.structuredContent as Record<
+          string,
+          unknown
+        >;
+        const plan = published.plan as Record<string, unknown>;
+        const basis = plan.basis as Record<string, unknown>;
+        assertEquals(plan.startingPoint, "idea-or-spec");
+        assertEquals(basis.kind, "approved-brief");
+        assertEquals(basis.projectId, V3_PROJECT_ID);
+        assertEquals(basis.projectSnapshotId, approved.id);
+        assertEquals(basis.projectRevision, approved.revision);
+        assertEquals(
+          (published.workItems as Array<Record<string, unknown>>)[0]?.operation,
+          {
+            id: "baseline.from-approved-brief",
+            version: "1",
+            bindings: [{
+              name: "approvedBrief",
+              source: { kind: "approved-brief" },
+            }],
+          },
+        );
+
+        const queuedResult = assertResult(
+          await client.invoke("tools/call", {
+            name: "project_agent_run_queue",
+            arguments: {
+              commandId: "v3-queue-approved-brief",
+              projectId: V3_PROJECT_ID,
+              expectedRevision: published.revision,
+              issuedAt: "2020-01-01T00:00:10.000Z",
+              workItemId: "record-approved-brief",
+            },
+          }),
+        );
+        const queued = queuedResult.structuredContent as Record<string, unknown>;
+        const run = (queued.agentRuns as Array<Record<string, unknown>>)[0];
+        assertExists(run);
+        assertEquals(run.basis, basis);
+        assertEquals(run.baseSnapshot, undefined);
+
+        const completedResult = assertResult(
+          await client.invoke("tools/call", {
+            name: "project_agent_run_execute",
+            arguments: {
+              commandId: "v3-execute-approved-brief",
+              projectId: V3_PROJECT_ID,
+              expectedRevision: queued.revision,
+              issuedAt: "2020-01-01T00:00:20.000Z",
+              runId: "run:v3-queue-approved-brief",
+            },
+          }),
+        );
+        const completed = completedResult.structuredContent as Record<
+          string,
+          unknown
+        >;
+        assertEquals(
+          (completed.agentRuns as Array<Record<string, unknown>>)[0]?.status,
+          "completed",
+        );
+        const threadSnapshots = completed.threadSnapshots as Array<
+          Record<string, unknown>
+        >;
+        assertEquals(threadSnapshots.length, 1);
+
+        const snapshots = new FileThreadSnapshotStore(
+          `${directory}/thread-snapshots`,
+        );
+        const snapshot = await snapshots.get(
+          threadSnapshots[0]?.snapshotId as string,
+        );
+        assertExists(snapshot);
+        assertEquals(snapshot.revision, 1);
+        assertEquals(snapshot.artifacts.length, 1);
+        assertEquals(
+          snapshot.artifacts[0]?.producer.tool,
+          "baseline_from_approved_brief",
+        );
+        assertEquals(snapshot.observations, []);
+        assertEquals(snapshot.requirements, []);
+        assertEquals(snapshot.evaluations, []);
+        assertEquals(snapshot.violations, []);
+      } finally {
+        await http.shutdown();
+      }
+    });
+  },
+);
+
 Deno.test("project_change_append appends only the next reviewed operation after a materialized baseline", async () => {
   await withApprovedProjectShell(async ({ directory }) => {
     const { app } = await createProjectControlTestServer(directory);
@@ -594,13 +712,17 @@ Deno.test("project_change_append appends only the next reviewed operation after 
   });
 });
 
-async function createProjectControlTestServer(directory: string) {
+async function createProjectControlTestServer(
+  directory: string,
+  projectId?: string,
+) {
   return await createConsoleServer({
     manifest: manifestFixture(),
     runs: [runFixture()],
     probe: healthyProbe(),
     docker: unavailableDocker(),
     logger: () => {},
+    ...(projectId ? { projectId } : {}),
     activeProjectDirectory: `${directory}/projects`,
     projectDiscoveryDirectory: `${directory}/discoveries`,
     threadSnapshotDirectory: `${directory}/thread-snapshots`,
@@ -608,6 +730,37 @@ async function createProjectControlTestServer(directory: string) {
     approvedDiscoveryCaptureDirectory: `${directory}/approved-discovery-captures`,
     projectBaselineDirectory: `${directory}/project-baselines`,
   });
+}
+
+function v3PlanCommand(expectedRevision: number) {
+  return {
+    commandId: "v3-publish-approved-brief-plan",
+    projectId: V3_PROJECT_ID,
+    expectedRevision,
+    issuedAt: "2020-01-01T00:00:00.000Z",
+    startingPoint: "idea-or-spec",
+    phases: [{
+      id: "documentary-baseline",
+      name: "Documentary baseline",
+      description: "Record the exact approved project framing before technical work.",
+    }],
+    workItems: [{
+      id: "record-approved-brief",
+      phaseId: "documentary-baseline",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  };
 }
 
 function planCommand() {
@@ -695,6 +848,72 @@ async function withApprovedProjectShell(
       projectName: "Create a reviewable plan-contract demonstrator.",
     });
     await run({ directory });
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+}
+
+async function withApprovedV3Project(
+  run: (
+    context: { directory: string; approved: { id: string; revision: number } },
+  ) => Promise<void>,
+): Promise<void> {
+  const directory = await Deno.makeTempDir({ prefix: "casys-project-v3-plan-tool-" });
+  try {
+    const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
+    let tick = 0;
+    const briefs = new ProjectBriefCommandService(
+      projects,
+      () =>
+        new Date(Date.parse("2020-01-01T00:00:00.000Z") + ++tick * 1_000)
+          .toISOString(),
+    );
+    let project = await briefs.startProject(AGENT, {
+      commandId: "v3-start-project",
+      projectId: V3_PROJECT_ID,
+      projectName: "Inspection drone",
+      issuedAt: "2019-12-31T23:59:00.000Z",
+      intent: "Build a reviewable roof-inspection drone.",
+      intentSource: { kind: "human", reference: "conversation:turn-1" },
+    });
+    project = await briefs.proposeBrief(AGENT, {
+      commandId: "v3-propose-brief",
+      projectId: V3_PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2019-12-31T23:59:10.000Z",
+      items: [{
+        id: "objective",
+        kind: "objective",
+        statement: "Inspect roofs without exposing a person to height hazards.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }, {
+        id: "mission",
+        kind: "mission-scenario",
+        statement: "Capture usable roof imagery while maintaining controlled flight.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }, {
+        id: "success",
+        kind: "success-criterion",
+        statement: "Return reviewable imagery and a traceable engineering dossier.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }],
+    });
+    const proposed = project.framing!.proposedBrief!;
+    const review = project.framing!.proposalReview!;
+    project = await briefs.approveBrief(HUMAN, {
+      commandId: "v3-approve-brief",
+      projectId: V3_PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2019-12-31T23:59:20.000Z",
+      briefSnapshotId: proposed.id,
+      briefRevision: proposed.revision,
+      rationale: "The brief matches the reviewed conversation.",
+      inputFingerprint: review.inputFingerprint,
+    });
+    await run({
+      directory,
+      approved: { id: project.id, revision: project.revision },
+    });
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

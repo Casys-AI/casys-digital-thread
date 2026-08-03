@@ -4,7 +4,10 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
+import {
+  HISTORICAL_SYSON_MODEL_SEED_OPERATION,
+  SYSON_MODEL_SEED_OPERATION,
+} from "../domain/syson-model-seed.ts";
 import type {
   LiveThreadUpdate,
   LiveThreadUpdateState,
@@ -418,7 +421,10 @@ function documentaryTechnicalStartStepSummary(
 
 function isSysonModelSeedOperation(workItem: EngineeringWorkItem): boolean {
   return workItem.operation?.id === SYSON_MODEL_SEED_OPERATION.id &&
-    workItem.operation.version === SYSON_MODEL_SEED_OPERATION.version;
+    // @1 is immutable V2 history and remains projectable, but only @2 is
+    // routed to the V3 executor. This read path never grants execution.
+    (workItem.operation.version === SYSON_MODEL_SEED_OPERATION.version ||
+      workItem.operation.version === HISTORICAL_SYSON_MODEL_SEED_OPERATION.version);
 }
 
 /**

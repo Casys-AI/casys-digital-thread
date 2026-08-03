@@ -19,6 +19,7 @@ import {
   materializeSysonModelSeed,
   requireSysonModelSeedDocumentaryBaseline,
   SYSON_MODEL_SEED_OPERATION,
+  type SysonModelSeedLineage,
   type SysonModelSeedMaterialization,
 } from "../domain/syson-model-seed.ts";
 import type { McpToolClient, McpToolResult } from "./http-mcp-tool-client.ts";
@@ -43,9 +44,14 @@ export interface SysonModelSeedRunExecutorCommand {
 }
 
 export interface SysonModelSeedRunExecutorDependencies {
-  readonly projects: EngineeringProjectRevisionStore;
+  readonly projects: EngineeringProjectRevisionStore & {
+    getRevision(
+      projectId: string,
+      revision: number,
+    ): Promise<EngineeringProjectSnapshot | undefined>;
+  };
   readonly commands: EngineeringProjectCommandService;
-  /** The active V2 store; it owns the exact documentary r1 and result r2. */
+  /** Owns the exact approved-brief documentary r1 and SysON seed result r2. */
   readonly snapshots: ThreadSnapshotStore;
   readonly captures: FileSysonModelSeedCaptureStore;
   /** Write-ahead state for non-idempotent SysON mutations. */
@@ -59,7 +65,7 @@ export interface SysonModelSeedRunExecutorDependencies {
 }
 
 /**
- * Trusted executor for the first bounded provider-backed V2 operation.
+ * Trusted executor for the first bounded provider-backed V3 operation.
  *
  * It can create only a blank SysON project, blank SysML document and root
  * package. It never receives a provider URL, tool name, tool arguments, SysML
@@ -67,7 +73,7 @@ export interface SysonModelSeedRunExecutorDependencies {
  * prevents automatic replay of a possibly successful SysON mutation.
  */
 export class SysonModelSeedRunExecutor {
-  readonly #projects: EngineeringProjectRevisionStore;
+  readonly #projects: SysonModelSeedRunExecutorDependencies["projects"];
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
   readonly #captures: FileSysonModelSeedCaptureStore;
@@ -96,7 +102,7 @@ export class SysonModelSeedRunExecutor {
     if (origin.kind !== "agent") {
       throw new EngineeringProjectCommandError(
         "permission_denied",
-        "Only an authenticated agent can execute a human-queued SysON model seed.",
+        "Only an authenticated agent can execute the reviewed and queued SysON model seed.",
       );
     }
     const preflight = await this.requiredProject(command.projectId);
@@ -118,12 +124,23 @@ export class SysonModelSeedRunExecutor {
     let materialized: SysonModelSeedMaterialization | undefined;
     try {
       // Do not claim a queued run merely to discover this executor cannot own
-      // it. This also prevents a generic MCP call from changing another V2
+      // it. This also prevents a generic MCP call from changing another
       // work item before the operation boundary is checked.
       const beforeClaim = await this.requiredProject(command.projectId);
       const beforeClaimRun = requireRun(beforeClaim, command.runId);
       requireSysonModelSeedShape(beforeClaim, beforeClaimRun);
-      await this.requiredDocumentaryBase(requireThreadBasis(beforeClaimRun));
+      const beforeClaimBasis = requireThreadBasis(beforeClaimRun);
+      const beforeClaimBase = await this.requiredExactBase(beforeClaimBasis);
+      const beforeClaimLineage = await this.requiredPlanningLineage(
+        beforeClaim,
+        beforeClaimRun,
+        beforeClaimBasis,
+        beforeClaimBase,
+      );
+      requireSysonModelSeedDocumentaryBaseline(
+        beforeClaimBase,
+        beforeClaimLineage,
+      );
       await this.#commands.claimRun(origin, {
         ...command,
         commandId: stepCommandId(command.commandId, "claim"),
@@ -147,7 +164,9 @@ export class SysonModelSeedRunExecutor {
       }
 
       const basis = requireThreadBasis(run);
-      const base = await this.requiredDocumentaryBase(basis);
+      const base = await this.requiredExactBase(basis);
+      const lineage = await this.requiredPlanningLineage(project, run, basis, base);
+      requireSysonModelSeedDocumentaryBaseline(base, lineage);
       const capturedAt = requiredRunStart(run);
       const live = this.liveRecorder(project, run, basis);
       await live("syson_project_create", "started");
@@ -199,6 +218,7 @@ export class SysonModelSeedRunExecutor {
 
       materialized = await this.materialize(
         base,
+        lineage,
         run.id,
         capturedAt,
         projectCreate,
@@ -360,6 +380,7 @@ export class SysonModelSeedRunExecutor {
 
   private async materialize(
     base: ThreadSnapshot,
+    lineage: SysonModelSeedLineage,
     runId: string,
     capturedAt: string,
     projectCreate: Readonly<Record<string, string>>,
@@ -368,6 +389,7 @@ export class SysonModelSeedRunExecutor {
   ): Promise<SysonModelSeedMaterialization> {
     const first = await materializeSysonModelSeed({
       base,
+      lineage,
       trustedRunId: runId,
       capturedAt,
       projectCreateResult: projectCreate,
@@ -376,6 +398,7 @@ export class SysonModelSeedRunExecutor {
     });
     const result = await materializeSysonModelSeed({
       base,
+      lineage,
       trustedRunId: runId,
       capturedAt,
       projectCreateResult: projectCreate,
@@ -408,12 +431,127 @@ export class SysonModelSeedRunExecutor {
     return base;
   }
 
-  private async requiredDocumentaryBase(
+  private async requiredPlanningLineage(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
     basis: EngineeringThreadSnapshotBasis,
-  ): Promise<ThreadSnapshot> {
-    return requireSysonModelSeedDocumentaryBaseline(
-      await this.requiredExactBase(basis),
+    base: ThreadSnapshot,
+  ): Promise<SysonModelSeedLineage> {
+    const workItem = requireSysonModelSeedShape(project, run);
+    const plan = project.plan;
+    if (!plan) {
+      throw invalidSeedLineage(
+        "The V3 SysON model seed requires a reviewed project plan.",
+      );
+    }
+    const changes = (project.planChanges ?? []).filter((change) =>
+      change.workItemIds.includes(workItem.id)
     );
+    if (changes.length !== 1) {
+      throw invalidSeedLineage(
+        "The SysON model seed must be introduced by exactly one additive project change.",
+      );
+    }
+    const change = changes[0]!;
+    const approvedBriefBasis = change.approvedBriefBasis;
+    if (!approvedBriefBasis) {
+      throw invalidSeedLineage(
+        "The V3 project change introducing the SysON model seed has no exact approved-brief authorization.",
+      );
+    }
+    const approvedProject = await this.#projects.getRevision(
+      approvedBriefBasis.projectId,
+      approvedBriefBasis.projectRevision,
+    );
+    if (
+      !approvedProject || approvedProject.schemaVersion !== "3.0" ||
+      approvedProject.id !== approvedBriefBasis.projectSnapshotId
+    ) {
+      throw invalidSeedLineage(
+        "The exact project revision carrying the approved brief is not durably readable.",
+      );
+    }
+    const brief = approvedProject.framing?.currentBrief;
+    const approval = approvedProject.framing?.currentBriefApproval;
+    if (
+      !brief || !approval || approval.status !== "approved" ||
+      approval.decidedBy?.origin !== "human" ||
+      brief.briefId !== approvedBriefBasis.briefId ||
+      brief.id !== approvedBriefBasis.briefSnapshotId ||
+      brief.revision !== approvedBriefBasis.briefRevision ||
+      deterministicJson(approval.inputFingerprint) !==
+        deterministicJson(approvedBriefBasis.approvedBriefFingerprint)
+    ) {
+      throw invalidSeedLineage(
+        "The project change no longer resolves to its exact human-approved living brief.",
+      );
+    }
+
+    const baselineRuns = project.agentRuns.filter((candidate) => {
+      const item = project.workItems.find((entry) => entry.id === candidate.workItemId);
+      return candidate.status === "completed" &&
+        candidate.basis?.kind === "approved-brief" &&
+        item?.operation?.id === "baseline.from-approved-brief" &&
+        item.operation.version === "1" &&
+        candidate.resultSnapshot?.snapshotId === base.id &&
+        candidate.resultSnapshot.revision === base.revision &&
+        candidate.resultSnapshot.subjectId === base.subject.id &&
+        deterministicJson(candidate.basis) === deterministicJson(approvedBriefBasis);
+    });
+    if (baselineRuns.length !== 1) {
+      throw invalidSeedLineage(
+        "The documentary r1 must be the unique completed baseline.from-approved-brief@1 result for this plan.",
+      );
+    }
+    const baselineRun = baselineRuns[0]!;
+    const baselineWorkItem = project.workItems.find((item) =>
+      item.id === baselineRun.workItemId
+    )!;
+    if (!workItem.dependsOnWorkItemIds.includes(baselineWorkItem.id)) {
+      throw invalidSeedLineage(
+        "The SysON model seed must explicitly depend on the approved-brief documentary baseline work item.",
+      );
+    }
+    if (
+      change.baseSnapshot.snapshotId !== basis.snapshotId ||
+      change.baseSnapshot.revision !== basis.revision ||
+      change.baseSnapshot.subjectId !== basis.subjectId
+    ) {
+      throw invalidSeedLineage(
+        "The project change introducing the SysON model seed must name its exact documentary r1 run basis.",
+      );
+    }
+    const document = base.artifacts[0];
+    if (!document?.uri || document.producer.runId !== baselineRun.id) {
+      throw invalidSeedLineage(
+        "The approved-brief documentary artifact must retain its content-addressed capture URI and baseline run identity.",
+      );
+    }
+    return {
+      approvedBriefBasis: structuredClone(approvedBriefBasis),
+      plan: {
+        publishedAt: plan.publishedAt,
+        publishedBy: structuredClone(plan.publishedBy),
+      },
+      projectChange: {
+        id: change.id,
+        commandId: change.commandId,
+        publishedAt: change.publishedAt,
+        publishedBy: structuredClone(change.publishedBy),
+      },
+      workItemId: workItem.id,
+      baseSnapshot: {
+        snapshotId: basis.snapshotId,
+        revision: basis.revision,
+        subjectId: basis.subjectId,
+      },
+      documentaryArtifact: {
+        id: document.id,
+        fingerprint: structuredClone(document.fingerprint),
+        uri: document.uri,
+        producerRunId: document.producer.runId,
+      },
+    };
   }
 
   private async assertExactPersistedCapture(
@@ -592,7 +730,7 @@ function requireSysonModelSeedRun(
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "This executor may run only the exact human-queued SysON model seed it claimed.",
+      "This executor may run only the exact reviewed SysON model seed it claimed.",
     );
   }
   return workItem;
@@ -604,16 +742,23 @@ function requireSysonModelSeedShape(
 ): EngineeringWorkItem {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (
-    project.schemaVersion !== "2.0" || run.basis?.kind !== "thread-snapshot" ||
+    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
     !workItem || workItem.operation?.id !== SYSON_MODEL_SEED_OPERATION.id ||
-    workItem.operation.version !== SYSON_MODEL_SEED_OPERATION.version
+    workItem.operation.version !== SYSON_MODEL_SEED_OPERATION.version ||
+    workItem.operation.bindings.length !== 1 ||
+    workItem.operation.bindings[0]?.name !== "approvedBrief" ||
+    workItem.operation.bindings[0]?.source.kind !== "approved-brief"
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "This executor may run only the exact human-queued V2 SysON model seed.",
+      "This executor may run only the exact queued V3 SysON model seed declared from an approved brief.",
     );
   }
   return workItem;
+}
+
+function invalidSeedLineage(message: string): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError("invalid_transition", message);
 }
 
 function requireThreadBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {

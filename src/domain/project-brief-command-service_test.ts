@@ -1,5 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { EngineeringProjectSnapshot } from "./engineering-project.ts";
+import type {
+  EngineeringApprovedBriefBasis,
+  EngineeringProjectSnapshot,
+} from "./engineering-project.ts";
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
@@ -12,6 +15,7 @@ import {
 } from "./project-brief-command-service.ts";
 import type { ProjectBriefItem } from "./project-brief.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
+import { collectEngineeringProjectIssues } from "./engineering-project-validation.ts";
 
 const PROJECT_ID = "inspection-drone-v3";
 const AGENT = { kind: "agent" as const, actorId: "agent:guide" };
@@ -252,6 +256,147 @@ Deno.test("the initial engineering plan is bound to the exact approved in-projec
     approved.framing?.currentBrief?.id,
   );
   assertEquals(planned.workItems[0]?.status, "ready");
+
+  const exactBasis = planned.plan.basis;
+  const tamperedBases: readonly EngineeringApprovedBriefBasis[] = [{
+    ...exactBasis,
+    briefId: `${exactBasis.briefId}:forged`,
+  }, {
+    ...exactBasis,
+    briefSnapshotId: `${exactBasis.briefSnapshotId}:forged`,
+  }, {
+    ...exactBasis,
+    briefRevision: exactBasis.briefRevision + 1,
+  }, {
+    ...exactBasis,
+    projectSnapshotId: `${exactBasis.projectSnapshotId}:forged`,
+  }, {
+    ...exactBasis,
+    projectRevision: exactBasis.projectRevision + 1,
+  }, {
+    ...exactBasis,
+    approvedBriefFingerprint: {
+      algorithm: "sha256",
+      digest: "0".repeat(64),
+    },
+  }];
+  for (const tamperedBasis of tamperedBases) {
+    const forged = {
+      ...structuredClone(planned),
+      plan: { ...structuredClone(planned.plan!), basis: tamperedBasis },
+    };
+    assertEquals(
+      collectEngineeringProjectIssues(forged).some((issue) =>
+        issue.path === "$.plan.basis" &&
+        issue.code === "approval_scope_mismatch"
+      ),
+      true,
+    );
+  }
+  const approvalReceiptIndex = planned.commandReceipts!.findIndex((receipt) =>
+    receipt.type === "project.brief-approve"
+  );
+  for (const tamperedBasis of tamperedBases) {
+    const forged = {
+      ...structuredClone(planned),
+      commandReceipts: planned.commandReceipts!.map((receipt, index) =>
+        index === approvalReceiptIndex
+          ? { ...structuredClone(receipt), approvedBriefBasis: tamperedBasis }
+          : structuredClone(receipt)
+      ),
+    };
+    assertEquals(
+      collectEngineeringProjectIssues(forged).some((issue) =>
+        issue.path ===
+          `$.commandReceipts[${approvalReceiptIndex}].approvedBriefBasis` &&
+        issue.code === "approval_scope_mismatch"
+      ),
+      true,
+    );
+  }
+});
+
+Deno.test("a living brief revision does not rewrite the historical approval that authorized the plan", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:01:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+  );
+  const planned = await commands.publishPlan(AGENT, {
+    ...context("publish-historical-plan", approved.revision),
+    startingPoint: "idea-or-spec",
+    phases: [{
+      id: "phase-baseline",
+      name: "Engineering baseline",
+      description: "Record the reviewed intent before technical work begins.",
+    }],
+    workItems: [{
+      id: "record-approved-brief",
+      phaseId: "phase-baseline",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+  const originalBasis = structuredClone(planned.plan!.basis);
+  const laterBriefs = new ProjectBriefCommandService(
+    store,
+    () => "2026-08-03T09:02:00.000Z",
+  );
+  let revised = await laterBriefs.proposeBrief(AGENT, {
+    ...context("propose-living-brief-r2", planned.revision),
+    items: briefItems("Inspect a roof safely with a reviewed maintenance envelope"),
+  });
+  const proposal = revised.framing!.proposedBrief!;
+  const review = revised.framing!.proposalReview!;
+  revised = await laterBriefs.approveBrief(HUMAN, {
+    ...context("approve-living-brief-r2", revised.revision),
+    briefSnapshotId: proposal.id,
+    briefRevision: proposal.revision,
+    rationale: "The living brief evolves without rewriting prior authority.",
+    inputFingerprint: review.inputFingerprint,
+  });
+
+  assertEquals(revised.plan?.basis, originalBasis);
+  const approvalReceipts =
+    revised.commandReceipts?.filter((receipt) =>
+      receipt.type === "project.brief-approve"
+    ) ?? [];
+  assertEquals(approvalReceipts.length, 2);
+  assertEquals(approvalReceipts[0]?.approvedBriefBasis, originalBasis);
+  assertEquals(
+    approvalReceipts[1]?.approvedBriefBasis?.briefSnapshotId,
+    revised.framing?.currentBrief?.id,
+  );
+  assertEquals(collectEngineeringProjectIssues(revised), []);
+
+  const withoutApprovalReceipt = {
+    ...structuredClone(revised),
+    commandReceipts: revised.commandReceipts!.filter((receipt) =>
+      receipt.resultingSnapshot.snapshotId !==
+        (originalBasis.kind === "approved-brief" ? originalBasis.projectSnapshotId : "")
+    ),
+  };
+  assertEquals(
+    collectEngineeringProjectIssues(withoutApprovalReceipt).some((issue) =>
+      issue.path === "$.plan.basis" &&
+      issue.code === "approval_scope_mismatch"
+    ),
+    true,
+  );
 });
 
 async function approvedProject(service: ProjectBriefCommandService) {

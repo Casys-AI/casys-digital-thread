@@ -206,14 +206,14 @@ export class FileSysonModelSeedAttemptStore {
 
   private async writeNewDurably(path: string, text: string): Promise<void> {
     await this.writeDurably(path, text, { createNew: true, write: true });
-    await this.syncDirectory();
+    await this.syncDirectoryChain();
   }
 
   private async replaceDurably(path: string, text: string): Promise<void> {
     const temporaryPath = `${path}.${crypto.randomUUID()}.tmp`;
     await this.writeDurably(temporaryPath, text, { createNew: true, write: true });
     await this.fileSystem.rename(temporaryPath, path);
-    await this.syncDirectory();
+    await this.syncDirectoryChain();
   }
 
   private async writeDurably(
@@ -238,14 +238,49 @@ export class FileSysonModelSeedAttemptStore {
     }
   }
 
-  private async syncDirectory(): Promise<void> {
-    const directory = await this.fileSystem.open(this.directory, { read: true });
-    try {
-      await directory.sync();
-    } finally {
-      directory.close();
+  /**
+   * The attempt directory can be created recursively immediately before the
+   * first dispatched marker. Sync every directory entry through `state`, so a
+   * power loss cannot erase a newly created ancestor and make a provider write
+   * look safe to replay.
+   */
+  private async syncDirectoryChain(): Promise<void> {
+    for (const directoryPath of directoryChain(this.directory)) {
+      const directory = await this.fileSystem.open(directoryPath, { read: true });
+      try {
+        await directory.sync();
+      } finally {
+        directory.close();
+      }
     }
   }
+}
+
+function directoryChain(path: string): string[] {
+  const result: string[] = [];
+  let current = path.replace(/\/+$/, "") || ".";
+  while (current !== "/" && !result.includes(current)) {
+    result.push(current);
+    // `state` is the repository-owned durable storage root. Syncing its parent
+    // would broaden the process read scope beyond the journal's storage tree.
+    if (isStateDirectory(current)) break;
+    const parent = parentDirectory(current);
+    if (parent === current || parent === "/") break;
+    current = parent;
+  }
+  return result;
+}
+
+function isStateDirectory(path: string): boolean {
+  return path === "state" || path.endsWith("/state");
+}
+
+function parentDirectory(path: string): string {
+  if (path === "." || path === "/") return path;
+  const slash = path.lastIndexOf("/");
+  if (slash < 0) return ".";
+  if (slash === 0) return "/";
+  return path.slice(0, slash);
 }
 
 function validateBegin(input: BeginSysonModelSeedWrite): void {

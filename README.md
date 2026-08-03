@@ -190,30 +190,31 @@ is a **documentary, pre-technical baseline**: it proves the brief and plan prove
 not a SysML model, CAD geometry, FEA result, measurement, requirement verdict,
 conformity, or certification.
 
-The first implemented provider-backed operation is `architecture.seed-syson-model@1`. It
-accepts only that exact documentary r1 and uses a server-fixed SysON sequence to create
-a blank project container, blank SysML document, and root package, then reads the root
-package back. It captures only normalized provider identities and publishes their
-SHA-256-addressed record as descendant `ThreadSnapshot` r2. The caller supplies no
-provider name, tool name, arguments, SysML text, or result. Non-idempotent SysON writes
-are journaled before dispatch; an unknown outcome stops for review rather than blindly
-retrying. This r2 is an editable container identity, **not** a drone architecture,
-requirement, CAD artifact, simulation, measurement, or verdict. CAD, physics,
-measurement, and verification loops still need their own later reviewed operations,
-provider evidence, and exact bindings.
+The first implemented provider-backed V3 operation is `architecture.seed-syson-model@2`.
+It accepts only that exact documentary r1 and uses a server-fixed SysON sequence to
+create a blank project container, blank SysML document, and root package, then reads the
+root package back. Its `syson-model-seed-capture/2.0` record preserves the exact
+approved brief, project change, documentary artifact, and normalized provider identities
+before publishing descendant `ThreadSnapshot` r2. The caller supplies no provider name,
+tool name, arguments, SysML text, or result. Non-idempotent SysON writes are journaled
+before dispatch; an unknown outcome stops for review rather than blindly retrying. This
+r2 is an editable container identity, **not** a drone architecture, requirement, CAD
+artifact, simulation, measurement, or verdict. CAD, physics, measurement, and
+verification loops still need their own later reviewed operations, provider evidence,
+and exact bindings.
 
-The source tree also implements the next guarded operation,
-`architecture.author-inspection-drone@1`. It can insert one fixed, high-level
-inspection-drone SysML fragment into the exact empty r2 container only when the same
-historical approved discovery explicitly says `primary-mission = inspection-controlled`
-and `payload-class = light-inspection-camera`. After the documentary baseline, the agent
-records it in a separate append-only project change, bound to the exact current thread
-snapshot. Its execution basis is the exact r2 snapshot. It records an insertion
-attestation and narrow read-back before it could publish r3. This is not released into
-the running SysON toolchain. A separate disposable local parser/translator and
-model-tree conformance check passed on 2026-08-03 against loopback `mcp-syson 0.5.2`; it
-was not an r3 project execution or engineering evidence. The operation creates neither
-CAD, physics, flight behaviour, cost, compliance, nor a verified requirement verdict.
+The next trusted V3 operation is `architecture.author-inspection-drone@2`. It follows
+only the exact r2 seed authorized by the same human-approved brief, revalidates the
+content-addressed documentary and seed lineage, requires an empty root, and inserts one
+server-owned high-level inspection-drone SysML fragment. Its
+`inspection-drone-architecture-capture/2.0` record attests the fixed insertion and
+bounded read-back before publishing r3. The current real `inspection-drone-v3` project
+has three agent-recorded recommended answers and proposed brief revision 2, but no human
+confirmation, and still awaits exact review; none of r1, r2, or r3 is currently
+authorized for that project. The operation creates neither CAD, physics, flight
+behaviour, cost, compliance, nor a verified requirement verdict. Drone CAD remains
+blocked until a sourced, reviewable geometric definition exists; the separate CM-01 path
+remains the current CAD/physical proof case.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. In the product path,
 calculation, modeling, ERP, and evidence publication belong to agent orchestration

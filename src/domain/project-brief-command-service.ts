@@ -5,6 +5,7 @@ import {
   EngineeringProjectStoreConflictError,
 } from "./engineering-project-command-service.ts";
 import type {
+  EngineeringApprovedBriefBasis,
   EngineeringProjectCommandName,
   EngineeringProjectSnapshot,
 } from "./engineering-project.ts";
@@ -502,6 +503,9 @@ export class ProjectBriefCommandService {
     draft.previous = { snapshotId: current.id, revision: current.revision };
     draft.generatedAt = appliedAt;
     draft.commandReceipts ??= [];
+    const approvedBriefBasis = type === "project.brief-approve"
+      ? approvedBriefBasisForReceipt(draft, snapshotId, revision)
+      : undefined;
     draft.commandReceipts.push({
       commandId: normalized.commandId,
       type: type as EngineeringProjectCommandName,
@@ -510,6 +514,7 @@ export class ProjectBriefCommandService {
       appliedAt,
       requestFingerprint,
       resultingSnapshot: { snapshotId, revision },
+      ...(approvedBriefBasis ? { approvedBriefBasis } : {}),
     });
     const next = validateEngineeringProjectSnapshot(draft);
     try {
@@ -561,6 +566,34 @@ export class ProjectBriefCommandService {
     }
     return result;
   }
+}
+
+function approvedBriefBasisForReceipt(
+  project: EngineeringProjectSnapshot,
+  projectSnapshotId: string,
+  projectRevision: number,
+): EngineeringApprovedBriefBasis {
+  const framing = project.framing;
+  const brief = framing?.currentBrief;
+  const approval = framing?.currentBriefApproval;
+  if (
+    project.schemaVersion !== "3.0" || !brief || !approval ||
+    approval.status !== "approved"
+  ) {
+    invalidTransition(
+      "A project.brief-approve receipt requires the exact approved canonical brief.",
+    );
+  }
+  return {
+    kind: "approved-brief",
+    projectId: project.project.id,
+    projectSnapshotId,
+    projectRevision,
+    briefId: brief.briefId,
+    briefSnapshotId: brief.id,
+    briefRevision: brief.revision,
+    approvedBriefFingerprint: structuredClone(approval.inputFingerprint),
+  };
 }
 
 async function briefReviewFingerprint(

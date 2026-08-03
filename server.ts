@@ -277,18 +277,24 @@ async function createProjectControl(
     options.engineeringProjectRunLeaseDirectory ??
       DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY,
   );
+  const activeProjectDirectory = options.activeProjectDirectory ??
+    DEFAULT_ACTIVE_PROJECT_DIRECTORY;
+  const projectsForEligibility = new FileEngineeringProjectRevisionStore(
+    activeProjectDirectory,
+  );
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId ?? DEFAULT_PROJECT_ID,
     trackedManifestPath: options.projectPath ?? DEFAULT_PROJECT_PATH,
-    activeDirectory: options.activeProjectDirectory ??
-      DEFAULT_ACTIVE_PROJECT_DIRECTORY,
+    activeDirectory: activeProjectDirectory,
     evidenceSnapshots: threadSnapshots,
     planning: {
       discoveries,
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
       queueEligibility: new InspectionDroneArchitectureQueueEligibility({
+        projects: projectsForEligibility,
         snapshots: activeThreadSnapshots,
         approvedDiscoveryCaptures: captures,
+        approvedBriefCaptures: captures,
         seedCaptures: sysonModelSeedCaptures,
       }),
     },
@@ -327,6 +333,7 @@ async function createProjectControl(
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
       approvedDiscoveryCaptures: captures,
+      approvedBriefCaptures: captures,
       seedCaptures: sysonModelSeedCaptures,
       captures: inspectionDroneArchitectureCaptures,
       attempts: new FileInspectionDroneArchitectureAttemptStore(

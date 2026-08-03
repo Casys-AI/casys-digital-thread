@@ -92,12 +92,13 @@ The in-process `digital-thread` provider currently owns only
 `thread_observations_normalize`. It preserves provider-native tool contracts while
 normalizing unit-bearing evidence and refusing a producer/consumer hash mismatch.
 
-## Fixed V2 SysON container seed (not workflow YAML)
+## Fixed V3 SysON container seed (not workflow YAML)
 
-`architecture.seed-syson-model@1` is not authored as a workflow and does not accept a
+`architecture.seed-syson-model@2` is not authored as a workflow and does not accept a
 YAML graph, provider selection, tool name, arguments, SysML text, or result from the
-agent. It is the first implemented provider-backed V2 operation after the documentary
-`baseline.from-approved-discovery@1` has published its exact root `ThreadSnapshot` r1.
+agent. It is the first provider-backed V3 operation after
+`baseline.from-approved-brief@1` has published the exact approved-brief documentary
+`ThreadSnapshot` r1 and an additive project change has declared the seed.
 
 The server owns the complete fixed sequence:
 
@@ -110,7 +111,9 @@ exact documentary r1
   -> publish descendant ThreadSnapshot r2
 ```
 
-The r2 capture contains only normalized project, document, and root-package identities.
+The `syson-model-seed-capture/2.0` record contains normalized project, document, and
+root-package identities plus the exact approved-brief, project-change and documentary
+artifact authorization chain.
 It does not add a system architecture, requirements, CAD, simulation, measurement, or
 verification verdict. Before each non-idempotent SysON creation, the executor persists a
 write-ahead attempt record. If the provider outcome is unknown, it stops for explicit
@@ -119,25 +122,25 @@ a closed executor contract, not a reusable YAML-node pattern.
 
 ## Guarded inspection-drone architecture r3 (not workflow YAML)
 
-`architecture.author-inspection-drone@1` is another closed, server-owned operation, not
+`architecture.author-inspection-drone@2` is another closed, server-owned operation, not
 a YAML graph or a generic SysML writer. An agent can append it to a project after the
 documentary baseline with `project_change_append`: that change is bound to the exact
 current thread snapshot and can only add new phases, work, and decisions. Its runtime
-basis is instead the exact r2 produced by `architecture.seed-syson-model@1`, whose seed
+basis is instead the exact r2 produced by `architecture.seed-syson-model@2`, whose seed
 capture must re-read and validate by hash.
 
-The source implementation also re-reads the exact approved discovery behind that r1/r2
-lineage and requires both `primary-mission = inspection-controlled` and
-`payload-class = light-inspection-camera`. It first requires an empty root package,
-inserts one fixed high-level SysML fragment once, and verifies only the named package
-and direct declarations through readback. The caller cannot alter the SysML, provider,
-arguments, or result. A write-ahead record prevents an unknown write outcome from being
-replayed.
+The executor also re-reads the exact human-approved brief and documentary artifact
+behind that r1/r2 lineage. It first requires an empty root package, inserts one fixed
+high-level SysML fragment once, and verifies only the named package and direct
+declarations through readback. The caller cannot alter the SysML, provider, arguments,
+or result. A write-ahead record prevents an unknown write outcome from being replayed.
 
-This is code-only: it has not been released into the running SysON toolchain or
-exercised against a real SysON instance. The fragment is neither CAD nor an assembly,
+Its `inspection-drone-architecture-capture/2.0` record is neither CAD nor an assembly,
 physical or flight simulation, cost, compliance, or a requirement verdict. It remains a
-closed executor contract rather than a reusable YAML-node pattern.
+closed executor contract rather than a reusable YAML-node pattern. The concrete
+`inspection-drone-v3` project still awaits human review and exact brief confirmation,
+so this implemented operation is not yet authorized for that dossier. A later CAD step
+also requires a sourced, reviewed geometric definition.
 
 ## First mechanical slice
 
