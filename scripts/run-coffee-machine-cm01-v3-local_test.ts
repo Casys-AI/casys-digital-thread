@@ -27,6 +27,8 @@ Deno.test("CM-01 V3 local runner keeps isolated stores below its new report dire
     thermalAttempts: "state/local/cm01-v3-local-runs/example/thermal-attempts",
     erpBomCaptures: "state/local/cm01-v3-local-runs/example/erp-bom-captures",
     erpBomRunCaptures: "state/local/cm01-v3-local-runs/example/erp-bom-run-captures",
+    oracleRequirementsSeedCaptures:
+      "state/local/cm01-v3-local-runs/example/oracle-requirements-seed-captures",
     mechanicalCaptures: "state/local/cm01-v3-local-runs/example/mechanical-captures",
     mechanicalAttempts: "state/local/cm01-v3-local-runs/example/mechanical-attempts",
     liveUpdates: "state/local/cm01-v3-local-runs/example/live-updates",
@@ -54,6 +56,7 @@ Deno.test("CM-01 V3 canonical runner uses the exact server.ts state stores", () 
     thermalAttempts: "state/local/cm01-nominal-modelica-attempts",
     erpBomCaptures: "state/local/cm01-erpnext-bom-captures",
     erpBomRunCaptures: "state/local/cm01-erpnext-bom-run-captures",
+    oracleRequirementsSeedCaptures: "state/local/oracle-requirements-seed-captures",
     mechanicalCaptures: "state/local/cm01-drip-tray-mechanical-captures",
     mechanicalAttempts: "state/local/cm01-drip-tray-mechanical-attempts",
     liveUpdates: "state/local/live-thread-updates",

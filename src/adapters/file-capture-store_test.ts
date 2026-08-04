@@ -8,6 +8,7 @@ import {
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./file-capture-store.ts";
 
@@ -27,7 +28,7 @@ function _assertKindIncompatible(
   void _mechanical;
 }
 
-// ── URI namespace identity (the 7 expected strings are hardcoded) ────────────
+// ── URI namespace identity (the 8 expected strings are hardcoded) ────────────
 //
 // Any automated derivation of the namespace from the directory or kind would
 // silently produce the wrong URI for the architecture store
@@ -70,6 +71,12 @@ Deno.test(
     assertEquals(
       new FileCaptureStore(SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR).uriFor(fp),
       `casys://syson-model-seed-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR).uriFor(
+        fp,
+      ),
+      `casys://oracle-requirements-seed-capture/sha256/${d}`,
     );
   },
 );

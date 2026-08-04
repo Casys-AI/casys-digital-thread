@@ -13,6 +13,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
     kits.map((kit) => `${kit.kitId}@${kit.kitVersion}`),
     [
       "cm01.syson-architecture@1",
+      "cm01.syson-oracle-requirements@1",
       "cm01.cad-assembly@1",
       "cm01.drip-tray-height-correction@1",
       "cm01.thermal-nominal@1",
@@ -26,11 +27,12 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   );
   assertEquals(
     kits.map((kit) => kit.qualification.status),
-    Array(10).fill("manually-qualified"),
+    Array(11).fill("manually-qualified"),
   );
   assertEquals(
     kits.map((kit) => kit.presentationRole),
     [
+      "architecture",
       "architecture",
       "cad",
       "cad",
@@ -46,6 +48,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   assertEquals(
     kits.map((kit) => kit.activityCategory),
     [
+      "model",
       "model",
       "design",
       "design",
@@ -67,30 +70,19 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   }
   assertEquals(
     kits.map((kit) => kit.operation.execution),
-    [
-      "trusted",
-      "trusted",
-      "trusted",
-      "trusted",
-      "trusted",
-      "trusted",
-      "trusted",
-      "trusted",
-      "trusted",
-      "trusted",
-    ],
+    Array(11).fill("trusted"),
   );
-  assertEquals(kits[4]?.operation.bindings, [
+  assertEquals(kits[5]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
     { name: "dripTrayHeightCorrection", allowedSourceKinds: ["thread-entity"] },
   ]);
-  assertEquals(kits[7]?.operation.bindings, [
+  assertEquals(kits[8]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
     { name: "dripTrayHeightCorrection", allowedSourceKinds: ["thread-entity"] },
     { name: "revisedCadStep", allowedSourceKinds: ["thread-entity"] },
   ]);
-  assertEquals(kits[8]?.operation.bindings, kits[7]?.operation.bindings);
-  assertEquals(kits[9]?.operation.bindings, [
+  assertEquals(kits[9]?.operation.bindings, kits[8]?.operation.bindings);
+  assertEquals(kits[10]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
     {
       name: "historicalMechanicalR3Result",
@@ -106,6 +98,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
     operations.map((operation) => `${operation.id}@${operation.version}`),
     [
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.architecture.id}@1`,
+      `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.oracleRequirements.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cad.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.dripTrayHeightCorrection.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.thermal.id}@1`,
@@ -127,6 +120,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
   assertEquals(operations[7]?.execution, "trusted");
   assertEquals(operations[8]?.execution, "trusted");
   assertEquals(operations[9]?.execution, "trusted");
+  assertEquals(operations[10]?.execution, "trusted");
   assertEquals(
     operations.every((operation) => operation.execution === "trusted"),
     true,
@@ -140,6 +134,71 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
     true,
   );
 });
+
+Deno.test(
+  "CM-01 V3 oracle-requirements kit is trusted, carries the correct operation id, and declares the architecture artifact binding",
+  () => {
+    const kit = getCoffeeMachineCm01V3EngineeringKit(
+      "cm01.syson-oracle-requirements",
+    );
+    assertExists(kit);
+
+    // Identity and execution authority.
+    assertEquals(kit.kitId, "cm01.syson-oracle-requirements");
+    assertEquals(kit.kitVersion, "1");
+    assertEquals(
+      kit.operation.id,
+      "model.write-coffee-machine-cm01-oracle-requirements",
+    );
+    assertEquals(kit.operation.version, "1");
+    assertEquals(kit.operation.execution, "trusted");
+
+    // Presentation metadata.
+    assertEquals(kit.presentationRole, "architecture");
+    assertEquals(kit.activityCategory, "model");
+    assertEquals(kit.operation.workItemKind, "architect");
+    assertEquals(kit.operation.riskClass, "consequential");
+
+    // Bindings: approved-brief input from planning, architecture artifact from
+    // the prior architecture kit execution — the executor needs both to insert
+    // the requirement element into the correct editing context and parent.
+    assertEquals(kit.operation.bindings, [
+      { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
+      {
+        name: "architectureArtifact",
+        allowedSourceKinds: ["thread-entity"],
+      },
+    ]);
+
+    // Three reviewed-configuration source refs: proof JSON (thresholds), domain
+    // renderer (canonical SysML), and extractor (re-read contract).
+    assertEquals(kit.qualification.status, "manually-qualified");
+    assertEquals(kit.qualification.sourceRefs.length, 3);
+    assertEquals(
+      kit.qualification.sourceRefs.map((ref) => ref.kind),
+      [
+        "reviewed-configuration",
+        "reviewed-configuration",
+        "reviewed-configuration",
+      ],
+    );
+    assertEquals(
+      kit.qualification.sourceRefs.map((ref) => ref.path),
+      [
+        "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json",
+        "src/domain/proof-case.ts",
+        "src/adapters/syson-requirements-extractor.ts",
+      ],
+    );
+    for (const ref of kit.qualification.sourceRefs) {
+      assertEquals(ref.purpose.length > 0, true);
+    }
+
+    // Evidence boundary must explicitly disclaim verdict, solver, CAD, and
+    // certification — it anchors a declaration, nothing more.
+    assertEquals(kit.evidenceBoundary.length > 0, true);
+  },
+);
 
 Deno.test("CM-01 V3 catalog callers receive isolated copies", () => {
   const first = getCoffeeMachineCm01V3EngineeringKit("cm01.cad-assembly");

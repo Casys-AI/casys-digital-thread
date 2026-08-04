@@ -190,6 +190,15 @@ export const SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "SysON model-seed",
 };
 
+export const ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "oracle-requirements-seed"
+> = {
+  kind: "oracle-requirements-seed",
+  directory: "state/local/oracle-requirements-seed-captures",
+  uriNamespace: "oracle-requirements-seed-capture",
+  label: "Oracle requirements seed",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

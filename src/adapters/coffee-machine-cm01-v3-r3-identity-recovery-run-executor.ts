@@ -25,6 +25,8 @@ import { callDripTrayMechanicalOracle } from "./cm01-drip-tray-mechanical-oracle
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
+import type { FileCaptureStore } from "./file-capture-store.ts";
+import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import {
   type Cm01R3MechanicalMaterialization,
   CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer,
@@ -55,6 +57,8 @@ export interface CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutorDepen
   readonly proof: Cm01DripTrayMechanicalProofR3;
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
+  /** Optional fidelity gate; see CoffeeMachineCm01V3MechanicalRunExecutorDependencies. */
+  readonly requirementsCaptures?: FileCaptureStore<"oracle-requirements-seed">;
 }
 
 interface RecoveryBasis {
@@ -79,6 +83,9 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
   readonly #proof: Cm01DripTrayMechanicalProofR3;
   readonly #syson: McpToolClient;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #requirementsCaptures:
+    | FileCaptureStore<"oracle-requirements-seed">
+    | undefined;
 
   constructor(
     dependencies:
@@ -91,6 +98,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
     this.#proof = parseCm01DripTrayMechanicalProofR3(dependencies.proof);
     this.#syson = dependencies.syson;
     this.#lease = dependencies.lease;
+    this.#requirementsCaptures = dependencies.requirementsCaptures;
   }
 
   async execute(
@@ -144,6 +152,16 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
       if (run.status !== "running") throw unexpected(run, "running");
 
       const basis = await this.#requiredBasis(project, run);
+      // Fidelity gate: same check as the other mechanical executors — if the
+      // basis snapshot carries an oracle-requirements artifact the model must
+      // still reflect the committed thresholds before any oracle call.
+      await checkOracleRequirementsFidelityBeforeDispatch(
+        basis.snapshot,
+        this.#snapshots,
+        this.#proof,
+        this.#syson,
+        this.#requirementsCaptures,
+      );
       // The original completed attempt is read-only evidence.  Its SHA-256 is
       // checked against the R10 solve before it can materialize R11.
       const captured = await this.#capture.require({

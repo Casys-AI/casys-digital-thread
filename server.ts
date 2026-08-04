@@ -19,6 +19,7 @@ import {
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/file-capture-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
@@ -27,6 +28,11 @@ import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/
 import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "./src/adapters/file-cm01-semantic-cad-attempt-store.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
+import { FileOracleRequirementsSeedAttemptStore } from "./src/adapters/file-oracle-requirements-seed-attempt-store.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_ORACLE_REQUIREMENTS_OPERATION,
+  CoffeeMachineCm01V3OracleRequirementsRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
@@ -170,6 +176,10 @@ const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_ATTEMPT_DIRECTORY =
   "state/local/cm01-drip-tray-mechanical-r3-attempts";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_CAPTURE_DIRECTORY =
   "state/local/cm01-drip-tray-mechanical-r3-captures";
+const DEFAULT_ORACLE_REQUIREMENTS_SEED_ATTEMPT_DIRECTORY =
+  "state/local/oracle-requirements-seed-attempts";
+const DEFAULT_ORACLE_REQUIREMENTS_SEED_CAPTURE_DIRECTORY =
+  "state/local/oracle-requirements-seed-captures";
 const DEFAULT_CM01_SEMANTIC_RECIPE_PATH =
   "config/product-recipes/coffee-machine-cm01-v1.json";
 const DEFAULT_CM01_SEMANTIC_RECIPE_R2_PATH =
@@ -229,6 +239,8 @@ export interface CreateConsoleServerOptions {
   cm01DripTrayMechanicalR2CaptureDirectory?: string;
   cm01DripTrayMechanicalR3AttemptDirectory?: string;
   cm01DripTrayMechanicalR3CaptureDirectory?: string;
+  oracleRequirementsSeedAttemptDirectory?: string;
+  oracleRequirementsSeedCaptureDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
 }
@@ -429,6 +441,32 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01OracleRequirementsCaptures = new FileCaptureStore({
+    ...ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
+    directory: options.oracleRequirementsSeedCaptureDirectory ??
+      DEFAULT_ORACLE_REQUIREMENTS_SEED_CAPTURE_DIRECTORY,
+  });
+  const cm01OracleRequirements = sysonMcpUrl
+    ? new CoffeeMachineCm01V3OracleRequirementsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      architectureCaptures: new FileCaptureStore({
+        ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.cm01ArchitectureCaptureDirectory ??
+          DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      seedCaptures: sysonModelSeedCaptures,
+      requirementsCaptures: cm01OracleRequirementsCaptures,
+      attempts: new FileOracleRequirementsSeedAttemptStore(
+        options.oracleRequirementsSeedAttemptDirectory ??
+          DEFAULT_ORACLE_REQUIREMENTS_SEED_ATTEMPT_DIRECTORY,
+      ),
+      proof: await loadCm01DripTrayMechanicalProof(),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+    })
+    : undefined;
   const cm01NominalThermal = modelicaMcpUrl
     ? new CoffeeMachineCm01V3ThermalRunExecutor({
       projects: runtime.projects,
@@ -555,6 +593,7 @@ async function createProjectControl(
         directory: options.cm01DripTrayMechanicalCaptureDirectory ??
           DEFAULT_CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DIRECTORY,
       }),
+      requirementsCaptures: cm01OracleRequirementsCaptures,
       lease,
       liveUpdates,
     })
@@ -583,6 +622,7 @@ async function createProjectControl(
         directory: options.cm01DripTrayMechanicalR2CaptureDirectory ??
           DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_CAPTURE_DIRECTORY,
       }),
+      requirementsCaptures: cm01OracleRequirementsCaptures,
       lease,
       liveUpdates,
     })
@@ -607,6 +647,7 @@ async function createProjectControl(
       ),
       proof: await loadCm01DripTrayMechanicalProofR3(),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      requirementsCaptures: cm01OracleRequirementsCaptures,
       lease,
     })
     : undefined;
@@ -627,6 +668,7 @@ async function createProjectControl(
       }),
       attempts: cm01MechanicalR3Attempts,
       captures: cm01MechanicalR3Captures,
+      requirementsCaptures: cm01OracleRequirementsCaptures,
       lease,
       liveUpdates,
     })
@@ -649,6 +691,12 @@ async function createProjectControl(
             executor: cm01Architecture,
             unavailableMessage:
               "The server has no trusted CM-01 SysON architecture executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_ORACLE_REQUIREMENTS_OPERATION,
+            executor: cm01OracleRequirements,
+            unavailableMessage:
+              "The server has no trusted CM-01 oracle-requirements executor configured for this run.",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,

@@ -51,6 +51,8 @@ import { CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer } from "./coffee-m
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
+import type { FileCaptureStore } from "./file-capture-store.ts";
+import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 
 export const COFFEE_MACHINE_CM01_V3_CAD_R2_OPERATION =
   COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30;
@@ -122,6 +124,8 @@ export interface CoffeeMachineCm01V3MechanicalR2RunExecutorDependencies
   readonly syson: McpToolClient;
   readonly build123d: McpToolClient;
   readonly calculix: McpToolClient;
+  /** Optional fidelity gate; see CoffeeMachineCm01V3MechanicalRunExecutorDependencies. */
+  readonly requirementsCaptures?: FileCaptureStore<"oracle-requirements-seed">;
 }
 
 export interface CoffeeMachineCm01V3MechanicalR3RunExecutorDependencies
@@ -130,6 +134,8 @@ export interface CoffeeMachineCm01V3MechanicalR3RunExecutorDependencies
   readonly syson: McpToolClient;
   readonly build123d: McpToolClient;
   readonly calculix: McpToolClient;
+  /** Optional fidelity gate; see CoffeeMachineCm01V3MechanicalRunExecutorDependencies. */
+  readonly requirementsCaptures?: FileCaptureStore<"oracle-requirements-seed">;
 }
 
 /**
@@ -194,12 +200,16 @@ export class CoffeeMachineCm01V3MechanicalR2RunExecutor {
   readonly #build123d: McpToolClient;
   readonly #calculix: McpToolClient;
   readonly #common: R2ExecutorCommon;
+  readonly #requirementsCaptures:
+    | FileCaptureStore<"oracle-requirements-seed">
+    | undefined;
 
   constructor(dependencies: CoffeeMachineCm01V3MechanicalR2RunExecutorDependencies) {
     this.#proof = parseCm01DripTrayMechanicalProofR2(dependencies.proof);
     this.#syson = dependencies.syson;
     this.#build123d = dependencies.build123d;
     this.#calculix = dependencies.calculix;
+    this.#requirementsCaptures = dependencies.requirementsCaptures;
     this.#common = new R2ExecutorCommon(
       dependencies,
       COFFEE_MACHINE_CM01_V3_MECHANICAL_R2_OPERATION,
@@ -215,6 +225,14 @@ export class CoffeeMachineCm01V3MechanicalR2RunExecutor {
       command,
       "mechanical",
       async (base, run) => {
+        // Fidelity gate before any provider dispatch.
+        await checkOracleRequirementsFidelityBeforeDispatch(
+          base.snapshot,
+          this.#common.snapshots,
+          this.#proof,
+          this.#syson,
+          this.#requirementsCaptures,
+        );
         const capture = await this.#common.captureOnce(
           base.project,
           run,
@@ -262,12 +280,16 @@ export class CoffeeMachineCm01V3MechanicalR3RunExecutor {
   readonly #build123d: McpToolClient;
   readonly #calculix: McpToolClient;
   readonly #common: R2ExecutorCommon;
+  readonly #requirementsCaptures:
+    | FileCaptureStore<"oracle-requirements-seed">
+    | undefined;
 
   constructor(dependencies: CoffeeMachineCm01V3MechanicalR3RunExecutorDependencies) {
     this.#proof = parseCm01DripTrayMechanicalProofR3(dependencies.proof);
     this.#syson = dependencies.syson;
     this.#build123d = dependencies.build123d;
     this.#calculix = dependencies.calculix;
+    this.#requirementsCaptures = dependencies.requirementsCaptures;
     this.#common = new R2ExecutorCommon(
       dependencies,
       COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_OPERATION,
@@ -283,6 +305,14 @@ export class CoffeeMachineCm01V3MechanicalR3RunExecutor {
       command,
       "mechanical",
       async (base, run) => {
+        // Fidelity gate before any provider dispatch.
+        await checkOracleRequirementsFidelityBeforeDispatch(
+          base.snapshot,
+          this.#common.snapshots,
+          this.#proof,
+          this.#syson,
+          this.#requirementsCaptures,
+        );
         const capture = await this.#common.captureOnce(
           base.project,
           run,
@@ -361,6 +391,14 @@ class R2ExecutorCommon {
     this.#live = dependencies.liveUpdates;
     this.#operation = operation;
     this.now = dependencies.now ?? (() => new Date().toISOString());
+  }
+
+  /**
+   * Expose the shared snapshots store so that mechanical executor perform
+   * callbacks can pass it to checkOracleRequirementsFidelityBeforeDispatch.
+   */
+  get snapshots(): ThreadSnapshotStore {
+    return this.#snapshots;
   }
 
   async execute<Capture>(

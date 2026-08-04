@@ -17,6 +17,7 @@ import type {
 
 export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.syson-architecture"
+  | "cm01.syson-oracle-requirements"
   | "cm01.cad-assembly"
   | "cm01.drip-tray-height-correction"
   | "cm01.cad-assembly-drip-tray-height-30"
@@ -174,6 +175,18 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
         version: "1",
       } as const,
     ),
+    /**
+     * Writes the reviewed DripTray mechanical limits into the SysML model as a
+     * named PartDef element, then verifies re-extraction against the canonical
+     * fingerprint. No provider arguments flow from the agent — the thresholds
+     * come from the committed proof JSON via the server-fixed executor.
+     */
+    oracleRequirements: Object.freeze(
+      {
+        id: "model.write-coffee-machine-cm01-oracle-requirements",
+        version: "1",
+      } as const,
+    ),
   } as const satisfies Record<string, CoffeeMachineCm01V3OperationRef>,
 );
 
@@ -181,6 +194,14 @@ const APPROVED_BRIEF_BINDING = [{
   name: "approvedBrief",
   allowedSourceKinds: ["approved-brief"],
 }] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
+
+const APPROVED_BRIEF_AND_ARCHITECTURE_ARTIFACT_BINDINGS = [
+  ...APPROVED_BRIEF_BINDING,
+  {
+    name: "architectureArtifact",
+    allowedSourceKinds: ["thread-entity"],
+  },
+] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
 
 const APPROVED_BRIEF_AND_DRIP_TRAY_CORRECTION_BINDINGS = [
   ...APPROVED_BRIEF_BINDING,
@@ -240,6 +261,56 @@ const KITS = [
       riskClass: "consequential",
       execution: "trusted",
       bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.syson-oracle-requirements",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path:
+            "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json",
+          purpose:
+            "Defines the reviewed DripTray mechanical limits (thresholds and units) that are anchored in the SysML model.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/proof-case.ts",
+          purpose:
+            "Provides the deterministic SysML renderer and fingerprint that produce the canonical requirement element text.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/syson-requirements-extractor.ts",
+          purpose:
+            "Defines the extraction and verification contract that re-reads the anchored requirements after insertion.",
+        },
+      ],
+    },
+    /**
+     * Anchors a reviewed declaration only. This kit does not produce a
+     * verification verdict, run a solver, generate CAD, make a cost or
+     * supply claim, assess durability or safety, or constitute certification
+     * of the product or the component.
+     */
+    evidenceBoundary:
+      "Anchors the reviewed DripTray mechanical requirement declarations as a named SysML element. It is not a verification verdict, solver run, CAD result, whole-machine claim, durability assessment, safety analysis, or certification.",
+    presentationRole: "architecture",
+    activityCategory: "model",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.oracleRequirements,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Write the CM-01 oracle requirements into the SysML model",
+      description:
+        "Insert the reviewed DripTray mechanical requirement declarations into the CM-01 SysON model from the committed proof JSON, then verify re-extraction matches the canonical fingerprint.",
+      workItemKind: "architect",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_ARCHITECTURE_ARTIFACT_BINDINGS,
     },
   },
   {

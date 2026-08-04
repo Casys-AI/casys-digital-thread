@@ -32,6 +32,7 @@ import {
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../src/adapters/file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "../src/adapters/file-engineering-project-run-lease.ts";
@@ -116,6 +117,7 @@ export interface CoffeeMachineCm01V3StateDirectories {
   readonly thermalAttempts: string;
   readonly erpBomCaptures: string;
   readonly erpBomRunCaptures: string;
+  readonly oracleRequirementsSeedCaptures: string;
   readonly mechanicalCaptures: string;
   readonly mechanicalAttempts: string;
   readonly liveUpdates: string;
@@ -559,6 +561,10 @@ export async function runCoffeeMachineCm01V3Local(
           ...CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
           directory: state.mechanicalCaptures,
         }),
+        requirementsCaptures: new FileCaptureStore({
+          ...ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
+          directory: state.oracleRequirementsSeedCaptures,
+        }),
         lease,
         liveUpdates,
         now,
@@ -798,6 +804,8 @@ export function coffeeMachineCm01V3StateDirectories(input: {
       thermalAttempts: `${input.outputDirectory}/thermal-attempts`,
       erpBomCaptures: `${input.outputDirectory}/erp-bom-captures`,
       erpBomRunCaptures: `${input.outputDirectory}/erp-bom-run-captures`,
+      oracleRequirementsSeedCaptures:
+        `${input.outputDirectory}/oracle-requirements-seed-captures`,
       mechanicalCaptures: `${input.outputDirectory}/mechanical-captures`,
       mechanicalAttempts: `${input.outputDirectory}/mechanical-attempts`,
       liveUpdates: `${input.outputDirectory}/live-updates`,
@@ -819,6 +827,7 @@ export function coffeeMachineCm01V3StateDirectories(input: {
     thermalAttempts: `${root}/cm01-nominal-modelica-attempts`,
     erpBomCaptures: `${root}/cm01-erpnext-bom-captures`,
     erpBomRunCaptures: `${root}/cm01-erpnext-bom-run-captures`,
+    oracleRequirementsSeedCaptures: `${root}/oracle-requirements-seed-captures`,
     mechanicalCaptures: `${root}/cm01-drip-tray-mechanical-captures`,
     mechanicalAttempts: `${root}/cm01-drip-tray-mechanical-attempts`,
     liveUpdates: `${root}/live-thread-updates`,

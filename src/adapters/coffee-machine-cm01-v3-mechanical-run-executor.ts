@@ -48,6 +48,7 @@ import {
   FileCm01DripTrayMechanicalAttemptStore,
 } from "./file-cm01-drip-tray-mechanical-attempt-store.ts";
 import { FileCaptureStore } from "./file-capture-store.ts";
+import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
@@ -89,6 +90,12 @@ export interface CoffeeMachineCm01V3MechanicalRunExecutorDependencies {
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly now?: () => string;
+  /**
+   * Oracle requirements capture store — used by the fidelity check before any
+   * provider dispatch.  Optional for backwards compatibility with the historical
+   * chain and the local runner until they add the oracle requirements run.
+   */
+  readonly requirementsCaptures?: FileCaptureStore<"oracle-requirements-seed">;
 }
 interface Materialization {
   readonly snapshot: ThreadSnapshot;
@@ -112,6 +119,7 @@ export class CoffeeMachineCm01V3MechanicalRunExecutor {
   readonly #calculix;
   readonly #attempts;
   readonly #captures;
+  readonly #requirementsCaptures;
   readonly #lease;
   readonly #live;
   readonly #now;
@@ -125,6 +133,7 @@ export class CoffeeMachineCm01V3MechanicalRunExecutor {
     this.#calculix = deps.calculix;
     this.#attempts = deps.attempts;
     this.#captures = deps.captures;
+    this.#requirementsCaptures = deps.requirementsCaptures;
     this.#lease = deps.lease;
     this.#live = deps.liveUpdates;
     this.#now = deps.now ?? (() => new Date().toISOString());
@@ -176,6 +185,18 @@ export class CoffeeMachineCm01V3MechanicalRunExecutor {
       if (run.status !== "running") throw unexpected(run, "running");
       const base = await this.requiredBasis(project, run);
       const startedAt = requiredStart(run);
+      // Fidelity gate: if the basis snapshot carries an oracle-requirements
+      // artifact, re-verify that SysON still reflects the committed proof
+      // thresholds before dispatching any provider.  If a prior revision
+      // carried the artifact but the current basis does not, the monotony
+      // ratchet fires and blocks the run.
+      await checkOracleRequirementsFidelityBeforeDispatch(
+        base,
+        this.#snapshots,
+        this.#proof,
+        this.#syson,
+        this.#requirementsCaptures,
+      );
       await this.recordLive(
         project.project.subjectId,
         run.id,
