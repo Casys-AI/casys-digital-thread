@@ -218,12 +218,18 @@ qu'une violation ouverte porte une action proposée. Trois chemins écrivaient c
 tableaux vides et n'auraient donc su matérialiser qu'un succès. Un test de verdict doit
 passer par `validateThreadSnapshot` et non inspecter un objet en mémoire : c'est ce qui
 distingue « le snapshot se construit » de « le snapshot est publiable », et le défaut a
-survécu à trois commits faute de cette distinction. Les seuils, eux, viennent encore
-d'un proof-case revu et non du modèle SysML — le golden path n'écrit dans SysON que de
-la structure (`part def`, `part usage`, `attribute`), jamais de contrainte ni
-d'exigence. `syson_constraint_solve` (z3) reste délibérément hors du chemin de run :
-toutes les contraintes ayant la forme `feature op littéral` sur des variables
-indépendantes, il répondrait invariablement `sat` — une porte qui dit toujours oui.
+survécu à trois commits faute de cette distinction. Les seuils restent déclarés dans un
+proof-case revu, mais l'opération
+`model.write-coffee-machine-cm01-oracle-requirements@1` sait désormais les ancrer comme
+contraintes SysML dans le modèle : texte serveur-fixe rendu depuis le proof commité,
+vérifié par ré-extraction, jamais fourni par un agent. Une fois l'artifact d'exigences
+présent dans une révision, le cliquet de monotonie interdit qu'une révision ultérieure
+l'omette (`requirements_artifact_removed`), et chaque run mécanique re-vérifie la
+fidélité du modèle avant tout dispatch provider. Le premier run d'ancrage réel sur le
+modèle V3 n'a pas encore été exécuté — écriture immuable, décision humaine.
+`syson_constraint_solve` (z3) reste délibérément hors du chemin de run : toutes les
+contraintes ayant la forme `feature op littéral` sur des variables indépendantes, il
+répondrait invariablement `sat` — une porte qui dit toujours oui.
 
 Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.2` :
 la surface `planning` porte un `EngineeringProjectSnapshot` immuable avant toute preuve
