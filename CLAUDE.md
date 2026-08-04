@@ -88,8 +88,13 @@ deno task probe:constraint-solver
 
 **Piège `deno task check`** : la tâche énumère les fichiers un par un dans `deno.json`.
 Un nouveau module non-test qui n'y est pas ajouté n'est jamais type-checké — l'oubli est
-silencieux. Ne jamais rapporter une suite verte obtenue avec `--no-check` : c'est un
-résultat faux, la vérification ayant été désactivée plutôt que satisfaite.
+silencieux. La liste couvre aujourd'hui les 130 modules non-test hors `src/ui/`
+(celui-ci relève de `check:ui`) ; elle est complète, et le rester demande d'y ajouter
+chaque nouveau module. Méfiance particulière envers les tâches `check:*` dédiées : deux
+d'entre elles visaient des gates de release absentes du `check` principal, ce qui
+ressemblait à une couverture sans en être une. Ne jamais rapporter une suite verte
+obtenue avec `--no-check` : c'est un résultat faux, la vérification ayant été désactivée
+plutôt que satisfaite.
 
 **Piège bundles** : `src/ui/dist/**` est **commité**. Toute modification de
 `src/ui/src/` exige de rebuilder les surfaces concernées (`build`, `build:thread`) et de
@@ -203,12 +208,22 @@ certification.
 Ces deux évaluations mécaniques sont désormais rendues par `syson_constraint_evaluate`
 et non plus par une comparaison TypeScript : les unités sont comparées comme des
 valeurs, et `error` comme `unresolved` atteignent le snapshot publié sans jamais devenir
-`pass`. Les seuils, eux, viennent encore d'un proof-case revu et non du modèle SysML —
-le golden path n'écrit dans SysON que de la structure (`part def`, `part usage`,
-`attribute`), jamais de contrainte ni d'exigence. `syson_constraint_solve` (z3) reste
-délibérément hors du chemin de run : toutes les contraintes ayant la forme
-`feature op littéral` sur des variables indépendantes, il répondrait invariablement
-`sat` — une porte qui dit toujours oui.
+`pass`. Cela vaut sur **tous** les chemins — principal, correction R2, reprise R3,
+récupération d'identité et chaîne historique r5/r6 — et pas seulement sur le chemin
+principal.
+
+Un verdict `fail` y est publiable, ce qui n'allait pas de soi :
+`thread-snapshot-validation.ts` exige qu'une évaluation en échec nomme une violation, et
+qu'une violation ouverte porte une action proposée. Trois chemins écrivaient ces
+tableaux vides et n'auraient donc su matérialiser qu'un succès. Un test de verdict doit
+passer par `validateThreadSnapshot` et non inspecter un objet en mémoire : c'est ce qui
+distingue « le snapshot se construit » de « le snapshot est publiable », et le défaut a
+survécu à trois commits faute de cette distinction. Les seuils, eux, viennent encore
+d'un proof-case revu et non du modèle SysML — le golden path n'écrit dans SysON que de
+la structure (`part def`, `part usage`, `attribute`), jamais de contrainte ni
+d'exigence. `syson_constraint_solve` (z3) reste délibérément hors du chemin de run :
+toutes les contraintes ayant la forme `feature op littéral` sur des variables
+indépendantes, il répondrait invariablement `sat` — une porte qui dit toujours oui.
 
 Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.2` :
 la surface `planning` porte un `EngineeringProjectSnapshot` immuable avant toute preuve
