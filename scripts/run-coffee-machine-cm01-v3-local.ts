@@ -25,6 +25,9 @@ import { FileCm01NominalModelicaAttemptStore } from "../src/adapters/file-cm01-n
 import { FileCm01SemanticCadAttemptStore } from "../src/adapters/file-cm01-semantic-cad-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import {
+  CoffeeMachineCm01V3SensitivityRunExecutor,
+} from "../src/adapters/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
+import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
@@ -33,8 +36,10 @@ import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../src/adapters/file-capture-store.ts";
+import { FileSensitivityRunAttemptStore } from "../src/adapters/file-sensitivity-run-attempt-store.ts";
 import { FileEngineeringProjectRunLease } from "../src/adapters/file-engineering-project-run-lease.ts";
 import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../src/adapters/engineering-project-completion-evidence-validator.ts";
@@ -47,6 +52,7 @@ import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-st
 import { SysonModelSeedRunExecutor } from "../src/adapters/syson-model-seed-run-executor.ts";
 import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01-drip-tray-mechanical-proof.ts";
 import { parseCoffeeMachineCm01SemanticRecipe } from "../src/domain/coffee-machine-cm01-semantic-recipe.ts";
+import { validateSensitivityStudyCase } from "../src/domain/sensitivity-study.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   type GoldenReferenceComparison,
@@ -120,6 +126,8 @@ export interface CoffeeMachineCm01V3StateDirectories {
   readonly oracleRequirementsSeedCaptures: string;
   readonly mechanicalCaptures: string;
   readonly mechanicalAttempts: string;
+  readonly sensitivityCaptures: string;
+  readonly sensitivityAttempts: string;
   readonly liveUpdates: string;
   readonly leases: string;
 }
@@ -243,6 +251,11 @@ export async function runCoffeeMachineCm01V3Local(
   const mechanicalProof = parseCm01DripTrayMechanicalProof(
     await readJson(
       "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json",
+    ),
+  );
+  const sensitivityCase = validateSensitivityStudyCase(
+    await readJson(
+      "config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json",
     ),
   );
 
@@ -571,6 +584,46 @@ export async function runCoffeeMachineCm01V3Local(
       }).execute(AGENT, queued),
   });
 
+  project = await appendSingleOperation({
+    project,
+    commands,
+    changeId: "local-cm01-v3-add-sensitivity",
+    phaseId: "verification",
+    phaseName: "Mechanical proof",
+    phaseDescription: "Run the bounded isolated DripTray static proof.",
+    workItemId: "analyze-cm01-drip-tray-size-z-sensitivity",
+    dependsOnWorkItemIds: ["verify-cm01-drip-tray"],
+    operation: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityDripTrayBaseZ,
+  });
+  project = await queueAndExecute({
+    project,
+    commands,
+    workItemId: "analyze-cm01-drip-tray-size-z-sensitivity",
+    runId: "run:local-cm01-v3-sensitivity",
+    summary:
+      "Record the reviewed CM-01 V3 DripTray size-z first-order finite-difference sensitivity study.",
+    basis: threadBasis(project),
+    execute: (queued) =>
+      new CoffeeMachineCm01V3SensitivityRunExecutor({
+        projects,
+        commands,
+        snapshots,
+        sensitivityCase,
+        build123d,
+        calculix,
+        attempts: new FileSensitivityRunAttemptStore(
+          state.sensitivityAttempts,
+        ),
+        captures: new FileCaptureStore({
+          ...SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+          directory: state.sensitivityCaptures,
+        }),
+        lease,
+        liveUpdates,
+        now,
+      }).execute(AGENT, queued),
+  });
+
   const finalSnapshotRef = threadBasis(project);
   const finalSnapshot = await snapshots.get(finalSnapshotRef.snapshotId);
   if (!finalSnapshot) {
@@ -769,6 +822,7 @@ function confirmationRequired(): CoffeeMachineCm01V3LocalConfirmationRequired {
       "simulate.coffee-machine-cm01-thermal-nominal@1",
       "industrialize.observe-coffee-machine-cm01-bom@1",
       "verify.coffee-machine-cm01-drip-tray-mechanical@1",
+      "analyze.coffee-machine-cm01-drip-tray-size-z-sensitivity@1",
     ],
     note:
       "No state directory, MCP client, provider call, or simulated human approval is created until --execute and the exact acknowledgement are both present.",
@@ -808,6 +862,8 @@ export function coffeeMachineCm01V3StateDirectories(input: {
         `${input.outputDirectory}/oracle-requirements-seed-captures`,
       mechanicalCaptures: `${input.outputDirectory}/mechanical-captures`,
       mechanicalAttempts: `${input.outputDirectory}/mechanical-attempts`,
+      sensitivityCaptures: `${input.outputDirectory}/sensitivity-captures`,
+      sensitivityAttempts: `${input.outputDirectory}/sensitivity-attempts`,
       liveUpdates: `${input.outputDirectory}/live-updates`,
       leases: `${input.outputDirectory}/leases`,
     };
@@ -830,6 +886,8 @@ export function coffeeMachineCm01V3StateDirectories(input: {
     oracleRequirementsSeedCaptures: `${root}/oracle-requirements-seed-captures`,
     mechanicalCaptures: `${root}/cm01-drip-tray-mechanical-captures`,
     mechanicalAttempts: `${root}/cm01-drip-tray-mechanical-attempts`,
+    sensitivityCaptures: `${root}/sensitivity-study-captures`,
+    sensitivityAttempts: `${root}/sensitivity-run-attempts`,
     liveUpdates: `${root}/live-thread-updates`,
     leases: `${root}/engineering-project-run-leases`,
   };

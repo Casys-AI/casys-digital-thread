@@ -20,8 +20,10 @@ import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/file-capture-store.ts";
+import { FileSensitivityRunAttemptStore } from "./src/adapters/file-sensitivity-run-attempt-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
@@ -63,6 +65,11 @@ import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,
   CoffeeMachineCm01V3MechanicalRunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-mechanical-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_SENSITIVITY_OPERATION,
+  CoffeeMachineCm01V3SensitivityRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
+import { validateSensitivityStudyCase } from "./src/domain/sensitivity-study.ts";
 import {
   COFFEE_MACHINE_CM01_V3_DRIP_TRAY_HEIGHT_CORRECTION_OPERATION,
   CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor,
@@ -180,6 +187,12 @@ const DEFAULT_ORACLE_REQUIREMENTS_SEED_ATTEMPT_DIRECTORY =
   "state/local/oracle-requirements-seed-attempts";
 const DEFAULT_ORACLE_REQUIREMENTS_SEED_CAPTURE_DIRECTORY =
   "state/local/oracle-requirements-seed-captures";
+const DEFAULT_SENSITIVITY_STUDY_CAPTURE_DIRECTORY =
+  "state/local/sensitivity-study-captures";
+const DEFAULT_SENSITIVITY_RUN_ATTEMPT_DIRECTORY =
+  "state/local/sensitivity-run-attempts";
+const DEFAULT_CM01_DRIP_TRAY_SIZE_Z_SENSITIVITY_CASE_PATH =
+  "config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json";
 const DEFAULT_CM01_SEMANTIC_RECIPE_PATH =
   "config/product-recipes/coffee-machine-cm01-v1.json";
 const DEFAULT_CM01_SEMANTIC_RECIPE_R2_PATH =
@@ -241,6 +254,8 @@ export interface CreateConsoleServerOptions {
   cm01DripTrayMechanicalR3CaptureDirectory?: string;
   oracleRequirementsSeedAttemptDirectory?: string;
   oracleRequirementsSeedCaptureDirectory?: string;
+  sensitivityStudyCaptureDirectory?: string;
+  sensitivityRunAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
 }
@@ -673,6 +688,33 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01DripTrayBaseZSensitivity = build123dMcpUrl && calculixMcpUrl
+    ? new CoffeeMachineCm01V3SensitivityRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      sensitivityCase: await loadCm01DripTrayBaseZSensitivityCase(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      calculix: new HttpMcpToolClient({
+        mcpUrl: calculixMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      attempts: new FileSensitivityRunAttemptStore(
+        options.sensitivityRunAttemptDirectory ??
+          DEFAULT_SENSITIVITY_RUN_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCaptureStore({
+        ...SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+        directory: options.sensitivityStudyCaptureDirectory ??
+          DEFAULT_SENSITIVITY_STUDY_CAPTURE_DIRECTORY,
+      }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   return {
     brief: {
       projects: runtime.projects,
@@ -750,6 +792,12 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted CM-01 R3 identity recovery executor configured for this run.",
           },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_SENSITIVITY_OPERATION,
+            executor: cm01DripTrayBaseZSensitivity,
+            unavailableMessage:
+              "The server has no trusted CM-01 DripTray size-z sensitivity executor configured for this run.",
+          },
         ],
       }),
     },
@@ -797,6 +845,15 @@ async function loadCm01DripTrayMechanicalProofR3() {
     await loadReviewedJson(
       DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R3_PATH,
       "CM-01 R3 DripTray recovery proof",
+    ),
+  );
+}
+
+async function loadCm01DripTrayBaseZSensitivityCase() {
+  return validateSensitivityStudyCase(
+    await loadReviewedJson(
+      DEFAULT_CM01_DRIP_TRAY_SIZE_Z_SENSITIVITY_CASE_PATH,
+      "CM-01 DripTray size-z sensitivity case",
     ),
   );
 }

@@ -26,7 +26,8 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-static-proof"
   | "cm01.drip-tray-static-proof-height-30"
   | "cm01.drip-tray-static-proof-height-30-r3"
-  | "cm01.drip-tray-static-proof-height-30-r3-identity-recovery";
+  | "cm01.drip-tray-static-proof-height-30-r3-identity-recovery"
+  | "cm01.drip-tray-sensitivity";
 
 export type CoffeeMachineCm01V3PresentationRole =
   | "architecture"
@@ -184,6 +185,18 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
     oracleRequirements: Object.freeze(
       {
         id: "model.write-coffee-machine-cm01-oracle-requirements",
+        version: "1",
+      } as const,
+    ),
+    /**
+     * First-order forward finite-difference sensitivity of the DripTray FEA
+     * metrics with respect to size-z at the reviewed 30 mm R2 baseline.
+     * Produces local derivatives (value + unit); no verdict, no evaluation,
+     * no requirement claim.
+     */
+    sensitivityDripTrayBaseZ: Object.freeze(
+      {
+        id: "analyze.coffee-machine-cm01-drip-tray-size-z-sensitivity",
         version: "1",
       } as const,
     ),
@@ -622,6 +635,47 @@ const KITS = [
       riskClass: "consequential",
       execution: "trusted",
       bindings: APPROVED_BRIEF_AND_HISTORICAL_R3_RESULT_BINDINGS,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-sensitivity",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json",
+          purpose:
+            "Defines the reviewed finite-difference case: base value, step, mesh, material, selection boxes, and domain limitations.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/sensitivity-study.ts",
+          purpose:
+            "Provides the pure-domain validator, deterministic script renderer, and derivative arithmetic with unit composition.",
+        },
+      ],
+    },
+    /**
+     * Sensitivity is purely local evidence — not a verdict, not a threshold
+     * check, not a conformance or certification claim.
+     */
+    evidenceBoundary:
+      "Produces first-order forward finite-difference derivatives of the isolated DripTray FEA metrics with respect to size-z at the reviewed 30 mm R2 base. It is not a pass/fail verdict, requirement evaluation, whole-machine claim, durability assessment, or certification.",
+    presentationRole: "verification",
+    activityCategory: "analysis",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityDripTrayBaseZ,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Measure DripTray size-z sensitivity at the reviewed 30 mm base",
+      description:
+        "Run the reviewed first-order finite-difference sensitivity study for DripTray size-z at the exact 30 mm R2 baseline and record the derivative evidence.",
+      workItemKind: "simulate",
+      riskClass: "low",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_BINDING,
     },
   },
 ] as const satisfies readonly CoffeeMachineCm01V3EngineeringKit[];

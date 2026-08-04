@@ -31,6 +31,8 @@ Deno.test("CM-01 V3 local runner keeps isolated stores below its new report dire
       "state/local/cm01-v3-local-runs/example/oracle-requirements-seed-captures",
     mechanicalCaptures: "state/local/cm01-v3-local-runs/example/mechanical-captures",
     mechanicalAttempts: "state/local/cm01-v3-local-runs/example/mechanical-attempts",
+    sensitivityCaptures: "state/local/cm01-v3-local-runs/example/sensitivity-captures",
+    sensitivityAttempts: "state/local/cm01-v3-local-runs/example/sensitivity-attempts",
     liveUpdates: "state/local/cm01-v3-local-runs/example/live-updates",
     leases: "state/local/cm01-v3-local-runs/example/leases",
   });
@@ -59,6 +61,8 @@ Deno.test("CM-01 V3 canonical runner uses the exact server.ts state stores", () 
     oracleRequirementsSeedCaptures: "state/local/oracle-requirements-seed-captures",
     mechanicalCaptures: "state/local/cm01-drip-tray-mechanical-captures",
     mechanicalAttempts: "state/local/cm01-drip-tray-mechanical-attempts",
+    sensitivityCaptures: "state/local/sensitivity-study-captures",
+    sensitivityAttempts: "state/local/sensitivity-run-attempts",
     liveUpdates: "state/local/live-thread-updates",
     leases: "state/local/engineering-project-run-leases",
   });

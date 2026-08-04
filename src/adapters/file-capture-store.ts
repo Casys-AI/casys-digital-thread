@@ -199,6 +199,15 @@ export const ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor
   label: "Oracle requirements seed",
 };
 
+export const SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-study"
+> = {
+  kind: "sensitivity-study",
+  directory: "state/local/sensitivity-study-captures",
+  uriNamespace: "sensitivity-study-capture",
+  label: "Sensitivity study",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {
