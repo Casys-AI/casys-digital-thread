@@ -113,3 +113,22 @@ from 7.995 mm down to 3.416 mm, strongly non-linear and saturating. ~103 real so
    locality violated in opposite directions. This is the measured argument for the
    piecewise map (several local edges) and for neighbourhood-bounded proposals — the
    traversal engine under construction refuses exactly what CA here silently did.
+
+**Campaign 3 — the traversal engine on the two-parameter bench, 2026-08-05** — see
+`results/*-2d-traversal.json` and `experiments/oracle/traversal.ts`. Tasks: meet a
+displacement limit while keeping ADDED MASS under a cap (mass judged analytically,
+exact; displacement by real solves). The jacobian was **fully recycled** — three
+measurements cited from earlier campaigns, zero measurement solves paid:
+
+| Arm                       | Converged | Total solves | Added mass (3 common tasks) |
+| ------------------------- | --------- | ------------ | --------------------------- |
+| TRAV — vector engine      | **4/4**   | **4**        | **61.5 g**                  |
+| BASE — prudent ribs-first | 3/4       | 13           | 70.6 g                      |
+
+One verification solve per correction, four times in a row: the ε = 5 % margin absorbed
+the local non-linearity, and the engine dosed the plate to the hundredth of a millimetre
+where discrete steps over-correct. This closes the loop the hard campaign opened: a
+single edge outside its neighbourhood fails both ways (campaign 2, arm CA); a bounded
+jacobian inside its neighbourhoods corrects in one shot (campaign 3, TRAV). Edge
+amortisation is no longer an argument — it is a measured behaviour: measured once,
+served four times, free.
