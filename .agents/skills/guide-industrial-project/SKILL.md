@@ -77,9 +77,7 @@ first and bind the change to its exact current `baseSnapshot`. A change can add 
 phases, work items, and required decisions: it must not rewrite prior work, decisions,
 runs, evidence, or snapshots. Use registered operations only. `baseSnapshot` is the
 change's provenance anchor, not a V2 run input; queueing still derives the run's exact
-`basis` from durable project state. For the inspection-drone path, one such change may
-add the SysON container seed and the separately bounded architecture operation, in that
-dependency order.
+`basis` from durable project state.
 
 If a needed decision has not been declared outside that unexecuted planning state,
 present it as a proposed question until the control plane offers an authorized way to
@@ -111,6 +109,38 @@ For each approved objective, derive the smallest useful loop:
 Downloaded geometry is a starting artifact, not automatically a parametric or
 manufacturable model. Prefer editable source geometry; otherwise record the conversion
 and any lost design intent.
+
+## Propose corrections from measured sensitivities
+
+When a requirement fails and a correction is needed, look for sensitivity-study
+observations in the project's thread before proposing a parameter change. A sensitivity
+study (a registered `analyze.*sensitivity*` operation) publishes a measured derivative
+with its unit, base point, step and declared limitations. Cite that derivative and its
+neighbourhood when proposing the bounded correction — never propose a magnitude from
+intuition when a measured sensitivity exists. If none exists for the relevant parameter,
+propose running the registered sensitivity operation first; its case file is reviewed
+configuration, so the agent never supplies the parameter, step, mesh or metrics.
+
+A sensitivity result is data, not a verdict: it never satisfies a requirement by itself,
+and the proposed correction must still be recomputed and re-evaluated through the normal
+verification loop after human approval.
+
+## Read refusals as information
+
+Some typed refusals from registered operations carry meaning the agent must surface
+rather than work around:
+
+- `requirements_artifact_removed` — a prior revision anchored the requirements in the
+  model and the current basis no longer carries them. The model's requirement anchoring
+  was weakened; escalate to the human. Never retry, and never propose bypassing the
+  check.
+- A fidelity refusal from the requirements verification means the SysML model no longer
+  matches the reviewed thresholds — someone changed the model outside the reviewed path.
+  Same rule: surface it, do not work around it.
+- `error` and `unresolved` evaluation statuses are first-class published states, not
+  failures to retry. Present them as "the oracle could not decide", with whatever the
+  status carries; never re-run in the hope of a pass, and never treat them as pass or
+  fail.
 
 ## Report cost honestly
 

@@ -71,15 +71,35 @@ export class HttpMcpToolClient implements McpToolClient {
 
   async callTool(call: McpToolCall): Promise<McpToolResult> {
     const result = await this.#transport(call);
-    if (!isRecord(result.structuredContent)) {
-      throw new McpToolCallError(
-        `${call.name}: tool did not return structuredContent`,
-      );
+    if (isRecord(result.structuredContent)) {
+      return {
+        structuredContent: structuredClone(result.structuredContent),
+        text: contentText(result),
+      };
     }
-    return {
-      structuredContent: structuredClone(result.structuredContent),
-      text: contentText(result),
-    };
+    // structuredContent is optional in the MCP specification, and provider
+    // releases move between the two shapes (mcp-syson 0.5.1 dropped it,
+    // breaking every executor mid-path). Falling back to the first text item
+    // parsed as a JSON object is a deterministic transport concern, not a
+    // hidden heuristic: anything that is neither shape is still a hard error,
+    // and every executor keeps its own fail-closed validation behind this.
+    const raw = contentFirstText(result);
+    if (raw !== undefined) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new McpToolCallError(
+          `${call.name}: tool returned neither structuredContent nor JSON text`,
+        );
+      }
+      if (isRecord(parsed)) {
+        return { structuredContent: parsed, text: contentText(result) };
+      }
+    }
+    throw new McpToolCallError(
+      `${call.name}: tool did not return structuredContent`,
+    );
   }
 
   /**

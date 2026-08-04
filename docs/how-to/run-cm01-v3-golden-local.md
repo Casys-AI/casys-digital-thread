@@ -244,9 +244,8 @@ superseded; it is never overwritten, aliased, or presented as new mechanical evi
 ### R11 → R12 requirement-family closeout
 
 R11 restores the exact R3 solve identity, but a corrected path also needs current
-requirements and evaluations rather than a reused historical verdict. The final
-closeout is deliberately a separate provider-free operation over already persisted local
-state:
+requirements and evaluations rather than a reused historical verdict. The final closeout
+is deliberately a separate provider-free operation over already persisted local state:
 
 ```bash
 deno task thread:close-coffee-machine-cm01-v3-r11
@@ -321,6 +320,37 @@ keep this matching golden observation as historical evidence and close the corre
 path with its own current requirements, observations, evaluations and project-plan
 records. Do not feed the corrected result to this comparator by weakening or editing the
 historical reference.
+
+## The sensitivity study step
+
+The runner ends with `analyze.coffee-machine-cm01-drip-tray-size-z-sensitivity@1`: the
+same CAD → STEP → CalculiX chain runs twice, at the reviewed base height and at base +
+step, and publishes the finite-difference derivatives with composed units (mm/mm,
+MPa/mm) and their neighbourhood. Everything that shapes the study — parameter, base
+value, step, mesh, material, load and selection boxes — comes from the reviewed case in
+[`config/sensitivity-cases/`](../../config/sensitivity-cases/); nothing is chosen by
+code at run time, and the executor refuses a case whose base value does not match the
+reviewed recipe.
+
+A sensitivity result is data, never a verdict. The published derivative satisfies no
+requirement by itself; its declared limitations state that remeshing variation is
+included and that the derivative is local to its neighbourhood. Its purpose is to make
+correction proposals citable — "raise size-z by 2 mm because ∂displacement/∂size-z is
+measured at this value around 30 mm" — instead of guessed.
+
+Two operational pitfalls the acceptance run of 2026-08-04 hit — both are consequences
+of running against the *default* topology instead of the isolated one that section 1
+prescribes:
+
+- the shared SysON image answers in JSON-in-text rather than `structuredContent`
+  (hence the pinned `MCP_SYSON_IMAGE` above). The backend client now accepts both
+  shapes and rejects anything else, as `structuredContent` is optional in the MCP
+  specification — but pinning the image remains the reviewed configuration;
+- the default Modelica volume retains prior runs and the store caps them at 20 with no
+  archive tool (hence the fresh `MODELICA_RUNS_VOLUME` above). If the cap is reached on
+  the default volume, archive the `run_*` directories out of the top level (for example
+  into `/runs/.archive-<date>/` inside the volume, plus a `docker cp` copy under
+  `state/local/archives/`) before starting new simulations.
 
 ## What this does not prove
 

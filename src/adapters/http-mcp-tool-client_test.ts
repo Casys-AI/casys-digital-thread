@@ -67,7 +67,7 @@ Deno.test("HttpMcpToolClient does not hide provider tool errors", async () => {
   );
 });
 
-Deno.test("HttpMcpToolClient requires structuredContent", async () => {
+Deno.test("HttpMcpToolClient rejects a result that is neither structuredContent nor JSON text", async () => {
   const client = new HttpMcpToolClient({
     mcpUrl: "http://127.0.0.1:3999/mcp",
     fetch: (() =>
@@ -84,8 +84,36 @@ Deno.test("HttpMcpToolClient requires structuredContent", async () => {
   await assertRejects(
     () => client.callTool({ name: "human_only" }),
     McpToolCallError,
-    "did not return structuredContent",
+    "neither structuredContent nor JSON text",
   );
+});
+
+Deno.test("HttpMcpToolClient accepts a JSON-object text result when structuredContent is absent", async () => {
+  // structuredContent is optional in the MCP specification; provider releases
+  // move between the two shapes. The parsed object must round-trip unchanged.
+  const client = new HttpMcpToolClient({
+    mcpUrl: "http://127.0.0.1:3999/mcp",
+    fetch: (() =>
+      Promise.resolve(Response.json({
+        jsonrpc: "2.0",
+        id: 1,
+        result: {
+          resultType: "complete",
+          content: [{
+            type: "text",
+            text: JSON.stringify({ id: "p-1", editingContextId: "ctx-1" }),
+          }],
+        },
+      }))) as typeof fetch,
+  });
+
+  const result = await client.callTool({ name: "text_shaped_write" });
+  if (
+    result.structuredContent.id !== "p-1" ||
+    result.structuredContent.editingContextId !== "ctx-1"
+  ) {
+    throw new Error("JSON text result was not surfaced as structuredContent");
+  }
 });
 
 Deno.test(

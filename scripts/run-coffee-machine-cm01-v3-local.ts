@@ -588,9 +588,10 @@ export async function runCoffeeMachineCm01V3Local(
     project,
     commands,
     changeId: "local-cm01-v3-add-sensitivity",
-    phaseId: "verification",
-    phaseName: "Mechanical proof",
-    phaseDescription: "Run the bounded isolated DripTray static proof.",
+    phaseId: "sensitivity",
+    phaseName: "Sensitivity study",
+    phaseDescription:
+      "Measure the DripTray size-z finite-difference sensitivities; data, not a verdict.",
     workItemId: "analyze-cm01-drip-tray-size-z-sensitivity",
     dependsOnWorkItemIds: ["verify-cm01-drip-tray"],
     operation: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityDripTrayBaseZ,
