@@ -221,6 +221,51 @@ CAD STEP references, queues it, and executes only the registered
 publish exactly r10 with one artifact evidence reference. It is still an isolated
 DripTray concept proof, not a whole-machine certification or release.
 
+### Recorded R10 → R11 identity recovery
+
+The recorded R10 result is not a second solver run. It is a retained completed R3
+capture whose artifact identity was labelled as R2. If — and only if — the project is at
+that exact R10 boundary, repair the identity through its dedicated, inert-by-default MCP
+driver:
+
+```bash
+deno task thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity
+
+deno task thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity --execute \
+  --acknowledge=RECOVER_CM01_V3_MECHANICAL_R3_IDENTITY
+```
+
+This requires the control plane on `127.0.0.1:3020/mcp`, but invokes no engineering
+provider. It appends one registered identity-recovery work item, queues and executes it
+through the normal project-control boundary, then publishes the correctly identified R3
+successor as R11. The malformed R10 record remains immutable, visible, and explicitly
+superseded; it is never overwritten, aliased, or presented as new mechanical evidence.
+
+### R11 → R12 requirement-family closeout
+
+R11 restores the exact R3 solve identity, but a corrected path also needs current
+requirements and evaluations rather than a reused historical verdict. The final
+closeout is deliberately a separate provider-free operation over already persisted local
+state:
+
+```bash
+deno task thread:close-coffee-machine-cm01-v3-r11
+
+deno task thread:close-coffee-machine-cm01-v3-r11 --execute \
+  --acknowledge=CLOSE_CM01_V3_R11_REQUIREMENT_FAMILY
+```
+
+The command has no MCP client, network request, or provider invocation. It requires the
+exact R11 completed successor and the retained R2 attempt with no evidence. It writes a
+direct R12 child that records the R1/R2/R3 requirement-family supersession links, reads
+it back, then reconciles the project state. The R2 **run remains `failed` and
+evidence-free**. Its work item becomes `cancelled` only with an explicit
+`superseded-by-successor` reconciliation that cites the completed R3 run, its exact
+evidence, and R12; it is never relabelled as a successful R2 execution.
+
+This closes the bounded CM-01 V3 correction dossier only. It does not rerun a solver,
+verify the whole CoffeeMachine, authorize fabrication, or establish certification.
+
 This harness is an isolated integration proof. Its project, snapshots, and live feed do
 **not** appear automatically in the Cockpit: the Cockpit intentionally reads only the
 canonical control-plane stores and the project selected through `cockpit_focus_set`. An
@@ -268,6 +313,14 @@ deno task thread:verify-coffee-machine-v3-golden \
 The command returns `matches: true` only when the required semantic roles, producers,
 units, measurements, and exact mechanical STEP/consumption attestation satisfy the
 reference. ERP stock is intentionally not compared because it changes over time.
+
+This is completion of the **original golden integration comparison**, not completion of
+the whole CM-01 engineering project. It deliberately describes the original bounded
+DripTray case. If a reviewed design correction has created a new CAD/CalculiX successor,
+keep this matching golden observation as historical evidence and close the corrected
+path with its own current requirements, observations, evaluations and project-plan
+records. Do not feed the corrected result to this comparator by weakening or editing the
+historical reference.
 
 ## What this does not prove
 

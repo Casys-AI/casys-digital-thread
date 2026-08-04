@@ -12,7 +12,7 @@ import {
   type RegisteredEngineeringOperation,
   type RegisteredEngineeringOperationInput,
 } from "../orchestration/operations/registry.ts";
-import { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_PROJECT_ID,
   COFFEE_MACHINE_CM01_V3_SUBJECT_ID,
@@ -28,7 +28,7 @@ import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-co
 import { FileCm01NominalModelicaAttemptStore } from "./file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCm01NominalModelicaCaptureStore } from "./file-cm01-nominal-modelica-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-discovery-baseline-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
@@ -233,7 +233,7 @@ function executionCommand(queued: Awaited<ReturnType<typeof queuedThermal>>["que
 async function queuedThermal(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
-  const captures = new FileApprovedDiscoveryBaselineCaptureStore(
+  const captures = new FileApprovedBriefBaselineCaptureStore(
     `${directory}/baseline-captures`,
   );
   const thermalCaptures = new FileCm01NominalModelicaCaptureStore(
@@ -318,10 +318,9 @@ async function queuedThermal(directory: string) {
     summary: "Record the approved CM-01 brief.",
     basis: project.plan!.basis,
   });
-  const baselineExecutor = new ApprovedDiscoveryBaselineRunExecutor({
+  const baselineExecutor = new ApprovedBriefBaselineRunExecutor({
     projects,
     commands,
-    discoveries: { getRevision: () => Promise.resolve(undefined) },
     captures,
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),

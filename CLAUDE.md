@@ -56,9 +56,9 @@ deno task preview:thread      # :5173 — cockpit projet natif (reads/SSE passif
 deno task preview:cockpit     # :5175 — même cockpit, port explicite de démonstration
 ```
 
-Chaîne CM-01 — **n'exécuter que pour produire délibérément de nouvelles preuves
-locales**, jamais « pour voir » : ces tâches appellent de vrais providers et écrivent
-des révisions immuables sous `state/local/`.
+Chaîne CM-01 historique r5/r6 — **n'exécuter que pour produire délibérément de
+nouvelles preuves locales**, jamais « pour voir » : les runners provider écrivent des
+révisions immuables sous `state/local/`.
 
 ```bash
 deno task thread:assemble                        # assemblage read-only des branches CM-01
@@ -69,13 +69,21 @@ deno task thread:attach-coffee-machine-mechanical --run-id=<id>
 deno task thread:attach-modelica
 ```
 
+Le chemin fermé `coffee-machine-cm01-v3` est distinct de cette référence historique.
+Ses runners de correction et de récupération appellent le plan de contrôle MCP seulement
+après consentement explicite ; `thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity`
+reconstruit une identité R3 depuis une capture achevée, et
+`thread:close-coffee-machine-cm01-v3-r11` crée le closeout R12. Ces deux dernières
+étapes ne rejouent aucun provider ; elles restent néanmoins des écritures immuables, pas
+des commandes de diagnostic.
+
 **Piège `deno task check`** : la tâche énumère les fichiers un par un dans `deno.json`.
 Un nouveau module non-test qui n'y est pas ajouté n'est jamais type-checké — l'oubli est
 silencieux.
 
 **Piège bundles** : `src/ui/dist/**` est **commité**. Toute modification de `src/ui/src/`
-exige de rebuilder (`build`, `build:thread`, `build:discovery`) et de commiter le bundle
-régénéré, sinon le preview et la ressource MCP servent l'ancienne UI.
+exige de rebuilder les surfaces concernées (`build`, `build:thread`) et de commiter le
+bundle régénéré, sinon le preview et la ressource MCP servent l'ancienne UI.
 
 ## Architecture du code
 
@@ -86,10 +94,10 @@ Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 | `src/domain/`                 | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*` |
 | `src/adapters/`               | I/O : stores fichier immuables, clients MCP HTTP, sondes Docker, exécuteurs, projecteurs |
 | `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning            |
-| `src/tools/`                  | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`, `project-discovery.ts` |
+| `src/tools/`                  | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                         |
 | `src/workflow/`               | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                 |
 | `src/contracts/`              | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                          |
-| `src/ui/src/`                 | Preact : `project/` (cockpit, discovery, commandes), `thread/` (feed, graphe, inspecteurs) |
+| `src/ui/src/`                 | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)    |
 | `src/testing/`                | Fixtures partagées entre suites                                                          |
 | `scripts/`                    | Entry points exécutables : BFF, runners CM-01, harness, gates de release                 |
 | `server.ts`                   | **Composition root** : c'est là que les adapters sont câblés aux services domaine        |
@@ -97,8 +105,8 @@ Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 Les invariants suivants sont structurels — les casser casse le produit, pas seulement un
 test :
 
-1. **Immutabilité + CAS** — `EngineeringProjectSnapshot`, `ProjectDiscoverySnapshot` et
-   `ThreadSnapshot` ne sont jamais mutés. Toute commande nomme la révision attendue et
+1. **Immutabilité + CAS** — `EngineeringProjectSnapshot` et `ThreadSnapshot` ne sont
+   jamais mutés. Toute commande nomme la révision attendue et
    écrit une nouvelle révision. Une révision publiée est relue avant d'être considérée
    comme vraie.
 2. **Hash déterministe** — toute empreinte passe par `deterministicJson` /
@@ -170,11 +178,13 @@ SHA-256 → le résultat (masse, contrainte) se vérifie contre le modèle via
 Les runs Modelica restent dans leur volume dédié `/runs` : ils ne partagent ni export
 CAD ni socket Docker.
 
-Le seul verdict CoffeeMachine actuellement branché au cockpit est le contrat de scénario
+Dans le baseline CM-01 r5, le seul verdict CoffeeMachine est le contrat de scénario
 provisoire `config/verification-plans/coffee-machine-nominal-v1.json` :
 `water_temperature_max >= 90 degC`, appelé en lecture seule via
 `syson_constraint_evaluate` et lié aux hashes modèle/scénario. Ce n'est pas une exigence
-produit/SysON ; les 900 s sont seulement la provenance du scénario.
+produit/SysON ; les 900 s sont seulement la provenance du scénario. Le chemin CM-01 V3
+fermé porte séparément deux critères mécaniques de concept DripTray et leurs évaluations
+courantes ; il ne prouve ni la machine entière, ni une fabrication, ni une certification.
 
 Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.2` :
 la surface `planning` porte un `EngineeringProjectSnapshot` immuable avant toute preuve
@@ -183,14 +193,11 @@ technique ; la surface `evidence` y ajoute un `ThreadSnapshot` lié et l'état e
 `Evidence` et `Execution`. Le feed live appartient à `Activity`, le graphe à `Evidence`,
 les facettes composants à `Product`, et les runs et outils à `Execution`.
 
-Une idée qui n'est pas encore un projet technique vit séparément dans un
-`ProjectDiscoverySnapshot` immuable. L'agent utilise les tools `project_discovery_*`
-pour préparer une seule question bornée à la fois et proposer un brief ; l'humain mène
-l'échange normal avec l'agent et confirme le brief exact dans cette conversation par
-MRTR signé. Le Workbench loopback `5174` reflète seulement le dossier partagé. Après la
-confirmation, l'agent peut créer le shell projet vide ; aucun modèle SysON ni
-`ThreadSnapshot` n'est inventé par ce passage. L'UE UAS est le premier exemple de
-conformité documenté ; il n'existe pas encore de moteur réglementaire mondial.
+Un nouveau projet commence directement dans un `EngineeringProjectSnapshot` schema-3.0 :
+l'agent pose une question compréhensible à la fois, consolide le brief vivant et l'humain
+confirme le brief exact dans la conversation par MRTR signé. Le cockpit unique en donne
+ensuite une projection passive ; ce passage ne crée ni modèle SysON, ni `ThreadSnapshot`
+technique. Aucun moteur réglementaire ne fait partie du Golden Path actuel.
 
 Le backend compose les données par un DAG explicite sous `config/thread-workflows/` ; la
 YAML ne décrit ni layout ni composant. Ouvrir la page ne lance aucun solver. Les MCP
@@ -242,9 +249,11 @@ ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service 
 
 ## État et prochaine étape
 
-Chaîne complète publiée le 2026-07-30 (voir `docs/positioning.md` pour le SOTA). **Le
-prochains chantiers produit** sont le passage explicite d'un brief Discovery approuvé au
-premier projet/SysON exact, puis le cas mécanique CM-01 : déclarer un matériau, des
-appuis, une charge et un critère réellement revus, puis publier CalculiX → observations
-→ évaluation SysON dans le feed. `experiments/oracle/` reste ensuite le benchmark de
-correction agent avec et sans oracle.
+Le chemin local CM-01 V3 démontre maintenant une correction bornée `28 mm → 30 mm` : le
+run R2 sans preuve reste un échec historique, un successeur R3 correctement identifié
+porte la preuve mécanique, puis R12 ferme explicitement la famille d'exigences et la
+réconciliation de projet. C'est un seul cas de concept, pas un mécanisme de correction
+générique ni une certification. Les prochains chantiers sont de rendre ce schéma
+réutilisable par des paquets d'oracles et de preuves revus par projet, de relier ces
+paquets aux nouveaux briefs/SysON sans arguments techniques arbitraires, puis de mesurer
+les corrections agent avec et sans oracle dans `experiments/oracle/`.

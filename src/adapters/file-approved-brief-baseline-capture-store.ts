@@ -2,23 +2,18 @@ import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
 
 /**
  * Immutable byte store for the documentary source created by
- * `baseline.from-approved-discovery@1`.
+ * `baseline.from-approved-brief@1`.
  *
  * The ThreadSnapshot holds the content fingerprint and logical URI; this
  * adapter owns the local, content-addressed bytes behind that URI. A digest is
  * never reused for different text, including across process restarts.
  */
-export class FileApprovedDiscoveryBaselineCaptureStore {
+export class FileApprovedBriefBaselineCaptureStore {
   constructor(
-    private readonly directory = "state/local/approved-discovery-captures",
+    private readonly directory = "state/local/approved-brief-captures",
   ) {}
 
   uriFor(fingerprint: ContentFingerprint): string {
-    const digest = sha256Digest(fingerprint);
-    return `casys://approved-discovery-capture/sha256/${digest}`;
-  }
-
-  uriForBrief(fingerprint: ContentFingerprint): string {
     const digest = sha256Digest(fingerprint);
     return `casys://approved-brief-capture/sha256/${digest}`;
   }
@@ -40,7 +35,7 @@ export class FileApprovedDiscoveryBaselineCaptureStore {
     const actual = await fingerprintBytes(bytes);
     if (actual !== digest) {
       throw new Error(
-        `Approved-discovery capture content does not match declared sha256 ${digest}.`,
+        `Approved-brief capture content does not match declared sha256 ${digest}.`,
       );
     }
 
@@ -53,7 +48,7 @@ export class FileApprovedDiscoveryBaselineCaptureStore {
       const existing = await Deno.readTextFile(path);
       if (existing !== text) {
         throw new Error(
-          `Approved-discovery capture ${digest} already exists with different content.`,
+          `Approved-brief capture ${digest} already exists with different content.`,
         );
       }
     }
@@ -69,7 +64,7 @@ export class FileApprovedDiscoveryBaselineCaptureStore {
       const actual = await fingerprintBytes(new TextEncoder().encode(text));
       if (actual !== fingerprint.digest) {
         throw new Error(
-          `Approved-discovery capture ${fingerprint.digest} does not match its filename digest.`,
+          `Approved-brief capture ${fingerprint.digest} does not match its filename digest.`,
         );
       }
       return text;

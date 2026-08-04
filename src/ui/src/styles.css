@@ -1,9 +1,9 @@
 /* -----------------------------------------------------------------------------
-   Feuille unique des trois surfaces : Console MCP, cockpit natif, Discovery.
+   Feuille unique des deux surfaces : Console MCP et cockpit natif.
 
    L'ORDRE DE CES IMPORTS EST LA CASCADE. Le fichier n'est pas range par
    surface mais par sedimentation : `10-light-atelier` repeint des surfaces que
-   `03` a `09` ont posees sombres, et `12-calm-cockpit` reajuste par-dessus.
+   `03` a `08` ont posees sombres, et `12-calm-cockpit` reajuste par-dessus.
    Deplacer un import change le rendu. Les numeros ne sont donc pas decoratifs :
    ils disent qui gagne.
 
@@ -19,7 +19,6 @@
 @import "./styles/06-component-workspace.css";
 @import "./styles/07-project-spaces.css";
 @import "./styles/08-human-command-plane.css";
-@import "./styles/09-discovery.css";
 @import "./styles/10-light-atelier.css";
 @import "./styles/11-review-notifications.css";
 @import "./styles/12-calm-cockpit.css";

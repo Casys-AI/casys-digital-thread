@@ -2,11 +2,9 @@ import type {
   EngineeringAgentRunStatus,
   EngineeringApprovalStatus,
   EngineeringApprovedBriefBasis,
-  EngineeringApprovedDiscoveryBasis,
   EngineeringBasisRef,
   EngineeringBlockerStatus,
   EngineeringDecisionStatus,
-  EngineeringProjectDiscoveryHandoff,
   EngineeringProjectPlan,
   EngineeringProjectSchemaVersion,
   EngineeringProjectSnapshot,
@@ -93,14 +91,14 @@ export function isEngineeringProjectSnapshot(
  * Browser boundary check for planning and documentary workbenches before a
  * technical evidence graph exists.
  *
- * The persisted project validator above intentionally requires V2 execution
+ * The persisted project validator above intentionally requires V3 execution
  * anchors. Those anchors, command actors and transition prose do not cross the
  * browser boundary on the pre-technical surfaces: the BFF publishes a closed,
  * presentation-only run summary instead. Keep this separate from the durable
  * aggregate validator so a redacted browser projection can never be mistaken
  * for a persisted project snapshot. It returns the shared structural type only
  * because its redacted optional run fields remain TypeScript-compatible; code
- * that needs persisted V2 invariants must call isEngineeringProjectSnapshot.
+ * that needs persisted V3 invariants must call isEngineeringProjectSnapshot.
  */
 export function isEngineeringPublicPretechnicalProjectSnapshot(
   value: unknown,
@@ -218,23 +216,20 @@ function isEngineeringProjectSnapshotShape(
 function isEngineeringProjectSchemaVersion(
   value: unknown,
 ): value is EngineeringProjectSchemaVersion {
-  return value === "1.0" || value === "2.0" || value === "3.0";
+  return value === "1.0" || value === "3.0";
 }
 
 /**
- * V2 starts from one human-approved discovery handoff. A plan, when present,
- * must retain that exact basis; it is never inferred from a V1 snapshot.
+ * V3 starts from a living in-project brief. Its plan, when present, must
+ * retain the exact human-approved brief basis.
  */
 function hasValidProjectProvenance(
   project: Record<string, unknown>,
   schemaVersion: EngineeringProjectSchemaVersion,
 ): boolean {
-  const handoff = project.discoveryHandoff;
   const plan = project.plan;
-  if (handoff !== undefined && !isDiscoveryHandoff(handoff)) return false;
-  if (schemaVersion === "2.0" && !isDiscoveryHandoff(handoff)) return false;
   if (schemaVersion === "3.0") {
-    if (handoff !== undefined || !isProjectFraming(project.framing, project)) {
+    if (!isProjectFraming(project.framing, project)) {
       return false;
     }
     if (plan === undefined) return true;
@@ -243,43 +238,7 @@ function hasValidProjectProvenance(
       briefBasisMatchesFraming(plan.basis, project);
   }
 
-  if (plan === undefined) return true;
-  if (!isEngineeringProjectPlan(plan)) return false;
-  if (!isApprovedDiscoveryBasis(plan.basis)) return false;
-  if (!isDiscoveryHandoff(handoff)) {
-    return false;
-  }
-  return sameApprovedDiscoveryBasis(plan.basis, handoff);
-}
-
-function isDiscoveryHandoff(
-  value: unknown,
-): value is EngineeringProjectDiscoveryHandoff {
-  if (
-    !isRecord(value) || !hasExactKeys(value, [
-      "discoveryId",
-      "snapshotId",
-      "revision",
-      "briefId",
-      "approvedBriefFingerprint",
-      "approvedAt",
-      "approvedBy",
-    ])
-  ) {
-    return false;
-  }
-  return isNonEmptyString(value.discoveryId) &&
-    isNonEmptyString(value.snapshotId) &&
-    isPositiveInteger(value.revision) &&
-    isNonEmptyString(value.briefId) &&
-    isSha256Fingerprint(value.approvedBriefFingerprint) &&
-    isIsoDateTime(value.approvedAt) &&
-    isHumanCommandActor(value.approvedBy);
-}
-
-function isHumanCommandActor(value: unknown): boolean {
-  return isRecord(value) && hasExactKeys(value, ["id", "origin"]) &&
-    isNonEmptyString(value.id) && value.origin === "human";
+  return plan === undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -314,8 +273,7 @@ function isEngineeringProjectPlan(
   return PROJECT_STARTING_POINTS.includes(
     value.startingPoint as typeof PROJECT_STARTING_POINTS[number],
   ) &&
-    (isApprovedDiscoveryBasis(value.basis) ||
-      isApprovedBriefBasis(value.basis)) &&
+    isApprovedBriefBasis(value.basis) &&
     isIsoDateTime(value.publishedAt) &&
     isPlanPublisher(value.publishedBy);
 }
@@ -493,49 +451,6 @@ function sameBriefReview(brief: unknown, review: unknown): boolean {
     brief.revision === review.briefRevision;
 }
 
-function isApprovedDiscoveryBasis(
-  value: unknown,
-): value is EngineeringApprovedDiscoveryBasis {
-  if (
-    !isRecord(value) || !hasExactKeys(value, [
-      "kind",
-      "discoveryId",
-      "snapshotId",
-      "revision",
-      "briefId",
-      "approvedBriefFingerprint",
-    ])
-  ) {
-    return false;
-  }
-  return value.kind === "approved-discovery" &&
-    isNonEmptyString(value.discoveryId) &&
-    isNonEmptyString(value.snapshotId) &&
-    isPositiveInteger(value.revision) &&
-    isNonEmptyString(value.briefId) &&
-    isSha256Fingerprint(value.approvedBriefFingerprint);
-}
-
-function sameApprovedDiscoveryBasis(
-  left: EngineeringApprovedDiscoveryBasis,
-  right: Pick<
-    EngineeringApprovedDiscoveryBasis,
-    | "discoveryId"
-    | "snapshotId"
-    | "revision"
-    | "briefId"
-    | "approvedBriefFingerprint"
-  >,
-): boolean {
-  return left.discoveryId === right.discoveryId &&
-    left.snapshotId === right.snapshotId &&
-    left.revision === right.revision && left.briefId === right.briefId &&
-    left.approvedBriefFingerprint.algorithm ===
-      right.approvedBriefFingerprint.algorithm &&
-    left.approvedBriefFingerprint.digest ===
-      right.approvedBriefFingerprint.digest;
-}
-
 function isPlanPublisher(value: unknown): boolean {
   return isRecord(value) && hasExactKeys(value, ["id", "origin"]) &&
     isNonEmptyString(value.id) &&
@@ -566,11 +481,6 @@ function isEngineeringOperationBindingSource(value: unknown): boolean {
     case "approved-brief":
       return hasExactKeys(value, ["kind"]);
     case "project-answer":
-      return hasExactKeys(value, ["kind", "answerId"]) &&
-        isNonEmptyString(value.answerId);
-    case "approved-discovery":
-      return hasExactKeys(value, ["kind"]);
-    case "discovery-answer":
       return hasExactKeys(value, ["kind", "answerId"]) &&
         isNonEmptyString(value.answerId);
     case "decision-parameter":
@@ -692,7 +602,7 @@ function hasValidInputAnchor(value: Record<string, unknown>): boolean {
 
 /**
  * Agent-run execution bindings are schema-discriminated: V1 retains the
- * historic baseSnapshot pair, while V2 must name a typed basis instead.
+ * historic baseSnapshot pair, while V3 must name a typed basis instead.
  */
 function hasValidAgentRunInputAnchor(
   value: Record<string, unknown>,
@@ -712,13 +622,6 @@ function hasValidAgentRunInputAnchor(
     return false;
   }
 
-  if (value.basis.kind === "approved-discovery") {
-    const plan = project.plan;
-    return plan !== undefined && isEngineeringProjectPlan(plan) &&
-      isApprovedDiscoveryBasis(plan.basis) &&
-      sameApprovedDiscoveryBasis(value.basis, plan.basis);
-  }
-
   if (value.basis.kind === "approved-brief") {
     const plan = project.plan;
     return plan !== undefined && isEngineeringProjectPlan(plan) &&
@@ -733,8 +636,7 @@ function hasValidAgentRunInputAnchor(
 }
 
 function isEngineeringBasis(value: unknown): value is EngineeringBasisRef {
-  return isApprovedBriefBasis(value) || isApprovedDiscoveryBasis(value) ||
-    isThreadSnapshotBasis(value);
+  return isApprovedBriefBasis(value) || isThreadSnapshotBasis(value);
 }
 
 function isThreadSnapshotBasis(
@@ -757,7 +659,7 @@ function isDeclaredProjectThreadSnapshot(
   // A run basis is a discriminated ThreadSnapshot reference, whereas the
   // project ledger stores the same reference without its `kind`. Do not apply
   // the exact-key ledger validator to the discriminated basis: doing so would
-  // reject every legitimate V2/V3 technical run before the Cockpit can render
+  // reject every legitimate V3 technical run before the Cockpit can render
   // its evidence.
   if (
     !isThreadSnapshotBasis(basis) || !Array.isArray(project.threadSnapshots)

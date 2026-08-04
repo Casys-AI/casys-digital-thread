@@ -1,4 +1,4 @@
-import { ApprovedDiscoveryBaselineRunExecutor } from "../src/adapters/approved-discovery-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "../src/adapters/approved-brief-baseline-run-executor.ts";
 import { Cm01ErpNextBomCaptureAdapter } from "../src/adapters/cm01-erpnext-bom-capture.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "../src/adapters/cm01-nominal-modelica-capture.ts";
 import {
@@ -29,7 +29,7 @@ import { FileCm01SemanticCadAttemptStore } from "../src/adapters/file-cm01-seman
 import { FileCm01SemanticCadCaptureStore } from "../src/adapters/file-cm01-semantic-cad-capture-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-capture-store.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "../src/adapters/file-approved-discovery-baseline-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "../src/adapters/file-approved-brief-baseline-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "../src/adapters/file-engineering-project-run-lease.ts";
 import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../src/adapters/engineering-project-completion-evidence-validator.ts";
@@ -214,7 +214,7 @@ export async function runCoffeeMachineCm01V3Local(
 
   const projects = new FileEngineeringProjectRevisionStore(state.projects);
   const snapshots = new FileThreadSnapshotStore(state.snapshots);
-  const baselineCaptures = new FileApprovedDiscoveryBaselineCaptureStore(
+  const baselineCaptures = new FileApprovedBriefBaselineCaptureStore(
     state.baselineCaptures,
   );
   const seedCaptures = new FileSysonModelSeedCaptureStore(
@@ -319,10 +319,9 @@ export async function runCoffeeMachineCm01V3Local(
     summary: "Record the explicit local-fixture approved brief.",
     basis: project.plan!.basis,
     execute: (queued) =>
-      new ApprovedDiscoveryBaselineRunExecutor({
+      new ApprovedBriefBaselineRunExecutor({
         projects,
         commands,
-        discoveries: { getRevision: () => Promise.resolve(undefined) },
         captures: baselineCaptures,
         snapshots,
         lease,
@@ -798,7 +797,7 @@ export function coffeeMachineCm01V3StateDirectories(input: {
   return {
     projects: `${root}/engineering-projects`,
     snapshots: `${root}/thread-snapshots`,
-    baselineCaptures: `${root}/approved-discovery-captures`,
+    baselineCaptures: `${root}/approved-brief-captures`,
     sysonSeedCaptures: `${root}/syson-model-seed-captures`,
     sysonSeedAttempts: `${root}/syson-model-seed-attempts`,
     architectureCaptures: `${root}/coffee-machine-cm01-v3-architecture-captures`,

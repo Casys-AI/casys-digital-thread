@@ -121,6 +121,63 @@ Deno.test("ambiguous successor branches remain raw facts rather than a guessed e
   assertEquals(graph.edges.map((edge) => edge.id), ["historic-a", "historic-b"]);
 });
 
+Deno.test("explicit R1 and R2 predecessors converge on the sole R3 current requirement", () => {
+  const graph: ThreadGraph = {
+    nodes: [
+      requirement("displacement-r1"),
+      requirement("displacement-r2"),
+      requirement("displacement-r3"),
+    ],
+    edges: [
+      supersedes(
+        "r1-r3",
+        "displacement-r1",
+        "displacement-r3",
+        "requirement",
+      ),
+      supersedes(
+        "r2-r3",
+        "displacement-r2",
+        "displacement-r3",
+        "requirement",
+      ),
+    ],
+  };
+
+  const family = familyWithCurrent(
+    projectEvidenceFamilyGraph(graph, asOf()).families,
+    "displacement-r3",
+  );
+
+  assertEquals(family.entityKind, "requirement");
+  assertEquals(family.status, "current");
+  assertEquals(family.historicalRefs.map((ref) => ref.id), [
+    "displacement-r1",
+    "displacement-r2",
+  ]);
+  assertEquals(family.currentRefs.map((ref) => ref.id), ["displacement-r3"]);
+  assertEquals(family.transitions.map(transitionSignature), [
+    "displacement-r1->displacement-r3",
+    "displacement-r2->displacement-r3",
+  ]);
+});
+
+Deno.test("requirement fan-out remains raw because it has no declared sole current successor", () => {
+  const graph: ThreadGraph = {
+    nodes: [
+      requirement("requirement-r1"),
+      requirement("requirement-r2a"),
+      requirement("requirement-r2b"),
+    ],
+    edges: [
+      supersedes("r1-r2a", "requirement-r1", "requirement-r2a", "requirement"),
+      supersedes("r1-r2b", "requirement-r1", "requirement-r2b", "requirement"),
+    ],
+  };
+
+  assertEquals(projectEvidenceFamilyGraph(graph, asOf()).families, []);
+});
+
 Deno.test("an unanchored correction-like branch preserves the direct r10 to r11 chain only", () => {
   const graph: ThreadGraph = {
     nodes: [

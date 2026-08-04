@@ -10,12 +10,12 @@ import {
   type RegisteredEngineeringOperation,
   type RegisteredEngineeringOperationInput,
 } from "../orchestration/operations/registry.ts";
-import { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-discovery-baseline-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./file-syson-model-seed-attempt-store.ts";
 import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
@@ -363,7 +363,7 @@ function executionCommand(queued: Awaited<ReturnType<typeof queuedSeed>>["queued
 async function queuedSeed(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
-  const baselineCaptures = new FileApprovedDiscoveryBaselineCaptureStore(
+  const baselineCaptures = new FileApprovedBriefBaselineCaptureStore(
     `${directory}/baseline-captures`,
   );
   const seedCaptures = new FileSysonModelSeedCaptureStore(`${directory}/seed-captures`);
@@ -375,24 +375,24 @@ async function queuedSeed(directory: string) {
       .toISOString();
   const briefs = new ProjectBriefCommandService(projects, now);
   let project = await briefs.startProject(AGENT, {
-    commandId: "start-drone-project",
-    projectId: "drone-review-demo",
-    projectName: "Inspection drone",
+    commandId: "start-review-project",
+    projectId: "project-review-demo",
+    projectName: "Reviewable engineering system",
     issuedAt: "2026-08-02T11:59:00.000Z",
-    intent: "Build a reviewable drone demonstrator.",
+    intent: "Build a reviewable engineering demonstrator.",
     intentSource: { kind: "human", reference: "conversation:turn-1" },
   });
   project = await briefs.proposeBrief(AGENT, {
-    ...context("propose-drone-brief", project.revision),
+    ...context("propose-review-brief", project.revision),
     items: [{
       id: "objective",
       kind: "objective",
-      statement: "Build a reviewable drone demonstrator.",
+      statement: "Build a reviewable engineering demonstrator.",
       sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
     }, {
       id: "mission",
       kind: "mission-scenario",
-      statement: "Demonstrate stable controlled inspection flight.",
+      statement: "Demonstrate a stable, bounded operating scenario.",
       sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
     }, {
       id: "success",
@@ -402,7 +402,7 @@ async function queuedSeed(directory: string) {
     }],
   });
   project = await briefs.approveBrief(HUMAN, {
-    ...context("approve-drone-brief", project.revision),
+    ...context("approve-review-brief", project.revision),
     briefSnapshotId: project.framing!.proposedBrief!.id,
     briefRevision: project.framing!.proposedBrief!.revision,
     rationale: "The brief is clear enough for bounded engineering.",
@@ -447,10 +447,9 @@ async function queuedSeed(directory: string) {
     summary: "Record the approved brief documentary baseline.",
     basis: project.plan!.basis,
   });
-  const baselineExecutor = new ApprovedDiscoveryBaselineRunExecutor({
+  const baselineExecutor = new ApprovedBriefBaselineRunExecutor({
     projects,
     commands,
-    discoveries: { getRevision: () => Promise.resolve(undefined) },
     captures: baselineCaptures,
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
@@ -513,7 +512,7 @@ async function queuedSeed(directory: string) {
 function context(commandId: string, expectedRevision: number) {
   return {
     commandId,
-    projectId: "drone-review-demo",
+    projectId: "project-review-demo",
     expectedRevision,
     issuedAt: "2026-08-02T11:59:30.000Z",
   };
@@ -578,7 +577,7 @@ class FakeSysonClient implements McpToolClient {
         return Promise.resolve({
           structuredContent: {
             id: "syson-project-123",
-            name: "Drone model seed",
+            name: "Project model seed",
             editingContextId: "editing-context-456",
           },
           text: "created",
@@ -587,7 +586,7 @@ class FakeSysonClient implements McpToolClient {
         return Promise.resolve({
           structuredContent: {
             documentId: "document-789",
-            documentName: "Drone system model",
+            documentName: "Engineering system model",
             documentKind: "Document",
             rootPackageId: "root-package-012",
             rootPackageLabel: "New Package",

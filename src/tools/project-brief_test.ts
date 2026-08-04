@@ -36,14 +36,13 @@ Deno.test("project MCP framing uses one project identity from intent through app
     const names = (listed.tools as Array<{ name: string }>).map((tool) => tool.name);
     assertEquals(names.includes("project_start"), true);
     assertEquals(names.includes("project_brief_confirm"), true);
-    assertEquals(names.some((name) => name.startsWith("project_discovery_")), false);
 
     let result = await client.tool("project_start", {
-      commandId: "start-drone",
-      projectId: "drone-v3",
-      projectName: "Inspection drone",
+      commandId: "start-project",
+      projectId: "project-v3",
+      projectName: "Reviewable engineering system",
       issuedAt: "2026-08-03T08:59:00.000Z",
-      intent: "Build a safe roof-inspection drone.",
+      intent: "Build a reviewable engineering system.",
       intentSource: { kind: "human", reference: "conversation:turn-1" },
     });
     let project = result.structuredContent as Record<string, unknown>;
@@ -55,17 +54,18 @@ Deno.test("project MCP framing uses one project identity from intent through app
       items: [{
         id: "objective",
         kind: "objective",
-        statement: "Inspect a roof safely.",
+        statement: "Demonstrate a reviewable system safely.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }, {
         id: "mission",
         kind: "mission-scenario",
-        statement: "Capture usable imagery while maintaining safe separation.",
+        statement: "Demonstrate a bounded operating scenario with traceable evidence.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }, {
         id: "success",
         kind: "success-criterion",
-        statement: "Complete the route without loss of controlled flight.",
+        statement:
+          "Complete the reviewed scenario with a traceable engineering record.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }],
     });
@@ -107,8 +107,8 @@ Deno.test("project MCP framing uses one project identity from intent through app
       "approved",
     );
     assertEquals(
-      (await projects.get("drone-v3"))?.project.objective.statement,
-      "Inspect a roof safely.",
+      (await projects.get("project-v3"))?.project.objective.statement,
+      "Demonstrate a reviewable system safely.",
     );
   } finally {
     await http.shutdown();
@@ -119,7 +119,7 @@ Deno.test("project MCP framing uses one project identity from intent through app
 function common(commandId: string, expectedRevision: number) {
   return {
     commandId,
-    projectId: "drone-v3",
+    projectId: "project-v3",
     expectedRevision,
     issuedAt: "2026-08-03T08:59:30.000Z",
   };

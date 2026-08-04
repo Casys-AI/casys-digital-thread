@@ -1,18 +1,6 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import {
-  APPROVED_BRIEF_BASELINE_OPERATION,
-} from "../orchestration/operations/approved-brief-baseline.ts";
-import {
-  APPROVED_DISCOVERY_BASELINE_OPERATION,
-} from "../orchestration/operations/approved-discovery-baseline.ts";
-import {
-  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
-} from "../domain/inspection-drone-architecture.ts";
-import {
-  HISTORICAL_SYSON_MODEL_SEED_OPERATION,
-  SYSON_MODEL_SEED_OPERATION,
-} from "../domain/syson-model-seed.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
 import { RegisteredProjectRunExecutor } from "./registered-project-run-executor.ts";
 import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
 
@@ -33,12 +21,7 @@ Deno.test("registered run executor dispatches only exact reviewed operation iden
   );
   const executor = new RegisteredProjectRunExecutor({
     projects: { get: () => Promise.resolve(project) },
-    baseline: {
-      execute: () => {
-        calls.push("baseline");
-        return Promise.resolve(project);
-      },
-    },
+    baseline: { execute: () => Promise.resolve(project) },
     sysonModelSeed: {
       execute: () => {
         calls.push("seed");
@@ -51,33 +34,12 @@ Deno.test("registered run executor dispatches only exact reviewed operation iden
   assertEquals(calls, ["seed"]);
 });
 
-Deno.test("registered run executor maps both exact baseline operations to the baseline executor", async () => {
-  for (
-    const operation of [
-      APPROVED_BRIEF_BASELINE_OPERATION,
-      APPROVED_DISCOVERY_BASELINE_OPERATION,
-    ]
-  ) {
-    const calls: string[] = [];
-    const project = projectFixture(operation.id, operation.version);
-    const executor = new RegisteredProjectRunExecutor({
-      projects: { get: () => Promise.resolve(project) },
-      baseline: {
-        execute: () => {
-          calls.push("baseline");
-          return Promise.resolve(project);
-        },
-      },
-    });
-
-    assertEquals(await executor.execute(AGENT, COMMAND), project);
-    assertEquals(calls, ["baseline"]);
-  }
-});
-
-Deno.test("registered run executor rejects an unreviewed operation before any executor runs", async () => {
+Deno.test("registered run executor maps the approved-brief baseline to its executor", async () => {
   const calls: string[] = [];
-  const project = projectFixture("provider.call-anything", "1");
+  const project = projectFixture(
+    APPROVED_BRIEF_BASELINE_OPERATION.id,
+    APPROVED_BRIEF_BASELINE_OPERATION.version,
+  );
   const executor = new RegisteredProjectRunExecutor({
     projects: { get: () => Promise.resolve(project) },
     baseline: {
@@ -86,9 +48,20 @@ Deno.test("registered run executor rejects an unreviewed operation before any ex
         return Promise.resolve(project);
       },
     },
-    sysonModelSeed: {
+  });
+
+  assertEquals(await executor.execute(AGENT, COMMAND), project);
+  assertEquals(calls, ["baseline"]);
+});
+
+Deno.test("registered run executor rejects unreviewed operations before any executor runs", async () => {
+  const calls: string[] = [];
+  const project = projectFixture("provider.call-anything", "1");
+  const executor = new RegisteredProjectRunExecutor({
+    projects: { get: () => Promise.resolve(project) },
+    baseline: {
       execute: () => {
-        calls.push("seed");
+        calls.push("baseline");
         return Promise.resolve(project);
       },
     },
@@ -102,103 +75,21 @@ Deno.test("registered run executor rejects an unreviewed operation before any ex
   assertEquals(calls, []);
 });
 
-Deno.test("registered run executor never dispatches historical @1 architecture operations", async () => {
-  for (
-    const operation of [
-      HISTORICAL_SYSON_MODEL_SEED_OPERATION,
-      INSPECTION_DRONE_ARCHITECTURE_OPERATION,
-    ]
-  ) {
-    const calls: string[] = [];
-    const project = projectFixture(operation.id, operation.version);
-    const executor = new RegisteredProjectRunExecutor({
-      projects: { get: () => Promise.resolve(project) },
-      baseline: {
-        execute: () => {
-          calls.push("baseline");
-          return Promise.resolve(project);
-        },
-      },
-      sysonModelSeed: {
-        execute: () => {
-          calls.push("seed");
-          return Promise.resolve(project);
-        },
-      },
-      inspectionDroneArchitecture: {
-        execute: () => {
-          calls.push("architecture");
-          return Promise.resolve(project);
-        },
-      },
-    });
-
-    await assertRejects(
-      () => executor.execute(AGENT, COMMAND),
-      Error,
-      "not backed by a trusted registered executor",
-    );
-    assertEquals(calls, []);
-  }
-});
-
-Deno.test("registered run executor dispatches the guarded drone architecture only to its exact executor", async () => {
-  const calls: string[] = [];
+Deno.test("registered run executor preserves a missing current executor error", async () => {
   const project = projectFixture(
-    INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
-    INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version,
+    SYSON_MODEL_SEED_OPERATION.id,
+    SYSON_MODEL_SEED_OPERATION.version,
   );
   const executor = new RegisteredProjectRunExecutor({
     projects: { get: () => Promise.resolve(project) },
-    baseline: {
-      execute: () => {
-        calls.push("baseline");
-        return Promise.resolve(project);
-      },
-    },
-    sysonModelSeed: {
-      execute: () => {
-        calls.push("seed");
-        return Promise.resolve(project);
-      },
-    },
-    inspectionDroneArchitecture: {
-      execute: () => {
-        calls.push("architecture");
-        return Promise.resolve(project);
-      },
-    },
+    baseline: { execute: () => Promise.resolve(project) },
   });
 
-  assertEquals(await executor.execute(AGENT, COMMAND), project);
-  assertEquals(calls, ["architecture"]);
-});
-
-Deno.test("registered run executor preserves missing optional executor errors", async () => {
-  for (
-    const [operation, message] of [
-      [
-        SYSON_MODEL_SEED_OPERATION,
-        "no trusted SysON model-seed executor configured",
-      ],
-      [
-        INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
-        "no trusted inspection-drone architecture executor configured",
-      ],
-    ] as const
-  ) {
-    const project = projectFixture(operation.id, operation.version);
-    const executor = new RegisteredProjectRunExecutor({
-      projects: { get: () => Promise.resolve(project) },
-      baseline: { execute: () => Promise.resolve(project) },
-    });
-
-    await assertRejects(
-      () => executor.execute(AGENT, COMMAND),
-      Error,
-      message,
-    );
-  }
+  await assertRejects(
+    () => executor.execute(AGENT, COMMAND),
+    Error,
+    "no trusted SysON model-seed executor configured",
+  );
 });
 
 Deno.test("registered run executor dispatches a code-owned additional exact operation", async () => {

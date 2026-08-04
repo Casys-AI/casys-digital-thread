@@ -14,6 +14,7 @@ import type {
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
+import { currentRequirements } from "../thread/versioned-provenance-model.ts";
 
 export interface ProjectPhaseView {
   readonly phase: EngineeringProjectPhase;
@@ -34,6 +35,20 @@ export interface ProjectBrief {
   readonly activeRuns: readonly EngineeringAgentRun[];
   readonly pendingDecisions: readonly EngineeringDecision[];
   readonly openBlockers: readonly EngineeringBlocker[];
+}
+
+/**
+ * The operational subset of a project brief for a linked, current evidence
+ * snapshot. It never removes immutable work or run history: it prevents only
+ * a cancelled attempt with an explicit immutable reconciliation from being
+ * offered as the next action again.
+ */
+export interface CurrentProjectWork {
+  readonly nextWork: readonly EngineeringWorkItem[];
+  /** Retained work items whose later, evidenced successor is complete. */
+  readonly historicalWorkItemIds: readonly string[];
+  /** Exact thread-entity targets whose proposed actions are now historical. */
+  readonly closedActionTargetIds: readonly string[];
 }
 
 /**
@@ -149,6 +164,37 @@ export function buildProjectBrief(
     openBlockers: snapshot.blockers.filter((blocker) =>
       blocker.status === "open"
     ),
+  };
+}
+
+export function buildCurrentProjectWork(
+  snapshot: EngineeringProjectSnapshot,
+): CurrentProjectWork {
+  const brief = buildProjectBrief(snapshot);
+  const historicalWorkItemIds = new Set<string>();
+  const closedActionTargetIds = new Set<string>();
+
+  // A reconciliation is the domain's only closure contract here: the
+  // cancelled work never produced successor evidence, but its exact operation
+  // targets are closed by the separately completed successor named in the
+  // immutable record.
+  for (const item of snapshot.workItems) {
+    if (
+      item.status !== "cancelled" ||
+      item.reconciliation?.kind !== "superseded-by-successor"
+    ) continue;
+    historicalWorkItemIds.add(item.id);
+    for (const key of threadEntityReferenceKeys(item)) {
+      closedActionTargetIds.add(key);
+    }
+  }
+
+  return {
+    nextWork: brief.nextWork.filter((item) =>
+      !historicalWorkItemIds.has(item.id)
+    ),
+    historicalWorkItemIds: [...historicalWorkItemIds].toSorted(),
+    closedActionTargetIds: [...closedActionTargetIds].toSorted(),
   };
 }
 
@@ -737,6 +783,18 @@ function graphRefKey(ref: Pick<ThreadGraphRef, "kind" | "id">): string {
   return `${ref.kind}:${ref.id}`;
 }
 
+function threadEntityReferenceKeys(
+  item: EngineeringWorkItem,
+): ReadonlySet<string> {
+  return new Set(
+    item.operation?.bindings.flatMap((binding) =>
+      binding.source.kind === "thread-entity"
+        ? [graphRefKey(binding.source.reference)]
+        : []
+    ) ?? [],
+  );
+}
+
 export function projectStatusLabel(status: EngineeringProjectStatus): string {
   if (status === "attention-required") return "Decision required";
   if (status === "active") return "Active";
@@ -798,6 +856,35 @@ export function workOwnerLabel(owner: EngineeringWorkItem["owner"]): string {
 
 export function workStatusLabel(status: EngineeringWorkItem["status"]): string {
   return status.replaceAll("-", " ");
+}
+
+/**
+ * The overview leads with the current engineering decision, while the full
+ * Evidence space retains every historical criterion and relation for review.
+ */
+export function verificationChainDetail(
+  thread: ThreadWorkbenchSnapshot,
+): string {
+  const requirements = currentRequirements(
+    thread.requirements,
+    thread.evidenceFamilyGraph,
+  );
+  const historicalCount = thread.requirements.length - requirements.length;
+  const passed = requirements.filter((item) => item.status === "pass").length;
+  const failed = requirements.filter((item) => item.status === "fail").length;
+  const unresolved = requirements.length - passed - failed;
+  const currentDetail = requirements.length === 0
+    ? "No current modelled criteria"
+    : `${passed}/${requirements.length} current criteria passing`;
+  const verdictDetail = failed > 0
+    ? `${failed} failed`
+    : unresolved > 0
+    ? `${unresolved} unresolved`
+    : `${thread.violations.length} named violations`;
+  const historyDetail = historicalCount > 0
+    ? `${historicalCount} historical record${historicalCount === 1 ? "" : "s"}`
+    : `${thread.graph.edges.length} recorded relations`;
+  return `${currentDetail} · ${verdictDetail} · ${historyDetail}.`;
 }
 
 /**

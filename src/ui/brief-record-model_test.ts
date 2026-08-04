@@ -26,7 +26,7 @@ Deno.test("project brief record reads the approved canonical brief, not a pendin
     "limits",
   ]);
   assertEquals(record?.openQuestions, [
-    "Which flight endurance should be verified first?",
+    "Which operating envelope should be verified first?",
   ]);
   assertEquals(record?.sourceLabels, [
     "Paired conversation",
@@ -43,24 +43,24 @@ function framing(
 ): EngineeringProjectFraming {
   return {
     intent: {
-      statement: "Create a reviewable inspection drone concept.",
+      statement: "Create a reviewable engineering system concept.",
       source: { kind: "human", reference: "conversation" },
       capturedAt: "2026-08-03T09:00:00.000Z",
       capturedBy: { id: "erwan", origin: "human" },
     },
     questions: [{
-      id: "endurance",
-      prompt: "Which flight endurance should be verified first?",
-      whyItMatters: "It drives the energy and mass budget.",
+      id: "operating-envelope",
+      prompt: "Which operating envelope should be verified first?",
+      whyItMatters: "It bounds the initial engineering evidence.",
       recommendation: {
-        value: "20-minutes",
-        rationale: "A practical first demonstrator target.",
+        value: "bounded-demonstration",
+        rationale: "A practical first proof scope.",
         confidence: "medium",
       },
       options: [{
-        value: "20-minutes",
-        label: "20 minutes",
-        consequences: "Fits a practical first demonstrator.",
+        value: "bounded-demonstration",
+        label: "Bounded demonstration",
+        consequences: "Fits a practical first proof scope.",
       }],
       allowUnknown: true,
       risk: "material",
@@ -69,25 +69,25 @@ function framing(
       proposedBy: { id: "agent", origin: "agent" },
     }],
     answers: [{
-      id: "answer-endurance",
-      questionId: "endurance",
+      id: "answer-operating-envelope",
+      questionId: "operating-envelope",
       kind: "unknown",
       source: { kind: "human", reference: "conversation" },
       recordedAt: "2026-08-03T09:02:00.000Z",
       recordedBy: { id: "erwan", origin: "human" },
     }],
     currentBrief: {
-      briefId: "inspection-drone:brief",
+      briefId: "project-review:brief",
       id: "brief-snapshot-2",
       revision: 2,
       items: [
         item(
           "objective",
-          "Build a drone whose engineering choices are reviewable.",
+          "Build a system whose engineering choices are reviewable.",
         ),
         item(
           "mission-scenario",
-          "Inspect a bounded industrial site.",
+          "Demonstrate a bounded operating scenario.",
           "document",
         ),
         item(
@@ -96,11 +96,11 @@ function framing(
         ),
         item(
           "constraint",
-          "Keep the first airframe within a documented mass budget.",
+          "Keep the first system within documented engineering limits.",
         ),
         item(
           "assumption",
-          "A preliminary battery pack is available for the demonstrator.",
+          "A preliminary component set is available for the demonstrator.",
         ),
       ],
       proposedAt: "2026-08-03T09:03:00.000Z",
@@ -117,7 +117,7 @@ function framing(
       rationale: "Agreed in conversation.",
     },
     proposedBrief: {
-      briefId: "inspection-drone:brief",
+      briefId: "project-review:brief",
       id: "brief-snapshot-3",
       revision: 3,
       previous: { snapshotId: "brief-snapshot-2", revision: 2 },

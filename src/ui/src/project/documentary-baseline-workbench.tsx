@@ -153,7 +153,7 @@ export function DocumentaryBaselineWorkbench({
               <dl class="documentary-record-facts">
                 <div>
                   <dt>Record type</dt>
-                  <dd>Approved discovery and reviewed path</dd>
+                  <dd>Approved project brief and reviewed path</dd>
                 </div>
                 <div>
                   <dt>Snapshot</dt>
@@ -177,7 +177,8 @@ export function DocumentaryBaselineWorkbench({
                 <h3>The project’s approved starting point</h3>
                 <ul>
                   <li>
-                    The reviewed discovery is retained with its project path.
+                    The approved project brief is retained with its project
+                    path.
                   </li>
                   <li>The record has one exact, checkable fingerprint.</li>
                   <li>Later technical work can name this starting record.</li>

@@ -24,13 +24,7 @@ import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
 /** Canonical local capture of the first SysON project/document/root-package seed. */
 export const SYSON_MODEL_SEED_CAPTURE_SCHEMA = "syson-model-seed-capture/2.0" as const;
 
-/** The reviewed operation that owns this narrowly bounded technical step. */
-export const HISTORICAL_SYSON_MODEL_SEED_OPERATION = {
-  id: "architecture.seed-syson-model",
-  version: "1",
-} as const;
-
-/** Current V3 operation authorized by the canonical in-project brief. */
+/** Reviewed V3 operation authorized by the canonical in-project brief. */
 export const SYSON_MODEL_SEED_OPERATION = {
   id: "architecture.seed-syson-model",
   version: "2",

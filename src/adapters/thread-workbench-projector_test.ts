@@ -122,6 +122,51 @@ Deno.test("the Workbench omits predecessor history for an initial snapshot", () 
   assertEquals(projection.previous, undefined);
 });
 
+Deno.test("the Workbench BFF projects a convergent requirement revision family", () => {
+  const canonical = linkedSnapshot();
+  const original = canonical.requirements[0]!;
+  const r1 = {
+    ...original,
+    id: "REQ-STRESS-R1",
+    version: "1",
+    freshness: { status: "stale" as const, changedAt: AT, invalidatedByChangeIds: [] },
+  };
+  const r2 = {
+    ...original,
+    id: "REQ-STRESS-R2",
+    version: "2",
+  };
+  const r3 = {
+    ...original,
+    id: "REQ-STRESS-R3",
+    version: "3",
+  };
+  canonical.requirements = [r1, r2, r3];
+  canonical.evaluations[0] = {
+    ...canonical.evaluations[0]!,
+    requirementId: r3.id,
+    status: "pass",
+    message: "The current requirement passes.",
+  };
+  canonical.provenance.push(
+    link("supersedes", "requirement", r3.id, "requirement", r1.id),
+    link("supersedes", "requirement", r3.id, "requirement", r2.id),
+  );
+
+  const projection = projectThreadWorkbenchSnapshot(canonical);
+  const family = projection.evidenceFamilyGraph.families.find((candidate) =>
+    candidate.entityKind === "requirement" &&
+    candidate.currentRefs.some((reference) => reference.id === r3.id)
+  );
+
+  assertEquals(family?.status, "current");
+  assertEquals(family?.historicalRefs.map((reference) => reference.id), [
+    r1.id,
+    r2.id,
+  ]);
+  assertEquals(family?.currentRefs.map((reference) => reference.id), [r3.id]);
+});
+
 Deno.test("the Workbench projects only the latest revision change summary", () => {
   const canonical = linkedSnapshot();
   canonical.changeSet.changes.unshift({

@@ -18,6 +18,7 @@ import {
 import { ReviewNotifications } from "../project/control-center.tsx";
 import {
   agentRunSummary,
+  buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
   projectPathStatusLabel,
@@ -53,6 +54,8 @@ import { resolveToolInspectorTarget } from "./tool-inspector-model.ts";
 import { EvidenceVersionHistory } from "./version-history.tsx";
 import {
   buildVersionedProvenanceProjection,
+  currentArtifacts,
+  currentRequirements,
   type VersionedProvenanceEdgeGroup,
   type VersionedProvenanceProjection,
   versionedRefKey,
@@ -68,6 +71,7 @@ import type {
   ThreadComponentProvider,
   ThreadFlowStage,
   ThreadFreshness,
+  ThreadGraph as ThreadGraphData,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
@@ -261,10 +265,16 @@ export function ThreadWorkbench({
   const snapshot = workbench.thread;
   const project = workbench.project;
   const projectBrief = buildProjectBrief(project);
+  const currentProjectWork = buildCurrentProjectWork(project);
   const projectPath = buildProjectPath(project, snapshot);
   const versionedProvenance = buildVersionedProvenanceProjection(
     snapshot.graph,
     snapshot.evidenceFamilyGraph,
+  );
+  const currentEvidenceGraph = graphWithoutClosedActions(
+    versionedProvenance.graph,
+    snapshot.actions,
+    new Set(currentProjectWork.closedActionTargetIds),
   );
 
   const currentDecisionEvidence = (decisionId?: string) => {
@@ -773,8 +783,8 @@ export function ThreadWorkbench({
                         <span data-tone="mismatch">fingerprint mismatch</span>
                       </div>
                       <ThreadGraph
-                        nodes={versionedProvenance.graph.nodes}
-                        edges={versionedProvenance.graph.edges}
+                        nodes={currentEvidenceGraph.nodes}
+                        edges={currentEvidenceGraph.edges}
                         selection={visibleGraphSelection(
                           versionedProvenance,
                           graphSelection,
@@ -1375,16 +1385,51 @@ function Freshness({ freshness }: { freshness: ThreadFreshness }): JSX.Element {
   );
 }
 
+/**
+ * A completed replacement closes only the exact action target declared by the
+ * project lifecycle projection. The raw action and every attempt stay in the
+ * Activity feed and inspector; this calm canvas simply does not offer an
+ * already-closed obligation as if it were current work.
+ */
+function graphWithoutClosedActions(
+  graph: ThreadGraphData,
+  actions: readonly ThreadAction[],
+  closedActionTargetIds: ReadonlySet<string>,
+): ThreadGraphData {
+  if (closedActionTargetIds.size === 0) return graph;
+  const actionById = new Map(actions.map((action) => [action.id, action]));
+  const nodes = graph.nodes.filter((node) => {
+    if (node.entityKind !== "action") return true;
+    const action = actionById.get(node.ref.id);
+    return !action || !closedActionTargetIds.has(`artifact:${action.targetId}`);
+  });
+  const visible = new Set(nodes.map((node) => versionedRefKey(node.ref)));
+  return {
+    nodes,
+    edges: graph.edges.filter((edge) =>
+      visible.has(versionedRefKey(edge.from)) &&
+      visible.has(versionedRefKey(edge.to))
+    ),
+  };
+}
+
 function summaryMetrics(snapshot: ThreadWorkbenchSnapshot): MetricItem[] {
-  const fresh =
-    snapshot.artifacts.filter((item) => item.freshness === "fresh").length;
-  const stale =
-    snapshot.artifacts.filter((item) => item.freshness === "stale").length;
-  const passed =
-    snapshot.requirements.filter((item) => item.status === "pass").length;
-  const failed =
-    snapshot.requirements.filter((item) => item.status === "fail").length;
-  const noCriterion = snapshot.requirements.length === 0;
+  const artifacts = currentArtifacts(
+    snapshot.artifacts,
+    snapshot.evidenceFamilyGraph,
+  );
+  const historicalArtifactCount = snapshot.artifacts.length - artifacts.length;
+  const fresh = artifacts.filter((item) => item.freshness === "fresh").length;
+  const stale = artifacts.filter((item) => item.freshness === "stale").length;
+  const requirements = currentRequirements(
+    snapshot.requirements,
+    snapshot.evidenceFamilyGraph,
+  );
+  const historicalRequirementCount = snapshot.requirements.length -
+    requirements.length;
+  const passed = requirements.filter((item) => item.status === "pass").length;
+  const failed = requirements.filter((item) => item.status === "fail").length;
+  const noCriterion = requirements.length === 0;
   const linkedEntities =
     snapshot.flow.filter((stage) => stage.selection.kind !== "change").length;
   const branchCount =
@@ -1402,21 +1447,32 @@ function summaryMetrics(snapshot: ThreadWorkbenchSnapshot): MetricItem[] {
     {
       id: "evidence",
       label: "Evidence currency",
-      value: fresh,
-      unit: `fresh · ${stale} stale`,
-      detail: `${snapshot.artifacts.length} persisted artifacts`,
+      value: artifacts.length,
+      unit: `current${
+        historicalArtifactCount > 0
+          ? ` · ${historicalArtifactCount} historical`
+          : ""
+      }`,
+      detail: stale > 0
+        ? `${fresh} fresh · ${stale} current stale`
+        : `${fresh} current fresh`,
       tone: stale ? "warning" : "success",
     },
     {
       id: "requirements",
       label: "Requirements",
-      value: noCriterion ? 0 : `${passed}/${snapshot.requirements.length}`,
+      value: noCriterion ? 0 : `${passed}/${requirements.length}`,
       unit: noCriterion ? "modelled" : "passing",
       detail: noCriterion
         ? "No model-owned criterion"
         : `${failed} failed · ${
-          snapshot.requirements.length - passed - failed
-        } unresolved`,
+          requirements.length - passed - failed
+        } unresolved` +
+          (historicalRequirementCount > 0
+            ? ` · ${historicalRequirementCount} prior version${
+              historicalRequirementCount === 1 ? "" : "s"
+            } in history`
+            : ""),
       tone: noCriterion ? "warning" : failed ? "danger" : "success",
     },
     {

@@ -31,10 +31,11 @@ export function projectEvidenceFamilyGraph(
   const candidateTransitions = graph.edges.filter((edge) =>
     isEligibleSupersession(edge, nodeByRef, correctionDeclarations)
   );
-  // A branch is not a direct version chain. Rather than collapse an
+  // A fan-out is not a single-current version family. Rather than collapse an
   // unclassified correction record with actual replacement evidence, retain
-  // those links solely in the raw forensic graph. This is intentionally more
-  // conservative than showing a guessed divergent family.
+  // those links solely in the raw forensic graph. Explicit convergence on one
+  // successor remains safe: it declares one current record without guessing
+  // which sibling branch won.
   const transitions = unambiguousSupersessionChains(candidateTransitions);
   const families = familiesFromTransitions(graph, transitions);
   const familyByMember = new Map<string, string>();
@@ -56,9 +57,11 @@ export function projectEvidenceFamilyGraph(
 }
 
 /**
- * Keep only direct one-to-one supersession links. The absence of typed
- * supersession semantics is not permission to choose one sibling successor or
- * to merge a branch into a synthetic family.
+ * Keep only supersession links with one explicit successor per predecessor.
+ * Several historical records may explicitly converge on one successor: that
+ * has one unambiguous current record and can safely be represented as a
+ * family. The reverse shape (one record with sibling successors) remains raw,
+ * because the topology does not say which successor is current.
  */
 function unambiguousSupersessionChains(
   candidates: readonly ThreadGraphEdge[],
@@ -68,14 +71,8 @@ function unambiguousSupersessionChains(
     (edge) => edge.from,
     (edge) => edge.to,
   );
-  const predecessors = groupedDistinctRefs(
-    candidates,
-    (edge) => edge.to,
-    (edge) => edge.from,
-  );
   return candidates.filter((edge) =>
-    (successors.get(refKey(edge.from))?.size ?? 0) === 1 &&
-    (predecessors.get(refKey(edge.to))?.size ?? 0) === 1
+    (successors.get(refKey(edge.from))?.size ?? 0) === 1
   );
 }
 

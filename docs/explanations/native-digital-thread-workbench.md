@@ -1,7 +1,7 @@
 # Native digital-thread Workbench: compose evidence, not applications
 
-**Status: accepted target — native schema-3.0 project cockpit, three bounded V3
-operations, and the separate historical CM-01 technical proof, 2026-08-03**
+**Status: accepted target — native schema-3.0 project cockpit, generic documentary/
+SysON bootstrap, and the fixed CM-01 V3 golden evidence path, 2026-08-03**
 
 The first Workbench proved that five independent MCP Apps can be discovered,
 capability-bounded, mounted, and synchronized. It also exposed the product limit of that
@@ -137,18 +137,13 @@ for review instead of being blindly retried. r2 proves only the editable contain
 identity: it is not a system architecture, requirements, CAD, simulation, measurement,
 or a verdict.
 
-The current V3 continuation, `architecture.author-inspection-drone@2`, requires that
-exact r2 seed, the same exact approved-brief authorization chain, an append-only project
-change, and an empty root before inserting one fixed high-level SysML fragment. It
-persists `inspection-drone-architecture-capture/2.0` before publishing r3. This is a
-bounded architecture record, not CAD, physics, flight, cost, compliance, or verification
-evidence.
-
-The V2 `baseline.from-approved-discovery@1` remains a trusted executor for an exact
-historical approved-discovery project. The similarly named
-`architecture.seed-syson-model@1` and `architecture.author-inspection-drone@1` revisions
-remain readable for audit but are planning-only and never dispatched. None of these V2
-operations can bootstrap or silently convert a V3 project.
+The generic V3 route intentionally stops at r2 container identity. The current technical
+path is instead the fixed `coffee-machine-cm01-v3` catalog: its reviewed operations
+produce CM-01 architecture, CAD, nominal Modelica, ERP BOM and isolated DripTray proof
+evidence. The later 28 mm → 30 mm correction retains its failed R2 attempt, creates the
+correctly identified R11 successor without rerunning a provider, and closes its
+requirement family at R12. This establishes one bounded evidence path, not a generic
+architecture, CAD, or verification executor.
 
 The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
 build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It
@@ -244,8 +239,11 @@ branch:
     their own proposals;
 14. run completion fails closed until an exact descendant snapshot contains evidence
     that is new or content-changed from the run base;
-15. the completed r6/r10 reference path keeps provider execution, canonical attachment,
-    and project lifecycle transitions distinct: `publishing` → attach → `completed`.
+15. the historical r6/r10 evidence records keep provider execution, canonical
+    attachment, and project lifecycle transitions distinct: `publishing` → attach →
+    `completed`. A later corrected successor still needs its own requirement/evaluation
+    closure; a historical completed run does not silently complete a corrected project
+    path.
 
 This is an evidence assembly, not a causal merger. CAD → FEA becomes an attested edge
 only after a solver run consumes the exact STEP and its result is canonically published;

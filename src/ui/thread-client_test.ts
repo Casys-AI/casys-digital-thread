@@ -9,7 +9,6 @@ import {
   isEngineeringWorkbenchSnapshot,
   isThreadWorkbenchSnapshot,
 } from "./src/thread/types.ts";
-import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
 
 Deno.test("native Workbench fallback is an explicitly labelled product fixture", async () => {
   const client = createThreadWorkbenchClient();
@@ -142,11 +141,11 @@ Deno.test("Workbench contract keeps a documentary baseline separate from an evid
       status: "recorded",
       message: "One durable pre-technical record is available.",
       record: {
-        origin: "approved-discovery",
+        origin: "approved-brief",
         snapshotId: fixture.project.threadSnapshots[0]!.snapshotId,
         snapshotRevision: fixture.project.threadSnapshots[0]!.revision,
-        artifactId: "approved-discovery-document",
-        label: "Approved discovery documentary baseline (pre-technical)",
+        artifactId: "approved-brief-document",
+        label: "Approved project brief documentary baseline (pre-technical)",
         fingerprint: "sha256:documentary-record",
         recordedAt: "2026-08-02T12:00:00.000Z",
       },
@@ -167,98 +166,6 @@ Deno.test("Workbench contract keeps a documentary baseline separate from an evid
   );
 });
 
-Deno.test("Workbench contract accepts the closed redacted V2 run projection only before evidence", () => {
-  const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
-  const project = fixture.project as unknown as Record<string, unknown>;
-  const approvedBasis = {
-    kind: "approved-discovery",
-    discoveryId: "drone-concept",
-    snapshotId: "drone-concept:discovery:r9:530edd9e5dd76561",
-    revision: 9,
-    briefId: "inspection-drone-brief-v2",
-    approvedBriefFingerprint: {
-      algorithm: "sha256",
-      digest: "e42aeb5109457f4430a7006b4ebd3d76cc7e15a6e8d0b832ee49cb0fbeb3854e",
-    },
-  };
-  const { kind: _kind, ...discoveryHandoffBasis } = approvedBasis;
-  project.schemaVersion = "2.0";
-  project.discoveryHandoff = {
-    ...discoveryHandoffBasis,
-    approvedAt: "2026-08-03T02:48:23.808Z",
-    approvedBy: {
-      id: "mcp-elicitation:paired-conversation@1",
-      origin: "human",
-    },
-  };
-  project.plan = {
-    startingPoint: "idea-or-spec",
-    basis: approvedBasis,
-    publishedAt: "2026-08-03T02:49:33.973Z",
-    publishedBy: {
-      id: "mcp:orchestrator@1",
-      origin: "agent",
-    },
-  };
-  project.agentRuns = [{
-    id: "run:inspection-drone-documentary-baseline",
-    workItemId: "work-simulate",
-    status: "completed",
-    summary: "Recorded agent run for the documentary baseline: completed.",
-    queuedAt: "2026-08-03T02:49:40.656Z",
-    startedAt: "2026-08-03T02:49:51.619Z",
-    completedAt: "2026-08-03T02:49:51.647Z",
-    evidenceRefs: [],
-  }];
-
-  const documentary = {
-    schemaVersion: "engineering-workbench/0.2",
-    surface: "documentary",
-    project,
-    documentary: {
-      status: "recorded",
-      message: "One durable pre-technical record is available.",
-      record: {
-        origin: "approved-discovery",
-        snapshotId: (project.threadSnapshots as { snapshotId: string }[])[0]!
-          .snapshotId,
-        snapshotRevision: 1,
-        artifactId: "approved-discovery-document",
-        label: "Approved discovery documentary baseline (pre-technical)",
-        fingerprint: "sha256:documentary-record",
-        recordedAt: "2026-08-03T02:49:51.647Z",
-      },
-      technicalEvidence: {
-        status: "not-recorded",
-        message: "No CAD, SysML, simulation or compliance proof is recorded.",
-      },
-    },
-  };
-
-  assertEquals(isEngineeringWorkbenchSnapshot(documentary), true);
-  assertEquals(isEngineeringProjectSnapshot(project), false);
-  assertEquals(
-    isEngineeringWorkbenchSnapshot({
-      ...documentary,
-      surface: "evidence",
-      thread: fixture.thread,
-      alignment: {
-        status: "aligned",
-        projectThreadRevision: 1,
-        currentThreadRevision: 1,
-      },
-    }),
-    false,
-  );
-
-  (project.agentRuns as Record<string, unknown>[])[0]!.basis = approvedBasis;
-  assertEquals(isEngineeringWorkbenchSnapshot(documentary), false);
-
-  delete (project.agentRuns as Record<string, unknown>[])[0]!.basis;
-  project.commandReceipts = [];
-  assertEquals(isEngineeringWorkbenchSnapshot(documentary), false);
-});
-
 Deno.test("Workbench contract accepts only the closed live SysON seed sequence on documentary r1", () => {
   const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
@@ -269,11 +176,11 @@ Deno.test("Workbench contract accepts only the closed live SysON seed sequence o
       status: "recorded",
       message: "One durable pre-technical record is available.",
       record: {
-        origin: "approved-discovery",
+        origin: "approved-brief",
         snapshotId: fixture.project.threadSnapshots[0]!.snapshotId,
         snapshotRevision: fixture.project.threadSnapshots[0]!.revision,
-        artifactId: "approved-discovery-document",
-        label: "Approved discovery documentary baseline (pre-technical)",
+        artifactId: "approved-brief-document",
+        label: "Approved project brief documentary baseline (pre-technical)",
         fingerprint: "sha256:documentary-record",
         recordedAt: "2026-08-02T12:00:00.000Z",
       },

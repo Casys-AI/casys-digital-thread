@@ -56,7 +56,7 @@ approved brief. `baseline.from-approved-brief@1` then materializes a content-add
 documentary baseline. That record proves which brief and plan were used; it is not
 technical evidence by itself.
 
-The implemented V3 continuation is deliberately additive and exact:
+The generic V3 bootstrap is deliberately additive and exact:
 
 ```text
 human-approved living brief
@@ -64,20 +64,16 @@ human-approved living brief
   -> documentary ThreadSnapshot r1
   -> architecture.seed-syson-model@2
   -> syson-model-seed-capture/2.0 + ThreadSnapshot r2
-  -> architecture.author-inspection-drone@2
-  -> inspection-drone-architecture-capture/2.0 + ThreadSnapshot r3
 ```
 
-The r2 record proves only the identity of the editable SysON container. The r3 record
-proves only the bounded SysML insertion and read-back. Neither is geometry, physical
-analysis, flight performance, cost, compliance, or a verified requirement verdict. The
-current `inspection-drone-v3` project has three agent-recorded recommended answers and
-proposed brief revision 2, but no human confirmation; it still awaits exact human
-review. Therefore this sequence is implemented but not yet authorized for that real
-project. A later drone CAD operation must start from a sourced and reviewed geometric
-definition. It must not reuse the unrelated CM-01 CAD or physical proof as if it
-belonged to the drone.
+The r2 record proves only the identity of the editable SysON container. It is not
+geometry, physical analysis, cost, compliance, or a verified requirement verdict. The
+generic route intentionally stops here: later technical work needs a sourced, reviewed
+definition and its own operation/evidence contract.
 
-Schema `2.0` discovery handoffs remain readable only as immutable historical projects.
-They are not exposed by the default MCP surface and are not a creation path for new
-work.
+The current technical reference is the fixed `coffee-machine-cm01-v3` catalog. It uses
+the same approved-brief and exact-basis discipline, then executes reviewed CM-01
+architecture, CAD, thermal, BOM, and isolated DripTray proof operations. Its bounded
+28 mm → 30 mm correction has a separate R11 identity recovery and R12 closeout; see the
+[CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). This is evidence for
+one product case, not a generic authoring capability.

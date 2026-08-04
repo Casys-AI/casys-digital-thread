@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
+  deriveEngineeringPhaseStatus,
   deriveEngineeringProjectStatus,
   type EngineeringProjectSnapshot,
   type EngineeringThreadSnapshotRef,
@@ -21,6 +22,83 @@ const CONFIG = new URL(
 const HUMAN = { kind: "human" as const, actorId: "operator-7" };
 const AGENT = { kind: "agent" as const, actorId: "agent-worker-3" };
 const OTHER_AGENT = { kind: "agent" as const, actorId: "agent-worker-9" };
+
+Deno.test("a failed work item closes only through exact successor reconciliation", async () => {
+  const project = await reconciliableProject();
+  const store = new MemoryRevisionStore(project);
+  const service = serviceFor(store);
+  const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+    .evidenceRefs;
+  const successorRunSnapshot = project.threadSnapshots[0]!;
+  const successorSnapshot = {
+    snapshotId: "coffee-machine-cm01:r6:reconciliation-closeout",
+    revision: 6,
+    subjectId: PROJECT_ID,
+  };
+  const command = {
+    ...context("reconcile-r2-through-r3", project.revision),
+    failedWorkItemId: "verify-current-mechanical-design",
+    failedRunId: "run:mechanical-r2-failed",
+    successorRunId: "run:mechanical-r3-completed",
+    successorRunSnapshot,
+    successorSnapshot,
+    successorEvidenceRefs: evidence,
+    rationale:
+      "R2 stopped before durable evidence. The separately completed R3 successor is the exact current proof.",
+  };
+
+  const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, command);
+  const failedWork = findWorkItem(
+    reconciled,
+    "verify-current-mechanical-design",
+  );
+
+  assertEquals(failedWork.status, "cancelled");
+  assertEquals(failedWork.evidenceRefs, []);
+  assertEquals(failedWork.reconciliation?.kind, "superseded-by-successor");
+  assertEquals(failedWork.reconciliation?.failedRunId, command.failedRunId);
+  assertEquals(failedWork.reconciliation?.successorRunId, command.successorRunId);
+  assertEquals(
+    reconciled.agentRuns.find((run) => run.id === command.failedRunId)?.status,
+    "failed",
+  );
+  assertEquals(
+    reconciled.agentRuns.find((run) => run.id === command.successorRunId)?.status,
+    "completed",
+  );
+  assertEquals(
+    deriveEngineeringPhaseStatus(reconciled, "verification"),
+    "completed",
+  );
+  assertEquals(deriveEngineeringProjectStatus(reconciled), "completed");
+  assertEquals(
+    reconciled.commandReceipts?.at(-1)?.type,
+    "work-item.reconcile-successor",
+  );
+
+  const replay = await service.reconcileWorkItemWithSuccessor(AGENT, command);
+  assertEquals(replay.id, reconciled.id);
+
+  await assertCommandError(
+    () =>
+      service.reconcileWorkItemWithSuccessor(HUMAN, {
+        ...command,
+        commandId: "human-cannot-reconcile",
+        expectedRevision: reconciled.revision,
+      }),
+    "permission_denied",
+  );
+  await assertCommandError(
+    () =>
+      service.reconcileWorkItemWithSuccessor(AGENT, {
+        ...command,
+        commandId: "mismatched-successor-evidence",
+        expectedRevision: reconciled.revision,
+        successorEvidenceRefs: [],
+      }),
+    "invalid_input",
+  );
+});
 
 Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent", async () => {
   const store = await memoryStore();
@@ -412,6 +490,19 @@ function serviceFor(
     validator,
     () =>
       new Date(Date.parse("2026-08-01T11:00:00.000Z") + ++tick * 1_000).toISOString(),
+    undefined,
+    undefined,
+    {
+      validate(successorRunSnapshot, successorSnapshot) {
+        if (
+          successorSnapshot.subjectId !== successorRunSnapshot.subjectId ||
+          successorSnapshot.revision !== successorRunSnapshot.revision + 1
+        ) {
+          return Promise.reject(new Error("invalid synthetic closeout snapshot"));
+        }
+        return Promise.resolve();
+      },
+    },
   );
 }
 
@@ -419,6 +510,82 @@ async function projectFixture(): Promise<EngineeringProjectSnapshot> {
   return validateEngineeringProjectSnapshot(
     JSON.parse(await Deno.readTextFile(CONFIG)),
   );
+}
+
+async function reconciliableProject(): Promise<EngineeringProjectSnapshot> {
+  const project = structuredClone(await projectFixture()) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const verification = project.phases.find((phase) => phase.id === "verification")!;
+  const failedWork = project.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design"
+  )!;
+  const successorEvidence = structuredClone(
+    project.workItems.find((item) => item.id === "build-current-cad")!
+      .evidenceRefs,
+  );
+  const successor = {
+    id: "verify-current-mechanical-design-r3",
+    phaseId: verification.id,
+    title: "Verify the current mechanical design through R3",
+    description:
+      "Retain the completed successor evidence without rewriting the failed R2 work item.",
+    kind: "verify" as const,
+    status: "completed" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: successorEvidence,
+    decisionIds: [],
+    blockerIds: [],
+  };
+  failedWork.status = "ready";
+  failedWork.decisionIds = [];
+  failedWork.blockerIds = [];
+  failedWork.evidenceRefs = [];
+  verification.requiredDecisionIds = [];
+  verification.workItemIds = [failedWork.id, successor.id];
+  verification.evidenceRefs = structuredClone(successorEvidence);
+  project.workItems.push(successor);
+  project.decisions = [];
+  project.approvals = [];
+  project.blockers = [];
+  const snapshot = project.threadSnapshots[0]!;
+  project.agentRuns = [
+    {
+      id: "run:mechanical-r2-failed",
+      workItemId: failedWork.id,
+      status: "failed",
+      summary: "R2 stopped before durable project evidence was published.",
+      queuedAt: "2026-08-01T10:00:00.000Z",
+      startedAt: "2026-08-01T10:00:01.000Z",
+      completedAt: "2026-08-01T10:00:02.000Z",
+      claimedAt: "2026-08-01T10:00:01.000Z",
+      claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
+      baseSnapshot: snapshot,
+      inputFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      evidenceRefs: [],
+      failure: {
+        code: "mechanical-not-published",
+        message: "No durable evidence was published.",
+      },
+    },
+    {
+      id: "run:mechanical-r3-completed",
+      workItemId: successor.id,
+      status: "completed",
+      summary: "R3 published the replacement mechanical evidence.",
+      queuedAt: "2026-08-01T10:00:03.000Z",
+      startedAt: "2026-08-01T10:00:04.000Z",
+      completedAt: "2026-08-01T10:00:05.000Z",
+      claimedAt: "2026-08-01T10:00:04.000Z",
+      claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
+      baseSnapshot: snapshot,
+      inputFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      resultSnapshot: snapshot,
+      evidenceRefs: successorEvidence,
+    },
+  ];
+  return validateEngineeringProjectSnapshot(project);
 }
 
 function context(commandId: string, expectedRevision: number) {

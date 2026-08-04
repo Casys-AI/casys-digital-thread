@@ -130,21 +130,6 @@ const OPERATION_BINDING_SCHEMA = {
         },
         {
           type: "object",
-          properties: { kind: { const: "approved-discovery" } },
-          required: ["kind"],
-          additionalProperties: false,
-        },
-        {
-          type: "object",
-          properties: {
-            kind: { const: "discovery-answer" },
-            answerId: { type: "string", minLength: 1 },
-          },
-          required: ["kind", "answerId"],
-          additionalProperties: false,
-        },
-        {
-          type: "object",
           properties: {
             kind: { const: "thread-entity" },
             reference: THREAD_ENTITY_REFERENCE_SCHEMA,
@@ -801,9 +786,7 @@ function queueExecutionBasis(
   workItem: ReturnType<typeof requiredQueueWorkItem>,
 ): { readonly basis: EngineeringBasisRef } {
   if (project.threadSnapshots.length === 0) {
-    const expectedInitialOperation = project.schemaVersion === "3.0"
-      ? "baseline.from-approved-brief"
-      : "baseline.from-approved-discovery";
+    const expectedInitialOperation = "baseline.from-approved-brief";
     if (
       !project.plan ||
       workItem.operation!.id !== expectedInitialOperation ||
@@ -1153,18 +1136,6 @@ function planOperationBinding(
           answerId: requiredString(source.answerId, `${path}.source.answerId`),
         },
       };
-    case "approved-discovery":
-      exactKeys(source, ["kind"], [], `${path}.source`);
-      return { name, source: { kind } };
-    case "discovery-answer":
-      exactKeys(source, ["kind", "answerId"], [], `${path}.source`);
-      return {
-        name,
-        source: {
-          kind,
-          answerId: requiredString(source.answerId, `${path}.source.answerId`),
-        },
-      };
     case "thread-entity":
       exactKeys(source, ["kind", "reference"], [], `${path}.source`);
       return {
@@ -1179,7 +1150,7 @@ function planOperationBinding(
       };
     default:
       throw new TypeError(
-        `${path}.source.kind must be approved-brief, project-answer, approved-discovery, discovery-answer or thread-entity`,
+        `${path}.source.kind must be approved-brief, project-answer or thread-entity`,
       );
   }
 }

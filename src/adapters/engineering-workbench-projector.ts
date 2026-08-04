@@ -4,10 +4,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
-import {
-  HISTORICAL_SYSON_MODEL_SEED_OPERATION,
-  SYSON_MODEL_SEED_OPERATION,
-} from "../domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
 import type {
   LiveThreadUpdate,
   LiveThreadUpdateState,
@@ -37,7 +34,7 @@ export interface EngineeringEvidenceWorkbenchSnapshot
 }
 
 /**
- * Durable provenance after the approved-discovery baseline has been recorded,
+ * Durable provenance after the approved-brief baseline has been recorded,
  * before a linked technical operation produces any engineering evidence.
  *
  * The record intentionally does not carry the generic thread graph. A
@@ -52,7 +49,7 @@ export interface EngineeringDocumentaryWorkbenchSnapshot
     status: "recorded";
     message: string;
     record: {
-      origin: "approved-brief" | "approved-discovery";
+      origin: "approved-brief";
       snapshotId: string;
       snapshotRevision: number;
       artifactId: string;
@@ -236,9 +233,7 @@ export function projectEngineeringWorkbenchSnapshot(
         message:
           "The canonical project brief and reviewed path are durably captured in one exact record. This is provenance for the work ahead, not a technical result.",
         record: {
-          origin: project.schemaVersion === "3.0"
-            ? "approved-brief"
-            : "approved-discovery",
+          origin: "approved-brief",
           snapshotId: thread.id,
           snapshotRevision: currentThreadRevision,
           artifactId: document.id,
@@ -421,20 +416,17 @@ function documentaryTechnicalStartStepSummary(
 
 function isSysonModelSeedOperation(workItem: EngineeringWorkItem): boolean {
   return workItem.operation?.id === SYSON_MODEL_SEED_OPERATION.id &&
-    // @1 is immutable V2 history and remains projectable, but only @2 is
-    // routed to the V3 executor. This read path never grants execution.
-    (workItem.operation.version === SYSON_MODEL_SEED_OPERATION.version ||
-      workItem.operation.version === HISTORICAL_SYSON_MODEL_SEED_OPERATION.version);
+    workItem.operation.version === SYSON_MODEL_SEED_OPERATION.version;
 }
 
 /**
- * Detect the one narrow V2 root record which is explicitly allowed to exist
+ * Detect the one narrow approved-brief root record which is explicitly allowed to exist
  * before technical evidence. This is intentionally structural rather than a
  * label match: a regular document, a fixture or a thread containing any
  * projected engineering fact continues through the technical evidence surface.
  *
  * The generic thread projection omits canonical evaluations and consumptions,
- * but the trusted V2 initial-result validator requires those collections to be
+ * but the trusted initial-result validator requires those collections to be
  * empty before this BFF can ever see the snapshot. Here we recheck every
  * browser-visible part of that same boundary before dropping the graph.
  */
@@ -444,7 +436,7 @@ function isDocumentaryBaseline(
   currentThreadRevision: number,
 ): boolean {
   if (
-    (project.schemaVersion !== "2.0" && project.schemaVersion !== "3.0") ||
+    project.schemaVersion !== "3.0" ||
     project.threadSnapshots.length !== 1 ||
     currentThreadRevision !== 1 ||
     thread.source !== "observed" ||
@@ -458,21 +450,18 @@ function isDocumentaryBaseline(
   }
   const reference = project.threadSnapshots[0]!;
   const document = thread.artifacts[0]!;
-  const expectedProducer = project.schemaVersion === "3.0"
-    ? "baseline_from_approved_brief"
-    : "baseline_from_approved_discovery";
   return reference.snapshotId === thread.id &&
     reference.revision === currentThreadRevision &&
     reference.subjectId === thread.subject.id &&
     document.kind === "document" &&
     document.system === "casys-digital-thread" &&
-    document.producedBy === expectedProducer &&
+    document.producedBy === "baseline_from_approved_brief" &&
     document.dependsOn.length === 0 &&
     typeof document.fingerprint === "string" && document.fingerprint.length > 0;
 }
 
 /**
- * Project an approved discovery and an agent-published path before any
+ * Project an approved brief and an agent-published path before any
  * technical baseline exists. This deliberately accepts no ThreadSnapshot and
  * has no alignment fields: there is nothing technical to align yet.
  */

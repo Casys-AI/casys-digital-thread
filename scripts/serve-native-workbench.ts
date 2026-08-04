@@ -8,14 +8,10 @@ import {
   type CockpitFocusStore,
   FileCockpitFocusStore,
 } from "../src/adapters/file-cockpit-focus-store.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "../src/adapters/file-approved-discovery-baseline-capture-store.ts";
-import { FileSysonModelSeedCaptureStore } from "../src/adapters/file-syson-model-seed-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "../src/adapters/file-approved-brief-baseline-capture-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-capture-store.ts";
-import { InspectionDroneArchitectureQueueEligibility } from "../src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
-import { FileProjectDiscoveryRevisionStore } from "../src/adapters/project-discovery-store.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
 import {
   type EngineeringWorkbenchSnapshot,
   projectEngineeringPlanningWorkbenchSnapshot,
@@ -28,14 +24,7 @@ import {
 } from "../src/adapters/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
-import {
-  HISTORICAL_SYSON_MODEL_SEED_OPERATION,
-  SYSON_MODEL_SEED_OPERATION,
-} from "../src/domain/syson-model-seed.ts";
-import {
-  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
-} from "../src/domain/inspection-drone-architecture.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -141,8 +130,7 @@ class NativeWorkbenchProjectNotFoundError extends Error {
 
 /**
  * An explicitly supplied subject remains an operator override. Otherwise the
- * persisted project is authoritative: V2 discovery projects intentionally use
- * `project:<projectId>` rather than the historic CM-01 subject convention.
+ * persisted project is authoritative and supplies its own durable subject id.
  */
 export async function resolveNativeWorkbenchSubjectId(
   projectId: string,
@@ -429,10 +417,8 @@ async function resolveCurrentThreadSnapshot(
   options: NativeWorkbenchHandlerOptions,
   subjectId: string,
 ): Promise<ThreadSnapshot | undefined> {
-  // A project created from approved discovery is intentionally not allowed to
-  // borrow whatever happens to be the current subject head. Before the first
-  // deterministic operation publishes a declared baseline, it is planning
-  // provenance only.
+  // Before the first deterministic operation publishes a declared baseline,
+  // an intent-only project is not allowed to borrow a current subject head.
   if (project.threadSnapshots.length === 0) return undefined;
   const [active, declared] = await Promise.all([
     options.store.latest(subjectId),
@@ -468,10 +454,7 @@ async function resolveCurrentThreadSnapshot(
 }
 
 const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
-  HISTORICAL_SYSON_MODEL_SEED_OPERATION,
   SYSON_MODEL_SEED_OPERATION,
-  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
 ] as const;
 
 function hasUnattachedDurableProjectOperation(
@@ -582,16 +565,11 @@ if (import.meta.main) {
   const assetDirectory = argument("asset-dir") ?? "state/local/thread-assets";
   const liveUpdateDirectory = argument("live-update-dir") ??
     "state/local/live-thread-updates";
-  const projectDiscoveryDirectory = argument("project-discovery-dir") ??
-    "state/local/project-discoveries";
   const focusDirectory = argument("focus-dir") ?? "state/local/cockpit-focus";
   const workspaceId = argument("workspace-id");
-  const approvedDiscoveryCaptureDirectory = argument(
-    "approved-discovery-capture-dir",
-  ) ?? "state/local/approved-discovery-captures";
-  const sysonModelSeedCaptureDirectory = argument(
-    "syson-model-seed-capture-dir",
-  ) ?? "state/local/syson-model-seed-captures";
+  const approvedBriefCaptureDirectory = argument(
+    "approved-brief-capture-dir",
+  ) ?? "state/local/approved-brief-captures";
   const cm01ArchitectureCaptureDirectory = argument(
     "cm01-architecture-capture-dir",
   ) ?? "state/local/coffee-machine-cm01-v3-architecture-captures";
@@ -601,23 +579,14 @@ if (import.meta.main) {
     store,
     new FileExactThreadSnapshotDirectory(projectBaselineDirectory),
   ]);
-  const discoveries = new FileProjectDiscoveryRevisionStore(
-    projectDiscoveryDirectory,
-  );
   const cockpitFocus = workspaceId
     ? new FileCockpitFocusStore(focusDirectory)
     : undefined;
-  const captures = new FileApprovedDiscoveryBaselineCaptureStore(
-    approvedDiscoveryCaptureDirectory,
-  );
-  const sysonModelSeedCaptures = new FileSysonModelSeedCaptureStore(
-    sysonModelSeedCaptureDirectory,
+  const captures = new FileApprovedBriefBaselineCaptureStore(
+    approvedBriefCaptureDirectory,
   );
   const cm01ArchitectureCaptures = new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
     cm01ArchitectureCaptureDirectory,
-  );
-  const projectsForEligibility = new FileEngineeringProjectRevisionStore(
-    activeProjectDirectory,
   );
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
@@ -625,15 +594,7 @@ if (import.meta.main) {
     activeDirectory: activeProjectDirectory,
     evidenceSnapshots: projectSnapshots,
     planning: {
-      discoveries,
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
-      queueEligibility: new InspectionDroneArchitectureQueueEligibility({
-        projects: projectsForEligibility,
-        snapshots: projectSnapshots,
-        approvedDiscoveryCaptures: captures,
-        approvedBriefCaptures: captures,
-        seedCaptures: sysonModelSeedCaptures,
-      }),
     },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       store,
@@ -704,7 +665,7 @@ if (import.meta.main) {
         console.log(`Agent-selected cockpit workspace: ${workspaceId}`);
       }
       console.log(
-        `Documentary baseline captures: ${approvedDiscoveryCaptureDirectory}`,
+        `Documentary baseline captures: ${approvedBriefCaptureDirectory}`,
       );
       console.log(
         "Read-only Workbench: project commands and human decisions flow through the paired MCP conversation.",

@@ -89,10 +89,11 @@ and result families without becoming one large connected-component card.
 
 The visible graph is a quotient DAG. A version count inside a node shows that
 earlier records were replaced, but the projection never emits a literal loop,
-self-edge, or invented causal edge. Selecting the node opens the existing tool
-inspector: the current record stays first, recorded versions can be selected in
-their explicit supersession order, and the internal canonical relations explain
-each transition.
+self-edge, or invented causal edge. A topology may explicitly converge several
+historical records on one successor; that preserves one current record without
+inventing an order between the historical predecessors. Selecting the node opens
+the existing tool inspector, where the internal canonical relations explain each
+transition.
 
 There is no alternate "all versions" graph. External relations which repeat
 across versions share one visible handoff; the edge inspector retains the exact

@@ -11,7 +11,7 @@ import {
   requestUsesExplicitLoopbackHost,
 } from "./src/adapters/loopback-host.ts";
 import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-store.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "./src/adapters/file-approved-discovery-baseline-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "./src/adapters/file-approved-brief-baseline-capture-store.ts";
 import { FileSysonModelSeedCaptureStore } from "./src/adapters/file-syson-model-seed-capture-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
@@ -29,12 +29,9 @@ import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
   CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts";
-import { FileInspectionDroneArchitectureCaptureStore } from "./src/adapters/file-inspection-drone-architecture-capture-store.ts";
-import { FileInspectionDroneArchitectureAttemptStore } from "./src/adapters/file-inspection-drone-architecture-attempt-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
-import { ApprovedDiscoveryBaselineRunExecutor } from "./src/adapters/approved-discovery-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/approved-brief-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/syson-model-seed-run-executor.ts";
-import { InspectionDroneArchitectureRunExecutor } from "./src/adapters/inspection-drone-architecture-run-executor.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
@@ -69,11 +66,9 @@ import {
   CoffeeMachineCm01V3MechanicalR2RunExecutor,
   CoffeeMachineCm01V3MechanicalR3RunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-r2-provider-run-executor.ts";
-import { InspectionDroneArchitectureQueueEligibility } from "./src/adapters/inspection-drone-architecture-queue-eligibility.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/live-thread-update-store.ts";
-import { FileProjectDiscoveryRevisionStore } from "./src/adapters/project-discovery-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/engineering-project-store.ts";
 import {
   CockpitFocusConflictError,
@@ -101,12 +96,6 @@ import {
 } from "./src/domain/cm01-drip-tray-mechanical-proof.ts";
 import { ProjectBriefCommandService } from "./src/domain/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
-import {
-  ProjectDiscoveryCommandError,
-} from "./src/domain/project-discovery-command-service.ts";
-import {
-  ProjectDiscoveryHandoffError,
-} from "./src/domain/project-discovery-handoff-service.ts";
 import type {
   FleetManifest,
   ObservedRunCatalog,
@@ -120,10 +109,6 @@ import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
 } from "./src/tools/project-control.ts";
-import {
-  type ProjectDiscoveryToolDependencies,
-  registerProjectDiscoveryTools,
-} from "./src/tools/project-discovery.ts";
 import {
   type ProjectBriefToolDependencies,
   registerProjectBriefTools,
@@ -142,12 +127,10 @@ const DEFAULT_SCENARIO_CONTRACT_PLAN_PATH =
 const DEFAULT_PROJECT_ID = "coffee-machine-cm01";
 const DEFAULT_PROJECT_PATH = "config/projects/coffee-machine-cm01.project.json";
 const DEFAULT_ACTIVE_PROJECT_DIRECTORY = "state/local/engineering-projects";
-const DEFAULT_PROJECT_DISCOVERY_DIRECTORY = "state/local/project-discoveries";
 const DEFAULT_COCKPIT_FOCUS_DIRECTORY = "state/local/cockpit-focus";
 const DEFAULT_THREAD_SNAPSHOT_DIRECTORY = "state/local/thread-snapshots";
 const DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY = "state/local/live-thread-updates";
-const DEFAULT_APPROVED_DISCOVERY_CAPTURE_DIRECTORY =
-  "state/local/approved-discovery-captures";
+const DEFAULT_APPROVED_BRIEF_CAPTURE_DIRECTORY = "state/local/approved-brief-captures";
 const DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY =
   "state/local/syson-model-seed-captures";
 const DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY =
@@ -194,10 +177,6 @@ const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R2_PATH =
   "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-height-30-static.json";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R3_PATH =
   "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-height-30-static-r3.json";
-const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_CAPTURE_DIRECTORY =
-  "state/local/inspection-drone-architecture-captures";
-const DEFAULT_INSPECTION_DRONE_ARCHITECTURE_ATTEMPT_DIRECTORY =
-  "state/local/inspection-drone-architecture-attempts";
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
@@ -216,8 +195,6 @@ export interface CreateConsoleServerOptions {
   logger?: (message: string) => void;
   /** `false` is reserved for focused fleet-only tests. */
   projectControl?: ProjectControlToolDependencies | false;
-  /** Defaults to the same loopback-only trust boundary as project control. */
-  projectDiscovery?: ProjectDiscoveryToolDependencies | false;
   /** Living in-project brief tools; enabled by default with project control. */
   projectBrief?: ProjectBriefToolDependencies | false;
   /** Agent-owned browser focus; omitted with project tools in fleet-only tests. */
@@ -227,11 +204,10 @@ export interface CreateConsoleServerOptions {
   projectId?: string;
   projectPath?: string;
   activeProjectDirectory?: string;
-  projectDiscoveryDirectory?: string;
   cockpitFocusDirectory?: string;
   threadSnapshotDirectory?: string;
   liveThreadUpdateDirectory?: string;
-  approvedDiscoveryCaptureDirectory?: string;
+  approvedBriefCaptureDirectory?: string;
   sysonModelSeedCaptureDirectory?: string;
   sysonModelSeedAttemptDirectory?: string;
   cm01NominalModelicaCaptureDirectory?: string;
@@ -250,8 +226,6 @@ export interface CreateConsoleServerOptions {
   cm01DripTrayMechanicalR2CaptureDirectory?: string;
   cm01DripTrayMechanicalR3AttemptDirectory?: string;
   cm01DripTrayMechanicalR3CaptureDirectory?: string;
-  inspectionDroneArchitectureCaptureDirectory?: string;
-  inspectionDroneArchitectureAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
 }
@@ -303,15 +277,10 @@ export async function createConsoleServer(
   const projectBrief = options.projectBrief === false
     ? undefined
     : options.projectBrief ?? defaultProjectTools?.brief;
-  // Historical test seam only. The default product surface no longer creates
-  // or hands off a separate Discovery aggregate.
-  const projectDiscovery = typeof options.projectDiscovery === "object"
-    ? options.projectDiscovery
-    : undefined;
   const cockpitFocus = options.cockpitFocus === false || !projectControl
     ? undefined
     : options.cockpitFocus ?? createCockpitFocus(options);
-  const instructions = projectControl || projectBrief || projectDiscovery
+  const instructions = projectControl || projectBrief
     ? "Casys engineering control plane. Fleet tools are read-only. project_start creates the engineering project from the first plain-language intent; framing, guided questions, sourced answers and the living brief remain inside that same project. An agent may revise the brief but cannot self-approve it: project_brief_confirm requires exact confirmation through MCP elicitation presented by the paired host. The signed retry protects request integrity and replay; user authentication remains the host's responsibility. project_snapshot reads the whole durable project. project_plan_publish binds reviewed work to the exact human-approved canonical brief; every work item cites a reviewed server-side operation. The agent may queue and execute only registered operations, with no provider name, arbitrary arguments, result payload, or fabricated evidence supplied by the caller. Consequential engineering decisions use the same host-presented MCP elicitation flow. cockpit_focus_set selects an already durable project for the read-only cockpit; it does not change project truth. The cockpit is a read-only projection of framing, activity, lineage and results. Unavailable, demo, unlicensed standards content, legal conclusions, and unverified evidence must stay explicitly labelled."
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const app = new McpApp({
@@ -321,7 +290,7 @@ export async function createConsoleServer(
     maxConcurrent: 8,
     backpressureStrategy: "queue",
     validateSchema: true,
-    ...(projectControl || projectBrief || projectDiscovery
+    ...(projectControl || projectBrief
       ? {
         mrtr: {
           signingKey: options.mrtrSigningKey ?? env("MCP_MRTR_SIGNING_KEY") ??
@@ -335,14 +304,12 @@ export async function createConsoleServer(
       error instanceof Error &&
         (error.name === "ControlPlaneNotFoundError" ||
           error instanceof EngineeringProjectCommandError ||
-          error instanceof ProjectDiscoveryCommandError ||
-          error instanceof ProjectDiscoveryHandoffError ||
           error instanceof CockpitFocusConflictError ||
           error instanceof TypeError)
         ? error.message
         : null,
   });
-  if (projectControl || projectBrief || projectDiscovery) {
+  if (projectControl || projectBrief) {
     app.use(async (context, next) => {
       if (
         context.request &&
@@ -358,7 +325,6 @@ export async function createConsoleServer(
   registerControlPlaneTools(app, controlPlane);
   if (projectControl) registerProjectControlTools(app, projectControl);
   if (projectBrief) registerProjectBriefTools(app, projectBrief);
-  if (projectDiscovery) registerProjectDiscoveryTools(app, projectDiscovery);
   if (cockpitFocus) registerCockpitFocusTools(app, cockpitFocus);
   registerConsoleViewer(app);
   return { app, controlPlane };
@@ -384,22 +350,14 @@ async function createProjectControl(
       options.projectBaselineDirectory ?? DEFAULT_PROJECT_BASELINE_DIRECTORY,
     ),
   ]);
-  const discoveries = new FileProjectDiscoveryRevisionStore(
-    options.projectDiscoveryDirectory ?? DEFAULT_PROJECT_DISCOVERY_DIRECTORY,
-  );
-  const captures = new FileApprovedDiscoveryBaselineCaptureStore(
-    options.approvedDiscoveryCaptureDirectory ??
-      DEFAULT_APPROVED_DISCOVERY_CAPTURE_DIRECTORY,
+  const captures = new FileApprovedBriefBaselineCaptureStore(
+    options.approvedBriefCaptureDirectory ??
+      DEFAULT_APPROVED_BRIEF_CAPTURE_DIRECTORY,
   );
   const sysonModelSeedCaptures = new FileSysonModelSeedCaptureStore(
     options.sysonModelSeedCaptureDirectory ??
       DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY,
   );
-  const inspectionDroneArchitectureCaptures =
-    new FileInspectionDroneArchitectureCaptureStore(
-      options.inspectionDroneArchitectureCaptureDirectory ??
-        DEFAULT_INSPECTION_DRONE_ARCHITECTURE_CAPTURE_DIRECTORY,
-    );
   const liveUpdates = new FileLiveThreadUpdateStore(
     options.liveThreadUpdateDirectory ?? DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY,
   );
@@ -409,34 +367,22 @@ async function createProjectControl(
   );
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
-  const projectsForEligibility = new FileEngineeringProjectRevisionStore(
-    activeProjectDirectory,
-  );
   const runtime = await createEngineeringProjectCommandRuntime({
     projectId: options.projectId ?? DEFAULT_PROJECT_ID,
     trackedManifestPath: options.projectPath ?? DEFAULT_PROJECT_PATH,
     activeDirectory: activeProjectDirectory,
     evidenceSnapshots: threadSnapshots,
     planning: {
-      discoveries,
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
-      queueEligibility: new InspectionDroneArchitectureQueueEligibility({
-        projects: projectsForEligibility,
-        snapshots: activeThreadSnapshots,
-        approvedDiscoveryCaptures: captures,
-        approvedBriefCaptures: captures,
-        seedCaptures: sysonModelSeedCaptures,
-      }),
     },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       activeThreadSnapshots,
       captures,
     ),
   });
-  const baseline = new ApprovedDiscoveryBaselineRunExecutor({
+  const baseline = new ApprovedBriefBaselineRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
-    discoveries,
     captures,
     snapshots: activeThreadSnapshots,
     lease,
@@ -451,24 +397,6 @@ async function createProjectControl(
       attempts: new FileSysonModelSeedAttemptStore(
         options.sysonModelSeedAttemptDirectory ??
           DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY,
-      ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-      liveUpdates,
-    })
-    : undefined;
-  const inspectionDroneArchitecture = sysonMcpUrl
-    ? new InspectionDroneArchitectureRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      approvedDiscoveryCaptures: captures,
-      approvedBriefCaptures: captures,
-      seedCaptures: sysonModelSeedCaptures,
-      captures: inspectionDroneArchitectureCaptures,
-      attempts: new FileInspectionDroneArchitectureAttemptStore(
-        options.inspectionDroneArchitectureAttemptDirectory ??
-          DEFAULT_INSPECTION_DRONE_ARCHITECTURE_ATTEMPT_DIRECTORY,
       ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
@@ -697,7 +625,6 @@ async function createProjectControl(
         projects: runtime.projects,
         baseline,
         sysonModelSeed,
-        inspectionDroneArchitecture,
         additional: [
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,

@@ -3,7 +3,6 @@ import {
   type EngineeringAgentRunStatus,
   type EngineeringApproval,
   type EngineeringApprovedBriefBasis,
-  type EngineeringApprovedDiscoveryBasis,
   type EngineeringBasisRef,
   type EngineeringCommandActor,
   type EngineeringCommandOriginKind,
@@ -25,8 +24,6 @@ import {
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
 import { fingerprintsEqual, sha256Fingerprint } from "./deterministic-json.ts";
 import type { ContentFingerprint } from "./thread-snapshot.ts";
-import type { ProjectDiscoveryRevisionStore } from "./project-discovery-command-service.ts";
-import type { ProjectDiscoverySnapshot } from "./project-discovery.ts";
 import { currentProjectAnswer } from "./project-brief.ts";
 
 export interface EngineeringProjectRevisionStore {
@@ -115,9 +112,9 @@ export interface QueueRunCommand extends EngineeringProjectCommandInput {
   readonly runId: string;
   readonly workItemId: string;
   readonly summary: string;
-  /** V1-only queue anchor; V2 rejects this field. */
+  /** V1-only queue anchor; V3 rejects this field. */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
-  /** V2-only queue anchor; V1 rejects this field. */
+  /** V3-only queue anchor; V1 rejects this field. */
   readonly basis?: EngineeringBasisRef;
 }
 
@@ -134,6 +131,23 @@ export interface CompleteRunCommand extends RunCommand {
 export interface FailRunCommand extends RunCommand {
   readonly code: string;
   readonly message: string;
+}
+
+/**
+ * Close one failed work item only when an independently completed successor
+ * already carries the exact replacement evidence. This is project-state
+ * reconciliation, never a provider retry or a claim that the failed work
+ * produced evidence.
+ */
+export interface ReconcileWorkItemWithSuccessorCommand
+  extends EngineeringProjectCommandInput {
+  readonly failedWorkItemId: string;
+  readonly failedRunId: string;
+  readonly successorRunId: string;
+  readonly successorRunSnapshot: EngineeringThreadSnapshotRef;
+  readonly successorSnapshot: EngineeringThreadSnapshotRef;
+  readonly successorEvidenceRefs: readonly EngineeringThreadEntityRef[];
+  readonly rationale: string;
 }
 
 export interface PublishProjectPlanCommand extends EngineeringProjectCommandInput {
@@ -215,7 +229,7 @@ export interface EngineeringProjectPlanOperationRegistry {
 }
 
 /**
- * Optional policy gate for a concrete V2 run after its reviewed operation and
+ * Optional policy gate for a concrete V3 run after its reviewed operation and
  * exact basis have already been accepted. The command service gives the gate
  * a validated, deeply frozen pre-mutation project snapshot: it can refuse the
  * queue transition, but cannot alter the candidate run or project state.
@@ -230,11 +244,9 @@ export interface EngineeringProjectQueueEligibility {
 }
 
 export interface EngineeringProjectPlanningDependencies {
-  /** Historical V2 reader. New V3 projects resolve their brief in-project. */
-  readonly discoveries?: Pick<ProjectDiscoveryRevisionStore, "getRevision">;
   readonly operations: EngineeringProjectPlanOperationRegistry;
   /**
-   * Optional, code-owned admission gate for a particular reviewed V2 run.
+   * Optional, code-owned admission gate for a particular reviewed V3 run.
    * It is deliberately evaluated before a run, work-item status or receipt is
    * mutated.
    */
@@ -257,10 +269,23 @@ export interface EngineeringProjectCompletionEvidenceValidator {
 export interface EngineeringProjectInitialCompletionEvidenceValidator {
   validateInitial(
     runId: string,
-    basis: EngineeringApprovedDiscoveryBasis | EngineeringApprovedBriefBasis,
+    basis: EngineeringApprovedBriefBasis,
     operation: EngineeringOperationRef,
     resultSnapshot: EngineeringThreadSnapshotRef,
     evidenceRefs: readonly EngineeringThreadEntityRef[],
+  ): Promise<void>;
+}
+
+/**
+ * Persistence-backed proof that a reconciliation closeout snapshot exists and
+ * is the direct immutable child of the completed successor result.  The
+ * project command service owns no ThreadSnapshot store, so adapters inject
+ * this narrow validator instead of allowing a caller to name a phantom ref.
+ */
+export interface EngineeringProjectReconciliationSnapshotValidator {
+  validate(
+    successorRunSnapshot: EngineeringThreadSnapshotRef,
+    successorSnapshot: EngineeringThreadSnapshotRef,
   ): Promise<void>;
 }
 
@@ -274,6 +299,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
   agent: [
     "project.plan-publish",
     "project.change-append",
+    "work-item.reconcile-successor",
     "decision.propose",
     "agent-run.queue",
     "agent-run.claim",
@@ -301,11 +327,13 @@ export class EngineeringProjectCommandService {
     private readonly planning?: EngineeringProjectPlanningDependencies,
     private readonly initialEvidenceValidator?:
       EngineeringProjectInitialCompletionEvidenceValidator,
+    private readonly reconciliationSnapshotValidator?:
+      EngineeringProjectReconciliationSnapshotValidator,
   ) {}
 
   /**
    * Persist a bounded, agent-authored project path after an exact approved
-   * discovery handoff. This is planning only: it neither approves anything,
+   * project brief. This is planning only: it neither approves anything,
    * queues a run, calls a provider nor manufactures technical evidence.
    */
   publishPlan(
@@ -316,7 +344,7 @@ export class EngineeringProjectCommandService {
       origin,
       "project.plan-publish",
       command,
-      async (draft, appliedAt) => {
+      (draft, appliedAt) => {
         const planning = this.planning;
         if (!planning) {
           invalidInput(
@@ -326,8 +354,7 @@ export class EngineeringProjectCommandService {
         assertPlanningProject(draft);
         assertPlanningCanChange(draft);
         validatePlanCommand(command);
-        const planningContext = await planningBasisForProject(draft, planning);
-        const basis = planningContext.basis;
+        const basis = planningBasisForProject(draft);
 
         const phaseIds = new Set(command.phases.map((phase) => phase.id));
         const workItemIds = new Set(command.workItems.map((workItem) => workItem.id));
@@ -344,11 +371,7 @@ export class EngineeringProjectCommandService {
               `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${command.startingPoint}.`,
             );
           }
-          assertPlanBindingsResolve(
-            draft,
-            resolved.bindings,
-            planningContext.discovery,
-          );
+          assertPlanBindingsResolve(draft, resolved.bindings);
           assertPlanWorkItemReferences(
             item,
             phaseIds,
@@ -435,7 +458,7 @@ export class EngineeringProjectCommandService {
 
   /**
    * Append one bounded, registry-reviewed change to an already materialized
-   * V2 discovery project. This is deliberately not a plan replacement: the
+   * V3 project. This is deliberately not a plan replacement: the
    * initial plan and all execution history stay intact in the next immutable
    * project revision.
    */
@@ -447,7 +470,7 @@ export class EngineeringProjectCommandService {
       origin,
       "project.change-append",
       command,
-      async (draft, appliedAt) => {
+      (draft, appliedAt) => {
         const planning = this.planning;
         if (!planning) {
           invalidInput(
@@ -461,7 +484,7 @@ export class EngineeringProjectCommandService {
           draft,
           command.baseSnapshot,
         );
-        const planningContext = await planningBasisForProject(draft, planning);
+        const approvedBriefBasis = planningBasisForProject(draft);
         const startingPoint = draft.plan!.startingPoint;
 
         const existingPhaseIds = new Set(draft.phases.map((phase) => phase.id));
@@ -503,11 +526,7 @@ export class EngineeringProjectCommandService {
               `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${startingPoint}.`,
             );
           }
-          assertPlanBindingsResolve(
-            draft,
-            resolved.bindings,
-            planningContext.discovery,
-          );
+          assertPlanBindingsResolve(draft, resolved.bindings);
           assertChangeWorkItemReferences(
             item,
             phaseIds,
@@ -577,11 +596,7 @@ export class EngineeringProjectCommandService {
         const change: Mutable<EngineeringProjectChange> = {
           id: `change:${command.commandId}`,
           commandId: command.commandId,
-          ...(planningContext.basis.kind === "approved-brief"
-            ? {
-              approvedBriefBasis: structuredClone(planningContext.basis),
-            }
-            : {}),
+          approvedBriefBasis: structuredClone(approvedBriefBasis),
           baseSnapshot: structuredClone(currentHead),
           phaseIds: phases.map((phase) => phase.id),
           workItemIds: workItems.map((item) => item.id),
@@ -693,7 +708,7 @@ export class EngineeringProjectCommandService {
         };
       });
       const queued = draft.schemaVersion !== "1.0"
-        ? await queueV2Run(
+        ? await queueV3Run(
           draft,
           command,
           workItem,
@@ -775,25 +790,11 @@ export class EngineeringProjectCommandService {
           const basis = run.basis;
           if (!basis) {
             invalidInput(
-              `V2 agent run ${run.id} has no exact basis; completion is unsafe.`,
+              `V3 agent run ${run.id} has no exact basis; completion is unsafe.`,
             );
           }
           const workItem = findWorkItem(draft, run.workItemId)!;
-          if (basis.kind === "approved-discovery") {
-            assertInitialV2CompletionBasis(draft, workItem, basis);
-            if (!this.initialEvidenceValidator) {
-              invalidInput(
-                "Initial completion validation is unavailable; refusing to publish a discovery-derived documentary baseline.",
-              );
-            }
-            await this.initialEvidenceValidator.validateInitial(
-              run.id,
-              basis,
-              workItem.operation!,
-              command.resultSnapshot,
-              command.evidenceRefs,
-            );
-          } else if (basis.kind === "approved-brief") {
+          if (basis.kind === "approved-brief") {
             assertInitialV3CompletionBasis(draft, workItem, basis);
             if (!this.initialEvidenceValidator) {
               invalidInput(
@@ -874,6 +875,127 @@ export class EngineeringProjectCommandService {
         delete run.waitingForDecisionIds;
         const workItem = findWorkItem(draft, run.workItemId)!;
         workItem.status = nextIdleWorkStatus(draft, workItem);
+      },
+    );
+  }
+
+  /**
+   * Permanently close a failed work item behind a separately completed
+   * successor. Both execution histories remain intact: the failed run stays
+   * failed and the successor retains its own completed work item and evidence.
+   */
+  reconcileWorkItemWithSuccessor(
+    origin: EngineeringProjectCommandOrigin,
+    command: ReconcileWorkItemWithSuccessorCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    return this.apply(
+      origin,
+      "work-item.reconcile-successor",
+      command,
+      async (draft, appliedAt) => {
+        nonEmpty(command.failedWorkItemId, "failedWorkItemId");
+        nonEmpty(command.failedRunId, "failedRunId");
+        nonEmpty(command.successorRunId, "successorRunId");
+        nonEmpty(command.rationale, "rationale");
+        if (command.failedRunId === command.successorRunId) {
+          invalidInput("A failed run cannot reconcile itself as its successor.");
+        }
+        assertDeclaredSnapshot(draft, command.successorRunSnapshot);
+        if (
+          command.successorSnapshot.subjectId !== draft.project.subjectId ||
+          command.successorSnapshot.snapshotId.toLowerCase() === "latest" ||
+          command.successorSnapshot.revision !==
+            command.successorRunSnapshot.revision + 1 ||
+          !sameSnapshotReference(
+            draft.threadSnapshots.at(-1)!,
+            command.successorRunSnapshot,
+          )
+        ) {
+          invalidInput(
+            "The closeout snapshot must directly follow the current completed successor snapshot.",
+          );
+        }
+        if (!this.reconciliationSnapshotValidator) {
+          invalidInput(
+            "Successor reconciliation requires an exact persisted closeout snapshot validator.",
+          );
+        }
+        await this.reconciliationSnapshotValidator.validate(
+          command.successorRunSnapshot,
+          command.successorSnapshot,
+        );
+        const failedWork = findWorkItem(draft, command.failedWorkItemId);
+        if (!failedWork) notFound("work item", command.failedWorkItemId);
+        if (failedWork.status !== "ready") {
+          invalidTransition(
+            `Work item ${failedWork.id} can reconcile only from ready after its failed attempt.`,
+          );
+        }
+        if (failedWork.evidenceRefs.length !== 0) {
+          invalidTransition(
+            `Work item ${failedWork.id} already owns evidence and cannot be reconciled as failed work.`,
+          );
+        }
+        const failedRun = findRun(draft, command.failedRunId);
+        if (!failedRun) notFound("agent run", command.failedRunId);
+        if (
+          failedRun.workItemId !== failedWork.id || failedRun.status !== "failed" ||
+          !failedRun.failure || failedRun.evidenceRefs.length !== 0
+        ) {
+          invalidTransition(
+            `Run ${command.failedRunId} is not an evidence-free failed attempt for ${failedWork.id}.`,
+          );
+        }
+        const successor = findRun(draft, command.successorRunId);
+        if (!successor) notFound("agent run", command.successorRunId);
+        if (
+          successor.workItemId === failedWork.id || successor.status !== "completed" ||
+          !successor.resultSnapshot || successor.evidenceRefs.length === 0
+        ) {
+          invalidTransition(
+            `Run ${command.successorRunId} is not a completed successor with evidence.`,
+          );
+        }
+        if (
+          !sameSnapshotReference(
+            successor.resultSnapshot,
+            command.successorRunSnapshot,
+          ) ||
+          !sameEvidenceReferences(
+            successor.evidenceRefs,
+            command.successorEvidenceRefs,
+          )
+        ) {
+          invalidInput(
+            "The declared successor snapshot and evidence must exactly match the completed successor run.",
+          );
+        }
+        const successorWork = findWorkItem(draft, successor.workItemId)!;
+        if (
+          successorWork.status !== "completed" ||
+          !sameEvidenceReferences(
+            successorWork.evidenceRefs,
+            successor.evidenceRefs,
+          )
+        ) {
+          invalidTransition(
+            `Completed successor run ${successor.id} has inconsistent work-item evidence.`,
+          );
+        }
+        addThreadSnapshot(draft, command.successorSnapshot);
+        failedWork.status = "cancelled";
+        failedWork.reconciliation = {
+          kind: "superseded-by-successor",
+          reconciledAt: appliedAt,
+          reconciledBy: actor(origin),
+          failedRunId: failedRun.id,
+          successorRunId: successor.id,
+          successorRunSnapshot: structuredClone(command.successorRunSnapshot),
+          successorSnapshot: structuredClone(command.successorSnapshot),
+          successorEvidenceRefs: structuredClone([...command.successorEvidenceRefs]),
+          rationale: command.rationale,
+        };
+        recomputeWorkReadiness(draft);
       },
     );
   }
@@ -1061,11 +1183,6 @@ export class EngineeringProjectCommandService {
 }
 
 function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
-  if (draft.schemaVersion === "2.0" && !draft.discoveryHandoff) {
-    invalidTransition(
-      "A historical V2 project requires its approved discovery handoff before planning.",
-    );
-  }
   if (
     draft.schemaVersion === "3.0" &&
     (!draft.framing?.currentBrief ||
@@ -1111,10 +1228,8 @@ function assertChangeCanAppend(draft: EngineeringProjectSnapshot): void {
   const completedBaseline = draft.agentRuns.some((run) => {
     const workItem = draft.workItems.find((item) => item.id === run.workItemId);
     return run.status === "completed" &&
-      ((run.basis?.kind === "approved-discovery" &&
-        workItem?.operation?.id === "baseline.from-approved-discovery") ||
-        (run.basis?.kind === "approved-brief" &&
-          workItem?.operation?.id === "baseline.from-approved-brief")) &&
+      run.basis?.kind === "approved-brief" &&
+      workItem?.operation?.id === "baseline.from-approved-brief" &&
       workItem?.operation?.version === "1";
   });
   if (!completedBaseline || draft.threadSnapshots.length === 0) {
@@ -1135,11 +1250,6 @@ function assertPlanningProject(
   if (draft.schemaVersion === "1.0") {
     invalidTransition(
       "V1 project history is read-only for planning; start a new project from intent instead.",
-    );
-  }
-  if (draft.schemaVersion === "2.0" && !draft.discoveryHandoff) {
-    invalidTransition(
-      "A historical V2 project plan requires its approved discovery handoff.",
     );
   }
   if (
@@ -1167,13 +1277,13 @@ async function queueV1Run(
   origin: EngineeringProjectCommandOrigin,
 ): Promise<Mutable<EngineeringAgentRun>> {
   if (command.basis !== undefined) {
-    invalidInput("V1 runs cannot accept a V2 execution basis.");
+    invalidInput("V1 runs cannot accept a V3 execution basis.");
   }
-  // A V1 discovery plan may be retained as immutable history, but it is not a
-  // compatibility route into the V2 first-baseline executor.
+  // V1 plans are immutable history, never a compatibility route into the V3
+  // first-baseline executor.
   if (draft.plan) {
     invalidTransition(
-      "A V1 discovery plan is historical-only and cannot be queued for V2 execution.",
+      "A V1 plan is historical-only and cannot be queued for V3 execution.",
     );
   }
   const baseSnapshot = command.baseSnapshot;
@@ -1199,7 +1309,7 @@ async function queueV1Run(
   };
 }
 
-async function queueV2Run(
+async function queueV3Run(
   draft: EngineeringProjectSnapshot,
   command: QueueRunCommand,
   workItem: EngineeringWorkItem,
@@ -1209,12 +1319,12 @@ async function queueV2Run(
   planning: EngineeringProjectPlanningDependencies | undefined,
 ): Promise<Mutable<EngineeringAgentRun>> {
   if (command.baseSnapshot !== undefined) {
-    invalidInput("A V2 run must use basis and cannot accept baseSnapshot.");
+    invalidInput("A V3 run must use basis and cannot accept baseSnapshot.");
   }
-  const basis = assertV2QueueBasis(draft, workItem, command.basis);
+  const basis = assertV3QueueBasis(draft, workItem, command.basis);
   const operation = workItem.operation;
   if (!operation) {
-    invalidInput("A V2 run requires a registered operation on its work item.");
+    invalidInput("A V3 run requires a registered operation on its work item.");
   }
   assertRegisteredQueueOperation(planning, operation, basis.kind);
   await assertQueueEligibility(planning, draft, workItem.id, basis);
@@ -1242,7 +1352,7 @@ async function queueV2Run(
 }
 
 /**
- * A plan is deliberately checked against approved discovery when it is
+ * A plan is deliberately checked against the approved project brief when it is
  * published. That alone is insufficient once a later work item is queued:
  * the reviewed operation must also explicitly accept the concrete run basis.
  */
@@ -1253,7 +1363,7 @@ function assertRegisteredQueueOperation(
 ): void {
   if (!planning) {
     invalidInput(
-      "V2 run queueing is unavailable because no reviewed operation registry is configured.",
+      "V3 run queueing is unavailable because no reviewed operation registry is configured.",
     );
   }
   let registered: ReturnType<EngineeringProjectPlanOperationRegistry["validate"]>;
@@ -1276,7 +1386,7 @@ function assertRegisteredQueueOperation(
 /**
  * Give an optional queue gate a detached, validated snapshot of exactly the
  * state it is deciding about. Nothing below this point mutates `draft` until
- * queueV2Run returns a run, so a rejected promise leaves the durable project
+ * queueV3Run returns a run, so a rejected promise leaves the durable project
  * untouched.
  */
 async function assertQueueEligibility(
@@ -1292,7 +1402,7 @@ async function assertQueueEligibility(
   const workItem = project.workItems.find((candidate) => candidate.id === workItemId);
   if (!workItem || !workItem.operation) {
     invalidInput(
-      "The reviewed V2 work item is unavailable for queue-eligibility validation.",
+      "The reviewed V3 work item is unavailable for queue-eligibility validation.",
     );
   }
 
@@ -1306,8 +1416,8 @@ async function assertQueueEligibility(
   } catch (error) {
     invalidTransition(
       error instanceof Error
-        ? `The requested V2 run is not eligible for queueing: ${error.message}`
-        : "The requested V2 run is not eligible for queueing.",
+        ? `The requested V3 run is not eligible for queueing: ${error.message}`
+        : "The requested V3 run is not eligible for queueing.",
     );
   }
 }
@@ -1317,19 +1427,6 @@ function immutableQueueEligibilityBasis(
   project: EngineeringProjectSnapshot,
   basis: EngineeringBasisRef,
 ): EngineeringBasisRef {
-  if (basis.kind === "approved-discovery") {
-    const plannedBasis = project.plan?.basis;
-    if (
-      !plannedBasis || plannedBasis.kind !== "approved-discovery" ||
-      !sameApprovedDiscoveryBasis(basis, plannedBasis)
-    ) {
-      invalidInput(
-        "The reviewed approved-discovery basis is unavailable for queue-eligibility validation.",
-      );
-    }
-    return plannedBasis;
-  }
-
   if (basis.kind === "approved-brief") {
     const plannedBasis = project.plan?.basis;
     if (
@@ -1356,38 +1453,13 @@ function immutableQueueEligibilityBasis(
   return Object.freeze({ kind: "thread-snapshot" as const, ...snapshot });
 }
 
-function assertV2QueueBasis(
+function assertV3QueueBasis(
   draft: EngineeringProjectSnapshot,
   workItem: EngineeringWorkItem,
   basis: EngineeringBasisRef | undefined,
 ): EngineeringBasisRef {
   if (!basis || typeof basis !== "object") {
-    invalidInput("A V2 run requires an exact basis.");
-  }
-  if (basis.kind === "approved-discovery") {
-    const plan = draft.plan;
-    if (
-      !plan || plan.basis.kind !== "approved-discovery" ||
-      !sameApprovedDiscoveryBasis(basis, plan.basis)
-    ) {
-      invalidInput(
-        "The approved-discovery run basis must exactly match the published project plan basis.",
-      );
-    }
-    if (
-      workItem.operation?.id !== "baseline.from-approved-discovery" ||
-      workItem.operation.version !== "1"
-    ) {
-      invalidTransition(
-        "An approved-discovery basis is valid only for baseline.from-approved-discovery@1.",
-      );
-    }
-    if (draft.threadSnapshots.length !== 0) {
-      invalidTransition(
-        "An approved-discovery basis is valid only before the first documentary ThreadSnapshot exists.",
-      );
-    }
-    return structuredClone(basis);
+    invalidInput("A V3 run requires an exact basis.");
   }
   if (basis.kind === "approved-brief") {
     const plan = draft.plan;
@@ -1416,19 +1488,11 @@ function assertV2QueueBasis(
   }
   if (basis.kind === "thread-snapshot") {
     assertThreadSnapshotBasisInput(basis);
-    if (
-      workItem.operation?.id === "baseline.from-approved-discovery" &&
-      workItem.operation.version === "1"
-    ) {
-      invalidTransition(
-        "baseline.from-approved-discovery@1 must use the exact approved discovery basis.",
-      );
-    }
     assertDeclaredSnapshot(draft, basis);
     return structuredClone(basis);
   }
   invalidInput(
-    "basis.kind must be approved-brief, approved-discovery or thread-snapshot.",
+    "basis.kind must be approved-brief or thread-snapshot.",
   );
 }
 
@@ -1455,17 +1519,6 @@ function threadSnapshotReference(
   };
 }
 
-function sameApprovedDiscoveryBasis(
-  left: EngineeringApprovedDiscoveryBasis,
-  right: EngineeringApprovedDiscoveryBasis,
-): boolean {
-  return left.discoveryId === right.discoveryId &&
-    left.snapshotId === right.snapshotId &&
-    left.revision === right.revision &&
-    left.briefId === right.briefId &&
-    fingerprintsEqual(left.approvedBriefFingerprint, right.approvedBriefFingerprint);
-}
-
 function sameApprovedBriefBasis(
   left: EngineeringApprovedBriefBasis,
   right: EngineeringApprovedBriefBasis,
@@ -1480,28 +1533,6 @@ function sameApprovedBriefBasis(
       left.approvedBriefFingerprint,
       right.approvedBriefFingerprint,
     );
-}
-
-function assertInitialV2CompletionBasis(
-  draft: EngineeringProjectSnapshot,
-  workItem: EngineeringWorkItem,
-  basis: EngineeringApprovedDiscoveryBasis,
-): void {
-  if (
-    !draft.plan || draft.plan.basis.kind !== "approved-discovery" ||
-    !sameApprovedDiscoveryBasis(basis, draft.plan.basis) ||
-    workItem.operation?.id !== "baseline.from-approved-discovery" ||
-    workItem.operation.version !== "1"
-  ) {
-    invalidInput(
-      "A discovery-derived initial result must complete the exact published baseline.from-approved-discovery@1 operation.",
-    );
-  }
-  if (draft.threadSnapshots.length !== 0) {
-    invalidTransition(
-      "A discovery-derived initial result cannot be published after a documentary ThreadSnapshot exists.",
-    );
-  }
 }
 
 function assertInitialV3CompletionBasis(
@@ -1625,71 +1656,10 @@ function assertNewPlanIds(
   }
 }
 
-function assertExactApprovedDiscoveryHandoff(
+function planningBasisForProject(
   project: EngineeringProjectSnapshot,
-  discovery: ProjectDiscoverySnapshot | undefined,
-): ProjectDiscoverySnapshot {
-  const handoff = project.discoveryHandoff!;
-  if (
-    !discovery || discovery.discoveryId !== handoff.discoveryId ||
-    discovery.id !== handoff.snapshotId || discovery.revision !== handoff.revision
-  ) {
-    invalidInput(
-      "The exact discovery revision recorded by this project handoff is unavailable.",
-    );
-  }
-  if (
-    discovery.status !== "approved" || !discovery.brief || !discovery.review ||
-    discovery.brief.id !== handoff.briefId ||
-    discovery.review.status !== "approved" ||
-    discovery.review.briefId !== handoff.briefId ||
-    discovery.review.decidedAt !== handoff.approvedAt ||
-    discovery.review.decidedBy?.origin !== "human" ||
-    discovery.review.decidedBy?.id !== handoff.approvedBy.id ||
-    !fingerprintsEqual(
-      discovery.review.inputFingerprint,
-      handoff.approvedBriefFingerprint,
-    )
-  ) {
-    invalidInput(
-      "The recorded discovery handoff no longer resolves to the exact human-approved brief.",
-    );
-  }
-  return discovery;
-}
-
-async function planningBasisForProject(
-  project: EngineeringProjectSnapshot,
-  planning: EngineeringProjectPlanningDependencies,
-): Promise<{
-  readonly basis: EngineeringApprovedBriefBasis | EngineeringApprovedDiscoveryBasis;
-  readonly discovery?: ProjectDiscoverySnapshot;
-}> {
-  if (project.schemaVersion === "3.0") {
-    return { basis: approvedBriefBasisForProject(project) };
-  }
-  const handoff = project.discoveryHandoff;
-  if (!handoff || !planning.discoveries) {
-    invalidTransition(
-      "The exact historical discovery reader required by this V2 project is unavailable.",
-    );
-  }
-  const discovery = await planning.discoveries.getRevision(
-    handoff.discoveryId,
-    handoff.revision,
-  );
-  const exactDiscovery = assertExactApprovedDiscoveryHandoff(project, discovery);
-  return {
-    basis: {
-      kind: "approved-discovery",
-      discoveryId: handoff.discoveryId,
-      snapshotId: handoff.snapshotId,
-      revision: handoff.revision,
-      briefId: handoff.briefId,
-      approvedBriefFingerprint: structuredClone(handoff.approvedBriefFingerprint),
-    },
-    discovery: exactDiscovery,
-  };
+): EngineeringApprovedBriefBasis {
+  return approvedBriefBasisForProject(project);
 }
 
 function approvedBriefBasisForProject(
@@ -1759,7 +1729,6 @@ function resolvePlanOperation(
 function assertPlanBindingsResolve(
   project: EngineeringProjectSnapshot,
   bindings: readonly EngineeringOperationInputBinding[],
-  discovery?: ProjectDiscoverySnapshot,
 ): void {
   for (const binding of bindings) {
     if (binding.source.kind === "approved-brief") {
@@ -1788,22 +1757,6 @@ function assertPlanBindingsResolve(
         );
       }
       continue;
-    }
-    if (binding.source.kind === "approved-discovery" && !discovery) {
-      invalidInput(
-        `Operation binding ${binding.name} requires a historical approved discovery.`,
-      );
-    }
-    if (binding.source.kind !== "discovery-answer") continue;
-    const answerId = binding.source.answerId;
-    const answer = discovery?.answers.find((item) => item.id === answerId);
-    if (
-      !discovery || !answer || answer.kind !== "provided" ||
-      discovery.answers.some((item) => item.supersedesAnswerId === answer.id)
-    ) {
-      invalidInput(
-        `Operation binding ${binding.name} must reference one current provided answer from the approved discovery.`,
-      );
     }
   }
 }
@@ -2175,6 +2128,34 @@ function findWorkItem(
   return draft.workItems.find((item) => item.id === id) as
     | Mutable<EngineeringWorkItem>
     | undefined;
+}
+
+function findRun(
+  draft: EngineeringProjectSnapshot,
+  id: string,
+): Mutable<EngineeringAgentRun> | undefined {
+  return draft.agentRuns.find((run) => run.id === id) as
+    | Mutable<EngineeringAgentRun>
+    | undefined;
+}
+
+function sameSnapshotReference(
+  left: EngineeringThreadSnapshotRef,
+  right: EngineeringThreadSnapshotRef,
+): boolean {
+  return left.snapshotId === right.snapshotId &&
+    left.revision === right.revision &&
+    left.subjectId === right.subjectId;
+}
+
+function sameEvidenceReferences(
+  left: readonly EngineeringThreadEntityRef[],
+  right: readonly EngineeringThreadEntityRef[],
+): boolean {
+  return left.length === right.length &&
+    left.every((reference) =>
+      right.some((candidate) => evidenceKey(reference) === evidenceKey(candidate))
+    );
 }
 
 function isActiveRunStatus(status: EngineeringAgentRunStatus): boolean {

@@ -48,7 +48,7 @@ Deno.test("project_agent_run_queue derives its server-owned run command from one
       runId: "run:chat-command-1",
       workItemId: "establish-baseline",
       summary:
-        "Execute reviewed operation baseline.from-approved-discovery@1 for Establish the engineering baseline.",
+        "Execute reviewed operation baseline.from-approved-brief@1 for Establish the engineering baseline.",
       basis: snapshot.plan!.basis,
     },
   }]);
@@ -114,8 +114,8 @@ Deno.test("project_change_append anchors an append-only change to the exact curr
         id: "architecture.seed-syson-model",
         version: "1",
         bindings: [{
-          name: "approvedDiscovery",
-          source: { kind: "approved-discovery" },
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
         }],
       },
     }],
@@ -338,7 +338,7 @@ function projectSnapshot(
   } = {},
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "2.0",
+    schemaVersion: "3.0",
     id: "chat-first-project:project:r4",
     revision: 4,
     generatedAt: "2026-08-03T12:00:00.000Z",
@@ -351,11 +351,13 @@ function projectSnapshot(
     plan: {
       startingPoint: "idea-or-spec",
       basis: {
-        kind: "approved-discovery",
-        discoveryId: "chat-first-discovery",
-        snapshotId: "chat-first-discovery:r3",
-        revision: 3,
+        kind: "approved-brief",
+        projectId: "chat-first-project",
+        projectSnapshotId: "chat-first-project:project:r3",
+        projectRevision: 3,
         briefId: "brief-1",
+        briefSnapshotId: "brief-1:r1",
+        briefRevision: 1,
         approvedBriefFingerprint: FINGERPRINT,
       },
       publishedAt: "2026-08-03T11:59:00.000Z",
@@ -370,11 +372,11 @@ function projectSnapshot(
       description: "Create the first bounded baseline.",
       kind: "define",
       operation: {
-        id: "baseline.from-approved-discovery",
+        id: "baseline.from-approved-brief",
         version: "1",
         bindings: [{
-          name: "approvedDiscovery",
-          source: { kind: "approved-discovery" },
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
         }],
       },
       status: "ready",

@@ -96,7 +96,7 @@ export interface ThreadGraph {
  * Browser-safe quotient of the canonical graph for revision-aware rendering.
  *
  * The raw `graph` above remains the complete auditable graph. This additional
- * projection only folds explicit, compatible `supersedes` chains; it never
+ * projection only folds explicit, compatible `supersedes` topology; it never
  * changes, removes, or reclassifies canonical evidence.
  */
 export interface ThreadEvidenceFamilyGraph {
@@ -106,7 +106,7 @@ export interface ThreadEvidenceFamilyGraph {
     snapshotId: string;
     revision: number;
   };
-  /** Explicit direct supersession chains, never inferred from names or bytes. */
+  /** Explicit direct supersession topology, never inferred from names or bytes. */
   families: ThreadEvidenceFamily[];
   /** Non-self-loop edges between folded families only. */
   edges: ThreadEvidenceFamilyGraphEdge[];
@@ -360,7 +360,7 @@ export interface ThreadWorkbenchSnapshot {
   change: ThreadChange;
   components: ThreadComponentCatalog;
   graph: ThreadGraph;
-  /** Compact quotient of explicit evidence-version chains; raw graph remains above. */
+  /** Compact quotient of explicit evidence-version topology; raw graph remains above. */
   evidenceFamilyGraph: ThreadEvidenceFamilyGraph;
   flow: ThreadFlowStage[];
   artifacts: ThreadArtifact[];

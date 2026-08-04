@@ -98,7 +98,7 @@ Deno.test("file live journal atomically records one idempotent lifecycle milesto
     const input = {
       subjectId: "coffee-machine-cm01",
       runId: "same-command-run",
-      operationId: "baseline.from-approved-discovery",
+      operationId: "baseline.from-approved-brief",
       baseRevision: 0,
       state: "running" as const,
       recordedAt: "2026-08-01T10:00:00.000Z",

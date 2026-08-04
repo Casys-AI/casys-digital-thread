@@ -6,6 +6,15 @@ project, snapshots, artifacts and provider identities; the comparison JSON is
 deliberately not a project template, generic executable workflow, or provider
 integration.
 
+## What a matching golden comparison means
+
+`matches: true` means only that one local integration run exposed the finite, reviewed
+evidence listed on this page with the expected identities, units and attestations. It is
+a regression/composition result for the **original CM-01 V3 golden integration path**,
+not a statement that the engineering project is complete. In particular, it does not
+close a later design correction, replace a project-plan closure record, or establish a
+complete industrial dossier.
+
 The reference expects only reviewable evidence identities and measurements:
 
 - SysON architecture inventory;
@@ -37,3 +46,8 @@ DripTray measurements. The separate
 checks the preceding contract instead: an exact prior snapshot is retained, CAD and
 CalculiX descendants become stale, fresh replacements carry new provenance, and an
 attempt to reuse historical descendants is rejected without calling a provider.
+
+The corrected 30 mm path therefore needs its own exact closure evidence: the current
+successor requirement, observation, evaluation and attested handoff must be bound to the
+corrected project state. It must not be made to pass this historical comparator by
+changing its expectations or by relabelling retained 28 mm evidence.

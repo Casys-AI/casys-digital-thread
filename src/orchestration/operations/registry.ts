@@ -6,10 +6,6 @@ import type {
   EngineeringWorkItemKind,
 } from "../../domain/engineering-project.ts";
 import type { ThreadEntityKind } from "../../domain/thread-snapshot.ts";
-import {
-  INSPECTION_DRONE_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
-} from "../../domain/inspection-drone-architecture.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 
@@ -22,7 +18,6 @@ import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm
 
 export type EngineeringOperationBasisKind =
   | "approved-brief"
-  | "approved-discovery"
   | "thread-snapshot";
 
 /**
@@ -150,42 +145,6 @@ const OPERATIONS = [
     }],
   },
   {
-    id: "baseline.from-approved-discovery",
-    version: "1",
-    startingPoint: "idea-or-spec",
-    allowedBasisKinds: ["approved-discovery"],
-    title: "Create the engineering baseline",
-    description:
-      "Create the first reviewable engineering baseline from the approved discovery brief.",
-    workItemKind: "define",
-    riskClass: "consequential",
-    execution: "trusted",
-    bindings: [{
-      name: "approvedDiscovery",
-      allowedSourceKinds: ["approved-discovery"],
-    }],
-  },
-  {
-    id: "architecture.seed-syson-model",
-    version: "1",
-    startingPoint: "idea-or-spec",
-    // The plan may be authored from discovery, but execution begins only
-    // from the exact documentary ThreadSnapshot created by the first run.
-    allowedBasisKinds: ["thread-snapshot"],
-    title: "Create the first editable system model",
-    description:
-      "Create a traceable SysML system-model container after the approved discovery has been recorded.",
-    workItemKind: "architect",
-    riskClass: "consequential",
-    // Immutable V2 plan history remains readable, but the current executor
-    // accepts only the brief-bound @2 contract below.
-    execution: "planning-only",
-    bindings: [{
-      name: "approvedDiscovery",
-      allowedSourceKinds: ["approved-discovery"],
-    }],
-  },
-  {
     id: SYSON_MODEL_SEED_OPERATION.id,
     version: SYSON_MODEL_SEED_OPERATION.version,
     startingPoint: "idea-or-spec",
@@ -200,86 +159,6 @@ const OPERATIONS = [
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
     }],
-  },
-  {
-    id: INSPECTION_DRONE_ARCHITECTURE_OPERATION.id,
-    version: INSPECTION_DRONE_ARCHITECTURE_OPERATION.version,
-    startingPoint: "idea-or-spec",
-    // The reviewed plan is published from discovery, while this guarded
-    // mutation is bound only to the exact r2 SysON model-container snapshot.
-    allowedBasisKinds: ["thread-snapshot"],
-    title: "Author the bounded inspection-drone architecture",
-    description:
-      "Insert one reviewed high-level inspection-drone SysML architecture into an empty, traceable SysON model container.",
-    workItemKind: "architect",
-    riskClass: "consequential",
-    // Immutable V2 plan history remains readable, but the current executor
-    // accepts only the brief-bound @2 contract below.
-    execution: "planning-only",
-    bindings: [{
-      name: "approvedDiscovery",
-      allowedSourceKinds: ["approved-discovery"],
-    }],
-  },
-  {
-    id: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.id,
-    version: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION.version,
-    startingPoint: "idea-or-spec",
-    allowedBasisKinds: ["thread-snapshot"],
-    title: "Author the bounded inspection-drone architecture",
-    description:
-      "Insert one reviewed high-level inspection-drone SysML architecture into the exact V3 SysON model container authorized by the canonical project brief.",
-    workItemKind: "architect",
-    riskClass: "consequential",
-    execution: "trusted",
-    bindings: [{
-      name: "approvedBrief",
-      allowedSourceKinds: ["approved-brief"],
-    }],
-  },
-  {
-    id: "baseline.capture-existing-cad",
-    version: "1",
-    startingPoint: "existing-cad",
-    allowedBasisKinds: ["approved-discovery"],
-    title: "Capture the existing CAD baseline",
-    description:
-      "Resolve and fingerprint the CAD source referenced by the approved discovery.",
-    workItemKind: "define",
-    riskClass: "consequential",
-    execution: "planning-only",
-    bindings: [
-      {
-        name: "approvedDiscovery",
-        allowedSourceKinds: ["approved-discovery"],
-      },
-      {
-        name: "cadSource",
-        allowedSourceKinds: ["discovery-answer"],
-      },
-    ],
-  },
-  {
-    id: "baseline.capture-existing-product",
-    version: "1",
-    startingPoint: "existing-product",
-    allowedBasisKinds: ["approved-discovery"],
-    title: "Capture the existing product baseline",
-    description:
-      "Resolve and fingerprint the product source referenced by the approved discovery.",
-    workItemKind: "define",
-    riskClass: "consequential",
-    execution: "planning-only",
-    bindings: [
-      {
-        name: "approvedDiscovery",
-        allowedSourceKinds: ["approved-discovery"],
-      },
-      {
-        name: "productSource",
-        allowedSourceKinds: ["discovery-answer"],
-      },
-    ],
   },
   // CM-01 is the static golden-path reference for future oracle onboarding.
   // These descriptors are reviewed planning data only until a server-owned
@@ -435,10 +314,6 @@ function bindingValue(
   const name = nonEmptyString(record.name, `${path}.name`);
   const sourcePath = `${path}.source`;
   const source = object(record.source, sourcePath);
-  if (source.kind === "approved-discovery") {
-    exactRecord(source, ["kind"], sourcePath);
-    return { name, source: { kind: "approved-discovery" } };
-  }
   if (source.kind === "approved-brief") {
     exactRecord(source, ["kind"], sourcePath);
     return { name, source: { kind: "approved-brief" } };
@@ -449,16 +324,6 @@ function bindingValue(
       name,
       source: {
         kind: "project-answer",
-        answerId: nonEmptyString(source.answerId, `${sourcePath}.answerId`),
-      },
-    };
-  }
-  if (source.kind === "discovery-answer") {
-    exactRecord(source, ["kind", "answerId"], sourcePath);
-    return {
-      name,
-      source: {
-        kind: "discovery-answer",
         answerId: nonEmptyString(source.answerId, `${sourcePath}.answerId`),
       },
     };
@@ -502,8 +367,7 @@ function threadEntityReference(
 
 function basisKindValue(value: unknown, path: string): EngineeringOperationBasisKind {
   if (
-    value === "approved-brief" || value === "approved-discovery" ||
-    value === "thread-snapshot"
+    value === "approved-brief" || value === "thread-snapshot"
   ) return value;
   invalidInput(`${path} must be an approved basis kind`);
 }
@@ -597,16 +461,6 @@ function copyInputBinding(
         name: binding.name,
         source: {
           kind: "project-answer",
-          answerId: binding.source.answerId,
-        },
-      };
-    case "approved-discovery":
-      return { name: binding.name, source: { kind: "approved-discovery" } };
-    case "discovery-answer":
-      return {
-        name: binding.name,
-        source: {
-          kind: "discovery-answer",
           answerId: binding.source.answerId,
         },
       };

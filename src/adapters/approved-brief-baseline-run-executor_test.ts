@@ -1,10 +1,10 @@
 import { assertEquals } from "@std/assert";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-discovery-baseline-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
-import { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../domain/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
@@ -13,7 +13,7 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
   const root = await Deno.makeTempDir({ prefix: "approved-brief-baseline-" });
   const projects = new FileEngineeringProjectRevisionStore(`${root}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
-  const captures = new FileApprovedDiscoveryBaselineCaptureStore(
+  const captures = new FileApprovedBriefBaselineCaptureStore(
     `${root}/captures`,
   );
   let tick = 0;
@@ -34,10 +34,10 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
   try {
     let project = await briefs.startProject(agent, {
       commandId: "start",
-      projectId: "drone-v3",
-      projectName: "Inspection drone",
+      projectId: "coffee-machine-v3",
+      projectName: "Coffee Machine CM-01",
       issuedAt: "2026-08-03T08:59:00.000Z",
-      intent: "Build a safe roof-inspection drone.",
+      intent: "Build a reviewable coffee machine.",
       intentSource: { kind: "human", reference: "conversation:turn-1" },
     });
     project = await briefs.proposeBrief(agent, {
@@ -45,17 +45,18 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
       items: [{
         id: "objective",
         kind: "objective",
-        statement: "Inspect a roof safely.",
+        statement: "Prepare a reviewable coffee machine design.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }, {
         id: "mission",
         kind: "mission-scenario",
-        statement: "Capture usable imagery while maintaining safe separation.",
+        statement: "Brew coffee safely under the intended operating conditions.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }, {
         id: "success",
         kind: "success-criterion",
-        statement: "Complete the route without loss of controlled flight.",
+        statement:
+          "Demonstrate the approved baseline before technical evidence is added.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }],
     });
@@ -100,10 +101,9 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
       summary: "Record the canonical project brief.",
       basis: project.plan!.basis,
     });
-    const executor = new ApprovedDiscoveryBaselineRunExecutor({
+    const executor = new ApprovedBriefBaselineRunExecutor({
       projects,
       commands,
-      discoveries: { getRevision: () => Promise.resolve(undefined) },
       captures,
       snapshots,
       lease: new FileEngineeringProjectRunLease(`${root}/leases`),
@@ -130,7 +130,7 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
 function context(commandId: string, expectedRevision: number) {
   return {
     commandId,
-    projectId: "drone-v3",
+    projectId: "coffee-machine-v3",
     expectedRevision,
     issuedAt: "2026-08-03T08:59:30.000Z",
   };

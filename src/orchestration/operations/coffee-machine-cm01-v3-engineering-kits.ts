@@ -80,7 +80,6 @@ export interface CoffeeMachineCm01V3OperationDescriptor
   readonly startingPoint: EngineeringProjectStartingPoint;
   readonly allowedBasisKinds: readonly (
     | "approved-brief"
-    | "approved-discovery"
     | "thread-snapshot"
   )[];
   readonly title: string;

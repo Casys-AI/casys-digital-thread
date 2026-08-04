@@ -3,12 +3,14 @@ import { COFFEE_MACHINE_PROJECT_FIXTURE } from "./src/project/fixture.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   agentRunSummary,
+  buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
   PROJECT_PATH_PRESENTATION_POLICY,
   projectBriefStatusLabel,
   projectPathStatusLabel,
   projectStatusLabel,
+  verificationChainDetail,
   workOwnerLabel,
 } from "./src/project/model.ts";
 import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
@@ -40,6 +42,64 @@ Deno.test("project brief separates agent preparation from human review", () => {
   );
   assertEquals(workOwnerLabel("shared"), "Agent + human review");
   assertEquals(workOwnerLabel("human"), "Human review");
+});
+
+Deno.test("overview verification copy counts current criteria before retained history", () => {
+  const seed = COFFEE_MACHINE_THREAD_FIXTURE.requirements[0]!;
+  const thread = {
+    ...COFFEE_MACHINE_THREAD_FIXTURE,
+    requirements: [
+      { ...seed, id: "REQ-R1", status: "unresolved" as const },
+      { ...seed, id: "REQ-R2", status: "pass" as const },
+      { ...seed, id: "REQ-R3", status: "pass" as const },
+    ],
+    violations: [],
+    evidenceFamilyGraph: {
+      schemaVersion: "thread-evidence-family-graph/1.0" as const,
+      asOf: { snapshotId: "thread-r3", revision: 3 },
+      families: [{
+        id: "requirement-family",
+        entityKind: "requirement" as const,
+        historicalRefs: [
+          { kind: "requirement" as const, id: "REQ-R1" },
+          { kind: "requirement" as const, id: "REQ-R2" },
+        ],
+        currentRefs: [{ kind: "requirement" as const, id: "REQ-R3" }],
+        revisionCount: 2,
+        status: "current" as const,
+        relationship: {
+          relation: "supersedes" as const,
+          classification: "not-recorded" as const,
+          equivalence: "not-recorded" as const,
+        },
+        transitions: [{
+          edgeRef: {
+            id: "REQ-R1-to-R3",
+            relation: "supersedes" as const,
+            origin: "provenance" as const,
+          },
+          historical: { kind: "requirement" as const, id: "REQ-R1" },
+          successor: { kind: "requirement" as const, id: "REQ-R3" },
+        }, {
+          edgeRef: {
+            id: "REQ-R2-to-R3",
+            relation: "supersedes" as const,
+            origin: "provenance" as const,
+          },
+          historical: { kind: "requirement" as const, id: "REQ-R2" },
+          successor: { kind: "requirement" as const, id: "REQ-R3" },
+        }],
+      }],
+      edges: [],
+      omittedSelfLoops: [],
+      omittedCycleEdges: [],
+    },
+  };
+
+  assertEquals(
+    verificationChainDetail(thread),
+    "1/1 current criteria passing · 0 named violations · 2 historical records.",
+  );
 });
 
 Deno.test("Project Path keeps a component correction and failed retry below its macro evidence stages", () => {
@@ -115,6 +175,55 @@ Deno.test("Project Path folds the exact R3 identity repair into Mechanical proof
   );
 });
 
+Deno.test("current project work prefers an explicit successor reconciliation", () => {
+  const { project } = correctionPathFixture({
+    includeIdentityRepair: true,
+  });
+  const reconciled = {
+    ...project,
+    workItems: project.workItems.map((item) =>
+      item.id === "mechanical-v2"
+        ? {
+          ...item,
+          status: "cancelled" as const,
+          reconciliation: {
+            kind: "superseded-by-successor" as const,
+            reconciledAt: "2026-08-03T12:05:00.000Z",
+            reconciledBy: { id: "agent:reconciler", origin: "agent" as const },
+            failedRunId: "r2-failed",
+            successorRunId: "r3-complete",
+            successorRunSnapshot: {
+              snapshotId: "thread-correction",
+              revision: 10,
+              subjectId: "CM-01",
+            },
+            successorSnapshot: {
+              snapshotId: "thread-correction",
+              revision: 10,
+              subjectId: "CM-01",
+            },
+            successorEvidenceRefs: [
+              {
+                kind: "artifact" as const,
+                id: "proof-r3-solve",
+                snapshotId: "thread-correction",
+                snapshotRevision: 10,
+              },
+            ],
+            rationale: "The recorded R3 successor closed the failed R2 attempt.",
+          },
+        }
+        : item
+    ),
+  };
+
+  const current = buildCurrentProjectWork(reconciled);
+
+  assertEquals(current.nextWork, []);
+  assertEquals(current.historicalWorkItemIds, ["mechanical-v2"]);
+  assertEquals(current.closedActionTargetIds, ["artifact:correction-record"]);
+});
+
 Deno.test("browser project contract rejects a half-defined input anchor", () => {
   const valid = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
   assertEquals(isEngineeringProjectSnapshot(valid), true);
@@ -126,13 +235,12 @@ Deno.test("browser project contract rejects a half-defined input anchor", () => 
   assertEquals(isEngineeringProjectSnapshot(invalid), false);
 });
 
-Deno.test("browser project contract accepts a V2 planning envelope and rejects malformed operation provenance", () => {
-  const valid = planningProjectEnvelope();
+Deno.test("browser project contract accepts a V3 planning envelope and rejects malformed operation provenance", () => {
+  const valid = v3PlanningProjectEnvelope();
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
   const forgedV1Plan = structuredClone(valid) as Record<string, unknown>;
   forgedV1Plan.schemaVersion = "1.0";
-  delete forgedV1Plan.discoveryHandoff;
   assertEquals(isEngineeringProjectSnapshot(forgedV1Plan), false);
 
   const malformedBasis = structuredClone(valid) as Record<string, unknown>;
@@ -159,7 +267,7 @@ Deno.test("browser project contract accepts a V2 planning envelope and rejects m
     rawProviderEscape.workItems as Array<Record<string, unknown>>
   )[0]!.operation as Record<string, unknown>;
   (rawOperation.bindings as Array<Record<string, unknown>>)[0]!.source = {
-    kind: "approved-discovery",
+    kind: "approved-brief",
     provider: "untrusted-direct-call",
   };
   assertEquals(isEngineeringProjectSnapshot(rawProviderEscape), false);
@@ -186,13 +294,9 @@ Deno.test("browser project contract accepts a V2 planning envelope and rejects m
   assertEquals(isEngineeringProjectSnapshot(malformedThreadBinding), false);
 });
 
-Deno.test("browser project contract accepts the V2 documentary run and rejects V1 anchor fallback", () => {
-  const valid = documentaryProjectEnvelope();
+Deno.test("browser project contract accepts an approved-brief baseline and rejects malformed anchors", () => {
+  const valid = v3DocumentaryProjectEnvelope();
   assertEquals(isEngineeringProjectSnapshot(valid), true);
-
-  const missingHandoff = structuredClone(valid) as Record<string, unknown>;
-  delete missingHandoff.discoveryHandoff;
-  assertEquals(isEngineeringProjectSnapshot(missingHandoff), false);
 
   const forgedBasis = structuredClone(valid) as Record<string, unknown>;
   const forgedRun = (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
@@ -269,29 +373,32 @@ Deno.test("cockpit falls back to a named work item for an accidental run summary
   );
 });
 
-function planningProjectEnvelope(): Record<string, unknown> {
+function v3PlanningProjectEnvelope(): Record<string, unknown> {
   const project = structuredClone(
     COFFEE_MACHINE_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
-  project.schemaVersion = "2.0";
+  project.schemaVersion = "3.0";
   project.threadSnapshots = [];
   project.agentRuns = [];
   project.decisions = [];
   project.approvals = [];
   project.blockers = [];
-  project.discoveryHandoff = approvedDiscoveryHandoff();
+  project.framing = canonicalBriefFraming(project);
+  const identity = project.project as Record<string, unknown>;
+  const framing = project.framing as Record<string, unknown>;
+  const brief = framing.currentBrief as Record<string, unknown>;
+  const approval = framing.currentBriefApproval as Record<string, unknown>;
   project.plan = {
     startingPoint: "idea-or-spec",
     basis: {
-      kind: "approved-discovery",
-      discoveryId: "discovery-cm01",
-      snapshotId: "discovery-snapshot-cm01-r3",
-      revision: 3,
-      briefId: "brief-cm01",
-      approvedBriefFingerprint: {
-        algorithm: "sha256",
-        digest: "a".repeat(64),
-      },
+      kind: "approved-brief",
+      projectId: identity.id,
+      projectSnapshotId: project.id,
+      projectRevision: project.revision,
+      briefId: brief.briefId,
+      briefSnapshotId: brief.id,
+      briefRevision: brief.revision,
+      approvedBriefFingerprint: approval.inputFingerprint,
     },
     publishedAt: "2026-08-02T12:00:00.000Z",
     publishedBy: { id: "engineering-agent", origin: "agent" },
@@ -300,38 +407,29 @@ function planningProjectEnvelope(): Record<string, unknown> {
     project.workItems as Array<Record<string, unknown>>
   )[0]!;
   firstWorkItem.operation = {
-    id: "baseline.from-approved-discovery",
+    id: "baseline.from-approved-brief",
     version: "1",
     bindings: [{
-      name: "approvedDiscovery",
-      source: { kind: "approved-discovery" },
+      name: "approvedBrief",
+      source: { kind: "approved-brief" },
     }],
   };
   return project;
 }
 
-function documentaryProjectEnvelope(): Record<string, unknown> {
-  const project = planningProjectEnvelope();
+function v3DocumentaryProjectEnvelope(): Record<string, unknown> {
+  const project = v3PlanningProjectEnvelope();
   const snapshot = {
-    snapshotId: "thread-drone:r1",
+    snapshotId: "thread-project:r1",
     revision: 1,
-    subjectId: "project:drone-concept",
-  };
-  project.project = {
-    id: "drone-concept",
-    name: "Drone concept",
-    subjectId: snapshot.subjectId,
-    objective: {
-      title: "Build a reviewable drone demonstrator",
-      statement: "Start from the human-approved discovery brief.",
-    },
+    subjectId: (project.project as Record<string, unknown>).subjectId,
   };
   project.threadSnapshots = [snapshot];
   project.agentRuns = [{
-    id: "run-approved-discovery-baseline",
+    id: "run-approved-brief-baseline",
     workItemId: "work-define",
     status: "completed",
-    summary: "Recorded the approved discovery documentary baseline.",
+    summary: "Recorded the approved project brief documentary baseline.",
     queuedAt: "2026-08-02T12:00:00.000Z",
     completedAt: "2026-08-02T12:01:00.000Z",
     basis: (project.plan as Record<string, unknown>).basis,
@@ -342,49 +440,7 @@ function documentaryProjectEnvelope(): Record<string, unknown> {
     evidenceRefs: [],
     resultSnapshot: snapshot,
   }];
-  project.decisions = [{
-    id: "decision-next-review",
-    phaseId: "define",
-    title: "Review the documentary baseline",
-    question: "Should the project proceed to technical modelling?",
-    status: "required",
-    requestedAt: "2026-08-02T12:01:00.000Z",
-    baseSnapshot: snapshot,
-    inputFingerprint: {
-      algorithm: "sha256",
-      digest: "c".repeat(64),
-    },
-    inputEvidenceRefs: [],
-    approvalIds: [],
-  }];
-  project.approvals = [{
-    id: "approval-next-review",
-    decisionId: "decision-next-review",
-    status: "pending",
-    requestedAt: "2026-08-02T12:01:00.000Z",
-    baseSnapshot: snapshot,
-    inputFingerprint: {
-      algorithm: "sha256",
-      digest: "c".repeat(64),
-    },
-    inputEvidenceRefs: [],
-  }];
   return project;
-}
-
-function approvedDiscoveryHandoff(): Record<string, unknown> {
-  return {
-    discoveryId: "discovery-cm01",
-    snapshotId: "discovery-snapshot-cm01-r3",
-    revision: 3,
-    briefId: "brief-cm01",
-    approvedBriefFingerprint: {
-      algorithm: "sha256",
-      digest: "a".repeat(64),
-    },
-    approvedAt: "2026-08-02T11:59:00.000Z",
-    approvedBy: { id: "human:owner", origin: "human" },
-  };
 }
 
 function canonicalBriefFraming(

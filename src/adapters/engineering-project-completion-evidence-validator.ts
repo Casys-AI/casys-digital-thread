@@ -1,6 +1,7 @@
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectCompletionEvidenceValidator,
+  type EngineeringProjectReconciliationSnapshotValidator,
 } from "../domain/engineering-project-command-service.ts";
 import type {
   EngineeringThreadEntityRef,
@@ -84,6 +85,57 @@ export class ExactThreadCompletionEvidenceValidator
     }
     return snapshot;
   }
+}
+
+/**
+ * Fail-closed proof for a non-provider reconciliation: the named closeout
+ * snapshot must already be persisted and extend the exact completed successor
+ * by one immutable revision.  It intentionally does not validate evidence;
+ * that evidence was already validated when the successor run completed.
+ */
+export class ExactThreadReconciliationSnapshotValidator
+  implements EngineeringProjectReconciliationSnapshotValidator {
+  constructor(private readonly snapshots: ExactThreadSnapshotReader) {}
+
+  async validate(
+    successorRunReference: EngineeringThreadSnapshotRef,
+    successorReference: EngineeringThreadSnapshotRef,
+  ): Promise<void> {
+    const [runSnapshot, closeoutSnapshot] = await Promise.all([
+      exactSnapshot(this.snapshots, "Successor result", successorRunReference),
+      exactSnapshot(this.snapshots, "Closeout", successorReference),
+    ]);
+    if (
+      closeoutSnapshot.previous?.snapshotId !== runSnapshot.id ||
+      closeoutSnapshot.previous.revision !== runSnapshot.revision
+    ) {
+      invalidEvidence(
+        `Closeout ThreadSnapshot ${successorReference.snapshotId}@${successorReference.revision} is not the direct child of successor result ${successorRunReference.snapshotId}@${successorRunReference.revision}.`,
+      );
+    }
+  }
+}
+
+async function exactSnapshot(
+  snapshots: ExactThreadSnapshotReader,
+  label: string,
+  reference: EngineeringThreadSnapshotRef,
+): Promise<ThreadSnapshot> {
+  const snapshot = await snapshots.get(reference.snapshotId);
+  if (!snapshot) {
+    invalidEvidence(
+      `${label} ThreadSnapshot ${reference.snapshotId}@${reference.revision} is not readable from the exact snapshot stores.`,
+    );
+  }
+  if (
+    snapshot.id !== reference.snapshotId || snapshot.revision !== reference.revision ||
+    snapshot.subject.id !== reference.subjectId
+  ) {
+    invalidEvidence(
+      `${label} ThreadSnapshot ${reference.snapshotId} does not match revision ${reference.revision} and subject ${reference.subjectId}.`,
+    );
+  }
+  return snapshot;
 }
 
 function threadEntity(

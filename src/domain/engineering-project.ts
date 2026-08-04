@@ -9,11 +9,11 @@ import type { EngineeringProjectFraming } from "./project-brief.ts";
  */
 
 /**
- * V1 and V2 remain immutable history formats. New projects are V3: they exist
+ * V1 remains an immutable history format. New projects are V3: they exist
  * from first intent, own their living brief, anchor the documentary baseline to
  * its exact human-approved revision, then anchor later runs to ThreadSnapshots.
  */
-export type EngineeringProjectSchemaVersion = "1.0" | "2.0" | "3.0";
+export type EngineeringProjectSchemaVersion = "1.0" | "3.0";
 
 export interface EngineeringProjectPreviousSnapshot {
   readonly snapshotId: string;
@@ -41,9 +41,9 @@ export type EngineeringProjectCommandName =
   | "project.brief-propose"
   | "project.brief-approve"
   | "project.brief-reject"
-  | "project.create-from-discovery"
   | "project.plan-publish"
   | "project.change-append"
+  | "work-item.reconcile-successor"
   | "decision.propose"
   | "decision.approve"
   | "decision.reject"
@@ -57,25 +57,6 @@ export type EngineeringProjectCommandName =
 export interface EngineeringCommandActor {
   readonly id: string;
   readonly origin: EngineeringCommandOriginKind;
-}
-
-/**
- * Immutable origin for a project that was explicitly created from an approved
- * pre-project discovery brief. This records planning provenance only: it is
- * neither a SysON model nor technical ThreadSnapshot evidence.
- */
-export interface EngineeringProjectDiscoveryHandoff {
-  /** Stable pre-project discovery aggregate identity. */
-  readonly discoveryId: string;
-  /** Exact immutable discovery revision accepted for this project. */
-  readonly snapshotId: string;
-  readonly revision: number;
-  /** The exact approved brief within that discovery revision. */
-  readonly briefId: string;
-  /** Fingerprint of the precise brief-review input that the human approved. */
-  readonly approvedBriefFingerprint: ContentFingerprint;
-  readonly approvedAt: IsoDateTime;
-  readonly approvedBy: EngineeringCommandActor;
 }
 
 export interface EngineeringDecisionProposalParameter {
@@ -116,18 +97,8 @@ export type EngineeringProjectStartingPoint =
 
 /**
  * Exact planning basis for the first bounded operation. This is deliberately
- * distinct from an execution run's technical snapshot anchor: a discovery
- * handoff is planning provenance, never fabricated engineering evidence.
+ * distinct from an execution run's technical snapshot anchor.
  */
-export interface EngineeringApprovedDiscoveryBasis {
-  readonly kind: "approved-discovery";
-  readonly discoveryId: string;
-  readonly snapshotId: string;
-  readonly revision: number;
-  readonly briefId: string;
-  readonly approvedBriefFingerprint: ContentFingerprint;
-}
-
 /** Exact human-approved brief within one immutable V3 project revision. */
 export interface EngineeringApprovedBriefBasis {
   readonly kind: "approved-brief";
@@ -140,7 +111,7 @@ export interface EngineeringApprovedBriefBasis {
   readonly approvedBriefFingerprint: ContentFingerprint;
 }
 
-/** Exact ThreadSnapshot state used after the first V2 documentary baseline. */
+/** Exact ThreadSnapshot state used after the first documentary baseline. */
 export interface EngineeringThreadSnapshotBasis extends EngineeringThreadSnapshotRef {
   readonly kind: "thread-snapshot";
 }
@@ -148,14 +119,13 @@ export interface EngineeringThreadSnapshotBasis extends EngineeringThreadSnapsho
 /**
  * An execution anchor, never a `latest` alias.
  *
- * `approved-discovery` is valid only for the one reviewed first-baseline
+ * `approved-brief` is valid only for the one reviewed first-baseline
  * operation. A result created from it is a documentary pre-technical
  * baseline, not a descendant of a fabricated ThreadSnapshot or a claim of
- * engineering proof. All later V2 runs use the
- * `thread-snapshot` arm and retain the normal descendant invariant.
+ * engineering proof. All later V3 runs use the `thread-snapshot` arm and
+ * retain the normal descendant invariant.
  */
 export type EngineeringBasisRef =
-  | EngineeringApprovedDiscoveryBasis
   | EngineeringApprovedBriefBasis
   | EngineeringThreadSnapshotBasis;
 
@@ -166,23 +136,12 @@ export type EngineeringBasisRef =
 export type EngineeringOperationInputBinding =
   | {
     readonly name: string;
-    readonly source: { readonly kind: "approved-discovery" };
-  }
-  | {
-    readonly name: string;
     readonly source: { readonly kind: "approved-brief" };
   }
   | {
     readonly name: string;
     readonly source: {
       readonly kind: "project-answer";
-      readonly answerId: string;
-    };
-  }
-  | {
-    readonly name: string;
-    readonly source: {
-      readonly kind: "discovery-answer";
       readonly answerId: string;
     };
   }
@@ -210,12 +169,11 @@ export interface EngineeringOperationRef {
 }
 
 /**
- * Agent-published planning metadata. V3 names the exact approved living brief;
- * V2 discovery bases remain readable as immutable historical records.
+ * Agent-published planning metadata names the exact approved living brief.
  */
 export interface EngineeringProjectPlan {
   readonly startingPoint: EngineeringProjectStartingPoint;
-  readonly basis: EngineeringApprovedDiscoveryBasis | EngineeringApprovedBriefBasis;
+  readonly basis: EngineeringApprovedBriefBasis;
   readonly publishedAt: IsoDateTime;
   readonly publishedBy: EngineeringCommandActor;
 }
@@ -231,7 +189,6 @@ export interface EngineeringProjectChange {
   readonly commandId: string;
   /**
    * Exact human-approved canonical brief that authorized this V3 change.
-   * Historical V2 changes predate this field and remain readable without it.
    */
   readonly approvedBriefBasis?: EngineeringApprovedBriefBasis;
   readonly baseSnapshot: EngineeringThreadSnapshotRef;
@@ -271,6 +228,30 @@ export type EngineeringWorkItemStatus =
 
 export type EngineeringWorkOwner = "human" | "agent" | "shared";
 
+/**
+ * A terminal closeout for work that did not itself produce evidence.
+ *
+ * This deliberately names both the failed attempt and the independently
+ * completed successor. It prevents a recovered successor from being
+ * misreported as a successful execution of the failed work item.
+ */
+export interface EngineeringWorkItemSuccessorReconciliation {
+  readonly kind: "superseded-by-successor";
+  readonly reconciledAt: IsoDateTime;
+  readonly reconciledBy: EngineeringCommandActor;
+  readonly failedRunId: string;
+  readonly successorRunId: string;
+  /** Exact ThreadSnapshot published by the completed successor run. */
+  readonly successorRunSnapshot: EngineeringThreadSnapshotRef;
+  /**
+   * Provider-free successor snapshot that records the closeout relation. It
+   * descends from successorRunSnapshot and is the current project thread head.
+   */
+  readonly successorSnapshot: EngineeringThreadSnapshotRef;
+  readonly successorEvidenceRefs: readonly EngineeringThreadEntityRef[];
+  readonly rationale: string;
+}
+
 export interface EngineeringWorkItem {
   readonly id: string;
   readonly phaseId: string;
@@ -289,6 +270,11 @@ export interface EngineeringWorkItem {
   readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly decisionIds: readonly string[];
   readonly blockerIds: readonly string[];
+  /**
+   * Present only when cancelled work was truthfully closed by a separately
+   * completed successor; it is not evidence produced by this work item.
+   */
+  readonly reconciliation?: EngineeringWorkItemSuccessorReconciliation;
 }
 
 export type EngineeringAgentRunStatus =
@@ -310,14 +296,11 @@ export interface EngineeringAgentRun {
   readonly completedAt?: IsoDateTime;
   readonly claimedAt?: IsoDateTime;
   readonly claimedBy?: EngineeringCommandActor;
-  /**
-   * V2 execution anchor. V2 runs must use this field and never `baseSnapshot`.
-   * The validator enforces the schema-version boundary at JSON ingress.
-   */
+  /** V3 execution anchor. V3 runs must use this field and never `baseSnapshot`. */
   readonly basis?: EngineeringBasisRef;
   /**
    * V1-only exact thread state. It remains readable for the immutable CM-01
-   * history and is deliberately not a fallback for V2 execution.
+   * history and is deliberately not a fallback for V3 execution.
    */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
   readonly inputFingerprint?: ContentFingerprint;
@@ -434,12 +417,7 @@ export interface EngineeringProjectSnapshot {
   readonly project: EngineeringProjectIdentity;
   /** Required for V3: the living, versioned intent owned by this project. */
   readonly framing?: EngineeringProjectFraming;
-  /**
-   * Present only for a project born from a human-approved discovery handoff.
-   * Existing projects retain their own independently established provenance.
-   */
-  readonly discoveryHandoff?: EngineeringProjectDiscoveryHandoff;
-  /** Present once an agent publishes a bounded path from an approved discovery. */
+  /** Present once an agent publishes a bounded path from an approved brief. */
   readonly plan?: EngineeringProjectPlan;
   /** Append-only history of reviewed changes after the initial project path. */
   readonly planChanges?: readonly EngineeringProjectChange[];
@@ -489,9 +467,17 @@ export function deriveEngineeringPhaseStatus(
   ).filter((item): item is EngineeringDecision => item !== undefined);
 
   if (
-    workItems.length > 0 && workItems.every((item) => item.status === "completed") &&
+    workItems.length > 0 &&
+    workItems.every((item) =>
+      item.status === "completed" ||
+      (item.status === "cancelled" && item.reconciliation !== undefined)
+    ) &&
     requiredDecisions.every((decision) => decision.status === "approved") &&
-    phase.evidenceRefs.length > 0
+    (phase.evidenceRefs.length > 0 ||
+      workItems.some((item) =>
+        item.reconciliation !== undefined &&
+        item.reconciliation.successorEvidenceRefs.length > 0
+      ))
   ) return "completed";
 
   const workItemIds = new Set(phase.workItemIds);
@@ -512,9 +498,8 @@ export function deriveEngineeringPhaseStatus(
 export function deriveEngineeringProjectStatus(
   snapshot: EngineeringProjectSnapshot,
 ): EngineeringProjectStatus {
-  // A discovery handoff deliberately creates a project before there is a
-  // technical baseline. Vacuous completion would falsely claim that such a
-  // project has finished engineering work.
+  // A project can exist before it has a technical baseline. Vacuous completion
+  // would falsely claim that such a project has finished engineering work.
   if (snapshot.phases.length === 0) return "planned";
   const phaseStatuses = snapshot.phases.map((phase) =>
     deriveEngineeringPhaseStatus(snapshot, phase.id)

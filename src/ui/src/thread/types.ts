@@ -86,7 +86,7 @@ export interface EngineeringEvidenceWorkbenchSnapshot
 }
 
 /**
- * A durable capture of the approved discovery and reviewed path.
+ * A durable capture of the approved project brief and reviewed path.
  *
  * This deliberately has no `thread` field: the first record is documentary
  * provenance, not an empty evidence graph. CAD, SysML, simulation,
@@ -100,7 +100,7 @@ export interface EngineeringDocumentaryWorkbenchSnapshot
     readonly status: "recorded";
     readonly message: string;
     readonly record: {
-      readonly origin: "approved-brief" | "approved-discovery";
+      readonly origin: "approved-brief";
       readonly snapshotId: string;
       readonly snapshotRevision: number;
       readonly artifactId: string;
@@ -378,8 +378,7 @@ function isDocumentaryRecord(
     "fingerprint",
     "uri",
     "recordedAt",
-  ]) && (record.origin === "approved-brief" ||
-    record.origin === "approved-discovery") &&
+  ]) && record.origin === "approved-brief" &&
     typeof record.snapshotId === "string" &&
     typeof record.snapshotRevision === "number" &&
     Number.isSafeInteger(record.snapshotRevision) &&

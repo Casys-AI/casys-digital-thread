@@ -23,7 +23,7 @@ import {
 } from "./model.ts";
 
 /**
- * Native project surface for the period between approved discovery and the
+ * Native project surface for the period between an approved brief and the
  * first documentary baseline. It intentionally renders the durable project path
  * rather than manufacturing an empty graph, component list or tool result.
  */
@@ -279,16 +279,10 @@ export function PlanningWorkbench({
                 <dd>{startingPointLabel(project.plan.startingPoint)}</dd>
               </div>
               <div>
-                <dt>
-                  {project.plan.basis.kind === "approved-brief"
-                    ? "Approved brief"
-                    : "Historical discovery"}
-                </dt>
+                <dt>Approved brief</dt>
                 <dd>
                   <code>
-                    {project.plan.basis.kind === "approved-brief"
-                      ? `${project.plan.basis.briefId}@${project.plan.basis.briefRevision}`
-                      : `${project.plan.basis.discoveryId}@${project.plan.basis.revision}`}
+                    {`${project.plan.basis.briefId}@${project.plan.basis.briefRevision}`}
                   </code>
                 </dd>
               </div>

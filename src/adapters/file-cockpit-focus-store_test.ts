@@ -49,7 +49,7 @@ Deno.test("file cockpit focus keeps an append-only CAS target and exact retries"
   }
 });
 
-Deno.test("new project focus can extend a journal with retired discovery history", async () => {
+Deno.test("new project focus can extend an existing focus journal", async () => {
   const directory = await Deno.makeTempDir({
     prefix: "cockpit-focus-history-",
   });
@@ -62,10 +62,10 @@ Deno.test("new project focus can extend a journal with retired discovery history
         schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,
         workspaceId: "primary",
         revision: 1,
-        commandId: "historical-discovery-focus",
+        commandId: "historical-project-focus",
         selectedAt: "2026-08-02T12:00:00.000Z",
         selectedBy: { kind: "agent", actorId: "mcp:test@1" },
-        target: { kind: "discovery", discoveryId: "retired-discovery" },
+        target: { kind: "project", projectId: "retired-project" },
       }),
     );
     const current = focus(2, "historical-project-focus", {
@@ -80,7 +80,7 @@ Deno.test("new project focus can extend a journal with retired discovery history
     const store = new FileCockpitFocusStore(directory);
     const next = focus(3, "select-v3-project", {
       kind: "project",
-      projectId: "inspection-drone-v3",
+      projectId: "project-v3",
     });
     assertEquals(await store.select(next, 2), next);
     assertEquals((await store.get("primary"))?.target, next.target);

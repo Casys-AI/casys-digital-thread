@@ -103,7 +103,7 @@ does not claim that every commercial authoring capability has already been repla
 
 | Horizon               | Honest scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Verified now**      | One native read-only project cockpit from first intent onward. Schema-`3.0` project revisions own guided questions, sourced answers, proposed and canonical brief truth, the reviewed path, runs and evidence references. The default MCP surface creates the project immediately and exposes no separate Discovery or handoff tools. Signed MRTR binds an accepted host response to the exact brief or decision request. `baseline.from-approved-brief@1` records documentary r1; `architecture.seed-syson-model@2` then creates a brief-bound SysON container capture `2.0` and r2; `architecture.author-inspection-drone@2` can add one fixed brief-bound architecture capture `2.0` and r3. Those two SysON records are technical lineage, not CAD or physical proof. Exact CAD, Modelica, ERPNext, and CalculiX evidence remain demonstrated separately by the CM-01 reference path, including one approved DripTray mechanical proof loop. |
+| **Verified now**      | One native read-only project cockpit from first intent onward. Schema-`3.0` project revisions own guided questions, sourced answers, proposed and canonical brief truth, the reviewed path, runs and evidence references. The default MCP surface creates the project immediately; signed MRTR binds an accepted host response to the exact brief or decision request. `baseline.from-approved-brief@1` records documentary r1 and `architecture.seed-syson-model@2` records a brief-bound SysON container capture `2.0` at r2. The fixed CM-01 V3 catalog then demonstrates architecture, CAD, nominal Modelica, ERP BOM observation and an isolated DripTray proof, plus one bounded 28 mm → 30 mm correction through R11 identity recovery and R12 closeout. This is one code-owned evidence path, not generic CAD, physics, or certification. |
 | **V1 product target** | A beginner can move from idea or imported product evidence to a reviewable project, agent-orchestrated proof cases, visible change impact, bounded correction/recompute loops, and inspectable BOM/cost evidence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **V2 candidate**      | Operational digital-twin instances fed by real telemetry, time-series storage, state estimation, model calibration, contextual scenario testing, and service-life decisions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
@@ -128,24 +128,16 @@ root package, reads the root back, normalizes the identities, binds them to the 
 approved brief and documentary artifact in a `syson-model-seed-capture/2.0` record, and
 publishes the SHA-256-addressed r2 descendant. The agent cannot choose provider calls,
 arguments, SysML text, or output; an uncertain non-idempotent write is held for review
-rather than blindly retried. r2 is not a drone architecture, requirement, CAD model,
+rather than blindly retried. r2 is not a system architecture, requirement, CAD model,
 simulation, measurement, verification result, or certification claim. Those operations
 still need their own inputs, output validators, and evidence contracts.
 
-The V3 `architecture.author-inspection-drone@2` continuation requires that exact r2
-seed, the same exact human-approved brief authorization chain, and an empty root. It can
-insert only one fixed high-level SysML fragment, then persists an
-`inspection-drone-architecture-capture/2.0` record before publishing r3. This is a
-bounded architecture record, not CAD, physics, flight, cost, compliance, or a verified
-verdict.
-
-The concrete `inspection-drone-v3` dossier has not crossed that gate. It contains three
-agent-recorded recommended answers and proposed brief revision 2, but no human
-confirmation; that brief still needs exact human review. Until then, no documentary r1
-or SysON mutation is authorized. Even after r3, drone CAD remains a separate operation
-requiring a sourced, reviewed geometric definition. CM-01 is evidence that the
-CAD-to-physics loop can be bounded and attested; it is not geometric input or physical
-proof for this drone.
+The generic V3 route deliberately stops at r2 container identity. It is not a system
+architecture, CAD artifact, physical model, cost estimate, compliance conclusion, or
+verified verdict. Those future product capabilities need their own sourced inputs,
+reviewed operations, and evidence contracts. CM-01 is the current fixed demonstration
+that a CAD-to-physics correction loop can be bounded and attested; it is not a generic
+technical authoring capability.
 
 Historic schema-`1.0` and schema-`2.0` projects remain readable references. They are not
 silently converted into V3 projects, and a V3 project never borrows a convenient

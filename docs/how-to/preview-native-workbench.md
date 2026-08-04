@@ -197,15 +197,14 @@ It answers “what approved project did we start from?”, not “what has engin
 proved?”
 
 The standard technical `"surface": "evidence"` is used only once a later operation has
-created and validated technical evidence. The first provider-backed V3 result is
+created and validated technical evidence. The generic provider-backed V3 result is
 `architecture.seed-syson-model@2`: it adds r2 with normalized identities for one blank,
 read-back SysON project container, SysML document, and root package, bound to the exact
-approved brief and documentary artifact. `architecture.author-inspection-drone@2` may
-then add one fixed high-level architecture as r3 from that exact r2 and authorization
-chain. Neither record makes CAD, simulation, measurement, requirement evaluation, or a
-physical verdict appear. The three surfaces are mutually exclusive: V1 CM-01 and V2
-project records remain historic/readable, and no direction receives an automatic schema
-conversion or thread-head fallback.
+approved brief and documentary artifact. It makes no CAD, simulation, measurement,
+requirement evaluation, or physical verdict appear. The fixed CM-01 V3 catalog is the
+current technical path beyond this bootstrap; it publishes its own evidence surface with
+fresh identities. No surface receives an automatic schema conversion or thread-head
+fallback.
 
 Before serving planning, documentary, or evidence state, the BFF resolves every declared
 project snapshot by exact ID and validates its entity references. A missing exact
@@ -270,15 +269,10 @@ ordered interaction:
    surface. Its durable write-ahead record means an uncertain SysON creation is held for
    review, not blindly retried. r2 is only an editable container identity, not a system
    architecture, requirements, CAD, simulation, measurement, or verdict.
-7. The agent may then queue `architecture.author-inspection-drone@2` only from that
-   exact r2, the same approved-brief authorization chain, and an empty root. The fixed
-   high-level fragment and its readback become r3; they are architecture content, not
-   CAD, physics, flight, cost, compliance, or verification evidence.
-
-The `baseline.from-approved-discovery@1`, `architecture.seed-syson-model@1`, and
-`architecture.author-inspection-drone@1` revisions describe the historical schema-2.0
-path. Their immutable records remain readable, but they cannot be queued or executed as
-the current V3 flow and never supply defaults to a new project.
+7. The generic route stops at r2. To see a full evidence path, open the separately
+   selected `coffee-machine-cm01-v3` project after its registered operations have
+   published fresh CM-01 evidence; use the
+   [golden-run guide](run-cm01-v3-golden-local.md) for its exact scope and closeout.
 
 If the technical seed stops before attachment, the project remains on its documentary r1
 surface. The UI must not claim an r2 model or evidence merely because a provider write,
@@ -317,14 +311,14 @@ name, arguments, result snapshot, or evidence payload.
 
 The V3 executor resolves its operation, basis, bindings, capture, root snapshot, and
 completion evidence from server-owned state; callers cannot submit a tool name, raw tool
-arguments, result snapshot, or evidence payload. It can record the approved-brief
-documentary baseline, create the fixed brief-bound SysON container from exact r1, and
-author the fixed inspection-drone architecture from exact r2. These operations persist
-and read back their closed captures and refuse an uncertain non-idempotent write instead
-of retrying it blindly. Any later requirements, CAD, simulation, measurement, or
-verification step still needs its own reviewed executor, output validator, materializer,
-and evidence contract. The historic CM-01 technical proof is reviewed in this Workbench
-as existing evidence; it is not a generic agent lifecycle recipe.
+arguments, result snapshot, or evidence payload. The generic route can record the
+approved-brief documentary baseline and create the fixed brief-bound SysON container
+from exact r1. These operations persist and read back their closed captures and refuse
+an uncertain non-idempotent write instead of retrying it blindly. Any future
+requirements, CAD, simulation, measurement, or verification step still needs its own
+reviewed executor, output validator, materializer, and evidence contract. The fixed
+CM-01 V3 catalog is the current exception; its historical r5/r6 proof is provenance,
+not a generic agent lifecycle recipe.
 
 The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
 attention, and where to go next. The five product sections have distinct jobs:
@@ -384,11 +378,11 @@ the target environment.
 It proves durable project and canonical-thread validation, exact project-to-evidence
 references, explicit provider-to-subject and component identity, persisted Modelica
 observations and ERPNext BOM detail, passive read/SSE paths, signed revision-bound human
-elicitation in the agent channel, the bounded V3 documentary r1 flow, the fixed r1-to-r2
-SysON container seed, and the fixed r2-to-r3 inspection-drone architecture, with
-read-back normalized identities and no blind retry. It also proves one coherent native
-UI with shared selection and no nested Apps. The separate historical r6 CM-01 branch
-proves exact DripTray CAD consumption and the two model-owned SysON comparisons.
+elicitation in the agent channel, the bounded V3 documentary r1 flow, and the fixed
+r1-to-r2 SysON container seed with read-back normalized identities and no blind retry.
+It also proves one coherent native UI with shared selection and no nested Apps. The
+separate CM-01 V3 path proves its own current bounded DripTray evidence; the r5/r6
+records remain its historical provenance.
 
 It does **not** prove:
 
@@ -396,8 +390,7 @@ It does **not** prove:
 - a SysML model, CAD geometry, simulation, measurement, requirement verdict, or
   compliance conclusion merely because a V3 documentary record exists;
 - a system architecture, requirement, CAD model, simulation, measurement, or verdict
-  merely because the V3 SysON container seed has recorded r2 or the fixed architecture
-  has recorded r3;
+  merely because the V3 SysON container seed has recorded r2;
 - a whole-machine mechanical or compliance verdict;
 - a production-material, fabrication-release, certification, or automatic correction
   claim;

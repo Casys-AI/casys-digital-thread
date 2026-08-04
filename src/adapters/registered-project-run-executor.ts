@@ -4,16 +4,9 @@ import type {
 } from "../domain/engineering-project-command-service.ts";
 import { EngineeringProjectCommandError } from "../domain/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
-import {
-  APPROVED_DISCOVERY_BASELINE_OPERATION,
-} from "../orchestration/operations/approved-discovery-baseline.ts";
 import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
-import {
-  INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
-} from "../domain/inspection-drone-architecture.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
-import type { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
-import type { InspectionDroneArchitectureRunExecutor } from "./inspection-drone-architecture-run-executor.ts";
+import type { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import type { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 /** Stable command shared by the one agent-visible execution tool. */
@@ -27,14 +20,9 @@ export interface RegisteredProjectRunExecutorCommand {
 
 export interface RegisteredProjectRunExecutorDependencies {
   readonly projects: Pick<EngineeringProjectRevisionStore, "get">;
-  readonly baseline: Pick<ApprovedDiscoveryBaselineRunExecutor, "execute">;
+  readonly baseline: Pick<ApprovedBriefBaselineRunExecutor, "execute">;
   /** Omit only when SysON is intentionally unavailable on this server. */
   readonly sysonModelSeed?: Pick<SysonModelSeedRunExecutor, "execute">;
-  /** Omit only when the guarded SysON architecture executor is unavailable. */
-  readonly inspectionDroneArchitecture?: Pick<
-    InspectionDroneArchitectureRunExecutor,
-    "execute"
-  >;
   /** Additional code-owned operations, such as a reviewed product kit. */
   readonly additional?: readonly RegisteredProjectRunExecutorRegistration[];
 }
@@ -93,20 +81,10 @@ export class RegisteredProjectRunExecutor {
         executor: dependencies.baseline,
       },
       {
-        operation: APPROVED_DISCOVERY_BASELINE_OPERATION,
-        executor: dependencies.baseline,
-      },
-      {
         operation: SYSON_MODEL_SEED_OPERATION,
         executor: dependencies.sysonModelSeed,
         unavailableMessage:
           "The server has no trusted SysON model-seed executor configured for this run.",
-      },
-      {
-        operation: INSPECTION_DRONE_ARCHITECTURE_V3_OPERATION,
-        executor: dependencies.inspectionDroneArchitecture,
-        unavailableMessage:
-          "The server has no trusted inspection-drone architecture executor configured for this run.",
       },
       ...(dependencies.additional ?? []),
     ];

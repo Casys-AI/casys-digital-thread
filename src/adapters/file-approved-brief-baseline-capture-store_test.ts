@@ -1,13 +1,13 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { sha256Fingerprint } from "../domain/deterministic-json.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-discovery-baseline-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 
-Deno.test("approved-discovery capture store persists immutable content-addressed bytes", async () => {
+Deno.test("approved-brief capture store persists immutable content-addressed bytes", async () => {
   const directory = await Deno.makeTempDir({
-    prefix: "casys-approved-discovery-capture-",
+    prefix: "casys-approved-brief-capture-",
   });
   try {
-    const store = new FileApprovedDiscoveryBaselineCaptureStore(directory);
+    const store = new FileApprovedBriefBaselineCaptureStore(directory);
     const text = '{"documentary":true}';
     const fingerprint = await sha256Fingerprint({ documentary: true });
 
@@ -18,19 +18,19 @@ Deno.test("approved-discovery capture store persists immutable content-addressed
     assertEquals(await store.read(fingerprint), text);
     assertEquals(
       first.uri,
-      `casys://approved-discovery-capture/sha256/${fingerprint.digest}`,
+      `casys://approved-brief-capture/sha256/${fingerprint.digest}`,
     );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
 });
 
-Deno.test("approved-discovery capture store rejects bytes that do not match the declared digest", async () => {
+Deno.test("approved-brief capture store rejects bytes that do not match the declared digest", async () => {
   const directory = await Deno.makeTempDir({
-    prefix: "casys-approved-discovery-capture-",
+    prefix: "casys-approved-brief-capture-",
   });
   try {
-    const store = new FileApprovedDiscoveryBaselineCaptureStore(directory);
+    const store = new FileApprovedBriefBaselineCaptureStore(directory);
     const fingerprint = await sha256Fingerprint({ documentary: true });
     await assertRejects(
       () => store.save(fingerprint, '{"documentary":false}'),

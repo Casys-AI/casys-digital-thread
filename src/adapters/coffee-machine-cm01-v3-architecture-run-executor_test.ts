@@ -19,10 +19,10 @@ import {
   type RegisteredEngineeringOperationInput,
 } from "../orchestration/operations/registry.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
-import { ApprovedDiscoveryBaselineRunExecutor } from "./approved-discovery-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
-import { FileApprovedDiscoveryBaselineCaptureStore } from "./file-approved-discovery-baseline-capture-store.ts";
+import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import { FileSysonModelSeedAttemptStore } from "./file-syson-model-seed-attempt-store.ts";
 import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
@@ -327,7 +327,7 @@ function executionCommand(
 async function queuedArchitecture(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
-  const baselineCaptures = new FileApprovedDiscoveryBaselineCaptureStore(
+  const baselineCaptures = new FileApprovedBriefBaselineCaptureStore(
     `${directory}/baseline-captures`,
   );
   const seedCaptures = new FileSysonModelSeedCaptureStore(`${directory}/seed-captures`);
@@ -413,10 +413,9 @@ async function queuedArchitecture(directory: string) {
     summary: "Record the approved CM-01 brief.",
     basis: project.plan!.basis,
   });
-  const baseline = await new ApprovedDiscoveryBaselineRunExecutor({
+  const baseline = await new ApprovedBriefBaselineRunExecutor({
     projects,
     commands,
-    discoveries: { getRevision: () => Promise.resolve(undefined) },
     captures: baselineCaptures,
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),

@@ -30,6 +30,8 @@
 | [`src/adapters/engineering-project-command-runtime.ts`](../../src/adapters/engineering-project-command-runtime.ts)                             | MCP command runtime and exact evidence readers                     |
 | [`src/adapters/engineering-project-completion-evidence-validator.ts`](../../src/adapters/engineering-project-completion-evidence-validator.ts) | Completion evidence existence and change gate                      |
 | [`src/adapters/registered-project-run-executor.ts`](../../src/adapters/registered-project-run-executor.ts)                                     | Server-owned dispatch for exact reviewed operations                |
+| [`src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts`](../../src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts) | Fixed CM-01 V3 operation catalog and evidence boundaries |
+| [`src/domain/cm01-v3-r11-closeout.ts`](../../src/domain/cm01-v3-r11-closeout.ts)                                                             | Code-derived R11 to R12 requirement-family closeout                |
 | [`src/adapters/syson-model-seed-run-executor.ts`](../../src/adapters/syson-model-seed-run-executor.ts)                                         | Fixed SysON project/document/root-package seed executor            |
 | [`src/adapters/file-syson-model-seed-capture-store.ts`](../../src/adapters/file-syson-model-seed-capture-store.ts)                             | Content-addressed normalized SysON container capture               |
 | [`src/adapters/file-syson-model-seed-attempt-store.ts`](../../src/adapters/file-syson-model-seed-attempt-store.ts)                             | Write-ahead no-blind-retry state for non-idempotent SysON writes   |
@@ -46,13 +48,16 @@
 | [`scripts/run-coffee-machine-build.ts`](../../scripts/run-coffee-machine-build.ts)                                                             | Explicit SysON to build123d MCP runner                             |
 | [`scripts/attach-coffee-machine-build-run.ts`](../../scripts/attach-coffee-machine-build-run.ts)                                               | Capture validation, canonical publication and reconciliation       |
 | [`scripts/run-coffee-machine-mechanical.ts`](../../scripts/run-coffee-machine-mechanical.ts)                                                   | Archived bounded SysON to CAD to FEA verification runner           |
+| [`scripts/run-coffee-machine-cm01-v3-correction.ts`](../../scripts/run-coffee-machine-cm01-v3-correction.ts)                                 | Explicit CM-01 V3 28 mm to 30 mm control-plane driver              |
+| [`scripts/run-coffee-machine-cm01-v3-mechanical-r3-retry.ts`](../../scripts/run-coffee-machine-cm01-v3-mechanical-r3-retry.ts)               | Bounded CM-01 V3 R3 mechanical recovery driver                     |
+| [`scripts/recover-coffee-machine-cm01-v3-mechanical-r3-identity.ts`](../../scripts/recover-coffee-machine-cm01-v3-mechanical-r3-identity.ts) | Provider-free R10 to R11 identity recovery                         |
+| [`scripts/close-coffee-machine-cm01-v3-r11.ts`](../../scripts/close-coffee-machine-cm01-v3-r11.ts)                                           | Provider-free R11 to R12 failed-work reconciliation                 |
 | [`src/adapters/coffee-machine-mechanical-run-extension.ts`](../../src/adapters/coffee-machine-mechanical-run-extension.ts)                     | Strict mechanical capture to canonical evidence projection         |
 | [`scripts/attach-coffee-machine-mechanical-run.ts`](../../scripts/attach-coffee-machine-mechanical-run.ts)                                     | Durable mechanical publication and live-feed reconciliation        |
 | [`scripts/capture-syson-model-inventory.ts`](../../scripts/capture-syson-model-inventory.ts)                                                   | Explicit read-only SysON inventory capture                         |
 | [`state/fixtures/`](../../state/fixtures/)                                                                                                     | Explicitly labelled demo evidence                                  |
 | `state/local/engineering-projects/`                                                                                                            | Ignored immutable active project revisions and CAS claims          |
 | `state/local/engineering-project-run-leases/`                                                                                                  | Empty local OS lock targets for one trusted run; not evidence      |
-| `state/local/approved-discovery-captures/`                                                                                                     | Shared content-addressed documentary baselines; V3 uses brief URIs |
 | `state/local/syson-model-seed-captures/`                                                                                                       | Content-addressed normalized r2 container captures                 |
 | `state/local/syson-model-seed-attempts/`                                                                                                       | Recovery control state for uncertain SysON writes; not evidence    |
 
@@ -111,11 +116,21 @@ reads it back; and only then reconciles the run's provisional feed nodes. It ret
 exact result snapshot and entity references needed for the separate MCP `completed`
 transition, but never mutates the project lifecycle itself.
 
-The completed local reference path publishes thread r6
+The completed local reference path for historical project `coffee-machine-cm01` publishes
+thread r6
 `coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechanical-run-v1-extension`;
-active project r10 records the same run and verification work item as `completed`. Its
-proof boundary is the isolated concept DripTray, not the whole machine, a fabrication
-release, or certification.
+active project r10 records the same run and verification work item as `completed`. This
+r5/r6 provenance remains required historical input for the distinct CM-01 V3 golden
+path. Its proof boundary is the isolated concept DripTray, not the whole machine, a
+fabrication release, or certification.
+
+The fixed `coffee-machine-cm01-v3` path is a separate project and catalog. Its original
+five reviewed product operations follow the documentary baseline and SysON seed. The
+recorded 28 mm → 30 mm correction then retains R2 as failed and evidence-free, creates
+the correctly identified R3 successor at R11 without a provider call, and uses the local
+R12 closeout to persist requirement-family links and reconcile the obsolete work item.
+It does not make a generic CAD, physics, or certification operation available. See the
+[CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md).
 
 `deno task preview:thread` seeds the tracked CM-01 project as active revision 1 only
 when `state/local/engineering-projects/coffee-machine-cm01/` is absent. Browser GET and
@@ -134,13 +149,9 @@ to create a blank project, document, and root package; it reads the root back,
 normalizes its identities into `syson-model-seed-capture/2.0`, and publishes r2. Callers
 supply no arbitrary arguments or SysML text; uncertain writes are not blindly retried.
 r2 is a container identity, not an architecture, requirements, CAD, simulation,
-measurement, or verdict. The guarded r3
-`architecture.author-inspection-drone@2` operation requires exact r2, the same
-human-approved brief lineage, and an empty root. It records
-`inspection-drone-architecture-capture/2.0` before publishing r3 and makes no CAD,
-physics, flight, cost, compliance, or verified-requirement claim. The real
-`inspection-drone-v3` project still awaits human review and exact brief confirmation,
-so it has authorized none of these revisions yet.
+measurement, or verdict. The generic route stops there. The distinct CM-01 V3 catalog
+owns the current product-specific operations and their capture/evidence contracts; it
+does not make a generic architecture, CAD, or verification operation available.
 
 ## Runtime ownership
 

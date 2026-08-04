@@ -1,15 +1,19 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import {
   buildVersionedProvenanceProjection,
+  currentArtifacts,
+  currentRequirements,
   visibleGraphRef,
   visibleGraphSelection,
 } from "./src/thread/versioned-provenance-model.ts";
 import type {
+  ThreadArtifact,
   ThreadEvidenceFamilyGraph,
   ThreadGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
+  ThreadRequirement,
 } from "./src/thread/types.ts";
 
 Deno.test("versioned provenance folds one explicit successor chain into its current node", () => {
@@ -115,6 +119,86 @@ Deno.test("handoffs with different attestation states never collapse together", 
   );
 });
 
+Deno.test("current requirement summaries hide only an explicit historical family member", () => {
+  const family = requirementFamily();
+  const requirements: ThreadRequirement[] = [
+    requirement("requirement-r1", "unresolved"),
+    requirement("requirement-r2", "unresolved"),
+    requirement("requirement-r3", "pass"),
+    requirement("unrelated-unresolved", "unresolved"),
+  ];
+
+  assertEquals(
+    currentRequirements(requirements, family).map((item) => item.id),
+    ["requirement-r3", "unrelated-unresolved"],
+  );
+});
+
+Deno.test("current artifact currency ignores only explicit stale predecessors", () => {
+  const artifacts: ThreadArtifact[] = [
+    artifact("proof-r2", "stale"),
+    artifact("proof-r3", "fresh"),
+    artifact("still-current-stale", "stale"),
+  ];
+
+  assertEquals(
+    currentArtifacts(artifacts, familyGraph("current")).map((item) => item.id),
+    ["proof-r3", "still-current-stale"],
+  );
+});
+
+Deno.test("convergent family history stays in declared order before its current successor", () => {
+  const graph: ThreadGraph = {
+    nodes: [
+      node("proof-r1", "R1"),
+      node("proof-r2", "R2"),
+      node("proof-r3", "R3"),
+    ],
+    edges: [
+      edge("proof-r1-to-r3", "proof-r1", "proof-r3", "supersedes"),
+      edge("proof-r2-to-r3", "proof-r2", "proof-r3", "supersedes"),
+    ],
+  };
+  const family = familyGraph("current").families[0]!;
+  const convergent = {
+    ...family,
+    historicalRefs: [ref("proof-r1"), ref("proof-r2")],
+    currentRefs: [ref("proof-r3")],
+    revisionCount: 2,
+    transitions: [
+      {
+        edgeRef: {
+          id: "proof-r1-to-r3",
+          relation: "supersedes" as const,
+          origin: "provenance" as const,
+        },
+        historical: ref("proof-r1"),
+        successor: ref("proof-r3"),
+      },
+      {
+        edgeRef: {
+          id: "proof-r2-to-r3",
+          relation: "supersedes" as const,
+          origin: "provenance" as const,
+        },
+        historical: ref("proof-r2"),
+        successor: ref("proof-r3"),
+      },
+    ],
+  };
+  const projection = buildVersionedProvenanceProjection(graph, {
+    ...familyGraph("current"),
+    families: [convergent],
+  });
+
+  assertEquals(
+    projection.familyByVisibleRef.get("artifact:proof-r3")?.members.map((
+      node,
+    ) => node.ref.id),
+    ["proof-r1", "proof-r2", "proof-r3"],
+  );
+});
+
 Deno.test("Evidence owns one versioned graph and one existing inspector", () => {
   const source = Deno.readTextFileSync(
     new URL("./src/thread/workbench.tsx", import.meta.url),
@@ -196,6 +280,49 @@ function familyGraph(
   };
 }
 
+function requirementFamily(): ThreadEvidenceFamilyGraph {
+  return {
+    schemaVersion: "thread-evidence-family-graph/1.0",
+    asOf: { snapshotId: "thread-r11", revision: 11 },
+    families: [{
+      id: "requirement-family",
+      entityKind: "requirement",
+      historicalRefs: [
+        { kind: "requirement", id: "requirement-r1" },
+        { kind: "requirement", id: "requirement-r2" },
+      ],
+      currentRefs: [{ kind: "requirement", id: "requirement-r3" }],
+      revisionCount: 1,
+      status: "current",
+      relationship: {
+        relation: "supersedes",
+        classification: "not-recorded",
+        equivalence: "not-recorded",
+      },
+      transitions: [{
+        edgeRef: {
+          id: "requirement-r2-to-r3",
+          relation: "supersedes",
+          origin: "provenance",
+        },
+        historical: { kind: "requirement", id: "requirement-r2" },
+        successor: { kind: "requirement", id: "requirement-r3" },
+      }, {
+        edgeRef: {
+          id: "requirement-r1-to-r2",
+          relation: "supersedes",
+          origin: "provenance",
+        },
+        historical: { kind: "requirement", id: "requirement-r1" },
+        successor: { kind: "requirement", id: "requirement-r2" },
+      }],
+    }],
+    edges: [],
+    omittedSelfLoops: [],
+    omittedCycleEdges: [],
+  };
+}
+
 function node(id: string, label: string): ThreadGraphNode {
   return {
     id: `node-${id}`,
@@ -228,4 +355,35 @@ function edge(
 
 function ref(id: string): ThreadGraphRef {
   return { kind: "artifact", id };
+}
+
+function requirement(
+  id: string,
+  status: ThreadRequirement["status"],
+): ThreadRequirement {
+  return {
+    id,
+    label: id,
+    source: "SysON",
+    expression: "value <= 1 mm",
+    status,
+    observationIds: [],
+    violationIds: [],
+    rationale: id,
+  };
+}
+
+function artifact(
+  id: string,
+  freshness: ThreadArtifact["freshness"],
+): ThreadArtifact {
+  return {
+    id,
+    label: id,
+    kind: "solver-result",
+    system: "calculix",
+    revision: id,
+    freshness,
+    dependsOn: [],
+  };
 }

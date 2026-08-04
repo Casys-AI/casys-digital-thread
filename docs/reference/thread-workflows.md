@@ -120,31 +120,14 @@ write-ahead attempt record. If the provider outcome is unknown, it stops for exp
 review instead of blindly retrying a possibly successful creation. This control flow is
 a closed executor contract, not a reusable YAML-node pattern.
 
-## Guarded inspection-drone architecture r3 (not workflow YAML)
-
-`architecture.author-inspection-drone@2` is another closed, server-owned operation, not
-a YAML graph or a generic SysML writer. An agent can append it to a project after the
-documentary baseline with `project_change_append`: that change is bound to the exact
-current thread snapshot and can only add new phases, work, and decisions. Its runtime
-basis is instead the exact r2 produced by `architecture.seed-syson-model@2`, whose seed
-capture must re-read and validate by hash.
-
-The executor also re-reads the exact human-approved brief and documentary artifact
-behind that r1/r2 lineage. It first requires an empty root package, inserts one fixed
-high-level SysML fragment once, and verifies only the named package and direct
-declarations through readback. The caller cannot alter the SysML, provider, arguments,
-or result. A write-ahead record prevents an unknown write outcome from being replayed.
-
-Its `inspection-drone-architecture-capture/2.0` record is neither CAD nor an assembly,
-physical or flight simulation, cost, compliance, or a requirement verdict. It remains a
-closed executor contract rather than a reusable YAML-node pattern. The concrete
-`inspection-drone-v3` project still awaits human review and exact brief confirmation,
-so this implemented operation is not yet authorized for that dossier. A later CAD step
-also requires a sourced, reviewed geometric definition.
-
-## First mechanical slice
+## Historical r6 mechanical slice
 
 [`coffee-machine-mechanical-v1.yaml`](../../config/thread-workflows/coffee-machine-mechanical-v1.yaml)
+drives the retained r6 provenance only. The current CM-01 V3 golden path uses its own
+registered code-owned executors and captures, not a generic YAML operation; see the
+[golden-run guide](../how-to/run-cm01-v3-golden-local.md).
+
+That historical YAML
 declares the solve/normalize/evaluate DAG. The CM-01 product runner surrounds it with
 the approved SysON preflight and build123d generation:
 

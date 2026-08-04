@@ -1,10 +1,12 @@
 import type {
+  ThreadArtifact,
   ThreadEvidenceFamily,
   ThreadEvidenceFamilyGraph,
   ThreadGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
+  ThreadRequirement,
 } from "./types.ts";
 
 export type VersionedGraphSelection =
@@ -234,11 +236,74 @@ export function versionedRefKey(reference: ThreadGraphRef): string {
   return refKey(reference);
 }
 
+/**
+ * Returns the requirements that remain current in the BFF-declared revision
+ * topology. A historical requirement is hidden from summary counts only when
+ * one explicit `supersedes` family names exactly one current successor. An
+ * unresolved requirement without that canonical relation remains visible.
+ */
+export function currentRequirements(
+  requirements: readonly ThreadRequirement[],
+  familyGraph: ThreadEvidenceFamilyGraph,
+): readonly ThreadRequirement[] {
+  const historical = historicalFamilyMembers("requirement", familyGraph);
+  return requirements.filter((requirement) =>
+    !historical.has(refKey({ kind: "requirement", id: requirement.id }))
+  );
+}
+
+/**
+ * Returns artifacts that remain current in the BFF-declared revision
+ * topology. A stale historical artifact is retained in the inspector and
+ * version history, but does not turn the current evidence health amber when
+ * one explicit successor is canonical.
+ */
+export function currentArtifacts(
+  artifacts: readonly ThreadArtifact[],
+  familyGraph: ThreadEvidenceFamilyGraph,
+): readonly ThreadArtifact[] {
+  const historical = historicalFamilyMembers("artifact", familyGraph);
+  return artifacts.filter((artifact) =>
+    !historical.has(refKey({ kind: "artifact", id: artifact.id }))
+  );
+}
+
+function historicalFamilyMembers(
+  entityKind: "artifact" | "requirement",
+  familyGraph: ThreadEvidenceFamilyGraph,
+): ReadonlySet<string> {
+  const historical = new Set<string>();
+  for (const family of familyGraph.families) {
+    if (
+      family.entityKind !== entityKind || family.status !== "current" ||
+      family.currentRefs.length !== 1
+    ) continue;
+    for (const reference of family.historicalRefs) {
+      historical.add(refKey(reference));
+    }
+  }
+  return historical;
+}
+
 function familyRefs(family: ThreadEvidenceFamily): ThreadGraphRef[] {
   return [...family.historicalRefs, ...family.currentRefs];
 }
 
 function orderedFamilyRefs(family: ThreadEvidenceFamily): ThreadGraphRef[] {
+  // A convergent family has several explicit historical predecessors for the
+  // same current record. That is enough to establish currency, but not a
+  // total ordering between those predecessors. Keep their declared graph
+  // order, then show the sole current successor, rather than inventing a
+  // misleading R1 -> R3 -> R2 sequence.
+  const successorCounts = new Map<string, number>();
+  for (const transition of family.transitions) {
+    const key = refKey(transition.successor);
+    successorCounts.set(key, (successorCounts.get(key) ?? 0) + 1);
+  }
+  if ([...successorCounts.values()].some((count) => count > 1)) {
+    return [...family.historicalRefs, ...family.currentRefs];
+  }
+
   const remaining = new Map(
     familyRefs(family).map((reference) =>
       [refKey(reference), reference] as const

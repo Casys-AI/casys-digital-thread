@@ -38,12 +38,12 @@ The target product should answer after each meaningful change the question that 
 often takes weeks between requirement freeze and design review: **does this design hold
 every requirement it traces to — with computed proof?** The clean, tracked CoffeeMachine
 CM-01 baseline aggregates observed SysON, Modelica, ERPNext and whole-machine build123d
-evidence at revision 5, before any mechanical criterion exists. The first approved
-component loop has now also run end to end: approved, SysON-owned `1 mm` / `20 MPa`
-DripTray constraints, a content-addressed build123d STEP, CalculiX evidence, unit
-normalization, and SysON verdicts were published as canonical thread revision 6. That is
-a concept proof for one isolated DripTray, not whole-machine, release, manufacturing, or
-certification evidence.
+evidence at revision 5, before any mechanical criterion exists. Its r6 DripTray loop is
+retained as historical evidence. A distinct local CM-01 V3 path then records a reviewed
+`28 mm → 30 mm` correction: a failed R2 attempt remains evidence-free history, a
+correctly identified R3 successor carries the mechanical handoff and evaluations, and
+R12 explicitly closes the requirement family. This is a concept proof for one isolated
+DripTray, not whole-machine, release, manufacturing, or certification evidence.
 
 ## Positioning
 
@@ -198,23 +198,10 @@ approved brief, project change, documentary artifact, and normalized provider id
 before publishing descendant `ThreadSnapshot` r2. The caller supplies no provider name,
 tool name, arguments, SysML text, or result. Non-idempotent SysON writes are journaled
 before dispatch; an unknown outcome stops for review rather than blindly retrying. This
-r2 is an editable container identity, **not** a drone architecture, requirement, CAD
+r2 is an editable container identity, **not** a system architecture, requirement, CAD
 artifact, simulation, measurement, or verdict. CAD, physics, measurement, and
 verification loops still need their own later reviewed operations, provider evidence,
 and exact bindings.
-
-The next trusted V3 operation is `architecture.author-inspection-drone@2`. It follows
-only the exact r2 seed authorized by the same human-approved brief, revalidates the
-content-addressed documentary and seed lineage, requires an empty root, and inserts one
-server-owned high-level inspection-drone SysML fragment. Its
-`inspection-drone-architecture-capture/2.0` record attests the fixed insertion and
-bounded read-back before publishing r3. The current real `inspection-drone-v3` project
-has three agent-recorded recommended answers and proposed brief revision 2, but no human
-confirmation, and still awaits exact review; none of r1, r2, or r3 is currently
-authorized for that project. The operation creates neither CAD, physics, flight
-behaviour, cost, compliance, nor a verified requirement verdict. Drone CAD remains
-blocked until a sourced, reviewable geometric definition exists; the separate CM-01 path
-remains the current CAD/physical proof case.
 
 Opening or refreshing the UI never launches CAD, FEA, or Modelica. In the product path,
 calculation, modeling, ERP, and evidence publication belong to agent orchestration
@@ -243,11 +230,12 @@ for `latest` or for missing evidence.
 
 The tracked r5 SysON inventory contains two `RequirementUsage` elements and zero
 mechanical `ConstraintUsage` elements, so the clean baseline honestly has no mechanical
-verdict. The approved CM-01 runner may add only the two proposal-derived DripTray limits
-(`1 mm` and `20 MPa`) to SysON, then re-extract and evaluate them. The completed
-reference run published both passing evaluations in r6 and completed the bound work item
-and agent run in active project revision 10. Adding those model-owned criteria is an
-explicit domain mutation authorized by the reviewed case, never a UI workaround.
+verdict. The historical r6 reference added only two proposal-derived DripTray limits
+(`1 mm` and `20 MPa`) through an explicit reviewed mutation. The separate V3 correction
+path retains that history rather than treating it as current: its R2 failure has no
+substitute evidence, its recovered R3 successor is the current bounded proof, and its
+R12 requirement lineage is what lets the project close. Adding or replacing model-owned
+criteria is always an explicit domain mutation, never a UI workaround.
 
 [`config/thread-workflows/`](config/thread-workflows/) describes typed causal DAGs. No
 dashboard-layout YAML, iframe host, or presentation-only MCP sits between the backend

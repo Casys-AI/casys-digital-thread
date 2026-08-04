@@ -43,7 +43,7 @@ Deno.test("CM-01 V3 canonical runner uses the exact server.ts state stores", () 
   assertEquals(directories, {
     projects: "state/local/engineering-projects",
     snapshots: "state/local/thread-snapshots",
-    baselineCaptures: "state/local/approved-discovery-captures",
+    baselineCaptures: "state/local/approved-brief-captures",
     sysonSeedCaptures: "state/local/syson-model-seed-captures",
     sysonSeedAttempts: "state/local/syson-model-seed-attempts",
     architectureCaptures: "state/local/coffee-machine-cm01-v3-architecture-captures",

@@ -13,10 +13,12 @@ import { ProjectBriefRecord } from "./brief-record.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   agentRunSummary,
+  buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
   projectPathStatusLabel,
   projectStatusTone,
+  verificationChainDetail,
   workOwnerLabel,
   workStatusLabel,
 } from "./model.ts";
@@ -37,6 +39,7 @@ export function ProjectOverview({
   onOpenSpecification,
 }: ProjectOverviewProps): JSX.Element {
   const brief = buildProjectBrief(project);
+  const currentWork = buildCurrentProjectWork(project);
   const projectPath = buildProjectPath(project, thread);
   const leadRun = brief.activeRuns[0];
   const openBlocker = brief.openBlockers[0];
@@ -64,11 +67,12 @@ export function ProjectOverview({
           aria-label={`Project status: ${projectPathStatusLabel(projectPath)}`}
         >
           <i aria-hidden="true" />
-          <span>PROJECT STATE</span>
+          <span>PROJECT PATH</span>
           <strong>{projectPathStatusLabel(projectPath)}</strong>
           <small>
-            {projectPath.completedPhases}/{projectPath.phases.length} macro{" "}
-            gates satisfied
+            {projectPath.status === "completed"
+              ? "Concept/integration proof only · not certification or release"
+              : `${projectPath.completedPhases}/${projectPath.phases.length} macro gates satisfied`}
           </small>
         </div>
       </section>
@@ -174,13 +178,13 @@ export function ProjectOverview({
         <ProjectControlPanel
           className="is-next"
           index="NEXT"
-          title="Next recorded work"
-          empty="No work item is explicitly marked ready."
+          title="Next current work"
+          empty="No further current work is recorded. Historical retries remain in Activity."
           onOpen={() => onNavigate("work")}
           actionLabel="Inspect agent plan"
         >
-          {brief.nextWork[0]
-            ? <WorkItemSummary item={brief.nextWork[0]} />
+          {currentWork.nextWork[0]
+            ? <WorkItemSummary item={currentWork.nextWork[0]} />
             : null}
         </ProjectControlPanel>
 
@@ -220,7 +224,7 @@ export function ProjectOverview({
           <EvidenceRoute
             index="B"
             title="Verification chain"
-            detail={`${thread.requirements.length} requirements · ${thread.violations.length} named violations · ${thread.graph.edges.length} recorded relations.`}
+            detail={verificationChainDetail(thread)}
             action="Trace evidence"
             onOpen={() => onNavigate("verification")}
           />

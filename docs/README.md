@@ -13,8 +13,9 @@ categories deliberately answer different questions.
 ## How-to guides — achieve a focused task
 
 - [Run the CM-01 V3 golden path locally](how-to/run-cm01-v3-golden-local.md) starts a
-  fresh isolated Compose topology without deleting retained evidence, then follows the
-  paired-agent path from approved brief through the five registered CM-01 V3 operations.
+  fresh isolated Compose topology without deleting retained evidence. It follows the
+  documentary baseline and SysON seed into the five fixed CM-01 operations, then
+  documents the bounded correction, identity recovery, and closeout path separately.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
   starts the single-shell Preact product surface, follows a project from its living
   brief into activity and evidence, and explains why the cockpit observes while the
@@ -26,13 +27,9 @@ categories deliberately answer different questions.
 - [Preview the MCP console in a local browser](how-to/preview-console.md) explains the
   `127.0.0.1:3021` harness, how to confirm that it is live, and what it intentionally
   does not do.
-- [The mcp-view component language](explanations/mcp-view-component-language.md)
-  explains the ERPNext-derived visual baseline, Preact default, and component-only
-  palette rule.
-- [Run the CoffeeMachine mechanical workflow](how-to/view-coffee-machine-cm01.md)
-  executes the human-approved SysON → build123d → CalculiX → normalization → SysON loop,
-  publishes its exact evidence, and documents bounded safe resume and lifecycle
-  ordering.
+- [Inspect the historical CoffeeMachine mechanical proof](how-to/view-coffee-machine-cm01.md)
+  explains the archived r6 SysON → build123d → CalculiX → normalization → SysON loop,
+  its bounded safe-resume contract, and why it is not the current V3 agent recipe.
 - [Attach a persisted Modelica branch](how-to/attach-observed-modelica-branch.md)
   imports one exact, already-persisted thermal run as evidence only: the model,
   scenario, metrics, and hashes are retained, without inventing a verdict.
@@ -55,9 +52,8 @@ categories deliberately answer different questions.
   boundary.
 - [EngineeringProjectSnapshot contract](reference/engineering-project.md) defines
   project intent, derived phases, human-agent work, decisions and approvals, blockers,
-  execution runs, documentary bootstrap, the first bounded SysON model seed, immutable
-  revisions, command receipts, authority, and exact references into immutable thread
-  evidence.
+  execution runs, the fixed CM-01 V3 operation catalog, immutable revisions, command
+  receipts, authority, and exact references into immutable thread evidence.
 - [Living project brief](reference/project-brief.md) defines intent, guided questions,
   sourced answers, proposal versus canonical truth, exact human confirmation, and the
   approved-brief documentary baseline inside one project.
@@ -75,16 +71,6 @@ categories deliberately answer different questions.
 - [Product direction and delivery boundary](explanations/product-direction.md) is the
   canonical product compass: beginner-first human-agent work, idea/CAD/product entry
   points, vendor independence, and the verified-now/V1/V2 boundary.
-- [Agent orchestration and operational-twin boundary](rfcs/agent-orchestration-and-operational-twin-boundary.md)
-  records the proposed technical path beyond the implemented documentary bootstrap and
-  first bounded SysON seed, while keeping an operational twin in V2.
-- [Bounded inspection-drone SysON architecture slice](rfcs/inspection-drone-syson-architecture-slice.md)
-  records the proposed r3 model fragment, exact one-write executor boundary, fake-client
-  test recipe, and the inert-by-default, separately authorized disposable SysON
-  parser/translator conformance harness. It passed once against loopback
-  `mcp-syson
-  0.5.2` on 2026-08-03; that disposable check is not an r3 project run or
-  engineering evidence.
 - [CoffeeMachine verification architecture](verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.
@@ -102,6 +88,9 @@ categories deliberately answer different questions.
   target multi-jurisdiction architecture for versioned official sources, licensed
   standards, evidence reuse, and external certification boundaries, using EU UAS as the
   first sourced example.
+- [The mcp-view component language](explanations/mcp-view-component-language.md)
+  explains the ERPNext-derived visual baseline, Preact default, and component-only
+  palette rule.
 
 ## Read the status labels literally
 

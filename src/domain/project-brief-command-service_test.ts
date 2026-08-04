@@ -17,7 +17,7 @@ import type { ProjectBriefItem } from "./project-brief.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
 import { collectEngineeringProjectIssues } from "./engineering-project-validation.ts";
 
-const PROJECT_ID = "inspection-drone-v3";
+const PROJECT_ID = "project-v3";
 const AGENT = { kind: "agent" as const, actorId: "agent:guide" };
 const HUMAN = { kind: "human" as const, actorId: "human:owner" };
 
@@ -25,11 +25,11 @@ Deno.test("a project exists from first intent and framing stays inside it", asyn
   const store = new MemoryProjectStore();
   const service = serviceFor(store);
   const command = {
-    commandId: "start-drone",
+    commandId: "start-project",
     projectId: PROJECT_ID,
-    projectName: "Inspection drone",
+    projectName: "Project V3",
     issuedAt: "2026-08-03T08:59:00.000Z",
-    intent: "  Build a drone that can inspect a roof safely.  ",
+    intent: "  Build a reviewable engineering project.  ",
     intentSource: { kind: "human" as const, reference: "conversation:turn-1" },
   };
 
@@ -39,7 +39,6 @@ Deno.test("a project exists from first intent and framing stays inside it", asyn
   assertEquals(project.revision, 1);
   assertEquals(project.project.id, PROJECT_ID);
   assertEquals(project.framing?.intent.statement, command.intent.trim());
-  assertEquals(project.discoveryHandoff, undefined);
   assertEquals(project.plan, undefined);
   assertEquals(project.threadSnapshots, []);
 
@@ -64,25 +63,25 @@ Deno.test("an agent builds a sourced brief but only exact human review makes it 
     ...context("question-mission", project.revision),
     question: {
       id: "mission",
-      prompt: "Which first mission should the product prove?",
+      prompt: "Which initial operating scenario should the product prove?",
       whyItMatters: "It bounds the architecture and verification plan.",
       recommendation: {
-        value: "roof-inspection",
+        value: "bounded-demonstration",
         rationale: "It is observable and can be tested incrementally.",
         confidence: "medium",
       },
       options: [{
-        value: "roof-inspection",
-        label: "Roof inspection",
-        consequences: "Prioritises stable imaging near buildings.",
+        value: "bounded-demonstration",
+        label: "Bounded demonstration",
+        consequences: "Prioritises a small, observable first proof.",
       }, {
-        value: "open-field-mapping",
-        label: "Open-field mapping",
-        consequences: "Prioritises endurance and coverage.",
+        value: "broader-demonstration",
+        label: "Broader demonstration",
+        consequences: "Prioritises broader coverage and more evidence.",
       }],
       allowUnknown: true,
       risk: "material",
-      evidenceNeeded: ["flight-envelope analysis"],
+      evidenceNeeded: ["operating-envelope analysis"],
     },
   });
   project = await service.recordAnswer(AGENT, {
@@ -91,18 +90,21 @@ Deno.test("an agent builds a sourced brief but only exact human review makes it 
       id: "answer-mission-1",
       questionId: "mission",
       kind: "provided",
-      value: "roof-inspection",
+      value: "bounded-demonstration",
       source: { kind: "human", reference: "conversation:turn-2" },
     },
   });
   project = await service.proposeBrief(AGENT, {
     ...context("propose-brief-r1", project.revision),
-    items: briefItems("Inspect a roof safely"),
+    items: briefItems("Demonstrate a reviewable system safely"),
   });
 
   assertEquals(project.framing?.currentBrief, undefined);
   assertEquals(project.framing?.proposalReview?.status, "pending");
-  assertEquals(project.project.objective.statement, "Build an inspection drone.");
+  assertEquals(
+    project.project.objective.statement,
+    "Build a reviewable engineering system.",
+  );
 
   const proposal = project.framing!.proposedBrief!;
   const review = project.framing!.proposalReview!;
@@ -143,7 +145,10 @@ Deno.test("an agent builds a sourced brief but only exact human review makes it 
   assertEquals(project.framing?.currentBrief?.id, proposal.id);
   assertEquals(project.framing?.currentBriefApproval?.status, "approved");
   assertEquals(project.framing?.proposedBrief, undefined);
-  assertEquals(project.project.objective.statement, "Inspect a roof safely");
+  assertEquals(
+    project.project.objective.statement,
+    "Demonstrate a reviewable system safely",
+  );
 });
 
 Deno.test("a rejected update preserves the approved brief and stale proposals cannot be approved", async () => {
@@ -154,7 +159,7 @@ Deno.test("a rejected update preserves the approved brief and stale proposals ca
 
   project = await service.proposeBrief(AGENT, {
     ...context("propose-brief-r2", project.revision),
-    items: briefItems("Inspect roofs and bridges safely"),
+    items: briefItems("Demonstrate a broader system scope safely"),
   });
   const rejected = project.framing!.proposedBrief!;
   const rejectedReview = project.framing!.proposalReview!;
@@ -162,17 +167,20 @@ Deno.test("a rejected update preserves the approved brief and stale proposals ca
     ...context("reject-brief-r2", project.revision),
     briefSnapshotId: rejected.id,
     briefRevision: rejected.revision,
-    rationale: "Bridge inspection is outside the first product scope.",
+    rationale: "The broader scope is outside the first product scope.",
     inputFingerprint: rejectedReview.inputFingerprint,
   });
 
   assertEquals(project.framing?.currentBrief?.id, canonicalId);
   assertEquals(project.framing?.proposalReview?.status, "rejected");
-  assertEquals(project.project.objective.statement, "Inspect a roof safely");
+  assertEquals(
+    project.project.objective.statement,
+    "Demonstrate a reviewable system safely",
+  );
 
   project = await service.proposeBrief(AGENT, {
     ...context("propose-brief-r3", project.revision),
-    items: briefItems("Inspect a roof safely with traceable evidence"),
+    items: briefItems("Demonstrate a reviewable system with traceable evidence"),
   });
   const staleProposal = project.framing!.proposedBrief!;
   const staleReview = project.framing!.proposalReview!;
@@ -358,7 +366,9 @@ Deno.test("a living brief revision does not rewrite the historical approval that
   );
   let revised = await laterBriefs.proposeBrief(AGENT, {
     ...context("propose-living-brief-r2", planned.revision),
-    items: briefItems("Inspect a roof safely with a reviewed maintenance envelope"),
+    items: briefItems(
+      "Demonstrate a reviewable system with a reviewed maintenance envelope",
+    ),
   });
   const proposal = revised.framing!.proposedBrief!;
   const review = revised.framing!.proposalReview!;
@@ -403,7 +413,7 @@ async function approvedProject(service: ProjectBriefCommandService) {
   let project = await start(service);
   project = await service.proposeBrief(AGENT, {
     ...context("propose-initial-brief", project.revision),
-    items: briefItems("Inspect a roof safely"),
+    items: briefItems("Demonstrate a reviewable system safely"),
   });
   const proposal = project.framing!.proposedBrief!;
   const review = project.framing!.proposalReview!;
@@ -420,9 +430,9 @@ function start(service: ProjectBriefCommandService) {
   return service.startProject(AGENT, {
     commandId: "start-project",
     projectId: PROJECT_ID,
-    projectName: "Inspection drone",
+    projectName: "Reviewable engineering system",
     issuedAt: "2026-08-03T08:59:00.000Z",
-    intent: "Build an inspection drone.",
+    intent: "Build a reviewable engineering system.",
     intentSource: { kind: "human", reference: "conversation:turn-1" },
   });
 }
@@ -446,14 +456,14 @@ function briefItems(objective: string): readonly ProjectBriefItem[] {
     statement: objective,
     sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
   }, {
-    id: "mission-roof-inspection",
+    id: "mission-bounded-demonstration",
     kind: "mission-scenario",
-    statement: "Capture usable roof imagery while maintaining safe separation.",
+    statement: "Demonstrate a bounded operating scenario with traceable evidence.",
     sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
   }, {
-    id: "success-controlled-flight",
+    id: "success-reviewed-system",
     kind: "success-criterion",
-    statement: "Complete the inspection route without loss of controlled flight.",
+    statement: "Complete the reviewed scenario with a traceable engineering record.",
     sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
   }];
 }

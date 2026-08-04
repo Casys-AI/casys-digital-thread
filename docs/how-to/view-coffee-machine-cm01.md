@@ -19,13 +19,10 @@ deno task start
 ```
 
 The provider MCPs listen on ports `3009`, `3014`, and `3015`. The Console MCP server on
-port `3020` exposes the current bounded V3 idea/specification path:
-`baseline.from-approved-brief@1`, `architecture.seed-syson-model@2`, and
-`architecture.author-inspection-drone@2`. Those operations can record an approved brief,
-create its blank SysON container, and author one fixed inspection-drone architecture;
-none is a generic CM-01 lifecycle or produces CAD/physics evidence. Docker Compose only
-starts providers; it neither executes this historical proof nor advances a project
-lifecycle.
+port `3020` exposes the paired-agent control plane; the current technical path is the
+fixed CM-01 V3 catalog described in the
+[local golden-run guide](run-cm01-v3-golden-local.md). Docker Compose only starts
+providers; it neither executes this historical proof nor advances a project lifecycle.
 
 The native cockpit is optional during execution, but useful for watching the recorded
 operations arrive in Activity:
@@ -51,8 +48,8 @@ Those human approval and queue receipts describe this archived r6 run; they are 
 current product interaction model. New projects express consequential decisions through
 signed MCP elicitation in chat, and the agent queues only ready registered work. A
 registered server-owned executor owns any later provider calls, capture, snapshot
-attachment, validation, and lifecycle transitions. No such CM-01 technical executor is
-exposed by the current Console MCP server.
+attachment, validation, and lifecycle transitions. The current CM-01 V3 executors use
+fresh identities and do not replay or promote this r6 record.
 
 The approved CM-01 reference proposal identifies the isolated `190 x 135 x 28 mm`
 DripTray, an ABS-like concept model (`E = 2200 MPa`, `nu = 0.35`), a fully fixed rear
@@ -86,20 +83,12 @@ deno task thread:run-coffee-machine-mechanical \
 ```
 
 This is not an MCP execution endpoint and is not a way to create or complete a new
-project run. The V2 `baseline.from-approved-discovery@1` remains trusted only for an
-exact historical approved-discovery project. The similarly named
-`architecture.seed-syson-model@1` and `architecture.author-inspection-drone@1` revisions
-remain readable for audit but are planning-only and never dispatched. None is a route
-into the current V3 product path.
-
-The current V3 path starts from the exact human-approved living brief with
-`baseline.from-approved-brief@1`, then uses `architecture.seed-syson-model@2` from exact
-r1 and `architecture.author-inspection-drone@2` from exact r2 and the same authorization
-chain. It is not a CM-01 path: those fixed operations create only a SysON container and
-one bounded inspection-drone architecture. They create no CM-01 or general CAD, physics,
-flight, cost, compliance, or verification evidence. The separate CM-01 V3 golden path
-now provides reviewed registered executors with fresh identities; it does not reuse this
-r6 reference.
+project run. It remains a historical r5/r6 provenance runner. The current
+`coffee-machine-cm01-v3` path begins with its own exact approved brief and registered
+operations, then produces fresh CM-01 evidence under new identities. It retains the r6
+record for provenance rather than treating it as a fallback, and its 28 mm → 30 mm
+correction closes only through its separate R11 identity recovery and R12
+requirement-family closeout.
 
 The command executes this backend-only chain:
 

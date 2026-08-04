@@ -16,7 +16,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     docker: unavailableDocker(),
     logger: () => {},
     activeProjectDirectory,
-    projectDiscoveryDirectory: `${activeProjectDirectory}/discoveries`,
   });
   assertEquals(app.getToolNames().sort(), [
     "cockpit_focus_set",
@@ -256,8 +255,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     );
 
     const projectTools = tools.filter((tool) =>
-      String(tool.name).startsWith("project_") &&
-      !String(tool.name).startsWith("project_discovery_")
+      String(tool.name).startsWith("project_")
     );
     assertEquals(
       projectTools.some((tool) =>
@@ -309,10 +307,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(annotations.idempotentHint, true);
       assertEquals(annotations.readOnlyHint, false);
     }
-    assertEquals(
-      tools.some((tool) => String(tool.name).startsWith("project_discovery_")),
-      false,
-    );
     const focusTools = tools.filter((tool) =>
       String(tool.name).startsWith("cockpit_focus_")
     );

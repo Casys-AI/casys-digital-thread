@@ -19,7 +19,7 @@ export interface EngineeringProjectCommandRuntimeOptions {
   readonly evidenceSnapshots: ExactThreadSnapshotReader;
   /** Optional until a trusted agent planning surface is configured. */
   readonly planning?: EngineeringProjectPlanningDependencies;
-  /** Required by the trusted V2 documentary baseline executor. */
+  /** Required by the trusted approved-brief documentary baseline executor. */
   readonly initialEvidenceValidator?:
     EngineeringProjectInitialCompletionEvidenceValidator;
 }
