@@ -19,6 +19,7 @@ import {
 } from "../domain/cm01-drip-tray-mechanical-proof.ts";
 import type {
   ContentFingerprint,
+  ProposedThreadAction,
   RequirementEvaluation,
   ThreadArtifact,
   ThreadArtifactConsumption,
@@ -664,6 +665,12 @@ export async function materializeCoffeeMachineCm01V3MechanicalSnapshot(
       );
     },
   );
+  /**
+   * Violations are derived from oracle verdicts only — never hardcoded. A fail
+   * verdict without a named violation would be rejected by validateThreadSnapshot
+   * (missing_violation); a violation without a fail verdict would equally be
+   * rejected (unexpected_violation). Both rules are enforced symmetrically.
+   */
   const violations: ThreadViolation[] = evaluations.flatMap((ev, index) => {
     if (ev.status !== "fail") return [];
     const req = requirements[index]!;
@@ -682,6 +689,17 @@ export async function materializeCoffeeMachineCm01V3MechanicalSnapshot(
       freshness,
     }];
   });
+  const proposedActions: ProposedThreadAction[] = violations.map((v) => ({
+    id: `${v.id}-action`,
+    name: `Review the concept limit violation: ${v.name}`,
+    kind: "review" as const,
+    readiness: "ready" as const,
+    rationale: "A bounded oracle verdict identified a concept limit violation in the " +
+      "V3 mechanical path; operator review is required before any further action is taken.",
+    targets: [{ kind: "artifact" as const, id: solveId }],
+    addressesViolationIds: [v.id],
+    dependsOnActionIds: [],
+  }));
   const extension = {
     id: `${prefix}-extension`,
     name: "Capture the attested CM-01 V3 DripTray static proof",
@@ -693,7 +711,7 @@ export async function materializeCoffeeMachineCm01V3MechanicalSnapshot(
     requirements,
     evaluations,
     violations,
-    proposedActions: [],
+    proposedActions,
     provenance: [
       link(
         `${prefix}-solve-from-step`,
@@ -762,6 +780,32 @@ export async function materializeCoffeeMachineCm01V3MechanicalSnapshot(
           )
         ),
       ]),
+      ...violations.flatMap((v) => [
+        {
+          id: `${v.id}-caused-by`,
+          relation: "caused_by" as const,
+          from: { kind: "violation" as const, id: v.id },
+          to: { kind: "evaluation" as const, id: v.evaluationId },
+          rationale:
+            "The bounded oracle verdict on the concept limit caused this violation.",
+        },
+        ...v.evidenceArtifactIds.map((artId) => ({
+          id: `${v.id}-evidences-${artId}`,
+          relation: "evidences" as const,
+          from: { kind: "violation" as const, id: v.id },
+          to: { kind: "artifact" as const, id: artId },
+          rationale:
+            "The CalculiX solver result is the direct evidence for this violation.",
+        })),
+      ]),
+      ...proposedActions.map((a) => ({
+        id: `${a.id}-addresses`,
+        relation: "addresses" as const,
+        from: { kind: "action" as const, id: a.id },
+        to: { kind: "violation" as const, id: a.addressesViolationIds[0]! },
+        rationale:
+          "This review action is proposed to address the concept limit violation.",
+      })),
     ],
   };
   const applied = applyThreadSnapshotExtensionIfNew(base, extension, {

@@ -1363,14 +1363,6 @@ function validateResults(
     const marginPercent = threshold === 0
       ? undefined
       : Math.round((margin / Math.abs(threshold)) * 10_000) / 100;
-    const expectedStatus: RequirementEvaluationStatus = computedValue <= threshold
-      ? "pass"
-      : "fail";
-    if (status !== expectedStatus) {
-      throw new Error(
-        `${path}.status does not match the recomputed ${constraint.feature} verdict.`,
-      );
-    }
     const parsed: EvaluationResult = {
       constraintId,
       constraintName: nonEmptyString(result.constraintName, `${path}.constraintName`),
@@ -1382,30 +1374,69 @@ function validateResults(
       constraint.name,
       `${path}.constraintName`,
     );
-    parsed.computedValue = exactFinite(
-      result.computedValue,
-      computedValue,
-      `${path}.computedValue`,
-    );
-    parsed.threshold = exactFinite(
-      result.threshold,
-      threshold,
-      `${path}.threshold`,
-    );
-    parsed.margin = exactFinite(result.margin, margin, `${path}.margin`);
-    if (marginPercent === undefined) {
-      if (result.marginPercent !== undefined) {
-        throw new Error(`${path}.marginPercent must be omitted for a zero threshold.`);
+    /**
+     * The cross-check detects a real inconsistency: the oracle reports a verdict
+     * that contradicts the local recomputation of the same metric (e.g., oracle
+     * says "pass" while the CalculiX-derived value exceeds the reviewed limit).
+     * When such a divergence is detected, stopping unconditionally is the only
+     * safe response — the captured evidence is incoherent and must not reach the
+     * snapshot.
+     *
+     * The guard applies only to "pass" and "fail" because those are the only
+     * statuses for which the oracle made a numeric decision. "unresolved" and
+     * "error" mean the oracle explicitly opted out of a verdict; comparing a
+     * threshold crossing against a non-decision has no meaning and would always
+     * throw, preventing these first-class statuses from reaching the published
+     * snapshot. Numeric fields (computedValue, threshold, margin, unit) are
+     * likewise absent from non-decidable results and must not be validated.
+     */
+    if (status === "pass" || status === "fail") {
+      const expectedStatus: RequirementEvaluationStatus = computedValue <= threshold
+        ? "pass"
+        : "fail";
+      if (status !== expectedStatus) {
+        throw new Error(
+          `${path}.status does not match the recomputed ${constraint.feature} verdict.`,
+        );
+      }
+      parsed.computedValue = exactFinite(
+        result.computedValue,
+        computedValue,
+        `${path}.computedValue`,
+      );
+      parsed.threshold = exactFinite(
+        result.threshold,
+        threshold,
+        `${path}.threshold`,
+      );
+      parsed.margin = exactFinite(result.margin, margin, `${path}.margin`);
+      if (marginPercent === undefined) {
+        if (result.marginPercent !== undefined) {
+          throw new Error(
+            `${path}.marginPercent must be omitted for a zero threshold.`,
+          );
+        }
+      } else {
+        parsed.marginPercent = exactFinite(
+          result.marginPercent,
+          marginPercent,
+          `${path}.marginPercent`,
+        );
+      }
+      parsed.unit = nonEmptyString(result.unit, `${path}.unit`);
+      exact(parsed.unit, constraint.limit.unit, `${path}.unit`);
+    } else if (status === "unresolved") {
+      if (Array.isArray(result.unresolvedRefs)) {
+        parsed.unresolvedRefs = result.unresolvedRefs.filter(
+          (ref): ref is string => typeof ref === "string",
+        );
       }
     } else {
-      parsed.marginPercent = exactFinite(
-        result.marginPercent,
-        marginPercent,
-        `${path}.marginPercent`,
-      );
+      // status === "error"
+      if (typeof result.error === "string" && result.error.trim() !== "") {
+        parsed.error = result.error;
+      }
     }
-    parsed.unit = nonEmptyString(result.unit, `${path}.unit`);
-    exact(parsed.unit, constraint.limit.unit, `${path}.unit`);
     return parsed;
   });
 }

@@ -413,6 +413,80 @@ Deno.test("materializer recomputes conversion, verdict and every reported margin
   );
 });
 
+Deno.test(
+  "oracle unresolved status reaches the published evaluation without exception",
+  async () => {
+    const value = await persistedCapture();
+    mutateResult(value, 1, (result) => {
+      result.status = "unresolved";
+      result.unresolvedRefs = ["assembly_max_von_mises"];
+      delete result.computedValue;
+      delete result.threshold;
+      delete result.margin;
+      delete result.marginPercent;
+      delete result.unit;
+    });
+    value.workflow.nodes[3].structuredContent.summary = {
+      total: 2,
+      pass: 1,
+      fail: 0,
+      error: 0,
+      unresolved: 1,
+    };
+    value.workflow.nodes[3].outputs.summary = structuredClone(
+      value.workflow.nodes[3].structuredContent.summary,
+    );
+    const extension = await materializeCoffeeMachineMechanicalRunExtension(value, {
+      runId: RUN_ID,
+    });
+    assertEquals(extension.evaluations.map((item) => item.status), [
+      "pass",
+      "unresolved",
+    ]);
+    assertEquals(
+      extension.evaluations.find((item) => item.status === "unresolved")?.comparison,
+      undefined,
+    );
+    assertEquals(extension.violations, []);
+    assertEquals(extension.proposedActions, []);
+  },
+);
+
+Deno.test(
+  "oracle error status reaches the published evaluation without exception",
+  async () => {
+    const value = await persistedCapture();
+    mutateResult(value, 1, (result) => {
+      result.status = "error";
+      result.error = "SysON evaluation service unavailable";
+      delete result.computedValue;
+      delete result.threshold;
+      delete result.margin;
+      delete result.marginPercent;
+      delete result.unit;
+    });
+    value.workflow.nodes[3].structuredContent.summary = {
+      total: 2,
+      pass: 1,
+      fail: 0,
+      error: 1,
+      unresolved: 0,
+    };
+    value.workflow.nodes[3].outputs.summary = structuredClone(
+      value.workflow.nodes[3].structuredContent.summary,
+    );
+    const extension = await materializeCoffeeMachineMechanicalRunExtension(value, {
+      runId: RUN_ID,
+    });
+    assertEquals(extension.evaluations.map((item) => item.status), ["pass", "error"]);
+    assertEquals(
+      extension.evaluations.find((item) => item.status === "error")?.comparison,
+      undefined,
+    );
+    assertEquals(extension.violations, []);
+  },
+);
+
 async function persistedCapture(stressStatus: "pass" | "fail" = "pass") {
   return JSON.parse(JSON.stringify(await capture(stressStatus)));
 }

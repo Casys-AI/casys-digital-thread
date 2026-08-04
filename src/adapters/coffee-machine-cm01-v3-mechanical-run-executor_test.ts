@@ -1,7 +1,10 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { EngineeringProjectCommandError } from "../domain/engineering-project-command-service.ts";
 import { parseCm01DripTrayMechanicalProof } from "../domain/cm01-drip-tray-mechanical-proof.ts";
-import { createThreadSnapshot } from "../domain/thread-snapshot-validation.ts";
+import {
+  createThreadSnapshot,
+  validateThreadSnapshot,
+} from "../domain/thread-snapshot-validation.ts";
 import { captureCm01DripTrayMechanical } from "./cm01-drip-tray-mechanical-capture.ts";
 import {
   callMechanicalConstraintOracle,
@@ -347,6 +350,165 @@ Deno.test("callMechanicalConstraintOracle propagates oracle error result without
   assertEquals(results.get("assembly_max_displacement")?.status, "error");
   assertEquals(results.get("assembly_max_von_mises")?.status, "unresolved");
 });
+
+Deno.test(
+  "materializeCoffeeMachineCm01V3MechanicalSnapshot fail verdict produces a validated snapshot with named violations and proposed actions",
+  async () => {
+    const capture = await captureCm01DripTrayMechanical(
+      new StaticClient(exportResult()),
+      new StaticClient(solveResult()),
+      proof(),
+      () => "2026-08-03T16:00:00.000Z",
+    );
+    const oracleResults = new Map<string, ParsedOracleResult>([
+      [
+        "assembly_max_displacement",
+        {
+          status: "fail",
+          computedValue: 1.5,
+          threshold: 1,
+          margin: -0.5,
+          marginPercent: -50,
+          unit: "mm",
+        },
+      ],
+      [
+        "assembly_max_von_mises",
+        {
+          status: "fail",
+          computedValue: 25.0,
+          threshold: 20,
+          margin: -5.0,
+          marginPercent: -25,
+          unit: "MPa",
+        },
+      ],
+    ]);
+    const materialized = await materializeCoffeeMachineCm01V3MechanicalSnapshot(
+      baseSnapshot(),
+      "run:mechanical:fail",
+      capture,
+      "casys://test/mechanical-capture-fail",
+      proof(),
+      oracleResults,
+    );
+
+    // Must not throw — the validator enforces every invariant, including
+    // fail→violation and violation→proposedAction symmetry rules.
+    validateThreadSnapshot(materialized.snapshot);
+
+    assertEquals(materialized.snapshot.violations.length, 2);
+    assertEquals(materialized.snapshot.proposedActions.length, 2);
+
+    for (const v of materialized.snapshot.violations) {
+      assertEquals(v.status, "open");
+      const addressed = materialized.snapshot.proposedActions.some((a) =>
+        a.addressesViolationIds.includes(v.id)
+      );
+      assertEquals(
+        addressed,
+        true,
+        `open violation ${v.id} must have a proposed action`,
+      );
+      const causeLink = materialized.snapshot.provenance.some(
+        (link) =>
+          link.relation === "caused_by" &&
+          link.from.kind === "violation" &&
+          link.from.id === v.id &&
+          link.to.kind === "evaluation" &&
+          link.to.id === v.evaluationId,
+      );
+      assertEquals(
+        causeLink,
+        true,
+        `violation ${v.id} must have a caused_by provenance link`,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "materializeCoffeeMachineCm01V3MechanicalSnapshot pass verdict produces a validated snapshot with no violations and no proposed actions",
+  async () => {
+    const capture = await captureCm01DripTrayMechanical(
+      new StaticClient(exportResult()),
+      new StaticClient(solveResult()),
+      proof(),
+      () => "2026-08-03T16:00:00.000Z",
+    );
+    const oracleResults = new Map<string, ParsedOracleResult>([
+      [
+        "assembly_max_displacement",
+        {
+          status: "pass",
+          computedValue: 0.1,
+          threshold: 1,
+          margin: 0.9,
+          marginPercent: 90,
+          unit: "mm",
+        },
+      ],
+      [
+        "assembly_max_von_mises",
+        {
+          status: "pass",
+          computedValue: 0.5,
+          threshold: 20,
+          margin: 19.5,
+          marginPercent: 97.5,
+          unit: "MPa",
+        },
+      ],
+    ]);
+    const materialized = await materializeCoffeeMachineCm01V3MechanicalSnapshot(
+      baseSnapshot(),
+      "run:mechanical:pass",
+      capture,
+      "casys://test/mechanical-capture-pass",
+      proof(),
+      oracleResults,
+    );
+
+    validateThreadSnapshot(materialized.snapshot);
+    assertEquals(materialized.snapshot.violations.length, 0);
+    assertEquals(materialized.snapshot.proposedActions.length, 0);
+  },
+);
+
+Deno.test(
+  "materializeCoffeeMachineCm01V3MechanicalSnapshot unresolved verdict produces a validated snapshot without violations — unresolved is publishable",
+  async () => {
+    const capture = await captureCm01DripTrayMechanical(
+      new StaticClient(exportResult()),
+      new StaticClient(solveResult()),
+      proof(),
+      () => "2026-08-03T16:00:00.000Z",
+    );
+    const oracleResults = new Map<string, ParsedOracleResult>([
+      ["assembly_max_displacement", { status: "unresolved" }],
+      ["assembly_max_von_mises", { status: "unresolved" }],
+    ]);
+    const materialized = await materializeCoffeeMachineCm01V3MechanicalSnapshot(
+      baseSnapshot(),
+      "run:mechanical:unresolved",
+      capture,
+      "casys://test/mechanical-capture-unresolved",
+      proof(),
+      oracleResults,
+    );
+
+    // An unresolved evaluation is a first-class state, not a failure. The
+    // snapshot must pass validateThreadSnapshot, proving that a snapshot
+    // carrying an unresolved oracle verdict is publishable.
+    validateThreadSnapshot(materialized.snapshot);
+    assertEquals(materialized.snapshot.violations.length, 0);
+    assertEquals(materialized.snapshot.proposedActions.length, 0);
+    assertEquals(
+      materialized.snapshot.evaluations.every((ev) => ev.status === "unresolved"),
+      true,
+    );
+  },
+);
 
 Deno.test("callMechanicalConstraintOracle rejects malformed oracle structuredContent fail-closed", async () => {
   const sysonClient = new OracleClient({ not_results: [] });

@@ -699,6 +699,8 @@ async function createProjectControl(
           {
             operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
             executor: cm01MechanicalR3IdentityRecovery,
+            unavailableMessage:
+              "The server has no trusted CM-01 R3 identity recovery executor configured for this run.",
           },
         ],
       }),

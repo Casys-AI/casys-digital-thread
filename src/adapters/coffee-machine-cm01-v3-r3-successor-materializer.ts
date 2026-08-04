@@ -2,12 +2,14 @@ import { sha256Fingerprint } from "../domain/deterministic-json.ts";
 import type { Cm01DripTrayMechanicalProofR3 } from "../domain/cm01-drip-tray-mechanical-proof.ts";
 import type {
   ContentFingerprint,
+  ProposedThreadAction,
   RequirementEvaluation,
   ThreadArtifact,
   ThreadArtifactConsumption,
   ThreadFreshness,
   ThreadOperationRef,
   ThreadSnapshot,
+  ThreadViolation,
   TracedRequirement,
 } from "../domain/thread-snapshot.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../domain/thread-snapshot-extension.ts";
@@ -255,6 +257,42 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
     const recoveryLinks = predecessor.recovery
       ? requirementSupersedesLinks(requirements, predecessor.requirements!)
       : [];
+    /**
+     * Violations are derived from oracle verdicts only — never hardcoded. A fail
+     * verdict without a named violation would be rejected by validateThreadSnapshot
+     * (missing_violation); a violation without a fail verdict would equally be
+     * rejected (unexpected_violation). Both rules are enforced symmetrically.
+     */
+    const violations: ThreadViolation[] = evaluations.flatMap((ev, index) => {
+      if (ev.status !== "fail") return [];
+      const req = requirements[index]!;
+      const obs = observations[index]!;
+      return [{
+        id: `${ev.id}-violation`,
+        name: `${req.name} exceeds the reviewed concept limit`,
+        requirementId: req.id,
+        evaluationId: ev.id,
+        severity: "error" as const,
+        status: "open" as const,
+        detectedAt: capture.capturedAt,
+        observationIds: [obs.id],
+        evidenceArtifactIds: [solveId],
+        summary: ev.message,
+        freshness,
+      }];
+    });
+    const proposedActions: ProposedThreadAction[] = violations.map((v) => ({
+      id: `${v.id}-action`,
+      name: `Review the concept limit violation: ${v.name}`,
+      kind: "review" as const,
+      readiness: "ready" as const,
+      rationale:
+        "A bounded oracle verdict identified a concept limit violation in the R3 " +
+        "path; operator review is required before any further action is taken.",
+      targets: [{ kind: "artifact" as const, id: solveId }],
+      addressesViolationIds: [v.id],
+      dependsOnActionIds: [],
+    }));
     const applied = applyThreadSnapshotExtensionIfNew(base, {
       id: `${prefix}-extension`,
       name: predecessor.recovery
@@ -267,8 +305,8 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
       observations,
       requirements,
       evaluations,
-      violations: [],
-      proposedActions: [],
+      violations,
+      proposedActions,
       provenance: [
         link(
           `${prefix}-proof-from-correction`,
@@ -365,6 +403,32 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
             )
           ),
         ]),
+        ...violations.flatMap((v) => [
+          {
+            id: `${v.id}-caused-by`,
+            relation: "caused_by" as const,
+            from: { kind: "violation" as const, id: v.id },
+            to: { kind: "evaluation" as const, id: v.evaluationId },
+            rationale:
+              "The bounded R3 oracle verdict on the concept limit caused this violation.",
+          },
+          ...v.evidenceArtifactIds.map((artId) => ({
+            id: `${v.id}-evidences-${artId}`,
+            relation: "evidences" as const,
+            from: { kind: "violation" as const, id: v.id },
+            to: { kind: "artifact" as const, id: artId },
+            rationale:
+              "The CalculiX R3 solver result is the direct evidence for this violation.",
+          })),
+        ]),
+        ...proposedActions.map((a) => ({
+          id: `${a.id}-addresses`,
+          relation: "addresses" as const,
+          from: { kind: "action" as const, id: a.id },
+          to: { kind: "violation" as const, id: a.addressesViolationIds[0]! },
+          rationale:
+            "This review action is proposed to address the R3 concept limit violation.",
+        })),
       ],
     }, { appliedAt: capture.capturedAt });
     if (!applied.applied || applied.snapshot.revision !== base.revision + 1) {
