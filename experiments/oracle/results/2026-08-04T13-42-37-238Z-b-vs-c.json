@@ -1,0 +1,695 @@
+{
+  "schemaVersion": "oracle-campaign/1.0",
+  "taskSetId": "b-vs-c-drip-tray-displacement-v1",
+  "tasksDigest": {
+    "algorithm": "sha256",
+    "digest": "74437a78b1110efa851f07ed87faeb67ac4600777df4b72310f1814c3fa30674"
+  },
+  "sensitivityCaseDigest": {
+    "algorithm": "sha256",
+    "digest": "49894a6bc348466f485e054b134ccfd5d5986e7ae75cce8a90e1de65af608d24"
+  },
+  "sensitivityCaseId": "coffee-machine-cm01-v3-drip-tray-size-z-sensitivity-v1",
+  "meshSizeMm": 5,
+  "safeHeightDomainMm": {
+    "min": 20,
+    "max": 31,
+    "rationale": "Selection boxes (z = ±16 mm) require heightMm/2 < 16 mm to maintain face margin. At 31 mm the margin is 0.5 mm (validated by the sensitivity case). At 32 mm the margin is 0, reproducing the R2 selection-box failure."
+  },
+  "repeatability": {
+    "heightMm": 25,
+    "solves": [
+      {
+        "displacementMm": 0.14457211833602265,
+        "vonMisesMpa": 0.6641232248380826
+      },
+      {
+        "displacementMm": 0.14457211833602265,
+        "vonMisesMpa": 0.6641232248380826
+      }
+    ],
+    "minDisplacementMm": 0.14457211833602265,
+    "maxDisplacementMm": 0.14457211833602265,
+    "amplitudeMm": 0,
+    "thresholdMm": 0.005,
+    "withinThreshold": true
+  },
+  "runs": [
+    {
+      "taskId": "T01",
+      "arm": "B",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 2,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "wallTimeMs": 31389,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "vonMisesMpa": 0.47810711748071366,
+          "verdict": "pass",
+          "wallTimeMs": 16167,
+          "rationale": "bisection midpoint 30.0000 in [29.0000, 31.0000]"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 29.5,
+          "displacementMm": 0.08932257826161757,
+          "vonMisesMpa": 0.4908487595282334,
+          "verdict": "fail",
+          "wallTimeMs": 15222,
+          "rationale": "bisection midpoint 29.5000 in [29.0000, 30.0000]"
+        }
+      ]
+    },
+    {
+      "taskId": "T01",
+      "arm": "C",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 2,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "wallTimeMs": 29771,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "vonMisesMpa": 0.5161354362463465,
+          "verdict": "fail",
+          "wallTimeMs": 14275,
+          "rationale": "gradient measurement solve 1: H0=29"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "vonMisesMpa": 0.47810711748071366,
+          "verdict": "pass",
+          "wallTimeMs": 15496,
+          "rationale": "gradient measurement solve 2: H0+step=30"
+        }
+      ]
+    },
+    {
+      "taskId": "T01",
+      "arm": "CA",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 2,
+      "finalHeightMm": 29.732984471188942,
+      "finalDisplacementMm": 0.08734345543766683,
+      "wallTimeMs": 28611,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "vonMisesMpa": 0.5161354362463465,
+          "verdict": "fail",
+          "wallTimeMs": 14310,
+          "rationale": "starting-point solve: H0=29"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 29.732984471188942,
+          "displacementMm": 0.08734345543766683,
+          "vonMisesMpa": 0.48633523937896095,
+          "verdict": "pass",
+          "wallTimeMs": 14301,
+          "rationale": "gradient refinement: 29.0000 + 0.7330 = 29.7330 (dDisp/dH=-0.008018)"
+        }
+      ]
+    },
+    {
+      "taskId": "T02",
+      "arm": "B",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 3,
+      "finalHeightMm": 29.5,
+      "finalDisplacementMm": 0.08932257826161757,
+      "wallTimeMs": 42948,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 29.5,
+          "displacementMm": 0.08932257826161757,
+          "vonMisesMpa": 0.4908487595282334,
+          "verdict": "pass",
+          "wallTimeMs": 15375,
+          "rationale": "bisection midpoint 29.5000 in [28.0000, 31.0000]"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 28.75,
+          "displacementMm": 0.0961974071870181,
+          "vonMisesMpa": 0.5199040850612573,
+          "verdict": "fail",
+          "wallTimeMs": 13629,
+          "rationale": "bisection midpoint 28.7500 in [28.0000, 29.5000]"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 29.125,
+          "displacementMm": 0.09268145570104969,
+          "vonMisesMpa": 0.5072309404710263,
+          "verdict": "fail",
+          "wallTimeMs": 13944,
+          "rationale": "bisection midpoint 29.1250 in [28.7500, 29.5000]"
+        }
+      ]
+    },
+    {
+      "taskId": "T02",
+      "arm": "C",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 4,
+      "finalHeightMm": 29.204139433250937,
+      "finalDisplacementMm": 0.09195547168836699,
+      "wallTimeMs": 56311,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "vonMisesMpa": 0.5309183805726515,
+          "verdict": "fail",
+          "wallTimeMs": 13603,
+          "rationale": "gradient measurement solve 1: H0=28"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "vonMisesMpa": 0.5161354362463465,
+          "verdict": "fail",
+          "wallTimeMs": 14381,
+          "rationale": "gradient measurement solve 2: H0+step=29"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 29.192404270138073,
+          "displacementMm": 0.0921144867508217,
+          "vonMisesMpa": 0.5029211144476943,
+          "verdict": "fail",
+          "wallTimeMs": 14256,
+          "rationale": "gradient refinement: 29.0000 + 0.1924 = 29.1924 (dDisp/dH=-0.009756)"
+        },
+        {
+          "solveIndex": 3,
+          "heightMm": 29.204139433250937,
+          "displacementMm": 0.09195547168836699,
+          "vonMisesMpa": 0.5029693463557571,
+          "verdict": "pass",
+          "wallTimeMs": 14071,
+          "rationale": "gradient refinement: 29.1924 + 0.0117 = 29.2041 (dDisp/dH=-0.009756)"
+        }
+      ]
+    },
+    {
+      "taskId": "T02",
+      "arm": "CA",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 2,
+      "finalHeightMm": 29.450853042967015,
+      "finalDisplacementMm": 0.08973747249728105,
+      "wallTimeMs": 28370,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "vonMisesMpa": 0.5309183805726515,
+          "verdict": "fail",
+          "wallTimeMs": 13452,
+          "rationale": "starting-point solve: H0=28"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 29.450853042967015,
+          "displacementMm": 0.08973747249728105,
+          "vonMisesMpa": 0.5006209869091035,
+          "verdict": "pass",
+          "wallTimeMs": 14918,
+          "rationale": "gradient refinement: 28.0000 + 1.4509 = 29.4509 (dDisp/dH=-0.008018)"
+        }
+      ]
+    },
+    {
+      "taskId": "T03",
+      "arm": "B",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 3,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "wallTimeMs": 41603,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "vonMisesMpa": 0.5161354362463465,
+          "verdict": "pass",
+          "wallTimeMs": 14369,
+          "rationale": "bisection midpoint 29.0000 in [27.0000, 31.0000]"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "vonMisesMpa": 0.5309183805726515,
+          "verdict": "fail",
+          "wallTimeMs": 13594,
+          "rationale": "bisection midpoint 28.0000 in [27.0000, 29.0000]"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 28.5,
+          "displacementMm": 0.0991625791449231,
+          "vonMisesMpa": 0.5404700537897338,
+          "verdict": "fail",
+          "wallTimeMs": 13640,
+          "rationale": "bisection midpoint 28.5000 in [28.0000, 29.0000]"
+        }
+      ]
+    },
+    {
+      "taskId": "T03",
+      "arm": "C",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 6,
+      "finalHeightMm": 28.88325066838103,
+      "finalDisplacementMm": 0.09491810720929969,
+      "wallTimeMs": 81523,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "vonMisesMpa": 0.5763836659439853,
+          "verdict": "fail",
+          "wallTimeMs": 12141,
+          "rationale": "gradient measurement solve 1: H0=27"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "vonMisesMpa": 0.5309183805726515,
+          "verdict": "fail",
+          "wallTimeMs": 13540,
+          "rationale": "gradient measurement solve 2: H0+step=28"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 28.74240511938275,
+          "displacementMm": 0.09629762454589366,
+          "vonMisesMpa": 0.5243184667824669,
+          "verdict": "fail",
+          "wallTimeMs": 13771,
+          "rationale": "gradient refinement: 28.0000 + 0.7424 = 28.7424 (dDisp/dH=-0.011628)"
+        },
+        {
+          "solveIndex": 3,
+          "heightMm": 28.853996617167862,
+          "displacementMm": 0.09525077061783932,
+          "vonMisesMpa": 0.5183555762327707,
+          "verdict": "fail",
+          "wallTimeMs": 14084,
+          "rationale": "gradient refinement: 28.7424 + 0.1116 = 28.8540 (dDisp/dH=-0.011628)"
+        },
+        {
+          "solveIndex": 4,
+          "heightMm": 28.87556207609336,
+          "displacementMm": 0.09508940561130438,
+          "vonMisesMpa": 0.5157269480768185,
+          "verdict": "fail",
+          "wallTimeMs": 13932,
+          "rationale": "gradient refinement: 28.8540 + 0.0216 = 28.8756 (dDisp/dH=-0.011628)"
+        },
+        {
+          "solveIndex": 5,
+          "heightMm": 28.88325066838103,
+          "displacementMm": 0.09491810720929969,
+          "vonMisesMpa": 0.5136973981881503,
+          "verdict": "pass",
+          "wallTimeMs": 14055,
+          "rationale": "gradient refinement: 28.8756 + 0.0077 = 28.8833 (dDisp/dH=-0.011628)"
+        }
+      ]
+    },
+    {
+      "taskId": "T03",
+      "arm": "CA",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 2,
+      "finalHeightMm": 29.526974657069193,
+      "finalDisplacementMm": 0.08905923918740508,
+      "wallTimeMs": 26813,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "vonMisesMpa": 0.5763836659439853,
+          "verdict": "fail",
+          "wallTimeMs": 12339,
+          "rationale": "starting-point solve: H0=27"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 29.526974657069193,
+          "displacementMm": 0.08905923918740508,
+          "vonMisesMpa": 0.49399425706920314,
+          "verdict": "pass",
+          "wallTimeMs": 14474,
+          "rationale": "gradient refinement: 27.0000 + 2.5270 = 29.5270 (dDisp/dH=-0.008018)"
+        }
+      ]
+    },
+    {
+      "taskId": "T04",
+      "arm": "B",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 4,
+      "finalHeightMm": 28.75,
+      "finalDisplacementMm": 0.0961974071870181,
+      "wallTimeMs": 56341,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "vonMisesMpa": 0.5309183805726515,
+          "verdict": "fail",
+          "wallTimeMs": 13561,
+          "rationale": "bisection midpoint 28.0000 in [25.0000, 31.0000]"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 29.5,
+          "displacementMm": 0.08932257826161757,
+          "vonMisesMpa": 0.4908487595282334,
+          "verdict": "pass",
+          "wallTimeMs": 15352,
+          "rationale": "bisection midpoint 29.5000 in [28.0000, 31.0000]"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 28.75,
+          "displacementMm": 0.0961974071870181,
+          "vonMisesMpa": 0.5199040850612573,
+          "verdict": "pass",
+          "wallTimeMs": 13763,
+          "rationale": "bisection midpoint 28.7500 in [28.0000, 29.5000]"
+        },
+        {
+          "solveIndex": 3,
+          "heightMm": 28.375,
+          "displacementMm": 0.10042464380124928,
+          "vonMisesMpa": 0.5370365892435658,
+          "verdict": "fail",
+          "wallTimeMs": 13665,
+          "rationale": "bisection midpoint 28.3750 in [28.0000, 28.7500]"
+        }
+      ]
+    },
+    {
+      "taskId": "T04",
+      "arm": "C",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 6,
+      "finalHeightMm": 28.386518018251458,
+      "finalDisplacementMm": 0.09979339200516309,
+      "wallTimeMs": 76309,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 25,
+          "displacementMm": 0.14457211833602265,
+          "vonMisesMpa": 0.6641232248380826,
+          "verdict": "fail",
+          "wallTimeMs": 10479,
+          "rationale": "gradient measurement solve 1: H0=25"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 26,
+          "displacementMm": 0.12915888445099724,
+          "vonMisesMpa": 0.6232860987646983,
+          "verdict": "fail",
+          "wallTimeMs": 11593,
+          "rationale": "gradient measurement solve 2: H0+step=26"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 27.89180834265587,
+          "displacementMm": 0.10463147665715473,
+          "vonMisesMpa": 0.5326971002296678,
+          "verdict": "fail",
+          "wallTimeMs": 13009,
+          "rationale": "gradient refinement: 26.0000 + 1.8918 = 27.8918 (dDisp/dH=-0.015413)"
+        },
+        {
+          "solveIndex": 3,
+          "heightMm": 28.192295358664524,
+          "displacementMm": 0.10213171741687489,
+          "vonMisesMpa": 0.5449451189514701,
+          "verdict": "fail",
+          "wallTimeMs": 14175,
+          "rationale": "gradient refinement: 27.8918 + 0.3005 = 28.1923 (dDisp/dH=-0.015413)"
+        },
+        {
+          "solveIndex": 4,
+          "heightMm": 28.330599716645228,
+          "displacementMm": 0.10086188186111023,
+          "vonMisesMpa": 0.5376904261159648,
+          "verdict": "fail",
+          "wallTimeMs": 13467,
+          "rationale": "gradient refinement: 28.1923 + 0.1383 = 28.3306 (dDisp/dH=-0.015413)"
+        },
+        {
+          "solveIndex": 5,
+          "heightMm": 28.386518018251458,
+          "displacementMm": 0.09979339200516309,
+          "vonMisesMpa": 0.535044667041211,
+          "verdict": "pass",
+          "wallTimeMs": 13586,
+          "rationale": "gradient refinement: 28.3306 + 0.0559 = 28.3865 (dDisp/dH=-0.015413)"
+        }
+      ]
+    },
+    {
+      "taskId": "T04",
+      "arm": "CA",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 2,
+      "finalHeightMm": 30.5590051648394,
+      "finalDisplacementMm": 0.08078556895363938,
+      "wallTimeMs": 25277,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 25,
+          "displacementMm": 0.14457211833602265,
+          "vonMisesMpa": 0.6641232248380826,
+          "verdict": "fail",
+          "wallTimeMs": 10323,
+          "rationale": "starting-point solve: H0=25"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 30.5590051648394,
+          "displacementMm": 0.08078556895363938,
+          "vonMisesMpa": 0.46201060333324295,
+          "verdict": "pass",
+          "wallTimeMs": 14954,
+          "rationale": "gradient refinement: 25.0000 + 5.5590 = 30.5590 (dDisp/dH=-0.008018)"
+        }
+      ]
+    },
+    {
+      "taskId": "T05",
+      "arm": "B",
+      "stopReason": "converged",
+      "converged": true,
+      "nSolves": 4,
+      "finalHeightMm": 27.5,
+      "finalDisplacementMm": 0.10923776589174745,
+      "wallTimeMs": 52795,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "vonMisesMpa": 0.5763836659439853,
+          "verdict": "fail",
+          "wallTimeMs": 12167,
+          "rationale": "bisection midpoint 27.0000 in [23.0000, 31.0000]"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "vonMisesMpa": 0.5161354362463465,
+          "verdict": "pass",
+          "wallTimeMs": 14363,
+          "rationale": "bisection midpoint 29.0000 in [27.0000, 31.0000]"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "vonMisesMpa": 0.5309183805726515,
+          "verdict": "pass",
+          "wallTimeMs": 13621,
+          "rationale": "bisection midpoint 28.0000 in [27.0000, 29.0000]"
+        },
+        {
+          "solveIndex": 3,
+          "heightMm": 27.5,
+          "displacementMm": 0.10923776589174745,
+          "vonMisesMpa": 0.5542128625753433,
+          "verdict": "pass",
+          "wallTimeMs": 12644,
+          "rationale": "bisection midpoint 27.5000 in [27.0000, 28.0000]"
+        }
+      ]
+    },
+    {
+      "taskId": "T05",
+      "arm": "C",
+      "stopReason": "budget_exceeded",
+      "converged": false,
+      "nSolves": 8,
+      "finalHeightMm": null,
+      "finalDisplacementMm": null,
+      "wallTimeMs": 92556,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 23,
+          "displacementMm": 0.18438866477269136,
+          "vonMisesMpa": 0.7781257734478075,
+          "verdict": "fail",
+          "wallTimeMs": 9444,
+          "rationale": "gradient measurement solve 1: H0=23"
+        },
+        {
+          "solveIndex": 1,
+          "heightMm": 24,
+          "displacementMm": 0.16274984422932542,
+          "vonMisesMpa": 0.7166052596086508,
+          "verdict": "fail",
+          "wallTimeMs": 9921,
+          "rationale": "gradient measurement solve 2: H0+step=24"
+        },
+        {
+          "solveIndex": 2,
+          "heightMm": 26.43774119405494,
+          "displacementMm": 0.12233718298814215,
+          "vonMisesMpa": 0.5910604198992292,
+          "verdict": "fail",
+          "wallTimeMs": 11862,
+          "rationale": "gradient refinement: 24.0000 + 2.4377 = 26.4377 (dDisp/dH=-0.021639)"
+        },
+        {
+          "solveIndex": 3,
+          "heightMm": 27.007882388368994,
+          "displacementMm": 0.11556120301991607,
+          "vonMisesMpa": 0.5731638528883662,
+          "verdict": "fail",
+          "wallTimeMs": 12079,
+          "rationale": "gradient refinement: 26.4377 + 0.5701 = 27.0079 (dDisp/dH=-0.021639)"
+        },
+        {
+          "solveIndex": 4,
+          "heightMm": 27.264883596395602,
+          "displacementMm": 0.11211414707521819,
+          "vonMisesMpa": 0.5599173853545912,
+          "verdict": "fail",
+          "wallTimeMs": 12569,
+          "rationale": "gradient refinement: 27.0079 + 0.2570 = 27.2649 (dDisp/dH=-0.021639)"
+        },
+        {
+          "solveIndex": 5,
+          "heightMm": 27.3625851818855,
+          "displacementMm": 0.11067862458619553,
+          "vonMisesMpa": 0.5535097711749352,
+          "verdict": "fail",
+          "wallTimeMs": 12369,
+          "rationale": "gradient refinement: 27.2649 + 0.0977 = 27.3626 (dDisp/dH=-0.021639)"
+        },
+        {
+          "solveIndex": 6,
+          "heightMm": 27.39394662253498,
+          "displacementMm": 0.11042736588721132,
+          "vonMisesMpa": 0.5529753194625393,
+          "verdict": "fail",
+          "wallTimeMs": 12335,
+          "rationale": "gradient refinement: 27.3626 + 0.0314 = 27.3939 (dDisp/dH=-0.021639)"
+        },
+        {
+          "solveIndex": 7,
+          "heightMm": 27.41369658470851,
+          "displacementMm": 0.11019683798318025,
+          "vonMisesMpa": 0.5498041858019758,
+          "verdict": "fail",
+          "wallTimeMs": 11976,
+          "rationale": "gradient refinement: 27.3939 + 0.0197 = 27.4137 (dDisp/dH=-0.021639)"
+        }
+      ]
+    },
+    {
+      "taskId": "T05",
+      "arm": "CA",
+      "stopReason": "domain_exceeded",
+      "converged": false,
+      "nSolves": 1,
+      "finalHeightMm": null,
+      "finalDisplacementMm": null,
+      "wallTimeMs": 9452,
+      "solves": [
+        {
+          "solveIndex": 0,
+          "heightMm": 23,
+          "displacementMm": 0.18438866477269136,
+          "vonMisesMpa": 0.7781257734478075,
+          "verdict": "fail",
+          "wallTimeMs": 9452,
+          "rationale": "starting-point solve: H0=23"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalSolvesB": 16,
+    "totalSolvesC": 26,
+    "totalSolvesCA": 9,
+    "campaignGradientSolves": 2,
+    "totalSolvesCAWithMeasurement": 11,
+    "convergedB": 5,
+    "convergedC": 4,
+    "convergedCA": 4,
+    "avgSolvesPerTaskB": 3.2,
+    "avgSolvesPerTaskC": 5.2,
+    "avgSolvesPerTaskCA": 1.8,
+    "amortisedBreakEvenAtNTasks": 2,
+    "amortisedNote": "Measured: B total = 16, C (self-measured gradient) total = 26, CA task solves = 9 + 2 campaign-gradient solves = 11. Break-even at N≥2 tasks (avgB=3.20, avgCA=1.80)."
+  },
+  "startedAt": "2026-08-04T13:42:37.238Z",
+  "finishedAt": "2026-08-04T13:54:49.875Z"
+}
