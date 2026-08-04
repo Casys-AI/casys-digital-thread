@@ -225,11 +225,15 @@ contraintes SysML dans le modèle : texte serveur-fixe rendu depuis le proof com
 vérifié par ré-extraction, jamais fourni par un agent. Une fois l'artifact d'exigences
 présent dans une révision, le cliquet de monotonie interdit qu'une révision ultérieure
 l'omette (`requirements_artifact_removed`), et chaque run mécanique re-vérifie la
-fidélité du modèle avant tout dispatch provider. Le premier run d'ancrage réel sur le
-modèle V3 n'a pas encore été exécuté — écriture immuable, décision humaine.
-`syson_constraint_solve` (z3) reste délibérément hors du chemin de run : toutes les
-contraintes ayant la forme `feature op littéral` sur des variables indépendantes, il
-répondrait invariablement `sat` — une porte qui dit toujours oui.
+fidélité du modèle avant tout dispatch provider. L'ancrage réel a été exécuté le
+2026-08-04 avec le consentement explicite de l'opérateur, par le chemin agent complet
+(`project_change_append` → queue → execute) : le snapshot thread R13 du projet partagé
+ancre les deux exigences DripTray dans le modèle SysON, vérifiées par ré-extraction. Le
+même jour, le run local complet a produit la première arête de sensibilité mesurée sur
+CalculiX : ∂(déplacement)/∂(size-z) = −0,008 mm/mm et ∂(von Mises)/∂(size-z) = −0,036
+MPa/mm, à 30 ± 1 mm. `syson_constraint_solve` (z3) reste délibérément hors du chemin de
+run : toutes les contraintes ayant la forme `feature op littéral` sur des variables
+indépendantes, il répondrait invariablement `sat` — une porte qui dit toujours oui.
 
 Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.2` :
 la surface `planning` porte un `EngineeringProjectSnapshot` immuable avant toute preuve
