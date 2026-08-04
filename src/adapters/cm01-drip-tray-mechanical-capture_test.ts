@@ -8,7 +8,10 @@ import {
   captureCm01DripTrayMechanical,
   parseCm01DripTrayMechanicalCapture,
 } from "./cm01-drip-tray-mechanical-capture.ts";
-import { FileCm01DripTrayMechanicalCaptureStore } from "./file-cm01-drip-tray-mechanical-capture-store.ts";
+import {
+  CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "./file-capture-store.ts";
 import type { McpToolCall, McpToolResult } from "./http-mcp-tool-client.ts";
 
 const proof = parseCm01DripTrayMechanicalProof({
@@ -88,13 +91,16 @@ Deno.test("CM-01 V3 DripTray storage addresses complete capture JSON, not its un
     prefix: "casys-cm01-mechanical-capture-",
   });
   try {
-    const store = new FileCm01DripTrayMechanicalCaptureStore(directory);
+    const store = new FileCaptureStore({
+      ...CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+      directory,
+    });
     await store.save(storageFingerprint, text);
     assertEquals(await store.read(storageFingerprint), text);
     await assertRejects(
       () => store.save(capture.fingerprint, text),
       Error,
-      "does not match its sha256",
+      "does not match declared sha256",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });

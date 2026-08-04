@@ -1,0 +1,321 @@
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { sha256Fingerprint } from "../domain/deterministic-json.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+  CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+  CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+  CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+  SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+} from "./file-capture-store.ts";
+
+// ── Compile-time nominal typing ──────────────────────────────────────────────
+//
+// The @ts-expect-error directive below is itself a test: `deno task check`
+// fails if TypeScript stops treating the assignment as an error. If the phantom
+// field `_kind` ever disappears or loses its type, the two `FileCaptureStore`
+// instantiations become structurally identical and this directive would turn
+// into a spurious suppression, causing the type-checker to reject the file.
+function _assertKindIncompatible(
+  cadStore: FileCaptureStore<"cm01-semantic-cad">,
+): void {
+  // @ts-expect-error FileCaptureStore<"cm01-semantic-cad"> must not be
+  // assignable to FileCaptureStore<"cm01-drip-tray-mechanical">.
+  const _mechanical: FileCaptureStore<"cm01-drip-tray-mechanical"> = cadStore;
+  void _mechanical;
+}
+
+// ── URI namespace identity (the 7 expected strings are hardcoded) ────────────
+//
+// Any automated derivation of the namespace from the directory or kind would
+// silently produce the wrong URI for the architecture store
+// ("coffee-machine-cm01-v3-architecture" has no "-capture" suffix).
+// 552 casys:// URIs in state/ would be invalidated without any runtime error.
+Deno.test(
+  "A capture store never derives its URI namespace from its directory",
+  async () => {
+    const fp = await sha256Fingerprint({ probe: "uri-namespace-test" });
+    const d = fp.digest;
+
+    assertEquals(
+      new FileCaptureStore(APPROVED_BRIEF_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://approved-brief-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR)
+        .uriFor(fp),
+      `casys://cm01-drip-tray-mechanical-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://cm01-erpnext-bom-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://cm01-nominal-modelica-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://cm01-semantic-cad-capture/sha256/${d}`,
+    );
+    // NOTE: no "-capture" suffix — this is the irregular namespace.
+    assertEquals(
+      new FileCaptureStore(
+        COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+      ).uriFor(fp),
+      `casys://coffee-machine-cm01-v3-architecture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://syson-model-seed-capture/sha256/${d}`,
+    );
+  },
+);
+
+// ── Fingerprint validation ───────────────────────────────────────────────────
+
+Deno.test(
+  "A capture store rejects a fingerprint whose digest is not lowercase 64-character hex",
+  () => {
+    const store = new FileCaptureStore(CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR);
+
+    // digest too short
+    assertThrows(
+      () => store.uriFor({ algorithm: "sha256", digest: "abc123" }),
+      TypeError,
+      "A lowercase 64-character sha256 fingerprint is required.",
+    );
+    // digest contains uppercase
+    assertThrows(
+      () =>
+        store.uriFor({
+          algorithm: "sha256",
+          digest: "A".repeat(64),
+        }),
+      TypeError,
+      "A lowercase 64-character sha256 fingerprint is required.",
+    );
+  },
+);
+
+// ── Round-trip save / read ───────────────────────────────────────────────────
+
+Deno.test(
+  "A capture store persists content-addressed bytes and returns them on read",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const text = '{"kind":"round-trip"}';
+      const fp = await sha256Fingerprint({ kind: "round-trip" });
+
+      await store.save(fp, text);
+      assertEquals(await store.read(fp), text);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Idempotence ──────────────────────────────────────────────────────────────
+
+Deno.test(
+  "A capture store save is idempotent on identical content and returns a deeply-equal value",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const text = '{"idempotent":true}';
+      const fp = await sha256Fingerprint({ idempotent: true });
+
+      const first = await store.save(fp, text);
+      const replay = await store.save(fp, text);
+
+      assertEquals(first, replay);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Content mismatch on save ─────────────────────────────────────────────────
+
+Deno.test(
+  "A capture store rejects content whose hash does not match the declared fingerprint",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const fp = await sha256Fingerprint({ expected: "value" });
+
+      await assertRejects(
+        () => store.save(fp, '{"expected":"other"}'),
+        Error,
+        "does not match declared sha256",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Digest collision (same digest, different on-disk bytes) ──────────────────
+
+Deno.test(
+  "A capture store rejects a digest already claimed for different bytes",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const text = '{"collision":"first"}';
+      const fp = await sha256Fingerprint({ collision: "first" });
+      await store.save(fp, text);
+
+      // Overwrite the stored file with different bytes to simulate a collision.
+      await Deno.writeTextFile(store.pathFor(fp), '{"tampered":true}');
+
+      await assertRejects(
+        () => store.save(fp, text),
+        Error,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Corruption detection on read ─────────────────────────────────────────────
+
+Deno.test(
+  "A capture store detects later corruption on read by re-hashing the stored bytes",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const text = '{"integrity":"verified"}';
+      const fp = await sha256Fingerprint({ integrity: "verified" });
+      await store.save(fp, text);
+
+      // Tamper with the file directly to simulate on-disk corruption.
+      await Deno.writeTextFile(store.pathFor(fp), '{"tampered":true}');
+
+      await assertRejects(
+        () => store.read(fp),
+        Error,
+        "does not match its filename digest",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── save() return value includes uri and path ────────────────────────────────
+//
+// Migrated from file-approved-brief-baseline-capture-store_test.ts and
+// file-syson-model-seed-capture-store_test.ts, which relied on both fields.
+
+Deno.test(
+  "A capture store save returns the exact uri and path for the persisted fingerprint",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const text = '{"documentary":true}';
+      const fp = await sha256Fingerprint({ documentary: true });
+
+      const result = await store.save(fp, text);
+
+      assertEquals(result.uri, `casys://approved-brief-capture/sha256/${fp.digest}`);
+      assertEquals(result.path, store.pathFor(fp));
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Restart persistence ──────────────────────────────────────────────────────
+//
+// Two separate store instances over the same directory must agree on the
+// persisted content; the filesystem is the truth, not any in-memory state.
+// Migrated from file-syson-model-seed-capture-store_test.ts.
+
+Deno.test(
+  "A capture store written by one instance is readable by a second instance over the same directory",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const text = '{"rootPackage":"package-1"}';
+      const fp = await sha256Fingerprint({ rootPackage: "package-1" });
+
+      const first = new FileCaptureStore({
+        ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      await first.save(fp, text);
+
+      const restarted = new FileCaptureStore({
+        ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      assertEquals(await restarted.read(fp), text);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Missing entry ────────────────────────────────────────────────────────────
+
+Deno.test(
+  "A capture store returns undefined for a fingerprint that was never saved",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const fp = await sha256Fingerprint({ missing: true });
+      assertEquals(await store.read(fp), undefined);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);

@@ -859,6 +859,10 @@ class MemoryCaptures {
   }
   async save(fingerprint: any, text: string) {
     this.values.set(fingerprint.digest, text);
+    return {
+      uri: this.uriFor(fingerprint),
+      path: `test/${fingerprint.digest}.json`,
+    } as const;
   }
 }
 

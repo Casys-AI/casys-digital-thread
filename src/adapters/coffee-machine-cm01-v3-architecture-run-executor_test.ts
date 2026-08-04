@@ -9,7 +9,12 @@ import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,
 } from "./coffee-machine-cm01-v3-architecture-run-executor.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "./file-coffee-machine-cm01-v3-architecture-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+  SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+} from "./file-capture-store.ts";
 import { sha256Fingerprint } from "../domain/deterministic-json.ts";
 import type { ThreadSnapshot } from "../domain/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
@@ -22,10 +27,8 @@ import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../orchestration/operatio
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import { FileSysonModelSeedAttemptStore } from "./file-syson-model-seed-attempt-store.ts";
-import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
 import { LiveThreadUpdateStore } from "./live-thread-update-store.ts";
@@ -269,7 +272,10 @@ Deno.test("CM-01 architecture capture store re-reads only bytes named by its con
   try {
     const text = '{"kind":"normalized-cm01-readback"}';
     const fingerprint = await sha256Fingerprint(JSON.parse(text));
-    const store = new FileCoffeeMachineCm01V3ArchitectureCaptureStore(directory);
+    const store = new FileCaptureStore({
+      ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+      directory,
+    });
     await store.save(fingerprint, text);
     assertEquals(await store.read(fingerprint), text);
   } finally {
@@ -327,14 +333,19 @@ function executionCommand(
 async function queuedArchitecture(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
-  const baselineCaptures = new FileApprovedBriefBaselineCaptureStore(
-    `${directory}/baseline-captures`,
-  );
-  const seedCaptures = new FileSysonModelSeedCaptureStore(`${directory}/seed-captures`);
+  const baselineCaptures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/baseline-captures`,
+  });
+  const seedCaptures = new FileCaptureStore({
+    ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/seed-captures`,
+  });
   const seedAttempts = new FileSysonModelSeedAttemptStore(`${directory}/seed-attempts`);
-  const captures = new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
-    `${directory}/architecture-captures`,
-  );
+  const captures = new FileCaptureStore({
+    ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/architecture-captures`,
+  });
   const attempts = new FileCoffeeMachineCm01V3ArchitectureAttemptStore(
     `${directory}/architecture-attempts`,
   );

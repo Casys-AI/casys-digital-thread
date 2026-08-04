@@ -41,7 +41,7 @@ import {
   CoffeeMachineCm01V3ArchitectureWriteOutcomeUnknownError,
   FileCoffeeMachineCm01V3ArchitectureAttemptStore,
 } from "./file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "./file-coffee-machine-cm01-v3-architecture-capture-store.ts";
+import { FileCaptureStore } from "./file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
@@ -68,7 +68,7 @@ export interface CoffeeMachineCm01V3ArchitectureRunExecutorDependencies {
   readonly seedCaptures: {
     read(fingerprint: ContentFingerprint): Promise<string | undefined>;
   };
-  readonly captures: FileCoffeeMachineCm01V3ArchitectureCaptureStore;
+  readonly captures: FileCaptureStore<"coffee-machine-cm01-v3-architecture">;
   readonly attempts: FileCoffeeMachineCm01V3ArchitectureAttemptStore;
   /** Parsed once by the server from the reviewed static recipe. */
   readonly recipe: CoffeeMachineCm01SemanticRecipe;
@@ -116,7 +116,7 @@ export class CoffeeMachineCm01V3ArchitectureRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #seedCaptures:
     CoffeeMachineCm01V3ArchitectureRunExecutorDependencies["seedCaptures"];
-  readonly #captures: FileCoffeeMachineCm01V3ArchitectureCaptureStore;
+  readonly #captures: FileCaptureStore<"coffee-machine-cm01-v3-architecture">;
   readonly #attempts: FileCoffeeMachineCm01V3ArchitectureAttemptStore;
   readonly #recipe: CoffeeMachineCm01SemanticRecipe;
   readonly #syson: McpToolClient;

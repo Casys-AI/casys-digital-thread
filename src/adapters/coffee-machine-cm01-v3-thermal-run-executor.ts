@@ -28,7 +28,7 @@ import {
 } from "./cm01-nominal-modelica-capture.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCm01NominalModelicaCaptureStore } from "./file-cm01-nominal-modelica-capture-store.ts";
+import { FileCaptureStore } from "./file-capture-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
 import { createObservedModelicaRunExtension } from "./observed-modelica-thread-branch.ts";
 
@@ -55,7 +55,7 @@ export interface CoffeeMachineCm01V3ThermalRunExecutorDependencies {
   readonly capture: Pick<Cm01NominalModelicaCaptureAdapter, "capture">;
   /** Durable intent/capture boundary around the non-idempotent provider run. */
   readonly attempts: FileCm01NominalModelicaAttemptStore;
-  readonly captures: FileCm01NominalModelicaCaptureStore;
+  readonly captures: FileCaptureStore<"cm01-nominal-modelica">;
   readonly lease: EngineeringProjectRunLease;
   /** Presentation only; no live-journal failure can repeat the simulation. */
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
@@ -80,7 +80,7 @@ export class CoffeeMachineCm01V3ThermalRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #capture: Pick<Cm01NominalModelicaCaptureAdapter, "capture">;
   readonly #attempts: FileCm01NominalModelicaAttemptStore;
-  readonly #captures: FileCm01NominalModelicaCaptureStore;
+  readonly #captures: FileCaptureStore<"cm01-nominal-modelica">;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #now: () => string;

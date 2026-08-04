@@ -26,9 +26,12 @@ import {
 } from "./cm01-nominal-modelica-capture.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCm01NominalModelicaCaptureStore } from "./file-cm01-nominal-modelica-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "./file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
@@ -233,12 +236,14 @@ function executionCommand(queued: Awaited<ReturnType<typeof queuedThermal>>["que
 async function queuedThermal(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
-  const captures = new FileApprovedBriefBaselineCaptureStore(
-    `${directory}/baseline-captures`,
-  );
-  const thermalCaptures = new FileCm01NominalModelicaCaptureStore(
-    `${directory}/thermal-captures`,
-  );
+  const captures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/baseline-captures`,
+  });
+  const thermalCaptures = new FileCaptureStore({
+    ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/thermal-captures`,
+  });
   const attempts = new FileCm01NominalModelicaAttemptStore(
     `${directory}/thermal-attempts`,
   );

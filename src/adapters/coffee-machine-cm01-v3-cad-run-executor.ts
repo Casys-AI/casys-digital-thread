@@ -42,7 +42,7 @@ import {
   Cm01SemanticCadOutcomeUnknownError,
   FileCm01SemanticCadAttemptStore,
 } from "./file-cm01-semantic-cad-attempt-store.ts";
-import { FileCm01SemanticCadCaptureStore } from "./file-cm01-semantic-cad-capture-store.ts";
+import { FileCaptureStore } from "./file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
@@ -70,7 +70,7 @@ export interface CoffeeMachineCm01V3CadRunExecutorDependencies {
   /** Fixed server-owned client; no tool name or argument reaches it from an agent. */
   readonly build123d: McpToolClient;
   readonly attempts: FileCm01SemanticCadAttemptStore;
-  readonly captures: FileCm01SemanticCadCaptureStore;
+  readonly captures: FileCaptureStore<"cm01-semantic-cad">;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly now?: () => string;
@@ -95,7 +95,7 @@ export class CoffeeMachineCm01V3CadRunExecutor {
   readonly #recipe: CoffeeMachineCm01SemanticRecipe;
   readonly #build123d: McpToolClient;
   readonly #attempts: FileCm01SemanticCadAttemptStore;
-  readonly #captures: FileCm01SemanticCadCaptureStore;
+  readonly #captures: FileCaptureStore<"cm01-semantic-cad">;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #now: () => string;

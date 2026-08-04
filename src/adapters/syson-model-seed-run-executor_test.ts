@@ -15,9 +15,12 @@ import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-co
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./file-syson-model-seed-attempt-store.ts";
-import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+  SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+} from "./file-capture-store.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
 import { FileLiveThreadUpdateStore } from "./live-thread-update-store.ts";
 import type {
@@ -363,10 +366,14 @@ function executionCommand(queued: Awaited<ReturnType<typeof queuedSeed>>["queued
 async function queuedSeed(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
-  const baselineCaptures = new FileApprovedBriefBaselineCaptureStore(
-    `${directory}/baseline-captures`,
-  );
-  const seedCaptures = new FileSysonModelSeedCaptureStore(`${directory}/seed-captures`);
+  const baselineCaptures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/baseline-captures`,
+  });
+  const seedCaptures = new FileCaptureStore({
+    ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/seed-captures`,
+  });
   const attempts = new FileSysonModelSeedAttemptStore(`${directory}/seed-attempts`);
   const liveUpdates = new FileLiveThreadUpdateStore(`${directory}/live-updates`);
   let tick = 0;

@@ -8,8 +8,11 @@ import {
   type CockpitFocusStore,
   FileCockpitFocusStore,
 } from "../src/adapters/file-cockpit-focus-store.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "../src/adapters/file-approved-brief-baseline-capture-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "../src/adapters/file-capture-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
 import {
@@ -582,12 +585,14 @@ if (import.meta.main) {
   const cockpitFocus = workspaceId
     ? new FileCockpitFocusStore(focusDirectory)
     : undefined;
-  const captures = new FileApprovedBriefBaselineCaptureStore(
-    approvedBriefCaptureDirectory,
-  );
-  const cm01ArchitectureCaptures = new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
-    cm01ArchitectureCaptureDirectory,
-  );
+  const captures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: approvedBriefCaptureDirectory,
+  });
+  const cm01ArchitectureCaptures = new FileCaptureStore({
+    ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+    directory: cm01ArchitectureCaptureDirectory,
+  });
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
     trackedManifestPath: projectPath,

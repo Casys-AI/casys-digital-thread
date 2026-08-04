@@ -9,7 +9,10 @@ import {
   CoffeeMachineCm01V3ErpNextBomRunExecutor,
 } from "./coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
 import type { Cm01ErpNextBomCapture } from "./cm01-erpnext-bom-capture.ts";
-import { FileCm01ErpNextBomCaptureStore } from "./file-cm01-erpnext-bom-capture-store.ts";
+import {
+  CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "./file-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "./file-cm01-erpnext-bom-run-capture-store.ts";
 
 const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
@@ -123,7 +126,10 @@ function executorFor(
     commands: fixture.commands as never,
     snapshots,
     capture,
-    captures: new FileCm01ErpNextBomCaptureStore(`${fixture.directory}/captures`),
+    captures: new FileCaptureStore({
+      ...CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+      directory: `${fixture.directory}/captures`,
+    }),
     runCaptures: new FileCm01ErpNextBomRunCaptureStore(
       `${fixture.directory}/run-captures`,
     ),

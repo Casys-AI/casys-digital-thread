@@ -19,9 +19,12 @@ import {
   CoffeeMachineCm01V3CadRunExecutor,
 } from "./coffee-machine-cm01-v3-cad-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "./file-cm01-semantic-cad-attempt-store.ts";
-import { FileCm01SemanticCadCaptureStore } from "./file-cm01-semantic-cad-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "./file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
@@ -197,11 +200,15 @@ function executionCommand(queued: Awaited<ReturnType<typeof queuedCad>>["queued"
 async function queuedCad(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
-  const baselineCaptures = new FileApprovedBriefBaselineCaptureStore(
-    `${directory}/baseline-captures`,
-  );
+  const baselineCaptures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/baseline-captures`,
+  });
   const attempts = new FileCm01SemanticCadAttemptStore(`${directory}/cad-attempts`);
-  const captures = new FileCm01SemanticCadCaptureStore(`${directory}/cad-captures`);
+  const captures = new FileCaptureStore({
+    ...CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/cad-captures`,
+  });
   const liveUpdates = new LiveThreadUpdateStore();
   let tick = 0;
   const now = () =>

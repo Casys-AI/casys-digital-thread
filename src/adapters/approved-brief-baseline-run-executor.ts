@@ -19,7 +19,7 @@ import {
   materializeApprovedBriefBaseline,
 } from "../orchestration/operations/approved-brief-baseline.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
+import { FileCaptureStore } from "./file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 
 type ApprovedBriefBaselineMaterialization = Awaited<
@@ -38,7 +38,7 @@ export interface ApprovedBriefBaselineRunExecutorCommand {
 export interface ApprovedBriefBaselineRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: EngineeringProjectCommandService;
-  readonly captures: FileApprovedBriefBaselineCaptureStore;
+  readonly captures: FileCaptureStore<"approved-brief">;
   readonly snapshots: ThreadSnapshotStore;
   /** Cross-process ownership for the exact project/run execution. */
   readonly lease: EngineeringProjectRunLease;
@@ -59,7 +59,7 @@ export interface ApprovedBriefBaselineRunExecutorDependencies {
 export class ApprovedBriefBaselineRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
-  readonly #captures: FileApprovedBriefBaselineCaptureStore;
+  readonly #captures: FileCaptureStore<"approved-brief">;
   readonly #snapshots: ThreadSnapshotStore;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;

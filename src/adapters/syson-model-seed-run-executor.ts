@@ -29,7 +29,7 @@ import {
   SysonModelSeedWriteOutcomeUnknownError,
   type SysonModelSeedWriteStep,
 } from "./file-syson-model-seed-attempt-store.ts";
-import { FileSysonModelSeedCaptureStore } from "./file-syson-model-seed-capture-store.ts";
+import { FileCaptureStore } from "./file-capture-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
 import { createSysonModelSeedLiveProjector } from "./syson-model-seed-live-projector.ts";
 
@@ -53,7 +53,7 @@ export interface SysonModelSeedRunExecutorDependencies {
   readonly commands: EngineeringProjectCommandService;
   /** Owns the exact approved-brief documentary r1 and SysON seed result r2. */
   readonly snapshots: ThreadSnapshotStore;
-  readonly captures: FileSysonModelSeedCaptureStore;
+  readonly captures: FileCaptureStore<"syson-model-seed">;
   /** Write-ahead state for non-idempotent SysON mutations. */
   readonly attempts: FileSysonModelSeedAttemptStore;
   /** Server-owned provider client; the MCP tool exposes none of this surface. */
@@ -76,7 +76,7 @@ export class SysonModelSeedRunExecutor {
   readonly #projects: SysonModelSeedRunExecutorDependencies["projects"];
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
-  readonly #captures: FileSysonModelSeedCaptureStore;
+  readonly #captures: FileCaptureStore<"syson-model-seed">;
   readonly #attempts: FileSysonModelSeedAttemptStore;
   readonly #syson: McpToolClient;
   readonly #lease: EngineeringProjectRunLease;

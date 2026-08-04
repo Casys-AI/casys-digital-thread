@@ -20,16 +20,20 @@ import {
   CoffeeMachineCm01V3ThermalRunExecutor,
 } from "../src/adapters/coffee-machine-cm01-v3-thermal-run-executor.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "../src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
-import { FileCm01DripTrayMechanicalCaptureStore } from "../src/adapters/file-cm01-drip-tray-mechanical-capture-store.ts";
-import { FileCm01ErpNextBomCaptureStore } from "../src/adapters/file-cm01-erpnext-bom-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "../src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "../src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCm01NominalModelicaCaptureStore } from "../src/adapters/file-cm01-nominal-modelica-capture-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "../src/adapters/file-cm01-semantic-cad-attempt-store.ts";
-import { FileCm01SemanticCadCaptureStore } from "../src/adapters/file-cm01-semantic-cad-capture-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-capture-store.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "../src/adapters/file-approved-brief-baseline-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+  CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+  CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+  CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+  SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+} from "../src/adapters/file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "../src/adapters/file-engineering-project-run-lease.ts";
 import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../src/adapters/engineering-project-completion-evidence-validator.ts";
@@ -38,7 +42,6 @@ import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-st
 import { loadFleetManifest } from "../src/adapters/manifest.ts";
 import { HttpMcpToolClient } from "../src/adapters/http-mcp-tool-client.ts";
 import { FileSysonModelSeedAttemptStore } from "../src/adapters/file-syson-model-seed-attempt-store.ts";
-import { FileSysonModelSeedCaptureStore } from "../src/adapters/file-syson-model-seed-capture-store.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
 import { SysonModelSeedRunExecutor } from "../src/adapters/syson-model-seed-run-executor.ts";
 import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01-drip-tray-mechanical-proof.ts";
@@ -214,12 +217,14 @@ export async function runCoffeeMachineCm01V3Local(
 
   const projects = new FileEngineeringProjectRevisionStore(state.projects);
   const snapshots = new FileThreadSnapshotStore(state.snapshots);
-  const baselineCaptures = new FileApprovedBriefBaselineCaptureStore(
-    state.baselineCaptures,
-  );
-  const seedCaptures = new FileSysonModelSeedCaptureStore(
-    state.sysonSeedCaptures,
-  );
+  const baselineCaptures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: state.baselineCaptures,
+  });
+  const seedCaptures = new FileCaptureStore({
+    ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+    directory: state.sysonSeedCaptures,
+  });
   const liveUpdates = new FileLiveThreadUpdateStore(state.liveUpdates);
   const lease = new FileEngineeringProjectRunLease(state.leases);
   const commands = new EngineeringProjectCommandService(
@@ -393,9 +398,10 @@ export async function runCoffeeMachineCm01V3Local(
         commands,
         snapshots,
         seedCaptures,
-        captures: new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
-          state.architectureCaptures,
-        ),
+        captures: new FileCaptureStore({
+          ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+          directory: state.architectureCaptures,
+        }),
         attempts: new FileCoffeeMachineCm01V3ArchitectureAttemptStore(
           state.architectureAttempts,
         ),
@@ -435,9 +441,10 @@ export async function runCoffeeMachineCm01V3Local(
         attempts: new FileCm01SemanticCadAttemptStore(
           state.cadAttempts,
         ),
-        captures: new FileCm01SemanticCadCaptureStore(
-          state.cadCaptures,
-        ),
+        captures: new FileCaptureStore({
+          ...CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+          directory: state.cadCaptures,
+        }),
         lease,
         liveUpdates,
         now,
@@ -471,9 +478,10 @@ export async function runCoffeeMachineCm01V3Local(
         attempts: new FileCm01NominalModelicaAttemptStore(
           state.thermalAttempts,
         ),
-        captures: new FileCm01NominalModelicaCaptureStore(
-          state.thermalCaptures,
-        ),
+        captures: new FileCaptureStore({
+          ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+          directory: state.thermalCaptures,
+        }),
         lease,
         liveUpdates,
         now,
@@ -504,9 +512,10 @@ export async function runCoffeeMachineCm01V3Local(
         commands,
         snapshots,
         capture: new Cm01ErpNextBomCaptureAdapter({ erpnext }),
-        captures: new FileCm01ErpNextBomCaptureStore(
-          state.erpBomCaptures,
-        ),
+        captures: new FileCaptureStore({
+          ...CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+          directory: state.erpBomCaptures,
+        }),
         runCaptures: new FileCm01ErpNextBomRunCaptureStore(
           state.erpBomRunCaptures,
         ),
@@ -545,9 +554,10 @@ export async function runCoffeeMachineCm01V3Local(
         attempts: new FileCm01DripTrayMechanicalAttemptStore(
           state.mechanicalAttempts,
         ),
-        captures: new FileCm01DripTrayMechanicalCaptureStore(
-          state.mechanicalCaptures,
-        ),
+        captures: new FileCaptureStore({
+          ...CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+          directory: state.mechanicalCaptures,
+        }),
         lease,
         liveUpdates,
         now,

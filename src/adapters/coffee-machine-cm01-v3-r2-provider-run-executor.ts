@@ -87,7 +87,15 @@ export interface Cm01R2AttemptStore {
 export interface Cm01R2CaptureStore {
   uriFor(fingerprint: ContentFingerprint): string;
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
-  save(fingerprint: ContentFingerprint, text: string): Promise<void>;
+  /**
+   * Return type is { uri, path } rather than void so that FileCaptureStore<Kind>
+   * (whose save() always returns both fields) satisfies this interface. Callers
+   * in this executor discard the return value; the widening does not affect them.
+   */
+  save(
+    fingerprint: ContentFingerprint,
+    text: string,
+  ): Promise<{ readonly uri: string; readonly path: string }>;
 }
 
 interface CommonDependencies {

@@ -39,7 +39,7 @@ import {
   Cm01DripTrayMechanicalOutcomeUnknownError,
   FileCm01DripTrayMechanicalAttemptStore,
 } from "./file-cm01-drip-tray-mechanical-attempt-store.ts";
-import { FileCm01DripTrayMechanicalCaptureStore } from "./file-cm01-drip-tray-mechanical-capture-store.ts";
+import { FileCaptureStore } from "./file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
@@ -68,7 +68,7 @@ export interface CoffeeMachineCm01V3MechanicalRunExecutorDependencies {
   readonly build123d: McpToolClient;
   readonly calculix: McpToolClient;
   readonly attempts: FileCm01DripTrayMechanicalAttemptStore;
-  readonly captures: FileCm01DripTrayMechanicalCaptureStore;
+  readonly captures: FileCaptureStore<"cm01-drip-tray-mechanical">;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly now?: () => string;

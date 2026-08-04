@@ -31,7 +31,7 @@ import {
   type Cm01ErpNextBomCapture,
   type Cm01ErpNextBomCaptureAdapter,
 } from "./cm01-erpnext-bom-capture.ts";
-import { FileCm01ErpNextBomCaptureStore } from "./file-cm01-erpnext-bom-capture-store.ts";
+import { FileCaptureStore } from "./file-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "./file-cm01-erpnext-bom-run-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
@@ -56,7 +56,7 @@ export interface CoffeeMachineCm01V3ErpNextBomRunExecutorDependencies {
   readonly snapshots: ThreadSnapshotStore;
   /** Closed, server-owned, read-only observation. No agent value reaches ERPNext. */
   readonly capture: Pick<Cm01ErpNextBomCaptureAdapter, "capture">;
-  readonly captures: FileCm01ErpNextBomCaptureStore;
+  readonly captures: FileCaptureStore<"cm01-erpnext-bom">;
   readonly runCaptures: FileCm01ErpNextBomRunCaptureStore;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
@@ -80,7 +80,7 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
   readonly #capture: Pick<Cm01ErpNextBomCaptureAdapter, "capture">;
-  readonly #captures: FileCm01ErpNextBomCaptureStore;
+  readonly #captures: FileCaptureStore<"cm01-erpnext-bom">;
   readonly #runCaptures: FileCm01ErpNextBomRunCaptureStore;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
@@ -421,7 +421,7 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
 async function materialize(
   base: ThreadSnapshot,
   capture: Cm01ErpNextBomCapture,
-  store: FileCm01ErpNextBomCaptureStore,
+  store: FileCaptureStore<"cm01-erpnext-bom">,
 ): Promise<Materialization> {
   const extension = await extensionFor(base.subject.id, capture, store);
   const applied = applyThreadSnapshotExtensionIfNew(base, extension, {
@@ -466,7 +466,7 @@ export function coffeeMachineCm01V3ErpNextBomGoldenArtifact(
 async function extensionFor(
   subjectId: string,
   capture: Cm01ErpNextBomCapture,
-  store: FileCm01ErpNextBomCaptureStore,
+  store: FileCaptureStore<"cm01-erpnext-bom">,
 ): Promise<ThreadSnapshotExtension> {
   const valid = parseCapture(capture);
   const fingerprint = valid.artifact.fingerprint;

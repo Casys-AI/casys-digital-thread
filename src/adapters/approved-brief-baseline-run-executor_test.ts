@@ -1,7 +1,10 @@
 import { assertEquals } from "@std/assert";
 import { FileThreadSnapshotStore } from "./file-thread-snapshot-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./engineering-project-store.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "./file-approved-brief-baseline-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "./file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
@@ -13,9 +16,10 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
   const root = await Deno.makeTempDir({ prefix: "approved-brief-baseline-" });
   const projects = new FileEngineeringProjectRevisionStore(`${root}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
-  const captures = new FileApprovedBriefBaselineCaptureStore(
-    `${root}/captures`,
-  );
+  const captures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: `${root}/captures`,
+  });
   let tick = 0;
   const now = () =>
     new Date(Date.parse("2026-08-03T09:00:00.000Z") + ++tick * 1_000)

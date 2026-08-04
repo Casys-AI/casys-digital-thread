@@ -11,19 +11,22 @@ import {
   requestUsesExplicitLoopbackHost,
 } from "./src/adapters/loopback-host.ts";
 import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-store.ts";
-import { FileApprovedBriefBaselineCaptureStore } from "./src/adapters/file-approved-brief-baseline-capture-store.ts";
-import { FileSysonModelSeedCaptureStore } from "./src/adapters/file-syson-model-seed-capture-store.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+  CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+  CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+  CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+  SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+} from "./src/adapters/file-capture-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCm01NominalModelicaCaptureStore } from "./src/adapters/file-cm01-nominal-modelica-capture-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureCaptureStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-capture-store.ts";
-import { FileCm01ErpNextBomCaptureStore } from "./src/adapters/file-cm01-erpnext-bom-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "./src/adapters/file-cm01-semantic-cad-attempt-store.ts";
-import { FileCm01SemanticCadCaptureStore } from "./src/adapters/file-cm01-semantic-cad-capture-store.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
-import { FileCm01DripTrayMechanicalCaptureStore } from "./src/adapters/file-cm01-drip-tray-mechanical-capture-store.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
@@ -350,14 +353,16 @@ async function createProjectControl(
       options.projectBaselineDirectory ?? DEFAULT_PROJECT_BASELINE_DIRECTORY,
     ),
   ]);
-  const captures = new FileApprovedBriefBaselineCaptureStore(
-    options.approvedBriefCaptureDirectory ??
+  const captures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: options.approvedBriefCaptureDirectory ??
       DEFAULT_APPROVED_BRIEF_CAPTURE_DIRECTORY,
-  );
-  const sysonModelSeedCaptures = new FileSysonModelSeedCaptureStore(
-    options.sysonModelSeedCaptureDirectory ??
+  });
+  const sysonModelSeedCaptures = new FileCaptureStore({
+    ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+    directory: options.sysonModelSeedCaptureDirectory ??
       DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY,
-  );
+  });
   const liveUpdates = new FileLiveThreadUpdateStore(
     options.liveThreadUpdateDirectory ?? DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY,
   );
@@ -409,10 +414,11 @@ async function createProjectControl(
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
       seedCaptures: sysonModelSeedCaptures,
-      captures: new FileCoffeeMachineCm01V3ArchitectureCaptureStore(
-        options.cm01ArchitectureCaptureDirectory ??
+      captures: new FileCaptureStore({
+        ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.cm01ArchitectureCaptureDirectory ??
           DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY,
-      ),
+      }),
       attempts: new FileCoffeeMachineCm01V3ArchitectureAttemptStore(
         options.cm01ArchitectureAttemptDirectory ??
           DEFAULT_CM01_ARCHITECTURE_ATTEMPT_DIRECTORY,
@@ -438,10 +444,11 @@ async function createProjectControl(
         options.cm01NominalModelicaAttemptDirectory ??
           DEFAULT_CM01_NOMINAL_MODELICA_ATTEMPT_DIRECTORY,
       ),
-      captures: new FileCm01NominalModelicaCaptureStore(
-        options.cm01NominalModelicaCaptureDirectory ??
+      captures: new FileCaptureStore({
+        ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+        directory: options.cm01NominalModelicaCaptureDirectory ??
           DEFAULT_CM01_NOMINAL_MODELICA_CAPTURE_DIRECTORY,
-      ),
+      }),
       lease,
       liveUpdates,
     })
@@ -457,10 +464,11 @@ async function createProjectControl(
           timeoutMs: 30_000,
         }),
       }),
-      captures: new FileCm01ErpNextBomCaptureStore(
-        options.cm01ErpNextBomCaptureDirectory ??
+      captures: new FileCaptureStore({
+        ...CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+        directory: options.cm01ErpNextBomCaptureDirectory ??
           DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY,
-      ),
+      }),
       runCaptures: new FileCm01ErpNextBomRunCaptureStore(
         options.cm01ErpNextBomRunCaptureDirectory ??
           DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY,
@@ -491,10 +499,11 @@ async function createProjectControl(
         options.cm01SemanticCadAttemptDirectory ??
           DEFAULT_CM01_SEMANTIC_CAD_ATTEMPT_DIRECTORY,
       ),
-      captures: new FileCm01SemanticCadCaptureStore(
-        options.cm01SemanticCadCaptureDirectory ??
+      captures: new FileCaptureStore({
+        ...CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+        directory: options.cm01SemanticCadCaptureDirectory ??
           DEFAULT_CM01_SEMANTIC_CAD_CAPTURE_DIRECTORY,
-      ),
+      }),
       lease,
       liveUpdates,
     })
@@ -513,10 +522,11 @@ async function createProjectControl(
         options.cm01SemanticCadR2AttemptDirectory ??
           DEFAULT_CM01_SEMANTIC_CAD_R2_ATTEMPT_DIRECTORY,
       ),
-      captures: new FileCm01SemanticCadCaptureStore(
-        options.cm01SemanticCadR2CaptureDirectory ??
+      captures: new FileCaptureStore({
+        ...CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+        directory: options.cm01SemanticCadR2CaptureDirectory ??
           DEFAULT_CM01_SEMANTIC_CAD_R2_CAPTURE_DIRECTORY,
-      ),
+      }),
       lease,
       liveUpdates,
     })
@@ -539,10 +549,11 @@ async function createProjectControl(
         options.cm01DripTrayMechanicalAttemptDirectory ??
           DEFAULT_CM01_DRIP_TRAY_MECHANICAL_ATTEMPT_DIRECTORY,
       ),
-      captures: new FileCm01DripTrayMechanicalCaptureStore(
-        options.cm01DripTrayMechanicalCaptureDirectory ??
+      captures: new FileCaptureStore({
+        ...CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+        directory: options.cm01DripTrayMechanicalCaptureDirectory ??
           DEFAULT_CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DIRECTORY,
-      ),
+      }),
       lease,
       liveUpdates,
     })
@@ -565,10 +576,11 @@ async function createProjectControl(
         options.cm01DripTrayMechanicalR2AttemptDirectory ??
           DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_ATTEMPT_DIRECTORY,
       ),
-      captures: new FileCm01DripTrayMechanicalCaptureStore(
-        options.cm01DripTrayMechanicalR2CaptureDirectory ??
+      captures: new FileCaptureStore({
+        ...CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+        directory: options.cm01DripTrayMechanicalR2CaptureDirectory ??
           DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_CAPTURE_DIRECTORY,
-      ),
+      }),
       lease,
       liveUpdates,
     })
@@ -577,10 +589,11 @@ async function createProjectControl(
     options.cm01DripTrayMechanicalR3AttemptDirectory ??
       DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_ATTEMPT_DIRECTORY,
   );
-  const cm01MechanicalR3Captures = new FileCm01DripTrayMechanicalCaptureStore(
-    options.cm01DripTrayMechanicalR3CaptureDirectory ??
+  const cm01MechanicalR3Captures = new FileCaptureStore({
+    ...CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+    directory: options.cm01DripTrayMechanicalR3CaptureDirectory ??
       DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_CAPTURE_DIRECTORY,
-  );
+  });
   const cm01MechanicalR3IdentityRecovery =
     new CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor({
       projects: runtime.projects,
