@@ -23,6 +23,12 @@ export interface McpToolResult {
 
 export interface McpToolClient {
   callTool(call: McpToolCall): Promise<McpToolResult>;
+  /**
+   * Variant for tools that serialise their result as JSON text in
+   * content[0].text rather than in structuredContent (e.g. syson_constraint_solve).
+   * Uses the same stateless-2026-07-28 transport as callTool.
+   */
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>>;
 }
 
 export interface HttpMcpToolClientOptions {
@@ -64,6 +70,60 @@ export class HttpMcpToolClient implements McpToolClient {
   }
 
   async callTool(call: McpToolCall): Promise<McpToolResult> {
+    const result = await this.#transport(call);
+    if (!isRecord(result.structuredContent)) {
+      throw new McpToolCallError(
+        `${call.name}: tool did not return structuredContent`,
+      );
+    }
+    return {
+      structuredContent: structuredClone(result.structuredContent),
+      text: contentText(result),
+    };
+  }
+
+  /**
+   * Reads content[0].text and parses it as JSON.
+   *
+   * This method exists because some MCP tools — notably syson_constraint_solve
+   * — never emit structuredContent; they serialise their result as a JSON
+   * string inside the first text content item. Routing those tools through
+   * callTool() would always raise "did not return structuredContent", making
+   * them unreachable. callToolTextResult() uses the identical transport so
+   * all stateless-protocol guarantees (headers, _meta, timeout, error
+   * propagation) remain in force.
+   */
+  async callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    const result = await this.#transport(call);
+    const raw = contentFirstText(result);
+    if (raw === undefined) {
+      throw new McpToolCallError(
+        `${call.name}: tool returned no content[0].text`,
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new McpToolCallError(
+        `${call.name}: content[0].text is not valid JSON`,
+      );
+    }
+    if (!isRecord(parsed)) {
+      throw new McpToolCallError(
+        `${call.name}: content[0].text did not parse to an object`,
+      );
+    }
+    return parsed;
+  }
+
+  /**
+   * Shared transport: stateless-2026-07-28 headers + _meta, timeout guard,
+   * HTTP status check, JSON-RPC envelope validation, and isError propagation.
+   * Returns the validated result record so each public method can apply its
+   * own content-extraction rule without duplicating the wire protocol.
+   */
+  async #transport(call: McpToolCall): Promise<Record<string, unknown>> {
     if (call.name.trim() === "") {
       throw new TypeError("tool name must be a non-empty string");
     }
@@ -131,15 +191,7 @@ export class HttpMcpToolClient implements McpToolClient {
         `${call.name}: ${contentText(payload.result) || "tool reported an error"}`,
       );
     }
-    if (!isRecord(payload.result.structuredContent)) {
-      throw new McpToolCallError(
-        `${call.name}: tool did not return structuredContent`,
-      );
-    }
-    return {
-      structuredContent: structuredClone(payload.result.structuredContent),
-      text: contentText(payload.result),
-    };
+    return payload.result;
   }
 }
 
@@ -170,6 +222,18 @@ function contentText(result: Record<string, unknown>): string {
       ? [item.text]
       : []
   ).join(" ");
+}
+
+/** Returns content[0].text only when the first item is a text block. */
+function contentFirstText(result: Record<string, unknown>): string | undefined {
+  if (!Array.isArray(result.content) || result.content.length === 0) {
+    return undefined;
+  }
+  const first = result.content[0];
+  if (isRecord(first) && first.type === "text" && typeof first.text === "string") {
+    return first.text;
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -282,6 +282,12 @@ class FixtureClient implements McpToolClient {
     private readonly handler: (call: McpToolCall) => McpToolResult,
   ) {}
 
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool(call: McpToolCall): Promise<McpToolResult> {
     return Promise.resolve(this.handler(call));
   }

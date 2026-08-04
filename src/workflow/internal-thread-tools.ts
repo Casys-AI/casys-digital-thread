@@ -19,6 +19,22 @@ export class ThreadNormalizationError extends Error {
  * executor resolve local and remote nodes without putting MCP in the browser.
  */
 export class InternalThreadToolClient implements McpToolClient {
+  /**
+   * No internal tool uses the text-result channel.
+   *
+   * Text-result tools (e.g. syson_constraint_solve) live on remote MCP servers
+   * and must never be routed through the in-process backend. Raising an error
+   * here enforces that boundary: if a DAG node accidentally routes a text-result
+   * call to the internal client, the failure is immediate and labelled.
+   */
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new ThreadNormalizationError(
+        `Internal tools do not support callToolTextResult: ${call.name}`,
+      ),
+    );
+  }
+
   callTool(call: McpToolCall): Promise<McpToolResult> {
     if (call.name !== "thread_observations_normalize") {
       return Promise.reject(

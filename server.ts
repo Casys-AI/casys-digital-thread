@@ -531,12 +531,13 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
-  const cm01Mechanical = build123dMcpUrl && calculixMcpUrl
+  const cm01Mechanical = sysonMcpUrl && build123dMcpUrl && calculixMcpUrl
     ? new CoffeeMachineCm01V3MechanicalRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
       proof: await loadCm01DripTrayMechanicalProof(),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       build123d: new HttpMcpToolClient({
         mcpUrl: build123dMcpUrl,
         timeoutMs: 120_000,

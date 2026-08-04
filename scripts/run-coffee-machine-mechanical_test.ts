@@ -348,6 +348,13 @@ Deno.test("mechanical runner refuses an unfinished SysON preflight before any ne
       calls++;
       return Promise.reject(new Error("must not be called"));
     },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
+    },
   };
   const captures = new MemoryCaptureStore();
 
@@ -388,6 +395,13 @@ Deno.test("mechanical runner atomically refuses a second concurrent runner befor
       }
       return await firstSyson.callTool(call);
     },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
+    },
   };
   const firstRun = runCoffeeMachineMechanical({
     runId: RUN_ID,
@@ -408,6 +422,13 @@ Deno.test("mechanical runner atomically refuses a second concurrent runner befor
       callTool: () => {
         secondCalls++;
         return Promise.reject(new Error("must not be called"));
+      },
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
       },
     };
     const secondUpdates = new LiveThreadUpdateStore();
@@ -467,6 +488,13 @@ Deno.test("mechanical runner refuses to resume after any CAD activity", async ()
       calls++;
       return Promise.reject(new Error("must not be called"));
     },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
+    },
   };
 
   await assertRejects(
@@ -493,6 +521,13 @@ Deno.test("mechanical runner refuses a merely queued run before any tool or capt
     callTool: () => {
       calls++;
       return Promise.reject(new Error("must not be called"));
+    },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
     },
   };
   const captures = new MemoryCaptureStore();
@@ -527,6 +562,13 @@ Deno.test("mechanical runner rejects a run fingerprint detached from the approve
     callTool: () => {
       calls++;
       return Promise.reject(new Error("must not be called"));
+    },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
     },
   };
   const captures = new MemoryCaptureStore();
@@ -610,6 +652,13 @@ Deno.test("mechanical runner rejects an approved but unsupported proof case befo
       calls++;
       return Promise.reject(new Error("must not be called"));
     },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
+    },
   };
 
   await assertRejects(
@@ -639,6 +688,12 @@ class FakeSyson implements McpToolClient {
     protected constraints: unknown[],
     private readonly children: unknown[] = [],
   ) {}
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
 
   callTool(call: McpToolCall): Promise<McpToolResult> {
     this.calls.push(structuredClone(call));
@@ -716,6 +771,12 @@ class SequencedConstraintSyson extends FakeSyson {
 class FakeCalculix implements McpToolClient {
   readonly calls: McpToolCall[] = [];
 
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool(call: McpToolCall): Promise<McpToolResult> {
     this.calls.push(structuredClone(call));
     return Promise.resolve({
@@ -757,6 +818,13 @@ function fakeBuildClient(): { client: McpToolClient; calls: McpToolCall[] } {
           },
         });
       },
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
+      },
     },
   };
 }
@@ -793,6 +861,13 @@ async function assertWorkflowRejectedBeforeIo(
     callTool: () => {
       providerCalls++;
       return Promise.reject(new Error("provider must not be called"));
+    },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
     },
   };
   const updates = new LiveThreadUpdateStore();

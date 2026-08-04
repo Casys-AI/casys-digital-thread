@@ -18,6 +18,13 @@ Deno.test("RecordingMcpToolClient publishes running before resolution then fresh
       calls++;
       return deferred.promise;
     },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
+    },
   };
   const updates = new LiveThreadUpdateStore();
   const client = recordingClient(underlying, updates);
@@ -58,6 +65,13 @@ Deno.test("RecordingMcpToolClient records failed and never retries", async () =>
     callTool() {
       calls++;
       return Promise.reject(new Error("provider unavailable"));
+    },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
     },
   };
   const updates = new LiveThreadUpdateStore();

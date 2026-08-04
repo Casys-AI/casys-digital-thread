@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import type { McpToolResult } from "./http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "./http-mcp-tool-client.ts";
 import {
   LiveThreadUpdateStore,
   overlayLiveThreadUpdates,
@@ -37,6 +37,13 @@ Deno.test("SysON projection coalesces concurrent reads into one stable progress 
             value: 1,
           },
         }),
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
+      },
     },
     updates,
     subjectId: "coffee-machine-cm01",
@@ -101,6 +108,13 @@ Deno.test("CAD projection keeps one node and one source-to-result edge without s
   const client = new RecordingMcpToolClient({
     client: {
       callTool: () => Promise.resolve(exportResult(providerSecret)),
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
+      },
     },
     updates,
     subjectId: "coffee-machine-cm01",
@@ -149,6 +163,13 @@ Deno.test("CAD provider failure updates the same node to failed without leaking 
   const client = new RecordingMcpToolClient({
     client: {
       callTool: () => Promise.reject(new Error("Bearer private-failure-token")),
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
+      },
     },
     updates,
     subjectId: "coffee-machine-cm01",

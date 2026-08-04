@@ -549,6 +549,7 @@ export async function runCoffeeMachineCm01V3Local(
         commands,
         snapshots,
         proof: mechanicalProof,
+        syson,
         build123d,
         calculix,
         attempts: new FileCm01DripTrayMechanicalAttemptStore(

@@ -71,6 +71,20 @@ export class RecordingMcpToolClient implements McpToolClient {
     this.#now = options.now ?? (() => new Date());
   }
 
+  /**
+   * Delegates to the wrapped client's text-result channel without recording.
+   *
+   * Recording infrastructure is built around McpToolResult (structuredContent +
+   * text). Text-only tools like syson_constraint_solve do not produce
+   * structuredContent, so they cannot be recorded via the existing event schema.
+   * Wiring that recording would be premature: no production DAG uses this path
+   * today. If a future DAG node needs text-result recording, extend the event
+   * schema and the projector before enabling it here.
+   */
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return this.#client.callToolTextResult(call);
+  }
+
   async callTool(call: McpToolCall): Promise<McpToolResult> {
     const callIndex = ++this.#callIndex;
     const operationId = required(

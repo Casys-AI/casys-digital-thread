@@ -450,6 +450,12 @@ Deno.test("CM-01 R3 recovery executor rejects a non-agent before its providers",
 
 class CountingProvider {
   calls = 0;
+  callToolTextResult(call: { name: string }): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool(): Promise<never> {
     this.calls += 1;
     return Promise.reject(new Error("provider must not be reached"));
@@ -458,6 +464,12 @@ class CountingProvider {
 
 class CadProvider {
   calls = 0;
+  callToolTextResult(call: { name: string }): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool() {
     this.calls += 1;
     return Promise.resolve({
@@ -494,6 +506,12 @@ class CadProvider {
 
 class MechanicalProvider {
   calls = 0;
+  callToolTextResult(call: { name: string }): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool(call: { name: string }) {
     this.calls += 1;
     if (call.name === "build123d_export") {

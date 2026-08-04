@@ -328,6 +328,12 @@ class ScriptedClient implements McpToolClient {
     }>,
   ) {}
 
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool(call: McpToolCall): Promise<McpToolResult> {
     this.calls.push(structuredClone(call));
     const next = this.responses.shift();

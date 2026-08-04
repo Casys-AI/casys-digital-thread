@@ -118,6 +118,14 @@ function solveResult(): McpToolResult {
 class RecordingClient {
   calls: McpToolCall[] = [];
   constructor(private readonly answers: McpToolResult[]) {}
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(
+        `callToolTextResult is not implemented by this stub (${call.name})`,
+      ),
+    );
+  }
+
   callTool(call: McpToolCall): Promise<McpToolResult> {
     this.calls.push(structuredClone(call));
     const answer = this.answers.shift();

@@ -192,6 +192,13 @@ Deno.test("CM-01 architecture executor rejects a non-canonical project before a 
         providerCalled = true;
         return Promise.reject(new Error("must not call"));
       },
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
+      },
     },
     lease: {} as never,
   });
@@ -523,6 +530,12 @@ function context(commandId: string, expectedRevision: number) {
 }
 
 class SeedSyson implements McpToolClient {
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool(call: McpToolCall): Promise<McpToolResult> {
     if (call.name === "syson_project_create") {
       return Promise.resolve({
@@ -563,6 +576,12 @@ class SeedSyson implements McpToolClient {
 class ArchitectureSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
   #children = 0;
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
 
   callTool(call: McpToolCall): Promise<McpToolResult> {
     this.calls.push(structuredClone(call));

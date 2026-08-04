@@ -91,6 +91,13 @@ Deno.test("WorkflowExecutor blocks descendants of failed tools but runs independ
   const calls: Array<{ server: string; call: McpToolCall }> = [];
   const failing: McpToolClient = {
     callTool: () => Promise.reject(new Error("CAD kernel failed")),
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
+    },
   };
   const clients = new Map<string, McpToolClient>([
     ["build123d", failing],
@@ -148,7 +155,16 @@ Deno.test("WorkflowExecutor blocks descendants of failed tools but runs independ
 Deno.test("WorkflowExecutor records a missing declared output as a node failure", async () => {
   const clients = new Map<string, McpToolClient>([[
     "build123d",
-    { callTool: () => Promise.resolve({ text: "done", structuredContent: {} }) },
+    {
+      callTool: () => Promise.resolve({ text: "done", structuredContent: {} }),
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
+      },
+    },
   ]]);
   const workflow = compileThreadWorkflowValue({
     schemaVersion: "1.0",
@@ -192,6 +208,13 @@ Deno.test("WorkflowExecutor validates declared runtime inputs before calling too
       callTool: () => {
         calls++;
         return Promise.resolve({ text: "", structuredContent: { constraints: [] } });
+      },
+      callToolTextResult(call: McpToolCall) {
+        return Promise.reject(
+          new Error(
+            `callToolTextResult is not implemented by this stub (${call.name})`,
+          ),
+        );
       },
     }),
   });
@@ -318,6 +341,13 @@ function client(
     callTool(call) {
       calls.push({ server, call });
       return Promise.resolve(result);
+    },
+    callToolTextResult(call: McpToolCall) {
+      return Promise.reject(
+        new Error(
+          `callToolTextResult is not implemented by this stub (${call.name})`,
+        ),
+      );
     },
   };
 }

@@ -1020,6 +1020,20 @@ class ConstraintGuardingSysonClient implements McpToolClient {
     this.#requireExactConstraints = true;
   }
 
+  /**
+   * Delegates text-result calls (e.g. syson_constraint_solve) without
+   * constraint guarding.
+   *
+   * The guard intercepts syson_constraint_extract and syson_constraint_evaluate,
+   * both of which use callTool(). syson_constraint_solve uses callToolTextResult
+   * because its result lives in content[0].text, not structuredContent. No guard
+   * is needed for the solve path: z3 is diagnostic-only and does not gate the
+   * mechanical run (see decision D4 in CLAUDE.md).
+   */
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return this.inner.callToolTextResult(call);
+  }
+
   async callTool(call: McpToolCall): Promise<McpToolResult> {
     if (call.name === "syson_constraint_evaluate") {
       if (!this.#executionConstraints) {

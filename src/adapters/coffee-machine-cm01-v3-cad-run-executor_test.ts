@@ -431,6 +431,12 @@ function context(commandId: string, expectedRevision: number) {
 
 class FakeBuild123d {
   calls: McpToolCall[] = [];
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult is not implemented by this stub (${call.name})`),
+    );
+  }
+
   callTool(call: McpToolCall): Promise<McpToolResult> {
     this.calls.push(structuredClone(call));
     return Promise.resolve({
