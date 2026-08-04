@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in
+this repository.
 
 # Casys Digital Thread — contexte projet
 
@@ -56,9 +57,9 @@ deno task preview:thread      # :5173 — cockpit projet natif (reads/SSE passif
 deno task preview:cockpit     # :5175 — même cockpit, port explicite de démonstration
 ```
 
-Chaîne CM-01 historique r5/r6 — **n'exécuter que pour produire délibérément de
-nouvelles preuves locales**, jamais « pour voir » : les runners provider écrivent des
-révisions immuables sous `state/local/`.
+Chaîne CM-01 historique r5/r6 — **n'exécuter que pour produire délibérément de nouvelles
+preuves locales**, jamais « pour voir » : les runners provider écrivent des révisions
+immuables sous `state/local/`.
 
 ```bash
 deno task thread:assemble                        # assemblage read-only des branches CM-01
@@ -69,62 +70,72 @@ deno task thread:attach-coffee-machine-mechanical --run-id=<id>
 deno task thread:attach-modelica
 ```
 
-Le chemin fermé `coffee-machine-cm01-v3` est distinct de cette référence historique.
-Ses runners de correction et de récupération appellent le plan de contrôle MCP seulement
-après consentement explicite ; `thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity`
-reconstruit une identité R3 depuis une capture achevée, et
-`thread:close-coffee-machine-cm01-v3-r11` crée le closeout R12. Ces deux dernières
-étapes ne rejouent aucun provider ; elles restent néanmoins des écritures immuables, pas
-des commandes de diagnostic.
+Le chemin fermé `coffee-machine-cm01-v3` est distinct de cette référence historique. Ses
+runners de correction et de récupération appellent le plan de contrôle MCP seulement
+après consentement explicite ;
+`thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity` reconstruit une identité
+R3 depuis une capture achevée, et `thread:close-coffee-machine-cm01-v3-r11` crée le
+closeout R12. Ces deux dernières étapes ne rejouent aucun provider ; elles restent
+néanmoins des écritures immuables, pas des commandes de diagnostic.
+
+Diagnostic pur, sans écriture ni révision — `probe:constraint-solver` lit les
+contraintes d'un contexte SysON puis interroge z3. Il ne publie rien ; on peut le lancer
+librement :
+
+```bash
+deno task probe:constraint-solver
+```
 
 **Piège `deno task check`** : la tâche énumère les fichiers un par un dans `deno.json`.
 Un nouveau module non-test qui n'y est pas ajouté n'est jamais type-checké — l'oubli est
-silencieux.
+silencieux. Ne jamais rapporter une suite verte obtenue avec `--no-check` : c'est un
+résultat faux, la vérification ayant été désactivée plutôt que satisfaite.
 
-**Piège bundles** : `src/ui/dist/**` est **commité**. Toute modification de `src/ui/src/`
-exige de rebuilder les surfaces concernées (`build`, `build:thread`) et de commiter le
-bundle régénéré, sinon le preview et la ressource MCP servent l'ancienne UI.
+**Piège bundles** : `src/ui/dist/**` est **commité**. Toute modification de
+`src/ui/src/` exige de rebuilder les surfaces concernées (`build`, `build:thread`) et de
+commiter le bundle régénéré, sinon le preview et la ressource MCP servent l'ancienne UI.
 
 ## Architecture du code
 
 Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 
-| Couche                        | Rôle                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| `src/domain/`                 | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*` |
-| `src/adapters/`               | I/O : stores fichier immuables, clients MCP HTTP, sondes Docker, exécuteurs, projecteurs |
-| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning            |
-| `src/tools/`                  | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                         |
-| `src/workflow/`               | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                 |
-| `src/contracts/`              | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                          |
-| `src/ui/src/`                 | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)    |
-| `src/testing/`                | Fixtures partagées entre suites                                                          |
-| `scripts/`                    | Entry points exécutables : BFF, runners CM-01, harness, gates de release                 |
-| `server.ts`                   | **Composition root** : c'est là que les adapters sont câblés aux services domaine        |
+| Couche                          | Rôle                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*` |
+| `src/adapters/`                 | I/O : stores fichier immuables, clients MCP HTTP, sondes Docker, exécuteurs, projecteurs   |
+| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning               |
+| `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                       |
+| `src/workflow/`                 | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                    |
+| `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                             |
+| `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)    |
+| `src/testing/`                  | Fixtures partagées entre suites                                                            |
+| `scripts/`                      | Entry points exécutables : BFF, runners CM-01, harness, gates de release                   |
+| `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine          |
 
 Les invariants suivants sont structurels — les casser casse le produit, pas seulement un
 test :
 
 1. **Immutabilité + CAS** — `EngineeringProjectSnapshot` et `ThreadSnapshot` ne sont
-   jamais mutés. Toute commande nomme la révision attendue et
-   écrit une nouvelle révision. Une révision publiée est relue avant d'être considérée
-   comme vraie.
+   jamais mutés. Toute commande nomme la révision attendue et écrit une nouvelle
+   révision. Une révision publiée est relue avant d'être considérée comme vraie.
 2. **Hash déterministe** — toute empreinte passe par `deterministicJson` /
    `sha256Fingerprint` (`src/domain/deterministic-json.ts`) : clés triées, `undefined`
    omis, nombres non finis rejetés. Ne jamais hasher un `JSON.stringify` brut.
-3. **Validation fail-closed** — le pattern dominant est `exactRecord(value, [clés], path)` :
-   une clé en trop *ou* en moins est un rejet. Voir `src/orchestration/operations/registry.ts`
-   pour la forme canonique (codes d'erreur typés + message sans détail provider).
-4. **Le navigateur ne reçoit jamais d'autorité MCP** — l'UI lit le dossier lié par GET/SSE
-   et ne poste aucune commande projet. Les `tools/call` restent backend-only ; le chat
-   MCP est l'interface de commande et de décision.
+3. **Validation fail-closed** — le pattern dominant est
+   `exactRecord(value, [clés], path)` : une clé en trop _ou_ en moins est un rejet. Voir
+   `src/orchestration/operations/registry.ts` pour la forme canonique (codes d'erreur
+   typés + message sans détail provider).
+4. **Le navigateur ne reçoit jamais d'autorité MCP** — l'UI lit le dossier lié par
+   GET/SSE et ne poste aucune commande projet. Les `tools/call` restent backend-only ;
+   le chat MCP est l'interface de commande et de décision.
 5. **Loopback = garde de déploiement, pas authentification** — l'identité opérateur
    affichée est auto-déclarée. Un binding non-loopback désactive les outils projet
-   (`server.ts:356`).
-6. **Exécuteurs serveur-fixes** — un agent ne fournit ni nom de provider, ni nom d'outil,
-   ni arguments, ni texte SysML. Il déclenche une opération enregistrée ; la séquence est
-   codée côté serveur. Les écritures non idempotentes sont journalisées avant dispatch et
-   un résultat incertain s'arrête pour revue au lieu de retenter à l'aveugle.
+   (`requestUsesExplicitLoopbackHost`, `server.ts:319`).
+6. **Exécuteurs serveur-fixes** — un agent ne fournit ni nom de provider, ni nom
+   d'outil, ni arguments, ni texte SysML. Il déclenche une opération enregistrée ; la
+   séquence est codée côté serveur. Les écritures non idempotentes sont journalisées
+   avant dispatch et un résultat incertain s'arrête pour revue au lieu de retenter à
+   l'aveugle.
 
 Répartition des autorités, qui explique la plupart des refus de code : l'**agent**
 propose, planifie, met en file et exécute uniquement des opérations enregistrées ;
@@ -135,11 +146,13 @@ autre.
 
 ### Tests
 
-- `_test.ts` co-localisé à côté du module (`src/domain/foo.ts` ↔ `src/domain/foo_test.ts`).
+- `_test.ts` co-localisé à côté du module (`src/domain/foo.ts` ↔
+  `src/domain/foo_test.ts`).
 - Les tests UI sont des tests **Deno**, placés à la **racine de `src/ui/`** (ex.
   `src/ui/project-model_test.ts`) et non à côté des `.tsx`. Ils importent depuis
-  `src/ui/src/` et testent les modèles (`*-model.ts`) et les contrats, pas le rendu Preact.
-  Corollaire : toute logique d'affichage non triviale vit dans un `*-model.ts` testable.
+  `src/ui/src/` et testent les modèles (`*-model.ts`) et les contrats, pas le rendu
+  Preact. Corollaire : toute logique d'affichage non triviale vit dans un `*-model.ts`
+  testable.
 - `@std/assert` uniquement ; noms de tests en phrases décrivant l'invariant, pas la
   méthode (« ThreadSnapshot never accepts an observation without an explicit unit »).
 
@@ -184,7 +197,18 @@ provisoire `config/verification-plans/coffee-machine-nominal-v1.json` :
 `syson_constraint_evaluate` et lié aux hashes modèle/scénario. Ce n'est pas une exigence
 produit/SysON ; les 900 s sont seulement la provenance du scénario. Le chemin CM-01 V3
 fermé porte séparément deux critères mécaniques de concept DripTray et leurs évaluations
-courantes ; il ne prouve ni la machine entière, ni une fabrication, ni une certification.
+courantes ; il ne prouve ni la machine entière, ni une fabrication, ni une
+certification.
+
+Ces deux évaluations mécaniques sont désormais rendues par `syson_constraint_evaluate`
+et non plus par une comparaison TypeScript : les unités sont comparées comme des
+valeurs, et `error` comme `unresolved` atteignent le snapshot publié sans jamais devenir
+`pass`. Les seuils, eux, viennent encore d'un proof-case revu et non du modèle SysML —
+le golden path n'écrit dans SysON que de la structure (`part def`, `part usage`,
+`attribute`), jamais de contrainte ni d'exigence. `syson_constraint_solve` (z3) reste
+délibérément hors du chemin de run : toutes les contraintes ayant la forme
+`feature op littéral` sur des variables indépendantes, il répondrait invariablement
+`sat` — une porte qui dit toujours oui.
 
 Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.2` :
 la surface `planning` porte un `EngineeringProjectSnapshot` immuable avant toute preuve
@@ -194,10 +218,11 @@ technique ; la surface `evidence` y ajoute un `ThreadSnapshot` lié et l'état e
 les facettes composants à `Product`, et les runs et outils à `Execution`.
 
 Un nouveau projet commence directement dans un `EngineeringProjectSnapshot` schema-3.0 :
-l'agent pose une question compréhensible à la fois, consolide le brief vivant et l'humain
-confirme le brief exact dans la conversation par MRTR signé. Le cockpit unique en donne
-ensuite une projection passive ; ce passage ne crée ni modèle SysON, ni `ThreadSnapshot`
-technique. Aucun moteur réglementaire ne fait partie du Golden Path actuel.
+l'agent pose une question compréhensible à la fois, consolide le brief vivant et
+l'humain confirme le brief exact dans la conversation par MRTR signé. Le cockpit unique
+en donne ensuite une projection passive ; ce passage ne crée ni modèle SysON, ni
+`ThreadSnapshot` technique. Aucun moteur réglementaire ne fait partie du Golden Path
+actuel.
 
 Le backend compose les données par un DAG explicite sous `config/thread-workflows/` ; la
 YAML ne décrit ni layout ni composant. Ouvrir la page ne lance aucun solver. Les MCP
@@ -234,7 +259,7 @@ ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service 
 ## Conventions
 
 - `deno fmt` : `lineWidth: 88`, point-virgules, guillemets doubles. Le style des
-  commentaires est explicatif — un bloc `/** */` documente *pourquoi* une frontière
+  commentaires est explicatif — un bloc `/** */` documente _pourquoi_ une frontière
   existe, pas ce que fait la fonction.
 - Dépendances via l'import map de `deno.json` (JSR uniquement) ; `minimumDependencyAge`
   d'un jour, sauf `@casys/mcp-server`.
@@ -243,8 +268,8 @@ ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service 
 - Documentation en Diátaxis sous `docs/` (`tutorials/`, `how-to/`, `reference/`,
   `explanations/`). Une nouvelle frontière ou un nouveau port se documente dans
   `docs/reference/workspace-map.md`.
-- Le vocabulaire produit compte : « demo », « unavailable », « provisional »,
-  « documentary » et « unverified » sont des labels contractuels. Ne jamais les retirer
+- Le vocabulaire produit compte : « demo », « unavailable », « provisional », «
+  documentary » et « unverified » sont des labels contractuels. Ne jamais les retirer
   d'une sortie pour la rendre plus lisible.
 
 ## État et prochaine étape
@@ -253,7 +278,21 @@ Le chemin local CM-01 V3 démontre maintenant une correction bornée `28 mm → 
 run R2 sans preuve reste un échec historique, un successeur R3 correctement identifié
 porte la preuve mécanique, puis R12 ferme explicitement la famille d'exigences et la
 réconciliation de projet. C'est un seul cas de concept, pas un mécanisme de correction
-générique ni une certification. Les prochains chantiers sont de rendre ce schéma
-réutilisable par des paquets d'oracles et de preuves revus par projet, de relier ces
-paquets aux nouveaux briefs/SysON sans arguments techniques arbitraires, puis de mesurer
-les corrections agent avec et sans oracle dans `experiments/oracle/`.
+générique ni une certification.
+
+Deux marches ont été franchies depuis. Les sept capture stores content-addressed sont
+maintenant un seul `FileCaptureStore<Kind>` : un nouveau type de preuve coûte un
+descripteur, pas une classe, et le paramètre de type continue d'interdire qu'un executor
+reçoive le store d'une autre famille. Et le verdict mécanique appartient à l'oracle, à
+travers `src/domain/proof-case.ts` — un contrat d'exigence sans rien de CalculiX ni de
+CM-01, où l'unité est obligatoire et où le critère ignore d'où vient la mesure. C'est
+cette indifférence à la source qui le rend réutilisable par un second projet.
+
+La suite, dans l'ordre : faire vivre les exigences comme éléments SysML du modèle plutôt
+que dans un JSON ; y ajouter les **relations** entre attributs de structure et
+métriques, sans lesquelles ni z3 ni l'agent ne peuvent déduire quel paramètre corriger ;
+puis brancher l'analyse de sensibilité comme second oracle — mesurer
+∂métrique/∂paramètre par différences finies en rejouant la chaîne, ce qui produit ces
+relations par le calcul plutôt que par supposition. C'est aussi ce qui rend enfin
+mesurable l'expérience d'`experiments/oracle/` : nombre de solves nécessaires pour
+converger, avec et sans ces arêtes.
