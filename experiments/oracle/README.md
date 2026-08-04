@@ -57,5 +57,29 @@ Findings, stated with their edges:
 3. **The solver is exactly repeatable** at identical geometry (amplitude 0.000000 mm),
    so between-height variation is pure signal.
 
-Not yet measured: an LLM-agent arm (with vs without the edge in context), and
-multi-parameter tasks where edge _selection_ matters.
+**LLM-subject campaign, same day** — see `results/2026-08-04-llm-l0-l1-l2.json`.
+Subject: a fresh Haiku agent per proposal (no session context, frozen prompts, judge in
+the deterministic script), 3 levels × 5 tasks × 3 reps, real solves:
+
+| Level                        | Converged | Total solves | Avg/trajectory |
+| ---------------------------- | --------- | ------------ | -------------- |
+| L0 — LLM alone, one shot     | 12/15     | 15           | 1.00           |
+| L1 — LLM + FEA feedback      | **15/15** | 17           | 1.13           |
+| L2 — L1 + the published edge | **15/15** | 18           | 1.20           |
+
+Read against the mechanical arms (same judge): bisection needed 3.2 solves/task, the
+amortised edge 1.8 — the LLM subject needs ~1.1, because its physics prior (the
+rationales derive the plate-bending H³ law unprompted) replaces search. Three findings:
+
+1. **The feedback loop buys the guarantee, not the speed.** L0 is right 80 % of the time
+   and silently wrong 20 % — including 2/3 failures on the hard task. One verification
+   loop turns that into 15/15 at almost no extra cost (avg 1.13). That is the product's
+   value in one line: the oracle converts "usually right" into "always verified".
+2. **The edge helps exactly where the prior is weakest.** On easy tasks L2 adds nothing
+   over L1 (the prior already lands). On the hard task (T05, far from H0) L2 converges
+   in 1.33 solves vs 1.67 and lands identically at 28 mm across all reps — more
+   consistent, less oversized (L1 scattered to 29).
+3. **Caveat, stated plainly:** this geometry has a textbook closed form, so the LLM
+   prior is unusually strong. On geometry with no textbook law the prior degrades and
+   the measured edge should matter more — that is the next experiment worth running, not
+   a conclusion to assume.
