@@ -7,6 +7,7 @@ import {
   CoffeeMachineCm01V3MechanicalR3RunExecutor,
 } from "./coffee-machine-cm01-v3-r2-provider-run-executor.ts";
 import { captureCm01DripTrayMechanicalR3 } from "./cm01-drip-tray-mechanical-capture-r3.ts";
+import { type ParsedOracleResult } from "./cm01-drip-tray-mechanical-oracle.ts";
 import {
   CoffeeMachineCm01V3MechanicalR2SuccessorMaterializer,
 } from "./coffee-machine-cm01-v3-r2-successor-materializer.ts";
@@ -64,6 +65,7 @@ Deno.test("CM-01 R2 provider executors reject a non-agent or unavailable project
   const mechanical = new CoffeeMachineCm01V3MechanicalR2RunExecutor({
     ...base,
     proof: proof(),
+    syson: providers,
     build123d: providers,
     calculix: providers,
   });
@@ -123,6 +125,7 @@ Deno.test("CM-01 R3 recovery executor only publishes a fresh isolated solve succ
     captures: fixture.captures,
     lease: fixture.lease as never,
     proof: proofR3(),
+    syson: provider,
     build123d: provider,
     calculix: provider,
     now: () => "2026-08-03T19:00:00.000Z",
@@ -131,7 +134,8 @@ Deno.test("CM-01 R3 recovery executor only publishes a fresh isolated solve succ
     { kind: "agent", actorId: "agent:engineering" },
     { ...command, commandId: "run-cm01-r3", runId: "run:cm01-r3" },
   );
-  assertEquals(provider.calls, 2);
+  // 3 calls: build123d_export + calculix_solve_static + syson_constraint_evaluate (oracle).
+  assertEquals(provider.calls, 3);
   assertEquals(completed.agentRuns[0]?.status, "completed");
   const result = completed.agentRuns[0]?.resultSnapshot!;
   const snapshot = await fixture.snapshots.get(result.snapshotId);
@@ -193,6 +197,7 @@ Deno.test("CM-01 R3 identity recovery creates a deterministic R3 successor witho
       capture as never,
       `casys://test/${capture.fingerprint.digest}`,
       proofR3() as never,
+      stubOracleResults(),
     );
   const recovery = new CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer();
   const first = await recovery.materializeIdentityRecovery(
@@ -202,6 +207,7 @@ Deno.test("CM-01 R3 identity recovery creates a deterministic R3 successor witho
     capture,
     `casys://test/${capture.fingerprint.digest}`,
     proofR3(),
+    stubOracleResults(),
   );
   const replay = await recovery.materializeIdentityRecovery(
     historical.snapshot,
@@ -210,6 +216,7 @@ Deno.test("CM-01 R3 identity recovery creates a deterministic R3 successor witho
     capture,
     `casys://test/${capture.fingerprint.digest}`,
     proofR3(),
+    stubOracleResults(),
   );
   assertEquals(historical.snapshot.revision, 4);
   assertEquals(historical.snapshot.id.includes("mechanical-r2-"), true);
@@ -263,6 +270,7 @@ Deno.test("CM-01 R3 identity-recovery executor reads the completed capture and n
         capture as never,
         `casys://test/${capture.fingerprint.digest}`,
         proofR3() as never,
+        stubOracleResults(),
       );
   const r10 = createThreadSnapshot({
     ...historicalMaterialization.snapshot,
@@ -394,6 +402,7 @@ Deno.test("CM-01 R3 identity-recovery executor reads the completed capture and n
     snapshots: fixture.snapshots as never,
     capture: source,
     proof: proofR3(),
+    syson: new MechanicalProvider(),
     lease: fixture.lease as never,
   });
   const providerCallsBeforeRecovery = providers.calls;
@@ -437,6 +446,7 @@ Deno.test("CM-01 R3 recovery executor rejects a non-agent before its providers",
         await callback(),
     } as never,
     proof: proofR3(),
+    syson: providers,
     build123d: providers,
     calculix: providers,
   });
@@ -527,6 +537,34 @@ class MechanicalProvider {
             bytes: 15490,
             sha256: "4".repeat(64),
           }],
+        },
+      });
+    }
+    if (call.name === "syson_constraint_evaluate") {
+      // Oracle verdict: both metrics well below the limits, so both pass.
+      return Promise.resolve({
+        text: "",
+        structuredContent: {
+          results: [
+            {
+              constraintId: "assembly_max_displacement",
+              status: "pass",
+              computedValue: 0.1,
+              threshold: 1,
+              margin: 0.9,
+              marginPercent: 90,
+              unit: "mm",
+            },
+            {
+              constraintId: "assembly_max_von_mises",
+              status: "pass",
+              computedValue: 0.5,
+              threshold: 20,
+              margin: 19.5,
+              marginPercent: 97.5,
+              unit: "MPa",
+            },
+          ],
         },
       });
     }
@@ -998,4 +1036,35 @@ function proof() {
 
 function proofR3() {
   return parseCm01DripTrayMechanicalProofR3(R3_PROOF);
+}
+
+/**
+ * Minimal oracle result map for tests that call materializers directly.
+ * Both constraints pass with values well within their limits.
+ */
+function stubOracleResults(): ReadonlyMap<string, ParsedOracleResult> {
+  return new Map<string, ParsedOracleResult>([
+    [
+      "assembly_max_displacement",
+      {
+        status: "pass",
+        computedValue: 0.1,
+        threshold: 1,
+        margin: 0.9,
+        marginPercent: 90,
+        unit: "mm",
+      },
+    ],
+    [
+      "assembly_max_von_mises",
+      {
+        status: "pass",
+        computedValue: 0.5,
+        threshold: 20,
+        margin: 19.5,
+        marginPercent: 97.5,
+        unit: "MPa",
+      },
+    ],
+  ]);
 }

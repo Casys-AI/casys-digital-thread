@@ -1,5 +1,11 @@
-import { assertEquals, assertThrows } from "@std/assert";
-import { buildConstraintAst, validateOracleRequirements } from "./proof-case.ts";
+import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
+import {
+  buildConstraintAst,
+  fingerprintOracleRequirements,
+  type OracleRequirement,
+  renderOracleRequirementsSysml,
+  validateOracleRequirements,
+} from "./proof-case.ts";
 
 // ---------------------------------------------------------------------------
 // validateOracleRequirements
@@ -289,4 +295,211 @@ Deno.test("buildConstraintAst returns a frozen immutable AST node", () => {
   assertEquals(Object.isFrozen(ast.expression), true);
   assertEquals(Object.isFrozen(ast.expression.left), true);
   assertEquals(Object.isFrozen(ast.expression.right), true);
+});
+
+// ---------------------------------------------------------------------------
+// renderOracleRequirementsSysml
+// ---------------------------------------------------------------------------
+
+// Shared fixture representing the two mechanical proof requirements.
+const MECH_REQS = validateOracleRequirements([
+  {
+    id: "assembly_max_displacement",
+    name: "DripTray maximum displacement limit",
+    metric: "assembly_max_displacement",
+    operator: "<=",
+    limit: { value: 1, unit: "mm" },
+  },
+  {
+    id: "assembly_max_von_mises",
+    name: "DripTray maximum von Mises stress limit",
+    metric: "assembly_max_von_mises",
+    operator: "<=",
+    limit: { value: 20000000, unit: "Pa" },
+  },
+]);
+
+Deno.test("renderOracleRequirementsSysml render output is stable across two calls", () => {
+  const first = renderOracleRequirementsSysml("DripTrayRequirements", MECH_REQS);
+  const second = renderOracleRequirementsSysml("DripTrayRequirements", MECH_REQS);
+  assertEquals(first, second);
+});
+
+Deno.test(
+  "renderOracleRequirementsSysml output contains the confirmed SysML structure",
+  () => {
+    const text = renderOracleRequirementsSysml("DripTrayRequirements", MECH_REQS);
+    // Part def wrapper
+    assertEquals(text.startsWith("part def DripTrayRequirements {"), true);
+    assertEquals(text.endsWith("}"), true);
+    // SI import
+    assertEquals(text.includes("private import SI::*;"), true);
+    // Attribute declarations with confirmed types
+    assertEquals(
+      text.includes("attribute assembly_max_displacement : LengthValue;"),
+      true,
+    );
+    assertEquals(
+      text.includes("attribute assembly_max_von_mises : PressureValue;"),
+      true,
+    );
+    // Constraint usages — attribute name in body must equal metric (featurePath invariant)
+    assertEquals(
+      text.includes(
+        "constraint assembly_max_displacement_limit { assembly_max_displacement <= 1 [mm] }",
+      ),
+      true,
+    );
+    assertEquals(
+      text.includes(
+        "constraint assembly_max_von_mises_limit { assembly_max_von_mises <= 20000000 [Pa] }",
+      ),
+      true,
+    );
+  },
+);
+
+Deno.test(
+  "renderOracleRequirementsSysml is deterministic regardless of input order",
+  () => {
+    const reversed = validateOracleRequirements([
+      {
+        id: "assembly_max_von_mises",
+        name: "DripTray maximum von Mises stress limit",
+        metric: "assembly_max_von_mises",
+        operator: "<=",
+        limit: { value: 20000000, unit: "Pa" },
+      },
+      {
+        id: "assembly_max_displacement",
+        name: "DripTray maximum displacement limit",
+        metric: "assembly_max_displacement",
+        operator: "<=",
+        limit: { value: 1, unit: "mm" },
+      },
+    ]);
+    const normal = renderOracleRequirementsSysml("DripTrayRequirements", MECH_REQS);
+    const rev = renderOracleRequirementsSysml("DripTrayRequirements", reversed);
+    assertEquals(normal, rev);
+  },
+);
+
+Deno.test(
+  "renderOracleRequirementsSysml rejects a metric that is not a valid SysML identifier",
+  () => {
+    const reqs = validateOracleRequirements([
+      {
+        id: "req_1",
+        name: "Test",
+        metric: "maximum-displacement",
+        operator: "<=",
+        limit: { value: 1, unit: "mm" },
+      },
+    ]);
+    assertThrows(
+      () => renderOracleRequirementsSysml("TestDef", reqs),
+      Error,
+      "not a valid SysML identifier",
+    );
+  },
+);
+
+Deno.test(
+  "renderOracleRequirementsSysml rejects an id that is not a valid SysML identifier",
+  () => {
+    const reqs = validateOracleRequirements([
+      {
+        id: "req-hyphenated",
+        name: "Test",
+        metric: "displacement",
+        operator: "<=",
+        limit: { value: 1, unit: "mm" },
+      },
+    ]);
+    assertThrows(
+      () => renderOracleRequirementsSysml("TestDef", reqs),
+      Error,
+      "not a valid SysML identifier",
+    );
+  },
+);
+
+Deno.test(
+  "unit is a value not decoration: a requirement with an unsupported unit is rejected by the renderer",
+  () => {
+    const reqs = validateOracleRequirements([
+      {
+        id: "req_temp",
+        name: "Temperature limit",
+        metric: "water_temp",
+        operator: ">=",
+        limit: { value: 90, unit: "degC" },
+      },
+    ]);
+    assertThrows(
+      () => renderOracleRequirementsSysml("TestDef", reqs),
+      Error,
+      "no confirmed SysML attribute type mapping",
+    );
+  },
+);
+
+Deno.test(
+  "renderOracleRequirementsSysml rejects a partDefName that is not a valid SysML identifier",
+  () => {
+    assertThrows(
+      () => renderOracleRequirementsSysml("drip-tray-def", MECH_REQS),
+      Error,
+      "not a valid SysML identifier",
+    );
+  },
+);
+
+Deno.test("renderOracleRequirementsSysml rejects an empty requirements list", () => {
+  // Empty array cannot pass validateOracleRequirements, but the renderer has
+  // its own guard for callers that bypass validation.
+  const empty: readonly OracleRequirement[] = [];
+  assertThrows(
+    () => renderOracleRequirementsSysml("TestDef", empty),
+    Error,
+    "must not be empty",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// fingerprintOracleRequirements
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "fingerprintOracleRequirements two requirements with different thresholds produce different fingerprints",
+  async () => {
+    const reqs1 = validateOracleRequirements([
+      {
+        id: "assembly_max_displacement",
+        name: "Displacement limit",
+        metric: "assembly_max_displacement",
+        operator: "<=",
+        limit: { value: 1, unit: "mm" },
+      },
+    ]);
+    const reqs2 = validateOracleRequirements([
+      {
+        id: "assembly_max_displacement",
+        name: "Displacement limit",
+        metric: "assembly_max_displacement",
+        operator: "<=",
+        limit: { value: 2, unit: "mm" },
+      },
+    ]);
+    const fp1 = await fingerprintOracleRequirements(reqs1);
+    const fp2 = await fingerprintOracleRequirements(reqs2);
+    assertNotEquals(fp1.digest, fp2.digest);
+  },
+);
+
+Deno.test("fingerprintOracleRequirements is stable across two calls", async () => {
+  const fp1 = await fingerprintOracleRequirements(MECH_REQS);
+  const fp2 = await fingerprintOracleRequirements(MECH_REQS);
+  assertEquals(fp1.digest, fp2.digest);
+  assertEquals(fp1.algorithm, "sha256");
 });

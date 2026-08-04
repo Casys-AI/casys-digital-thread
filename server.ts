@@ -559,12 +559,13 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
-  const cm01MechanicalR2 = build123dMcpUrl && calculixMcpUrl
+  const cm01MechanicalR2 = sysonMcpUrl && build123dMcpUrl && calculixMcpUrl
     ? new CoffeeMachineCm01V3MechanicalR2RunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
       proof: await loadCm01DripTrayMechanicalProofR2(),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       build123d: new HttpMcpToolClient({
         mcpUrl: build123dMcpUrl,
         timeoutMs: 120_000,
@@ -595,8 +596,8 @@ async function createProjectControl(
     directory: options.cm01DripTrayMechanicalR3CaptureDirectory ??
       DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R3_CAPTURE_DIRECTORY,
   });
-  const cm01MechanicalR3IdentityRecovery =
-    new CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor({
+  const cm01MechanicalR3IdentityRecovery = sysonMcpUrl
+    ? new CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
@@ -605,14 +606,17 @@ async function createProjectControl(
         cm01MechanicalR3Captures,
       ),
       proof: await loadCm01DripTrayMechanicalProofR3(),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
-    });
-  const cm01MechanicalR3 = build123dMcpUrl && calculixMcpUrl
+    })
+    : undefined;
+  const cm01MechanicalR3 = sysonMcpUrl && build123dMcpUrl && calculixMcpUrl
     ? new CoffeeMachineCm01V3MechanicalR3RunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
       proof: await loadCm01DripTrayMechanicalProofR3(),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       build123d: new HttpMcpToolClient({
         mcpUrl: build123dMcpUrl,
         timeoutMs: 120_000,

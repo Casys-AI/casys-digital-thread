@@ -21,8 +21,10 @@ import type { ThreadArtifact, ThreadSnapshot } from "../domain/thread-snapshot.t
 import type { ThreadSnapshotStore } from "../domain/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../domain/thread-snapshot-validation.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
+import { callDripTrayMechanicalOracle } from "./cm01-drip-tray-mechanical-oracle.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
+import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import {
   type Cm01R3MechanicalMaterialization,
   CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer,
@@ -51,6 +53,7 @@ export interface CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutorDepen
   readonly snapshots: ThreadSnapshotStore;
   readonly capture: Cm01DripTrayMechanicalR3CaptureRecovery;
   readonly proof: Cm01DripTrayMechanicalProofR3;
+  readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
 }
 
@@ -65,7 +68,8 @@ interface RecoveryBasis {
  *
  * It loads the immutable, completed R3 capture, emits one new R3-identified
  * successor, and links it as a replacement for (rather than an alias of) the
- * retained R10 record. No MCP provider client is present in this executor.
+ * retained R10 record.  No computation/simulation provider client is present;
+ * only the oracle (syson) is called to evaluate the limits against the capture.
  */
 export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
@@ -73,6 +77,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #capture: Cm01DripTrayMechanicalR3CaptureRecovery;
   readonly #proof: Cm01DripTrayMechanicalProofR3;
+  readonly #syson: McpToolClient;
   readonly #lease: EngineeringProjectRunLease;
 
   constructor(
@@ -84,6 +89,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
     this.#snapshots = dependencies.snapshots;
     this.#capture = dependencies.capture;
     this.#proof = parseCm01DripTrayMechanicalProofR3(dependencies.proof);
+    this.#syson = dependencies.syson;
     this.#lease = dependencies.lease;
   }
 
@@ -145,6 +151,17 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
         historicalRunId: basis.historicalRun.id,
         expectedCaptureFingerprint: basis.historicalEvidence.fingerprint,
       });
+      // The oracle call is the only external call in this executor: no
+      // computation provider is involved, but the verdict must still come from
+      // syson_constraint_evaluate rather than a local comparison.
+      const oracleResults = await callDripTrayMechanicalOracle(
+        this.#syson,
+        this.#proof.limits,
+        {
+          displacementMm: captured.value.metrics.maximumDisplacement.value,
+          vonMisesMpa: captured.value.metrics.maximumVonMises.value,
+        },
+      );
       materialized = await new CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer()
         .materializeIdentityRecovery(
           basis.snapshot,
@@ -153,6 +170,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
           captured.value,
           captured.uri,
           this.#proof,
+          oracleResults,
         );
       await this.#snapshots.save(materialized.snapshot);
       if (

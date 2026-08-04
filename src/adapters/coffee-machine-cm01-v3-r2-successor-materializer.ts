@@ -10,6 +10,10 @@ import type {
   TracedRequirement,
 } from "../domain/thread-snapshot.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../domain/thread-snapshot-extension.ts";
+import {
+  evaluationFromOracle,
+  type ParsedOracleResult,
+} from "./cm01-drip-tray-mechanical-oracle.ts";
 import type { Cm01DripTrayMechanicalProofR2 } from "../domain/cm01-drip-tray-mechanical-proof.ts";
 import type { Cm01SemanticCadR2Capture } from "./cm01-semantic-cad-capture-r2.ts";
 import type { Cm01DripTrayMechanicalR2Capture } from "./cm01-drip-tray-mechanical-capture-r2.ts";
@@ -200,6 +204,7 @@ export class CoffeeMachineCm01V3MechanicalR2SuccessorMaterializer {
     capture: Cm01DripTrayMechanicalR2Capture,
     captureUri: string,
     proof: Cm01DripTrayMechanicalProofR2,
+    oracleResults: ReadonlyMap<string, ParsedOracleResult>,
   ): Promise<Cm01R2Materialization> {
     const correction = requireFreshCorrection(base.artifacts);
     const old = requireCm01R2MechanicalPredecessors(base.artifacts);
@@ -339,16 +344,23 @@ export class CoffeeMachineCm01V3MechanicalR2SuccessorMaterializer {
         freshness,
       ),
     ];
-    const evaluations = requirements.map((item, index) =>
-      evaluation(
+    const evaluations: RequirementEvaluation[] = requirements.map((item, index) => {
+      const oracleResult = oracleResults.get(item.criterion.metric);
+      if (!oracleResult) {
+        throw new Error(
+          `Oracle result missing for metric "${item.criterion.metric}" in R2 evaluation.`,
+        );
+      }
+      return evaluationFromOracle(
         item,
         observations[index]!,
+        oracleResult,
         evaluator,
         solveId,
         capture.capturedAt,
         freshness,
-      )
-    );
+      );
+    });
     const applied = applyThreadSnapshotExtensionIfNew(base, {
       id: `${prefix}-extension`,
       name: "Capture the attested CM-01 30 mm isolated DripTray static proof",
@@ -622,41 +634,6 @@ function requirement(
     version: "cm01-v3-r2",
     criterion: { metric, operator: "<=", limit: { value, unit } },
     trace: { sourceArtifactId, elementId: id, targetArtifactIds: [targetArtifactId] },
-    freshness,
-  };
-}
-function evaluation(
-  requirement: TracedRequirement,
-  observation: { id: string; quantity: { value: number; unit: string } },
-  evaluator: ThreadOperationRef,
-  solveId: string,
-  at: string,
-  freshness: ThreadFreshness,
-): RequirementEvaluation {
-  const pass = observation.quantity.value <= requirement.criterion.limit.value;
-  return {
-    id: `${requirement.id}-evaluation`,
-    name: `${requirement.name} evaluation`,
-    requirementId: requirement.id,
-    observationIds: [observation.id],
-    status: pass ? "pass" : "fail",
-    evaluatedAt: at,
-    evaluator,
-    comparison: {
-      observationId: observation.id,
-      actual: observation.quantity,
-      operator: "<=",
-      limit: requirement.criterion.limit,
-      normalizedUnit: observation.quantity.unit,
-      margin: {
-        value: requirement.criterion.limit.value - observation.quantity.value,
-        unit: observation.quantity.unit,
-      },
-    },
-    evidenceArtifactIds: [solveId],
-    message: pass
-      ? "The observed value is within the reviewed concept limit."
-      : "The observed value exceeds the reviewed concept limit.",
     freshness,
   };
 }

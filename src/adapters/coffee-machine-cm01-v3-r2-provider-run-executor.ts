@@ -37,6 +37,7 @@ import {
   captureCm01DripTrayMechanicalR3,
   parseCm01DripTrayMechanicalR3Capture,
 } from "./cm01-drip-tray-mechanical-capture-r3.ts";
+import { callDripTrayMechanicalOracle } from "./cm01-drip-tray-mechanical-oracle.ts";
 import {
   captureCm01SemanticCadExportR2,
   parseCm01SemanticCadR2Capture,
@@ -118,6 +119,7 @@ export interface CoffeeMachineCm01V3CadR2RunExecutorDependencies
 export interface CoffeeMachineCm01V3MechanicalR2RunExecutorDependencies
   extends CommonDependencies {
   readonly proof: Cm01DripTrayMechanicalProofR2;
+  readonly syson: McpToolClient;
   readonly build123d: McpToolClient;
   readonly calculix: McpToolClient;
 }
@@ -125,6 +127,7 @@ export interface CoffeeMachineCm01V3MechanicalR2RunExecutorDependencies
 export interface CoffeeMachineCm01V3MechanicalR3RunExecutorDependencies
   extends CommonDependencies {
   readonly proof: Cm01DripTrayMechanicalProofR3;
+  readonly syson: McpToolClient;
   readonly build123d: McpToolClient;
   readonly calculix: McpToolClient;
 }
@@ -187,12 +190,14 @@ export class CoffeeMachineCm01V3CadR2RunExecutor {
  */
 export class CoffeeMachineCm01V3MechanicalR2RunExecutor {
   readonly #proof: Cm01DripTrayMechanicalProofR2;
+  readonly #syson: McpToolClient;
   readonly #build123d: McpToolClient;
   readonly #calculix: McpToolClient;
   readonly #common: R2ExecutorCommon;
 
   constructor(dependencies: CoffeeMachineCm01V3MechanicalR2RunExecutorDependencies) {
     this.#proof = parseCm01DripTrayMechanicalProofR2(dependencies.proof);
+    this.#syson = dependencies.syson;
     this.#build123d = dependencies.build123d;
     this.#calculix = dependencies.calculix;
     this.#common = new R2ExecutorCommon(
@@ -222,6 +227,14 @@ export class CoffeeMachineCm01V3MechanicalR2RunExecutor {
             ),
           parseCm01DripTrayMechanicalR2Capture,
         );
+        const oracleResults = await callDripTrayMechanicalOracle(
+          this.#syson,
+          this.#proof.limits,
+          {
+            displacementMm: capture.value.metrics.maximumDisplacement.value,
+            vonMisesMpa: capture.value.metrics.maximumVonMises.value,
+          },
+        );
         const materialized =
           await new CoffeeMachineCm01V3MechanicalR2SuccessorMaterializer()
             .materialize(
@@ -230,6 +243,7 @@ export class CoffeeMachineCm01V3MechanicalR2RunExecutor {
               capture.value,
               capture.uri,
               this.#proof,
+              oracleResults,
             );
         return { materialized, capturedAt: capture.value.capturedAt };
       },
@@ -244,12 +258,14 @@ export class CoffeeMachineCm01V3MechanicalR2RunExecutor {
  */
 export class CoffeeMachineCm01V3MechanicalR3RunExecutor {
   readonly #proof: Cm01DripTrayMechanicalProofR3;
+  readonly #syson: McpToolClient;
   readonly #build123d: McpToolClient;
   readonly #calculix: McpToolClient;
   readonly #common: R2ExecutorCommon;
 
   constructor(dependencies: CoffeeMachineCm01V3MechanicalR3RunExecutorDependencies) {
     this.#proof = parseCm01DripTrayMechanicalProofR3(dependencies.proof);
+    this.#syson = dependencies.syson;
     this.#build123d = dependencies.build123d;
     this.#calculix = dependencies.calculix;
     this.#common = new R2ExecutorCommon(
@@ -279,6 +295,14 @@ export class CoffeeMachineCm01V3MechanicalR3RunExecutor {
             ),
           parseCm01DripTrayMechanicalR3Capture,
         );
+        const oracleResults = await callDripTrayMechanicalOracle(
+          this.#syson,
+          this.#proof.limits,
+          {
+            displacementMm: capture.value.metrics.maximumDisplacement.value,
+            vonMisesMpa: capture.value.metrics.maximumVonMises.value,
+          },
+        );
         const materialized =
           await new CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer()
             .materialize(
@@ -287,6 +311,7 @@ export class CoffeeMachineCm01V3MechanicalR3RunExecutor {
               capture.value,
               capture.uri,
               this.#proof,
+              oracleResults,
             );
         return { materialized, capturedAt: capture.value.capturedAt };
       },

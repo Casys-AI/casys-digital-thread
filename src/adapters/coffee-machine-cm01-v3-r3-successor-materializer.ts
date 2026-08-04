@@ -11,6 +11,10 @@ import type {
   TracedRequirement,
 } from "../domain/thread-snapshot.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../domain/thread-snapshot-extension.ts";
+import {
+  evaluationFromOracle,
+  type ParsedOracleResult,
+} from "./cm01-drip-tray-mechanical-oracle.ts";
 import type { Cm01DripTrayMechanicalR3Capture } from "./cm01-drip-tray-mechanical-capture-r3.ts";
 
 export interface Cm01R3MechanicalMaterialization {
@@ -38,6 +42,7 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
     capture: Cm01DripTrayMechanicalR3Capture,
     captureUri: string,
     proof: Cm01DripTrayMechanicalProofR3,
+    oracleResults: ReadonlyMap<string, ParsedOracleResult>,
   ): Promise<Cm01R3MechanicalMaterialization> {
     return await this.#materialize(
       base,
@@ -47,6 +52,7 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
       stalePredecessors(base.artifacts),
       runId,
       runId,
+      oracleResults,
     );
   }
 
@@ -54,6 +60,9 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
    * Reprojects one already-captured R3 provider result under its correct
    * identity.  It does not call a provider and it leaves the malformed R10
    * snapshot intact as the explicit superseded historical record.
+   *
+   * The executor must obtain oracle results (by calling callDripTrayMechanicalOracle)
+   * before calling this method; the materializer itself remains pure.
    */
   async materializeIdentityRecovery(
     base: ThreadSnapshot,
@@ -62,6 +71,7 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
     capture: Cm01DripTrayMechanicalR3Capture,
     captureUri: string,
     proof: Cm01DripTrayMechanicalProofR3,
+    oracleResults: ReadonlyMap<string, ParsedOracleResult>,
   ): Promise<Cm01R3MechanicalMaterialization> {
     return await this.#materialize(
       base,
@@ -71,6 +81,7 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
       historicalR2NamedPredecessors(base, capture),
       recoveryRunId,
       historicalProviderRunId,
+      oracleResults,
     );
   }
 
@@ -82,6 +93,7 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
     predecessor: MechanicalPredecessors,
     evaluatorRunId: string,
     providerRunId: string,
+    oracleResults: ReadonlyMap<string, ParsedOracleResult>,
   ): Promise<Cm01R3MechanicalMaterialization> {
     const correction = freshCorrection(base.artifacts);
     const assemblyStep = freshAssemblyStep(base.artifacts);
@@ -217,16 +229,23 @@ export class CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer {
         freshness,
       ),
     ];
-    const evaluations = requirements.map((item, index) =>
-      evaluation(
+    const evaluations: RequirementEvaluation[] = requirements.map((item, index) => {
+      const oracleResult = oracleResults.get(item.criterion.metric);
+      if (!oracleResult) {
+        throw new Error(
+          `Oracle result missing for metric "${item.criterion.metric}" in R3 evaluation.`,
+        );
+      }
+      return evaluationFromOracle(
         item,
         observations[index]!,
+        oracleResult,
         evaluator,
         solveId,
         capture.capturedAt,
         freshness,
-      )
-    );
+      );
+    });
     const consumed = [
       consumedCorrection,
       consumedAssembly,
@@ -598,42 +617,6 @@ function requirement(
     version: "cm01-v3-r3",
     criterion: { metric, operator: "<=", limit: { value, unit } },
     trace: { sourceArtifactId, elementId: id, targetArtifactIds: [targetArtifactId] },
-    freshness,
-  };
-}
-
-function evaluation(
-  requirement: TracedRequirement,
-  observation: { id: string; quantity: { value: number; unit: string } },
-  evaluator: ThreadOperationRef,
-  solveId: string,
-  at: string,
-  freshness: ThreadFreshness,
-): RequirementEvaluation {
-  const pass = observation.quantity.value <= requirement.criterion.limit.value;
-  return {
-    id: `${requirement.id}-evaluation`,
-    name: `${requirement.name} evaluation`,
-    requirementId: requirement.id,
-    observationIds: [observation.id],
-    status: pass ? "pass" : "fail",
-    evaluatedAt: at,
-    evaluator,
-    comparison: {
-      observationId: observation.id,
-      actual: observation.quantity,
-      operator: "<=",
-      limit: requirement.criterion.limit,
-      normalizedUnit: observation.quantity.unit,
-      margin: {
-        value: requirement.criterion.limit.value - observation.quantity.value,
-        unit: observation.quantity.unit,
-      },
-    },
-    evidenceArtifactIds: [solveId],
-    message: pass
-      ? "The observed value is within the reviewed R3 concept limit."
-      : "The observed value exceeds the reviewed R3 concept limit.",
     freshness,
   };
 }

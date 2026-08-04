@@ -20,7 +20,6 @@ import {
 import type {
   ContentFingerprint,
   RequirementEvaluation,
-  RequirementEvaluationStatus,
   ThreadArtifact,
   ThreadArtifactConsumption,
   ThreadFreshness,
@@ -29,8 +28,13 @@ import type {
   ThreadViolation,
   TracedRequirement,
 } from "../domain/thread-snapshot.ts";
-import { buildConstraintAst, type OracleRequirement } from "../domain/proof-case.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../domain/thread-snapshot-extension.ts";
+import {
+  callDripTrayMechanicalOracle,
+  evaluationFromOracle,
+  type ParsedOracleResult,
+  parseOracleOutcome,
+} from "./cm01-drip-tray-mechanical-oracle.ts";
 import type { ThreadSnapshotStore } from "../domain/thread-snapshot-store.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
@@ -48,24 +52,11 @@ import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
 
 /**
- * Oracle verdict for a single constraint, as parsed from
- * syson_constraint_evaluate structuredContent.
- *
- * The union type is intentional: callers must not read numeric fields when the
- * oracle could not determine a verdict (error / unresolved). Merging them into
- * optional fields would silently allow callers to use 0 as a default.
+ * Re-exported from cm01-drip-tray-mechanical-oracle.ts for backward compatibility
+ * with existing imports in tests and callers that reference this module.
  */
-export type ParsedOracleResult =
-  | {
-    readonly status: "pass" | "fail";
-    readonly computedValue: number;
-    readonly threshold: number;
-    readonly margin: number;
-    readonly marginPercent: number;
-    /** Normalized unit used by the oracle; equals the unit requested in OracleRequirement. */
-    readonly unit: string;
-  }
-  | { readonly status: "error" | "unresolved" };
+export type { ParsedOracleResult };
+export { evaluationFromOracle, parseOracleOutcome };
 
 export const COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION =
   COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanical;
@@ -833,206 +824,22 @@ function requirement(
   };
 }
 /**
- * Build a RequirementEvaluation from the oracle verdict.
+ * Thin adapter for the V1 path.
  *
- * The oracle is the sole authority on the verdict (D2). For error/unresolved
- * statuses, comparison is intentionally absent: thread-snapshot-validation.ts
- * raises unexpected_comparison when comparison is present for those statuses,
- * so a non-null comparison would silently make the snapshot fail validation.
- *
- * The unit guard that existed in the previous local evaluator is now
- * enforced by parseOracleOutcome: if the oracle returns a unit different from
- * the one declared in the OracleRequirement, the response is rejected before
- * this function is ever called.
- */
-export function evaluationFromOracle(
-  requirement: TracedRequirement,
-  observation: { id: string; quantity: { value: number; unit: string } },
-  oracleResult: ParsedOracleResult,
-  evaluator: ThreadOperationRef,
-  solveId: string,
-  at: string,
-  freshness: ThreadFreshness,
-): RequirementEvaluation {
-  const id = `${requirement.id}-evaluation`;
-  const base = {
-    id,
-    name: `${requirement.name} evaluation`,
-    requirementId: requirement.id,
-    observationIds: [observation.id],
-    status: oracleResult.status,
-    evaluatedAt: at,
-    evaluator,
-    evidenceArtifactIds: [solveId],
-    freshness,
-  };
-  if (oracleResult.status === "pass" || oracleResult.status === "fail") {
-    return {
-      ...base,
-      comparison: {
-        observationId: observation.id,
-        actual: { value: oracleResult.computedValue, unit: oracleResult.unit },
-        operator: "<=",
-        limit: { value: oracleResult.threshold, unit: oracleResult.unit },
-        normalizedUnit: oracleResult.unit,
-        margin: { value: oracleResult.margin, unit: oracleResult.unit },
-      },
-      message: oracleResult.status === "pass"
-        ? "The observed value is within the reviewed concept limit."
-        : "The observed value exceeds the reviewed concept limit.",
-    };
-  }
-  return {
-    ...base,
-    message: oracleResult.status === "error"
-      ? "The oracle returned an error evaluating this limit."
-      : "The oracle could not resolve this limit evaluation.",
-  };
-}
-
-const ORACLE_STATUS_VALUES = new Set<string>(["pass", "fail", "error", "unresolved"]);
-
-/**
- * Parse and validate the structuredContent returned by syson_constraint_evaluate.
- * Fail-closed: any structural deviation, missing constraint, duplicate,
- * unit mismatch (oracle unit ≠ declared limit unit), or non-finite number
- * is a hard rejection.
- *
- * The unit guard here is the replacement for the unit mismatch check that
- * previously lived in the local evaluation() function: it fires before any
- * numeric field is read, ensuring that a Pa oracle response is never silently
- * treated as MPa.
- */
-export function parseOracleOutcome(
-  content: Readonly<Record<string, unknown>>,
-  requirements: readonly OracleRequirement[],
-): ReadonlyMap<string, ParsedOracleResult> {
-  if (!Array.isArray(content.results)) {
-    throw new Error(
-      "syson_constraint_evaluate: structuredContent.results must be an array.",
-    );
-  }
-  const rows = content.results as unknown[];
-  if (rows.length !== requirements.length) {
-    throw new Error(
-      `syson_constraint_evaluate: expected ${requirements.length} result(s), got ${rows.length}.`,
-    );
-  }
-  const expectedIds = new Map(requirements.map((r) => [r.id, r]));
-  const map = new Map<string, ParsedOracleResult>();
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row || typeof row !== "object" || Array.isArray(row)) {
-      throw new Error(`syson_constraint_evaluate: results[${i}] must be an object.`);
-    }
-    const item = row as Record<string, unknown>;
-    const constraintId = item.constraintId;
-    if (typeof constraintId !== "string" || !expectedIds.has(constraintId)) {
-      throw new Error(
-        `syson_constraint_evaluate: results[${i}].constraintId is unknown or missing.`,
-      );
-    }
-    if (map.has(constraintId)) {
-      throw new Error(
-        `syson_constraint_evaluate: duplicate constraintId "${constraintId}" in results.`,
-      );
-    }
-    const rawStatus = item.status;
-    if (typeof rawStatus !== "string" || !ORACLE_STATUS_VALUES.has(rawStatus)) {
-      throw new Error(
-        `syson_constraint_evaluate: results[${i}].status must be pass|fail|error|unresolved.`,
-      );
-    }
-    const status = rawStatus as RequirementEvaluationStatus;
-    if (status === "pass" || status === "fail") {
-      const req = expectedIds.get(constraintId)!;
-      if (item.unit !== req.limit.unit) {
-        throw new Error(
-          `syson_constraint_evaluate: results[${i}].unit must equal "${req.limit.unit}" ` +
-            `(got "${item.unit}").`,
-        );
-      }
-      map.set(constraintId, {
-        status,
-        computedValue: oracleNumber(item, "computedValue", i),
-        threshold: oracleNumber(item, "threshold", i),
-        margin: oracleNumber(item, "margin", i),
-        marginPercent: oracleNumber(item, "marginPercent", i),
-        unit: req.limit.unit,
-      });
-    } else {
-      map.set(constraintId, { status });
-    }
-  }
-  for (const id of expectedIds.keys()) {
-    if (!map.has(id)) {
-      throw new Error(
-        `syson_constraint_evaluate: missing result for constraint "${id}".`,
-      );
-    }
-  }
-  return map;
-}
-
-function oracleNumber(
-  item: Record<string, unknown>,
-  field: string,
-  index: number,
-): number {
-  const value = item[field];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(
-      `syson_constraint_evaluate: results[${index}].${field} must be a finite number.`,
-    );
-  }
-  return value;
-}
-
-/**
- * Call syson_constraint_evaluate with the two mechanical limits and the values
- * observed by CalculiX. The oracle converts units internally and renders the
- * verdict; local arithmetic is intentionally absent (D2).
- *
- * Constraint IDs equal the metric names so the mapping back to the
- * TracedRequirements in the snapshot is unambiguous without any secondary index.
+ * callMechanicalConstraintOracle extracts the scalar metrics/limits from the
+ * V1 capture and proof types and delegates to callDripTrayMechanicalOracle in
+ * cm01-drip-tray-mechanical-oracle.ts.  The R2/R3 executors call
+ * callDripTrayMechanicalOracle directly with their own capture/proof types.
  */
 export async function callMechanicalConstraintOracle(
   syson: McpToolClient,
   capture: Cm01DripTrayMechanicalCapture,
   proof: Cm01DripTrayMechanicalProof,
 ): Promise<ReadonlyMap<string, ParsedOracleResult>> {
-  const requirements: OracleRequirement[] = [
-    {
-      id: "assembly_max_displacement",
-      name: "DripTray maximum displacement limit",
-      metric: "assembly_max_displacement",
-      operator: "<=",
-      limit: { value: proof.limits.maximumDisplacementMm, unit: "mm" },
-    },
-    {
-      id: "assembly_max_von_mises",
-      name: "DripTray maximum von Mises stress limit",
-      metric: "assembly_max_von_mises",
-      operator: "<=",
-      limit: { value: proof.limits.maximumVonMisesMpa, unit: "MPa" },
-    },
-  ];
-  const constraints = requirements.map(buildConstraintAst);
-  const values = {
-    assembly_max_displacement: {
-      value: capture.metrics.maximumDisplacement.value,
-      unit: "mm",
-    },
-    assembly_max_von_mises: {
-      value: capture.metrics.maximumVonMises.value,
-      unit: "MPa",
-    },
-  };
-  const result = await syson.callTool({
-    name: "syson_constraint_evaluate",
-    arguments: { constraints, values },
+  return await callDripTrayMechanicalOracle(syson, proof.limits, {
+    displacementMm: capture.metrics.maximumDisplacement.value,
+    vonMisesMpa: capture.metrics.maximumVonMises.value,
   });
-  return parseOracleOutcome(result.structuredContent, requirements);
 }
 function link(
   id: string,

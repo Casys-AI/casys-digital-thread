@@ -1,3 +1,6 @@
+import type { ContentFingerprint } from "./thread-snapshot.ts";
+import { sha256Fingerprint } from "./deterministic-json.ts";
+
 /**
  * Generic oracle-requirement contract for any discipline that evaluates scalar
  * limits through syson_constraint_evaluate.
@@ -208,6 +211,145 @@ export function buildConstraintAst(requirement: OracleRequirement): ConstraintAs
       },
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// SysML rendering — constants
+// ---------------------------------------------------------------------------
+
+/**
+ * SysML v2 identifier: letters, digits, underscores; must start with a letter
+ * or underscore. Hyphens and dots are allowed by SAFE_ID but are not valid in
+ * SysML identifiers.
+ */
+const SYSML_ID = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Map from SI unit abbreviation to the SysML v2 attribute type supplied by
+ * `private import SI::*`. Only units confirmed in a live probe are included;
+ * all others are rejected fail-closed.
+ *
+ * Live-probe evidence (2026-08-04, project probe-requirements-2026-08-04,
+ * element d6793ccf):
+ *   mm → LengthValue   (syson_constraint_extract returned unit: "mm")
+ *   Pa → PressureValue (syson_constraint_extract returned unit: "Pa")
+ *
+ * To add a unit, run a probe that confirms insertion → extraction round-trip
+ * and document the evidence here before merging.
+ */
+const UNIT_TO_SYSML_TYPE: ReadonlyMap<string, string> = new Map([
+  ["mm", "LengthValue"],
+  ["Pa", "PressureValue"],
+]);
+
+// ---------------------------------------------------------------------------
+// SysML rendering — public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Render oracle requirements as a SysML v2 part def that SysON can parse,
+ * persist, and re-extract via syson_constraint_extract.
+ *
+ * ROUND-TRIP INVARIANT — for each requirement, the attribute name in the
+ * generated SysML equals requirement.metric.  syson_constraint_extract
+ * therefore returns featurePath = [requirement.metric], which matches the
+ * output of buildConstraintAst verbatim.
+ *
+ * DETERMINISM — same inputs produce identical bytes every time. Requirements
+ * are sorted by id before rendering; the caller's input order is irrelevant.
+ *
+ * GUARD — partDefName, every requirement.id, and every requirement.metric
+ * must be valid SysML identifiers (letters, digits, underscores; no hyphens
+ * or dots). Each requirement.limit.unit must have a confirmed SysML attribute
+ * type mapping (currently: mm → LengthValue, Pa → PressureValue). All
+ * constraints are validated fail-closed before the first character is written.
+ *
+ * The caller is always a server-fixed executor that hard-codes partDefName.
+ * Agents never reach this boundary — invariant 6: the server owns the SysML
+ * text, not the agent.
+ */
+export function renderOracleRequirementsSysml(
+  partDefName: string,
+  requirements: readonly OracleRequirement[],
+): string {
+  sysmlIdentifier(partDefName, "partDefName");
+  if (requirements.length === 0) {
+    throw new Error("requirements must not be empty.");
+  }
+  // Validate all requirements fail-closed before writing any text.
+  const validated = requirements.map((req, index) => ({
+    req,
+    attrName: sysmlIdentifier(req.metric, `requirements[${index}].metric`),
+    constraintName: `${sysmlIdentifier(req.id, `requirements[${index}].id`)}_limit`,
+    attrType: sysmlAttributeType(req.limit.unit, `requirements[${index}].limit`),
+  }));
+  // Sort by id for byte-identical output regardless of input order.
+  const sorted = [...validated].sort((left, right) =>
+    left.req.id.localeCompare(right.req.id)
+  );
+  // Duplicate attribute names would produce invalid SysML.
+  const attrNames = sorted.map((v) => v.attrName);
+  if (new Set(attrNames).size !== attrNames.length) {
+    throw new Error(
+      "requirements produce duplicate SysML attribute names after sorting.",
+    );
+  }
+  const lines: string[] = [`part def ${partDefName} {`, `  private import SI::*;`];
+  for (const { attrName, attrType } of sorted) {
+    lines.push(`  attribute ${attrName} : ${attrType};`);
+  }
+  for (const { req, attrName, constraintName } of sorted) {
+    lines.push(
+      `  constraint ${constraintName} { ${attrName} ${req.operator} ${
+        String(req.limit.value)
+      } [${req.limit.unit}] }`,
+    );
+  }
+  lines.push("}");
+  return lines.join("\n");
+}
+
+/**
+ * Compute a deterministic SHA-256 fingerprint of a validated requirements
+ * list.  Embed this fingerprint in the proof artifact to link the executed
+ * evidence to the reviewed source declaration.
+ *
+ * Any change to a threshold, unit, or id produces a different fingerprint,
+ * making alterations detectable by comparison with the golden reference.
+ *
+ * requirements must have been validated by validateOracleRequirements before
+ * calling; this function does not re-validate.
+ */
+export function fingerprintOracleRequirements(
+  requirements: readonly OracleRequirement[],
+): Promise<ContentFingerprint> {
+  return sha256Fingerprint(requirements);
+}
+
+// ---------------------------------------------------------------------------
+// SysML rendering — private helpers
+// ---------------------------------------------------------------------------
+
+function sysmlIdentifier(value: string, path: string): string {
+  if (!SYSML_ID.test(value)) {
+    throw new Error(
+      `${path} "${value}" is not a valid SysML identifier ` +
+        `(letters, digits, underscores; must start with a letter or underscore).`,
+    );
+  }
+  return value;
+}
+
+function sysmlAttributeType(unit: string, path: string): string {
+  const type = UNIT_TO_SYSML_TYPE.get(unit);
+  if (type === undefined) {
+    const supported = [...UNIT_TO_SYSML_TYPE.keys()].join(", ");
+    throw new Error(
+      `${path}.unit "${unit}" has no confirmed SysML attribute type mapping. ` +
+        `Supported: ${supported}.`,
+    );
+  }
+  return type;
 }
 
 // ---------------------------------------------------------------------------
