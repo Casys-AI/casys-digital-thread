@@ -485,7 +485,14 @@ export class CoffeeMachineCm01V3OracleRequirementsRunExecutor {
         assertCompleted(project, command);
         return project;
       }
-      if (run.status !== "running") throw unexpectedStatus(run, "running");
+      // A "publishing" run is a legitimate resume point: publishRun succeeded
+      // but completeRun did not. Every step between here and 14c is idempotent
+      // (the WAL skips the insertion, capture and snapshot saves are CAS
+      // re-reads), and 14b already skips publishRun for this status — so the
+      // retry the error message promises must be allowed through this gate.
+      if (run.status !== "running" && run.status !== "publishing") {
+        throw unexpectedStatus(run, "running");
+      }
 
       // --- Step 3: load inputs ---
       const capturedAt = requiredStart(run);
@@ -630,10 +637,14 @@ export class CoffeeMachineCm01V3OracleRequirementsRunExecutor {
       if (snapshotPersisted) {
         const complete = await this.completedFor(command);
         if (complete) return complete;
+        // Keep the underlying reason visible: swallowing it here has already
+        // cost a live debugging session. The message stays machine-actionable,
+        // the cause rides along for the operator.
+        const cause = error instanceof Error ? ` Cause: ${error.message}` : "";
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "CM-01 oracle-requirements evidence is durable but project attachment did not finish. " +
-            "Retry this exact command; it will not insert a second element.",
+            `Retry this exact command; it will not insert a second element.${cause}`,
         );
       }
       if (error instanceof OracleRequirementsSeedWriteOutcomeUnknownError) {

@@ -145,18 +145,32 @@ Deno.test(
 );
 
 Deno.test(
-  "an absent requirement id in the model is rejected with code requirement_missing",
+  "a SysON element id never stands in for the reviewed requirement identity",
+  async () => {
+    // SysON assigns its own UUIDs to inserted constraints; the live server
+    // proved on 2026-08-04 that the id field can never equal the reviewed id.
+    // The join is the metric named by the feature path, so a foreign id with a
+    // faithful expression must still verify.
+    const constraints = faithfulConstraints();
+    (constraints[0] as Record<string, unknown>).id = "e20363c3-uuid-from-syson";
+    const client = new SysonExtractClient({ constraints });
+    await extractAndVerifyOracleRequirements(client, "ctx", "elem", CANONICAL);
+  },
+);
+
+Deno.test(
+  "a constraint whose metric is absent from the model is rejected with code requirement_missing",
   async () => {
     const constraints = faithfulConstraints();
-    (constraints[0] as Record<string, unknown>).id = "unknown_id";
+    const expr = (constraints[0] as Record<string, unknown>)
+      .expression as Record<string, unknown>;
+    (expr.left as Record<string, unknown>).featurePath = ["some_other_metric"];
     const client = new SysonExtractClient({ constraints });
     const error = await assertRejects(
       () => extractAndVerifyOracleRequirements(client, "ctx", "elem", CANONICAL),
       RequirementExtractionError,
-      "assembly_max_displacement",
     );
     assertEquals(error.code, "requirement_missing");
-    assertEquals(error.context.requirementId, "assembly_max_displacement");
   },
 );
 

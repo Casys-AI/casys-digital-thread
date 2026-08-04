@@ -35,6 +35,7 @@ export type RequirementExtractionCode =
  */
 export interface RequirementExtractionContext {
   readonly requirementId?: string;
+  readonly metric?: string;
   readonly field?: string;
   readonly expected?: unknown;
   readonly actual?: unknown;
@@ -149,32 +150,44 @@ export async function extractAndVerifyOracleRequirements(
     );
   }
 
-  // --- 4. Index extracted rows by id -------------------------------------------
-  const byId = new Map<string, unknown>();
+  // --- 4. Index extracted rows by metric (featurePath[0]) -----------------------
+  // SysON assigns its own element UUIDs to inserted constraints, so the id field
+  // can never match the reviewed requirement id — the live server proved this on
+  // 2026-08-04 while the mocks, which echoed the reviewed id back, hid it. The
+  // stable join is the semantic one: the feature path names the metric the
+  // constraint bounds, and verifyExtractedConstraint still checks operator,
+  // value and unit behind it.
+  const byMetric = new Map<string, unknown>();
   for (const row of extracted) {
-    const id = extractedId(row);
-    if (id === undefined) {
+    const metric = extractedMetric(row);
+    if (metric === undefined) {
       throw new RequirementExtractionError(
         "requirement_extraction_failed",
-        "syson_constraint_extract: a constraint item has no string id field.",
-        {
-          field: "id",
-          actual: typeof (row as Record<string, unknown>)?.id,
-        },
+        "syson_constraint_extract: a constraint item has no feature path.",
+        { field: "expression.left.featurePath" },
         "The SysON tool response shape has changed. Stop for review before retrying.",
       );
     }
-    byId.set(id, row);
+    if (byMetric.has(metric)) {
+      throw new RequirementExtractionError(
+        "requirement_extraction_failed",
+        `syson_constraint_extract: two constraints bound the metric "${metric}".`,
+        { metric },
+        "Duplicate constraints for one metric make the model ambiguous. " +
+          "Inspect the model before retrying.",
+      );
+    }
+    byMetric.set(metric, row);
   }
 
   // --- 5. Verify each canonical requirement against the extracted row ----------
   for (const req of canonical) {
-    const row = byId.get(req.id);
+    const row = byMetric.get(req.metric);
     if (row === undefined) {
       throw new RequirementExtractionError(
         "requirement_missing",
-        `syson_constraint_extract: no constraint with id "${req.id}" in the model.`,
-        { requirementId: req.id },
+        `syson_constraint_extract: no constraint bounds the metric "${req.metric}".`,
+        { requirementId: req.id, metric: req.metric },
         `The requirement "${req.id}" is absent from the model. The model may have ` +
           "been altered. Stop for review; do not retry automatically.",
       );
@@ -284,6 +297,19 @@ function extractedId(row: unknown): string | undefined {
   if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
   const item = row as Record<string, unknown>;
   return typeof item.id === "string" && item.id.length > 0 ? item.id : undefined;
+}
+
+/** The metric a constraint bounds: expression.left.featurePath[0]. */
+function extractedMetric(row: unknown): string | undefined {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
+  const expression = (row as Record<string, unknown>).expression;
+  if (!expression || typeof expression !== "object") return undefined;
+  const left = (expression as Record<string, unknown>).left;
+  if (!left || typeof left !== "object") return undefined;
+  const path = (left as Record<string, unknown>).featurePath;
+  return Array.isArray(path) && typeof path[0] === "string" && path[0].length > 0
+    ? path[0]
+    : undefined;
 }
 
 function asRecord(value: unknown, path: string): Record<string, unknown> {

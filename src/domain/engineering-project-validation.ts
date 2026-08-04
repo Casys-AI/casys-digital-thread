@@ -2067,16 +2067,22 @@ function validateWorkItemReconciliationInvariant(
     reconciliation.successorSnapshot.subjectId !== project.project.subjectId ||
     reconciliation.successorSnapshot.revision !==
       reconciliation.successorRunSnapshot.revision + 1 ||
-    !sameSnapshotRef(
-      project.threadSnapshots.at(-1)!,
-      reconciliation.successorSnapshot,
+    // The closeout snapshot must belong to the project's recorded lineage. It
+    // was the newest snapshot when the closeout happened, but this validation
+    // replays on every later revision — requiring it to still be the *last*
+    // snapshot would freeze the whole project the moment any post-closeout
+    // run publishes. The direct-successor position is already pinned by the
+    // revision equality above; lineage membership is the durable property.
+    !project.threadSnapshots.some((snapshot) =>
+      sameSnapshotRef(snapshot, reconciliation.successorSnapshot)
     )
   ) {
     issue(
       issues,
       "invalid_transition",
       `${path}.reconciliation.successorSnapshot`,
-      "must be the direct current closeout snapshot after the successor result",
+      "must be the direct closeout snapshot after the successor result, " +
+        "recorded in the project lineage",
     );
   }
   if (
