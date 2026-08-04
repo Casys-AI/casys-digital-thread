@@ -4,6 +4,7 @@ import {
   renderRibbedTrayScript,
   RIB_HEIGHT_MAX_MM,
   RIB_HEIGHT_MIN_MM,
+  ribbedTrayVolumeMm3,
 } from "./ribbed-geometry.ts";
 
 // ── renderRibbedTrayScript — determinism ──────────────────────────────────────
@@ -212,3 +213,34 @@ Deno.test(
     assertEquals(JSON.stringify(a), JSON.stringify(b));
   },
 );
+
+Deno.test("the plate thickness parameter reaches the script and the band rule follows it", () => {
+  const script = renderRibbedTrayScript(6, 8);
+  if (!script.includes("Box(190, 135, 8,")) {
+    throw new Error("plate thickness 8 did not reach the CAD script");
+  }
+  const req = buildRibbedCalculixRequest("/exports/x.step", "a".repeat(64), 8) as {
+    selections: { box: { min: number[]; max: number[] } }[];
+  };
+  // Rule: zHalf = T/2 + 1 = 5 for T = 8.
+  if (req.selections[0].box.max[2] !== 5 || req.selections[0].box.min[2] !== -5) {
+    throw new Error("band z rule did not follow the plate thickness");
+  }
+});
+
+Deno.test("the analytic volume is exact and never a solve", () => {
+  // 190*135*6 + 5*(8*120*4) = 153900 + 19200 = 173100 mm^3 — checkable by hand.
+  if (ribbedTrayVolumeMm3(6, 4) !== 173100) {
+    throw new Error("analytic volume diverges from the hand computation");
+  }
+});
+
+Deno.test("a plate thickness outside the reviewed domain is rejected", () => {
+  let threw = false;
+  try {
+    renderRibbedTrayScript(6, 12);
+  } catch {
+    threw = true;
+  }
+  if (!threw) throw new Error("plate 12 mm must be rejected");
+});

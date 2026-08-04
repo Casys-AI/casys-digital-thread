@@ -39,7 +39,28 @@ export const RIB_HEIGHT_MAX_MM = 14 as const;
  *
  * @throws {TypeError} when ribHeightMm is not finite, ≤ 0, or outside [1, 14].
  */
-export function renderRibbedTrayScript(ribHeightMm: number): string {
+/** Second design parameter of the two-parameter bench: plate thickness. */
+export const PLATE_THICKNESS_MIN_MM = 4;
+export const PLATE_THICKNESS_MAX_MM = 10;
+export const PLATE_THICKNESS_DEFAULT_MM = 6;
+
+function requirePlateThickness(plateThicknessMm: number): void {
+  if (
+    !Number.isFinite(plateThicknessMm) ||
+    plateThicknessMm < PLATE_THICKNESS_MIN_MM ||
+    plateThicknessMm > PLATE_THICKNESS_MAX_MM
+  ) {
+    throw new TypeError(
+      `plateThicknessMm must be a finite number in [${PLATE_THICKNESS_MIN_MM}, ${PLATE_THICKNESS_MAX_MM}] mm, ` +
+        `got ${plateThicknessMm}`,
+    );
+  }
+}
+
+export function renderRibbedTrayScript(
+  ribHeightMm: number,
+  plateThicknessMm: number = PLATE_THICKNESS_DEFAULT_MM,
+): string {
   if (
     !Number.isFinite(ribHeightMm) ||
     ribHeightMm <= 0 ||
@@ -51,17 +72,18 @@ export function renderRibbedTrayScript(ribHeightMm: number): string {
         `got ${ribHeightMm}`,
     );
   }
+  requirePlateThickness(plateThicknessMm);
 
   // z-centre of each rib in global coordinates: the rib top face is flush with
-  // the plate bottom (z = −3), so the rib centre sits at z = −3 − R/2.
-  const zc = -3.0 - ribHeightMm / 2.0;
+  // the plate bottom (z = −T/2), so the rib centre sits at z = −T/2 − R/2.
+  const zc = -plateThicknessMm / 2.0 - ribHeightMm / 2.0;
 
   return [
     "from build123d import Align, Box, Location",
     "",
     `_R = ${ribHeightMm}`,
     `_zc = ${zc}`,
-    "plate = Box(190, 135, 6, align=(Align.CENTER, Align.CENTER, Align.CENTER))",
+    `plate = Box(190, 135, ${plateThicknessMm}, align=(Align.CENTER, Align.CENTER, Align.CENTER))`,
     "result = (",
     "    plate",
     "    + Box(8, 120, _R, align=(Align.CENTER, Align.CENTER, Align.CENTER)).move(Location((-60, 0.0, _zc)))",
@@ -87,7 +109,16 @@ export function renderRibbedTrayScript(ribHeightMm: number): string {
 export function buildRibbedCalculixRequest(
   stepPath: string,
   stepSha256: string,
+  plateThicknessMm: number = PLATE_THICKNESS_DEFAULT_MM,
 ): Record<string, unknown> {
+  requirePlateThickness(plateThicknessMm);
+  // The band boxes must cover the full plate thickness with a declared 1 mm
+  // margin on each side: z ∈ ±(T/2 + 1). This is a RULE, not a constant,
+  // because the plate is now parametric — the R2 selection-box failure taught
+  // that a frozen box silently stops matching when the geometry it selects
+  // moves. The ribs stop at |y| = 60, far inside both bands' y range, so no z
+  // extension can ever catch a rib.
+  const zHalf = plateThicknessMm / 2 + 1;
   return {
     step_path: stepPath,
     expected_step_sha256: stepSha256,
@@ -96,14 +127,38 @@ export function buildRibbedCalculixRequest(
     selections: [
       {
         name: "FIXED",
-        box: { min: [-96, 66.5, -4], max: [96, 68.5, 4] },
+        box: { min: [-96, 66.5, -zHalf], max: [96, 68.5, zHalf] },
       },
       {
         name: "LOADED",
-        box: { min: [-96, -68.5, -4], max: [96, -66.5, 4] },
+        box: { min: [-96, -68.5, -zHalf], max: [96, -66.5, zHalf] },
       },
     ],
     fixed: ["FIXED"],
     loads: [{ selection: "LOADED", force_n: [0, 0, -100] }],
   };
+}
+
+/**
+ * Exact analytic volume of the ribbed tray in mm³ — the mass column of the
+ * two-parameter jacobian, free of any solve: plate 190×135×T plus five ribs
+ * 8×120×R, disjoint by construction (ribs sit strictly below the plate).
+ * Mass follows as volume × density; density stays a reviewed case value.
+ */
+export function ribbedTrayVolumeMm3(
+  plateThicknessMm: number,
+  ribHeightMm: number,
+): number {
+  requirePlateThickness(plateThicknessMm);
+  if (
+    !Number.isFinite(ribHeightMm) ||
+    ribHeightMm < RIB_HEIGHT_MIN_MM ||
+    ribHeightMm > RIB_HEIGHT_MAX_MM
+  ) {
+    throw new TypeError(
+      `ribHeightMm must be a finite number in [${RIB_HEIGHT_MIN_MM}, ${RIB_HEIGHT_MAX_MM}] mm, ` +
+        `got ${ribHeightMm}`,
+    );
+  }
+  return 190 * 135 * plateThicknessMm + 5 * (8 * 120 * ribHeightMm);
 }

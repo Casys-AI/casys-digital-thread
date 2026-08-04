@@ -12,9 +12,13 @@
 import { HttpMcpToolClient } from "../../src/adapters/http-mcp-tool-client.ts";
 import {
   buildRibbedCalculixRequest,
+  PLATE_THICKNESS_DEFAULT_MM,
+  PLATE_THICKNESS_MAX_MM,
+  PLATE_THICKNESS_MIN_MM,
   renderRibbedTrayScript,
   RIB_HEIGHT_MAX_MM,
   RIB_HEIGHT_MIN_MM,
+  ribbedTrayVolumeMm3,
 } from "./ribbed-geometry.ts";
 
 function argument(name: string): string | undefined {
@@ -44,7 +48,22 @@ if (ribMm < RIB_HEIGHT_MIN_MM || ribMm > RIB_HEIGHT_MAX_MM) {
   Deno.exit(0);
 }
 
-const label = argument("label") ?? `oracle-ribbed-tray-rib-${ribMm}`;
+const plateRaw = argument("plate");
+const plateMm = plateRaw === undefined ? PLATE_THICKNESS_DEFAULT_MM : Number(plateRaw);
+if (
+  !Number.isFinite(plateMm) || plateMm < PLATE_THICKNESS_MIN_MM ||
+  plateMm > PLATE_THICKNESS_MAX_MM
+) {
+  console.log(JSON.stringify({
+    error: "domain_exceeded",
+    detail: `plate ${plateRaw} mm is outside the reviewed safe domain ` +
+      `[${PLATE_THICKNESS_MIN_MM}, ${PLATE_THICKNESS_MAX_MM}] mm`,
+  }));
+  Deno.exit(0);
+}
+
+const label = argument("label") ??
+  `oracle-ribbed-tray-rib-${ribMm}-plate-${plateMm}`;
 
 const build123d = new HttpMcpToolClient({
   mcpUrl: "http://127.0.0.1:3014/mcp",
@@ -56,7 +75,7 @@ const calculix = new HttpMcpToolClient({
 });
 
 // Step 1: export the ribbed tray geometry as STEP.
-const script = renderRibbedTrayScript(ribMm);
+const script = renderRibbedTrayScript(ribMm, plateMm);
 const buildResult = await build123d.callTool({
   name: "build123d_export",
   arguments: {
@@ -96,7 +115,7 @@ if (!stepPath || !stepSha256 || !Number.isFinite(stepBytes) || stepBytes <= 0) {
 }
 
 // Step 2: run the linear static FEA on the exported STEP.
-const calcArgs = buildRibbedCalculixRequest(stepPath, stepSha256);
+const calcArgs = buildRibbedCalculixRequest(stepPath, stepSha256, plateMm);
 const calcResult = await calculix.callTool({
   name: "calculix_solve_static",
   arguments: calcArgs,
@@ -145,6 +164,8 @@ if (
 
 console.log(JSON.stringify({
   ribMm,
+  plateMm,
+  volumeMm3: ribbedTrayVolumeMm3(plateMm, ribMm),
   displacementMm: disp.value,
   vonMisesMpa: vm.value,
   stepSha256: handoffSha256,
