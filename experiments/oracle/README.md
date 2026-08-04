@@ -83,3 +83,33 @@ rationales derive the plate-bending H³ law unprompted) replaces search. Three f
    prior is unusually strong. On geometry with no textbook law the prior degrades and
    the measured edge should matter more — that is the next experiment worth running, not
    a conclusion to assume.
+
+**Hard-geometry campaign, same day** — see
+`results/2026-08-04-ribbed-hard-campaign.json`. The caveat's experiment: a ribbed tray
+(plate 190×135×6, five transverse ribs, rib height R as the parameter) whose composite
+T-section response has no recitable closed form. Real curve measured over R ∈ [2, 14]: u
+from 7.995 mm down to 3.416 mm, strongly non-linear and saturating. ~103 real solves:
+
+| Arm                       | Converged | Avg solves |
+| ------------------------- | --------- | ---------- |
+| B — bisection             | 5/5       | 4.4        |
+| CA — single measured edge | 4/5       | 2.8        |
+| L0 — LLM alone            | **7/15**  | 1.0        |
+| L1 — LLM + FEA feedback   | **15/15** | 1.73       |
+| L2 — L1 + edge            | **15/15** | 1.67       |
+
+1. **The prior collapsed as predicted: 80 % → 47 %.** L0 still aces the easy
+   near-saturation tasks (T01/T02: 6/6) but scores 1/9 on the three tasks needing real
+   extrapolation — and its rationales now _invent_ plausible laws (I ∝ R^2.5 and other
+   confident fabrications). Exactly the silent-plausible-error the oracle exists for.
+2. **The loop is the invariant: L1 = 15/15 on both geometries.** Even with a broken
+   prior, a rough guess plus real verdicts converges in 1.73 solves — still beating
+   bisection (4.4) by ~2.5×. The product claim survives its hard test: the guarantee is
+   the loop, and it does not depend on the agent being right.
+3. **A single edge is not enough on a curved response.** CA, applying the R=6 derivative
+   everywhere, failed T01 (six under-corrections near saturation, budget exhausted —
+   true local slope ~3× flatter than measured) and grossly over-corrected T05 (final R
+   13.4 vs ~9.9 minimal — true local slope ~2.5× steeper). Both are the same failure:
+   locality violated in opposite directions. This is the measured argument for the
+   piecewise map (several local edges) and for neighbourhood-bounded proposals — the
+   traversal engine under construction refuses exactly what CA here silently did.
