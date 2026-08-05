@@ -22,6 +22,16 @@
 
 import type { ContentFingerprint } from "./thread-snapshot.ts";
 import { sha256Fingerprint } from "./deterministic-json.ts";
+import {
+  arrayOf,
+  deepFreeze,
+  exactRecord,
+  finite,
+  literalValue,
+  nonEmptyArray,
+  nonEmptyText,
+  rejectDuplicates,
+} from "./case-validation.ts";
 
 // ---------------------------------------------------------------------------
 // Schema constant
@@ -421,82 +431,6 @@ function paramUnitConfirmed(unit: string, path: string): string {
 function parseOperator(value: unknown, path: string): ">=" | "<=" {
   if (value !== ">=" && value !== "<=") {
     throw new Error(`${path} must be ">=" or "<=".`);
-  }
-  return value;
-}
-
-// ---------------------------------------------------------------------------
-// Primitive validators — private
-// ---------------------------------------------------------------------------
-
-function exactRecord(
-  value: unknown,
-  keys: readonly string[],
-  path: string,
-): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${path} must be an object.`);
-  }
-  const rec = value as Record<string, unknown>;
-  const expectedSet = new Set(keys);
-  for (const key of Object.keys(rec)) {
-    if (!expectedSet.has(key)) {
-      throw new Error(`${path} has unsupported field "${key}".`);
-    }
-  }
-  for (const key of keys) {
-    if (!Object.hasOwn(rec, key)) {
-      throw new Error(`${path}.${key} is required.`);
-    }
-  }
-  return rec;
-}
-
-function arrayOf(value: unknown, path: string): unknown[] {
-  if (!Array.isArray(value)) throw new Error(`${path} must be an array.`);
-  return value;
-}
-
-function nonEmptyArray(value: unknown, path: string): unknown[] {
-  const result = arrayOf(value, path);
-  if (result.length === 0) throw new Error(`${path} must not be empty.`);
-  return result;
-}
-
-function nonEmptyText(value: unknown, path: string): string {
-  if (
-    typeof value !== "string" || value.length === 0 || value !== value.trim()
-  ) {
-    throw new Error(`${path} must be a non-empty string without edge whitespace.`);
-  }
-  return value;
-}
-
-function finite(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${path} must be a finite number.`);
-  }
-  return value;
-}
-
-function literalValue(value: unknown, expected: unknown, path: string): void {
-  if (value !== expected) {
-    throw new Error(`${path} must equal ${JSON.stringify(expected)}.`);
-  }
-}
-
-function rejectDuplicates(values: readonly string[], path: string): void {
-  if (new Set(values).size !== values.length) {
-    throw new Error(`${path} must not contain duplicates.`);
-  }
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(child);
-    }
   }
   return value;
 }

@@ -1,5 +1,14 @@
 import type { ContentFingerprint } from "./thread-snapshot.ts";
 import { sha256Fingerprint } from "./deterministic-json.ts";
+import {
+  arrayOf,
+  deepFreeze,
+  exactRecord,
+  finite,
+  nonEmptyText,
+  rejectDuplicates,
+  safeId,
+} from "./case-validation.ts";
 
 /**
  * Generic oracle-requirement contract for any discipline that evaluates scalar
@@ -70,62 +79,8 @@ export interface ConstraintAst {
 }
 
 // ---------------------------------------------------------------------------
-// Validation primitives — private to this module
+// Validation — private domain helpers (primitives imported from case-validation.ts)
 // ---------------------------------------------------------------------------
-
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
-
-function record(value: unknown, path: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${path} must be an object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function arrayOf(value: unknown, path: string): unknown[] {
-  if (!Array.isArray(value)) throw new Error(`${path} must be an array.`);
-  return value;
-}
-
-function exactKeys(
-  value: Record<string, unknown>,
-  expected: readonly string[],
-  path: string,
-): void {
-  const expectedSet = new Set(expected);
-  for (const key of Object.keys(value)) {
-    if (!expectedSet.has(key)) {
-      throw new Error(`${path} has unsupported field ${key}.`);
-    }
-  }
-  for (const key of expected) {
-    if (!Object.hasOwn(value, key)) {
-      throw new Error(`${path}.${key} is required.`);
-    }
-  }
-}
-
-function string(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length === 0 || value !== value.trim()) {
-    throw new Error(`${path} must be a non-empty string without edge whitespace.`);
-  }
-  return value;
-}
-
-function safeId(value: unknown, path: string): string {
-  const result = string(value, path);
-  if (!SAFE_ID.test(result)) {
-    throw new Error(`${path} must be a stable identifier.`);
-  }
-  return result;
-}
-
-function finite(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${path} must be a finite number.`);
-  }
-  return value;
-}
 
 function oracleOperator(value: unknown, path: string): OracleOperator {
   if (value !== "<=" && value !== ">=") {
@@ -135,30 +90,22 @@ function oracleOperator(value: unknown, path: string): OracleOperator {
 }
 
 function oracleLimit(value: unknown, path: string): OracleLimit {
-  const input = record(value, path);
-  exactKeys(input, ["value", "unit"], path);
+  const input = exactRecord(value, ["value", "unit"], path);
   return deepFreeze({
     value: finite(input.value, `${path}.value`),
-    unit: string(input.unit, `${path}.unit`),
+    unit: nonEmptyText(input.unit, `${path}.unit`),
   });
 }
 
 function singleRequirement(value: unknown, path: string): OracleRequirement {
-  const input = record(value, path);
-  exactKeys(input, ["id", "name", "metric", "operator", "limit"], path);
+  const input = exactRecord(value, ["id", "name", "metric", "operator", "limit"], path);
   return deepFreeze({
     id: safeId(input.id, `${path}.id`),
-    name: string(input.name, `${path}.name`),
+    name: nonEmptyText(input.name, `${path}.name`),
     metric: safeId(input.metric, `${path}.metric`),
     operator: oracleOperator(input.operator, `${path}.operator`),
     limit: oracleLimit(input.limit, `${path}.limit`),
   });
-}
-
-function rejectDuplicates(values: readonly string[], path: string): void {
-  if (new Set(values).size !== values.length) {
-    throw new Error(`${path} must not contain duplicates.`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -350,18 +297,4 @@ function sysmlAttributeType(unit: string, path: string): string {
     );
   }
   return type;
-}
-
-// ---------------------------------------------------------------------------
-// Internal utilities
-// ---------------------------------------------------------------------------
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(child);
-    }
-  }
-  return value;
 }

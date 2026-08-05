@@ -5,6 +5,19 @@
  * queried, a decision was approved, inputs reached CalculiX, or results exist.
  */
 
+import {
+  arrayOf,
+  deepFreeze,
+  exactRecord,
+  finite,
+  literalValue,
+  nonEmptyArray,
+  nonEmptyText,
+  positiveInteger,
+  rejectDuplicates,
+  safeId,
+} from "./case-validation.ts";
+
 export const MECHANICAL_PROOF_CASE_SCHEMA = "mechanical-proof-case/1.0" as const;
 
 export interface MechanicalProofCase {
@@ -204,7 +217,6 @@ const ROOT_KEYS = [
   "analysis",
   "requirements",
 ] as const;
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const SELECTION_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const REQUIREMENT_ORDER = new Map<MechanicalRequirement["metric"], number>([
@@ -214,13 +226,11 @@ const REQUIREMENT_ORDER = new Map<MechanicalRequirement["metric"], number>([
 
 /** Validate untrusted JSON and return an immutable canonical declaration. */
 export function validateMechanicalProofCase(value: unknown): MechanicalProofCase {
-  const root = record(value, "$case");
-  exactKeys(root, ROOT_KEYS, "$case");
-  literal(root.schemaVersion, MECHANICAL_PROOF_CASE_SCHEMA, "$case.schemaVersion");
+  const root = exactRecord(value, ROOT_KEYS, "$case");
+  literalValue(root.schemaVersion, MECHANICAL_PROOF_CASE_SCHEMA, "$case.schemaVersion");
 
-  const projectInput = record(root.project, "$case.project");
-  exactKeys(
-    projectInput,
+  const projectInput = exactRecord(
+    root.project,
     ["id", "subjectId", "baseThreadSnapshot"],
     "$case.project",
   );
@@ -236,38 +246,41 @@ export function validateMechanicalProofCase(value: unknown): MechanicalProofCase
     );
   }
 
-  const targetInput = record(root.target, "$case.target");
-  exactKeys(targetInput, ["id", "modelElementId"], "$case.target");
-  const authorizationInput = record(root.authorization, "$case.authorization");
-  exactKeys(
-    authorizationInput,
+  const targetInput = exactRecord(
+    root.target,
+    ["id", "modelElementId"],
+    "$case.target",
+  );
+  const authorizationInput = exactRecord(
+    root.authorization,
     ["workItemId", "decisionId"],
     "$case.authorization",
   );
-  const sourceInput = record(root.requirementsSource, "$case.requirementsSource");
-  exactKeys(
-    sourceInput,
+  const sourceInput = exactRecord(
+    root.requirementsSource,
     ["provider", "editingContextId", "elementId"],
     "$case.requirementsSource",
   );
-  literal(sourceInput.provider, "syson", "$case.requirementsSource.provider");
-  const solverInput = record(root.solver, "$case.solver");
-  exactKeys(
-    solverInput,
+  literalValue(sourceInput.provider, "syson", "$case.requirementsSource.provider");
+  const solverInput = exactRecord(
+    root.solver,
     ["provider", "tool", "resultSchemaVersion"],
     "$case.solver",
   );
-  literal(solverInput.provider, "calculix", "$case.solver.provider");
-  literal(solverInput.tool, "calculix_solve_static", "$case.solver.tool");
-  literal(solverInput.resultSchemaVersion, "2.0", "$case.solver.resultSchemaVersion");
+  literalValue(solverInput.provider, "calculix", "$case.solver.provider");
+  literalValue(solverInput.tool, "calculix_solve_static", "$case.solver.tool");
+  literalValue(
+    solverInput.resultSchemaVersion,
+    "2.0",
+    "$case.solver.resultSchemaVersion",
+  );
 
-  const analysisInput = record(root.analysis, "$case.analysis");
-  exactKeys(
-    analysisInput,
+  const analysisInput = exactRecord(
+    root.analysis,
     ["kind", "material", "mesh", "supports", "loads"],
     "$case.analysis",
   );
-  literal(analysisInput.kind, "linear-static", "$case.analysis.kind");
+  literalValue(analysisInput.kind, "linear-static", "$case.analysis.kind");
   const material = mechanicalMaterial(
     analysisInput.material,
     "$case.analysis.material",
@@ -286,7 +299,7 @@ export function validateMechanicalProofCase(value: unknown): MechanicalProofCase
   rejectDuplicates(selections, "$case.analysis selection names");
   rejectSupportLoadSelectionOverlap(supports, loads);
 
-  const requirements = array(root.requirements, "$case.requirements").map(
+  const requirements = arrayOf(root.requirements, "$case.requirements").map(
     (item, index) => requirement(item, `$case.requirements[${index}]`),
   );
   if (requirements.length !== 2) {
@@ -327,8 +340,8 @@ export function validateMechanicalProofCase(value: unknown): MechanicalProofCase
     schemaVersion: MECHANICAL_PROOF_CASE_SCHEMA,
     id: safeId(root.id, "$case.id"),
     revision: positiveInteger(root.revision, "$case.revision"),
-    scope: text(root.scope, "$case.scope"),
-    evidenceBoundary: text(root.evidenceBoundary, "$case.evidenceBoundary"),
+    scope: nonEmptyText(root.scope, "$case.scope"),
+    evidenceBoundary: nonEmptyText(root.evidenceBoundary, "$case.evidenceBoundary"),
     project: { id: projectId, subjectId, baseThreadSnapshot },
     target: {
       id: safeId(targetInput.id, "$case.target.id"),
@@ -435,9 +448,8 @@ export function validateMechanicalDeclarationIdentityBinding(
 function declarationIdentityBinding(
   value: unknown,
 ): MechanicalDeclarationIdentityBinding {
-  const input = record(value, "$binding");
-  exactKeys(
-    input,
+  const input = exactRecord(
+    value,
     [
       "projectId",
       "subjectId",
@@ -470,13 +482,12 @@ function mechanicalMaterial(
   value: unknown,
   path: string,
 ): MechanicalProofCase["analysis"]["material"] {
-  const input = record(value, path);
-  exactKeys(
-    input,
+  const input = exactRecord(
+    value,
     ["model", "basis", "youngModulus", "poissonRatio"],
     path,
   );
-  literal(input.model, "isotropic-linear-elastic", `${path}.model`);
+  literalValue(input.model, "isotropic-linear-elastic", `${path}.model`);
   const youngModulus = scalar(input.youngModulus, "MPa", `${path}.youngModulus`);
   if (youngModulus.value <= 0) {
     throw new Error(`${path}.youngModulus.value must be greater than zero.`);
@@ -489,7 +500,7 @@ function mechanicalMaterial(
   }
   return {
     model: "isotropic-linear-elastic",
-    basis: text(input.basis, `${path}.basis`),
+    basis: nonEmptyText(input.basis, `${path}.basis`),
     youngModulus,
     poissonRatio,
   };
@@ -499,9 +510,8 @@ function mechanicalMesh(
   value: unknown,
   path: string,
 ): MechanicalProofCase["analysis"]["mesh"] {
-  const input = record(value, path);
-  exactKeys(input, ["kind", "targetSize"], path);
-  literal(input.kind, "tetrahedral-volume", `${path}.kind`);
+  const input = exactRecord(value, ["kind", "targetSize"], path);
+  literalValue(input.kind, "tetrahedral-volume", `${path}.kind`);
   const targetSize = scalar(input.targetSize, "mm", `${path}.targetSize`);
   if (targetSize.value <= 0) {
     throw new Error(`${path}.targetSize.value must be greater than zero.`);
@@ -513,9 +523,8 @@ function mechanicalMesh(
 }
 
 function fixedSupport(value: unknown, path: string): MechanicalFixedSupport {
-  const input = record(value, path);
-  exactKeys(input, ["id", "kind", "selection"], path);
-  literal(input.kind, "fixed", `${path}.kind`);
+  const input = exactRecord(value, ["id", "kind", "selection"], path);
+  literalValue(input.kind, "fixed", `${path}.kind`);
   return {
     id: safeId(input.id, `${path}.id`),
     kind: "fixed",
@@ -524,9 +533,8 @@ function fixedSupport(value: unknown, path: string): MechanicalFixedSupport {
 }
 
 function forceLoad(value: unknown, path: string): MechanicalForceLoad {
-  const input = record(value, path);
-  exactKeys(input, ["id", "kind", "selection", "force"], path);
-  literal(input.kind, "force", `${path}.kind`);
+  const input = exactRecord(value, ["id", "kind", "selection", "force"], path);
+  literalValue(input.kind, "force", `${path}.kind`);
   const force = vector(input.force, "N", `${path}.force`);
   if (force.value.every((component) => component === 0)) {
     throw new Error(`${path}.force.value must contain a non-zero component.`);
@@ -540,17 +548,15 @@ function forceLoad(value: unknown, path: string): MechanicalForceLoad {
 }
 
 function selection(value: unknown, path: string): MechanicalSelection {
-  const input = record(value, path);
-  exactKeys(input, ["name", "box"], path);
-  const name = string(input.name, `${path}.name`);
+  const input = exactRecord(value, ["name", "box"], path);
+  const name = nonEmptyText(input.name, `${path}.name`);
   if (!SELECTION_NAME.test(name)) {
     throw new Error(
       `${path}.name must start with a letter and contain only letters, digits or underscores.`,
     );
   }
-  const boxInput = record(input.box, `${path}.box`);
-  exactKeys(boxInput, ["min", "max", "unit"], `${path}.box`);
-  literal(boxInput.unit, "mm", `${path}.box.unit`);
+  const boxInput = exactRecord(input.box, ["min", "max", "unit"], `${path}.box`);
+  literalValue(boxInput.unit, "mm", `${path}.box.unit`);
   const min = vectorValues(boxInput.min, `${path}.box.min`);
   const max = vectorValues(boxInput.max, `${path}.box.max`);
   min.forEach((component, axis) => {
@@ -586,13 +592,12 @@ function selectionBoxesOverlap(
 }
 
 function requirement(value: unknown, path: string): MechanicalRequirement {
-  const input = record(value, path);
-  exactKeys(
-    input,
+  const input = exactRecord(
+    value,
     ["id", "name", "metric", "feature", "operator", "limit"],
     path,
   );
-  literal(input.operator, "<=", `${path}.operator`);
+  literalValue(input.operator, "<=", `${path}.operator`);
   const common = {
     id: safeId(input.id, `${path}.id`),
     name: safeId(input.name, `${path}.name`),
@@ -620,8 +625,7 @@ function threadSnapshotBinding(
   value: unknown,
   path: string,
 ): ExactThreadSnapshotBinding {
-  const input = record(value, path);
-  exactKeys(input, ["id", "revision", "subjectId"], path);
+  const input = exactRecord(value, ["id", "revision", "subjectId"], path);
   return {
     id: safeId(input.id, `${path}.id`),
     revision: positiveInteger(input.revision, `${path}.revision`),
@@ -630,21 +634,20 @@ function threadSnapshotBinding(
 }
 
 function cadSource(value: unknown, path: string): MechanicalCadSource {
-  const input = record(value, path);
+  // Basic object check before reading .kind to select the right exact key set.
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${path} must be an object.`);
+  }
+  const input = value as Record<string, unknown>;
   if (input.kind === "parametric") {
-    exactKeys(input, ["kind", "generator", "engineeringBoundary"], path);
-    const generator = record(input.generator, `${path}.generator`);
-    exactKeys(
-      generator,
+    exactRecord(input, ["kind", "generator", "engineeringBoundary"], path);
+    const generator = exactRecord(
+      input.generator,
       ["provider", "tool", "definition"],
       `${path}.generator`,
     );
-    const definition = record(
+    const definition = exactRecord(
       generator.definition,
-      `${path}.generator.definition`,
-    );
-    exactKeys(
-      definition,
       ["mediaType", "sha256", "bytes"],
       `${path}.generator.definition`,
     );
@@ -654,7 +657,7 @@ function cadSource(value: unknown, path: string): MechanicalCadSource {
         provider: safeId(generator.provider, `${path}.generator.provider`),
         tool: safeId(generator.tool, `${path}.generator.tool`),
         definition: {
-          mediaType: text(
+          mediaType: nonEmptyText(
             definition.mediaType,
             `${path}.generator.definition.mediaType`,
           ),
@@ -675,7 +678,7 @@ function cadSource(value: unknown, path: string): MechanicalCadSource {
     };
   }
   if (input.kind === "imported-or-reconstructed") {
-    exactKeys(
+    exactRecord(
       input,
       [
         "kind",
@@ -698,18 +701,20 @@ function cadSource(value: unknown, path: string): MechanicalCadSource {
       sources.map((source) => source.sha256),
       `${path}.sources SHA-256 digests`,
     );
-    const license = record(input.license, `${path}.license`);
-    exactKeys(license, ["identifier", "evidenceUri"], `${path}.license`);
-    const conversion = record(input.conversion, `${path}.conversion`);
-    exactKeys(
-      conversion,
+    const license = exactRecord(
+      input.license,
+      ["identifier", "evidenceUri"],
+      `${path}.license`,
+    );
+    const conversion = exactRecord(
+      input.conversion,
       ["tool", "revision", "losses"],
       `${path}.conversion`,
     );
     const losses = nonEmptyArray(
       conversion.losses,
       `${path}.conversion.losses`,
-    ).map((loss, index) => text(loss, `${path}.conversion.losses[${index}]`));
+    ).map((loss, index) => nonEmptyText(loss, `${path}.conversion.losses[${index}]`));
     rejectDuplicates(losses, `${path}.conversion.losses`);
     const engineeringBoundary = cadEngineeringBoundary(
       input.engineeringBoundary,
@@ -728,12 +733,12 @@ function cadSource(value: unknown, path: string): MechanicalCadSource {
       method: input.method,
       sources,
       license: {
-        identifier: text(license.identifier, `${path}.license.identifier`),
-        evidenceUri: text(license.evidenceUri, `${path}.license.evidenceUri`),
+        identifier: nonEmptyText(license.identifier, `${path}.license.identifier`),
+        evidenceUri: nonEmptyText(license.evidenceUri, `${path}.license.evidenceUri`),
       },
       conversion: {
-        tool: text(conversion.tool, `${path}.conversion.tool`),
-        revision: text(conversion.revision, `${path}.conversion.revision`),
+        tool: nonEmptyText(conversion.tool, `${path}.conversion.tool`),
+        revision: nonEmptyText(conversion.revision, `${path}.conversion.revision`),
         losses,
       },
       engineeringBoundary,
@@ -748,19 +753,18 @@ function externalCadSource(
   value: unknown,
   path: string,
 ): ExternalCadSourceIdentity {
-  const input = record(value, path);
-  exactKeys(
-    input,
+  const input = exactRecord(
+    value,
     ["id", "name", "format", "sha256", "bytes", "sourceUri"],
     path,
   );
   return {
     id: safeId(input.id, `${path}.id`),
-    name: text(input.name, `${path}.name`),
-    format: text(input.format, `${path}.format`),
+    name: nonEmptyText(input.name, `${path}.name`),
+    format: nonEmptyText(input.format, `${path}.format`),
     sha256: sha256(input.sha256, `${path}.sha256`),
     bytes: positiveInteger(input.bytes, `${path}.bytes`),
-    sourceUri: text(input.sourceUri, `${path}.sourceUri`),
+    sourceUri: nonEmptyText(input.sourceUri, `${path}.sourceUri`),
   };
 }
 
@@ -768,9 +772,8 @@ function cadEngineeringBoundary(
   value: unknown,
   path: string,
 ): CadEngineeringBoundary {
-  const input = record(value, path);
-  exactKeys(
-    input,
+  const input = exactRecord(
+    value,
     ["designIntent", "editableCad", "manufacturability", "limitations"],
     path,
   );
@@ -786,13 +789,13 @@ function cadEngineeringBoundary(
   ) {
     throw new Error(`${path}.editableCad is unsupported.`);
   }
-  literal(
+  literalValue(
     input.manufacturability,
     "not-established",
     `${path}.manufacturability`,
   );
   const limitations = nonEmptyArray(input.limitations, `${path}.limitations`).map(
-    (limitation, index) => text(limitation, `${path}.limitations[${index}]`),
+    (limitation, index) => nonEmptyText(limitation, `${path}.limitations[${index}]`),
   );
   rejectDuplicates(limitations, `${path}.limitations`);
   if (input.designIntent === "preserved" && input.editableCad !== "native") {
@@ -809,9 +812,8 @@ function cadEngineeringBoundary(
 }
 
 function cadArtifact(value: unknown, path: string): MechanicalCadArtifactIdentity {
-  const input = record(value, path);
-  exactKeys(input, ["format", "sha256", "bytes"], path);
-  literal(input.format, "step", `${path}.format`);
+  const input = exactRecord(value, ["format", "sha256", "bytes"], path);
+  literalValue(input.format, "step", `${path}.format`);
   return {
     format: "step",
     sha256: sha256(input.sha256, `${path}.sha256`),
@@ -820,7 +822,7 @@ function cadArtifact(value: unknown, path: string): MechanicalCadArtifactIdentit
 }
 
 function sha256(value: unknown, path: string): string {
-  const digest = string(value, path);
+  const digest = nonEmptyText(value, path);
   if (!SHA256.test(digest)) {
     throw new Error(`${path} must be a lowercase SHA-256 digest.`);
   }
@@ -832,9 +834,8 @@ function scalar<Unit extends string>(
   unit: Unit,
   path: string,
 ): ScalarQuantity<Unit> {
-  const input = record(value, path);
-  exactKeys(input, ["value", "unit"], path);
-  literal(input.unit, unit, `${path}.unit`);
+  const input = exactRecord(value, ["value", "unit"], path);
+  literalValue(input.unit, unit, `${path}.unit`);
   return { value: finite(input.value, `${path}.value`), unit };
 }
 
@@ -843,9 +844,8 @@ function vector<Unit extends string>(
   unit: Unit,
   path: string,
 ): VectorQuantity<Unit> {
-  const input = record(value, path);
-  exactKeys(input, ["value", "unit"], path);
-  literal(input.unit, unit, `${path}.unit`);
+  const input = exactRecord(value, ["value", "unit"], path);
+  literalValue(input.unit, unit, `${path}.unit`);
   return { value: vectorValues(input.value, `${path}.value`), unit };
 }
 
@@ -863,77 +863,6 @@ function vectorValues(
   ];
 }
 
-function record(value: unknown, path: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${path} must be an object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function array(value: unknown, path: string): unknown[] {
-  if (!Array.isArray(value)) throw new Error(`${path} must be an array.`);
-  return value;
-}
-
-function nonEmptyArray(value: unknown, path: string): unknown[] {
-  const result = array(value, path);
-  if (result.length === 0) throw new Error(`${path} must not be empty.`);
-  return result;
-}
-
-function exactKeys(
-  value: Record<string, unknown>,
-  expected: readonly string[],
-  path: string,
-): void {
-  const expectedSet = new Set(expected);
-  for (const key of Object.keys(value)) {
-    if (!expectedSet.has(key)) throw new Error(`${path} has unsupported field ${key}.`);
-  }
-  for (const key of expected) {
-    if (!Object.hasOwn(value, key)) throw new Error(`${path}.${key} is required.`);
-  }
-}
-
-function string(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length === 0 || value !== value.trim()) {
-    throw new Error(`${path} must be a non-empty string without edge whitespace.`);
-  }
-  return value;
-}
-
-function text(value: unknown, path: string): string {
-  return string(value, path);
-}
-
-function safeId(value: unknown, path: string): string {
-  const result = string(value, path);
-  if (!SAFE_ID.test(result)) {
-    throw new Error(`${path} must be a stable identifier.`);
-  }
-  return result;
-}
-
-function finite(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${path} must be a finite number.`);
-  }
-  return value;
-}
-
-function positiveInteger(value: unknown, path: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw new Error(`${path} must be a positive integer.`);
-  }
-  return Number(value);
-}
-
-function literal(value: unknown, expected: unknown, path: string): void {
-  if (value !== expected) {
-    throw new Error(`${path} must equal ${JSON.stringify(expected)}.`);
-  }
-}
-
 function same(actual: unknown, expected: unknown, path: string): void {
   if (actual !== expected) {
     throw new Error(`${path} does not match the mechanical proof declaration.`);
@@ -944,20 +873,4 @@ function sameJson(actual: unknown, expected: unknown, path: string): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`${path} does not match the mechanical proof declaration.`);
   }
-}
-
-function rejectDuplicates(values: readonly string[], path: string): void {
-  if (new Set(values).size !== values.length) {
-    throw new Error(`${path} must not contain duplicates.`);
-  }
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(child);
-    }
-  }
-  return value;
 }

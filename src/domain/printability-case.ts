@@ -21,6 +21,18 @@
  * support material and is the natural orientation for a shallow tray.
  */
 
+import {
+  deepFreeze,
+  exactRecord,
+  finite,
+  literalValue,
+  nonEmptyArray,
+  nonEmptyText,
+  positiveInteger,
+  rejectDuplicates,
+  safeId,
+} from "./case-validation.ts";
+
 export const PRINTABILITY_CHECK_CASE_SCHEMA = "printability-check-case/1.0" as const;
 
 export interface PrintabilityCheckCase {
@@ -77,8 +89,6 @@ const ROOT_KEYS = [
   "limitations",
   "provenance",
 ] as const;
-
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
 /** Parse and validate an untrusted value as a printability-check-case/1.0 case. */
 export function validatePrintabilityCheckCase(value: unknown): PrintabilityCheckCase {
@@ -262,86 +272,4 @@ function parseProvenance(value: unknown): PrintabilityCheckCase["provenance"] {
     status: "provisional",
     note: nonEmptyText(input.note, "$case.provenance.note"),
   };
-}
-
-// --- primitive helpers ---------------------------------------------------------
-
-function exactRecord(
-  value: unknown,
-  keys: readonly string[],
-  path: string,
-): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError(`${path} must be an object.`);
-  }
-  const rec = value as Record<string, unknown>;
-  const expectedSet = new Set(keys);
-  for (const key of Object.keys(rec)) {
-    if (!expectedSet.has(key)) {
-      throw new TypeError(`${path} has unsupported field "${key}".`);
-    }
-  }
-  for (const key of keys) {
-    if (!Object.hasOwn(rec, key)) {
-      throw new TypeError(`${path}.${key} is required.`);
-    }
-  }
-  return rec;
-}
-
-function nonEmptyText(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length === 0 || value !== value.trim()) {
-    throw new TypeError(`${path} must be a non-empty string without edge whitespace.`);
-  }
-  return value;
-}
-
-function safeId(value: unknown, path: string): string {
-  const s = nonEmptyText(value, path);
-  if (!SAFE_ID.test(s)) {
-    throw new TypeError(`${path} must be a stable identifier (letters, digits, ._:-).`);
-  }
-  return s;
-}
-
-function finite(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new TypeError(`${path} must be a finite number.`);
-  }
-  return value;
-}
-
-function positiveInteger(value: unknown, path: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw new TypeError(`${path} must be a positive integer.`);
-  }
-  return Number(value);
-}
-
-function literalValue(value: unknown, expected: unknown, path: string): void {
-  if (value !== expected) {
-    throw new TypeError(`${path} must equal ${JSON.stringify(expected)}.`);
-  }
-}
-
-function nonEmptyArray(value: unknown, path: string): unknown[] {
-  if (!Array.isArray(value)) throw new TypeError(`${path} must be an array.`);
-  if (value.length === 0) throw new TypeError(`${path} must not be empty.`);
-  return value;
-}
-
-function rejectDuplicates(values: readonly string[], path: string): void {
-  if (new Set(values).size !== values.length) {
-    throw new TypeError(`${path} must not contain duplicates.`);
-  }
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === "object" && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value as Record<string, unknown>)) {
-      deepFreeze(child);
-    }
-  }
-  return value;
 }
