@@ -19,7 +19,7 @@ import {
   materializeApprovedBriefBaseline,
 } from "../../orchestration/operations/approved-brief-baseline.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
-import { FileCaptureStore } from "../file-capture-store.ts";
+import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 
 type ApprovedBriefBaselineMaterialization = Awaited<

@@ -8,7 +8,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "./http-mcp-tool-client.ts";
+} from "../http-mcp-tool-client.ts";
 
 Deno.test("CM-01 V3 ERP capture reads exactly the reviewed BOM and returns portable evidence", async () => {
   const client = new ScriptedErpNextClient([bomResult()]);

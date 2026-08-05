@@ -29,7 +29,7 @@ import {
   SysonModelSeedWriteOutcomeUnknownError,
   type SysonModelSeedWriteStep,
 } from "../wal/file-syson-model-seed-attempt-store.ts";
-import { FileCaptureStore } from "../file-capture-store.ts";
+import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { createSysonModelSeedLiveProjector } from "../projectors/syson-model-seed-live-projector.ts";
 

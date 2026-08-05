@@ -1,12 +1,12 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { compileCoffeeMachineCm01SemanticCadPlanR2 } from "../domain/coffee-machine-cm01-semantic-cad-plan.ts";
-import { deriveCm01DripTrayHeight30Recipe } from "../domain/cm01-drip-tray-height-correction.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "../domain/coffee-machine-cm01-semantic-recipe.ts";
+import { compileCoffeeMachineCm01SemanticCadPlanR2 } from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
+import { deriveCm01DripTrayHeight30Recipe } from "../../domain/cm01-drip-tray-height-correction.ts";
+import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
 import {
   captureCm01SemanticCadExportR2,
   parseCm01SemanticCadR2Capture,
 } from "./cm01-semantic-cad-capture-r2.ts";
-import type { McpToolCall, McpToolResult } from "./http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
 
 Deno.test("CM-01 R2 CAD capture accepts only the named successor assembly export", async () => {
   const client = new FakeBuild123d();
@@ -42,7 +42,7 @@ Deno.test("CM-01 R2 CAD capture refuses the V1 compiled plan before a provider c
   const client = new FakeBuild123d();
   const recipe = parseCoffeeMachineCm01SemanticRecipe(await v1Recipe());
   const { compileCoffeeMachineCm01SemanticCadPlan } = await import(
-    "../domain/coffee-machine-cm01-semantic-cad-plan.ts"
+    "../../domain/coffee-machine-cm01-semantic-cad-plan.ts"
   );
   const v1Plan = await compileCoffeeMachineCm01SemanticCadPlan(recipe);
   await assertRejects(
@@ -71,7 +71,7 @@ async function v1Recipe(): Promise<unknown> {
   return JSON.parse(
     await Deno.readTextFile(
       new URL(
-        "../../config/product-recipes/coffee-machine-cm01-v1.json",
+        "../../../config/product-recipes/coffee-machine-cm01-v1.json",
         import.meta.url,
       ),
     ),

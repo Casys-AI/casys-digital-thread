@@ -27,14 +27,14 @@ import {
   SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "./src/adapters/file-capture-store.ts";
+} from "./src/adapters/captures/file-capture-store.ts";
 import { FileSensitivityRunAttemptStore } from "./src/adapters/wal/file-sensitivity-run-attempt-store.ts";
 import { FileCm01DripTrayPrintabilityAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-printability-attempt-store.ts";
 import { FileCm01DripTrayPrintEstimateAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-print-estimate-attempt-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/wal/file-syson-model-seed-attempt-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
-import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
+import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/captures/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "./src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
 import { FileOracleRequirementsSeedAttemptStore } from "./src/adapters/wal/file-oracle-requirements-seed-attempt-store.ts";
@@ -51,7 +51,7 @@ import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_EDGES_OPERATION,
   CoffeeMachineCm01V3SensitivityEdgesRunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts";
-import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
+import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/captures/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
   CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor,
@@ -59,7 +59,7 @@ import {
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/executors/approved-brief-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/executors/syson-model-seed-run-executor.ts";
-import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/cm01-nominal-modelica-capture.ts";
+import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
   CoffeeMachineCm01V3ThermalRunExecutor,
@@ -68,7 +68,7 @@ import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
   CoffeeMachineCm01V3ArchitectureRunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-architecture-run-executor.ts";
-import { Cm01ErpNextBomCaptureAdapter } from "./src/adapters/cm01-erpnext-bom-capture.ts";
+import { Cm01ErpNextBomCaptureAdapter } from "./src/adapters/captures/cm01-erpnext-bom-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_ERPNEXT_BOM_OPERATION,
   CoffeeMachineCm01V3ErpNextBomRunExecutor,

@@ -1,9 +1,12 @@
 import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
-import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/deterministic-json.ts";
 import {
   parseCm01DripTrayMechanicalProof,
   renderCm01DripTrayMechanicalScript,
-} from "../domain/cm01-drip-tray-mechanical-proof.ts";
+} from "../../domain/cm01-drip-tray-mechanical-proof.ts";
 import {
   captureCm01DripTrayMechanical,
   parseCm01DripTrayMechanicalCapture,
@@ -12,7 +15,7 @@ import {
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
 } from "./file-capture-store.ts";
-import type { McpToolCall, McpToolResult } from "./http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
 
 const proof = parseCm01DripTrayMechanicalProof({
   schemaVersion: "cm01-v3-drip-tray-static-proof/1.0",

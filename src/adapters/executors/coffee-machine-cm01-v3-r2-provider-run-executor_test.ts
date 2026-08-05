@@ -6,13 +6,13 @@ import {
   CoffeeMachineCm01V3MechanicalR2RunExecutor,
   CoffeeMachineCm01V3MechanicalR3RunExecutor,
 } from "./coffee-machine-cm01-v3-r2-provider-run-executor.ts";
-import { captureCm01DripTrayMechanicalR3 } from "../cm01-drip-tray-mechanical-capture-r3.ts";
-import { type ParsedOracleResult } from "../cm01-drip-tray-mechanical-oracle.ts";
+import { captureCm01DripTrayMechanicalR3 } from "../captures/cm01-drip-tray-mechanical-capture-r3.ts";
+import { type ParsedOracleResult } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
 import {
   CoffeeMachineCm01V3MechanicalR2SuccessorMaterializer,
 } from "./coffee-machine-cm01-v3-r2-successor-materializer.ts";
 import { CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer } from "./coffee-machine-cm01-v3-r3-successor-materializer.ts";
-import { Cm01DripTrayMechanicalR3CaptureRecovery } from "../cm01-drip-tray-mechanical-r3-capture-recovery.ts";
+import { Cm01DripTrayMechanicalR3CaptureRecovery } from "../captures/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor,
 } from "./coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts";

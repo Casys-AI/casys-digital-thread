@@ -21,11 +21,11 @@ import type { ThreadArtifact, ThreadSnapshot } from "../../domain/thread-snapsho
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
-import { callDripTrayMechanicalOracle } from "../cm01-drip-tray-mechanical-oracle.ts";
-import { Cm01DripTrayMechanicalR3CaptureRecovery } from "../cm01-drip-tray-mechanical-r3-capture-recovery.ts";
+import { callDripTrayMechanicalOracle } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
+import { Cm01DripTrayMechanicalR3CaptureRecovery } from "../captures/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
-import type { FileCaptureStore } from "../file-capture-store.ts";
+import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import {
   type Cm01R3MechanicalMaterialization,

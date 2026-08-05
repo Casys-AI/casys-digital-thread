@@ -14,7 +14,7 @@ import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "../file-capture-store.ts";
+} from "../captures/file-capture-store.ts";
 import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";

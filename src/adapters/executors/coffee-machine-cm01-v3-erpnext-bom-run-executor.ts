@@ -31,9 +31,9 @@ import {
   CM01_ERPNEXT_BOM_CAPTURE_SCHEMA,
   type Cm01ErpNextBomCapture,
   type Cm01ErpNextBomCaptureAdapter,
-} from "../cm01-erpnext-bom-capture.ts";
-import { FileCaptureStore } from "../file-capture-store.ts";
-import { FileCm01ErpNextBomRunCaptureStore } from "../file-cm01-erpnext-bom-run-capture-store.ts";
+} from "../captures/cm01-erpnext-bom-capture.ts";
+import { FileCaptureStore } from "../captures/file-capture-store.ts";
+import { FileCm01ErpNextBomRunCaptureStore } from "../captures/file-cm01-erpnext-bom-run-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {

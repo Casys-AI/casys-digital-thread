@@ -15,10 +15,10 @@ import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-
 import {
   evaluationFromOracle,
   type ParsedOracleResult,
-} from "../cm01-drip-tray-mechanical-oracle.ts";
+} from "../captures/cm01-drip-tray-mechanical-oracle.ts";
 import type { Cm01DripTrayMechanicalProofR2 } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
-import type { Cm01SemanticCadR2Capture } from "../cm01-semantic-cad-capture-r2.ts";
-import type { Cm01DripTrayMechanicalR2Capture } from "../cm01-drip-tray-mechanical-capture-r2.ts";
+import type { Cm01SemanticCadR2Capture } from "../captures/cm01-semantic-cad-capture-r2.ts";
+import type { Cm01DripTrayMechanicalR2Capture } from "../captures/cm01-drip-tray-mechanical-capture-r2.ts";
 import {
   CM01_DRIP_TRAY_HEIGHT_CORRECTION_ARTIFACT_ID,
   cm01R2CadSupersedesLinks,

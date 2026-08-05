@@ -4,12 +4,12 @@ import {
   type ParsedOracleResult,
   parseOracleOutcome,
 } from "./cm01-drip-tray-mechanical-oracle.ts";
-import type { OracleRequirement } from "../domain/proof-case.ts";
+import type { OracleRequirement } from "../../domain/proof-case.ts";
 import type {
   ThreadFreshness,
   ThreadOperationRef,
   TracedRequirement,
-} from "../domain/thread-snapshot.ts";
+} from "../../domain/thread-snapshot.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures

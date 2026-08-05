@@ -5,8 +5,8 @@ import type {
 } from "../../domain/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
 import type { Cm01DripTrayMechanicalProofR2 } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
-import type { Cm01DripTrayMechanicalR2Capture } from "../cm01-drip-tray-mechanical-capture-r2.ts";
-import type { ParsedOracleResult } from "../cm01-drip-tray-mechanical-oracle.ts";
+import type { Cm01DripTrayMechanicalR2Capture } from "../captures/cm01-drip-tray-mechanical-capture-r2.ts";
+import type { ParsedOracleResult } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
 import { CoffeeMachineCm01V3MechanicalR2SuccessorMaterializer } from "./coffee-machine-cm01-v3-r2-successor-materializer.ts";
 
 const AT = "2026-08-04T10:00:00.000Z";

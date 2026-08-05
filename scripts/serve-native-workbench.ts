@@ -13,7 +13,7 @@ import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../src/adapters/file-capture-store.ts";
+} from "../src/adapters/captures/file-capture-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
 import {

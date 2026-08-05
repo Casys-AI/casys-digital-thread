@@ -17,7 +17,7 @@ import {
   FileCaptureStore,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "../file-capture-store.ts";
+} from "../captures/file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {

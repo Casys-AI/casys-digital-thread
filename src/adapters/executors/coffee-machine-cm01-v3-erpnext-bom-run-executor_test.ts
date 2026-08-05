@@ -8,12 +8,12 @@ import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts"
 import {
   CoffeeMachineCm01V3ErpNextBomRunExecutor,
 } from "./coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
-import type { Cm01ErpNextBomCapture } from "../cm01-erpnext-bom-capture.ts";
+import type { Cm01ErpNextBomCapture } from "../captures/cm01-erpnext-bom-capture.ts";
 import {
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../file-capture-store.ts";
-import { FileCm01ErpNextBomRunCaptureStore } from "../file-cm01-erpnext-bom-run-capture-store.ts";
+} from "../captures/file-capture-store.ts";
+import { FileCm01ErpNextBomRunCaptureStore } from "../captures/file-cm01-erpnext-bom-run-capture-store.ts";
 
 const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };

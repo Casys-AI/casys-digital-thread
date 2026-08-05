@@ -28,10 +28,10 @@ import {
   CM01_NOMINAL_MODELICA_SCENARIO,
   type Cm01NominalModelicaCapture,
   type Cm01NominalModelicaCaptureAdapter,
-} from "../cm01-nominal-modelica-capture.ts";
+} from "../captures/cm01-nominal-modelica-capture.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileCm01NominalModelicaAttemptStore } from "../wal/file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCaptureStore } from "../file-capture-store.ts";
+import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { createObservedModelicaRunExtension } from "../observed-modelica-thread-branch.ts";
 

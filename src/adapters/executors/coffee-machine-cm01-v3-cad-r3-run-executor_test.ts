@@ -24,7 +24,7 @@ import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../file-capture-store.ts";
+} from "../captures/file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
@@ -35,7 +35,7 @@ import { parseCoffeeMachineCm01SemanticRecipeR2 } from "../../domain/coffee-mach
 import {
   CM01_SEMANTIC_CAD_R3_ASSEMBLY_EXPORT_NAME,
   CM01_SEMANTIC_CAD_R3_PART_EXPORT_PREFIX,
-} from "../cm01-semantic-cad-capture-r3.ts";
+} from "../captures/cm01-semantic-cad-capture-r3.ts";
 
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
 const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };

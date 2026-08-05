@@ -36,16 +36,16 @@ import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/opera
 import {
   captureCm01DripTrayMechanicalR2,
   parseCm01DripTrayMechanicalR2Capture,
-} from "../cm01-drip-tray-mechanical-capture-r2.ts";
+} from "../captures/cm01-drip-tray-mechanical-capture-r2.ts";
 import {
   captureCm01DripTrayMechanicalR3,
   parseCm01DripTrayMechanicalR3Capture,
-} from "../cm01-drip-tray-mechanical-capture-r3.ts";
-import { callDripTrayMechanicalOracle } from "../cm01-drip-tray-mechanical-oracle.ts";
+} from "../captures/cm01-drip-tray-mechanical-capture-r3.ts";
+import { callDripTrayMechanicalOracle } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
 import {
   captureCm01SemanticCadExportR2,
   parseCm01SemanticCadR2Capture,
-} from "../cm01-semantic-cad-capture-r2.ts";
+} from "../captures/cm01-semantic-cad-capture-r2.ts";
 import {
   type Cm01R2Materialization,
   CoffeeMachineCm01V3CadR2SuccessorMaterializer,
@@ -55,7 +55,7 @@ import { CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer } from "./coffee-m
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
-import type { FileCaptureStore } from "../file-capture-store.ts";
+import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import {
   requireBasis,

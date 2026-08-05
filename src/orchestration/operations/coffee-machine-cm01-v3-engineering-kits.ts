@@ -547,7 +547,7 @@ const KITS = [
       sourceRefs: [
         {
           kind: "reviewed-configuration",
-          path: "src/adapters/cm01-semantic-cad-capture-r3.ts",
+          path: "src/adapters/captures/cm01-semantic-cad-capture-r3.ts",
           purpose:
             "Defines the closed R3 capture schema: assembly STEP/glTF/STL export name, per-part STL naming convention, and fingerprint contract covering all N+1 calls.",
         },

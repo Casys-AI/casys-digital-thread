@@ -39,7 +39,7 @@ import {
   SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "../file-capture-store.ts";
+} from "../captures/file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileSensitivityRelationsAttemptStore } from "../wal/file-sensitivity-relations-attempt-store.ts";

@@ -1,11 +1,11 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { deriveCm01DripTrayHeight30Proof } from "../domain/cm01-drip-tray-height-correction.ts";
-import { parseCm01DripTrayMechanicalProof } from "../domain/cm01-drip-tray-mechanical-proof.ts";
+import { deriveCm01DripTrayHeight30Proof } from "../../domain/cm01-drip-tray-height-correction.ts";
+import { parseCm01DripTrayMechanicalProof } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
 import {
   captureCm01DripTrayMechanicalR2,
   parseCm01DripTrayMechanicalR2Capture,
 } from "./cm01-drip-tray-mechanical-capture-r2.ts";
-import type { McpToolCall, McpToolResult } from "./http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
 
 const SHA = "ea061880c9efc043fa0ad8475594a12c447481723e4e46dfdd7dc62a8dca3c84";
 
@@ -58,7 +58,7 @@ async function proof() {
     JSON.parse(
       await Deno.readTextFile(
         new URL(
-          "../../config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json",
+          "../../../config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json",
           import.meta.url,
         ),
       ),

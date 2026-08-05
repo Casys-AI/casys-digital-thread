@@ -1,12 +1,15 @@
-import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/deterministic-json.ts";
 import {
   type Cm01DripTrayMechanicalProof,
   cm01DripTrayMechanicalRequest,
   parseCm01DripTrayMechanicalProof,
   renderCm01DripTrayMechanicalScript,
-} from "../domain/cm01-drip-tray-mechanical-proof.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
-import type { McpToolClient } from "./http-mcp-tool-client.ts";
+} from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { McpToolClient } from "../http-mcp-tool-client.ts";
 
 export const CM01_DRIP_TRAY_MECHANICAL_CAPTURE_SCHEMA =
   "cm01-v3-drip-tray-mechanical-capture/1.0" as const;

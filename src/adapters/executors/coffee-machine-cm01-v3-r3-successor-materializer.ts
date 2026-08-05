@@ -16,8 +16,8 @@ import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-
 import {
   evaluationFromOracle,
   type ParsedOracleResult,
-} from "../cm01-drip-tray-mechanical-oracle.ts";
-import type { Cm01DripTrayMechanicalR3Capture } from "../cm01-drip-tray-mechanical-capture-r3.ts";
+} from "../captures/cm01-drip-tray-mechanical-oracle.ts";
+import type { Cm01DripTrayMechanicalR3Capture } from "../captures/cm01-drip-tray-mechanical-capture-r3.ts";
 
 export interface Cm01R3MechanicalMaterialization {
   readonly snapshot: ThreadSnapshot;

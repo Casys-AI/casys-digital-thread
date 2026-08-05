@@ -1,6 +1,6 @@
-import { sha256Fingerprint } from "../domain/deterministic-json.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
-import type { McpToolClient } from "./http-mcp-tool-client.ts";
+import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { McpToolClient } from "../http-mcp-tool-client.ts";
 
 /**
  * Reviewed external ERP identity for the CM-01 V3 reference project.

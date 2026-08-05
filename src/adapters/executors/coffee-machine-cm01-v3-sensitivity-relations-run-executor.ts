@@ -47,7 +47,7 @@ import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
-import type { FileCaptureStore } from "../file-capture-store.ts";
+import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import {

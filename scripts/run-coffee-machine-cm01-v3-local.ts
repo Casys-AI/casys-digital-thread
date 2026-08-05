@@ -1,7 +1,7 @@
 import { parseArgs } from "./cli.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../src/adapters/executors/approved-brief-baseline-run-executor.ts";
-import { Cm01ErpNextBomCaptureAdapter } from "../src/adapters/cm01-erpnext-bom-capture.ts";
-import { Cm01NominalModelicaCaptureAdapter } from "../src/adapters/cm01-nominal-modelica-capture.ts";
+import { Cm01ErpNextBomCaptureAdapter } from "../src/adapters/captures/cm01-erpnext-bom-capture.ts";
+import { Cm01NominalModelicaCaptureAdapter } from "../src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,
 } from "../src/adapters/executors/coffee-machine-cm01-v3-architecture-run-executor.ts";
@@ -21,7 +21,7 @@ import {
   CoffeeMachineCm01V3ThermalRunExecutor,
 } from "../src/adapters/executors/coffee-machine-cm01-v3-thermal-run-executor.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "../src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
-import { FileCm01ErpNextBomRunCaptureStore } from "../src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
+import { FileCm01ErpNextBomRunCaptureStore } from "../src/adapters/captures/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "../src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "../src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
@@ -39,7 +39,7 @@ import {
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "../src/adapters/file-capture-store.ts";
+} from "../src/adapters/captures/file-capture-store.ts";
 import { FileSensitivityRunAttemptStore } from "../src/adapters/wal/file-sensitivity-run-attempt-store.ts";
 import { FileEngineeringProjectRunLease } from "../src/adapters/stores/file-engineering-project-run-lease.ts";
 import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";

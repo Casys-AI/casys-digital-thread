@@ -24,7 +24,7 @@ import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../file-capture-store.ts";
+} from "../captures/file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";

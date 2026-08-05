@@ -36,19 +36,19 @@ import {
   evaluationFromOracle,
   type ParsedOracleResult,
   parseOracleOutcome,
-} from "../cm01-drip-tray-mechanical-oracle.ts";
+} from "../captures/cm01-drip-tray-mechanical-oracle.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   captureCm01DripTrayMechanical,
   type Cm01DripTrayMechanicalCapture,
   parseCm01DripTrayMechanicalCapture,
-} from "../cm01-drip-tray-mechanical-capture.ts";
+} from "../captures/cm01-drip-tray-mechanical-capture.ts";
 import {
   Cm01DripTrayMechanicalOutcomeUnknownError,
   FileCm01DripTrayMechanicalAttemptStore,
 } from "../wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
-import { FileCaptureStore } from "../file-capture-store.ts";
+import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";

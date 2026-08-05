@@ -1,11 +1,11 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { compileCoffeeMachineCm01SemanticCadPlan } from "../domain/coffee-machine-cm01-semantic-cad-plan.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "../domain/coffee-machine-cm01-semantic-recipe.ts";
+import { compileCoffeeMachineCm01SemanticCadPlan } from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
+import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
 import {
   captureCm01SemanticCadExport,
   parseCm01SemanticCadCapture,
 } from "./cm01-semantic-cad-capture.ts";
-import type { McpToolCall, McpToolResult } from "./http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
 
 Deno.test("CM-01 semantic CAD capture accepts the real build123d path contract but persists only safe basenames and hashes", async () => {
   const client = new FakeBuild123d();
@@ -65,7 +65,7 @@ async function compiled() {
     JSON.parse(
       await Deno.readTextFile(
         new URL(
-          "../../config/product-recipes/coffee-machine-cm01-v1.json",
+          "../../../config/product-recipes/coffee-machine-cm01-v1.json",
           import.meta.url,
         ),
       ),

@@ -20,7 +20,7 @@ import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "../file-capture-store.ts";
+} from "../captures/file-capture-store.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { FileLiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import type {

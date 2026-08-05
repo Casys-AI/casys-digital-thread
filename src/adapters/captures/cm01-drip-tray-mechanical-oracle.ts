@@ -28,9 +28,9 @@ import type {
   ThreadFreshness,
   ThreadOperationRef,
   TracedRequirement,
-} from "../domain/thread-snapshot.ts";
-import { buildConstraintAst, type OracleRequirement } from "../domain/proof-case.ts";
-import type { McpToolClient } from "./http-mcp-tool-client.ts";
+} from "../../domain/thread-snapshot.ts";
+import { buildConstraintAst, type OracleRequirement } from "../../domain/proof-case.ts";
+import type { McpToolClient } from "../http-mcp-tool-client.ts";
 
 // ---------------------------------------------------------------------------
 // Parsed oracle result — keyed by constraint ID in the result map

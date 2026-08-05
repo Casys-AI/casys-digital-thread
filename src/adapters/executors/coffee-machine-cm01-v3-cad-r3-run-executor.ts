@@ -37,12 +37,12 @@ import {
   captureCm01SemanticCadExportR3,
   type Cm01SemanticCadR3Capture,
   parseCm01SemanticCadR3Capture,
-} from "../cm01-semantic-cad-capture-r3.ts";
+} from "../captures/cm01-semantic-cad-capture-r3.ts";
 import {
   Cm01SemanticCadOutcomeUnknownError,
   FileCm01SemanticCadAttemptStore,
 } from "../wal/file-cm01-semantic-cad-attempt-store.ts";
-import type { FileCaptureStore } from "../file-capture-store.ts";
+import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";

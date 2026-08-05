@@ -1,7 +1,10 @@
-import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
-import type { CompiledCoffeeMachineCm01SemanticCadPlan } from "../domain/coffee-machine-cm01-semantic-cad-plan.ts";
-import type { McpToolClient } from "./http-mcp-tool-client.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { CompiledCoffeeMachineCm01SemanticCadPlan } from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
+import type { McpToolClient } from "../http-mcp-tool-client.ts";
 
 /** Closed capture contract for the reviewed 28 mm -> 30 mm CAD successor. */
 export const CM01_SEMANTIC_CAD_CAPTURE_R2_SCHEMA =
