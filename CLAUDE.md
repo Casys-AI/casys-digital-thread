@@ -326,10 +326,25 @@ première classe : le contrat DFM réel a invalidé deux fois les mocks du chant
 l'identification par exclusion d'IDs est morte le jour où le paquet a grandi — elle est
 désormais idempotente par nom serveur-fixe, avec adoption d'un élément déjà inséré.
 
-La suite, dans l'ordre : rebrancher `syson_constraint_solve` (z3) sur le système
-désormais couplé (u ≈ u₀ + k·(z−z₀) dans son voisinage déclaré) — sonder par
-`probe:constraint-solver` avant tout chemin de run ; puis le mécanisme de correction
-générique : échec d'exigence → lire les arêtes du modèle → `proposeVectorCorrection` →
-proposition MRTR → opération, ce qui transforme la correction 28→30 codée à la main en
-boucle pilotée par le modèle ; enfin le deuxième projet, seul vrai test que le Golden
-Path est générique.
+Les deux marches suivantes ont été franchies le 2026-08-05, en code seulement — aucune
+exécution sur le projet partagé. D'abord z3 : `probe:coupled-correction` compose le
+système u ≈ u₀ + k·(z−z₀) depuis les données extraites du modèle réel (aucune constante
+en dur) et obtient de `syson_constraint_solve` une valeur de driver en `sat` et un
+`unsat` avec conflit nommé hors voisinage — la porte ne dit plus toujours oui. Limite
+découverte : le solve inline n'accepte que la forme `ref op littéral`, la réduction
+analytique des bornes précède donc l'appel ; z3 répond en unités SI de base (mètres).
+Ensuite la généralisation : `src/domain/sensitivity-edge.ts` (arête = driver +
+voisinage + réponse + dérivée + provenance, tout unité, indifférent à la source),
+`proposeVectorCorrection` (`src/domain/propose-vector-correction.ts` — proposition
+bornée au voisinage déclaré ou `unresolved` motivé : `no-applicable-edge`,
+`out-of-neighborhood`, `zero-derivative`, unités incompatibles ; jamais de clamp ni
+d'epsilon), et `buildCorrectionMrtrProposal` qui produit le DTO de décision humaine. La
+reproduction du 28→30 depuis les arêtes R16 réelles est un test. Les opérations
+`sensitivityRelations@2` (élément générique `DripTraySensitivityEdges`, N usages —
+`specializes` évité car il dégrade les `featurePaths` à la ré-extraction) et
+`design.apply-vector-correction@1` sont enregistrées planning-only.
+
+La suite : les exécutions consenties en attente (migration de l'élément relations vers
+la forme @2 dans le modèle partagé ; run CAD @3 pour matérialiser les STL de
+présentation que les fiches Product attendent) ; puis le deuxième projet, seul vrai test
+que le Golden Path est générique.
