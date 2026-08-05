@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@casys/mcp-server@0.24.1": "0.24.1",
     "jsr:@std/assert@1.0.14": "1.0.14",
+    "jsr:@std/cli@1": "1.0.30",
     "jsr:@std/internal@^1.0.10": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
     "jsr:@std/path@*": "1.1.6",
@@ -31,6 +32,12 @@
       "integrity": "68d0d4a43b365abc927f45a9b85c639ea18a9fab96ad92281e493e4ed84abaa4",
       "dependencies": [
         "jsr:@std/internal@^1.0.10"
+      ]
+    },
+    "@std/cli@1.0.30": {
+      "integrity": "769446536522d0417d7127ebcabcafac1ab0ce6766d0eb3fca1d36326fe98d13",
+      "dependencies": [
+        "jsr:@std/internal@^1.0.14"
       ]
     },
     "@std/internal@1.0.14": {
@@ -582,6 +589,7 @@
     "dependencies": [
       "jsr:@casys/mcp-server@0.24.1",
       "jsr:@std/assert@1.0.14",
+      "jsr:@std/cli@1",
       "jsr:@std/yaml@1"
     ]
   }

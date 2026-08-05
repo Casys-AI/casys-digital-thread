@@ -1,17 +1,19 @@
+import { parseArgs } from "./cli.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
 import { ModelicaRunObserver } from "../src/adapters/modelica-run-observer.ts";
 import { createObservedModelicaRunExtension } from "../src/adapters/observed-modelica-thread-branch.ts";
 import { applyThreadSnapshotExtension } from "../src/domain/thread-snapshot-extension.ts";
 
-const runId = argument("run");
+const args = parseArgs(Deno.args);
+const runId = args["run"];
 if (!runId) {
   throw new Error("Pass one persisted Modelica run id with --run=<run_id>.");
 }
 
-const directory = argument("output") ?? "state/local/thread-snapshots";
-const subjectId = argument("subject") ?? "coffee-machine-cm01";
-const snapshotId = argument("base");
-const mcpUrl = argument("mcp-url") ?? "http://127.0.0.1:3016/mcp";
+const directory = args["output"] ?? "state/local/thread-snapshots";
+const subjectId = args["subject"] ?? "coffee-machine-cm01";
+const snapshotId = args["base"];
+const mcpUrl = args["mcp-url"] ?? "http://127.0.0.1:3016/mcp";
 const store = new FileThreadSnapshotStore(directory);
 const base = snapshotId ? await store.get(snapshotId) : await store.latest(subjectId);
 if (!base) {
@@ -63,8 +65,3 @@ console.log(JSON.stringify(
   null,
   2,
 ));
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
-}

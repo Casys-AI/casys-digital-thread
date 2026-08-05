@@ -1,3 +1,4 @@
+import { parseArgs } from "./cli.ts";
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
@@ -546,36 +547,35 @@ function waitForPoll(milliseconds: number): Promise<void> {
 }
 
 if (import.meta.main) {
-  const hostname = argument("host") ?? "127.0.0.1";
-  const port = integerArgument("port") ?? 5173;
-  const snapshotDirectory = argument("snapshot-dir") ??
+  const cliArgs = parseArgs(Deno.args);
+  const hostname = cliArgs["host"] ?? "127.0.0.1";
+  const port = integerArgument("port", cliArgs) ?? 5173;
+  const snapshotDirectory = cliArgs["snapshot-dir"] ??
     "state/local/thread-snapshots";
-  const explicitSubjectId = argument("subject");
+  const explicitSubjectId = cliArgs["subject"];
   const projectId = resolveNativeWorkbenchProjectId(
-    argument("project-id"),
+    cliArgs["project-id"],
     explicitSubjectId,
   );
-  const projectPath = argument("project") ??
+  const projectPath = cliArgs["project"] ??
     `config/projects/${projectId}.project.json`;
-  const activeProjectDirectory = argument("active-project-dir") ??
+  const activeProjectDirectory = cliArgs["active-project-dir"] ??
     "state/local/engineering-projects";
-  const projectBaselineDirectory = argument("project-baseline-dir") ??
+  const projectBaselineDirectory = cliArgs["project-baseline-dir"] ??
     "config/projects/baselines";
-  const projectBaselineAssetDirectory = argument("project-baseline-asset-dir") ??
+  const projectBaselineAssetDirectory = cliArgs["project-baseline-asset-dir"] ??
     `${projectBaselineDirectory}/assets`;
-  const htmlPath = argument("html") ??
+  const htmlPath = cliArgs["html"] ??
     "src/ui/dist/thread/native-workbench.html";
-  const assetDirectory = argument("asset-dir") ?? "state/local/thread-assets";
-  const liveUpdateDirectory = argument("live-update-dir") ??
+  const assetDirectory = cliArgs["asset-dir"] ?? "state/local/thread-assets";
+  const liveUpdateDirectory = cliArgs["live-update-dir"] ??
     "state/local/live-thread-updates";
-  const focusDirectory = argument("focus-dir") ?? "state/local/cockpit-focus";
-  const workspaceId = argument("workspace-id");
-  const approvedBriefCaptureDirectory = argument(
-    "approved-brief-capture-dir",
-  ) ?? "state/local/approved-brief-captures";
-  const cm01ArchitectureCaptureDirectory = argument(
-    "cm01-architecture-capture-dir",
-  ) ?? "state/local/coffee-machine-cm01-v3-architecture-captures";
+  const focusDirectory = cliArgs["focus-dir"] ?? "state/local/cockpit-focus";
+  const workspaceId = cliArgs["workspace-id"];
+  const approvedBriefCaptureDirectory = cliArgs["approved-brief-capture-dir"] ??
+    "state/local/approved-brief-captures";
+  const cm01ArchitectureCaptureDirectory = cliArgs["cm01-architecture-capture-dir"] ??
+    "state/local/coffee-machine-cm01-v3-architecture-captures";
   const html = await Deno.readTextFile(htmlPath);
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
@@ -611,7 +611,7 @@ if (import.meta.main) {
     explicitSubjectId,
     projectRuntime.projects,
   );
-  const componentCatalogPath = argument("component-catalog") ??
+  const componentCatalogPath = cliArgs["component-catalog"] ??
     `config/thread-subjects/${subjectId}.components.json`;
   const componentCatalog = await readOptionalComponentCatalog(
     componentCatalogPath,
@@ -797,15 +797,11 @@ function configuredProjectId(options: NativeWorkbenchHandlerOptions): string {
   return options.projectId ?? options.subjectId;
 }
 
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(
-    prefix.length,
-  );
-}
-
-function integerArgument(name: string): number | undefined {
-  const value = argument(name);
+function integerArgument(
+  name: string,
+  cliArgs: Record<string, string | undefined>,
+): number | undefined {
+  const value = cliArgs[name];
   if (value === undefined) return undefined;
   const result = Number(value);
   if (!Number.isInteger(result) || result <= 0 || result > 65535) {

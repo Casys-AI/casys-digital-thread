@@ -1,3 +1,4 @@
+import { parseArgs } from "./cli.ts";
 import {
   HttpMcpToolClient,
   type McpToolClient,
@@ -153,16 +154,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
-}
-
 if (import.meta.main) {
+  const args = parseArgs(Deno.args);
   const result = await probeConstraintSolver({
-    endpoint: argument("endpoint"),
-    editingContextId: argument("editing-context-id"),
-    elementId: argument("element-id"),
+    endpoint: args["endpoint"],
+    editingContextId: args["editing-context-id"],
+    elementId: args["element-id"],
   });
   console.log(JSON.stringify(result, null, 2));
   if (result.z3.status === "error") Deno.exitCode = 1;

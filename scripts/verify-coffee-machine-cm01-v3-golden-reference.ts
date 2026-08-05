@@ -1,3 +1,4 @@
+import { parseArgs } from "./cli.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   validateCoffeeMachineCm01V3GoldenObservation,
@@ -35,13 +36,14 @@ export async function verifyCoffeeMachineCm01V3GoldenReference(
 }
 
 if (import.meta.main) {
-  const observationPath = argument("observation");
+  const args = parseArgs(Deno.args);
+  const observationPath = args["observation"];
   if (!observationPath) {
     throw new Error("--observation=<normalized-result.json> is required.");
   }
   const result = await verifyCoffeeMachineCm01V3GoldenReference({
     observationPath,
-    referencePath: argument("reference"),
+    referencePath: args["reference"],
   });
   console.log(JSON.stringify(result, null, 2));
   if (!result.matches) Deno.exitCode = 1;
@@ -61,9 +63,4 @@ async function readJson(path: string): Promise<unknown> {
 function requiredPath(value: string, name: string): string {
   if (value.trim() === "") throw new Error(`${name} must be non-empty.`);
   return value;
-}
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
 }

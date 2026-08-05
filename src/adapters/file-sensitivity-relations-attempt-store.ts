@@ -13,6 +13,7 @@
  */
 
 import { deterministicJson } from "../domain/deterministic-json.ts";
+import { AttemptFileSystem, DENO_FILE_SYSTEM } from "./file-attempt-store.ts";
 import type { ContentFingerprint as _ContentFingerprint } from "../domain/thread-snapshot.ts";
 
 export const SENSITIVITY_RELATIONS_ATTEMPT_SCHEMA =
@@ -74,27 +75,6 @@ export class SensitivityRelationsWriteOutcomeUnknownError extends Error {
     this.name = "SensitivityRelationsWriteOutcomeUnknownError";
   }
 }
-
-interface DurableAttemptFile {
-  write(data: Uint8Array): Promise<number>;
-  syncData(): Promise<void>;
-  sync(): Promise<void>;
-  close(): void;
-}
-
-interface AttemptFileSystem {
-  mkdir(path: string): Promise<void>;
-  open(path: string, options: Deno.OpenOptions): Promise<DurableAttemptFile>;
-  readTextFile(path: string): Promise<string>;
-  rename(from: string, to: string): Promise<void>;
-}
-
-const DENO_FILE_SYSTEM: AttemptFileSystem = {
-  mkdir: (path) => Deno.mkdir(path, { recursive: true }),
-  open: (path, options) => Deno.open(path, options),
-  readTextFile: (path) => Deno.readTextFile(path),
-  rename: (from, to) => Deno.rename(from, to),
-};
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 

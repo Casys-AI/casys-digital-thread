@@ -1,3 +1,4 @@
+import { parseArgs, stableId } from "./cli.ts";
 import { materializeCoffeeMachineBuildRunExtension } from "../src/adapters/coffee-machine-build-run-extension.ts";
 import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
@@ -58,14 +59,15 @@ export async function attachCoffeeMachineBuildRun(
 }
 
 if (import.meta.main) {
-  const runId = argument("run-id");
+  const args = parseArgs(Deno.args);
+  const runId = args["run-id"];
   if (!runId) throw new Error("--run-id is required.");
   const result = await attachCoffeeMachineBuildRun({
     runId,
-    capturePath: argument("capture"),
-    snapshotDirectory: argument("snapshot-dir"),
-    liveUpdateDirectory: argument("live-update-dir"),
-    subjectId: argument("subject"),
+    capturePath: args["capture"],
+    snapshotDirectory: args["snapshot-dir"],
+    liveUpdateDirectory: args["live-update-dir"],
+    subjectId: args["subject"],
   });
   console.log(JSON.stringify(
     {
@@ -79,18 +81,4 @@ if (import.meta.main) {
     null,
     2,
   ));
-}
-
-function stableId(value: string, label: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) {
-    throw new TypeError(`${label} must be a safe stable identifier.`);
-  }
-  return value;
-}
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(
-    prefix.length,
-  );
 }

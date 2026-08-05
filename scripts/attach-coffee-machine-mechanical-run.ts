@@ -1,3 +1,4 @@
+import { parseArgs, stableId } from "./cli.ts";
 import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
 import type { LiveThreadUpdateJournal } from "../src/adapters/live-thread-update-store.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
@@ -199,15 +200,16 @@ export function extensionEvidenceRefs(
 }
 
 if (import.meta.main) {
-  const runId = argument("run-id");
+  const args = parseArgs(Deno.args);
+  const runId = args["run-id"];
   if (!runId) throw new Error("--run-id is required.");
   const result = await attachCoffeeMachineMechanicalRun({
     runId,
-    capturePath: argument("capture"),
-    snapshotDirectory: argument("snapshot-dir"),
-    projectDirectory: argument("project-dir"),
-    liveUpdateDirectory: argument("live-update-dir"),
-    subjectId: argument("subject"),
+    capturePath: args["capture"],
+    snapshotDirectory: args["snapshot-dir"],
+    projectDirectory: args["project-dir"],
+    liveUpdateDirectory: args["live-update-dir"],
+    subjectId: args["subject"],
   });
   console.log(JSON.stringify(
     {
@@ -580,18 +582,4 @@ function positiveInteger(value: unknown, path: string): number {
 function validDate(value: Date, label: string): Date {
   if (Number.isNaN(value.valueOf())) throw new TypeError(`${label} is invalid.`);
   return value;
-}
-
-function stableId(value: string, label: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) {
-    throw new TypeError(`${label} must be a safe stable identifier.`);
-  }
-  return value;
-}
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(
-    prefix.length,
-  );
 }

@@ -18,12 +18,14 @@ import {
   bindThreadSnapshotExtension,
   validateThreadSubjectManifest,
 } from "../src/domain/thread-subject-manifest.ts";
+import { parseArgs } from "./cli.ts";
 
-const manifestPath = argument("manifest") ??
+const args = parseArgs(Deno.args);
+const manifestPath = args["manifest"] ??
   "config/thread-subjects/coffee-machine-cm01.json";
-const sysonPath = argument("syson-inventory") ??
+const sysonPath = args["syson-inventory"] ??
   await latestJson("state/local/syson-inventory");
-const outputDirectory = argument("output") ?? "state/local/thread-snapshots";
+const outputDirectory = args["output"] ?? "state/local/thread-snapshots";
 const manifest = validateThreadSubjectManifest(
   JSON.parse(await Deno.readTextFile(manifestPath)),
 );
@@ -50,7 +52,7 @@ if (!snapshot) {
 
 const modelicaBinding = uniqueBinding(manifest, "modelica", "run");
 const modelicaObserver = new ModelicaRunObserver({
-  mcpUrl: argument("modelica-mcp-url") ?? "http://127.0.0.1:3016/mcp",
+  mcpUrl: args["modelica-mcp-url"] ?? "http://127.0.0.1:3016/mcp",
 });
 const modelicaDetail = await modelicaObserver.detail(`modelica:${modelicaBinding.id}`);
 if (!modelicaDetail) {
@@ -70,7 +72,7 @@ snapshot = await applyAndPersist(
 const erpBinding = uniqueBinding(manifest, "erpnext", "item");
 const erpObserver = new ErpNextCoffeeMachineObserver({
   client: new HttpMcpToolClient({
-    mcpUrl: argument("erpnext-mcp-url") ?? "http://127.0.0.1:3012/mcp",
+    mcpUrl: args["erpnext-mcp-url"] ?? "http://127.0.0.1:3012/mcp",
     timeoutMs: 30_000,
   }),
   itemCode: erpBinding.id,
@@ -179,9 +181,4 @@ async function applyAndPersist(
   const result = applyThreadSnapshotExtensionIfNew(base, extension, options);
   if (result.applied) await store.save(result.snapshot);
   return result.snapshot;
-}
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
 }

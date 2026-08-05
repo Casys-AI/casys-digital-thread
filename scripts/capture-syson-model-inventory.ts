@@ -1,11 +1,13 @@
+import { parseArgs } from "./cli.ts";
 import { HttpMcpToolClient } from "../src/adapters/http-mcp-tool-client.ts";
 import { parseCapturedSysonModelInventory } from "../src/adapters/syson-model-inventory-extension.ts";
 
-const endpoint = argument("endpoint") ?? "http://127.0.0.1:3009/mcp";
+const args = parseArgs(Deno.args);
+const endpoint = args["endpoint"] ?? "http://127.0.0.1:3009/mcp";
 const projectId = requiredArgument("project-id");
 const projectName = requiredArgument("project-name");
 const editingContextId = requiredArgument("editing-context-id");
-const outputDirectory = argument("output") ?? "state/local/syson-inventory";
+const outputDirectory = args["output"] ?? "state/local/syson-inventory";
 const capturedAt = new Date().toISOString();
 const client = new HttpMcpToolClient({ mcpUrl: endpoint, timeoutMs: 30_000 });
 const response = await client.callTool({
@@ -52,12 +54,7 @@ console.log(JSON.stringify(
 ));
 
 function requiredArgument(name: string): string {
-  const value = argument(name);
+  const value = args[name];
   if (!value) throw new Error(`Missing required --${name}=... argument.`);
   return value;
-}
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
 }

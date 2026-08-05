@@ -1,3 +1,4 @@
+import { parseArgs, stableId } from "./cli.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadGraphPatch,
@@ -49,7 +50,6 @@ export const COFFEE_MACHINE_MECHANICAL_DECISION_ID =
 export const COFFEE_MACHINE_MECHANICAL_WORK_ITEM_ID =
   "verify-current-mechanical-design" as const;
 const SHA256 = /^[a-f0-9]{64}$/;
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const CANONICAL_MECHANICAL_WORKFLOW = new URL(
   "../config/thread-workflows/coffee-machine-mechanical-v1.yaml",
   import.meta.url,
@@ -1459,13 +1459,6 @@ function validDate(value: Date, label: string): Date {
   return value;
 }
 
-function stableId(value: string, label: string): string {
-  if (!SAFE_ID.test(value)) {
-    throw new TypeError(`${label} must be a safe stable identifier.`);
-  }
-  return value;
-}
-
 function sameJson(left: unknown, right: unknown): boolean {
   return deterministicJson(left) === deterministicJson(right);
 }
@@ -1481,16 +1474,17 @@ function directoryName(path: string): string {
 }
 
 if (import.meta.main) {
-  const runId = argument("run-id");
+  const args = parseArgs(Deno.args);
+  const runId = args["run-id"];
   if (!runId) throw new TypeError("Missing required --run-id=<human-queued-run-id>.");
   const result = await runCoffeeMachineMechanical({
     runId,
-    projectDirectory: argument("project-dir"),
-    outputDirectory: argument("output-dir"),
-    liveUpdateDirectory: argument("live-update-dir"),
-    sysonMcpUrl: argument("syson-mcp-url"),
-    build123dMcpUrl: argument("build123d-mcp-url"),
-    calculixMcpUrl: argument("calculix-mcp-url"),
+    projectDirectory: args["project-dir"],
+    outputDirectory: args["output-dir"],
+    liveUpdateDirectory: args["live-update-dir"],
+    sysonMcpUrl: args["syson-mcp-url"],
+    build123dMcpUrl: args["build123d-mcp-url"],
+    calculixMcpUrl: args["calculix-mcp-url"],
   });
   console.log(deterministicJson({
     runId: result.capture.runId,
@@ -1500,9 +1494,4 @@ if (import.meta.main) {
     workflowStatus: result.capture.workflow.status,
     capturePath: result.capturePath,
   }));
-}
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
 }

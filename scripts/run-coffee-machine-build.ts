@@ -1,3 +1,4 @@
+import { parseArgs, stableId } from "./cli.ts";
 import {
   CoffeeMachineBuildOrchestrator,
   type CoffeeMachineBuildRunCapture,
@@ -145,15 +146,16 @@ export async function runCoffeeMachineBuild(
 }
 
 if (import.meta.main) {
+  const args = parseArgs(Deno.args);
   const result = await runCoffeeMachineBuild({
-    declarationPath: argument("config"),
-    snapshotDirectory: argument("snapshot-dir"),
-    liveUpdateDirectory: argument("live-update-dir"),
-    outputDirectory: argument("output-dir"),
-    subjectId: argument("subject"),
-    runId: argument("run-id"),
-    sysonMcpUrl: argument("syson-mcp-url"),
-    build123dMcpUrl: argument("build123d-mcp-url"),
+    declarationPath: args["config"],
+    snapshotDirectory: args["snapshot-dir"],
+    liveUpdateDirectory: args["live-update-dir"],
+    outputDirectory: args["output-dir"],
+    subjectId: args["subject"],
+    runId: args["run-id"],
+    sysonMcpUrl: args["syson-mcp-url"],
+    build123dMcpUrl: args["build123d-mcp-url"],
   });
   console.log(JSON.stringify(
     {
@@ -191,13 +193,6 @@ function timestampRunId(value: Date): string {
   return `coffee-machine-build-${value.toISOString().replace(/[-:.]/g, "")}`;
 }
 
-function stableId(value: string, label: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) {
-    throw new TypeError(`${label} must be a safe stable identifier`);
-  }
-  return value;
-}
-
 function joinPath(directory: string, name: string): string {
   if (directory.trim() === "") throw new TypeError("directory must not be empty");
   return `${directory.replace(/\/$/, "")}/${name}`;
@@ -211,9 +206,4 @@ async function assertAbsent(path: string, label: string): Promise<void> {
     throw error;
   }
   throw new Error(`${label} already exists at ${path}`);
-}
-
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
 }

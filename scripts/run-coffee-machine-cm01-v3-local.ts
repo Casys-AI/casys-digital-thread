@@ -1,3 +1,4 @@
+import { parseArgs } from "./cli.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../src/adapters/approved-brief-baseline-run-executor.ts";
 import { Cm01ErpNextBomCaptureAdapter } from "../src/adapters/cm01-erpnext-bom-capture.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "../src/adapters/cm01-nominal-modelica-capture.ts";
@@ -934,19 +935,15 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
-}
-
 if (import.meta.main) {
+  const args = parseArgs(Deno.args);
   const result = await runCoffeeMachineCm01V3Local({
     execute: Deno.args.includes("--execute"),
-    acknowledgement: argument("acknowledge"),
-    outputDirectory: argument("output"),
-    manifestPath: argument("manifest"),
+    acknowledgement: args["acknowledge"],
+    outputDirectory: args["output"],
+    manifestPath: args["manifest"],
     stateScope: Deno.args.includes("--canonical") ? "canonical" : "isolated",
-    canonicalAcknowledgement: argument("canonical-acknowledge"),
+    canonicalAcknowledgement: args["canonical-acknowledge"],
   });
   console.log(JSON.stringify(result, null, 2));
   if (result.status === "completed" && !result.comparison.matches) {

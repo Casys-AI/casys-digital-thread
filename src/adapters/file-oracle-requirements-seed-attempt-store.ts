@@ -1,4 +1,5 @@
 import { deterministicJson } from "../domain/deterministic-json.ts";
+import { AttemptFileSystem, DENO_FILE_SYSTEM } from "./file-attempt-store.ts";
 
 export const ORACLE_REQUIREMENTS_SEED_WRITE_ATTEMPT_SCHEMA =
   "oracle-requirements-seed-write-attempt/1.0" as const;
@@ -73,27 +74,6 @@ export class OracleRequirementsSeedWriteOutcomeUnknownError extends Error {
   }
 }
 
-interface DurableAttemptFile {
-  write(data: Uint8Array): Promise<number>;
-  syncData(): Promise<void>;
-  sync(): Promise<void>;
-  close(): void;
-}
-
-interface OracleRequirementsSeedAttemptFileSystem {
-  mkdir(path: string): Promise<void>;
-  open(path: string, options: Deno.OpenOptions): Promise<DurableAttemptFile>;
-  readTextFile(path: string): Promise<string>;
-  rename(from: string, to: string): Promise<void>;
-}
-
-const DENO_FILE_SYSTEM: OracleRequirementsSeedAttemptFileSystem = {
-  mkdir: (path) => Deno.mkdir(path, { recursive: true }),
-  open: (path, options) => Deno.open(path, options),
-  readTextFile: (path) => Deno.readTextFile(path),
-  rename: (from, to) => Deno.rename(from, to),
-};
-
 /**
  * Durable write-ahead journal for the non-idempotent syson_element_insert_sysml
  * call that seeds the oracle requirements element into the architecture package.
@@ -109,8 +89,7 @@ const DENO_FILE_SYSTEM: OracleRequirementsSeedAttemptFileSystem = {
 export class FileOracleRequirementsSeedAttemptStore {
   constructor(
     private readonly directory = "state/local/oracle-requirements-seed-attempts",
-    private readonly fileSystem: OracleRequirementsSeedAttemptFileSystem =
-      DENO_FILE_SYSTEM,
+    private readonly fileSystem: AttemptFileSystem = DENO_FILE_SYSTEM,
   ) {}
 
   async begin(

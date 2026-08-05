@@ -1,3 +1,4 @@
+import { parseArgs } from "./cli.ts";
 import {
   projectCoffeeMachineCm01V3GoldenObservation,
 } from "../src/adapters/coffee-machine-cm01-v3-golden-observation.ts";
@@ -166,13 +167,9 @@ async function writeExactDerivedResult(path: string, value: unknown): Promise<vo
   }
 }
 
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
-}
-
 if (import.meta.main) {
-  const outputDirectory = argument("output-dir");
+  const args = parseArgs(Deno.args);
+  const outputDirectory = args["output-dir"];
   if (!outputDirectory) {
     throw new Error(
       "Usage: deno task thread:finalize-coffee-machine-cm01-v3-local --output-dir=state/local/cm01-v3-local-runs/<run>.",

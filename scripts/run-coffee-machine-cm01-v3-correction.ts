@@ -1,3 +1,4 @@
+import { parseArgs } from "./cli.ts";
 import {
   HttpMcpToolClient,
   type McpToolClient,
@@ -647,16 +648,12 @@ function confirmationRequired(): CoffeeMachineCm01V3CorrectionConfirmationRequir
   };
 }
 
-function argument(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return Deno.args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
-}
-
 if (import.meta.main) {
+  const args = parseArgs(Deno.args);
   const result = await runCoffeeMachineCm01V3Correction({
     execute: Deno.args.includes("--execute"),
-    acknowledgement: argument("acknowledge"),
-    mcpUrl: argument("mcp-url"),
+    acknowledgement: args["acknowledge"],
+    mcpUrl: args["mcp-url"],
   });
   console.log(JSON.stringify(result, null, 2));
 }
