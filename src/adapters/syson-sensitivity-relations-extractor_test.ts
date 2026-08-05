@@ -302,3 +302,30 @@ Deno.test("verifyExtractedBound rejects a divergent operator", () => {
     assertEquals(error.context.field, "operator");
   }
 });
+
+Deno.test("verifyExtractedBound rejects a divergent paramAttrName (featurePath[0] drift)", () => {
+  // The constraint has the right name, operator, value, and unit — but the
+  // expression.left.featurePath[0] references a different attribute. This covers
+  // the case where SysON silently re-wires the constraint to a different parameter.
+  const tampered = {
+    ...FAITHFUL_CONSTRAINTS.constraints[0],
+    expression: {
+      kind: "binary",
+      op: ">=",
+      left: { kind: "ref", featurePath: ["sizeZ_step_mm"] }, // wrong: should be sizeZ_base_mm
+      right: { kind: "literal", value: 29, unit: "mm" },
+    },
+  };
+  try {
+    verifyExtractedBound(tampered, DECL.validityBounds[0]!);
+    throw new Error("Expected SensitivityRelationsExtractionError");
+  } catch (error) {
+    if (!(error instanceof SensitivityRelationsExtractionError)) {
+      throw error;
+    }
+    assertEquals(error.code, "sensitivity_constraint_tampered");
+    assertEquals(error.context.field, "paramAttrName");
+    assertEquals(error.context.expected, "sizeZ_base_mm");
+    assertEquals(error.context.actual, "sizeZ_step_mm");
+  }
+});

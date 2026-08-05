@@ -232,6 +232,74 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
+// Ratchet — through executor path (omission test)
+// ---------------------------------------------------------------------------
+//
+// This test proves the ratchet call lives inside executeLeased / loadInputs.
+// Removing `await assertSensitivityRelationsNotRemoved(base, this.#snapshots)` from
+// loadInputs must make this test fail (the executor would reach SysON instead of
+// throwing SensitivityRelationsArtifactRemovedError).
+
+Deno.test(
+  "CM-01 sensitivity-relations executor stops with SensitivityRelationsArtifactRemovedError before any SysON call when the basis ancestor carried the artifact",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-sens-rel-ratchet-thru-exec-",
+    });
+    try {
+      const fixture = await queuedSensitivityRelationsOnRatchetBasis(directory);
+
+      let syonCalled = false;
+      const executor = new CoffeeMachineCm01V3SensitivityRelationsRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        architectureCaptures: fixture.archCaptures,
+        seedCaptures: fixture.seedCaptures,
+        sensitivityCaptures: fixture.sensitivityCaptures,
+        sensitivityRelationsCaptures: fixture.sensRelCaptures,
+        attempts: new FileSensitivityRelationsAttemptStore(
+          `${directory}/sensitivity-relations-attempts-ratchet-exec`,
+        ),
+        syson: {
+          callTool: () => {
+            syonCalled = true;
+            return Promise.reject(
+              new Error("SysON must not be called: ratchet should fire first"),
+            );
+          },
+          callToolTextResult: () => Promise.reject(new Error("must not call")),
+        },
+        lease: new FileEngineeringProjectRunLease(
+          `${directory}/sensitivity-relations-leases-ratchet-exec`,
+        ),
+      });
+
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            commandId: "agent-sens-rel-ratchet-exec",
+            projectId: "coffee-machine-cm01-v3",
+            expectedRevision: fixture.queued.revision,
+            issuedAt: "2026-08-05T09:00:00.000Z",
+            runId: fixture.queued.agentRuns.at(-1)!.id,
+          }),
+        SensitivityRelationsArtifactRemovedError,
+        "previously carried a sensitivity-relations artifact",
+      );
+
+      assertEquals(
+        syonCalled,
+        false,
+        "SysON must not be reached: the ratchet fires before the provider call.",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // WAL — double-insertion guard
 // ---------------------------------------------------------------------------
 
@@ -1554,6 +1622,253 @@ async function queuedSensitivityRelationsOnBriefBasis(
   return {
     projects,
     commands,
+    snapshots,
+    archCaptures,
+    seedCaptures,
+    sensitivityCaptures,
+    sensRelCaptures,
+    queued,
+  };
+}
+
+/**
+ * Fixture for the through-executor ratchet test.
+ *
+ * Uses a stateful mock for projects and commands to bypass queueRun
+ * validation (which would reject snap-b because it was not produced by a
+ * legitimate run completion). The real FileThreadSnapshotStore holds snap-a
+ * (which carries the artifact) and snap-b (which drops it).
+ *
+ * When executeLeased runs:
+ *   1. projects.get() → project with run in "queued" state
+ *   2. commands.claimRun() → transitions to "running", sets claimedBy + startedAt
+ *   3. projects.get() → project with run in "running" state
+ *   4. loadInputs(basis) → exactSnapshot validates snap-b (valid ThreadSnapshot),
+ *      then assertSensitivityRelationsNotRemoved walks back to snap-a (which HAS
+ *      the artifact) → SensitivityRelationsArtifactRemovedError fires before SysON
+ *
+ * snap-a has revision 1 and no previous pointer; snap-b has revision 2 and
+ * previous → snap-a. Both pass validateThreadSnapshot.
+ */
+async function queuedSensitivityRelationsOnRatchetBasis(
+  directory: string,
+): Promise<SensitivityRelationsFixture> {
+  const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
+  const seedCaptures = new FileCaptureStore({
+    ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/seed-captures`,
+  });
+  const archCaptures = new FileCaptureStore({
+    ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/architecture-captures`,
+  });
+  const sensitivityCaptures = new FileCaptureStore({
+    ...SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/sensitivity-captures`,
+  });
+  const sensRelCaptures = new FileCaptureStore({
+    ...SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/sensitivity-relations-captures`,
+  });
+
+  const ratchetFreshness = {
+    status: "fresh" as const,
+    changedAt: "2026-08-05T09:03:00.000Z",
+    invalidatedByChangeIds: [] as string[],
+  };
+  const ratchetOp = {
+    serverId: "syson",
+    tool: "syson_element_get",
+    runId: "run:ratchet-ancestor",
+  };
+  const snapAId = "snap-ratchet-exec-a";
+  const snapBId = "snap-ratchet-exec-b";
+
+  // snap-a: revision 1, no previous, carries the sensitivity-relations artifact.
+  // Must pass validateThreadSnapshot so FileThreadSnapshotStore.save accepts it.
+  await snapshots.save({
+    schemaVersion: "1.0" as const,
+    id: snapAId,
+    revision: 1,
+    generatedAt: "2026-08-05T09:03:00.000Z",
+    subject: {
+      id: "project:coffee-machine-cm01-v3",
+      name: "CM-01",
+      kind: "system" as const,
+      version: "v3",
+      modelArtifactId: "model-artifact-ratchet-a",
+    },
+    freshness: ratchetFreshness,
+    changeSet: {
+      id: "cs-ratchet-a",
+      name: "Ratchet A",
+      status: "applied" as const,
+      createdAt: "2026-08-05T09:03:00.000Z",
+      appliedAt: "2026-08-05T09:03:00.000Z",
+      changes: [],
+    },
+    artifacts: [
+      {
+        id: "model-artifact-ratchet-a",
+        name: "Model A",
+        kind: "sysml-model" as const,
+        version: "v1",
+        fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+        producer: ratchetOp,
+        inputArtifactIds: [] as string[],
+        freshness: ratchetFreshness,
+      },
+      // The sensitivity-relations artifact that the ratchet detects in an ancestor.
+      {
+        id: "sens-rel-artifact-ratchet-a",
+        name: "Sensitivity relations A",
+        kind: "sysml-model" as const,
+        version: "v1",
+        fingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+        uri: `${SENSITIVITY_RELATIONS_URI_PREFIX}sha256/${"b".repeat(64)}`,
+        producer: ratchetOp,
+        inputArtifactIds: [] as string[],
+        freshness: ratchetFreshness,
+      },
+    ],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+  });
+
+  // snap-b: revision 2, previous → snap-a, NO sensitivity-relations artifact.
+  // This is the run basis. exactSnapshot validates it with validateThreadSnapshot.
+  const modelArtifactB = {
+    id: "model-artifact-ratchet-b",
+    name: "Model B",
+    kind: "sysml-model" as const,
+    version: "v1",
+    fingerprint: { algorithm: "sha256" as const, digest: "c".repeat(64) },
+    producer: ratchetOp,
+    inputArtifactIds: [] as string[],
+    freshness: ratchetFreshness,
+  };
+  await snapshots.save({
+    schemaVersion: "1.0" as const,
+    id: snapBId,
+    revision: 2,
+    generatedAt: "2026-08-05T09:04:00.000Z",
+    previous: { snapshotId: snapAId, revision: 1 },
+    subject: {
+      id: "project:coffee-machine-cm01-v3",
+      name: "CM-01",
+      kind: "system" as const,
+      version: "v3",
+      modelArtifactId: modelArtifactB.id,
+    },
+    freshness: ratchetFreshness,
+    changeSet: {
+      id: "cs-ratchet-b",
+      name: "Ratchet B",
+      status: "applied" as const,
+      createdAt: "2026-08-05T09:04:00.000Z",
+      appliedAt: "2026-08-05T09:04:00.000Z",
+      changes: [],
+    },
+    artifacts: [modelArtifactB],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+  });
+
+  // Stateful mock tracking the run from queued → running after claimRun.
+  // Only claimRun is needed — the ratchet fires before publishRun / completeRun.
+  const runId = "run:sensitivity-relations-ratchet-exec";
+  const workItemId = "write-sensitivity-relations-ratchet-exec";
+  let runStatus: "queued" | "running" = "queued";
+  let claimedBy: { origin: string; id: string } | undefined;
+  let startedAt: string | undefined;
+  let projectRevision = 5;
+
+  function makeRatchetProject() {
+    return {
+      schemaVersion: "3.0",
+      revision: projectRevision,
+      project: {
+        id: "coffee-machine-cm01-v3",
+        subjectId: "project:coffee-machine-cm01-v3",
+        name: "CM-01 coffee machine",
+      },
+      agentRuns: [{
+        id: runId,
+        workItemId,
+        status: runStatus,
+        claimedBy,
+        startedAt,
+        basis: {
+          kind: "thread-snapshot",
+          snapshotId: snapBId,
+          revision: 2,
+          subjectId: "project:coffee-machine-cm01-v3",
+        },
+      }],
+      workItems: [{
+        id: workItemId,
+        phaseId: "sensitivity-phase-ratchet-exec",
+        owner: "agent",
+        dependsOnWorkItemIds: [],
+        decisionIds: [],
+        operation: {
+          id: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelations.id,
+          version: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelations.version,
+          bindings: [
+            { name: "approvedBrief", source: { kind: "approved-brief" } },
+            {
+              name: "sensitivityArtifact",
+              source: {
+                kind: "thread-entity",
+                reference: {
+                  snapshotId: snapAId,
+                  snapshotRevision: 1,
+                  kind: "artifact",
+                  id: "stub-sensitivity-artifact-ratchet-exec",
+                },
+              },
+            },
+          ],
+        },
+      }],
+    };
+  }
+
+  const mockProjects: EngineeringProjectRevisionStore = {
+    get: (_projectId: string) => Promise.resolve(makeRatchetProject() as never),
+  } as unknown as EngineeringProjectRevisionStore;
+
+  const mockCommands: EngineeringProjectCommandService = {
+    claimRun: (origin: { kind: string; actorId: string }, _cmd: unknown) => {
+      claimedBy = { origin: origin.kind, id: origin.actorId };
+      startedAt = "2026-08-05T09:03:00.000Z";
+      runStatus = "running";
+      projectRevision++;
+      return Promise.resolve(makeRatchetProject() as never);
+    },
+    publishRun: () =>
+      Promise.reject(new Error("must not reach publishRun: ratchet fires first")),
+    completeRun: () =>
+      Promise.reject(new Error("must not reach completeRun: ratchet fires first")),
+  } as unknown as EngineeringProjectCommandService;
+
+  const queued = makeRatchetProject() as unknown as Awaited<
+    ReturnType<EngineeringProjectCommandService["queueRun"]>
+  >;
+
+  return {
+    projects: mockProjects,
+    commands: mockCommands,
     snapshots,
     archCaptures,
     seedCaptures,

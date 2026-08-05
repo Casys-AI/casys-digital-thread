@@ -6,10 +6,12 @@
  *
  *   Phase 1 — syson_constraint_extract
  *     Reads the validity-bound constraints (sizeZ_validity_lower,
- *     sizeZ_validity_upper) and verifies operator, bound value, and bound unit
- *     against the reviewed declaration. The join key is featurePath[0] (the
- *     paramAttrName), not the SysON-assigned UUID, which is never the reviewed
- *     constraint id.
+ *     sizeZ_validity_upper) and verifies operator, bound value, bound unit, AND
+ *     paramAttrName (expression.left.featurePath[0]) against the reviewed
+ *     declaration. The join key is the reviewed constraintName (the `name` field
+ *     preserved by SysON), not the SysON-assigned UUID (the `id` field) and not
+ *     featurePath[0] (multiple bounds can reference the same paramAttr, so the
+ *     constraint name is the only unambiguous join key).
  *
  *   Phase 2 — syson_element_children
  *     Verifies that the expected attribute names (paramAttrs + derivativeAttrs)
@@ -17,8 +19,9 @@
  *     the SysML text declares typed attribute placeholders, not value assignments.
  *
  * FAIL-CLOSED — any divergence (missing attribute, wrong operator, wrong bound,
- * unknown field, extra constraint) is a hard rejection. There is no fallback to
- * the declaration values; the model is the witness, not the authority.
+ * wrong paramAttrName, extra constraint) is a hard rejection. There is no
+ * fallback to the declaration values; the model is the witness, not the
+ * authority.
  */
 
 import type { SensitivityRelationsDeclaration } from "../domain/sensitivity-relations.ts";
@@ -264,6 +267,33 @@ export function verifyExtractedBound(
         actual: op,
       },
       `The operator for bound "${bound.constraintName}" was altered in the model. ` +
+        "Stop for review; do not retry automatically.",
+    );
+  }
+
+  // Verify that the constraint references the expected parameter attribute.
+  // expression.left.featurePath[0] is the attribute name used in the constraint body
+  // (e.g. "sizeZ_base_mm"). A divergence here means the constraint was re-wired
+  // to a different attribute in the model — structural drift, not just value drift.
+  const left = asRecord(expr.left, "$constraint.expression.left");
+  const featurePath = left.featurePath;
+  const actualParamAttr = Array.isArray(featurePath) && featurePath.length > 0
+    ? featurePath[0]
+    : undefined;
+  if (actualParamAttr !== bound.paramAttrName) {
+    throw new SensitivityRelationsExtractionError(
+      "sensitivity_constraint_tampered",
+      `Bound "${bound.constraintName}": paramAttrName in model is "${
+        String(actualParamAttr)
+      }", ` +
+        `expected "${bound.paramAttrName}".`,
+      {
+        constraintName: bound.constraintName,
+        field: "paramAttrName",
+        expected: bound.paramAttrName,
+        actual: actualParamAttr,
+      },
+      `The parameter attribute for bound "${bound.constraintName}" was altered in the model. ` +
         "Stop for review; do not retry automatically.",
     );
   }
