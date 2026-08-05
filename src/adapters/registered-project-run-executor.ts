@@ -6,8 +6,8 @@ import { EngineeringProjectCommandError } from "../domain/engineering-project-co
 import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
 import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
-import type { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
-import type { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
+import type { ApprovedBriefBaselineRunExecutor } from "./executors/approved-brief-baseline-run-executor.ts";
+import type { SysonModelSeedRunExecutor } from "./executors/syson-model-seed-run-executor.ts";
 
 /** Stable command shared by the one agent-visible execution tool. */
 export interface RegisteredProjectRunExecutorCommand {

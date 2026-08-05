@@ -732,7 +732,7 @@ const KITS = [
       sourceRefs: [{
         kind: "reviewed-configuration",
         path:
-          "src/adapters/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts",
+          "src/adapters/executors/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts",
         purpose:
           "Defines the bounded, provider-free recovery from the retained R10 naming defect to a correctly identified R3 successor.",
       }],
@@ -817,7 +817,7 @@ const KITS = [
         {
           kind: "reviewed-configuration",
           path:
-            "src/adapters/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts",
+            "src/adapters/executors/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts",
           purpose:
             "Holds the server-fixed metric-to-attribute mapping and the closed WAL sequence that builds the declaration from the sensitivity-study capture.",
         },
