@@ -19,6 +19,7 @@ import {
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
   CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+  CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
@@ -102,6 +103,10 @@ import {
   CoffeeMachineCm01V3MechanicalR2RunExecutor,
   CoffeeMachineCm01V3MechanicalR3RunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-r2-provider-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION,
+  CoffeeMachineCm01V3CadR3RunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-cad-r3-run-executor.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/live-thread-update-store.ts";
@@ -195,6 +200,10 @@ const DEFAULT_CM01_SEMANTIC_CAD_R2_ATTEMPT_DIRECTORY =
   "state/local/cm01-semantic-cad-r2-attempts";
 const DEFAULT_CM01_SEMANTIC_CAD_R2_CAPTURE_DIRECTORY =
   "state/local/cm01-semantic-cad-r2-captures";
+const DEFAULT_CM01_SEMANTIC_CAD_R3_ATTEMPT_DIRECTORY =
+  "state/local/cm01-semantic-cad-r3-attempts";
+const DEFAULT_CM01_SEMANTIC_CAD_R3_CAPTURE_DIRECTORY =
+  "state/local/cm01-semantic-cad-r3-captures";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_ATTEMPT_DIRECTORY =
   "state/local/cm01-drip-tray-mechanical-r2-attempts";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_CAPTURE_DIRECTORY =
@@ -284,6 +293,8 @@ export interface CreateConsoleServerOptions {
   cm01DripTrayMechanicalCaptureDirectory?: string;
   cm01SemanticCadR2AttemptDirectory?: string;
   cm01SemanticCadR2CaptureDirectory?: string;
+  cm01SemanticCadR3AttemptDirectory?: string;
+  cm01SemanticCadR3CaptureDirectory?: string;
   cm01DripTrayMechanicalR2AttemptDirectory?: string;
   cm01DripTrayMechanicalR2CaptureDirectory?: string;
   cm01DripTrayMechanicalR3AttemptDirectory?: string;
@@ -661,6 +672,29 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01CadR3 = build123dMcpUrl
+    ? new CoffeeMachineCm01V3CadR3RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      recipe: await loadCoffeeMachineCm01SemanticRecipeR2(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 240_000,
+      }),
+      attempts: new FileCm01SemanticCadAttemptStore(
+        options.cm01SemanticCadR3AttemptDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_R3_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCaptureStore({
+        ...CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
+        directory: options.cm01SemanticCadR3CaptureDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_R3_CAPTURE_DIRECTORY,
+      }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   const cm01Mechanical = sysonMcpUrl && build123dMcpUrl && calculixMcpUrl
     ? new CoffeeMachineCm01V3MechanicalRunExecutor({
       projects: runtime.projects,
@@ -904,6 +938,12 @@ async function createProjectControl(
             executor: cm01CadR2,
             unavailableMessage:
               "The server has no trusted CM-01 revised semantic CAD executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION,
+            executor: cm01CadR3,
+            unavailableMessage:
+              "The server has no trusted CM-01 @3 semantic CAD executor configured for this run (build123d provider is required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,

@@ -168,6 +168,21 @@ export const CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
 };
 
 /**
+ * Separate store for @3 captures (assembly + per-part STLs).  The kind
+ * nominal makes `FileCaptureStore<"cm01-semantic-cad-r3">` structurally
+ * incompatible with `FileCaptureStore<"cm01-semantic-cad">` at compile time,
+ * so no executor can silently receive the wrong store.
+ */
+export const CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "cm01-semantic-cad-r3"
+> = {
+  kind: "cm01-semantic-cad-r3",
+  directory: "state/local/cm01-semantic-cad-r3-captures",
+  uriNamespace: "cm01-semantic-cad-r3-capture",
+  label: "CM-01 CAD R3",
+};
+
+/**
  * NOTE: `uriNamespace` has NO "-capture" suffix here — intentional.
  * 552 `casys://` URIs in `state/` reference
  * `coffee-machine-cm01-v3-architecture` without that suffix.

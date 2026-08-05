@@ -79,6 +79,42 @@ export interface CompiledCoffeeMachineCm01SemanticCadPlan {
 }
 
 /**
+ * Render a single-component build123d script for presentation STL export.
+ *
+ * The component is placed at its reviewed assembly position so the resulting
+ * STL is geometrically consistent with the assembly. The function is pure and
+ * deterministic — it does not call any provider. The server owns the shape; no
+ * geometry value reaches here from an agent.
+ *
+ * Tessellation is not parameterised: build123d_export applies its default
+ * tolerances (linear 0.001 relative to bounding box, angular 0.1 rad), which
+ * produce presentation-quality meshes appropriate for component-workspace
+ * viewers. This is a deliberate server-side constant, not an agent input.
+ */
+export function renderBuild123dPartScript(
+  component: CoffeeMachineCm01CadGeometry,
+): string {
+  const lines = [
+    "from build123d import Align, Box, Compound, Cylinder, Pos, Rot",
+    "",
+    `# ${component.semanticKey}`,
+    ...renderComponent("shape", component),
+  ];
+  const [rx, ry, rz] = component.rotationDeg;
+  const [x, y, z] = component.translationMm;
+  lines.push(
+    `shape = Rot(${pythonNumber(rx)}, ${pythonNumber(ry)}, ${
+      pythonNumber(rz)
+    }) * shape`,
+    `shape = Pos(${pythonNumber(x)}, ${pythonNumber(y)}, ${pythonNumber(z)}) * shape`,
+    `shape.label = ${pythonString(component.semanticKey)}`,
+    `result = shape`,
+    "",
+  );
+  return lines.join("\n");
+}
+
+/**
  * Compile the closed CM-01 semantic recipe into the only CAD handoff accepted
  * by this V3 golden path.  The input is parsed before any render work: there
  * are no source UUIDs, snapshots, free-form Python, or provider calls here.

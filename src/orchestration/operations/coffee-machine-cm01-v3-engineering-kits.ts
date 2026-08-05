@@ -21,6 +21,7 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.cad-assembly"
   | "cm01.drip-tray-height-correction"
   | "cm01.cad-assembly-drip-tray-height-30"
+  | "cm01.cad-assembly-with-mesh-stls"
   | "cm01.thermal-nominal"
   | "cm01.erp-bom-observation"
   | "cm01.drip-tray-static-proof"
@@ -138,6 +139,17 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
       {
         id: "design.build-coffee-machine-cm01-cad",
         version: "2",
+      } as const,
+    ),
+    /**
+     * Extends @2 with server-rendered per-part presentation STLs (assembly STL
+     * + one STL per recipe component). Tessellation parameters are server-side
+     * constants; the agent supplies no geometry, tool name, or format argument.
+     */
+    cadDripTrayHeight30WithMeshStls: Object.freeze(
+      {
+        id: "design.build-coffee-machine-cm01-cad",
+        version: "3",
       } as const,
     ),
     thermal: Object.freeze(
@@ -503,6 +515,49 @@ const KITS = [
       title: "Rebuild CM-01 CAD for the 30 mm DripTray",
       description:
         "Generate the reviewed CM-01 CAD evidence from the exact 28 mm to 30 mm DripTray correction record.",
+      workItemKind: "design",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_DRIP_TRAY_CORRECTION_BINDINGS,
+    },
+  },
+  {
+    kitId: "cm01.cad-assembly-with-mesh-stls",
+    kitVersion: "3",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/cm01-semantic-cad-capture-r3.ts",
+          purpose:
+            "Defines the closed R3 capture schema: assembly STEP/glTF/STL export name, per-part STL naming convention, and fingerprint contract covering all N+1 calls.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/coffee-machine-cm01-semantic-cad-plan.ts",
+          purpose:
+            "Provides renderBuild123dPartScript — the server-fixed, deterministic per-component script renderer. Tessellation parameters are build123d defaults (server constants), not agent inputs.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/coffee-machine-cm01-semantic-recipe.ts",
+          purpose:
+            "Defines the closed R2 semantic recipe with DripTray size-z fixed at 30 mm.",
+        },
+      ],
+    },
+    evidenceBoundary:
+      "Rebuilds the reviewed CM-01 CAD evidence after the named DripTray height correction AND adds server-generated presentation STLs (one for the whole assembly, one per recipe component). Tessellation is build123d-default (server constant). It does not recalculate thermal behavior, refresh an ERP observation, release fabrication, or certify the product.",
+    presentationRole: "cad",
+    activityCategory: "design",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30WithMeshStls,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Rebuild CM-01 CAD with presentation meshes for the 30 mm DripTray",
+      description:
+        "Generate the reviewed CM-01 CAD evidence from the exact 28 mm to 30 mm DripTray correction record, including assembly STEP/glTF/STL and one presentation STL per component.",
       workItemKind: "design",
       riskClass: "consequential",
       execution: "trusted",
