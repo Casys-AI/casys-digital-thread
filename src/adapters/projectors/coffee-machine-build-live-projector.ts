@@ -3,9 +3,9 @@ import type {
   LiveThreadGraphPatch,
   LiveThreadUpdate,
   LiveThreadUpdateJournal,
-} from "./live-thread-update-store.ts";
-import type { RecordingMcpToolEvent } from "./recording-mcp-tool-client.ts";
-import type { ThreadGraphNode } from "../contracts/thread-workbench.ts";
+} from "../live-thread-update-store.ts";
+import type { RecordingMcpToolEvent } from "../recording-mcp-tool-client.ts";
+import type { ThreadGraphNode } from "../../contracts/thread-workbench.ts";
 
 export const COFFEE_MACHINE_SYSON_OPERATION_ID = "coffee-machine-build-source" as const;
 export const COFFEE_MACHINE_CAD_OPERATION_ID = "coffee-machine-cad-export" as const;

@@ -12,17 +12,17 @@ import type {
   ThreadSnapshot,
   ThreadViolation as CanonicalViolation,
   TracedRequirement,
-} from "../domain/thread-snapshot.ts";
+} from "../../domain/thread-snapshot.ts";
 import {
   resolveThreadComponentCatalog,
   type ThreadComponentCatalog,
-} from "../domain/thread-component-catalog.ts";
+} from "../../domain/thread-component-catalog.ts";
 import {
   CM01_V3_PRODUCT_STRUCTURE_IDENTITIES,
 } from "./cm01-v3-product-structure-catalog.ts";
 import {
   CM01_DRIP_TRAY_HEIGHT_28_TO_30_CORRECTION,
-} from "../domain/cm01-drip-tray-height-correction.ts";
+} from "../../domain/cm01-drip-tray-height-correction.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type {
   ThreadAction,
@@ -39,7 +39,7 @@ import type {
   ThreadRequirement,
   ThreadViolation,
   ThreadWorkbenchSnapshot,
-} from "../contracts/thread-workbench.ts";
+} from "../../contracts/thread-workbench.ts";
 
 /**
  * Pure presentation projection of a canonical digital-thread snapshot.

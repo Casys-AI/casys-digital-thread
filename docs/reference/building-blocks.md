@@ -24,7 +24,7 @@
 | Native workflow            | [`config/thread-workflows/`](../../config/thread-workflows/)                                               |
 | Canonical linked state     | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                     |
 | Workflow compiler/executor | [`src/workflow/`](../../src/workflow/)                                                                     |
-| Workbench projection       | [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)           |
+| Workbench projection       | [`src/adapters/projectors/thread-workbench-projector.ts`](../../src/adapters/projectors/thread-workbench-projector.ts) |
 | Native Workbench UI        | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                           |
 | Modelica evidence          | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                   |
 | CAD/FEA exchange           | `exports` Docker volume, with producer and consumer SHA-256 attestation                                    |

@@ -3,13 +3,13 @@ import type {
   EngineeringAgentRunStatus,
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
-} from "../domain/engineering-project.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../domain/syson-model-seed.ts";
+} from "../../domain/engineering-project.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
 import type {
   LiveThreadUpdate,
   LiveThreadUpdateState,
   LiveThreadWorkbenchSnapshot,
-} from "./live-thread-update-store.ts";
+} from "../live-thread-update-store.ts";
 
 export const ENGINEERING_WORKBENCH_SCHEMA = "engineering-workbench/0.2" as const;
 

@@ -5,7 +5,7 @@ import type {
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
-} from "../contracts/thread-workbench.ts";
+} from "../../contracts/thread-workbench.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 
 const AT = "2026-08-03T13:15:00.000Z";

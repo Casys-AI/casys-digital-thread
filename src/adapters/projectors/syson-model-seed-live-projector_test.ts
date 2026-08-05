@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
   createSysonModelSeedLiveProjector,
 } from "./syson-model-seed-live-projector.ts";
-import type { RecordingMcpToolEvent } from "./recording-mcp-tool-client.ts";
+import type { RecordingMcpToolEvent } from "../recording-mcp-tool-client.ts";
 
 Deno.test("SysON seed live projector shows the container chain without provider payloads", () => {
   const project = createSysonModelSeedLiveProjector("run:seed-syson");

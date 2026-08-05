@@ -9,7 +9,7 @@ import type {
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
-} from "../contracts/thread-workbench.ts";
+} from "../../contracts/thread-workbench.ts";
 
 /**
  * Build the compact, revision-aware quotient graph used by the Workbench.

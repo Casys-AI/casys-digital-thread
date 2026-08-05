@@ -1,13 +1,13 @@
-import { sha256Fingerprint } from "../domain/deterministic-json.ts";
+import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadSnapshot,
-} from "../domain/thread-snapshot.ts";
+} from "../../domain/thread-snapshot.ts";
 import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
-} from "../domain/thread-component-catalog.ts";
+} from "../../domain/thread-component-catalog.ts";
 
 /** The bounded product whose architecture capture this projection understands. */
 export const COFFEE_MACHINE_CM01_V3_SUBJECT_ID =

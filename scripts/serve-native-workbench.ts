@@ -20,7 +20,7 @@ import {
   type EngineeringWorkbenchSnapshot,
   projectEngineeringPlanningWorkbenchSnapshot,
   projectEngineeringWorkbenchSnapshot,
-} from "../src/adapters/engineering-workbench-projector.ts";
+} from "../src/adapters/projectors/engineering-workbench-projector.ts";
 import {
   type ExactThreadSnapshotReader,
   FileExactThreadSnapshotDirectory,
@@ -34,7 +34,7 @@ import {
   FileEngineeringAssetReader,
   OrderedEngineeringAssetReader,
 } from "../src/adapters/engineering-asset-resolver.ts";
-import { projectThreadWorkbenchSnapshot } from "../src/adapters/thread-workbench-projector.ts";
+import { projectThreadWorkbenchSnapshot } from "../src/adapters/projectors/thread-workbench-projector.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadUpdate,
@@ -45,7 +45,7 @@ import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../src/domain/thread-component-catalog.ts";
-import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../src/adapters/cm01-v3-product-structure-catalog.ts";
+import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;

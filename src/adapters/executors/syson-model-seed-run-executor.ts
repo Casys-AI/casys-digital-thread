@@ -31,7 +31,7 @@ import {
 } from "../file-syson-model-seed-attempt-store.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
-import { createSysonModelSeedLiveProjector } from "../syson-model-seed-live-projector.ts";
+import { createSysonModelSeedLiveProjector } from "../projectors/syson-model-seed-live-projector.ts";
 
 type ExactSnapshotPresence = "exact" | "absent" | "unknown";
 

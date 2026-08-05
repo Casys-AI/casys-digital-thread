@@ -1,13 +1,13 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import type { McpToolCall, McpToolResult } from "./http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
 import {
   LiveThreadUpdateStore,
   overlayLiveThreadUpdates,
-} from "./live-thread-update-store.ts";
+} from "../live-thread-update-store.ts";
 import {
   RecordingMcpToolClient,
   type RecordingMcpToolEvent,
-} from "./recording-mcp-tool-client.ts";
+} from "../recording-mcp-tool-client.ts";
 import {
   COFFEE_MACHINE_CAD_OPERATION_ID,
   COFFEE_MACHINE_SYSON_OPERATION_ID,
@@ -17,7 +17,7 @@ import {
   createCoffeeMachineSysonLiveProjector,
   SerializedLiveThreadUpdateJournal,
 } from "./coffee-machine-build-live-projector.ts";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "../ui/src/thread/fixture.ts";
+import { COFFEE_MACHINE_THREAD_FIXTURE } from "../../ui/src/thread/fixture.ts";
 
 const RUN_ID = "build-20260801T100000000Z";
 const NOW = "2026-08-01T10:00:00.000Z";
