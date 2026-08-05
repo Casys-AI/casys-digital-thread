@@ -160,6 +160,42 @@ const OPERATIONS = [
       allowedSourceKinds: ["approved-brief"],
     }],
   },
+  /**
+   * Generic model-driven correction.  Planning-only until a server-owned
+   * executor is promoted here.
+   *
+   * The operation takes two state-reference bindings from the current thread:
+   *   - failingEvaluation  — the RequirementEvaluation entity whose status is
+   *     "fail"; locates the comparison (actual, limit, normalizedUnit).
+   *   - sensitivityEdges   — the artifact entity that carries the
+   *     SensitivityEdge set for the relevant metric and driver.
+   *
+   * The server reads those references, calls proposeVectorCorrection, and
+   * presents the resulting CorrectionProposal as an EngineeringDecisionProposal
+   * for human MRTR consent.  No provider I/O is dispatched at this stage.
+   */
+  {
+    id: "design.apply-vector-correction",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Propose a linearized design-variable correction",
+    description:
+      "Read a failing requirement evaluation and the associated sensitivity edges from the thread, compute the first-order correction delta (z* = z + (limit − actual) / k), and present a bounded correction proposal for human MRTR consent before any provider run.",
+    workItemKind: "design",
+    riskClass: "low",
+    execution: "planning-only",
+    bindings: [
+      {
+        name: "failingEvaluation",
+        allowedSourceKinds: ["thread-entity"],
+      },
+      {
+        name: "sensitivityEdges",
+        allowedSourceKinds: ["thread-entity"],
+      },
+    ],
+  },
   // CM-01 is the static golden-path reference for future oracle onboarding.
   // These descriptors are reviewed planning data only until a server-owned
   // executor is explicitly registered for each one.
