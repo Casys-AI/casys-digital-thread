@@ -1,6 +1,6 @@
 /**
  * Schema and pure-domain functions for FDM printability checks of build123d
- * geometry exported as STL.
+ * geometry exported as STEP.
  *
  * Why this boundary exists: the printability case is a reviewed configuration
  * file; the agent never supplies provider names, thresholds, or geometry. The
@@ -11,6 +11,14 @@
  * PROVISIONAL candidates. They were chosen from typical FDM desktop-printer
  * guidelines, not from a specific printer datasheet. They are reviewed
  * candidates, not supplier specifications.
+ *
+ * meshSizeMm — provisoire : « fine enough to sample the 1.2 mm declared wall
+ * limit ». A finer mesh would improve min-thickness sample coverage but
+ * significantly increases solve time; 2.0 mm is the reviewed starting point.
+ *
+ * buildDirection — [0, 0, 1] : bac imprimé à plat, +Z up. The DripTray Box
+ * geometry has its largest face in the XY plane; printing flat minimises
+ * support material and is the natural orientation for a shallow tray.
  */
 
 export const PRINTABILITY_CHECK_CASE_SCHEMA = "printability-check-case/1.0" as const;
@@ -33,6 +41,13 @@ export interface PrintabilityCheckCase {
     readonly maxOverhangAngleDeg: { readonly value: number; readonly unit: "deg" };
     readonly maxUnsupportedAreaMm2: { readonly value: number; readonly unit: "mm2" };
   };
+  /** Mesh resolution passed to dfm_check_* (required). */
+  readonly meshSizeMm: { readonly value: number; readonly unit: "mm" };
+  /**
+   * Build direction vector [x, y, z] passed to dfm_check_overhangs (required).
+   * Conventionally [0, 0, 1] when printing flat with +Z up.
+   */
+  readonly buildDirection: readonly [number, number, number];
   readonly provider: {
     readonly build123dTool: "build123d_export";
     readonly thicknessTool: "dfm_check_min_thickness";
@@ -56,6 +71,8 @@ const ROOT_KEYS = [
   "project",
   "target",
   "thresholds",
+  "meshSizeMm",
+  "buildDirection",
   "provider",
   "limitations",
   "provenance",
@@ -81,6 +98,11 @@ export function validatePrintabilityCheckCase(value: unknown): PrintabilityCheck
   const project = parseProject(root.project);
   const target = parseTarget(root.target);
   const thresholds = parseThresholds(root.thresholds);
+  const meshSizeMm = parseQuantityMm(root.meshSizeMm, "$case.meshSizeMm");
+  const buildDirection = parseBuildDirection(
+    root.buildDirection,
+    "$case.buildDirection",
+  );
   const provider = parseProvider(root.provider);
   const rawLimitations = nonEmptyArray(root.limitations, "$case.limitations");
   const limitations = rawLimitations.map((item, i) =>
@@ -97,6 +119,8 @@ export function validatePrintabilityCheckCase(value: unknown): PrintabilityCheck
     project,
     target,
     thresholds,
+    meshSizeMm,
+    buildDirection,
     provider,
     limitations,
     provenance,
@@ -191,6 +215,20 @@ function parseQuantityMm2(
   const v = finite(input.value, `${path}.value`);
   if (v <= 0) throw new TypeError(`${path}.value must be positive.`);
   return { value: v, unit: "mm2" };
+}
+
+function parseBuildDirection(
+  value: unknown,
+  path: string,
+): readonly [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new TypeError(`${path} must be an array of exactly 3 finite numbers.`);
+  }
+  return [
+    finite(value[0], `${path}[0]`),
+    finite(value[1], `${path}[1]`),
+    finite(value[2], `${path}[2]`),
+  ] as const;
 }
 
 function parseProvider(value: unknown): PrintabilityCheckCase["provider"] {

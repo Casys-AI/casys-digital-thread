@@ -1,14 +1,24 @@
 /**
  * Executor for the CM-01 DripTray FDM printability observation.
  *
- * Sequence: export the server-fixed DripTray STL via build123d, then run both
+ * Sequence: export the server-fixed DripTray STEP via build123d, then run both
  * dfm_check_min_thickness and dfm_check_overhangs with caller-supplied thresholds
  * from the reviewed case. Produces observations with units; no verdict, no
  * evaluation, no requirement.
  *
  * Why this boundary exists: the printability case is a reviewed configuration
- * file; the agent never supplies provider names, thresholds, geometry, or STL
+ * file; the agent never supplies provider names, thresholds, geometry, or STEP
  * paths. The executor owns the three-provider sequence and the snapshot shape.
+ *
+ * Cross-attestation: the STEP SHA-256 is passed as expected_step_sha256 to
+ * both dfm_check_* calls; the parser verifies input_artifact.sha256 matches
+ * the export digest before accepting any result. This mirrors the pattern used
+ * by the CalculiX mechanical executor.
+ *
+ * DFM violations are preserved verbatim in the capture record and surfaced as
+ * a count observation. They are NEVER promoted to thread evaluations,
+ * requirements, or proposed actions — this is an observational run only.
+ *
  * The not_checked labels from mcp-dfm are preserved verbatim in the capture
  * record and reported as an additional observation if any items were omitted.
  */
@@ -58,9 +68,9 @@ export const COFFEE_MACHINE_CM01_V3_PRINTABILITY_OPERATION =
 
 const PROJECT_ID = "coffee-machine-cm01-v3" as const;
 const SUBJECT_ID = "project:coffee-machine-cm01-v3" as const;
-const STL_EXPORT_NAME = "coffee-machine-cm01-v3-drip-tray-printability";
+const STEP_EXPORT_NAME = "coffee-machine-cm01-v3-drip-tray-printability";
 
-export const PRINTABILITY_CAPTURE_SCHEMA = "printability-check-capture/1.0" as const;
+export const PRINTABILITY_CAPTURE_SCHEMA = "printability-check-capture/2.0" as const;
 
 export interface PrintabilityCaptureRecord {
   readonly schemaVersion: typeof PRINTABILITY_CAPTURE_SCHEMA;
@@ -68,25 +78,48 @@ export interface PrintabilityCaptureRecord {
   readonly caseRevision: number;
   readonly caseDigest: string;
   readonly capturedAt: string;
-  readonly stl: {
+  /** STEP export — source geometry for both DFM checks. */
+  readonly step: {
     readonly exportName: string;
-    readonly stlPath: string;
-    readonly stlSha256: string;
-    readonly stlBytes: number;
+    readonly stepPath: string;
+    readonly stepSha256: string;
+    readonly stepBytes: number;
+  };
+  /**
+   * Call parameters from the reviewed case, recorded for provenance.
+   * These values were passed verbatim to both dfm_check_* providers.
+   */
+  readonly callParams: {
+    readonly meshSizeMm: number;
+    readonly buildDirection: readonly [number, number, number];
   };
   readonly thickness: {
     readonly tool: "dfm_check_min_thickness";
-    readonly minThicknessMm: number;
-    readonly thresholdMm: number;
+    readonly measured: {
+      readonly minThicknessMm: number;
+      readonly minPositionMm: readonly [number, number, number];
+      readonly sampleCount: number;
+      readonly validRayCount: number;
+    };
+    /** Verbatim violation labels from the DFM provider. */
+    readonly violations: readonly string[];
     readonly notChecked: readonly string[];
+    /** Verified cross-attestation: equals step.stepSha256. */
+    readonly inputArtifactSha256: string;
   };
   readonly overhang: {
     readonly tool: "dfm_check_overhangs";
-    readonly maxOverhangAngleDeg: number;
-    readonly maxUnsupportedAreaMm2: number;
-    readonly thresholdAngleDeg: number;
-    readonly thresholdAreaMm2: number;
+    readonly measured: {
+      readonly totalSurfaceAreaMm2: number;
+      readonly overhangAreaMm2: number;
+      readonly overhangTriangleCount: number;
+      readonly totalTriangleCount: number;
+    };
+    /** Verbatim violation labels from the DFM provider. */
+    readonly violations: readonly string[];
     readonly notChecked: readonly string[];
+    /** Verified cross-attestation: equals step.stepSha256. */
+    readonly inputArtifactSha256: string;
   };
   readonly limitations: readonly string[];
 }
@@ -313,28 +346,32 @@ export class CoffeeMachineCm01V3PrintabilityRunExecutor {
     }
     // Run providers.
     const sc = this.#printabilityCase;
-    const stlExport = await callBuild123dStlExport(
+    const stepExport = await callBuild123dStepExport(
       this.#build123d,
       renderDripTrayPrintabilityScript(),
-      STL_EXPORT_NAME,
+      STEP_EXPORT_NAME,
     );
     const thicknessResult = await callDfmThicknessCheck(
       this.#dfm,
-      stlExport.path,
+      stepExport.path,
+      stepExport.sha256,
       sc.thresholds.minWallThicknessMm.value,
+      sc.meshSizeMm.value,
     );
     const overhangResult = await callDfmOverhangCheck(
       this.#dfm,
-      stlExport.path,
+      stepExport.path,
+      stepExport.sha256,
+      sc.buildDirection,
       sc.thresholds.maxOverhangAngleDeg.value,
-      sc.thresholds.maxUnsupportedAreaMm2.value,
+      sc.meshSizeMm.value,
     );
     const capturedAt = this.#now();
     const record = buildCaptureRecord(
       sc,
       caseDigest,
       capturedAt,
-      stlExport,
+      stepExport,
       thicknessResult,
       overhangResult,
     );
@@ -499,15 +536,19 @@ export class CoffeeMachineCm01V3PrintabilityRunExecutor {
  *
  * No requirements, evaluations, violations, or proposed actions — this is an
  * observational run only. Every observation carries an explicit unit from the
- * reviewed case. The not_checked labels from mcp-dfm are preserved in the
- * capture record (JSON artifact); if any items were not checked, an additional
- * observation reports the count so the contractual label is visible in the
- * thread.
+ * reviewed case or the DFM contract. All observations source their artifactIds
+ * on the capture document artifact, which contains the complete verified
+ * record including not_checked and violation items.
  *
- * DFM does not report the SHA-256 of the STL it consumed, so the STL mesh
- * artifact cannot declare inputArtifactIds for any DFM result. All observations
- * source their artifactIds on the capture document artifact, which contains the
- * complete check record including not_checked items.
+ * Cross-attestation: DFM reports input_artifact.sha256 in its response; the
+ * parser verifies it against the STEP export SHA-256 before producing any
+ * DfmThicknessResult or DfmOverhangResult. The verified SHA-256 is stored in
+ * the capture record and the STEP artifact is declared in the snapshot.
+ *
+ * DFM violations are preserved in the capture record. If any violations are
+ * present, an additional observation reports their total count as a
+ * contractual label. They are NEVER promoted to thread evaluations,
+ * requirements, or proposed actions.
  */
 export function materializePrintabilitySnapshot(
   base: ThreadSnapshot,
@@ -535,23 +576,22 @@ export function materializePrintabilitySnapshot(
     tool: "record_printability_observation",
     runId,
   };
-  const stlArtifactId = `${prefix}-stl`;
+  const stepArtifactId = `${prefix}-step`;
   const captureDocId = `${prefix}-capture`;
 
-  const stlFingerprint: ContentFingerprint = {
+  const stepFingerprint: ContentFingerprint = {
     algorithm: "sha256",
-    digest: record.stl.stlSha256,
+    digest: record.step.stepSha256,
   };
 
   const artifacts: ThreadArtifact[] = [
     makeArtifact(
-      stlArtifactId,
-      "CM-01 DripTray printability STL",
-      // "mesh" is the closest ThreadArtifactKind for a triangulated STL mesh.
-      "mesh",
-      stlFingerprint,
-      `${uri}#stl`,
-      "model/stl",
+      stepArtifactId,
+      "CM-01 DripTray printability STEP",
+      "step",
+      stepFingerprint,
+      `${uri}#step`,
+      "application/step",
       cadOp,
       [],
       freshness,
@@ -569,19 +609,20 @@ export function materializePrintabilitySnapshot(
     ),
   ];
 
-  // All observations derive from the capture document (not from the STL
-  // directly, since DFM does not report the SHA-256 of the file it consumed).
+  // All observations derive from the capture document, which contains the
+  // complete verified record (cross-attested SHA-256, measured values, etc.).
   const thicknessObsId = `${prefix}-min-wall-thickness`;
-  const overhangObsId = `${prefix}-max-overhang-angle`;
-  const unsupportedAreaObsId = `${prefix}-max-unsupported-area`;
+  const overhangAreaObsId = `${prefix}-overhang-area`;
+  const totalSurfaceAreaObsId = `${prefix}-total-surface-area`;
 
   const observations: ThreadObservation[] = [
     {
       id: thicknessObsId,
-      name: "DripTray minimum wall thickness (provisional FDM check)",
+      name:
+        "DripTray minimum wall thickness measured by dfm_check_min_thickness (provisional)",
       metric: "drip_tray_min_wall_thickness_mm",
       quantity: {
-        value: record.thickness.minThicknessMm,
+        value: record.thickness.measured.minThicknessMm,
         unit: pc.thresholds.minWallThicknessMm.unit,
       },
       source: {
@@ -592,12 +633,12 @@ export function materializePrintabilitySnapshot(
       freshness,
     },
     {
-      id: overhangObsId,
-      name: "DripTray maximum overhang angle (provisional FDM check)",
-      metric: "drip_tray_max_overhang_angle_deg",
+      id: overhangAreaObsId,
+      name: "DripTray overhang area measured by dfm_check_overhangs (provisional)",
+      metric: "drip_tray_overhang_area_mm2",
       quantity: {
-        value: record.overhang.maxOverhangAngleDeg,
-        unit: pc.thresholds.maxOverhangAngleDeg.unit,
+        value: record.overhang.measured.overhangAreaMm2,
+        unit: "mm2",
       },
       source: {
         operation: cadOp,
@@ -607,12 +648,12 @@ export function materializePrintabilitySnapshot(
       freshness,
     },
     {
-      id: unsupportedAreaObsId,
-      name: "DripTray maximum unsupported area (provisional FDM check)",
-      metric: "drip_tray_max_unsupported_area_mm2",
+      id: totalSurfaceAreaObsId,
+      name: "DripTray total surface area measured by dfm_check_overhangs (provisional)",
+      metric: "drip_tray_total_surface_area_mm2",
       quantity: {
-        value: record.overhang.maxUnsupportedAreaMm2,
-        unit: pc.thresholds.maxUnsupportedAreaMm2.unit,
+        value: record.overhang.measured.totalSurfaceAreaMm2,
+        unit: "mm2",
       },
       source: {
         operation: cadOp,
@@ -630,26 +671,62 @@ export function materializePrintabilitySnapshot(
       thicknessObsId,
       captureDocId,
       "derived_from",
-      "The min-wall-thickness observation was captured from the DFM check record.",
+      "The min-wall-thickness observation was captured from the DFM thickness check record.",
       "observation",
     ),
     makeLink(
-      `${overhangObsId}-from-capture`,
-      overhangObsId,
+      `${overhangAreaObsId}-from-capture`,
+      overhangAreaObsId,
       captureDocId,
       "derived_from",
-      "The max-overhang-angle observation was captured from the DFM check record.",
+      "The overhang-area observation was captured from the DFM overhang check record.",
       "observation",
     ),
     makeLink(
-      `${unsupportedAreaObsId}-from-capture`,
-      unsupportedAreaObsId,
+      `${totalSurfaceAreaObsId}-from-capture`,
+      totalSurfaceAreaObsId,
       captureDocId,
       "derived_from",
-      "The max-unsupported-area observation was captured from the DFM check record.",
+      "The total-surface-area observation was captured from the DFM overhang check record.",
       "observation",
     ),
   ];
+
+  // If any DFM violations were reported, surface the total count as a
+  // contractual label. The violation strings are preserved in the capture
+  // document. These are NEVER thread evaluations, requirements, or actions.
+  const allViolations = [
+    ...record.thickness.violations,
+    ...record.overhang.violations,
+  ];
+  if (allViolations.length > 0) {
+    const violationsObsId = `${prefix}-dfm-violation-count`;
+    observations.push({
+      id: violationsObsId,
+      name: "DripTray DFM violation count (contractual label: provisional)",
+      metric: "drip_tray_dfm_violation_count",
+      quantity: {
+        value: allViolations.length,
+        unit: "1",
+      },
+      source: {
+        operation: localOp,
+        artifactIds: [captureDocId],
+        capturedAt,
+      },
+      freshness,
+    });
+    provenance.push(
+      makeLink(
+        `${violationsObsId}-from-capture`,
+        violationsObsId,
+        captureDocId,
+        "derived_from",
+        "The DFM violation count is sourced from the capture document; the violation strings are preserved there verbatim.",
+        "observation",
+      ),
+    );
+  }
 
   // If any items were not checked, surface the count as a contractual label.
   // The not_checked strings themselves are preserved in the capture document.
@@ -732,7 +809,7 @@ export function materializePrintabilitySnapshot(
 
 // ── Provider call helpers ─────────────────────────────────────────────────────
 
-async function callBuild123dStlExport(
+async function callBuild123dStepExport(
   build123d: McpToolClient,
   script: string,
   exportName: string,
@@ -741,19 +818,19 @@ async function callBuild123dStlExport(
     name: "build123d_export",
     arguments: {
       script,
-      formats: ["stl"],
+      formats: ["step"],
       name: exportName,
       timeout_ms: 120000,
     },
   });
-  return parseBuild123dStlExport(result.structuredContent, exportName);
+  return parseBuild123dStepExport(result.structuredContent, exportName);
 }
 
 /**
  * Parse and validate the structuredContent returned by build123d_export for a
- * printability STL export. Exported for isolated unit testing.
+ * printability STEP export. Exported for isolated unit testing.
  */
-export function parseBuild123dStlExport(
+export function parseBuild123dStepExport(
   value: unknown,
   expectedName: string,
 ): { path: string; sha256: string; bytes: number } {
@@ -763,12 +840,12 @@ export function parseBuild123dStlExport(
     !Array.isArray(root.files) || root.files.length !== 1
   ) {
     throw new Error(
-      `build123d_export did not return a single reviewed STL export for ${expectedName}.`,
+      `build123d_export did not return a single reviewed STEP export for ${expectedName}.`,
     );
   }
   const file = requireObject(root.files[0], "build123d_export files[0]");
   if (
-    file.format !== "stl" ||
+    file.format !== "step" ||
     typeof file.path !== "string" ||
     !file.path.includes(expectedName)
   ) {
@@ -776,50 +853,109 @@ export function parseBuild123dStlExport(
       `build123d_export did not preserve the expected export name ${expectedName}.`,
     );
   }
-  const sha256 = requireSha256Hex(file.sha256, "build123d STL sha256");
-  const bytes = requirePositiveInt(file.bytes, "build123d STL bytes");
+  const sha256 = requireSha256Hex(file.sha256, "build123d STEP sha256");
+  const bytes = requirePositiveInt(file.bytes, "build123d STEP bytes");
   return { path: file.path, sha256, bytes };
 }
 
 export interface DfmThicknessResult {
-  minThicknessMm: number;
+  measured: {
+    minThicknessMm: number;
+    minPositionMm: [number, number, number];
+    sampleCount: number;
+    validRayCount: number;
+  };
+  violations: string[];
   notChecked: string[];
+  inputArtifactSha256: string;
 }
 
 async function callDfmThicknessCheck(
   dfm: McpToolClient,
-  stlPath: string,
+  stepPath: string,
+  expectedStepSha256: string,
   minThresholdMm: number,
+  meshSizeMm: number,
 ): Promise<DfmThicknessResult> {
   const result = await dfm.callTool({
     name: "dfm_check_min_thickness",
     arguments: {
-      stl_path: stlPath,
+      step_path: stepPath,
+      expected_step_sha256: expectedStepSha256,
       min_thickness_mm: minThresholdMm,
+      mesh_size_mm: meshSizeMm,
     },
   });
-  return parseDfmThicknessResult(result.structuredContent);
+  return parseDfmThicknessResult(result.structuredContent, expectedStepSha256);
 }
 
 /**
  * Parse and validate the structuredContent returned by dfm_check_min_thickness.
  * Exported for isolated unit testing.
  *
+ * Real contract: { violations, measured, limits_declared, not_checked,
+ * input_artifact }. Each required field is validated fail-closed; extra fields
+ * on the outer object are tolerated (provider schema may evolve).
+ *
+ * Cross-attestation: input_artifact.sha256 must equal expectedSha256 or the
+ * call is rejected with an error — the STEP file the provider consumed must
+ * be the exact file we exported.
+ *
  * The not_checked items are preserved verbatim — they are contractual labels
  * from the DFM provider. A not_checked entry means the check was not performed
  * for some faces; absence of a warning is never a guarantee.
  */
-export function parseDfmThicknessResult(value: unknown): DfmThicknessResult {
+export function parseDfmThicknessResult(
+  value: unknown,
+  expectedSha256: string,
+): DfmThicknessResult {
   const root = requireObject(value, "dfm_check_min_thickness structuredContent");
-  if (root.schemaVersion !== "1.0" || root.kind !== "dfm-min-thickness") {
-    throw new Error(
-      "dfm_check_min_thickness returned an unsupported contract schema.",
+  // violations
+  const rawViolations = root.violations;
+  if (!Array.isArray(rawViolations)) {
+    throw new Error("dfm_check_min_thickness violations must be an array.");
+  }
+  const violations = rawViolations.map((item, i) => {
+    if (typeof item !== "string") {
+      throw new TypeError(`dfm_check_min_thickness violations[${i}] must be a string.`);
+    }
+    return item;
+  });
+  // measured
+  const measuredRoot = requireObject(
+    root.measured,
+    "dfm_check_min_thickness measured",
+  );
+  const minThicknessMm = requireFinite(
+    measuredRoot.min_thickness_mm,
+    "dfm_check_min_thickness measured.min_thickness_mm",
+  );
+  const rawPos = measuredRoot.min_position_mm;
+  if (!Array.isArray(rawPos) || rawPos.length !== 3) {
+    throw new TypeError(
+      "dfm_check_min_thickness measured.min_position_mm must be a 3-element array.",
     );
   }
-  const minThicknessMm = requireFinite(
-    root.minThicknessMm,
-    "dfm_check_min_thickness minThicknessMm",
+  const minPositionMm: [number, number, number] = [
+    requireFinite(rawPos[0], "dfm_check_min_thickness measured.min_position_mm[0]"),
+    requireFinite(rawPos[1], "dfm_check_min_thickness measured.min_position_mm[1]"),
+    requireFinite(rawPos[2], "dfm_check_min_thickness measured.min_position_mm[2]"),
+  ];
+  const sampleCount = requireFinite(
+    measuredRoot.sample_count,
+    "dfm_check_min_thickness measured.sample_count",
   );
+  const validRayCount = requireFinite(
+    measuredRoot.valid_ray_count,
+    "dfm_check_min_thickness measured.valid_ray_count",
+  );
+  // limits_declared — required by contract, not consumed downstream
+  if (!root.limits_declared || typeof root.limits_declared !== "object") {
+    throw new TypeError(
+      "dfm_check_min_thickness limits_declared must be an object.",
+    );
+  }
+  // not_checked
   const rawNotChecked = root.not_checked;
   if (!Array.isArray(rawNotChecked)) {
     throw new Error("dfm_check_min_thickness not_checked must be an array.");
@@ -832,51 +968,117 @@ export function parseDfmThicknessResult(value: unknown): DfmThicknessResult {
     }
     return item;
   });
-  return { minThicknessMm, notChecked };
+  // input_artifact — cross-attestation
+  const inputArtRoot = requireObject(
+    root.input_artifact,
+    "dfm_check_min_thickness input_artifact",
+  );
+  const inputSha256 = requireSha256Hex(
+    inputArtRoot.sha256,
+    "dfm_check_min_thickness input_artifact.sha256",
+  );
+  if (inputSha256 !== expectedSha256) {
+    throw new Error(
+      `dfm_check_min_thickness input_artifact.sha256 mismatch: ` +
+        `expected ${expectedSha256}, got ${inputSha256}.`,
+    );
+  }
+  return {
+    measured: { minThicknessMm, minPositionMm, sampleCount, validRayCount },
+    violations,
+    notChecked,
+    inputArtifactSha256: inputSha256,
+  };
 }
 
 export interface DfmOverhangResult {
-  maxOverhangAngleDeg: number;
-  maxUnsupportedAreaMm2: number;
+  measured: {
+    totalSurfaceAreaMm2: number;
+    overhangAreaMm2: number;
+    overhangTriangleCount: number;
+    totalTriangleCount: number;
+  };
+  violations: string[];
   notChecked: string[];
+  inputArtifactSha256: string;
 }
 
 async function callDfmOverhangCheck(
   dfm: McpToolClient,
-  stlPath: string,
+  stepPath: string,
+  expectedStepSha256: string,
+  buildDirection: readonly [number, number, number],
   maxAngleDeg: number,
-  maxAreaMm2: number,
+  meshSizeMm: number,
 ): Promise<DfmOverhangResult> {
   const result = await dfm.callTool({
     name: "dfm_check_overhangs",
     arguments: {
-      stl_path: stlPath,
-      max_overhang_angle_deg: maxAngleDeg,
-      max_unsupported_area_mm2: maxAreaMm2,
+      step_path: stepPath,
+      expected_step_sha256: expectedStepSha256,
+      build_direction: [...buildDirection],
+      max_overhang_deg: maxAngleDeg,
+      mesh_size_mm: meshSizeMm,
     },
   });
-  return parseDfmOverhangResult(result.structuredContent);
+  return parseDfmOverhangResult(result.structuredContent, expectedStepSha256);
 }
 
 /**
  * Parse and validate the structuredContent returned by dfm_check_overhangs.
  * Exported for isolated unit testing.
+ *
+ * Real contract: { violations, measured, limits_declared, not_checked,
+ * input_artifact }. The aire d'encombrement (overhang_area_mm2) and total
+ * surface area are OUTPUT measurements — NOT inputs. The caller supplies only
+ * build_direction and max_overhang_deg.
+ *
+ * Cross-attestation: input_artifact.sha256 must equal expectedSha256.
  */
-export function parseDfmOverhangResult(value: unknown): DfmOverhangResult {
+export function parseDfmOverhangResult(
+  value: unknown,
+  expectedSha256: string,
+): DfmOverhangResult {
   const root = requireObject(value, "dfm_check_overhangs structuredContent");
-  if (root.schemaVersion !== "1.0" || root.kind !== "dfm-overhangs") {
-    throw new Error(
-      "dfm_check_overhangs returned an unsupported contract schema.",
+  // violations
+  const rawViolations = root.violations;
+  if (!Array.isArray(rawViolations)) {
+    throw new Error("dfm_check_overhangs violations must be an array.");
+  }
+  const violations = rawViolations.map((item, i) => {
+    if (typeof item !== "string") {
+      throw new TypeError(`dfm_check_overhangs violations[${i}] must be a string.`);
+    }
+    return item;
+  });
+  // measured
+  const measuredRoot = requireObject(
+    root.measured,
+    "dfm_check_overhangs measured",
+  );
+  const totalSurfaceAreaMm2 = requireFinite(
+    measuredRoot.total_surface_area_mm2,
+    "dfm_check_overhangs measured.total_surface_area_mm2",
+  );
+  const overhangAreaMm2 = requireFinite(
+    measuredRoot.overhang_area_mm2,
+    "dfm_check_overhangs measured.overhang_area_mm2",
+  );
+  const overhangTriangleCount = requireFinite(
+    measuredRoot.overhang_triangle_count,
+    "dfm_check_overhangs measured.overhang_triangle_count",
+  );
+  const totalTriangleCount = requireFinite(
+    measuredRoot.total_triangle_count,
+    "dfm_check_overhangs measured.total_triangle_count",
+  );
+  // limits_declared — required by contract
+  if (!root.limits_declared || typeof root.limits_declared !== "object") {
+    throw new TypeError(
+      "dfm_check_overhangs limits_declared must be an object.",
     );
   }
-  const maxOverhangAngleDeg = requireFinite(
-    root.maxOverhangAngleDeg,
-    "dfm_check_overhangs maxOverhangAngleDeg",
-  );
-  const maxUnsupportedAreaMm2 = requireFinite(
-    root.maxUnsupportedAreaMm2,
-    "dfm_check_overhangs maxUnsupportedAreaMm2",
-  );
+  // not_checked
   const rawNotChecked = root.not_checked;
   if (!Array.isArray(rawNotChecked)) {
     throw new Error("dfm_check_overhangs not_checked must be an array.");
@@ -887,7 +1089,32 @@ export function parseDfmOverhangResult(value: unknown): DfmOverhangResult {
     }
     return item;
   });
-  return { maxOverhangAngleDeg, maxUnsupportedAreaMm2, notChecked };
+  // input_artifact — cross-attestation
+  const inputArtRoot = requireObject(
+    root.input_artifact,
+    "dfm_check_overhangs input_artifact",
+  );
+  const inputSha256 = requireSha256Hex(
+    inputArtRoot.sha256,
+    "dfm_check_overhangs input_artifact.sha256",
+  );
+  if (inputSha256 !== expectedSha256) {
+    throw new Error(
+      `dfm_check_overhangs input_artifact.sha256 mismatch: ` +
+        `expected ${expectedSha256}, got ${inputSha256}.`,
+    );
+  }
+  return {
+    measured: {
+      totalSurfaceAreaMm2,
+      overhangAreaMm2,
+      overhangTriangleCount,
+      totalTriangleCount,
+    },
+    violations,
+    notChecked,
+    inputArtifactSha256: inputSha256,
+  };
 }
 
 // ── Capture record helpers ────────────────────────────────────────────────────
@@ -896,7 +1123,7 @@ function buildCaptureRecord(
   sc: PrintabilityCheckCase,
   caseDigest: string,
   capturedAt: string,
-  stlExport: { path: string; sha256: string; bytes: number },
+  stepExport: { path: string; sha256: string; bytes: number },
   thickness: DfmThicknessResult,
   overhang: DfmOverhangResult,
 ): PrintabilityCaptureRecord {
@@ -906,25 +1133,29 @@ function buildCaptureRecord(
     caseRevision: sc.revision,
     caseDigest,
     capturedAt,
-    stl: {
-      exportName: STL_EXPORT_NAME,
-      stlPath: stlExport.path,
-      stlSha256: stlExport.sha256,
-      stlBytes: stlExport.bytes,
+    step: {
+      exportName: STEP_EXPORT_NAME,
+      stepPath: stepExport.path,
+      stepSha256: stepExport.sha256,
+      stepBytes: stepExport.bytes,
+    },
+    callParams: {
+      meshSizeMm: sc.meshSizeMm.value,
+      buildDirection: [...sc.buildDirection] as [number, number, number],
     },
     thickness: {
       tool: "dfm_check_min_thickness",
-      minThicknessMm: thickness.minThicknessMm,
-      thresholdMm: sc.thresholds.minWallThicknessMm.value,
+      measured: { ...thickness.measured },
+      violations: [...thickness.violations],
       notChecked: [...thickness.notChecked],
+      inputArtifactSha256: thickness.inputArtifactSha256,
     },
     overhang: {
       tool: "dfm_check_overhangs",
-      maxOverhangAngleDeg: overhang.maxOverhangAngleDeg,
-      maxUnsupportedAreaMm2: overhang.maxUnsupportedAreaMm2,
-      thresholdAngleDeg: sc.thresholds.maxOverhangAngleDeg.value,
-      thresholdAreaMm2: sc.thresholds.maxUnsupportedAreaMm2.value,
+      measured: { ...overhang.measured },
+      violations: [...overhang.violations],
       notChecked: [...overhang.notChecked],
+      inputArtifactSha256: overhang.inputArtifactSha256,
     },
     limitations: [...sc.limitations],
   };
@@ -948,59 +1179,120 @@ function parseCaptureRecord(value: unknown): PrintabilityCaptureRecord {
   }
   const caseRevision = requirePositiveInt(root.caseRevision, "capture caseRevision");
   const caseDigest = requireSha256Hex(root.caseDigest, "capture caseDigest");
-  const stlRoot = requireObject(root.stl, "capture stl");
-  const stl = {
-    exportName: requireNonEmpty(stlRoot.exportName, "capture stl.exportName"),
-    stlPath: requireNonEmpty(stlRoot.stlPath, "capture stl.stlPath"),
-    stlSha256: requireSha256Hex(stlRoot.stlSha256, "capture stl.stlSha256"),
-    stlBytes: requirePositiveInt(stlRoot.stlBytes, "capture stl.stlBytes"),
+  // step
+  const stepRoot = requireObject(root.step, "capture step");
+  const step = {
+    exportName: requireNonEmpty(stepRoot.exportName, "capture step.exportName"),
+    stepPath: requireNonEmpty(stepRoot.stepPath, "capture step.stepPath"),
+    stepSha256: requireSha256Hex(stepRoot.stepSha256, "capture step.stepSha256"),
+    stepBytes: requirePositiveInt(stepRoot.stepBytes, "capture step.stepBytes"),
   };
+  // callParams
+  const callParamsRoot = requireObject(root.callParams, "capture callParams");
+  const meshSizeMm = requireFinite(
+    callParamsRoot.meshSizeMm,
+    "capture callParams.meshSizeMm",
+  );
+  if (meshSizeMm <= 0) {
+    throw new Error("capture callParams.meshSizeMm must be positive.");
+  }
+  const rawDir = callParamsRoot.buildDirection;
+  if (!Array.isArray(rawDir) || rawDir.length !== 3) {
+    throw new TypeError("capture callParams.buildDirection must be a 3-element array.");
+  }
+  const buildDirection: [number, number, number] = [
+    requireFinite(rawDir[0], "capture callParams.buildDirection[0]"),
+    requireFinite(rawDir[1], "capture callParams.buildDirection[1]"),
+    requireFinite(rawDir[2], "capture callParams.buildDirection[2]"),
+  ];
+  const callParams = { meshSizeMm, buildDirection };
+  // thickness
   const thicknessRoot = requireObject(root.thickness, "capture thickness");
   if (thicknessRoot.tool !== "dfm_check_min_thickness") {
     throw new Error("Capture thickness.tool must be dfm_check_min_thickness.");
   }
+  const thicknessMeasuredRoot = requireObject(
+    thicknessRoot.measured,
+    "capture thickness.measured",
+  );
+  const thicknessMeasured = {
+    minThicknessMm: requireFinite(
+      thicknessMeasuredRoot.minThicknessMm,
+      "capture thickness.measured.minThicknessMm",
+    ),
+    minPositionMm: requireFiniteTriple(
+      thicknessMeasuredRoot.minPositionMm,
+      "capture thickness.measured.minPositionMm",
+    ),
+    sampleCount: requireFinite(
+      thicknessMeasuredRoot.sampleCount,
+      "capture thickness.measured.sampleCount",
+    ),
+    validRayCount: requireFinite(
+      thicknessMeasuredRoot.validRayCount,
+      "capture thickness.measured.validRayCount",
+    ),
+  };
   const thickness = {
     tool: "dfm_check_min_thickness" as const,
-    minThicknessMm: requireFinite(
-      thicknessRoot.minThicknessMm,
-      "capture thickness.minThicknessMm",
-    ),
-    thresholdMm: requireFinite(
-      thicknessRoot.thresholdMm,
-      "capture thickness.thresholdMm",
+    measured: thicknessMeasured,
+    violations: requireStringArray(
+      thicknessRoot.violations,
+      "capture thickness.violations",
     ),
     notChecked: requireStringArray(
       thicknessRoot.notChecked,
       "capture thickness.notChecked",
     ),
+    inputArtifactSha256: requireSha256Hex(
+      thicknessRoot.inputArtifactSha256,
+      "capture thickness.inputArtifactSha256",
+    ),
   };
+  // overhang
   const overhangRoot = requireObject(root.overhang, "capture overhang");
   if (overhangRoot.tool !== "dfm_check_overhangs") {
     throw new Error("Capture overhang.tool must be dfm_check_overhangs.");
   }
+  const overhangMeasuredRoot = requireObject(
+    overhangRoot.measured,
+    "capture overhang.measured",
+  );
+  const overhangMeasured = {
+    totalSurfaceAreaMm2: requireFinite(
+      overhangMeasuredRoot.totalSurfaceAreaMm2,
+      "capture overhang.measured.totalSurfaceAreaMm2",
+    ),
+    overhangAreaMm2: requireFinite(
+      overhangMeasuredRoot.overhangAreaMm2,
+      "capture overhang.measured.overhangAreaMm2",
+    ),
+    overhangTriangleCount: requireFinite(
+      overhangMeasuredRoot.overhangTriangleCount,
+      "capture overhang.measured.overhangTriangleCount",
+    ),
+    totalTriangleCount: requireFinite(
+      overhangMeasuredRoot.totalTriangleCount,
+      "capture overhang.measured.totalTriangleCount",
+    ),
+  };
   const overhang = {
     tool: "dfm_check_overhangs" as const,
-    maxOverhangAngleDeg: requireFinite(
-      overhangRoot.maxOverhangAngleDeg,
-      "capture overhang.maxOverhangAngleDeg",
-    ),
-    maxUnsupportedAreaMm2: requireFinite(
-      overhangRoot.maxUnsupportedAreaMm2,
-      "capture overhang.maxUnsupportedAreaMm2",
-    ),
-    thresholdAngleDeg: requireFinite(
-      overhangRoot.thresholdAngleDeg,
-      "capture overhang.thresholdAngleDeg",
-    ),
-    thresholdAreaMm2: requireFinite(
-      overhangRoot.thresholdAreaMm2,
-      "capture overhang.thresholdAreaMm2",
+    measured: overhangMeasured,
+    violations: requireStringArray(
+      overhangRoot.violations,
+      "capture overhang.violations",
     ),
     notChecked: requireStringArray(
       overhangRoot.notChecked,
       "capture overhang.notChecked",
     ),
+    inputArtifactSha256: requireSha256Hex(
+      overhangRoot.inputArtifactSha256,
+      "capture overhang.inputArtifactSha256",
+    ),
   };
+  // limitations
   const limitationsRoot = root.limitations;
   if (!Array.isArray(limitationsRoot)) {
     throw new Error("Printability capture record limitations must be an array.");
@@ -1017,7 +1309,8 @@ function parseCaptureRecord(value: unknown): PrintabilityCaptureRecord {
     caseRevision,
     caseDigest,
     capturedAt: root.capturedAt,
-    stl,
+    step,
+    callParams,
     thickness,
     overhang,
     limitations,
@@ -1078,6 +1371,20 @@ function requireStringArray(value: unknown, label: string): string[] {
     }
     return item;
   });
+}
+
+function requireFiniteTriple(
+  value: unknown,
+  label: string,
+): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new TypeError(`${label} must be a 3-element array.`);
+  }
+  return [
+    requireFinite(value[0], `${label}[0]`),
+    requireFinite(value[1], `${label}[1]`),
+    requireFinite(value[2], `${label}[2]`),
+  ];
 }
 
 function makeArtifact(

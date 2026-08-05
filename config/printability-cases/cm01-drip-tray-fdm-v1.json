@@ -1,7 +1,7 @@
 {
   "schemaVersion": "printability-check-case/1.0",
   "id": "coffee-machine-cm01-v3-drip-tray-fdm-v1",
-  "revision": 1,
+  "revision": 2,
   "scope": "FDM printability check for the isolated CM-01 DripTray STL at the reviewed 30 mm R2 geometry (Box 190 × 135 × 30 mm, centred origin).",
   "evidenceBoundary": "Captures FDM printability observations (min wall thickness, max overhang angle, max unsupported area) for the isolated DripTray STL at the reviewed 30 mm R2 geometry. It is not a verdict, requirement evaluation, certification, whole-machine claim, or manufacturing approval.",
   "project": {
@@ -16,6 +16,8 @@
     "maxOverhangAngleDeg": { "value": 45.0, "unit": "deg" },
     "maxUnsupportedAreaMm2": { "value": 600.0, "unit": "mm2" }
   },
+  "meshSizeMm": { "value": 2.0, "unit": "mm" },
+  "buildDirection": [0, 0, 1],
   "provider": {
     "build123dTool": "build123d_export",
     "thicknessTool": "dfm_check_min_thickness",

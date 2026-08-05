@@ -7,7 +7,7 @@ import {
 import { FileCm01DripTrayPrintabilityAttemptStore } from "./file-cm01-drip-tray-printability-attempt-store.ts";
 import {
   materializePrintabilitySnapshot,
-  parseBuild123dStlExport,
+  parseBuild123dStepExport,
   parseDfmOverhangResult,
   parseDfmThicknessResult,
   type PrintabilityCaptureRecord,
@@ -15,7 +15,8 @@ import {
 
 const AT = "2026-08-05T10:00:00.000Z";
 const CAPTURE_FP = { algorithm: "sha256" as const, digest: "c".repeat(64) };
-const STL_SHA = "e".repeat(64);
+const STEP_SHA = "e".repeat(64);
+const STEP_SHA_OTHER = "f".repeat(64);
 
 // ── Test 1 ────────────────────────────────────────────────────────────────────
 
@@ -82,15 +83,60 @@ Deno.test(
       (o) => o.metric === "drip_tray_min_wall_thickness_mm",
     );
     assertEquals(thicknessObs?.quantity.unit, "mm");
-    assertEquals(thicknessObs?.quantity.value, record.thickness.minThicknessMm);
-    const angleObs = snapshot.observations.find(
-      (o) => o.metric === "drip_tray_max_overhang_angle_deg",
+    assertEquals(
+      thicknessObs?.quantity.value,
+      record.thickness.measured.minThicknessMm,
     );
-    assertEquals(angleObs?.quantity.unit, "deg");
-    const areaObs = snapshot.observations.find(
-      (o) => o.metric === "drip_tray_max_unsupported_area_mm2",
+    const overhangAreaObs = snapshot.observations.find(
+      (o) => o.metric === "drip_tray_overhang_area_mm2",
     );
-    assertEquals(areaObs?.quantity.unit, "mm2");
+    assertEquals(overhangAreaObs?.quantity.unit, "mm2");
+    assertEquals(
+      overhangAreaObs?.quantity.value,
+      record.overhang.measured.overhangAreaMm2,
+    );
+    const totalAreaObs = snapshot.observations.find(
+      (o) => o.metric === "drip_tray_total_surface_area_mm2",
+    );
+    assertEquals(totalAreaObs?.quantity.unit, "mm2");
+    assertEquals(
+      totalAreaObs?.quantity.value,
+      record.overhang.measured.totalSurfaceAreaMm2,
+    );
+  },
+);
+
+// ── Test 3b ───────────────────────────────────────────────────────────────────
+
+Deno.test(
+  "materializePrintabilitySnapshot with DFM violations adds a violation count observation",
+  async () => {
+    const record = captureRecordWithViolations([
+      "wall too thin at x=0",
+      "wall too thin at x=10",
+    ]);
+    const { snapshot } = await materializePrintabilitySnapshot(
+      baseThreadSnapshot(),
+      "run-printability-violations",
+      validCase(),
+      CAPTURE_FP,
+      `casys://cm01-drip-tray-printability-capture/sha256/${"c".repeat(64)}`,
+      record,
+    );
+    validateThreadSnapshot(snapshot);
+    const violationCountObs = snapshot.observations.find(
+      (o) => o.metric === "drip_tray_dfm_violation_count",
+    );
+    assertEquals(
+      violationCountObs?.quantity.value,
+      2,
+      "violation count must reflect the number of dfm violations",
+    );
+    assertEquals(violationCountObs?.quantity.unit, "1");
+    // Must never appear in thread evaluations, requirements, or violations.
+    assertEquals(snapshot.evaluations.length, 0);
+    assertEquals(snapshot.requirements.length, 0);
+    assertEquals(snapshot.violations.length, 0);
   },
 );
 
@@ -137,19 +183,19 @@ Deno.test(
 // ── Test 5 ────────────────────────────────────────────────────────────────────
 
 Deno.test(
-  "parseBuild123dStlExport rejects a response that does not contain the expected export name",
+  "parseBuild123dStepExport rejects a response that does not contain the expected export name",
   () => {
     assertThrows(
       () =>
-        parseBuild123dStlExport(
+        parseBuild123dStepExport(
           {
             schemaVersion: "1.0",
             kind: "export",
             files: [{
-              format: "stl",
-              path: "/exports/wrong-name.stl",
+              format: "step",
+              path: "/exports/wrong-name.step",
               bytes: 100,
-              sha256: STL_SHA,
+              sha256: STEP_SHA,
             }],
           },
           "coffee-machine-cm01-v3-drip-tray-printability",
@@ -160,46 +206,75 @@ Deno.test(
   },
 );
 
-Deno.test("parseBuild123dStlExport rejects a null structuredContent", () => {
+Deno.test("parseBuild123dStepExport rejects a null structuredContent", () => {
   assertThrows(
-    () => parseBuild123dStlExport(null, "any-name"),
+    () => parseBuild123dStepExport(null, "any-name"),
     TypeError,
     "object",
   );
 });
 
-Deno.test("parseBuild123dStlExport accepts a valid STL export response", () => {
+Deno.test("parseBuild123dStepExport rejects an stl format instead of step", () => {
   const exportName = "coffee-machine-cm01-v3-drip-tray-printability";
-  const result = parseBuild123dStlExport(
+  assertThrows(
+    () =>
+      parseBuild123dStepExport(
+        {
+          schemaVersion: "1.0",
+          kind: "export",
+          files: [{
+            format: "stl",
+            path: `/exports/${exportName}.stl`,
+            bytes: 1024,
+            sha256: STEP_SHA,
+          }],
+        },
+        exportName,
+      ),
+    Error,
+    "expected export name",
+  );
+});
+
+Deno.test("parseBuild123dStepExport accepts a valid STEP export response", () => {
+  const exportName = "coffee-machine-cm01-v3-drip-tray-printability";
+  const result = parseBuild123dStepExport(
     {
       schemaVersion: "1.0",
       kind: "export",
       files: [{
-        format: "stl",
-        path: `/exports/${exportName}.stl`,
+        format: "step",
+        path: `/exports/${exportName}.step`,
         bytes: 1024,
-        sha256: STL_SHA,
+        sha256: STEP_SHA,
       }],
     },
     exportName,
   );
-  assertEquals(result.sha256, STL_SHA);
+  assertEquals(result.sha256, STEP_SHA);
   assertEquals(result.bytes, 1024);
 });
 
 // ── Test 6 ────────────────────────────────────────────────────────────────────
 
-Deno.test("parseDfmThicknessResult rejects a wrong kind in the response", () => {
+Deno.test("parseDfmThicknessResult rejects a missing violations array", () => {
   assertThrows(
     () =>
-      parseDfmThicknessResult({
-        schemaVersion: "1.0",
-        kind: "dfm-overhangs",
-        minThicknessMm: 1.5,
-        not_checked: [],
-      }),
+      parseDfmThicknessResult(
+        {
+          measured: validThicknessMeasured(),
+          limits_declared: { min_thickness_mm: 1.2 },
+          not_checked: [],
+          input_artifact: {
+            sha256: STEP_SHA,
+            bytes: 1024,
+            source_path: "/exports/x.step",
+          },
+        },
+        STEP_SHA,
+      ),
     Error,
-    "unsupported contract schema",
+    "violations must be an array",
   );
 });
 
@@ -208,42 +283,108 @@ Deno.test(
   () => {
     assertThrows(
       () =>
-        parseDfmThicknessResult({
-          schemaVersion: "1.0",
-          kind: "dfm-min-thickness",
-          minThicknessMm: 1.5,
-        }),
+        parseDfmThicknessResult(
+          {
+            violations: [],
+            measured: validThicknessMeasured(),
+            limits_declared: { min_thickness_mm: 1.2 },
+            input_artifact: {
+              sha256: STEP_SHA,
+              bytes: 1024,
+              source_path: "/exports/x.step",
+            },
+          },
+          STEP_SHA,
+        ),
       Error,
       "not_checked must be an array",
     );
   },
 );
 
+Deno.test("parseDfmThicknessResult rejects a missing measured object", () => {
+  assertThrows(
+    () =>
+      parseDfmThicknessResult(
+        {
+          violations: [],
+          limits_declared: { min_thickness_mm: 1.2 },
+          not_checked: [],
+          input_artifact: {
+            sha256: STEP_SHA,
+            bytes: 1024,
+            source_path: "/exports/x.step",
+          },
+        },
+        STEP_SHA,
+      ),
+    TypeError,
+    "measured",
+  );
+});
+
+Deno.test(
+  "parseDfmThicknessResult rejects input_artifact.sha256 mismatch",
+  () => {
+    assertThrows(
+      () =>
+        parseDfmThicknessResult(
+          {
+            violations: [],
+            measured: validThicknessMeasured(),
+            limits_declared: { min_thickness_mm: 1.2 },
+            not_checked: [],
+            input_artifact: {
+              sha256: STEP_SHA_OTHER,
+              bytes: 1024,
+              source_path: "/exports/x.step",
+            },
+          },
+          STEP_SHA,
+        ),
+      Error,
+      "mismatch",
+    );
+  },
+);
+
 Deno.test("parseDfmThicknessResult accepts a valid thickness result", () => {
-  const result = parseDfmThicknessResult({
-    schemaVersion: "1.0",
-    kind: "dfm-min-thickness",
-    minThicknessMm: 1.5,
-    not_checked: ["bridging"],
-  });
-  assertEquals(result.minThicknessMm, 1.5);
+  const result = parseDfmThicknessResult(
+    {
+      violations: [],
+      measured: validThicknessMeasured(),
+      limits_declared: { min_thickness_mm: 1.2 },
+      not_checked: ["bridging"],
+      input_artifact: { sha256: STEP_SHA, bytes: 1024, source_path: "/exports/x.step" },
+    },
+    STEP_SHA,
+  );
+  assertEquals(result.measured.minThicknessMm, 29.999);
   assertEquals(result.notChecked, ["bridging"]);
+  assertEquals(result.inputArtifactSha256, STEP_SHA);
+  assertEquals(result.violations, []);
 });
 
 // ── Test 7 ────────────────────────────────────────────────────────────────────
 
-Deno.test("parseDfmOverhangResult rejects a wrong kind in the response", () => {
+Deno.test("parseDfmOverhangResult rejects a missing violations array", () => {
   assertThrows(
     () =>
-      parseDfmOverhangResult({
-        schemaVersion: "1.0",
-        kind: "dfm-min-thickness",
-        maxOverhangAngleDeg: 35,
-        maxUnsupportedAreaMm2: 400,
-        not_checked: [],
-      }),
+      parseDfmOverhangResult(
+        {
+          measured: validOverhangMeasured(),
+          limits_declared: { max_overhang_deg: 45 },
+          not_checked: [],
+          input_artifact: {
+            sha256: STEP_SHA,
+            bytes: 1024,
+            source_path: "/exports/x.step",
+          },
+        },
+        STEP_SHA,
+      ),
     Error,
-    "unsupported contract schema",
+    "violations must be an array",
   );
 });
 
@@ -252,29 +393,63 @@ Deno.test(
   () => {
     assertThrows(
       () =>
-        parseDfmOverhangResult({
-          schemaVersion: "1.0",
-          kind: "dfm-overhangs",
-          maxOverhangAngleDeg: 35,
-          maxUnsupportedAreaMm2: 400,
-        }),
+        parseDfmOverhangResult(
+          {
+            violations: [],
+            measured: validOverhangMeasured(),
+            limits_declared: { max_overhang_deg: 45 },
+            input_artifact: {
+              sha256: STEP_SHA,
+              bytes: 1024,
+              source_path: "/exports/x.step",
+            },
+          },
+          STEP_SHA,
+        ),
       Error,
       "not_checked must be an array",
     );
   },
 );
 
+Deno.test("parseDfmOverhangResult rejects input_artifact.sha256 mismatch", () => {
+  assertThrows(
+    () =>
+      parseDfmOverhangResult(
+        {
+          violations: [],
+          measured: validOverhangMeasured(),
+          limits_declared: { max_overhang_deg: 45 },
+          not_checked: [],
+          input_artifact: {
+            sha256: STEP_SHA_OTHER,
+            bytes: 1024,
+            source_path: "/exports/x.step",
+          },
+        },
+        STEP_SHA,
+      ),
+    Error,
+    "mismatch",
+  );
+});
+
 Deno.test("parseDfmOverhangResult accepts a valid overhang result", () => {
-  const result = parseDfmOverhangResult({
-    schemaVersion: "1.0",
-    kind: "dfm-overhangs",
-    maxOverhangAngleDeg: 38.5,
-    maxUnsupportedAreaMm2: 550.0,
-    not_checked: [],
-  });
-  assertEquals(result.maxOverhangAngleDeg, 38.5);
-  assertEquals(result.maxUnsupportedAreaMm2, 550.0);
+  const result = parseDfmOverhangResult(
+    {
+      violations: [],
+      measured: validOverhangMeasured(),
+      limits_declared: { max_overhang_deg: 45 },
+      not_checked: [],
+      input_artifact: { sha256: STEP_SHA, bytes: 1024, source_path: "/exports/x.step" },
+    },
+    STEP_SHA,
+  );
+  assertEquals(result.measured.overhangAreaMm2, 420.5);
+  assertEquals(result.measured.totalSurfaceAreaMm2, 102300.0);
   assertEquals(result.notChecked, []);
+  assertEquals(result.inputArtifactSha256, STEP_SHA);
+  assertEquals(result.violations, []);
 });
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -283,7 +458,7 @@ function validCase() {
   return validatePrintabilityCheckCase({
     schemaVersion: "printability-check-case/1.0",
     id: "coffee-machine-cm01-v3-drip-tray-fdm-v1",
-    revision: 1,
+    revision: 2,
     scope: "FDM printability check for the isolated CM-01 DripTray.",
     evidenceBoundary: "Observations only; not a verdict or certification.",
     project: {
@@ -296,6 +471,8 @@ function validCase() {
       maxOverhangAngleDeg: { value: 45.0, unit: "deg" },
       maxUnsupportedAreaMm2: { value: 600.0, unit: "mm2" },
     },
+    meshSizeMm: { value: 2.0, unit: "mm" },
+    buildDirection: [0, 0, 1],
     provider: {
       build123dTool: "build123d_export",
       thicknessTool: "dfm_check_min_thickness",
@@ -316,35 +493,87 @@ function captureRecord(
   allNotChecked: string[],
 ): PrintabilityCaptureRecord {
   return {
-    schemaVersion: "printability-check-capture/1.0",
+    schemaVersion: "printability-check-capture/2.0",
     caseId: "coffee-machine-cm01-v3-drip-tray-fdm-v1",
-    caseRevision: 1,
+    caseRevision: 2,
     caseDigest: "d".repeat(64),
     capturedAt: AT,
-    stl: {
+    step: {
       exportName: "coffee-machine-cm01-v3-drip-tray-printability",
-      stlPath: "/exports/coffee-machine-cm01-v3-drip-tray-printability.stl",
-      stlSha256: STL_SHA,
-      stlBytes: 2048,
+      stepPath: "/exports/coffee-machine-cm01-v3-drip-tray-printability.step",
+      stepSha256: STEP_SHA,
+      stepBytes: 8192,
+    },
+    callParams: {
+      meshSizeMm: 2.0,
+      buildDirection: [0, 0, 1],
     },
     thickness: {
       tool: "dfm_check_min_thickness",
-      minThicknessMm: 1.8,
-      thresholdMm: 1.2,
+      measured: {
+        minThicknessMm: 29.999999999999993,
+        minPositionMm: [0.0, 0.0, 15.0],
+        sampleCount: 1200,
+        validRayCount: 1150,
+      },
+      violations: [],
       notChecked: allNotChecked.slice(0, 1),
+      inputArtifactSha256: STEP_SHA,
     },
     overhang: {
       tool: "dfm_check_overhangs",
-      maxOverhangAngleDeg: 38.0,
-      maxUnsupportedAreaMm2: 420.0,
-      thresholdAngleDeg: 45.0,
-      thresholdAreaMm2: 600.0,
+      measured: {
+        totalSurfaceAreaMm2: 102300.0,
+        overhangAreaMm2: 420.5,
+        overhangTriangleCount: 42,
+        totalTriangleCount: 10230,
+      },
+      violations: [],
       notChecked: allNotChecked.slice(1),
+      inputArtifactSha256: STEP_SHA,
     },
     limitations: [
       "Thresholds are provisional FDM candidate values, not confirmed manufacturer data.",
       "This check covers only min wall thickness and max overhang angle.",
     ],
+  };
+}
+
+function captureRecordWithViolations(
+  thicknessViolations: string[],
+): PrintabilityCaptureRecord {
+  return {
+    ...captureRecord([]),
+    thickness: {
+      tool: "dfm_check_min_thickness",
+      measured: {
+        minThicknessMm: 0.8,
+        minPositionMm: [0.0, 0.0, 0.0],
+        sampleCount: 1200,
+        validRayCount: 1150,
+      },
+      violations: thicknessViolations,
+      notChecked: [],
+      inputArtifactSha256: STEP_SHA,
+    },
+  };
+}
+
+function validThicknessMeasured() {
+  return {
+    min_thickness_mm: 29.999,
+    min_position_mm: [0.0, 0.0, 15.0],
+    sample_count: 1200,
+    valid_ray_count: 1150,
+  };
+}
+
+function validOverhangMeasured() {
+  return {
+    total_surface_area_mm2: 102300.0,
+    overhang_area_mm2: 420.5,
+    overhang_triangle_count: 42,
+    total_triangle_count: 10230,
   };
 }
 

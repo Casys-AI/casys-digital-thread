@@ -11,7 +11,7 @@ function validCaseInput() {
   return {
     schemaVersion: "printability-check-case/1.0",
     id: "coffee-machine-cm01-v3-drip-tray-fdm-v1",
-    revision: 1,
+    revision: 2,
     scope: "FDM printability check for the isolated CM-01 DripTray.",
     evidenceBoundary: "Observations only; not a verdict or certification.",
     project: {
@@ -24,6 +24,8 @@ function validCaseInput() {
       maxOverhangAngleDeg: { value: 45.0, unit: "deg" },
       maxUnsupportedAreaMm2: { value: 600.0, unit: "mm2" },
     },
+    meshSizeMm: { value: 2.0, unit: "mm" },
+    buildDirection: [0, 0, 1],
     provider: {
       build123dTool: "build123d_export",
       thicknessTool: "dfm_check_min_thickness",
@@ -46,10 +48,12 @@ Deno.test("validatePrintabilityCheckCase accepts a valid case", () => {
   const result = validatePrintabilityCheckCase(validCaseInput());
   assertEquals(result.schemaVersion, "printability-check-case/1.0");
   assertEquals(result.id, "coffee-machine-cm01-v3-drip-tray-fdm-v1");
-  assertEquals(result.revision, 1);
+  assertEquals(result.revision, 2);
   assertEquals(result.thresholds.minWallThicknessMm, { value: 1.2, unit: "mm" });
   assertEquals(result.thresholds.maxOverhangAngleDeg, { value: 45.0, unit: "deg" });
   assertEquals(result.thresholds.maxUnsupportedAreaMm2, { value: 600.0, unit: "mm2" });
+  assertEquals(result.meshSizeMm, { value: 2.0, unit: "mm" });
+  assertEquals(result.buildDirection, [0, 0, 1]);
   assertEquals(result.provider.thicknessTool, "dfm_check_min_thickness");
   assertEquals(result.provider.overhangTool, "dfm_check_overhangs");
   assertEquals(result.provenance.status, "provisional");
@@ -199,3 +203,73 @@ Deno.test(
     );
   },
 );
+
+// ── Test 13 ───────────────────────────────────────────────────────────────────
+
+Deno.test("validatePrintabilityCheckCase rejects a case missing meshSizeMm", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  delete (input as any).meshSizeMm;
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "meshSizeMm",
+  );
+});
+
+Deno.test("validatePrintabilityCheckCase rejects meshSizeMm with wrong unit", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  (input as any).meshSizeMm = { value: 2.0, unit: "cm" };
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    '"mm"',
+  );
+});
+
+Deno.test("validatePrintabilityCheckCase rejects meshSizeMm <= 0", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  (input as any).meshSizeMm = { value: 0, unit: "mm" };
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "positive",
+  );
+});
+
+// ── Test 14 ───────────────────────────────────────────────────────────────────
+
+Deno.test("validatePrintabilityCheckCase rejects a case missing buildDirection", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  delete (input as any).buildDirection;
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "buildDirection",
+  );
+});
+
+Deno.test("validatePrintabilityCheckCase rejects buildDirection with wrong length", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  (input as any).buildDirection = [0, 1];
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "3",
+  );
+});
+
+Deno.test("validatePrintabilityCheckCase rejects buildDirection with a non-finite element", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  (input as any).buildDirection = [0, 0, Infinity];
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "finite",
+  );
+});
