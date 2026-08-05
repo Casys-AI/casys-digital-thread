@@ -2,7 +2,7 @@ import { parseArgs, stableId } from "./cli.ts";
 import {
   CoffeeMachineBuildOrchestrator,
   type CoffeeMachineBuildRunCapture,
-} from "../src/adapters/coffee-machine-build-orchestrator.ts";
+} from "../src/adapters/historical/coffee-machine-build-orchestrator.ts";
 import {
   COFFEE_MACHINE_CAD_OPERATION_ID,
   COFFEE_MACHINE_SYSON_OPERATION_ID,

@@ -1,5 +1,5 @@
 import { parseArgs, stableId } from "./cli.ts";
-import { materializeCoffeeMachineBuildRunExtension } from "../src/adapters/coffee-machine-build-run-extension.ts";
+import { materializeCoffeeMachineBuildRunExtension } from "../src/adapters/historical/coffee-machine-build-run-extension.ts";
 import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../src/domain/thread-snapshot-extension.ts";

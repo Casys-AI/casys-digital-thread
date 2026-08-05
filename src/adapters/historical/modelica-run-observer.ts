@@ -7,7 +7,7 @@ import type {
   RunStage,
   RunStatus,
   RunSummary,
-} from "../domain/types.ts";
+} from "../../domain/types.ts";
 
 const MCP_PROTOCOL_VERSION = "2026-07-28";
 const MODELICA_RESULTS_SCHEMA_VERSION = "1.0";

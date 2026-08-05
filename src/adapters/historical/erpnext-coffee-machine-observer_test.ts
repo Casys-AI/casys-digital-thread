@@ -3,7 +3,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "./http-mcp-tool-client.ts";
+} from "../http-mcp-tool-client.ts";
 import {
   ErpNextCoffeeMachineObserver,
   parseObservedErpNextCoffeeMachineBom,

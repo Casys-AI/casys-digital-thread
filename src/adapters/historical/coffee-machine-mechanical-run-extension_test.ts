@@ -1,14 +1,14 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { sha256Fingerprint } from "../domain/deterministic-json.ts";
-import { validateThreadSnapshot } from "../domain/thread-snapshot-validation.ts";
-import { applyThreadSnapshotExtension } from "../domain/thread-snapshot-extension.ts";
+import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
+import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import { applyThreadSnapshotExtension } from "../../domain/thread-snapshot-extension.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_CAPTURE_SCHEMA,
   materializeCoffeeMachineMechanicalRunExtension,
 } from "./coffee-machine-mechanical-run-extension.ts";
 
 const BASELINE = new URL(
-  "../../config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
+  "../../../config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
   import.meta.url,
 );
 const RUN_ID = "run:mechanical-materializer-test";

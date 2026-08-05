@@ -1,6 +1,6 @@
 import { parseArgs } from "./cli.ts";
 import { HttpMcpToolClient } from "../src/adapters/http-mcp-tool-client.ts";
-import { parseCapturedSysonModelInventory } from "../src/adapters/syson-model-inventory-extension.ts";
+import { parseCapturedSysonModelInventory } from "../src/adapters/historical/syson-model-inventory-extension.ts";
 
 const args = parseArgs(Deno.args);
 const endpoint = args["endpoint"] ?? "http://127.0.0.1:3009/mcp";

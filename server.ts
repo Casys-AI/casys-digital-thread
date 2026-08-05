@@ -125,7 +125,7 @@ import {
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
 } from "./src/adapters/engineering-thread-snapshot-resolver.ts";
-import { ModelicaRunObserver } from "./src/adapters/modelica-run-observer.ts";
+import { ModelicaRunObserver } from "./src/adapters/historical/modelica-run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
 import { ScenarioContractVerifier } from "./src/adapters/validators/scenario-contract-verifier.ts";
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/validators/scenario-verified-run-catalog.ts";

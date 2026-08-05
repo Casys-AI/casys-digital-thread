@@ -1,4 +1,4 @@
-import type { McpToolCall, McpToolClient } from "./http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolClient } from "../http-mcp-tool-client.ts";
 import {
   SysonCoffeeMachineBuildObserver,
   type SysonCoffeeMachineBuildSourceCapture,
@@ -9,7 +9,7 @@ import {
   type CoffeeMachineBuildTemplateId,
   type CoffeeMachineSourceUnitBinding,
   compileCoffeeMachineBuildPlan,
-} from "../domain/coffee-machine-build-plan.ts";
+} from "../../domain/coffee-machine-build-plan.ts";
 
 export const COFFEE_MACHINE_BUILD_DECLARATION_SCHEMA =
   "coffee-machine-build-declaration/1.0" as const;

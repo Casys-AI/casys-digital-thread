@@ -7,7 +7,7 @@ import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering
 import {
   COFFEE_MACHINE_MECHANICAL_SUBJECT_ID,
   materializeCoffeeMachineMechanicalRunExtension,
-} from "../src/adapters/coffee-machine-mechanical-run-extension.ts";
+} from "../src/adapters/historical/coffee-machine-mechanical-run-extension.ts";
 import {
   deterministicJson,
   fingerprintsEqual,

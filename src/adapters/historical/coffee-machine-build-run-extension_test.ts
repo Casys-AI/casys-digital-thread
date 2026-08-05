@@ -3,7 +3,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "./http-mcp-tool-client.ts";
+} from "../http-mcp-tool-client.ts";
 import {
   type CoffeeMachineBuildDeclaration,
   CoffeeMachineBuildOrchestrator,
@@ -15,7 +15,7 @@ const NOW = "2026-08-01T09:10:11.000Z";
 const RUN_ID = "cm01-run-42";
 const SOURCE_URI = "state/local/coffee-machine-build-run.json";
 const DECLARATION_URL = new URL(
-  "../../config/thread-subjects/coffee-machine-cm01.build.json",
+  "../../../config/thread-subjects/coffee-machine-cm01.build.json",
   import.meta.url,
 );
 

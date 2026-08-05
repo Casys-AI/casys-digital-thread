@@ -1,4 +1,4 @@
-import { verifyCoffeeMachineBuildPlan } from "../domain/coffee-machine-build-plan.ts";
+import { verifyCoffeeMachineBuildPlan } from "../../domain/coffee-machine-build-plan.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -6,8 +6,8 @@ import type {
   ThreadFreshness,
   ThreadOperationRef,
   ThreadProvenanceLink,
-} from "../domain/thread-snapshot.ts";
-import type { ThreadSnapshotExtension } from "../domain/thread-snapshot-extension.ts";
+} from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshotExtension } from "../../domain/thread-snapshot-extension.ts";
 import {
   COFFEE_MACHINE_BUILD_RUN_SCHEMA,
   type CoffeeMachineBuildExportFile,
