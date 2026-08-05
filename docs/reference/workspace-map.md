@@ -85,6 +85,35 @@
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
 
+## Server-park naming convention
+
+One MCP server wraps exactly one engine, and the server's name states what kind of
+contract the caller signs. Three naming rules coexist, and the choice between them is
+informative, not stylistic:
+
+| Rule                  | When it applies                                                                                                     | Examples                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Exact engine name** | The input contract is specific to that engine — its scripts, profiles or flags would not transfer to a competitor   | `mcp-calculix`, `mcp-build123d`, `mcp-prusaslicer`                       |
+| **Standard language** | The input is a format several engines speak; the wrapped implementation is an internal detail the caller never sees | `mcp-modelica` (OpenModelica), `mcp-spice` (ngspice)                     |
+| **Domain**            | No single dominant library exists — the engine is normative formulas or in-house computation                        | `mcp-dfm` (gmsh + in-house checks), `mcp-tolerance` (ISO 286-1 formulas) |
+
+Corollaries: tool names are prefixed with the server name (`prusaslicer_estimate_fff`,
+never a generic `slicer_*`); a second engine in the same domain is a second server, not
+a second backend inside the first (a CuraEngine oracle would be `mcp-curaengine`, not an
+option on `mcp-prusaslicer`); and renaming after a JSR release deprecates a package, so
+the naming decision is made before first publication.
+
+Published servers not yet wired into the workshop compose topology, with their reserved
+ports — presence in this list is a paper reservation, never evidence of a running
+service:
+
+| Reserved port | Server            | Engine                         |
+| ------------- | ----------------- | ------------------------------ |
+| `3018`        | `mcp-dfm`         | gmsh + in-house geometry       |
+| `3019`        | `mcp-tolerance`   | ISO 286-1 formulas (no binary) |
+| `3022`        | `mcp-prusaslicer` | PrusaSlicer 2.9.2 CLI          |
+| `3023`        | `mcp-spice`       | ngspice 44.2 batch             |
+
 `config/mechanical-proof-cases/` holds two different schemas, and the distinction
 matters. Three files use `cm01-v3-drip-tray-static-proof/{1,2,3}.0` and _are_ loaded by
 the V3 path (`server.ts:178`, `:180`, `:182`). The remaining file uses the generic
