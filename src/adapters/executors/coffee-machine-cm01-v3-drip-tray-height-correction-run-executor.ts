@@ -17,8 +17,8 @@ import {
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   requireBasis,
   requiredStart,

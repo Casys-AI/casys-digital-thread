@@ -4,11 +4,11 @@ import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
 import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   type CockpitFocusStore,
   FileCockpitFocusStore,
-} from "../src/adapters/file-cockpit-focus-store.ts";
+} from "../src/adapters/stores/file-cockpit-focus-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -25,8 +25,8 @@ import {
   type ExactThreadSnapshotReader,
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
-} from "../src/adapters/engineering-thread-snapshot-resolver.ts";
-import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
+} from "../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
+import { threadSnapshotDescendsFrom } from "../src/adapters/stores/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/syson-model-seed.ts";
 import {
@@ -40,7 +40,7 @@ import {
   type LiveThreadUpdate,
   type LiveThreadUpdateJournal,
   overlayLiveThreadUpdates,
-} from "../src/adapters/live-thread-update-store.ts";
+} from "../src/adapters/stores/live-thread-update-store.ts";
 import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,

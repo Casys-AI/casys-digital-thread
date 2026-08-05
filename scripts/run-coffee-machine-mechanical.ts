@@ -4,7 +4,7 @@ import {
   type LiveThreadGraphPatch,
   type LiveThreadUpdate,
   type LiveThreadUpdateJournal,
-} from "../src/adapters/live-thread-update-store.ts";
+} from "../src/adapters/stores/live-thread-update-store.ts";
 import { RecordingMcpToolClient } from "../src/adapters/recording-mcp-tool-client.ts";
 import {
   HttpMcpToolClient,
@@ -12,7 +12,7 @@ import {
   type McpToolClient,
   type McpToolResult,
 } from "../src/adapters/http-mcp-tool-client.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SYSON_EDITING_CONTEXT_ID,
   COFFEE_MACHINE_MECHANICAL_SYSON_REQUIREMENTS_ELEMENT_ID,

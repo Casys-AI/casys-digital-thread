@@ -37,7 +37,7 @@ import {
   OracleRequirementsSeedWriteOutcomeUnknownError,
 } from "../file-oracle-requirements-seed-attempt-store.ts";
 import type { FileCaptureStore } from "../file-capture-store.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import {
   extractAndVerifyOracleRequirements,

@@ -60,9 +60,9 @@ import {
   type CompletePrintabilityRunAttempt,
   FileCm01DripTrayPrintabilityAttemptStore,
 } from "../file-cm01-drip-tray-printability-attempt-store.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   requireBasis,
   requiredStart,

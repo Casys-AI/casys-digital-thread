@@ -34,8 +34,8 @@ import {
 } from "../cm01-erpnext-bom-capture.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "../file-cm01-erpnext-bom-run-capture-store.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   requireBasis,
   requiredStart,

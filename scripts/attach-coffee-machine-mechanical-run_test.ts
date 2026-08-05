@@ -3,7 +3,7 @@ import type {
   AppendLiveThreadUpdate,
   LiveThreadUpdate,
   LiveThreadUpdateJournal,
-} from "../src/adapters/live-thread-update-store.ts";
+} from "../src/adapters/stores/live-thread-update-store.ts";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,

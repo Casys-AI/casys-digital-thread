@@ -4,13 +4,13 @@ import {
   FileEngineeringProjectRevisionStore,
   FileEngineeringProjectStore,
 } from "./engineering-project-store.ts";
-import { deterministicJson } from "../domain/deterministic-json.ts";
-import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
+import { deterministicJson } from "../../domain/deterministic-json.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
-} from "../domain/engineering-project-command-service.ts";
-import { validateEngineeringProjectSnapshot } from "../domain/engineering-project-validation.ts";
+} from "../../domain/engineering-project-command-service.ts";
+import { validateEngineeringProjectSnapshot } from "../../domain/engineering-project-validation.ts";
 
 Deno.test("FileEngineeringProjectStore loads the validated CM-01 project manifest read-only", async () => {
   const store = new FileEngineeringProjectStore(
@@ -175,7 +175,7 @@ Deno.test("active project paths reject dot-segment and non-alphanumeric prefixes
 });
 
 const PROJECT_CONFIG = new URL(
-  "../../config/projects/coffee-machine-cm01.project.json",
+  "../../../config/projects/coffee-machine-cm01.project.json",
   import.meta.url,
 );
 const HUMAN = { kind: "human" as const, actorId: "store-test-human" };

@@ -10,9 +10,9 @@ import {
   createCoffeeMachineSysonLiveProjector,
   SerializedLiveThreadUpdateJournal,
 } from "../src/adapters/projectors/coffee-machine-build-live-projector.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
+import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
 import { RecordingMcpToolClient } from "../src/adapters/recording-mcp-tool-client.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   HttpMcpToolClient,
   type McpToolClient,

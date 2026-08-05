@@ -52,9 +52,9 @@ import {
   CoffeeMachineCm01V3MechanicalR2SuccessorMaterializer,
 } from "./coffee-machine-cm01-v3-r2-successor-materializer.ts";
 import { CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer } from "./coffee-machine-cm01-v3-r3-successor-materializer.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import type { FileCaptureStore } from "../file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import {

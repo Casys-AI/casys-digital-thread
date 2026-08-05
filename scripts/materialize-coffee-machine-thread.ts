@@ -3,7 +3,7 @@ import {
   materializeErpNextCoffeeMachineBomExtension,
 } from "../src/adapters/historical/erpnext-coffee-machine-extension.ts";
 import { ErpNextCoffeeMachineObserver } from "../src/adapters/historical/erpnext-coffee-machine-observer.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import { HttpMcpToolClient } from "../src/adapters/http-mcp-tool-client.ts";
 import { ModelicaRunObserver } from "../src/adapters/historical/modelica-run-observer.ts";
 import { createObservedModelicaRunExtension } from "../src/adapters/observed-modelica-thread-branch.ts";

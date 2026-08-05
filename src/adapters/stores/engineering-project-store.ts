@@ -1,11 +1,14 @@
-import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
 import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../domain/engineering-project-command-service.ts";
-import { validateEngineeringProjectSnapshot } from "../domain/engineering-project-validation.ts";
-import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
+} from "../../domain/engineering-project-command-service.ts";
+import { validateEngineeringProjectSnapshot } from "../../domain/engineering-project-validation.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 
 /** Read-only boundary used by the Workbench BFF. */
 export interface EngineeringProjectStore {

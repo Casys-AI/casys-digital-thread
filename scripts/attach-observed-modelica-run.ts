@@ -1,5 +1,5 @@
 import { parseArgs } from "./cli.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import { ModelicaRunObserver } from "../src/adapters/historical/modelica-run-observer.ts";
 import { createObservedModelicaRunExtension } from "../src/adapters/observed-modelica-thread-branch.ts";
 import { applyThreadSnapshotExtension } from "../src/domain/thread-snapshot-extension.ts";

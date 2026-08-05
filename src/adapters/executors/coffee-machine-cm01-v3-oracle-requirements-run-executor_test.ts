@@ -18,15 +18,15 @@ import {
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../file-capture-store.ts";
-import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   FileOracleRequirementsSeedAttemptStore,
   OracleRequirementsSeedWriteOutcomeUnknownError,
 } from "../file-oracle-requirements-seed-attempt-store.ts";
 import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
-import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
-import { LiveThreadUpdateStore } from "../live-thread-update-store.ts";
+import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
+import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,

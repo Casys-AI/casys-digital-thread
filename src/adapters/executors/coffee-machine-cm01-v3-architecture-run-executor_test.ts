@@ -27,11 +27,11 @@ import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/opera
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
-import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
-import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
-import { LiveThreadUpdateStore } from "../live-thread-update-store.ts";
+import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
+import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import type {
   McpToolCall,
   McpToolClient,

@@ -44,9 +44,9 @@ import {
   FileCoffeeMachineCm01V3ArchitectureAttemptStore,
 } from "../file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   requireBasis,
   requiredStart,

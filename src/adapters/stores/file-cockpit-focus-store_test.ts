@@ -3,7 +3,7 @@ import {
   CockpitFocusConflictError,
   FileCockpitFocusStore,
 } from "./file-cockpit-focus-store.ts";
-import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../domain/cockpit-focus.ts";
+import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../domain/cockpit-focus.ts";
 
 Deno.test("file cockpit focus keeps an append-only CAS target and exact retries", async () => {
   const directory = await Deno.makeTempDir({ prefix: "cockpit-focus-" });

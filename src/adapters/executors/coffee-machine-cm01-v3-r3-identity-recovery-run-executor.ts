@@ -23,7 +23,7 @@ import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { callDripTrayMechanicalOracle } from "../cm01-drip-tray-mechanical-oracle.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "../cm01-drip-tray-mechanical-r3-capture-recovery.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import type { FileCaptureStore } from "../file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";

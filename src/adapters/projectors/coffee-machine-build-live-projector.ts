@@ -3,7 +3,7 @@ import type {
   LiveThreadGraphPatch,
   LiveThreadUpdate,
   LiveThreadUpdateJournal,
-} from "../live-thread-update-store.ts";
+} from "../stores/live-thread-update-store.ts";
 import type { RecordingMcpToolEvent } from "../recording-mcp-tool-client.ts";
 import type { ThreadGraphNode } from "../../contracts/thread-workbench.ts";
 

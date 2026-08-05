@@ -2,8 +2,8 @@ import { parseArgs } from "./cli.ts";
 import {
   projectCoffeeMachineCm01V3GoldenObservation,
 } from "../src/adapters/executors/coffee-machine-cm01-v3-golden-observation.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   type GoldenReferenceComparison,

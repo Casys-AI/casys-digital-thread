@@ -3,7 +3,7 @@ import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
 import {
   LiveThreadUpdateStore,
   overlayLiveThreadUpdates,
-} from "../live-thread-update-store.ts";
+} from "../stores/live-thread-update-store.ts";
 import {
   RecordingMcpToolClient,
   type RecordingMcpToolEvent,

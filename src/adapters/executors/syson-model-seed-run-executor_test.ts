@@ -12,17 +12,17 @@ import {
 } from "../../orchestration/operations/registry.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
-import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../file-capture-store.ts";
-import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
-import { FileLiveThreadUpdateStore } from "../live-thread-update-store.ts";
+import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
+import { FileLiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import type {
   McpToolCall,
   McpToolClient,

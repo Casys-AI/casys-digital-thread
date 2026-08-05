@@ -484,10 +484,10 @@ links, dependency cycles, inconsistent lifecycle timestamps, contradictory
 decision/approval states, undeclared snapshot revisions, and mismatched execution
 inputs.
 
-[`FileEngineeringProjectStore`](../../src/adapters/engineering-project-store.ts) remains
+[`FileEngineeringProjectStore`](../../src/adapters/stores/engineering-project-store.ts) remains
 the validated tracked-manifest loader. At runtime it seeds revision 1 only when no
 active project exists.
-[`FileEngineeringProjectRevisionStore`](../../src/adapters/engineering-project-store.ts)
+[`FileEngineeringProjectRevisionStore`](../../src/adapters/stores/engineering-project-store.ts)
 then owns append-only active state under `state/local/engineering-projects/<project>/`.
 Each numbered revision is deterministic JSON; an exclusive claim file is the
 cross-process compare-and-swap boundary. A later active revision always wins over the

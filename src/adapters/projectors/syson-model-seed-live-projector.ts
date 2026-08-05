@@ -1,5 +1,5 @@
 import type { ThreadGraphNode } from "../../contracts/thread-workbench.ts";
-import type { LiveThreadGraphPatch } from "../live-thread-update-store.ts";
+import type { LiveThreadGraphPatch } from "../stores/live-thread-update-store.ts";
 import type { RecordingMcpToolEvent } from "../recording-mcp-tool-client.ts";
 
 /**

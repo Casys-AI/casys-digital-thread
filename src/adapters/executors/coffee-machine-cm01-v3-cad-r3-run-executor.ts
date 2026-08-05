@@ -43,9 +43,9 @@ import {
   FileCm01SemanticCadAttemptStore,
 } from "../file-cm01-semantic-cad-attempt-store.ts";
 import type { FileCaptureStore } from "../file-capture-store.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   CM01_DRIP_TRAY_HEIGHT_CORRECTION_ARTIFACT_ID,
   cm01R2CadSupersedesLinks,

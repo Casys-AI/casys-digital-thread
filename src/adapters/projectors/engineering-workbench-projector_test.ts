@@ -7,7 +7,7 @@ import {
 import {
   LIVE_THREAD_OVERLAY_SCHEMA,
   type LiveThreadWorkbenchSnapshot,
-} from "../live-thread-update-store.ts";
+} from "../stores/live-thread-update-store.ts";
 import { COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE } from "../../ui/src/project/fixture.ts";
 
 Deno.test("engineering Workbench composes project intent and observed proof without mutation", () => {

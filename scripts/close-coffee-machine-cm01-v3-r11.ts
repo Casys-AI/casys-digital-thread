@@ -1,6 +1,6 @@
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
 import { ExactThreadReconciliationSnapshotValidator } from "../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   assertR12RequirementFamilyCloseout,
   CM01_V3_PROJECT_ID,

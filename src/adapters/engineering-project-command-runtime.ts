@@ -7,9 +7,9 @@ import {
 import {
   FileEngineeringProjectRevisionStore,
   FileEngineeringProjectStore,
-} from "./engineering-project-store.ts";
+} from "./stores/engineering-project-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./validators/engineering-project-completion-evidence-validator.ts";
-import type { ExactThreadSnapshotReader } from "./engineering-thread-snapshot-resolver.ts";
+import type { ExactThreadSnapshotReader } from "./stores/engineering-thread-snapshot-resolver.ts";
 
 export interface EngineeringProjectCommandRuntimeOptions {
   readonly projectId: string;

@@ -9,8 +9,8 @@ import type {
 } from "../../domain/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { deterministicJson } from "../../domain/deterministic-json.ts";
-import type { ExactThreadSnapshotReader } from "../engineering-thread-snapshot-resolver.ts";
-import { threadSnapshotDescendsFrom } from "../thread-snapshot-lineage.ts";
+import type { ExactThreadSnapshotReader } from "../stores/engineering-thread-snapshot-resolver.ts";
+import { threadSnapshotDescendsFrom } from "../stores/thread-snapshot-lineage.ts";
 
 /** Fail-closed bridge from run completion to exact canonical thread evidence. */
 export class ExactThreadCompletionEvidenceValidator

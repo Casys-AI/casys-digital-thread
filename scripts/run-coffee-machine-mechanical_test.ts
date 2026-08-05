@@ -4,7 +4,7 @@ import type {
   McpToolClient,
   McpToolResult,
 } from "../src/adapters/http-mcp-tool-client.ts";
-import { LiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
+import { LiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,

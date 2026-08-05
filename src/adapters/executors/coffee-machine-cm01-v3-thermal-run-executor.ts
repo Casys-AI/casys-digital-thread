@@ -29,10 +29,10 @@ import {
   type Cm01NominalModelicaCapture,
   type Cm01NominalModelicaCaptureAdapter,
 } from "../cm01-nominal-modelica-capture.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileCm01NominalModelicaAttemptStore } from "../file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { createObservedModelicaRunExtension } from "../observed-modelica-thread-branch.ts";
 
 /** This closed operation must never be rebound to a historical CM-01 subject. */

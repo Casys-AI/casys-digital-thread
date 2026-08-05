@@ -25,12 +25,12 @@ import {
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
 } from "../file-capture-store.ts";
-import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
-import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
+import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
+import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
-import { LiveThreadUpdateStore } from "../live-thread-update-store.ts";
+import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
 
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };

@@ -3,7 +3,7 @@ import type {
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadWorkbenchSnapshot,
-} from "../contracts/thread-workbench.ts";
+} from "../../contracts/thread-workbench.ts";
 
 export const LIVE_THREAD_UPDATE_SCHEMA = "live-thread-update/1.0" as const;
 export const LIVE_THREAD_OVERLAY_SCHEMA = "live-thread-overlay/1.0" as const;

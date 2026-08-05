@@ -109,7 +109,7 @@ provisional scenario contract, not proof of either mechanical criterion.
 
 [`src/domain/thread-snapshot-store.ts`](../../src/domain/thread-snapshot-store.ts)
 defines the `get`, `latest`, and `save` persistence boundary.
-[`src/adapters/file-thread-snapshot-store.ts`](../../src/adapters/file-thread-snapshot-store.ts)
+[`src/adapters/stores/file-thread-snapshot-store.ts`](../../src/adapters/stores/file-thread-snapshot-store.ts)
 implements it as immutable JSON documents under ignored local state. Saving identical
 content is idempotent; reusing a snapshot ID for different content is rejected. Every
 read crosses the canonical validator again.

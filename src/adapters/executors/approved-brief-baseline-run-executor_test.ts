@@ -1,11 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
-import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
+import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
 } from "../file-capture-store.ts";
-import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { EngineeringProjectCommandService } from "../../domain/engineering-project-command-service.ts";

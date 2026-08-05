@@ -18,9 +18,9 @@ import {
   APPROVED_BRIEF_BASELINE_OPERATION,
   materializeApprovedBriefBaseline,
 } from "../../orchestration/operations/approved-brief-baseline.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 
 type ApprovedBriefBaselineMaterialization = Awaited<
   ReturnType<typeof materializeApprovedBriefBaseline>

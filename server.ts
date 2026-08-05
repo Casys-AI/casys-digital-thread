@@ -10,7 +10,7 @@ import {
   isExplicitLoopbackHostname,
   requestUsesExplicitLoopbackHost,
 } from "./src/adapters/loopback-host.ts";
-import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "./src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
@@ -113,18 +113,18 @@ import {
   CoffeeMachineCm01V3CadR3RunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-cad-r3-run-executor.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
-import { FileEngineeringProjectRunLease } from "./src/adapters/file-engineering-project-run-lease.ts";
-import { FileLiveThreadUpdateStore } from "./src/adapters/live-thread-update-store.ts";
-import { FileEngineeringProjectRevisionStore } from "./src/adapters/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "./src/adapters/stores/file-engineering-project-run-lease.ts";
+import { FileLiveThreadUpdateStore } from "./src/adapters/stores/live-thread-update-store.ts";
+import { FileEngineeringProjectRevisionStore } from "./src/adapters/stores/engineering-project-store.ts";
 import {
   CockpitFocusConflictError,
   FileCockpitFocusStore,
-} from "./src/adapters/file-cockpit-focus-store.ts";
+} from "./src/adapters/stores/file-cockpit-focus-store.ts";
 import { createEngineeringProjectCommandRuntime } from "./src/adapters/engineering-project-command-runtime.ts";
 import {
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
-} from "./src/adapters/engineering-thread-snapshot-resolver.ts";
+} from "./src/adapters/stores/engineering-thread-snapshot-resolver.ts";
 import { ModelicaRunObserver } from "./src/adapters/historical/modelica-run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
 import { ScenarioContractVerifier } from "./src/adapters/validators/scenario-contract-verifier.ts";

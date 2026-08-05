@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { CockpitFocusStore } from "../src/adapters/file-cockpit-focus-store.ts";
+import type { CockpitFocusStore } from "../src/adapters/stores/file-cockpit-focus-store.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
 import type { CockpitFocusSnapshot } from "../src/domain/cockpit-focus.ts";

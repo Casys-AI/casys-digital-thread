@@ -1,9 +1,9 @@
 import { parseArgs, stableId } from "./cli.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
-import type { LiveThreadUpdateJournal } from "../src/adapters/live-thread-update-store.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
-import { threadSnapshotDescendsFrom } from "../src/adapters/thread-snapshot-lineage.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
+import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
+import type { LiveThreadUpdateJournal } from "../src/adapters/stores/live-thread-update-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
+import { threadSnapshotDescendsFrom } from "../src/adapters/stores/thread-snapshot-lineage.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SUBJECT_ID,
   materializeCoffeeMachineMechanicalRunExtension,

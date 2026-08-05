@@ -1,9 +1,9 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "../ui/src/thread/fixture.ts";
+import { COFFEE_MACHINE_THREAD_FIXTURE } from "../../ui/src/thread/fixture.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
-} from "../contracts/thread-workbench.ts";
+} from "../../contracts/thread-workbench.ts";
 import {
   FileLiveThreadUpdateStore,
   LiveThreadUpdateStore,

@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
-import { FileEngineeringProjectRevisionStore } from "../adapters/engineering-project-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../domain/project-brief-command-service.ts";
 
 Deno.test("project MCP framing uses one project identity from intent through approved brief", async () => {

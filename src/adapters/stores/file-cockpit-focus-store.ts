@@ -1,8 +1,8 @@
-import { deterministicJson } from "../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/deterministic-json.ts";
 import {
   type CockpitFocusSnapshot,
   validateCockpitFocusSnapshot,
-} from "../domain/cockpit-focus.ts";
+} from "../../domain/cockpit-focus.ts";
 
 export class CockpitFocusConflictError extends Error {
   constructor(message: string) {

@@ -23,14 +23,14 @@ import {
   type SysonModelSeedMaterialization,
 } from "../../domain/syson-model-seed.ts";
 import type { McpToolClient, McpToolResult } from "../http-mcp-tool-client.ts";
-import type { EngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   FileSysonModelSeedAttemptStore,
   SysonModelSeedWriteOutcomeUnknownError,
   type SysonModelSeedWriteStep,
 } from "../file-syson-model-seed-attempt-store.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
-import type { LiveThreadUpdateMilestoneJournal } from "../live-thread-update-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { createSysonModelSeedLiveProjector } from "../projectors/syson-model-seed-live-projector.ts";
 
 type ExactSnapshotPresence = "exact" | "absent" | "unknown";

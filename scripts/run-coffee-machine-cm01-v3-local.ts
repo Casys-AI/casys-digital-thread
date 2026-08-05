@@ -41,15 +41,15 @@ import {
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../src/adapters/file-capture-store.ts";
 import { FileSensitivityRunAttemptStore } from "../src/adapters/file-sensitivity-run-attempt-store.ts";
-import { FileEngineeringProjectRunLease } from "../src/adapters/file-engineering-project-run-lease.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../src/adapters/stores/file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/live-thread-update-store.ts";
+import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
 import { loadFleetManifest } from "../src/adapters/manifest.ts";
 import { HttpMcpToolClient } from "../src/adapters/http-mcp-tool-client.ts";
 import { FileSysonModelSeedAttemptStore } from "../src/adapters/file-syson-model-seed-attempt-store.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import { SysonModelSeedRunExecutor } from "../src/adapters/executors/syson-model-seed-run-executor.ts";
 import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01-drip-tray-mechanical-proof.ts";
 import { parseCoffeeMachineCm01SemanticRecipe } from "../src/domain/coffee-machine-cm01-semantic-recipe.ts";

@@ -41,14 +41,14 @@ import {
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../file-capture-store.ts";
-import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileSensitivityRelationsAttemptStore } from "../file-sensitivity-relations-attempt-store.ts";
-import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
-import { LiveThreadUpdateStore } from "../live-thread-update-store.ts";
+import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
 import {
