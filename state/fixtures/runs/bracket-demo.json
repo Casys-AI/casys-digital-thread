@@ -197,7 +197,7 @@
       "kind": "solve-case",
       "label": "CalculiX load and boundary-condition case",
       "path": "examples/bracket/solve-case.json",
-      "sha256": "aff5f2069b96307e762513e00954a6390e0c8563672dd36bdb63b4d38ded5400",
+      "sha256": "41982d66ad8fa4e612e319116f2bd66fcf45c3d49e5644593c6b13881b47aaa2",
       "producedBy": "checkout"
     },
     {
