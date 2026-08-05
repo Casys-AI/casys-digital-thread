@@ -102,7 +102,7 @@ export interface PrintabilityCaptureRecord {
       readonly validRayCount: number;
     };
     /** Verbatim violation labels from the DFM provider. */
-    readonly violations: readonly string[];
+    readonly violations: readonly DfmViolationZone[];
     readonly notChecked: readonly string[];
     /** Verified cross-attestation: equals step.stepSha256. */
     readonly inputArtifactSha256: string;
@@ -116,7 +116,7 @@ export interface PrintabilityCaptureRecord {
       readonly totalTriangleCount: number;
     };
     /** Verbatim violation labels from the DFM provider. */
-    readonly violations: readonly string[];
+    readonly violations: readonly DfmViolationZone[];
     readonly notChecked: readonly string[];
     /** Verified cross-attestation: equals step.stepSha256. */
     readonly inputArtifactSha256: string;
@@ -858,6 +858,11 @@ export function parseBuild123dStepExport(
   return { path: file.path, sha256, bytes };
 }
 
+/** A structured violation zone as returned by the live DFM contract. */
+export interface DfmViolationZone {
+  readonly [key: string]: unknown;
+}
+
 export interface DfmThicknessResult {
   measured: {
     minThicknessMm: number;
@@ -865,7 +870,7 @@ export interface DfmThicknessResult {
     sampleCount: number;
     validRayCount: number;
   };
-  violations: string[];
+  violations: DfmViolationZone[];
   notChecked: string[];
   inputArtifactSha256: string;
 }
@@ -915,11 +920,18 @@ export function parseDfmThicknessResult(
   if (!Array.isArray(rawViolations)) {
     throw new Error("dfm_check_min_thickness violations must be an array.");
   }
+  // Violations are structured zones {area_mm2, centroid_mm, bbox} per the live
+  // contract; they are validated minimally and preserved verbatim as measured
+  // data — never promoted to a thread verdict.
   const violations = rawViolations.map((item, i) => {
-    if (typeof item !== "string") {
-      throw new TypeError(`dfm_check_min_thickness violations[${i}] must be a string.`);
+    const zone = requireObject(item, `dfm_check_min_thickness violations[${i}]`);
+    requireFinite(zone.area_mm2, `dfm_check_min_thickness violations[${i}].area_mm2`);
+    if (!Array.isArray(zone.centroid_mm) || zone.centroid_mm.length !== 3) {
+      throw new TypeError(
+        `dfm_check_min_thickness violations[${i}].centroid_mm must be a 3-number array.`,
+      );
     }
-    return item;
+    return zone;
   });
   // measured
   const measuredRoot = requireObject(
@@ -998,7 +1010,7 @@ export interface DfmOverhangResult {
     overhangTriangleCount: number;
     totalTriangleCount: number;
   };
-  violations: string[];
+  violations: DfmViolationZone[];
   notChecked: string[];
   inputArtifactSha256: string;
 }
@@ -1045,11 +1057,18 @@ export function parseDfmOverhangResult(
   if (!Array.isArray(rawViolations)) {
     throw new Error("dfm_check_overhangs violations must be an array.");
   }
+  // Violations are structured zones {area_mm2, centroid_mm, bbox} per the live
+  // contract; they are validated minimally and preserved verbatim as measured
+  // data — never promoted to a thread verdict.
   const violations = rawViolations.map((item, i) => {
-    if (typeof item !== "string") {
-      throw new TypeError(`dfm_check_overhangs violations[${i}] must be a string.`);
+    const zone = requireObject(item, `dfm_check_overhangs violations[${i}]`);
+    requireFinite(zone.area_mm2, `dfm_check_overhangs violations[${i}].area_mm2`);
+    if (!Array.isArray(zone.centroid_mm) || zone.centroid_mm.length !== 3) {
+      throw new TypeError(
+        `dfm_check_overhangs violations[${i}].centroid_mm must be a 3-number array.`,
+      );
     }
-    return item;
+    return zone;
   });
   // measured
   const measuredRoot = requireObject(
@@ -1236,7 +1255,7 @@ function parseCaptureRecord(value: unknown): PrintabilityCaptureRecord {
   const thickness = {
     tool: "dfm_check_min_thickness" as const,
     measured: thicknessMeasured,
-    violations: requireStringArray(
+    violations: requireViolationZones(
       thicknessRoot.violations,
       "capture thickness.violations",
     ),
@@ -1279,7 +1298,7 @@ function parseCaptureRecord(value: unknown): PrintabilityCaptureRecord {
   const overhang = {
     tool: "dfm_check_overhangs" as const,
     measured: overhangMeasured,
-    violations: requireStringArray(
+    violations: requireViolationZones(
       overhangRoot.violations,
       "capture overhang.violations",
     ),
@@ -1315,6 +1334,20 @@ function parseCaptureRecord(value: unknown): PrintabilityCaptureRecord {
     overhang,
     limitations,
   };
+}
+
+function requireViolationZones(
+  value: unknown,
+  label: string,
+): DfmViolationZone[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${label} must be an array.`);
+  }
+  return value.map((item, i) => {
+    const zone = requireObject(item, `${label}[${i}]`);
+    requireFinite(zone.area_mm2, `${label}[${i}].area_mm2`);
+    return zone;
+  });
 }
 
 // ── Primitive helpers ─────────────────────────────────────────────────────────

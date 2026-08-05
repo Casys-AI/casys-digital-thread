@@ -112,8 +112,8 @@ Deno.test(
   "materializePrintabilitySnapshot with DFM violations adds a violation count observation",
   async () => {
     const record = captureRecordWithViolations([
-      "wall too thin at x=0",
-      "wall too thin at x=10",
+      { area_mm2: 14.5, centroid_mm: [0, 0, 0] },
+      { area_mm2: 3.2, centroid_mm: [10, 0, 0] },
     ]);
     const { snapshot } = await materializePrintabilitySnapshot(
       baseThreadSnapshot(),
@@ -540,7 +540,7 @@ function captureRecord(
 }
 
 function captureRecordWithViolations(
-  thicknessViolations: string[],
+  thicknessViolations: { area_mm2: number; centroid_mm: number[] }[],
 ): PrintabilityCaptureRecord {
   return {
     ...captureRecord([]),
