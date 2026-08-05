@@ -971,11 +971,12 @@ interface SensitivityEdgesFixture {
 // ---------------------------------------------------------------------------
 // Fixture helper: happy path + unknown metric
 //
-// WHY MOCK COMMANDS — sensitivityRelationsV2 (@2) is planning-only, so
-// EngineeringProjectCommandService.queueRun rejects it at assertRegisteredQueueOperation.
-// The real brief → seed → architecture chain still runs (those operations are trusted)
-// to produce real CAS captures. A mock project + commands then exposes the @2 run to
-// the executor, bypassing the planning-only queueRun check.
+// WHY MOCK COMMANDS — sensitivityRelationsV2 (@2) was planning-only when this
+// suite was written, so EngineeringProjectCommandService.queueRun rejected it at
+// assertRegisteredQueueOperation. The mocks are kept after the 2026-08-05
+// consent flip to trusted: they isolate the executor from command-service
+// concerns, which is what these tests are about. The real brief → seed →
+// architecture chain still runs to produce real CAS captures.
 // ---------------------------------------------------------------------------
 
 async function queuedSensitivityEdges(
@@ -1255,8 +1256,8 @@ async function queuedSensitivityEdges(
   };
   await snapshots.save(r4);
 
-  // Switch to mock projects + commands for the @2 planning-only operation.
-  // The real command service would reject queueRun for planning-only ops.
+  // Switch to mock projects + commands: they isolate the executor from
+  // command-service concerns (see the WHY MOCK COMMANDS note above).
   return mockSensEdgesFixture({
     snapshots,
     archCaptures,
@@ -1360,10 +1361,10 @@ async function queuedSensitivityEdgesOnBriefBasis(
 // ---------------------------------------------------------------------------
 // mockSensEdgesFixture — shared mock project + commands factory
 //
-// Creates mock projects + commands that bypass the planning-only queueRun
-// check. The mock tracks run state (queued → running → publishing → completed)
-// in memory. Real captures are already in the stores; only the run lifecycle
-// goes through the mock.
+// Creates mock projects + commands that isolate the executor from the command
+// service. The mock tracks run state (queued → running → publishing →
+// completed) in memory. Real captures are already in the stores; only the run
+// lifecycle goes through the mock.
 // ---------------------------------------------------------------------------
 
 function mockSensEdgesFixture(opts: {

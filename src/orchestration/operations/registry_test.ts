@@ -101,20 +101,12 @@ Deno.test("reviewed operations validate only their declared current plan and que
 });
 
 Deno.test("CM-01 V3 golden-path kits remain reviewed trusted operations", () => {
-  // sensitivityRelationsV2 (@2) is planning-only — executor code is complete but
-  // migration of the live @1 element requires explicit operator consent. It is a
-  // registered operation but not yet on the golden path. All other refs are trusted.
-  const PLANNING_ONLY_REFS = new Set([
-    `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelationsV2.id}@${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelationsV2.version}`,
-  ]);
+  // sensitivityRelationsV2 (@2) was registered planning-only until the operator
+  // consented in chat on 2026-08-05 to migrating the live @1 element. Every
+  // registered CM-01 V3 reference is now trusted.
   for (const operation of Object.values(COFFEE_MACHINE_CM01_V3_OPERATION_REFS)) {
     const registered = getRegisteredEngineeringOperation(operation);
-    const key = `${operation.id}@${operation.version}`;
-    if (PLANNING_ONLY_REFS.has(key)) {
-      assertEquals(registered?.execution, "planning-only");
-    } else {
-      assertEquals(registered?.execution, "trusted");
-    }
+    assertEquals(registered?.execution, "trusted");
     assertEquals(registered?.allowedBasisKinds, ["thread-snapshot"]);
   }
 });

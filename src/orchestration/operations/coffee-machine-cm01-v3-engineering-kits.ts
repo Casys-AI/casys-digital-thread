@@ -875,14 +875,13 @@ const KITS = [
      * domain type) instead of the CM-01-specific SensitivityRelationsDeclaration
      * with its hardcoded METRIC_TO_ATTR_NAME map.
      *
-     * REGISTRATION ONLY — the executor code exists but this version is not
-     * wired to any live project work item. Migration of the existing @1 model
-     * element requires explicit operator consent (separate execution step).
+     * Registered planning-only at first; live execution (migration of the
+     * existing @1 model element) was enabled by explicit operator consent in
+     * chat on 2026-08-05.
      */
     evidenceBoundary:
       "Anchors the reviewed DripTray sensitivity-edge set (driver attribute + derivative + validity bounds per metric) as a named SysML PartDef (DripTraySensitivityEdges). " +
-      "It is not a verification verdict, solver run, CAD result, whole-machine claim, durability assessment, safety analysis, or certification. " +
-      "This is a registration-only operation; no live execution on the shared project.",
+      "It is not a verification verdict, solver run, CAD result, whole-machine claim, durability assessment, safety analysis, or certification.",
     presentationRole: "architecture",
     activityCategory: "model",
     operation: {
@@ -893,11 +892,10 @@ const KITS = [
       description:
         "Build the reviewed DripTray sensitivity-edge set from the committed sensitivity-study capture " +
         "using the generic SensitivityEdge contract (no METRIC_TO_ATTR_NAME), then insert as a named " +
-        "PartDef into the CM-01 SysON model and verify re-extraction. Registration only — operator " +
-        "consent required before any live execution.",
+        "PartDef into the CM-01 SysON model and verify re-extraction.",
       workItemKind: "architect",
       riskClass: "consequential",
-      execution: "planning-only",
+      execution: "trusted",
       bindings: APPROVED_BRIEF_AND_SENSITIVITY_ARTIFACT_BINDINGS,
     },
   },

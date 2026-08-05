@@ -85,16 +85,12 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
     assertEquals(kit.evidenceBoundary.length > 0, true);
     assertEquals(kit.operation.allowedBasisKinds, ["thread-snapshot"]);
   }
-  // @2 (cm01.drip-tray-sensitivity-edges) is planning-only: executor exists but
-  // migration requires explicit operator consent. All other kits are trusted.
+  // Every kit is trusted. @2 (cm01.drip-tray-sensitivity-edges) was
+  // planning-only until the operator consented to live migration in chat on
+  // 2026-08-05.
   assertEquals(
     kits.map((kit) => kit.operation.execution),
-    [
-      ...Array(14).fill("trusted"),
-      "planning-only", // cm01.drip-tray-sensitivity-edges@2
-      "trusted",
-      "trusted",
-    ],
+    Array(17).fill("trusted"),
   );
   assertEquals(kits[5]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
@@ -156,15 +152,13 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
   assertEquals(operations[11]?.execution, "trusted");
   assertEquals(operations[12]?.execution, "trusted");
   assertEquals(operations[13]?.execution, "trusted");
-  // operations[14] = sensitivityRelationsV2@2 — planning-only until operator consents.
-  assertEquals(operations[14]?.execution, "planning-only");
+  // operations[14] = sensitivityRelationsV2@2 — planning-only until the
+  // operator consented to live migration in chat on 2026-08-05.
+  assertEquals(operations[14]?.execution, "trusted");
   assertEquals(operations[15]?.execution, "trusted");
   assertEquals(operations[16]?.execution, "trusted");
-  // Only the @2 kit is planning-only; all others are trusted.
   assertEquals(
-    operations
-      .filter((operation) => operation.execution !== "planning-only")
-      .every((operation) => operation.execution === "trusted"),
+    operations.every((operation) => operation.execution === "trusted"),
     true,
   );
   assertEquals(
