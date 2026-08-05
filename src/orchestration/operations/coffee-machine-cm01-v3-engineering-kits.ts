@@ -29,7 +29,8 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-static-proof-height-30-r3-identity-recovery"
   | "cm01.drip-tray-sensitivity"
   | "cm01.drip-tray-sensitivity-relations"
-  | "cm01.drip-tray-printability";
+  | "cm01.drip-tray-printability"
+  | "cm01.drip-tray-print-estimate";
 
 export type CoffeeMachineCm01V3PresentationRole =
   | "architecture"
@@ -210,6 +211,17 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
     printabilityDripTray: Object.freeze(
       {
         id: "industrialize.observe-coffee-machine-cm01-drip-tray-printability",
+        version: "1",
+      } as const,
+    ),
+    /**
+     * FFF print-time-and-material estimate for the isolated DripTray STL
+     * (committed generic 0.2 mm PLA profile). Produces observations with
+     * units; no verdict, no evaluation, no pricing, no requirement claim.
+     */
+    printEstimateDripTray: Object.freeze(
+      {
+        id: "industrialize.observe-coffee-machine-cm01-drip-tray-print-estimate",
         version: "1",
       } as const,
     ),
@@ -797,6 +809,54 @@ const KITS = [
       title: "Observe CM-01 DripTray FDM printability (provisional thresholds)",
       description:
         "Export the reviewed DripTray STL via the server-fixed script and run the provisional FDM printability checks. Records observations with explicit units; produces no verdict.",
+      workItemKind: "industrialize",
+      riskClass: "low",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-print-estimate",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "config/print-estimate-cases/cm01-drip-tray-fff-v1.json",
+          purpose:
+            "Defines the reviewed FFF print-estimate case: committed profile path and sha256, declared PLA density, and evidence boundary.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "config/print-estimate-cases/cm01-drip-tray-fff-0.2-pla.ini",
+          purpose:
+            "Committed PrusaSlicer FFF profile with explicit parameters (0.2 mm / 0.4 mm nozzle / PLA). Every value is a declared choice; no preset inheritance.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/print-estimate-case.ts",
+          purpose:
+            "Provides the fail-closed validator, server-fixed STL script renderer, and deterministic repo-to-container path mapping. The agent never supplies geometry, profiles, or density.",
+        },
+      ],
+    },
+    /**
+     * Print-estimate is a local FFF estimation only — not a cost quote, not a
+     * verdict, not a requirement, not a certification, not a fabrication
+     * release, not a whole-machine claim, and not a supplier commitment.
+     */
+    evidenceBoundary:
+      "Captures FFF print-time-and-material observations (print_time_s, filament_volume_mm3, filament_length_mm, filament_mass_g) for the isolated DripTray STL at the reviewed 30 mm R2 geometry. It is not a cost estimate, pass/fail verdict, requirement evaluation, supplier commitment, whole-machine claim, durability assessment, certification, or fabrication-release claim. Profile parameters are provisional engineering candidates.",
+    presentationRole: "supply",
+    activityCategory: "observation",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printEstimateDripTray,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Observe CM-01 DripTray FFF print estimate (committed profile)",
+      description:
+        "Export the reviewed DripTray STL via the server-fixed script and slice with the committed generic 0.2 mm PLA profile. Records time and material observations with explicit units; produces no verdict and no pricing.",
       workItemKind: "industrialize",
       riskClass: "low",
       execution: "trusted",

@@ -26,11 +26,12 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "cm01.drip-tray-sensitivity@1",
       "cm01.drip-tray-sensitivity-relations@1",
       "cm01.drip-tray-printability@1",
+      "cm01.drip-tray-print-estimate@1",
     ],
   );
   assertEquals(
     kits.map((kit) => kit.qualification.status),
-    Array(14).fill("manually-qualified"),
+    Array(15).fill("manually-qualified"),
   );
   assertEquals(
     kits.map((kit) => kit.presentationRole),
@@ -49,6 +50,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "verification",
       "architecture",
       "verification",
+      "supply",
     ],
   );
   assertEquals(
@@ -68,6 +70,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "analysis",
       "model",
       "observation",
+      "observation",
     ],
   );
 
@@ -79,7 +82,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   }
   assertEquals(
     kits.map((kit) => kit.operation.execution),
-    Array(14).fill("trusted"),
+    Array(15).fill("trusted"),
   );
   assertEquals(kits[5]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
@@ -120,6 +123,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityDripTrayBaseZ.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelations.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printabilityDripTray.id}@1`,
+      `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printEstimateDripTray.id}@1`,
     ],
   );
   assertEquals(operations[0]?.execution, "trusted");
@@ -136,6 +140,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
   assertEquals(operations[11]?.execution, "trusted");
   assertEquals(operations[12]?.execution, "trusted");
   assertEquals(operations[13]?.execution, "trusted");
+  assertEquals(operations[14]?.execution, "trusted");
   assertEquals(
     operations.every((operation) => operation.execution === "trusted"),
     true,

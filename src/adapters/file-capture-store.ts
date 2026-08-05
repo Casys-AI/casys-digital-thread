@@ -226,6 +226,15 @@ export const SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescript
   label: "Sensitivity relations seed",
 };
 
+export const CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "cm01-drip-tray-print-estimate"
+> = {
+  kind: "cm01-drip-tray-print-estimate",
+  directory: "state/local/cm01-drip-tray-print-estimate-captures",
+  uriNamespace: "cm01-drip-tray-print-estimate-capture",
+  label: "CM-01 DripTray FFF print estimate",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

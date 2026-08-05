@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "print-estimate-case/1.0",
+  "id": "coffee-machine-cm01-v3-drip-tray-fff-v1",
+  "revision": 1,
+  "scope": "FFF print-time-and-material estimate for the isolated CM-01 DripTray STL at the reviewed 30 mm R2 geometry (Box 190 × 135 × 30 mm, centred origin), using the committed generic 0.2 mm PLA profile.",
+  "evidenceBoundary": "Captures FFF print-time-and-material observations (print_time_s, filament_volume_mm3, filament_length_mm, filament_mass_g) for the isolated DripTray STL at the reviewed 30 mm R2 geometry. It is not a cost estimate, pass/fail verdict, requirement evaluation, supplier commitment, whole-machine claim, durability assessment, certification, or fabrication-release claim. Profile parameters are provisional engineering candidates.",
+  "project": {
+    "id": "coffee-machine-cm01-v3",
+    "subjectId": "project:coffee-machine-cm01-v3"
+  },
+  "target": {
+    "componentKey": "drip-tray"
+  },
+  "profile": {
+    "repoPath": "config/print-estimate-cases/cm01-drip-tray-fff-0.2-pla.ini",
+    "exportName": "cm01-drip-tray-fff-0.2-pla",
+    "sha256": "15856bc88409c4130da6b700e95c86a0b232a879e593fda537a7f6fcfc1ad89f",
+    "layerHeightMm": { "value": 0.2, "unit": "mm" },
+    "nozzleDiameterMm": { "value": 0.4, "unit": "mm" },
+    "material": "PLA"
+  },
+  "filamentDensityGCm3": { "value": 1.24, "unit": "g/cm3" },
+  "provider": {
+    "build123dTool": "build123d_export",
+    "prusaslicerTool": "prusaslicer_estimate_fff"
+  },
+  "limitations": [
+    "Profile parameters (0.2 mm layer height, 0.4 mm nozzle, PLA, 15% gyroid infill) are provisional engineering candidates sourced from typical FDM desktop-printer guidelines. They have not been validated against a specific printer or material datasheet.",
+    "The STL geometry is the simplified Box approximation of the DripTray, not the full assembly with fillets or mounting features.",
+    "Print-time accuracy depends on printer firmware and acceleration settings; the estimate is PrusaSlicer's own heuristic and may differ from actual print time by 5-20% (as stated in the not_checked items from the server).",
+    "Filament mass is derived from the declared PLA density (1.24 g/cm³) as a reviewed candidate; actual density varies by filament brand and colour.",
+    "gcode_sha256 includes a PrusaSlicer build timestamp; identical inputs on different dates produce different G-code hashes. It is an audit reference, not a deterministic attestation.",
+    "This estimate covers only the DripTray in isolation; it does not account for whole-machine support material, multi-part nesting, build-plate utilisation, or printer warm-up.",
+    "A print-time-and-material estimate does not constitute manufacturing approval, fabrication release, supplier commitment, cost quote, or certification.",
+    "The not_checked items reported by mcp-prusaslicer are preserved in the evidence as contractual labels; absence of a warning is never a guarantee."
+  ],
+  "provenance": {
+    "status": "provisional",
+    "note": "Profile parameters sourced from typical FDM desktop-printer community guidelines (0.2 mm layer height, 0.4 mm nozzle, PLA, 15% gyroid infill). No printer manufacturer or material supplier has been consulted. Density 1.24 g/cm³ is the generic PLA nominal value."
+  }
+}

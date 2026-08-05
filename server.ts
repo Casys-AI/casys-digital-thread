@@ -14,6 +14,7 @@ import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-sto
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+  CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR,
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
   CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
@@ -27,6 +28,7 @@ import {
 } from "./src/adapters/file-capture-store.ts";
 import { FileSensitivityRunAttemptStore } from "./src/adapters/file-sensitivity-run-attempt-store.ts";
 import { FileCm01DripTrayPrintabilityAttemptStore } from "./src/adapters/file-cm01-drip-tray-printability-attempt-store.ts";
+import { FileCm01DripTrayPrintEstimateAttemptStore } from "./src/adapters/file-cm01-drip-tray-print-estimate-attempt-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
@@ -83,6 +85,11 @@ import {
   CoffeeMachineCm01V3PrintabilityRunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-printability-run-executor.ts";
 import { validatePrintabilityCheckCase } from "./src/domain/printability-case.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_PRINT_ESTIMATE_OPERATION,
+  CoffeeMachineCm01V3PrintEstimateRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-print-estimate-run-executor.ts";
+import { validatePrintEstimateCase } from "./src/domain/print-estimate-case.ts";
 import {
   COFFEE_MACHINE_CM01_V3_DRIP_TRAY_HEIGHT_CORRECTION_OPERATION,
   CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor,
@@ -214,6 +221,12 @@ const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_ATTEMPT_DIRECTORY =
   "state/local/cm01-drip-tray-printability-attempts";
 const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CASE_PATH =
   "config/printability-cases/cm01-drip-tray-fdm-v1.json";
+const DEFAULT_CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DIRECTORY =
+  "state/local/cm01-drip-tray-print-estimate-captures";
+const DEFAULT_CM01_DRIP_TRAY_PRINT_ESTIMATE_ATTEMPT_DIRECTORY =
+  "state/local/cm01-drip-tray-print-estimate-attempts";
+const DEFAULT_CM01_DRIP_TRAY_PRINT_ESTIMATE_CASE_PATH =
+  "config/print-estimate-cases/cm01-drip-tray-fff-v1.json";
 const DEFAULT_CM01_DRIP_TRAY_SIZE_Z_SENSITIVITY_CASE_PATH =
   "config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json";
 const DEFAULT_CM01_SEMANTIC_RECIPE_PATH =
@@ -283,6 +296,8 @@ export interface CreateConsoleServerOptions {
   sensitivityRelationsSeedCaptureDirectory?: string;
   cm01DripTrayPrintabilityCaptureDirectory?: string;
   cm01DripTrayPrintabilityAttemptDirectory?: string;
+  cm01DripTrayPrintEstimateCaptureDirectory?: string;
+  cm01DripTrayPrintEstimateAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
 }
@@ -306,6 +321,7 @@ export async function createConsoleServer(
   const build123d = manifest.servers.find((server) => server.id === "build123d");
   const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
+  const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
   const observedRuns = options.observedRuns ??
     await createObservedRunCatalog(modelica?.mcpUrl, syson?.mcpUrl);
   const controlPlane = new ControlPlane({
@@ -328,6 +344,7 @@ export async function createConsoleServer(
       build123d?.mcpUrl,
       calculix?.mcpUrl,
       dfm?.mcpUrl,
+      prusaslicer?.mcpUrl,
     )
     : undefined;
   const projectControl = options.projectControl === false
@@ -397,6 +414,7 @@ async function createProjectControl(
   build123dMcpUrl?: string,
   calculixMcpUrl?: string,
   dfmMcpUrl?: string,
+  prusaslicerMcpUrl?: string,
 ): Promise<{
   readonly control: ProjectControlToolDependencies;
   readonly brief: ProjectBriefToolDependencies;
@@ -801,6 +819,33 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01DripTrayPrintEstimate = build123dMcpUrl && prusaslicerMcpUrl
+    ? new CoffeeMachineCm01V3PrintEstimateRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      printEstimateCase: await loadCm01DripTrayPrintEstimateCase(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      prusaslicer: new HttpMcpToolClient({
+        mcpUrl: prusaslicerMcpUrl,
+        timeoutMs: 180_000,
+      }),
+      attempts: new FileCm01DripTrayPrintEstimateAttemptStore(
+        options.cm01DripTrayPrintEstimateAttemptDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_PRINT_ESTIMATE_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCaptureStore({
+        ...CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DESCRIPTOR,
+        directory: options.cm01DripTrayPrintEstimateCaptureDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DIRECTORY,
+      }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   return {
     brief: {
       projects: runtime.projects,
@@ -896,6 +941,12 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted CM-01 DripTray FDM printability executor configured for this run (build123d and dfm providers are required).",
           },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_PRINT_ESTIMATE_OPERATION,
+            executor: cm01DripTrayPrintEstimate,
+            unavailableMessage:
+              "The server has no trusted CM-01 DripTray FFF print-estimate executor configured for this run (build123d and prusaslicer providers are required).",
+          },
         ],
       }),
     },
@@ -961,6 +1012,15 @@ async function loadCm01DripTrayPrintabilityCase() {
     await loadReviewedJson(
       DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CASE_PATH,
       "CM-01 DripTray FDM printability case",
+    ),
+  );
+}
+
+async function loadCm01DripTrayPrintEstimateCase() {
+  return validatePrintEstimateCase(
+    await loadReviewedJson(
+      DEFAULT_CM01_DRIP_TRAY_PRINT_ESTIMATE_CASE_PATH,
+      "CM-01 DripTray FFF print-estimate case",
     ),
   );
 }
