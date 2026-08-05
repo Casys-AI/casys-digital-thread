@@ -107,7 +107,7 @@ Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 | Couche                          | Rôle                                                                                       |
 | ------------------------------- | ------------------------------------------------------------------------------------------ |
 | `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*` |
-| `src/adapters/`                 | I/O : stores fichier immuables, clients MCP HTTP, sondes Docker, exécuteurs, projecteurs   |
+| `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/` |
 | `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning               |
 | `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                       |
 | `src/workflow/`                 | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                    |
