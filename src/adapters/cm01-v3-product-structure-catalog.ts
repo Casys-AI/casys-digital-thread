@@ -113,13 +113,15 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
   }
 
   const assemblyStep = freshR2AssemblyStep(snapshot.artifacts);
+  const r3Meshes = freshR3MeshArtifactMap(snapshot.artifacts);
+  const assemblyMesh = r3Meshes.get("assembly");
   const rootDefinition = root[0]!;
   return validateThreadComponentCatalog({
     schemaVersion: "thread-components/1.0",
     authority: "workspace-declared",
     subjectId: snapshot.subject.id,
     rationale:
-      "This Product Structure is derived at read time from the exact hashed CM-01 V3 SysON architecture capture. It adds the one fresh R2 build123d assembly STEP when its explicit successor lineage is present; no ERPNext identity or individual CAD-child identity is inferred.",
+      "This Product Structure is derived at read time from the exact hashed CM-01 V3 SysON architecture capture. It adds the one fresh R2 build123d assembly STEP when its explicit successor lineage is present, and the @3 presentation-mesh artifacts when a fresh @3 export is present; no ERPNext identity or individual CAD-child identity is inferred.",
     systemViews: {},
     components: [
       {
@@ -130,16 +132,34 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
         bindings: [
           sysonDefinitionBinding(rootDefinition, architecture.id),
           ...(assemblyStep ? [assemblyBinding(assemblyStep)] : []),
+          ...(assemblyMesh ? [meshBinding(assemblyMesh)] : []),
         ],
+        ...(assemblyMesh
+          ? {
+            preview: meshPreview(assemblyMesh, "assembly"),
+          }
+          : {}),
       },
-      ...componentDeclarations.map((declaration) => ({
-        id: `cm01-v3:${semanticKey(declaration.label)}`,
-        label: declaration.label,
-        kind: "part" as const,
-        quantity: 1,
-        parentId: "cm01-v3:coffee-machine",
-        bindings: [sysonDefinitionBinding(declaration, architecture.id)],
-      })),
+      ...componentDeclarations.map((declaration) => {
+        const key = semanticKey(declaration.label);
+        const partMesh = r3Meshes.get(key);
+        return {
+          id: `cm01-v3:${key}`,
+          label: declaration.label,
+          kind: "part" as const,
+          quantity: 1,
+          parentId: "cm01-v3:coffee-machine",
+          bindings: [
+            sysonDefinitionBinding(declaration, architecture.id),
+            ...(partMesh ? [meshBinding(partMesh)] : []),
+          ],
+          ...(partMesh
+            ? {
+              preview: meshPreview(partMesh, key),
+            }
+            : {}),
+        };
+      }),
     ],
   });
 }
@@ -164,6 +184,69 @@ function unavailable(subjectId: string, rationale: string): ThreadComponentCatal
  */
 const CM01_V3_ARCHITECTURE_URI_PREFIX =
   "casys://coffee-machine-cm01-v3-architecture/" as const;
+
+/**
+ * Pattern that identifies a fresh @3 presentation mesh artifact.
+ * Group 1 captures the semantic key ("assembly" for the whole model,
+ * or the part semantic key such as "drip-tray").
+ *
+ * The naming contract is server-fixed: executors write exactly these IDs
+ * and the catalog recognises them — no agent can forge this prefix.
+ */
+const CM01_V3_CAD_R3_MESH_ID_RE =
+  /^coffee-machine-cm01-v3-cad-r3-[a-f0-9]{64}-mesh-(.+)$/;
+
+/**
+ * Collect all fresh @3 presentation-mesh artifacts from the snapshot and
+ * return them keyed by semantic key ("assembly" or a part key such as
+ * "drip-tray").
+ *
+ * Fail-closed rules:
+ *  - Only fresh build123d mesh artifacts produced by build123d_export qualify.
+ *  - All matching artifacts must share the same capture prefix (same run).
+ *    Two live captures with different digests is an anomaly: return empty.
+ *  - Duplicate keys for the same prefix are rejected.
+ *
+ * Returns an empty map when no @3 evidence is present, so callers need not
+ * distinguish "no run yet" from "unrecognised run" — both yield no preview.
+ */
+function freshR3MeshArtifactMap(
+  artifacts: readonly ThreadArtifact[],
+): ReadonlyMap<string, ThreadArtifact> {
+  const byKey = new Map<string, ThreadArtifact>();
+  let capturePrefix: string | undefined;
+
+  for (const artifact of artifacts) {
+    if (
+      artifact.kind !== "mesh" ||
+      artifact.freshness.status !== "fresh" ||
+      artifact.producer.serverId !== "build123d" ||
+      artifact.producer.tool !== "build123d_export"
+    ) continue;
+    const match = CM01_V3_CAD_R3_MESH_ID_RE.exec(artifact.id);
+    if (!match) continue;
+    const prefix = artifact.id.slice(0, artifact.id.lastIndexOf("-mesh-"));
+    if (capturePrefix === undefined) {
+      capturePrefix = prefix;
+    } else if (capturePrefix !== prefix) {
+      // Two distinct @3 captures are both fresh — ambiguous; ignore.
+      return new Map();
+    }
+    const key = match[1]!;
+    if (byKey.has(key)) return new Map(); // duplicate key — reject
+    byKey.set(key, artifact);
+  }
+  return byKey;
+}
+
+/**
+ * Asset URL at which the BFF serves the given @3 part STL.
+ * The BFF validates that the filename ends in ".stl" and contains only
+ * safe characters before forwarding the bytes to the browser.
+ */
+function r3AssetUrl(semanticKey: string): string {
+  return `/api/thread/assets/coffee-machine-cm01-v3-r3-${semanticKey}.stl`;
+}
 
 function oneFreshArchitecture(
   artifacts: readonly ThreadArtifact[],
@@ -226,6 +309,46 @@ function assemblyBinding(step: ThreadArtifact) {
     id: step.id,
     label: step.name,
     evidenceArtifactId: step.id,
+  };
+}
+
+/**
+ * Binding for a @3 presentation-mesh artifact (assembly or per-part).
+ * The `id` is the canonical artifact id in the thread snapshot — not a
+ * provider-side path and not the asset-serving URL.
+ */
+function meshBinding(mesh: ThreadArtifact) {
+  return {
+    provider: "build123d" as const,
+    kind: "artifact" as const,
+    id: mesh.id,
+    label: mesh.name,
+    evidenceArtifactId: mesh.id,
+  };
+}
+
+/**
+ * Preview descriptor that wires the STL viewer to the BFF asset endpoint.
+ * `semanticKey` is "assembly" for the full model or the part key such as
+ * "drip-tray".  The sha256 field is the presentation mesh hash, distinct from
+ * the authoritative CAD hash stored in the evidence artifact.
+ */
+function meshPreview(
+  mesh: ThreadArtifact,
+  meshKey: string,
+): {
+  provider: "build123d";
+  artifactId: string;
+  mediaType: "model/stl";
+  url: string;
+  sha256: string;
+} {
+  return {
+    provider: "build123d",
+    artifactId: mesh.id,
+    mediaType: "model/stl",
+    url: r3AssetUrl(meshKey),
+    sha256: mesh.fingerprint.digest,
   };
 }
 

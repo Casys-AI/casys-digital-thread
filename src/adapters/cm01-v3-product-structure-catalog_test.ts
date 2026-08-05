@@ -394,6 +394,135 @@ async function v3Fixture(): Promise<{
   return { snapshot, capture, reader, architectureId, stepId };
 }
 
+// ── @3 presentation-mesh binding tests ───────────────────────────────────────
+
+Deno.test("CM-01 V3 Product Structure binds @3 mesh artifacts to assembly and matching parts", async () => {
+  const fixture = await v3Fixture();
+  const capture64 = "c".repeat(64);
+  const prefix = `coffee-machine-cm01-v3-cad-r3-${capture64}`;
+  const assemblyMeshId = `${prefix}-mesh-assembly`;
+
+  // Build a mesh artifact for the assembly and for drip-tray
+  const meshArtifact = (key: string) => ({
+    id: `${prefix}-mesh-${key}`,
+    name: `CM-01 30 mm ${key} presentation STL`,
+    kind: "mesh",
+    version: capture64,
+    fingerprint: fingerprint("c"),
+    uri: `cm01-semantic-cad-r3-capture://test#coffee-machine-cm01-v3-r3-${key}.stl`,
+    mediaType: "model/stl",
+    producer: {
+      serverId: "build123d",
+      tool: "build123d_export",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  });
+
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [
+      ...fixture.snapshot.artifacts,
+      meshArtifact("assembly"),
+      meshArtifact("drip-tray"),
+    ],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  // Assembly component must have the mesh binding AND a preview
+  const assemblyComponent = catalog?.components[0];
+  assertEquals(assemblyComponent?.id, "cm01-v3:coffee-machine");
+  const assemblyMeshBinding = assemblyComponent?.bindings.find(
+    (b) => b.provider === "build123d" && b.id === assemblyMeshId,
+  );
+  assertEquals(assemblyMeshBinding?.kind, "artifact");
+  assertEquals(assemblyMeshBinding?.evidenceArtifactId, assemblyMeshId);
+  assertEquals(assemblyComponent?.preview?.artifactId, assemblyMeshId);
+  assertEquals(
+    assemblyComponent?.preview?.url,
+    "/api/thread/assets/coffee-machine-cm01-v3-r3-assembly.stl",
+  );
+  assertEquals(assemblyComponent?.preview?.sha256, "c".repeat(64));
+
+  // DripTray component must have a build123d mesh binding AND a preview
+  const dripTrayComponent = catalog?.components.find(
+    (c) => c.id === "cm01-v3:drip-tray",
+  );
+  const dripTrayMeshId = `${prefix}-mesh-drip-tray`;
+  const dripTrayMeshBinding = dripTrayComponent?.bindings.find(
+    (b) => b.provider === "build123d",
+  );
+  assertEquals(dripTrayMeshBinding?.id, dripTrayMeshId);
+  assertEquals(dripTrayMeshBinding?.evidenceArtifactId, dripTrayMeshId);
+  assertEquals(dripTrayComponent?.preview?.artifactId, dripTrayMeshId);
+  assertEquals(
+    dripTrayComponent?.preview?.url,
+    "/api/thread/assets/coffee-machine-cm01-v3-r3-drip-tray.stl",
+  );
+
+  // A part without a matching @3 mesh must have no build123d binding
+  const enclosureComponent = catalog?.components.find(
+    (c) => c.id === "cm01-v3:enclosure",
+  );
+  assertEquals(
+    enclosureComponent?.bindings.some((b) => b.provider === "build123d"),
+    false,
+  );
+  assertEquals(enclosureComponent?.preview, undefined);
+});
+
+Deno.test("CM-01 V3 Product Structure ignores @3 meshes from two different captures to remain fail-closed", async () => {
+  const fixture = await v3Fixture();
+  const prefixA = `coffee-machine-cm01-v3-cad-r3-${"a".repeat(64)}`;
+  const prefixB = `coffee-machine-cm01-v3-cad-r3-${"b".repeat(64)}`;
+
+  const meshArtifact = (prefix: string, key: string, char: string) => ({
+    id: `${prefix}-mesh-${key}`,
+    name: `CM-01 ${key} STL`,
+    kind: "mesh",
+    version: char.repeat(64),
+    fingerprint: fingerprint(char),
+    uri: `cm01-semantic-cad-r3-capture://test#coffee-machine-cm01-v3-r3-${key}.stl`,
+    mediaType: "model/stl",
+    producer: { serverId: "build123d", tool: "build123d_export", runId: "run" },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  });
+
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [
+      ...fixture.snapshot.artifacts,
+      meshArtifact(prefixA, "assembly", "a"),
+      meshArtifact(prefixB, "drip-tray", "b"), // different capture prefix
+    ],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  // No @3 mesh binding on any component — the ambiguous set is ignored
+  assertEquals(
+    catalog?.components.some((c) => c.preview !== undefined),
+    false,
+  );
+  assertEquals(
+    catalog?.components.some((c) =>
+      c.bindings.some((b) => b.provider === "build123d" && b.id.includes("-mesh-"))
+    ),
+    false,
+  );
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function fingerprint(character: string) {
   return { algorithm: "sha256" as const, digest: character.repeat(64) };
 }
