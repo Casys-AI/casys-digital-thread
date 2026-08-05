@@ -621,7 +621,7 @@ export function materializePrintEstimateSnapshot(
     makeArtifact(
       stlArtifactId,
       "CM-01 DripTray print-estimate STL",
-      "step", // reuse "step" kind for binary CAD export; no "stl" kind in the contract
+      "mesh", // STL is a triangular-mesh format; "mesh" is the correct ThreadArtifactKind
       stlFingerprint,
       `${uri}#stl`,
       "model/stl",
@@ -741,13 +741,23 @@ export function materializePrintEstimateSnapshot(
   ];
 
   // Optional: filament mass — only when density was declared and mass was measured.
+  // The record must be consistent with the case: filamentMassG present in the
+  // capture implies a density was declared and passed as override to the slicer.
+  // Reaching this block without a declared density would mean the capture was
+  // produced by code that bypassed the parsePrusaslicerEstimateResult guard,
+  // which is a hard integrity violation — not a heuristic to paper over.
   if (record.estimate.filamentMassG !== undefined) {
+    if (pc.filamentDensityGCm3 === undefined) {
+      throw new Error(
+        "CM-01 print-estimate capture record contains filamentMassG but the case declares no filamentDensityGCm3. " +
+          "The capture is inconsistent with its case.",
+      );
+    }
     const massObsId = `${prefix}-filament-mass-g`;
     observations.push({
       id: massObsId,
-      name: `DripTray estimated filament mass at declared density ${
-        pc.filamentDensityGCm3?.value ?? "??"
-      } g/cm³ (provisional)`,
+      name:
+        `DripTray estimated filament mass at declared density ${pc.filamentDensityGCm3.value} g/cm³ (provisional)`,
       metric: "drip_tray_filament_mass_g",
       quantity: {
         value: record.estimate.filamentMassG,
@@ -984,10 +994,20 @@ export function parsePrusaslicerEstimateResult(
     root.filament_length_mm,
     "prusaslicer_estimate_fff filament_length_mm",
   );
+  if (filamentLengthMm < 0) {
+    throw new TypeError(
+      "prusaslicer_estimate_fff filament_length_mm must be non-negative.",
+    );
+  }
   const filamentVolumeMm3 = requireFinite(
     root.filament_volume_mm3,
     "prusaslicer_estimate_fff filament_volume_mm3",
   );
+  if (filamentVolumeMm3 < 0) {
+    throw new TypeError(
+      "prusaslicer_estimate_fff filament_volume_mm3 must be non-negative.",
+    );
+  }
 
   // filament_mass_g is ABSENT (not null) when density was not provided.
   // An explicit absent check is required here because the field is missing

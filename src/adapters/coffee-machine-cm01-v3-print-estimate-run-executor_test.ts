@@ -22,11 +22,7 @@
  *   8. parsePrusaslicerEstimateResult parser contract.
  */
 
-import {
-  assertEquals,
-  assertExists,
-  assertThrows,
-} from "@std/assert";
+import { assertEquals, assertExists, assertThrows } from "@std/assert";
 import { validatePrintEstimateCase } from "../domain/print-estimate-case.ts";
 import {
   createThreadSnapshot,
@@ -44,12 +40,9 @@ const AT = "2026-08-05T12:00:00.000Z";
 const CAPTURE_FP = { algorithm: "sha256" as const, digest: "c".repeat(64) };
 
 // Real sha256 values from the live probe.
-const STL_SHA =
-  "cf442050dbe461456f72a9fc0f46393d86b1a3c3a0c5ed79e517fa538dd9c0c8";
-const PROFILE_SHA =
-  "15856bc88409c4130da6b700e95c86a0b232a879e593fda537a7f6fcfc1ad89f";
-const GCODE_SHA =
-  "7d336c5d7fdcc1537246146d1ea4cb3bcb8f6b83378e752e9259cc5db571adab";
+const STL_SHA = "cf442050dbe461456f72a9fc0f46393d86b1a3c3a0c5ed79e517fa538dd9c0c8";
+const PROFILE_SHA = "15856bc88409c4130da6b700e95c86a0b232a879e593fda537a7f6fcfc1ad89f";
+const GCODE_SHA = "7d336c5d7fdcc1537246146d1ea4cb3bcb8f6b83378e752e9259cc5db571adab";
 
 const STL_SHA_OTHER = "e".repeat(64);
 const PROFILE_SHA_OTHER = "a".repeat(64);
@@ -182,9 +175,21 @@ Deno.test(
       record,
     );
     validateThreadSnapshot(snapshot);
-    assertEquals(snapshot.evaluations.length, 0, "no evaluations — not a verification run");
-    assertEquals(snapshot.requirements.length, 0, "no requirements — not a model-anchor run");
-    assertEquals(snapshot.violations.length, 0, "no violations — not a verification run");
+    assertEquals(
+      snapshot.evaluations.length,
+      0,
+      "no evaluations — not a verification run",
+    );
+    assertEquals(
+      snapshot.requirements.length,
+      0,
+      "no requirements — not a model-anchor run",
+    );
+    assertEquals(
+      snapshot.violations.length,
+      0,
+      "no violations — not a verification run",
+    );
   },
 );
 
@@ -407,6 +412,82 @@ Deno.test(
       false,
     );
     assertEquals(result.filamentMassG, undefined);
+  },
+);
+
+Deno.test(
+  "parsePrusaslicerEstimateResult rejects negative filament_length_mm",
+  () => {
+    const resp = {
+      ...validPrusaslicerResponse(STL_SHA, PROFILE_SHA),
+      filament_length_mm: -1,
+    };
+    assertThrows(
+      () => parsePrusaslicerEstimateResult(resp, STL_SHA, PROFILE_SHA, true),
+      TypeError,
+      "non-negative",
+    );
+  },
+);
+
+Deno.test(
+  "parsePrusaslicerEstimateResult rejects negative filament_volume_mm3",
+  () => {
+    const resp = {
+      ...validPrusaslicerResponse(STL_SHA, PROFILE_SHA),
+      filament_volume_mm3: -0.001,
+    };
+    assertThrows(
+      () => parsePrusaslicerEstimateResult(resp, STL_SHA, PROFILE_SHA, true),
+      TypeError,
+      "non-negative",
+    );
+  },
+);
+
+Deno.test(
+  "materializePrintEstimateSnapshot throws when capture has filamentMassG but case declares no density",
+  () => {
+    // Build a capture record that includes filamentMassG (as would be written
+    // by a code path that called the slicer with density) but paired with a
+    // case that declares no filamentDensityGCm3. This is an integrity violation.
+    const record = captureRecord("10h 36m 28s", []);
+    assertThrows(
+      () =>
+        materializePrintEstimateSnapshot(
+          baseThreadSnapshot(),
+          "run-print-estimate-integrity-check",
+          validCaseNoDensity(), // no density in case
+          CAPTURE_FP,
+          `casys://cm01-drip-tray-print-estimate-capture/sha256/${"c".repeat(64)}`,
+          record, // but record has filamentMassG
+        ),
+      Error,
+      "inconsistent",
+    );
+  },
+);
+
+Deno.test(
+  "materializePrintEstimateSnapshot STL artifact uses mesh kind not step",
+  () => {
+    const record = captureRecord("10h 36m 28s", []);
+    const { snapshot } = materializePrintEstimateSnapshot(
+      baseThreadSnapshot(),
+      "run-print-estimate-artifact-kind",
+      validCaseWithDensity(),
+      CAPTURE_FP,
+      `casys://cm01-drip-tray-print-estimate-capture/sha256/${"c".repeat(64)}`,
+      record,
+    );
+    validateThreadSnapshot(snapshot);
+    const stlArtifact = snapshot.artifacts.find((a) => a.name.includes("STL"));
+    assertExists(stlArtifact, "STL artifact must exist in snapshot");
+    assertEquals(
+      stlArtifact.kind,
+      "mesh",
+      "STL is a triangular-mesh format — kind must be mesh, not step",
+    );
   },
 );
 
