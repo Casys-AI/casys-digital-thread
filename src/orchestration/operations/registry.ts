@@ -197,6 +197,18 @@ export function requireRegisteredEngineeringOperation(
   );
 }
 
+/**
+ * Enumerate the exact `id@version` keys of every reviewed operation.
+ *
+ * This exists so executable documentation — tests that pin the operation
+ * identifiers cited by skills and references to the live registry — can fail
+ * on doc drift instead of letting an agent propose an identifier the server
+ * must refuse. It reveals nothing `get` does not already serve.
+ */
+export function listRegisteredEngineeringOperationKeys(): readonly string[] {
+  return OPERATIONS.map((operation) => operationKey(operation));
+}
+
 /** Return the one bounded V1 intake operation for a product starting point. */
 export function getRegisteredIntakeOperation(
   startingPoint: EngineeringProjectStartingPoint,
