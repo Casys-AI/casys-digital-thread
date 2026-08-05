@@ -208,6 +208,15 @@ export const SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity study",
 };
 
+export const CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "cm01-drip-tray-printability"
+> = {
+  kind: "cm01-drip-tray-printability",
+  directory: "state/local/cm01-drip-tray-printability-captures",
+  uriNamespace: "cm01-drip-tray-printability-capture",
+  label: "CM-01 DripTray printability",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

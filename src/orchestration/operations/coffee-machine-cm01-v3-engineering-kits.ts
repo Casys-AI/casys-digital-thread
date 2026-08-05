@@ -27,7 +27,8 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-static-proof-height-30"
   | "cm01.drip-tray-static-proof-height-30-r3"
   | "cm01.drip-tray-static-proof-height-30-r3-identity-recovery"
-  | "cm01.drip-tray-sensitivity";
+  | "cm01.drip-tray-sensitivity"
+  | "cm01.drip-tray-printability";
 
 export type CoffeeMachineCm01V3PresentationRole =
   | "architecture"
@@ -197,6 +198,17 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
     sensitivityDripTrayBaseZ: Object.freeze(
       {
         id: "analyze.coffee-machine-cm01-drip-tray-size-z-sensitivity",
+        version: "1",
+      } as const,
+    ),
+    /**
+     * FDM printability observation for the isolated DripTray STL (provisional
+     * thresholds). Produces observations with units; no verdict, no evaluation,
+     * no requirement claim.
+     */
+    printabilityDripTray: Object.freeze(
+      {
+        id: "industrialize.observe-coffee-machine-cm01-drip-tray-printability",
         version: "1",
       } as const,
     ),
@@ -673,6 +685,48 @@ const KITS = [
       description:
         "Run the reviewed first-order finite-difference sensitivity study for DripTray size-z at the exact 30 mm R2 baseline and record the derivative evidence.",
       workItemKind: "simulate",
+      riskClass: "low",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-printability",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "config/printability-cases/cm01-drip-tray-fdm-v1.json",
+          purpose:
+            "Defines the reviewed FDM printability thresholds (min wall thickness, max overhang angle, max unsupported area) for the isolated DripTray STL at the 30 mm R2 geometry.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/printability-case.ts",
+          purpose:
+            "Provides the fail-closed validator and server-fixed STL script renderer. The agent never supplies geometry, thresholds, or tool names.",
+        },
+      ],
+    },
+    /**
+     * Printability is a local FDM observation only — not a verdict, not a
+     * threshold evaluation, not a requirement, not a certification, not a
+     * fabrication release, and not a whole-machine claim.
+     */
+    evidenceBoundary:
+      "Captures FDM printability observations (min wall thickness, max overhang angle, max unsupported area) for the isolated DripTray STL at the reviewed 30 mm R2 geometry. It is not a pass/fail verdict, requirement evaluation, whole-machine claim, durability assessment, certification, or fabrication-release claim. Thresholds are provisional.",
+    presentationRole: "verification",
+    activityCategory: "observation",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printabilityDripTray,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Observe CM-01 DripTray FDM printability (provisional thresholds)",
+      description:
+        "Export the reviewed DripTray STL via the server-fixed script and run the provisional FDM printability checks. Records observations with explicit units; produces no verdict.",
+      workItemKind: "industrialize",
       riskClass: "low",
       execution: "trusted",
       bindings: APPROVED_BRIEF_BINDING,

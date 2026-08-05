@@ -14,6 +14,7 @@ import { FileThreadSnapshotStore } from "./src/adapters/file-thread-snapshot-sto
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
+  CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR,
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
   CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
@@ -24,6 +25,7 @@ import {
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/file-capture-store.ts";
 import { FileSensitivityRunAttemptStore } from "./src/adapters/file-sensitivity-run-attempt-store.ts";
+import { FileCm01DripTrayPrintabilityAttemptStore } from "./src/adapters/file-cm01-drip-tray-printability-attempt-store.ts";
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
@@ -70,6 +72,11 @@ import {
   CoffeeMachineCm01V3SensitivityRunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
 import { validateSensitivityStudyCase } from "./src/domain/sensitivity-study.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_PRINTABILITY_OPERATION,
+  CoffeeMachineCm01V3PrintabilityRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-printability-run-executor.ts";
+import { validatePrintabilityCheckCase } from "./src/domain/printability-case.ts";
 import {
   COFFEE_MACHINE_CM01_V3_DRIP_TRAY_HEIGHT_CORRECTION_OPERATION,
   CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor,
@@ -191,6 +198,12 @@ const DEFAULT_SENSITIVITY_STUDY_CAPTURE_DIRECTORY =
   "state/local/sensitivity-study-captures";
 const DEFAULT_SENSITIVITY_RUN_ATTEMPT_DIRECTORY =
   "state/local/sensitivity-run-attempts";
+const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DIRECTORY =
+  "state/local/cm01-drip-tray-printability-captures";
+const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_ATTEMPT_DIRECTORY =
+  "state/local/cm01-drip-tray-printability-attempts";
+const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CASE_PATH =
+  "config/printability-cases/cm01-drip-tray-fdm-v1.json";
 const DEFAULT_CM01_DRIP_TRAY_SIZE_Z_SENSITIVITY_CASE_PATH =
   "config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json";
 const DEFAULT_CM01_SEMANTIC_RECIPE_PATH =
@@ -256,6 +269,8 @@ export interface CreateConsoleServerOptions {
   oracleRequirementsSeedCaptureDirectory?: string;
   sensitivityStudyCaptureDirectory?: string;
   sensitivityRunAttemptDirectory?: string;
+  cm01DripTrayPrintabilityCaptureDirectory?: string;
+  cm01DripTrayPrintabilityAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
 }
@@ -278,6 +293,7 @@ export async function createConsoleServer(
   const erpnext = manifest.servers.find((server) => server.id === "erpnext");
   const build123d = manifest.servers.find((server) => server.id === "build123d");
   const calculix = manifest.servers.find((server) => server.id === "calculix");
+  const dfm = manifest.servers.find((server) => server.id === "dfm");
   const observedRuns = options.observedRuns ??
     await createObservedRunCatalog(modelica?.mcpUrl, syson?.mcpUrl);
   const controlPlane = new ControlPlane({
@@ -299,6 +315,7 @@ export async function createConsoleServer(
       erpnext?.mcpUrl,
       build123d?.mcpUrl,
       calculix?.mcpUrl,
+      dfm?.mcpUrl,
     )
     : undefined;
   const projectControl = options.projectControl === false
@@ -367,6 +384,7 @@ async function createProjectControl(
   erpnextMcpUrl?: string,
   build123dMcpUrl?: string,
   calculixMcpUrl?: string,
+  dfmMcpUrl?: string,
 ): Promise<{
   readonly control: ProjectControlToolDependencies;
   readonly brief: ProjectBriefToolDependencies;
@@ -715,6 +733,33 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01DripTrayPrintability = build123dMcpUrl && dfmMcpUrl
+    ? new CoffeeMachineCm01V3PrintabilityRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      printabilityCase: await loadCm01DripTrayPrintabilityCase(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      dfm: new HttpMcpToolClient({
+        mcpUrl: dfmMcpUrl,
+        timeoutMs: 120_000,
+      }),
+      attempts: new FileCm01DripTrayPrintabilityAttemptStore(
+        options.cm01DripTrayPrintabilityAttemptDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCaptureStore({
+        ...CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR,
+        directory: options.cm01DripTrayPrintabilityCaptureDirectory ??
+          DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DIRECTORY,
+      }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   return {
     brief: {
       projects: runtime.projects,
@@ -798,6 +843,12 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted CM-01 DripTray size-z sensitivity executor configured for this run.",
           },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_PRINTABILITY_OPERATION,
+            executor: cm01DripTrayPrintability,
+            unavailableMessage:
+              "The server has no trusted CM-01 DripTray FDM printability executor configured for this run (build123d and dfm providers are required).",
+          },
         ],
       }),
     },
@@ -854,6 +905,15 @@ async function loadCm01DripTrayBaseZSensitivityCase() {
     await loadReviewedJson(
       DEFAULT_CM01_DRIP_TRAY_SIZE_Z_SENSITIVITY_CASE_PATH,
       "CM-01 DripTray size-z sensitivity case",
+    ),
+  );
+}
+
+async function loadCm01DripTrayPrintabilityCase() {
+  return validatePrintabilityCheckCase(
+    await loadReviewedJson(
+      DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CASE_PATH,
+      "CM-01 DripTray FDM printability case",
     ),
   );
 }
