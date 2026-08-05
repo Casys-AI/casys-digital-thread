@@ -569,8 +569,8 @@
   color: var(--thread-green);
 }
 
-.project-phase-lifecycle[data-state="recomputing"] dd {
-  color: var(--thread-orange);
+.project-phase-lifecycle[data-state="retained"] dd {
+  color: #7c857f;
 }
 
 .project-phase-lifecycle[data-state="attention"] dd {

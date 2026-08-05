@@ -95,8 +95,8 @@ export function ProjectOverview({
             <h3 id="project-phase-title">From intent to industrial proof</h3>
           </div>
           <span>
-            Macro gates only. Component revisions and retries stay with their evidence
-            lifecycle.
+            Macro gates only. Component revisions and retries stay with their
+            evidence lifecycle.
           </span>
         </header>
         {
@@ -380,8 +380,7 @@ function projectPhaseLifecycleLabel(
     }`;
   if (lifecycle.state === "current") return `${subject} updated`;
   if (lifecycle.state === "attention") return `${subject} needs review`;
-  if (lifecycle.state === "retained") return `${subject} retained`;
-  return `${subject} updating`;
+  return `${subject} retained`;
 }
 
 function productDefinitionDetail(thread: ThreadWorkbenchSnapshot): string {
@@ -393,7 +392,9 @@ function productDefinitionDetail(thread: ThreadWorkbenchSnapshot): string {
       ),
     ),
   ];
-  const scope = labels.length > 0 ? joinLabels(labels) : "recorded source facets";
+  const scope = labels.length > 0
+    ? joinLabels(labels)
+    : "recorded source facets";
   return `${thread.components.components.length} reviewed component records across ${scope}.`;
 }
 

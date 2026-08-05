@@ -10,7 +10,10 @@ import {
   type EngineeringProjectStatus,
   type EngineeringWorkItem,
 } from "../../../domain/engineering-project.ts";
-import type { ThreadGraphRef, ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import type {
+  ThreadGraphRef,
+  ThreadWorkbenchSnapshot,
+} from "../thread/types.ts";
 import { currentRequirements } from "../thread/versioned-provenance-model.ts";
 
 export interface ProjectPhaseView {
@@ -95,10 +98,13 @@ export interface ProjectPhaseLifecycle {
   readonly identityRepairCount?: number;
   /**
    * The compact macro-stage reading state, not a replacement for its history.
-   * "retained" is the terminal reading on a completed project: the lifecycle
-   * never finished and never will — history kept, no recomputation promised.
+   * All three states are durable readings of the versioned record: "current"
+   * (the latest lifecycle record completed), "attention" (its latest run
+   * failed), "retained" (history kept without a completed successor). Live
+   * work never appears here — the phase work counters and "What the agent is
+   * doing" own the in-flight story.
    */
-  readonly state: "current" | "recomputing" | "attention" | "retained";
+  readonly state: "current" | "attention" | "retained";
 }
 
 export interface ProjectPathPhaseView extends ProjectPhaseView {
@@ -119,11 +125,15 @@ export function buildProjectBrief(
     .sort((left, right) => left.order - right.order)
     .map((phase): ProjectPhaseView => {
       const workItems = phase.workItemIds.flatMap((id) => {
-        const item = snapshot.workItems.find((candidate) => candidate.id === id);
+        const item = snapshot.workItems.find((candidate) =>
+          candidate.id === id
+        );
         return item ? [item] : [];
       });
       const decisions = phase.requiredDecisionIds.flatMap((id) => {
-        const decision = snapshot.decisions.find((candidate) => candidate.id === id);
+        const decision = snapshot.decisions.find((candidate) =>
+          candidate.id === id
+        );
         return decision ? [decision] : [];
       });
       return {
@@ -158,7 +168,9 @@ export function buildProjectBrief(
       decision.status === "required" || decision.status === "proposed" ||
       decision.status === "rejected"
     ),
-    openBlockers: snapshot.blockers.filter((blocker) => blocker.status === "open"),
+    openBlockers: snapshot.blockers.filter((blocker) =>
+      blocker.status === "open"
+    ),
   };
 }
 
@@ -185,7 +197,9 @@ export function buildCurrentProjectWork(
   }
 
   return {
-    nextWork: brief.nextWork.filter((item) => !historicalWorkItemIds.has(item.id)),
+    nextWork: brief.nextWork.filter((item) =>
+      !historicalWorkItemIds.has(item.id)
+    ),
     historicalWorkItemIds: [...historicalWorkItemIds].toSorted(),
     closedActionTargetIds: [...closedActionTargetIds].toSorted(),
   };
@@ -487,7 +501,9 @@ function revisionAttachments(
     if (!parent) continue;
 
     const correctionReachesParent = corrections.some((correction) =>
-      correction.evidenceKeys.some((key) => consumedCorrections.includes(key)) &&
+      correction.evidenceKeys.some((key) =>
+        consumedCorrections.includes(key)
+      ) &&
       correction.parentPhaseIds.includes(parent.phase.id)
     );
     if (!correctionReachesParent) continue;
@@ -701,21 +717,17 @@ function projectPhaseLifecycle(
     ? latestRunForPhase(snapshot, latestLifecycleRecord.phase)
     : undefined;
   /**
-   * "recomputing" promises that new evidence is on its way. Once the project
-   * itself is completed nothing will ever recompute again, so an unfinished
-   * lifecycle is shown as retained history instead of a perpetual promise.
-   * A failed latest run keeps its attention signal even on a closed project.
+   * Gate states are durable readings of the versioned record only. Live work
+   * never colours a gate: the phase's own work counters already say 0/1, and
+   * "What the agent is doing" plus the Activity feed own the in-flight story.
+   * A failed latest run keeps its durable attention signal; an unfinished
+   * lifecycle is retained history, never a promise of recomputation.
    */
-  const projectClosed = deriveEngineeringProjectStatus(snapshot) === "completed";
   const state = latestRun?.status === "failed"
     ? "attention"
-    : !latestLifecycleRecord
-    ? (projectClosed ? "retained" : "recomputing")
-    : latestRun && isActiveRun(latestRun)
-    ? "recomputing"
-    : latestLifecycleRecord.status === "completed"
+    : latestLifecycleRecord?.status === "completed"
     ? "current"
-    : (projectClosed ? "retained" : "recomputing");
+    : "retained";
   return {
     affectedComponentIds: [...lifecycle.affectedComponentIds].toSorted(),
     correctionCount: lifecycle.correctionEvidenceKeys.size,
@@ -744,17 +756,11 @@ function runRecordedAt(run: EngineeringAgentRun): string {
   return run.completedAt ?? run.startedAt ?? run.queuedAt;
 }
 
-function isActiveRun(run: EngineeringAgentRun): boolean {
-  return run.status === "queued" || run.status === "running" ||
-    run.status === "waiting-for-decision" || run.status === "publishing";
-}
-
 function lifecycleEffectivePhaseStatus(
   baseStatus: EngineeringPhaseStatus,
   lifecycle: ProjectPhaseLifecycle,
 ): EngineeringPhaseStatus {
   if (lifecycle.state === "attention") return "blocked";
-  if (lifecycle.state === "recomputing") return "active";
   return baseStatus;
 }
 
@@ -898,7 +904,9 @@ export function agentRunSummary(
   const summary = run.summary.trim();
   if (isReadableRunSummary(summary)) return summary;
 
-  const workItem = snapshot.workItems.find((item) => item.id === run.workItemId);
+  const workItem = snapshot.workItems.find((item) =>
+    item.id === run.workItemId
+  );
   return workItem
     ? `Working on: ${workItem.title}`
     : "The agent is working on a recorded engineering task.";
