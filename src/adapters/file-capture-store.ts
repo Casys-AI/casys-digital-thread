@@ -250,6 +250,24 @@ export const CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DESCRIPTOR: CaptureStoreDescr
   label: "CM-01 DripTray FFF print estimate",
 };
 
+/**
+ * Generic sensitivity-edge seed capture store (@2 operation).
+ *
+ * Distinct from SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR (@1): the @2
+ * operation inserts DripTraySensitivityEdges (not DripTraySensitivityRelations)
+ * and its captures use SensitivityEdge[] as the payload. The separate kind
+ * makes FileCaptureStore<"sensitivity-edges-seed"> structurally incompatible
+ * with the @1 store at compile time.
+ */
+export const SENSITIVITY_EDGES_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-edges-seed"
+> = {
+  kind: "sensitivity-edges-seed",
+  directory: "state/local/sensitivity-edges-seed-captures",
+  uriNamespace: "sensitivity-edges-seed-capture",
+  label: "Sensitivity edges seed",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

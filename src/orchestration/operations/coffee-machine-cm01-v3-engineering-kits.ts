@@ -30,6 +30,7 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-static-proof-height-30-r3-identity-recovery"
   | "cm01.drip-tray-sensitivity"
   | "cm01.drip-tray-sensitivity-relations"
+  | "cm01.drip-tray-sensitivity-edges"
   | "cm01.drip-tray-printability"
   | "cm01.drip-tray-print-estimate";
 
@@ -247,6 +248,23 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
       {
         id: "model.write-coffee-machine-cm01-sensitivity-relations",
         version: "1",
+      } as const,
+    ),
+    /**
+     * Generic successor to sensitivityRelations @1. Eliminates the static
+     * METRIC_TO_ATTR_NAME map: the metric→attribute correspondence becomes data
+     * of the SensitivityEdge domain contract (src/domain/sensitivity-edge.ts)
+     * rendered server-side. Inserts one PartDef per sensitivity-edge set under
+     * a server-fixed name (DripTraySensitivityEdges) distinct from @1's element.
+     *
+     * REGISTRATION ONLY — this operation descriptor is registered and the
+     * executor code exists but this version is not wired to the live project's
+     * work items. Migration of the existing @1 element requires operator consent.
+     */
+    sensitivityRelationsV2: Object.freeze(
+      {
+        id: "model.write-coffee-machine-cm01-sensitivity-relations",
+        version: "2",
       } as const,
     ),
   } as const satisfies Record<string, CoffeeMachineCm01V3OperationRef>,
@@ -825,6 +843,61 @@ const KITS = [
       workItemKind: "architect",
       riskClass: "consequential",
       execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_SENSITIVITY_ARTIFACT_BINDINGS,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-sensitivity-edges",
+    kitVersion: "2",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/sensitivity-edge.ts",
+          purpose:
+            "Provides the generic SensitivityEdge domain contract, deterministic SysML renderer " +
+            "(flat PartDef, probe-confirmed form), and fingerprint. No METRIC_TO_ATTR_NAME map: " +
+            "the metric→attribute correspondence is data of the edge contract.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/syson-sensitivity-edge-extractor.ts",
+          purpose:
+            "Defines the two-phase extraction and verification contract for a SensitivityEdge[] set. " +
+            "Phase 1 uses syson_constraint_extract; phase 2 uses syson_element_children. " +
+            "Probe-confirmed (2026-08-05): flat PartDef preserves featurePath; specialization breaks it.",
+        },
+      ],
+    },
+    /**
+     * Generic successor to @1. Uses SensitivityEdge[] (discipline-agnostic
+     * domain type) instead of the CM-01-specific SensitivityRelationsDeclaration
+     * with its hardcoded METRIC_TO_ATTR_NAME map.
+     *
+     * REGISTRATION ONLY — the executor code exists but this version is not
+     * wired to any live project work item. Migration of the existing @1 model
+     * element requires explicit operator consent (separate execution step).
+     */
+    evidenceBoundary:
+      "Anchors the reviewed DripTray sensitivity-edge set (driver attribute + derivative + validity bounds per metric) as a named SysML PartDef (DripTraySensitivityEdges). " +
+      "It is not a verification verdict, solver run, CAD result, whole-machine claim, durability assessment, safety analysis, or certification. " +
+      "This is a registration-only operation; no live execution on the shared project.",
+    presentationRole: "architecture",
+    activityCategory: "model",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelationsV2,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Write the CM-01 sensitivity edges into the SysML model (generic @2)",
+      description:
+        "Build the reviewed DripTray sensitivity-edge set from the committed sensitivity-study capture " +
+        "using the generic SensitivityEdge contract (no METRIC_TO_ATTR_NAME), then insert as a named " +
+        "PartDef into the CM-01 SysON model and verify re-extraction. Registration only — operator " +
+        "consent required before any live execution.",
+      workItemKind: "architect",
+      riskClass: "consequential",
+      execution: "planning-only",
       bindings: APPROVED_BRIEF_AND_SENSITIVITY_ARTIFACT_BINDINGS,
     },
   },

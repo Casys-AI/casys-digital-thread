@@ -26,13 +26,14 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "cm01.drip-tray-static-proof-height-30-r3-identity-recovery@1",
       "cm01.drip-tray-sensitivity@1",
       "cm01.drip-tray-sensitivity-relations@1",
+      "cm01.drip-tray-sensitivity-edges@2",
       "cm01.drip-tray-printability@1",
       "cm01.drip-tray-print-estimate@1",
     ],
   );
   assertEquals(
     kits.map((kit) => kit.qualification.status),
-    Array(16).fill("manually-qualified"),
+    Array(17).fill("manually-qualified"),
   );
   assertEquals(
     kits.map((kit) => kit.presentationRole),
@@ -51,6 +52,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "verification",
       "verification",
       "architecture",
+      "architecture", // cm01.drip-tray-sensitivity-edges@2
       "verification",
       "supply",
     ],
@@ -72,6 +74,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "verification",
       "analysis",
       "model",
+      "model", // cm01.drip-tray-sensitivity-edges@2
       "observation",
       "observation",
     ],
@@ -81,11 +84,17 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
     assertEquals(kit.qualification.sourceRefs.length > 0, true);
     assertEquals(kit.evidenceBoundary.length > 0, true);
     assertEquals(kit.operation.allowedBasisKinds, ["thread-snapshot"]);
-    assertEquals(kit.operation.execution, "trusted");
   }
+  // @2 (cm01.drip-tray-sensitivity-edges) is planning-only: executor exists but
+  // migration requires explicit operator consent. All other kits are trusted.
   assertEquals(
     kits.map((kit) => kit.operation.execution),
-    Array(16).fill("trusted"),
+    [
+      ...Array(14).fill("trusted"),
+      "planning-only", // cm01.drip-tray-sensitivity-edges@2
+      "trusted",
+      "trusted",
+    ],
   );
   assertEquals(kits[5]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
@@ -128,6 +137,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30R3IdentityRecovery.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityDripTrayBaseZ.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelations.id}@1`,
+      `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelationsV2.id}@2`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printabilityDripTray.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printEstimateDripTray.id}@1`,
     ],
@@ -146,10 +156,15 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
   assertEquals(operations[11]?.execution, "trusted");
   assertEquals(operations[12]?.execution, "trusted");
   assertEquals(operations[13]?.execution, "trusted");
-  assertEquals(operations[14]?.execution, "trusted");
+  // operations[14] = sensitivityRelationsV2@2 — planning-only until operator consents.
+  assertEquals(operations[14]?.execution, "planning-only");
   assertEquals(operations[15]?.execution, "trusted");
+  assertEquals(operations[16]?.execution, "trusted");
+  // Only the @2 kit is planning-only; all others are trusted.
   assertEquals(
-    operations.every((operation) => operation.execution === "trusted"),
+    operations
+      .filter((operation) => operation.execution !== "planning-only")
+      .every((operation) => operation.execution === "trusted"),
     true,
   );
   assertEquals(
