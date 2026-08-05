@@ -8,7 +8,7 @@ import {
   coffeeMachineCm01V3ArchitectureGoldenArtifact,
   CoffeeMachineCm01V3ArchitectureRunExecutor,
 } from "./coffee-machine-cm01-v3-architecture-run-executor.ts";
-import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -28,7 +28,7 @@ import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
-import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
+import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";

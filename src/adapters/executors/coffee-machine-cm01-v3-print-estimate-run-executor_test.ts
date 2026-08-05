@@ -28,7 +28,7 @@ import {
   createThreadSnapshot,
   validateThreadSnapshot,
 } from "../../domain/thread-snapshot-validation.ts";
-import { FileCm01DripTrayPrintEstimateAttemptStore } from "../file-cm01-drip-tray-print-estimate-attempt-store.ts";
+import { FileCm01DripTrayPrintEstimateAttemptStore } from "../wal/file-cm01-drip-tray-print-estimate-attempt-store.ts";
 import {
   materializePrintEstimateSnapshot,
   parseBuild123dStlExport,

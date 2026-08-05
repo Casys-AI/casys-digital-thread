@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { sha256Fingerprint } from "../domain/deterministic-json.ts";
+import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
 import {
   Cm01NominalModelicaOutcomeUnknownError,
   FileCm01NominalModelicaAttemptStore,

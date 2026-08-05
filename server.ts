@@ -28,17 +28,17 @@ import {
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/file-capture-store.ts";
-import { FileSensitivityRunAttemptStore } from "./src/adapters/file-sensitivity-run-attempt-store.ts";
-import { FileCm01DripTrayPrintabilityAttemptStore } from "./src/adapters/file-cm01-drip-tray-printability-attempt-store.ts";
-import { FileCm01DripTrayPrintEstimateAttemptStore } from "./src/adapters/file-cm01-drip-tray-print-estimate-attempt-store.ts";
-import { FileSysonModelSeedAttemptStore } from "./src/adapters/file-syson-model-seed-attempt-store.ts";
-import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+import { FileSensitivityRunAttemptStore } from "./src/adapters/wal/file-sensitivity-run-attempt-store.ts";
+import { FileCm01DripTrayPrintabilityAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-printability-attempt-store.ts";
+import { FileCm01DripTrayPrintEstimateAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-print-estimate-attempt-store.ts";
+import { FileSysonModelSeedAttemptStore } from "./src/adapters/wal/file-syson-model-seed-attempt-store.ts";
+import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
-import { FileCm01SemanticCadAttemptStore } from "./src/adapters/file-cm01-semantic-cad-attempt-store.ts";
-import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
-import { FileOracleRequirementsSeedAttemptStore } from "./src/adapters/file-oracle-requirements-seed-attempt-store.ts";
-import { FileSensitivityRelationsAttemptStore } from "./src/adapters/file-sensitivity-relations-attempt-store.ts";
+import { FileCm01SemanticCadAttemptStore } from "./src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
+import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
+import { FileOracleRequirementsSeedAttemptStore } from "./src/adapters/wal/file-oracle-requirements-seed-attempt-store.ts";
+import { FileSensitivityRelationsAttemptStore } from "./src/adapters/wal/file-sensitivity-relations-attempt-store.ts";
 import {
   COFFEE_MACHINE_CM01_V3_ORACLE_REQUIREMENTS_OPERATION,
   CoffeeMachineCm01V3OracleRequirementsRunExecutor,

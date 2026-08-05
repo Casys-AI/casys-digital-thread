@@ -42,7 +42,7 @@ import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/opera
 import {
   CoffeeMachineCm01V3ArchitectureWriteOutcomeUnknownError,
   FileCoffeeMachineCm01V3ArchitectureAttemptStore,
-} from "../file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+} from "../wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";

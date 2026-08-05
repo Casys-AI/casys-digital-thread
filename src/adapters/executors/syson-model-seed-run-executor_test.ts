@@ -15,7 +15,7 @@ import { ExactThreadCompletionEvidenceValidator } from "../validators/engineerin
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
-import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
+import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-attempt-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,

@@ -59,7 +59,7 @@ import { FileCaptureStore } from "../file-capture-store.ts";
 import {
   type CompletePrintabilityRunAttempt,
   FileCm01DripTrayPrintabilityAttemptStore,
-} from "../file-cm01-drip-tray-printability-attempt-store.ts";
+} from "../wal/file-cm01-drip-tray-printability-attempt-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";

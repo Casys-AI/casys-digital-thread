@@ -19,7 +19,7 @@ import {
   CoffeeMachineCm01V3CadRunExecutor,
 } from "./coffee-machine-cm01-v3-cad-run-executor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
-import { FileCm01SemanticCadAttemptStore } from "../file-cm01-semantic-cad-attempt-store.ts";
+import { FileCm01SemanticCadAttemptStore } from "../wal/file-cm01-semantic-cad-attempt-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,

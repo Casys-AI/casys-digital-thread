@@ -1,4 +1,4 @@
-import { deterministicJson } from "../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/deterministic-json.ts";
 import { AttemptFileSystem, DENO_FILE_SYSTEM } from "./file-attempt-store.ts";
 
 export const SYSON_MODEL_SEED_WRITE_ATTEMPT_SCHEMA =

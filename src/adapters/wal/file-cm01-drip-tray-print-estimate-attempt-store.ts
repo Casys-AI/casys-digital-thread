@@ -1,22 +1,23 @@
-import { deterministicJson } from "../domain/deterministic-json.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
+import { deterministicJson } from "../../domain/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 
-export const PRINTABILITY_RUN_ATTEMPT_SCHEMA = "printability-run-attempt/1.0" as const;
+export const PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA =
+  "print-estimate-run-attempt/1.0" as const;
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 /**
- * Durable shape of one printability-run WAL entry.
+ * Durable shape of one print-estimate-run WAL entry.
  *
  * `status: "dispatched"` means the providers may have been called but no
- * normalised result was recorded yet. Like the sensitivity WAL, this status is
- * NOT terminal: `build123d_export` with a deterministic script and
- * `dfm_check_*` with caller-supplied thresholds are effectively idempotent for
- * the same case digest. Re-dispatching is safe.
+ * normalised result was recorded yet. Like the printability WAL, this status
+ * is NOT terminal: the build123d_export + prusaslicer_estimate_fff sequence is
+ * effectively idempotent for the same case digest and profile sha256.
+ * Re-dispatching is safe.
  */
-type PrintabilityRunAttempt =
+type PrintEstimateRunAttempt =
   | {
-    readonly schemaVersion: typeof PRINTABILITY_RUN_ATTEMPT_SCHEMA;
+    readonly schemaVersion: typeof PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA;
     readonly projectId: string;
     readonly runId: string;
     readonly caseDigest: string;
@@ -24,7 +25,7 @@ type PrintabilityRunAttempt =
     readonly dispatchedAt: string;
   }
   | {
-    readonly schemaVersion: typeof PRINTABILITY_RUN_ATTEMPT_SCHEMA;
+    readonly schemaVersion: typeof PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA;
     readonly projectId: string;
     readonly runId: string;
     readonly caseDigest: string;
@@ -34,22 +35,22 @@ type PrintabilityRunAttempt =
     readonly captureFingerprint: ContentFingerprint;
   };
 
-export interface BeginPrintabilityRunAttempt {
+export interface BeginPrintEstimateRunAttempt {
   readonly projectId: string;
   readonly runId: string;
-  /** SHA-256 digest of deterministicJson(printabilityCase). */
+  /** SHA-256 digest of deterministicJson(printEstimateCase). */
   readonly caseDigest: string;
   readonly dispatchedAt: string;
 }
 
-export interface CompletePrintabilityRunAttempt extends BeginPrintabilityRunAttempt {
+export interface CompletePrintEstimateRunAttempt extends BeginPrintEstimateRunAttempt {
   readonly completedAt: string;
   readonly captureFingerprint: ContentFingerprint;
 }
 
 /**
- * Write-ahead journal for the build123d + dfm_check_* pair executed during a
- * printability run.
+ * Write-ahead journal for the build123d + prusaslicer_estimate_fff pair
+ * executed during a print-estimate run.
  *
  * Key: `[projectId, runId, caseDigest]` — ties the attempt to the exact
  * reviewed case, not only to the run identity. A case change produces a new
@@ -57,17 +58,17 @@ export interface CompletePrintabilityRunAttempt extends BeginPrintabilityRunAtte
  *
  * A `dispatched` entry returns `{ action: "dispatch" }` and allows
  * re-dispatch. The provider sequence is effectively idempotent: the same
- * deterministic build123d script always produces the same STL bytes (same SHA),
- * and `dfm_check_*` with caller-supplied thresholds on that STL is a
- * read-only analysis.
+ * deterministic build123d script always produces the same STL bytes (same
+ * SHA), and prusaslicer_estimate_fff with the same profile on that STL is a
+ * read-only slicing operation.
  */
-export class FileCm01DripTrayPrintabilityAttemptStore {
+export class FileCm01DripTrayPrintEstimateAttemptStore {
   constructor(
-    private readonly directory = "state/local/cm01-drip-tray-printability-attempts",
+    private readonly directory = "state/local/cm01-drip-tray-print-estimate-attempts",
   ) {}
 
   async begin(
-    input: BeginPrintabilityRunAttempt,
+    input: BeginPrintEstimateRunAttempt,
   ): Promise<
     | { readonly action: "dispatch" }
     | {
@@ -76,8 +77,8 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
     }
   > {
     validateBegin(input);
-    const fresh: PrintabilityRunAttempt = {
-      schemaVersion: PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+    const fresh: PrintEstimateRunAttempt = {
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
       projectId: input.projectId,
       runId: input.runId,
       caseDigest: input.caseDigest,
@@ -109,7 +110,7 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
     );
     if (!existing) {
       throw new Error(
-        "Printability run attempt was created but cannot be read back.",
+        "Print-estimate run attempt was created but cannot be read back.",
       );
     }
     if (existing.status === "completed") {
@@ -119,7 +120,7 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
     return { action: "dispatch" };
   }
 
-  async complete(input: CompletePrintabilityRunAttempt): Promise<void> {
+  async complete(input: CompletePrintEstimateRunAttempt): Promise<void> {
     validateComplete(input);
     const existing = await this.readExisting(
       input.projectId,
@@ -128,11 +129,11 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
     );
     if (!existing) {
       throw new Error(
-        "Cannot complete a printability run attempt that was never begun.",
+        "Cannot complete a print-estimate run attempt that was never begun.",
       );
     }
-    const completed: PrintabilityRunAttempt = {
-      schemaVersion: PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+    const completed: PrintEstimateRunAttempt = {
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
       projectId: existing.projectId,
       runId: existing.runId,
       caseDigest: existing.caseDigest,
@@ -144,7 +145,7 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
     if (existing.status === "completed") {
       if (deterministicJson(existing) !== deterministicJson(completed)) {
         throw new Error(
-          "Completed printability run attempt conflicts with its recorded capture fingerprint.",
+          "Completed print-estimate run attempt conflicts with its recorded capture fingerprint.",
         );
       }
       return;
@@ -157,12 +158,14 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
     const temporary = `${path}.${crypto.randomUUID()}.tmp`;
     const file = await Deno.open(temporary, { createNew: true, write: true });
     try {
-      const bytes = new TextEncoder().encode(`${deterministicJson(completed)}\n`);
+      const bytes = new TextEncoder().encode(
+        `${deterministicJson(completed)}\n`,
+      );
       let written = 0;
       while (written < bytes.length) {
         const count = await file.write(bytes.subarray(written));
         if (count <= 0) {
-          throw new Error("Printability run attempt write made no progress.");
+          throw new Error("Print-estimate run attempt write made no progress.");
         }
         written += count;
       }
@@ -183,7 +186,7 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
     projectId: string,
     runId: string,
     caseDigest: string,
-  ): Promise<PrintabilityRunAttempt | undefined> {
+  ): Promise<PrintEstimateRunAttempt | undefined> {
     let text: string;
     try {
       text = await Deno.readTextFile(this.pathFor(projectId, runId, caseDigest));
@@ -198,19 +201,19 @@ export class FileCm01DripTrayPrintabilityAttemptStore {
 function parseAttempt(
   text: string,
   expected: { projectId: string; runId: string; caseDigest: string },
-): PrintabilityRunAttempt {
+): PrintEstimateRunAttempt {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
-    throw new Error("Printability run attempt is not valid JSON.");
+    throw new Error("Print-estimate run attempt is not valid JSON.");
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Printability run attempt must be an object.");
+    throw new Error("Print-estimate run attempt must be an object.");
   }
   const rec = value as Record<string, unknown>;
   if (
-    rec.schemaVersion !== PRINTABILITY_RUN_ATTEMPT_SCHEMA ||
+    rec.schemaVersion !== PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA ||
     rec.projectId !== expected.projectId ||
     rec.runId !== expected.runId ||
     rec.caseDigest !== expected.caseDigest ||
@@ -218,12 +221,12 @@ function parseAttempt(
     typeof rec.dispatchedAt !== "string"
   ) {
     throw new Error(
-      "Printability run attempt has an invalid identity, schema, or status.",
+      "Print-estimate run attempt has an invalid identity, schema, or status.",
     );
   }
   if (rec.status === "dispatched") {
     return {
-      schemaVersion: PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
       projectId: expected.projectId,
       runId: expected.runId,
       caseDigest: expected.caseDigest,
@@ -235,10 +238,12 @@ function parseAttempt(
     typeof rec.completedAt !== "string" ||
     !isContentFingerprint(rec.captureFingerprint)
   ) {
-    throw new Error("Completed printability run attempt is missing required fields.");
+    throw new Error(
+      "Completed print-estimate run attempt is missing required fields.",
+    );
   }
   return {
-    schemaVersion: PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+    schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
     projectId: expected.projectId,
     runId: expected.runId,
     caseDigest: expected.caseDigest,
@@ -265,18 +270,22 @@ function normalizedFingerprint(value: ContentFingerprint): ContentFingerprint {
   return { algorithm: "sha256", digest: value.digest };
 }
 
-function validateBegin(input: BeginPrintabilityRunAttempt): void {
+function validateBegin(input: BeginPrintEstimateRunAttempt): void {
   validateIdentity(input.projectId, input.runId, input.caseDigest);
   isoDateTime(input.dispatchedAt, "dispatchedAt");
 }
 
-function validateComplete(input: CompletePrintabilityRunAttempt): void {
+function validateComplete(input: CompletePrintEstimateRunAttempt): void {
   validateBegin(input);
   isoDateTime(input.completedAt, "completedAt");
   normalizedFingerprint(input.captureFingerprint);
 }
 
-function validateIdentity(projectId: string, runId: string, caseDigest: string): void {
+function validateIdentity(
+  projectId: string,
+  runId: string,
+  caseDigest: string,
+): void {
   nonEmpty(projectId, "projectId");
   nonEmpty(runId, "runId");
   if (!SHA256_HEX.test(caseDigest)) {

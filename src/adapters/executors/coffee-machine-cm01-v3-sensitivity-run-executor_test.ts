@@ -5,7 +5,7 @@ import {
   validateThreadSnapshot,
 } from "../../domain/thread-snapshot-validation.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
-import { FileSensitivityRunAttemptStore } from "../file-sensitivity-run-attempt-store.ts";
+import { FileSensitivityRunAttemptStore } from "../wal/file-sensitivity-run-attempt-store.ts";
 import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_OPERATION,
   CoffeeMachineCm01V3SensitivityRunExecutor,

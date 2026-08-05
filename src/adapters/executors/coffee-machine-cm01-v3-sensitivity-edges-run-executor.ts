@@ -69,7 +69,7 @@ import type { EngineeringProjectRunLease } from "../stores/file-engineering-proj
 import {
   FileSensitivityRelationsAttemptStore,
   SensitivityRelationsWriteOutcomeUnknownError,
-} from "../file-sensitivity-relations-attempt-store.ts";
+} from "../wal/file-sensitivity-relations-attempt-store.ts";
 import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import {
   extractAndVerifySensitivityEdges,

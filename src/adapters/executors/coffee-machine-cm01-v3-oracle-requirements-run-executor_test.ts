@@ -23,15 +23,15 @@ import { FileEngineeringProjectRunLease } from "../stores/file-engineering-proje
 import {
   FileOracleRequirementsSeedAttemptStore,
   OracleRequirementsSeedWriteOutcomeUnknownError,
-} from "../file-oracle-requirements-seed-attempt-store.ts";
-import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
+} from "../wal/file-oracle-requirements-seed-attempt-store.ts";
+import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,
 } from "./coffee-machine-cm01-v3-architecture-run-executor.ts";
-import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import type {

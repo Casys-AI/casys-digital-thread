@@ -20,11 +20,11 @@ import {
 import {
   CoffeeMachineCm01V3ThermalRunExecutor,
 } from "../src/adapters/executors/coffee-machine-cm01-v3-thermal-run-executor.ts";
-import { FileCm01DripTrayMechanicalAttemptStore } from "../src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
+import { FileCm01DripTrayMechanicalAttemptStore } from "../src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "../src/adapters/file-cm01-erpnext-bom-run-capture-store.ts";
-import { FileCm01NominalModelicaAttemptStore } from "../src/adapters/file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCm01SemanticCadAttemptStore } from "../src/adapters/file-cm01-semantic-cad-attempt-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+import { FileCm01NominalModelicaAttemptStore } from "../src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
+import { FileCm01SemanticCadAttemptStore } from "../src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import {
   CoffeeMachineCm01V3SensitivityRunExecutor,
 } from "../src/adapters/executors/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
@@ -40,7 +40,7 @@ import {
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../src/adapters/file-capture-store.ts";
-import { FileSensitivityRunAttemptStore } from "../src/adapters/file-sensitivity-run-attempt-store.ts";
+import { FileSensitivityRunAttemptStore } from "../src/adapters/wal/file-sensitivity-run-attempt-store.ts";
 import { FileEngineeringProjectRunLease } from "../src/adapters/stores/file-engineering-project-run-lease.ts";
 import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
@@ -48,7 +48,7 @@ import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/validator
 import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
 import { loadFleetManifest } from "../src/adapters/manifest.ts";
 import { HttpMcpToolClient } from "../src/adapters/http-mcp-tool-client.ts";
-import { FileSysonModelSeedAttemptStore } from "../src/adapters/file-syson-model-seed-attempt-store.ts";
+import { FileSysonModelSeedAttemptStore } from "../src/adapters/wal/file-syson-model-seed-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import { SysonModelSeedRunExecutor } from "../src/adapters/executors/syson-model-seed-run-executor.ts";
 import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01-drip-tray-mechanical-proof.ts";

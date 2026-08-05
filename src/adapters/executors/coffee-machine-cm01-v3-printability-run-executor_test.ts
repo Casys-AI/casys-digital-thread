@@ -4,7 +4,7 @@ import {
   createThreadSnapshot,
   validateThreadSnapshot,
 } from "../../domain/thread-snapshot-validation.ts";
-import { FileCm01DripTrayPrintabilityAttemptStore } from "../file-cm01-drip-tray-printability-attempt-store.ts";
+import { FileCm01DripTrayPrintabilityAttemptStore } from "../wal/file-cm01-drip-tray-printability-attempt-store.ts";
 import {
   materializePrintabilitySnapshot,
   parseBuild123dStepExport,

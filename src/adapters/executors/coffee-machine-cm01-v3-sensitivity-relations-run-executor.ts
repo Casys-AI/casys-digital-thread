@@ -57,7 +57,7 @@ import {
 import {
   FileSensitivityRelationsAttemptStore,
   SensitivityRelationsWriteOutcomeUnknownError,
-} from "../file-sensitivity-relations-attempt-store.ts";
+} from "../wal/file-sensitivity-relations-attempt-store.ts";
 import {
   requireBasis,
   requiredStart,

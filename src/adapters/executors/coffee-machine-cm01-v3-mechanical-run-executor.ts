@@ -47,7 +47,7 @@ import {
 import {
   Cm01DripTrayMechanicalOutcomeUnknownError,
   FileCm01DripTrayMechanicalAttemptStore,
-} from "../file-cm01-drip-tray-mechanical-attempt-store.ts";
+} from "../wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
 import { FileCaptureStore } from "../file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";

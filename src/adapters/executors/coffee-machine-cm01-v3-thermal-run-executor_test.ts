@@ -25,7 +25,7 @@ import {
   type Cm01NominalModelicaCapture,
 } from "../cm01-nominal-modelica-capture.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
-import { FileCm01NominalModelicaAttemptStore } from "../file-cm01-nominal-modelica-attempt-store.ts";
+import { FileCm01NominalModelicaAttemptStore } from "../wal/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,

@@ -1,5 +1,5 @@
-import { deterministicJson } from "../domain/deterministic-json.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
+import { deterministicJson } from "../../domain/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 
 export const CM01_SEMANTIC_CAD_ATTEMPT_SCHEMA =
   "cm01-semantic-cad-attempt/1.0" as const;
