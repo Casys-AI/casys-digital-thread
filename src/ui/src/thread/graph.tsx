@@ -541,9 +541,8 @@ export function ThreadGraph({
       {presentation === "canvas" && (
         <div class="thread-graph-controls" aria-label="Graph view controls">
           <span aria-live="polite">
-            {Math.round(viewport.zoom * 100)}% · {layout.nodes.length} recorded
-            {" "}
-            facts
+            {Math.round(viewport.zoom * 100)}% · {layout.nodes.length}{" "}
+            recorded facts
           </span>
           <div role="group" aria-label="Zoom graph">
             <button

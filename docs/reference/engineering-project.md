@@ -39,22 +39,22 @@ MCP surface.
 
 ## Root fields
 
-| Field              | Contract                                                                                            |
-| ------------------ | --------------------------------------------------------------------------------------------------- |
-| `id`, `revision`   | Immutable project-snapshot identity and positive revision                                           |
-| `previous`         | Required after revision 1 and always lower than the current revision                                |
-| `generatedAt`      | ISO 8601 UTC materialization timestamp                                                              |
-| `project`          | Stable project ID, display name, thread subject ID, and explicit objective                          |
-| `framing`          | V3 intent, questions, sourced answers, proposed brief and exact approved canonical brief            |
-| `plan`             | Optional agent-published path grounded in the exact approved canonical brief for V3                 |
-| `threadSnapshots`  | Exact declared `ThreadSnapshot` revisions; empty before the first documentary baseline is published |
-| `phases`           | Ordered project phases; phase status is deliberately absent                                         |
-| `workItems`        | Human, agent, or shared work and its explicit lifecycle state                                       |
-| `agentRuns`        | Observable execution lifecycle and exact produced evidence                                          |
-| `decisions`        | Questions or proposals requiring project authority                                                  |
-| `approvals`        | Auditable responses bound to the exact inputs approved                                              |
-| `blockers`         | Open or resolved conditions overlaid on affected work and phases                                    |
-| `commandReceipts`  | Durable idempotency and audit ledger after a command-created revision                               |
+| Field             | Contract                                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| `id`, `revision`  | Immutable project-snapshot identity and positive revision                                           |
+| `previous`        | Required after revision 1 and always lower than the current revision                                |
+| `generatedAt`     | ISO 8601 UTC materialization timestamp                                                              |
+| `project`         | Stable project ID, display name, thread subject ID, and explicit objective                          |
+| `framing`         | V3 intent, questions, sourced answers, proposed brief and exact approved canonical brief            |
+| `plan`            | Optional agent-published path grounded in the exact approved canonical brief for V3                 |
+| `threadSnapshots` | Exact declared `ThreadSnapshot` revisions; empty before the first documentary baseline is published |
+| `phases`          | Ordered project phases; phase status is deliberately absent                                         |
+| `workItems`       | Human, agent, or shared work and its explicit lifecycle state                                       |
+| `agentRuns`       | Observable execution lifecycle and exact produced evidence                                          |
+| `decisions`       | Questions or proposals requiring project authority                                                  |
+| `approvals`       | Auditable responses bound to the exact inputs approved                                              |
+| `blockers`        | Open or resolved conditions overlaid on affected work and phases                                    |
+| `commandReceipts` | Durable idempotency and audit ledger after a command-created revision                               |
 
 The project revision and the referenced thread revision are independent counters. For
 example, project snapshot revision 1 may cite thread snapshot revision 5.
@@ -83,12 +83,12 @@ invocation, run authorization, or technical result.
 approved brief is the planning source. Once the documentary baseline has completed, an
 agent uses `project_change_append` to publish the next bounded change. The command
 carries an exact current `baseSnapshot`; every change also retains the exact
-`approvedBriefBasis` that authorized it. It can append only new phases, work items,
-and required decisions. It preserves the initial plan and all prior phases, work,
-decisions, approvals, runs, evidence, and thread references in the next immutable
-project revision. This is not a plan replacement and it cannot amend or erase project
-truth. The change anchors are planning provenance; later runs still use their distinct,
-server-derived exact `basis`.
+`approvedBriefBasis` that authorized it. It can append only new phases, work items, and
+required decisions. It preserves the initial plan and all prior phases, work, decisions,
+approvals, runs, evidence, and thread references in the next immutable project revision.
+This is not a plan replacement and it cannot amend or erase project truth. The change
+anchors are planning provenance; later runs still use their distinct, server-derived
+exact `basis`.
 
 Each work item created by either command has an `operation` reference with an exact ID,
 version, and state-reference bindings. The code-owned registry accepts only its reviewed
@@ -96,10 +96,10 @@ operation revisions and declared binding names/source kinds; it also supplies th
 durable work title, description, and classification shown to the reviewer. The generic
 entry-point registry contains:
 
-| Starting point                                                   | Exact operation reference          |
-| ---------------------------------------------------------------- | ---------------------------------- |
-| New V3 idea or specification                                     | `baseline.from-approved-brief@1`   |
-| Post-baseline change; exact documentary r1 required at runtime   | `architecture.seed-syson-model@2` |
+| Starting point                                                 | Exact operation reference         |
+| -------------------------------------------------------------- | --------------------------------- |
+| New V3 idea or specification                                   | `baseline.from-approved-brief@1`  |
+| Post-baseline change; exact documentary r1 required at runtime | `architecture.seed-syson-model@2` |
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
 `architecture.seed-syson-model@2` may be added by one append-only project change. The
@@ -337,10 +337,10 @@ For the first run, the dedicated validator requires root revision 1 and the exac
 documentary artifact produced by the reviewed operation; it does not pretend the result
 descends from a fabricated base. The first SysON seed requires that exact documentary
 root as its `thread-snapshot` basis. It persists and reads back its closed identity
-capture and revision 2 before completion. For a later thread-snapshot-basis
-run, completion requires a non-`latest` result whose revision advances the exact base
-and whose complete `previous` chain reaches that base, plus at least one unique entity
-that is new or content-changed from the base. A newer parallel branch is rejected.
+capture and revision 2 before completion. For a later thread-snapshot-basis run,
+completion requires a non-`latest` result whose revision advances the exact base and
+whose complete `previous` chain reaches that base, plus at least one unique entity that
+is new or content-changed from the base. A newer parallel branch is rejected.
 
 ### Failed-work reconciliation
 
@@ -401,12 +401,12 @@ The source dispatcher materializes two generic V3 operations and, only for the f
 `baseline.from-approved-brief@1` has no provider invocation and persists its canonical
 capture before publishing the cited root snapshot. `architecture.seed-syson-model@2`
 owns only the fixed SysON project/document/root-package sequence, closed capture,
-materializer, and result validator before publishing revision 2.
-The CM-01 catalog adds its own architecture, CAD, Modelica, ERP, correction, and
-mechanical capture/materializer contracts; see the
-[CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). Neither MCP
-planning nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint,
-and no generic provider execution is available.
+materializer, and result validator before publishing revision 2. The CM-01 catalog adds
+its own architecture, CAD, Modelica, ERP, correction, and mechanical
+capture/materializer contracts; see the
+[CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). Neither MCP planning
+nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint, and no
+generic provider execution is available.
 
 ## CM-01 baseline
 
@@ -465,12 +465,12 @@ explicit project-plan closure.
 ## Fixed CM-01 V3 correction closure
 
 `coffee-machine-cm01-v3` is distinct from the historical `coffee-machine-cm01` r5/r6
-record. Its code-owned 28 mm → 30 mm correction retains the failed mechanical R2
-attempt as evidence-free history. The successful R3 result was first retained at R10
-with an R2 artifact identity; R10 remains immutable and superseded. The provider-free
-identity recovery creates the correctly named R11 successor without rerunning a solver.
-The separate provider-free R11 → R12 closeout writes the direct requirement-family
-successor and performs the narrow failed-work reconciliation described above.
+record. Its code-owned 28 mm → 30 mm correction retains the failed mechanical R2 attempt
+as evidence-free history. The successful R3 result was first retained at R10 with an R2
+artifact identity; R10 remains immutable and superseded. The provider-free identity
+recovery creates the correctly named R11 successor without rerunning a solver. The
+separate provider-free R11 → R12 closeout writes the direct requirement-family successor
+and performs the narrow failed-work reconciliation described above.
 
 This is one bounded CM-01 correction dossier, not a generic correction engine. It does
 not make the historical r6 verdict current, validate the whole CoffeeMachine, authorize
@@ -530,9 +530,9 @@ activity sequence. The evidence surface can promote r2 only after the immutable 
 revision has attached it.
 
 `FileEngineeringProjectRunLease` additionally holds one local advisory lock for the
-exact `(projectId, runId)` while a trusted executor runs. Its retained empty file
-under `state/local/engineering-project-run-leases/` is coordination state only: it is
-not a capture, artifact, result, or engineering claim. A duplicate execution waits and
-then reads the durable outcome instead of creating a competing capture or lifecycle
+exact `(projectId, runId)` while a trusted executor runs. Its retained empty file under
+`state/local/engineering-project-run-leases/` is coordination state only: it is not a
+capture, artifact, result, or engineering claim. A duplicate execution waits and then
+reads the durable outcome instead of creating a competing capture or lifecycle
 transition. The lease serializes local writers but cannot itself prove remote-provider
 idempotence; the write-ahead attempt journal supplies the fail-closed recovery boundary.

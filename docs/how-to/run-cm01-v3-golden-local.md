@@ -338,14 +338,14 @@ included and that the derivative is local to its neighbourhood. Its purpose is t
 correction proposals citable — "raise size-z by 2 mm because ∂displacement/∂size-z is
 measured at this value around 30 mm" — instead of guessed.
 
-Two operational pitfalls the acceptance run of 2026-08-04 hit — both are consequences
-of running against the *default* topology instead of the isolated one that section 1
+Two operational pitfalls the acceptance run of 2026-08-04 hit — both are consequences of
+running against the _default_ topology instead of the isolated one that section 1
 prescribes:
 
-- the shared SysON image answers in JSON-in-text rather than `structuredContent`
-  (hence the pinned `MCP_SYSON_IMAGE` above). The backend client now accepts both
-  shapes and rejects anything else, as `structuredContent` is optional in the MCP
-  specification — but pinning the image remains the reviewed configuration;
+- the shared SysON image answers in JSON-in-text rather than `structuredContent` (hence
+  the pinned `MCP_SYSON_IMAGE` above). The backend client now accepts both shapes and
+  rejects anything else, as `structuredContent` is optional in the MCP specification —
+  but pinning the image remains the reviewed configuration;
 - the default Modelica volume retains prior runs and the store caps them at 20 with no
   archive tool (hence the fresh `MODELICA_RUNS_VOLUME` above). If the cap is reached on
   the default volume, archive the `run_*` directories out of the top level (for example

@@ -16,28 +16,28 @@
 
 ## Authoritative artifacts
 
-| Artifact                   | Location                                                                                         |
-| -------------------------- | ------------------------------------------------------------------------------------------------ |
-| Provider topology          | [`docker-compose.yml`](../../docker-compose.yml)                                                 |
-| Desired fleet              | [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                           |
+| Artifact                   | Location                                                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Provider topology          | [`docker-compose.yml`](../../docker-compose.yml)                                                           |
+| Desired fleet              | [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                     |
 | CM-01 subject binding      | [`config/thread-subjects/coffee-machine-cm01.json`](../../config/thread-subjects/coffee-machine-cm01.json) |
-| Native workflow            | [`config/thread-workflows/`](../../config/thread-workflows/)                                     |
-| Canonical linked state     | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                           |
-| Workflow compiler/executor | [`src/workflow/`](../../src/workflow/)                                                           |
-| Workbench projection       | [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts) |
-| Native Workbench UI        | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                 |
-| Modelica evidence          | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                         |
-| CAD/FEA exchange           | `exports` Docker volume, with producer and consumer SHA-256 attestation                          |
-| ERP manufacturing truth    | ERPNext database, reached only through `mcp-erpnext`                                             |
+| Native workflow            | [`config/thread-workflows/`](../../config/thread-workflows/)                                               |
+| Canonical linked state     | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                     |
+| Workflow compiler/executor | [`src/workflow/`](../../src/workflow/)                                                                     |
+| Workbench projection       | [`src/adapters/thread-workbench-projector.ts`](../../src/adapters/thread-workbench-projector.ts)           |
+| Native Workbench UI        | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                           |
+| Modelica evidence          | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                   |
+| CAD/FEA exchange           | `exports` Docker volume, with producer and consumer SHA-256 attestation                                    |
+| ERP manufacturing truth    | ERPNext database, reached only through `mcp-erpnext`                                                       |
 
-The CM-01 manifest is the sole cross-provider join authority. It binds a SysON
-project, build123d artifact path, persisted Modelica run, and ERPNext item to
-one product subject. Provider display names and matching labels are evidence
-for people, not a machine join key.
+The CM-01 manifest is the sole cross-provider join authority. It binds a SysON project,
+build123d artifact path, persisted Modelica run, and ERPNext item to one product
+subject. Provider display names and matching labels are evidence for people, not a
+machine join key.
 
 ## Product boundary
 
-The browser reads linked product data from the digital-thread backend. It never
-connects to provider MCP endpoints. Provider MCP Apps remain useful for one rich
-tool result in an agent host, but the Workbench imports trusted components
-directly and owns one layout, selection state and navigation model.
+The browser reads linked product data from the digital-thread backend. It never connects
+to provider MCP endpoints. Provider MCP Apps remain useful for one rich tool result in
+an agent host, but the Workbench imports trusted components directly and owns one
+layout, selection state and navigation model.

@@ -1,1311 +1,1311 @@
 {
- "schemaVersion": "oracle-llm-campaign/1.0",
- "protocol": {
-  "subjectModel": "haiku (fresh agent per proposal, no session context)",
-  "levels": [
-   "L0",
-   "L1",
-   "L2"
-  ],
-  "tasks": [
-   {
-    "id": "T01",
-    "h0": 29,
-    "threshold": 0.088
-   },
-   {
-    "id": "T02",
-    "h0": 28,
-    "threshold": 0.092
-   },
-   {
-    "id": "T03",
-    "h0": 27,
-    "threshold": 0.095
-   },
-   {
-    "id": "T04",
-    "h0": 25,
-    "threshold": 0.1
-   },
-   {
-    "id": "T05",
-    "h0": 23,
-    "threshold": 0.11
-   }
-  ],
-  "reps": 3,
-  "budgetSolvesPerTrajectory": 5,
-  "domain": {
-   "min": 20,
-   "max": 31
-  },
-  "edgeShownAtL2": {
-   "derivativeMmPerMm": -0.008018,
-   "neighbourhood": "measured at 30 mm with a +1 mm step (first-order forward, local)"
-  },
-  "prompts": {
-   "common": "You are an engineering assistant correcting a mechanical part.\n\nPart: a solid rectangular drip tray, 190 mm x 135 mm x H mm (H is the height you\ncontrol). Material ABS-like: E = 2200 MPa, nu = 0.35. Linear static case: the tray\nis fixed along one long edge band and carries a 100 N downward load on the\nopposite edge band.\n\nRequirement: the maximum displacement must be at most T mm (value given below).\nThe current design at height H0 FAILS this requirement. Increasing the height\nstiffens the tray. The allowed height domain is [20, 31] mm — any proposal\noutside it is rejected without measurement.\n\nRespond ONLY through the structured output with your proposed height in mm.",
-   "l0Example": "You are an engineering assistant correcting a mechanical part.\n\nPart: a solid rectangular drip tray, 190 mm x 135 mm x H mm (H is the height you\ncontrol). Material ABS-like: E = 2200 MPa, nu = 0.35. Linear static case: the tray\nis fixed along one long edge band and carries a 100 N downward load on the\nopposite edge band.\n\nRequirement: the maximum displacement must be at most T mm (value given below).\nThe current design at height H0 FAILS this requirement. Increasing the height\nstiffens the tray. The allowed height domain is [20, 31] mm — any proposal\noutside it is rejected without measurement.\n\nRespond ONLY through the structured output with your proposed height in mm.\n\nT = 0.088 mm. H0 = 29 mm (fails).\n\nYou get NO simulation feedback. Propose, in one shot, the height most likely to\nsatisfy the requirement with minimal oversizing. One single real FEA solve will\nthen judge your proposal.",
-   "l2EdgeClause": "d(displacement)/d(height) = -0.008018 mm/mm"
-  }
- },
- "summary": {
-  "L0": {
-   "trajectories": 15,
-   "converged": 12,
-   "totalSolves": 15,
-   "avgSolvesPerTrajectory": 1,
-   "perTask": {
-    "T01": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      30,
-      30,
-      30
-     ]
+  "schemaVersion": "oracle-llm-campaign/1.0",
+  "protocol": {
+    "subjectModel": "haiku (fresh agent per proposal, no session context)",
+    "levels": [
+      "L0",
+      "L1",
+      "L2"
+    ],
+    "tasks": [
+      {
+        "id": "T01",
+        "h0": 29,
+        "threshold": 0.088
+      },
+      {
+        "id": "T02",
+        "h0": 28,
+        "threshold": 0.092
+      },
+      {
+        "id": "T03",
+        "h0": 27,
+        "threshold": 0.095
+      },
+      {
+        "id": "T04",
+        "h0": 25,
+        "threshold": 0.1
+      },
+      {
+        "id": "T05",
+        "h0": 23,
+        "threshold": 0.11
+      }
+    ],
+    "reps": 3,
+    "budgetSolvesPerTrajectory": 5,
+    "domain": {
+      "min": 20,
+      "max": 31
     },
-    "T02": {
-     "converged": 2,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      30,
-      30,
-      null
-     ]
+    "edgeShownAtL2": {
+      "derivativeMmPerMm": -0.008018,
+      "neighbourhood": "measured at 30 mm with a +1 mm step (first-order forward, local)"
     },
-    "T03": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      30,
-      29,
-      29
-     ]
+    "prompts": {
+      "common": "You are an engineering assistant correcting a mechanical part.\n\nPart: a solid rectangular drip tray, 190 mm x 135 mm x H mm (H is the height you\ncontrol). Material ABS-like: E = 2200 MPa, nu = 0.35. Linear static case: the tray\nis fixed along one long edge band and carries a 100 N downward load on the\nopposite edge band.\n\nRequirement: the maximum displacement must be at most T mm (value given below).\nThe current design at height H0 FAILS this requirement. Increasing the height\nstiffens the tray. The allowed height domain is [20, 31] mm — any proposal\noutside it is rejected without measurement.\n\nRespond ONLY through the structured output with your proposed height in mm.",
+      "l0Example": "You are an engineering assistant correcting a mechanical part.\n\nPart: a solid rectangular drip tray, 190 mm x 135 mm x H mm (H is the height you\ncontrol). Material ABS-like: E = 2200 MPa, nu = 0.35. Linear static case: the tray\nis fixed along one long edge band and carries a 100 N downward load on the\nopposite edge band.\n\nRequirement: the maximum displacement must be at most T mm (value given below).\nThe current design at height H0 FAILS this requirement. Increasing the height\nstiffens the tray. The allowed height domain is [20, 31] mm — any proposal\noutside it is rejected without measurement.\n\nRespond ONLY through the structured output with your proposed height in mm.\n\nT = 0.088 mm. H0 = 29 mm (fails).\n\nYou get NO simulation feedback. Propose, in one shot, the height most likely to\nsatisfy the requirement with minimal oversizing. One single real FEA solve will\nthen judge your proposal.",
+      "l2EdgeClause": "d(displacement)/d(height) = -0.008018 mm/mm"
+    }
+  },
+  "summary": {
+    "L0": {
+      "trajectories": 15,
+      "converged": 12,
+      "totalSolves": 15,
+      "avgSolvesPerTrajectory": 1,
+      "perTask": {
+        "T01": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            30,
+            30,
+            30
+          ]
+        },
+        "T02": {
+          "converged": 2,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            30,
+            30,
+            null
+          ]
+        },
+        "T03": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            30,
+            29,
+            29
+          ]
+        },
+        "T04": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            30,
+            30,
+            29
+          ]
+        },
+        "T05": {
+          "converged": 1,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            28,
+            null,
+            null
+          ]
+        }
+      }
     },
-    "T04": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      30,
-      30,
-      29
-     ]
+    "L1": {
+      "trajectories": 15,
+      "converged": 15,
+      "totalSolves": 17,
+      "avgSolvesPerTrajectory": 1.1333333333333333,
+      "perTask": {
+        "T01": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            31,
+            31,
+            30
+          ]
+        },
+        "T02": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            30,
+            30,
+            30
+          ]
+        },
+        "T03": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            29,
+            29,
+            29
+          ]
+        },
+        "T04": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            30,
+            30,
+            30
+          ]
+        },
+        "T05": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1.6666666666666667,
+          "finalHeights": [
+            29,
+            28,
+            29
+          ]
+        }
+      }
     },
-    "T05": {
-     "converged": 1,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      28,
-      null,
-      null
-     ]
+    "L2": {
+      "trajectories": 15,
+      "converged": 15,
+      "totalSolves": 18,
+      "avgSolvesPerTrajectory": 1.2,
+      "perTask": {
+        "T01": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            31,
+            30,
+            30
+          ]
+        },
+        "T02": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1.3333333333333333,
+          "finalHeights": [
+            30,
+            30,
+            30
+          ]
+        },
+        "T03": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1,
+          "finalHeights": [
+            30,
+            29,
+            29
+          ]
+        },
+        "T04": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1.3333333333333333,
+          "finalHeights": [
+            29,
+            29,
+            29
+          ]
+        },
+        "T05": {
+          "converged": 3,
+          "reps": 3,
+          "avgSolves": 1.3333333333333333,
+          "finalHeights": [
+            28,
+            28,
+            28
+          ]
+        }
+      }
     }
-   }
   },
-  "L1": {
-   "trajectories": 15,
-   "converged": 15,
-   "totalSolves": 17,
-   "avgSolvesPerTrajectory": 1.1333333333333333,
-   "perTask": {
-    "T01": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      31,
-      31,
-      30
-     ]
-    },
-    "T02": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      30,
-      30,
-      30
-     ]
-    },
-    "T03": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      29,
-      29,
-      29
-     ]
-    },
-    "T04": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      30,
-      30,
-      30
-     ]
-    },
-    "T05": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1.6666666666666667,
-     "finalHeights": [
-      29,
-      28,
-      29
-     ]
-    }
-   }
-  },
-  "L2": {
-   "trajectories": 15,
-   "converged": 15,
-   "totalSolves": 18,
-   "avgSolvesPerTrajectory": 1.2,
-   "perTask": {
-    "T01": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      31,
-      30,
-      30
-     ]
-    },
-    "T02": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1.3333333333333333,
-     "finalHeights": [
-      30,
-      30,
-      30
-     ]
-    },
-    "T03": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1,
-     "finalHeights": [
-      30,
-      29,
-      29
-     ]
-    },
-    "T04": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1.3333333333333333,
-     "finalHeights": [
-      29,
-      29,
-      29
-     ]
-    },
-    "T05": {
-     "converged": 3,
-     "reps": 3,
-     "avgSolves": 1.3333333333333333,
-     "finalHeights": [
-      28,
-      28,
-      28
-     ]
-    }
-   }
-  }
- },
- "results": [
-  {
-   "level": "L0",
-   "taskId": "T01",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
+  "results": [
     {
-     "heightMm": 30,
-     "rationale": "Cantilever plate: δ ∝ 1/H³. Since H0=29 mm barely fails T=0.088 mm, scaling by (H_new/29)³ = δ_29/0.088 with an assumed small margin above 0.088 gives H_new ≈ 29.7 mm. Rounding up to 30 mm stays within [20,31] and provides the minimum stiffness gain (~9.6% displacement reduction) needed to cross the threshold without unnecessary oversizing."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T01",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Cantilever bending stiffness scales as H³. Moving from 29 to 30 mm multiplies stiffness by (30/29)³ ≈ 1.107, reducing displacement by ~9.7%. If the 29 mm failure is marginal (δ just above 0.088 mm), 30 mm lands safely below the threshold while avoiding unnecessary oversizing versus the 31 mm ceiling."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T01",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Cantilever plate stiffness scales as H³. Going from 29 mm to 30 mm gives a stiffness ratio of (30/29)³ ≈ 1.107, reducing displacement by ~9%. This is the minimum increment that provides a meaningful margin over the failing design while avoiding unnecessary oversizing; 31 mm is held in reserve if the current displacement is more than ~20% above the 0.088 mm limit."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T02",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Cantilever plate model: displacement scales as 1/H³. At H0=28 mm the displacement δ₀ > 0.092 mm. Using δ ∝ PL³/(E·b·H³/12), δ at 28 mm ≈ 0.107 mm. To reach T=0.092 mm: H = 28·(0.107/0.092)^(1/3) ≈ 29.5 mm. Rounding up to 30 mm gives a small safety margin while staying well within [20,31] and avoiding oversizing."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T02",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "For a plate in bending, stiffness scales as H³. The displacement ratio is (H0/H)³. At H0=28 mm the tray fails; a step to 30 mm gives a stiffness multiplier of (30/28)³ ≈ 1.23, reducing displacement by ~19 %. That headroom is enough to clear a threshold that is just above the H0 value, while staying well inside the [20, 31] mm domain and avoiding the hard ceiling at 31 mm."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T02",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": false,
-   "finalHeightMm": null,
-   "finalDisplacementMm": null,
-   "stopReason": "single_shot_failed",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Plate-strip cantilever model: δ = 4·q·L³·(1−ν²)/(E·h³), q=100/190 N/mm, L=135 mm, E=2200 MPa, ν=0.35. At H=28 mm: δ≈0.094 mm (fails T=0.092). Required crossing at H≈28.2 mm. Proposing H=29 mm gives δ≈0.085 mm, ~8 % margin over T while staying close to the minimum. Domain check: 29 ∈ [20,31]."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "FAIL"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T03",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Cantilever plate analogy: δ ∝ PL³/(3EI) with I = b·H³/12. At H=27 mm the model fails. Scaling: H_new = H0·(δ0/T)^(1/3). Estimating δ0 ≈ 0.120 mm at H0=27 gives H_new ≈ 27·(0.120/0.095)^(1/3) ≈ 29.1 mm. H=29 is borderline (≈0.097 mm by the same scaling); H=30 gives ≈0.087 mm, safely under 0.095 mm with minimal oversizing, and stays within [20,31]."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T03",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Plate bending model: δ = PL³/(3bD), D = EH³/[12(1−ν²)]. With P=100 N, L=135 mm, b=190 mm, E=2200 MPa, ν=0.35 → D_factor = 10.53. At H0=27 mm, δ ≈ 0.105 mm (fails). The threshold H satisfies H³ ≥ 21 746 mm³, giving H ≈ 27.9 mm. H=28 mm lands at ~0.094 mm — within tolerance but within model error. H=29 mm gives δ ≈ 0.085 mm, a safe 10 % margin without oversizing beyond the next integer step."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T03",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Bending stiffness scales as H³. At H0=27 mm the tray fails, meaning displacement d(27) > 0.095 mm. Assuming d(27) ≈ 0.11 mm (a modest overrun), the required height is 27 × (0.11/0.095)^(1/3) ≈ 28.4 mm. Rounding up to 29 mm gives a safe margin while staying well within the [20, 31] mm domain and avoiding unnecessary oversizing."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T04",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Plate bending stiffness scales as h³. At H0=25 mm the tray fails δ≤0.1 mm. Targeting h=30 mm gives a stiffness ratio of (30/25)³ ≈ 1.73, which should bring a moderately failing design (δ₀ up to ~0.17 mm) within tolerance while staying 1 mm below the domain ceiling, leaving headroom if the first solve still misses."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T04",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Bending stiffness scales as H^3. Going from 25 mm to 30 mm multiplies stiffness by (30/25)^3 ≈ 1.73, so displacement drops to roughly 58 % of the failing value. Without knowing the exact failure margin this factor gives comfortable headroom while staying 1 mm below the 31 mm ceiling, avoiding the boundary risk."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T04",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Cantilever plate bending: δ ∝ 1/t³. Rough estimate at H0=25 mm gives δ ≈ 0.15 mm (100N × 135³ / (3 × 2200 × 190×25³/12)). To reach T=0.1 mm, need (25/H)³ = 0.1/0.15 → H ≈ 28.7 mm. Rounding up to 29 mm stays well inside [20,31] and provides a small safety margin without over-stiffening."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T05",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 28,
-   "finalDisplacementMm": 0.10363294359363535,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 28,
-     "rationale": "Plate bending stiffness scales as H³. At H0=23 mm the tray fails; target T=0.11 mm. Without knowing the exact over-shoot, a conservative mid-range correction H=28 mm yields a stiffness ratio of (28/23)³ ≈ 1.81×, enough to cover a ~40-80 % excess displacement while staying well inside [20,31] and avoiding unnecessary oversizing."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 28,
-     "displacementMm": 0.10363294359363535,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T05",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": false,
-   "finalHeightMm": null,
-   "finalDisplacementMm": null,
-   "stopReason": "single_shot_failed",
-   "proposals": [
-    {
-     "heightMm": 27,
-     "rationale": "Cantilever plate model (fixed long edge, load on opposite long edge): D = E·H³/[12(1−ν²)] = 208.9·H³ N·mm. Max tip deflection δ = (P/b)·L³/(3D) = 2067/H³ mm, with L=135 mm span, b=190 mm, P=100 N. At H0=23: δ≈0.170 mm (fails). Requirement δ≤0.11 gives H≥(2067/0.11)^(1/3)≈26.6 mm. H=27 mm yields δ≈0.105 mm, just inside the limit with minimal oversizing. H=26 gives ≈0.118 mm (still fails)."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 27,
-     "displacementMm": 0.11526128958458563,
-     "verdict": "FAIL"
-    }
-   ]
-  },
-  {
-   "level": "L0",
-   "taskId": "T05",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": false,
-   "finalHeightMm": null,
-   "finalDisplacementMm": null,
-   "stopReason": "single_shot_failed",
-   "proposals": [
-    {
-     "heightMm": 27,
-     "rationale": "Cantilever plate (span L=135 mm, width=190 mm): δ ∝ PL³/(3·E_eff·I) with I=190·H³/12 and E_eff=E/(1−ν²)=2508 MPa. Solving gives δ≈2065/H³ mm. At H=23 → 0.170 mm (fails). Critical H where δ=0.11: H=(2065/0.11)^(1/3)≈26.6 mm. H=27 yields ≈0.105 mm, just inside the 0.11 limit with ~5% margin and minimal oversizing."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 27,
-     "displacementMm": 0.11526128958458563,
-     "verdict": "FAIL"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T01",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 31,
-   "finalDisplacementMm": 0.0772715691731774,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 31,
-     "rationale": "H0=29mm fails at T=0.088mm. The domain ceiling is 31mm. Displacement scales roughly as 1/H^3 for a plate in bending, so going from 29 to 31mm gives a factor of (29/31)^3 ≈ 0.82 reduction — likely enough to pass. Starting at the maximum avoids wasting solves on intermediate heights that may still fail."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 31,
-     "displacementMm": 0.0772715691731774,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T01",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 31,
-   "finalDisplacementMm": 0.0772715691731774,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 31,
-     "rationale": "29 mm fails and the allowed domain ceiling is 31 mm. Testing the maximum first confirms whether any solution exists in the domain and, if it passes, gives us a bracket [29, 31] for bisection in a subsequent solve."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 31,
-     "displacementMm": 0.0772715691731774,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T01",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "H0=29 mm fails. Domain ceiling is 31 mm. With only two candidates left (30 and 31), trying 30 mm first minimises oversizing: if it passes, we stop; if it fails, 31 mm is the only remaining option."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T02",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Bisect between 28 (fails) and 31 (upper bound). 30 mm is a reasonable midpoint to quickly narrow the feasible range with one solve."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T02",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Binary search start: midpoint between 28 (fails) and 31 (upper bound). Displacement scales roughly as H^-3 for bending stiffness, so going from 28 to 30 gives ~(28/30)^3 ≈ 0.82x displacement reduction. If H0=28 is close to the threshold, 30 mm should suffice without oversizing to 31."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T02",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Binary search between 28 (fails) and 31 (upper bound). Starting at 30 mm as a first probe to narrow the range efficiently."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T03",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "H0=27 fails; domain is [27,31]. Binary search midpoint of [27,31] is 29. This splits the remaining range efficiently to converge in ~2 more solves."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T03",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Binary search in the feasible domain [27, 31] mm. H0=27 fails; upper bound 31 is assumed to pass. Midpoint 29 mm splits the interval efficiently — one solve determines which half to pursue next."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T03",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Binary search in [27, 31]: H0=27 fails, upper bound=31. Mid-point is 29 mm — minimises oversizing while halving the search space in one solve."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T04",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "No FEA data yet. Displacement scales roughly as 1/H^3 for a plate in bending. At H0=25 mm the tray fails T=0.1 mm. To comfortably meet the target while staying within [20,31] mm and leaving room for a binary-search refinement, start near the top of the domain at 30 mm."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T04",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "No FEA data yet. Displacement scales roughly as H^-3 for bending stiffness. At H0=25 mm the tray fails T=0.1 mm. To meet a tight 0.1 mm limit I need meaningful stiffness gain; H=30 mm gives (25/30)^3 ≈ 0.58 reduction in displacement — a strong first probe near the upper bound to establish feasibility before bisecting downward."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T04",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "No FEA data yet. Displacement scales roughly as H^-3 for bending stiffness. At H0=25mm we fail T=0.1mm. To meet the requirement with margin while staying in [20,31], start at H=30mm — near the stiff end of the domain to likely satisfy the constraint in one solve, minimizing total solves."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T05",
-   "rep": 1,
-   "nSolves": 2,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 27,
-     "rationale": "No FEA data yet. Binary search in [23, 31]: midpoint is 27 mm. This splits the feasible range efficiently and avoids oversizing."
+      "level": "L0",
+      "taskId": "T01",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Cantilever plate: δ ∝ 1/H³. Since H0=29 mm barely fails T=0.088 mm, scaling by (H_new/29)³ = δ_29/0.088 with an assumed small margin above 0.088 gives H_new ≈ 29.7 mm. Rounding up to 30 mm stays within [20,31] and provides the minimum stiffness gain (~9.6% displacement reduction) needed to cross the threshold without unnecessary oversizing."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 29,
-     "rationale": "Binary search between 27 mm (FAIL) and 31 mm (upper bound). Midpoint is 29 mm."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 27,
-     "displacementMm": 0.11526128958458563,
-     "verdict": "FAIL"
+      "level": "L0",
+      "taskId": "T01",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Cantilever bending stiffness scales as H³. Moving from 29 to 30 mm multiplies stiffness by (30/29)³ ≈ 1.107, reducing displacement by ~9.7%. If the 29 mm failure is marginal (δ just above 0.088 mm), 30 mm lands safely below the threshold while avoiding unnecessary oversizing versus the 31 mm ceiling."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T05",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 28,
-   "finalDisplacementMm": 0.10363294359363535,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 28,
-     "rationale": "Binary search in [24, 31] (23 fails). Midpoint is 27.5, rounded up to 28 mm to bias toward passing on first try."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 28,
-     "displacementMm": 0.10363294359363535,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L1",
-   "taskId": "T05",
-   "rep": 3,
-   "nSolves": 2,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 27,
-     "rationale": "Binary search in [23, 31]: H0=23 fails, upper bound 31 likely passes. Midpoint 27 mm splits the domain efficiently to converge in ~2 more solves."
+      "level": "L0",
+      "taskId": "T01",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Cantilever plate stiffness scales as H³. Going from 29 mm to 30 mm gives a stiffness ratio of (30/29)³ ≈ 1.107, reducing displacement by ~9%. This is the minimum increment that provides a meaningful margin over the failing design while avoiding unnecessary oversizing; 31 mm is held in reserve if the current displacement is more than ~20% above the 0.088 mm limit."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 29,
-     "rationale": "Binary search between 27 mm (fail) and 31 mm (upper bound). Trying 29 mm as midpoint to converge efficiently."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 27,
-     "displacementMm": 0.11526128958458563,
-     "verdict": "FAIL"
+      "level": "L0",
+      "taskId": "T02",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Cantilever plate model: displacement scales as 1/H³. At H0=28 mm the displacement δ₀ > 0.092 mm. Using δ ∝ PL³/(E·b·H³/12), δ at 28 mm ≈ 0.107 mm. To reach T=0.092 mm: H = 28·(0.107/0.092)^(1/3) ≈ 29.5 mm. Rounding up to 30 mm gives a small safety margin while staying well within [20,31] and avoiding oversizing."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T01",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 31,
-   "finalDisplacementMm": 0.0772715691731774,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 31,
-     "rationale": "No FEA data yet. H0=29 mm fails. Domain ceiling is 31 mm. Probing the maximum first confirms whether the requirement is achievable at all. If H=31 passes, bisect between 29 and 31 to find the minimal height. If H=31 fails, the requirement cannot be met in [20,31]. Sensitivity of -0.008 mm/mm is too small to extrapolate reliably without a known baseline displacement."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 31,
-     "displacementMm": 0.0772715691731774,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T01",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "H0=29 mm fails. Sensitivity is measured at H=30 mm (-0.008018 mm/mm). Probing at 30 mm gives a displacement co-located with the sensitivity, letting me apply a one-step linear correction toward T=0.088 mm in the next solve if needed. Most information-efficient first point."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T01",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Using the 1/H³ plate stiffness model calibrated on the local sensitivity at 30 mm (−0.008018 mm/mm): C = sensitivity × H⁴ / 3 ≈ 2165, giving disp(30) ≈ 0.0802 mm &lt; 0.088 mm and disp(29) ≈ 0.0888 mm &gt; 0.088 mm. H=30 is the minimum integer height within [20,31] predicted to satisfy the requirement with no oversizing beyond 1 mm above H0."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T02",
-   "rep": 1,
-   "nSolves": 2,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Using the 1/H^3 beam scaling law: sensitivity at H=30 is -0.008018 mm/mm → δ(30) ≈ 0.008018×30/3 ≈ 0.0802 mm. Linear extrapolation gives δ(29) ≈ 0.0802 + 0.008018 ≈ 0.0882 mm < 0.092 mm (passes), and δ(28) ≈ 0.0962 mm (fails, consistent). H=29 mm is the minimal integer step above H0 expected to satisfy T=0.092 mm."
+      "level": "L0",
+      "taskId": "T02",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "For a plate in bending, stiffness scales as H³. The displacement ratio is (H0/H)³. At H0=28 mm the tray fails; a step to 30 mm gives a stiffness multiplier of (30/28)³ ≈ 1.23, reducing displacement by ~19 %. That headroom is enough to clear a threshold that is just above the H0 value, while staying well inside the [20, 31] mm domain and avoiding the hard ceiling at 31 mm."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 30,
-     "rationale": "At H=29 displacement is 0.09388 mm, excess = 0.00188 mm. Local sensitivity at H=30 is -0.008018 mm/mm, so ΔH ≈ 0.00188/0.008018 ≈ 0.23 mm above 29. H=29.23 rounds to 30 mm — smallest integer that should clear the 0.092 mm threshold."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "FAIL"
+      "level": "L0",
+      "taskId": "T02",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": false,
+      "finalHeightMm": null,
+      "finalDisplacementMm": null,
+      "stopReason": "single_shot_failed",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Plate-strip cantilever model: δ = 4·q·L³·(1−ν²)/(E·h³), q=100/190 N/mm, L=135 mm, E=2200 MPa, ν=0.35. At H=28 mm: δ≈0.094 mm (fails T=0.092). Required crossing at H≈28.2 mm. Proposing H=29 mm gives δ≈0.085 mm, ~8 % margin over T while staying close to the minimum. Domain check: 29 ∈ [20,31]."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "FAIL"
+        }
+      ]
     },
     {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T02",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "Sensitivity at H=30 mm is -0.008018 mm/mm. Plate-bending scaling gives disp(30)≈0.080 mm &lt; 0.092 mm target; linear back-extrapolation to H=28 adds +0.016 mm, consistent with H0 failing. Response is steeper below 30 mm, so H=30 is the reliable anchor. It keeps overshoot minimal while confirming the measurement reference point."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T02",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "H0=28 mm fails. The sensitivity edge is measured at H=30 mm, making that point the most reliable for estimation. Starting at 30 mm uses the oracle's own neighbourhood, avoids oversizing toward 31 mm, and gives a verified displacement to anchor any subsequent binary search within [30, 31] if needed."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T03",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 30,
-   "finalDisplacementMm": 0.08528957185789164,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 30,
-     "rationale": "No FEA data yet. Sensitivity is measured at H=30 mm, making it the best-informed first probe. H0=27 fails; H=30 adds 3 mm of bending stiffness (~×1.37 via H³) and sits where the local gradient −0.008 mm/mm is valid. Pass → back off toward 28–29 to reduce oversizing. Fail → H=31 is the only remaining option."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 30,
-     "displacementMm": 0.08528957185789164,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T03",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Sensitivity at H=30: dδ/dH=-0.008018 → δ(30)≈0.080 mm (below 0.095). 1/H³ crossover is near 28.4 mm. H=29 sits just above, accounting for steeper response below H=30, minimising oversizing. One more step to H=30 closes the loop if it fails."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T03",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Using u(h) ~ C/h³ with the local sensitivity d(u)/dh = -0.008018 at h=30 gives C = 0.008018 × 30⁴/3 ≈ 2165, hence u(30) ≈ 0.080 mm and u(27) ≈ 0.110 mm (consistent with the fail). The threshold crossing is near h ≈ (C/T)^(1/3) = (2165/0.095)^(1/3) ≈ 28.4 mm. Proposing 29 mm provides a one-step margin above the predicted crossing while avoiding oversizing beyond 30 mm."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T04",
-   "rep": 1,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Cubic model (disp∝H^-3) calibrated via local sensitivity at 30 mm: -0.008018≈-3·disp(30)/30 → disp(30)≈0.080 mm. Back-project to H=25: 0.080·(30/25)^3≈0.138 mm. Crossover: 0.1=0.138·(25/H)^3 → H≈27.9 mm. +1 mm margin for steeper true response far from 30 mm neighbourhood → 29 mm."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T04",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 29,
-     "rationale": "Local sensitivity at H=30: dδ/dH=−0.008018 → δ(30)≈0.080 mm. Cubic scaling δ∝H^−3 gives δ(29)≈0.089 mm &lt; T=0.1 mm, δ(28)≈0.098 mm too close to limit. H=29 gives confidence margin without oversizing to 30."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T04",
-   "rep": 3,
-   "nSolves": 2,
-   "converged": true,
-   "finalHeightMm": 29,
-   "finalDisplacementMm": 0.09387707145784678,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 28,
-     "rationale": "Using the sensitivity -0.008018 mm/mm at h=30 with 1/h³ cantilever scaling: d(δ)/d(h) = -3δ/h gives δ(30) ≈ 0.008018×30/3 ≈ 0.080 mm. Extrapolating to the threshold 0.1 mm: h = 30×(0.080/0.100)^(1/3) ≈ 27.8 mm. Rounding up to 28 mm targets the constraint boundary with minimal oversizing."
+      "level": "L0",
+      "taskId": "T03",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Cantilever plate analogy: δ ∝ PL³/(3EI) with I = b·H³/12. At H=27 mm the model fails. Scaling: H_new = H0·(δ0/T)^(1/3). Estimating δ0 ≈ 0.120 mm at H0=27 gives H_new ≈ 27·(0.120/0.095)^(1/3) ≈ 29.1 mm. H=29 is borderline (≈0.097 mm by the same scaling); H=30 gives ≈0.087 mm, safely under 0.095 mm with minimal oversizing, and stays within [20,31]."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 29,
-     "rationale": "At H=28 displacement=0.1036mm, need -0.0036mm. Sensitivity at H=30 is -0.008018 mm/mm; scaled to H=28 via (30/28)^4 gives ~-0.0105 mm/mm. Required ΔH≈0.34mm → H≈28.34mm. Rounding to 29mm adds a small margin against nonlinearity without oversizing, staying well inside [20,31]."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 28,
-     "displacementMm": 0.10363294359363535,
-     "verdict": "FAIL"
+      "level": "L0",
+      "taskId": "T03",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Plate bending model: δ = PL³/(3bD), D = EH³/[12(1−ν²)]. With P=100 N, L=135 mm, b=190 mm, E=2200 MPa, ν=0.35 → D_factor = 10.53. At H0=27 mm, δ ≈ 0.105 mm (fails). The threshold H satisfies H³ ≥ 21 746 mm³, giving H ≈ 27.9 mm. H=28 mm lands at ~0.094 mm — within tolerance but within model error. H=29 mm gives δ ≈ 0.085 mm, a safe 10 % margin without oversizing beyond the next integer step."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 29,
-     "displacementMm": 0.09387707145784678,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T05",
-   "rep": 1,
-   "nSolves": 2,
-   "converged": true,
-   "finalHeightMm": 28,
-   "finalDisplacementMm": 0.10363294359363535,
-   "stopReason": "converged",
-   "proposals": [
-    {
-     "heightMm": 27,
-     "rationale": "Using the local sensitivity dD/dh = -0.008018 mm/mm at h=30 mm and the bending-stiffness scaling D ∝ 1/h³, I back-calculated D(30) ≈ 0.080 mm. Solving 0.080*(30/h)³ = 0.11 gives h ≈ 27 mm. This is the predicted compliance threshold; a single solve here will either confirm satisfaction or bound the remaining search to [27, 30]."
+      "level": "L0",
+      "taskId": "T03",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Bending stiffness scales as H³. At H0=27 mm the tray fails, meaning displacement d(27) > 0.095 mm. Assuming d(27) ≈ 0.11 mm (a modest overrun), the required height is 27 × (0.11/0.095)^(1/3) ≈ 28.4 mm. Rounding up to 29 mm gives a safe margin while staying well within the [20, 31] mm domain and avoiding unnecessary oversizing."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 28,
-     "rationale": "At H=27 the displacement is 0.1153 mm, 0.005 mm above the 0.11 mm limit. Using a plate-bending scaling d(disp)/dH ≈ -3·disp/H ≈ -0.0128 mm/mm at H=27, a +1 mm step yields an estimated displacement of ~0.102 mm, comfortably below 0.11 mm with minimal oversizing. H=28 mm is the smallest integer step likely to clear the requirement."
-    }
-   ],
-   "history": [
-    {
-     "heightMm": 27,
-     "displacementMm": 0.11526128958458563,
-     "verdict": "FAIL"
+      "level": "L0",
+      "taskId": "T04",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Plate bending stiffness scales as h³. At H0=25 mm the tray fails δ≤0.1 mm. Targeting h=30 mm gives a stiffness ratio of (30/25)³ ≈ 1.73, which should bring a moderately failing design (δ₀ up to ~0.17 mm) within tolerance while staying 1 mm below the domain ceiling, leaving headroom if the first solve still misses."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
     },
     {
-     "heightMm": 28,
-     "displacementMm": 0.10363294359363535,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T05",
-   "rep": 2,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 28,
-   "finalDisplacementMm": 0.10363294359363535,
-   "stopReason": "converged",
-   "proposals": [
+      "level": "L0",
+      "taskId": "T04",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Bending stiffness scales as H^3. Going from 25 mm to 30 mm multiplies stiffness by (30/25)^3 ≈ 1.73, so displacement drops to roughly 58 % of the failing value. Without knowing the exact failure margin this factor gives comfortable headroom while staying 1 mm below the 31 mm ceiling, avoiding the boundary risk."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
     {
-     "heightMm": 28,
-     "rationale": "Using plate bending theory (displacement ∝ 1/H³) with the local sensitivity d(disp)/dH = -0.008018 mm/mm at H=30 mm: d(30) ≈ 0.008018×30/3 = 0.0802 mm. Inverting the power law gives the threshold H = 30×(0.0802/0.11)^(1/3) ≈ 27.0 mm. H=28 mm sits just above this estimate, likely satisfying the ≤0.11 mm requirement with minimal oversizing and one solve."
-    }
-   ],
-   "history": [
+      "level": "L0",
+      "taskId": "T04",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Cantilever plate bending: δ ∝ 1/t³. Rough estimate at H0=25 mm gives δ ≈ 0.15 mm (100N × 135³ / (3 × 2200 × 190×25³/12)). To reach T=0.1 mm, need (25/H)³ = 0.1/0.15 → H ≈ 28.7 mm. Rounding up to 29 mm stays well inside [20,31] and provides a small safety margin without over-stiffening."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
     {
-     "heightMm": 28,
-     "displacementMm": 0.10363294359363535,
-     "verdict": "PASS"
-    }
-   ]
-  },
-  {
-   "level": "L2",
-   "taskId": "T05",
-   "rep": 3,
-   "nSolves": 1,
-   "converged": true,
-   "finalHeightMm": 28,
-   "finalDisplacementMm": 0.10363294359363535,
-   "stopReason": "converged",
-   "proposals": [
+      "level": "L0",
+      "taskId": "T05",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 28,
+      "finalDisplacementMm": 0.10363294359363535,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 28,
+          "rationale": "Plate bending stiffness scales as H³. At H0=23 mm the tray fails; target T=0.11 mm. Without knowing the exact over-shoot, a conservative mid-range correction H=28 mm yields a stiffness ratio of (28/23)³ ≈ 1.81×, enough to cover a ~40-80 % excess displacement while staying well inside [20,31] and avoiding unnecessary oversizing."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "verdict": "PASS"
+        }
+      ]
+    },
     {
-     "heightMm": 28,
-     "rationale": "Using the local sensitivity at 30 mm (-0.008018 mm/mm) and assuming d ~ 1/H^3, back-solving gives C ≈ 2165, d(30) ≈ 0.080 mm and d(23) ≈ 0.178 mm (consistent with failure). The crossing d(H)=0.11 mm solves to H ≈ 27.0 mm. A +1 mm margin to 28 mm guards against the stated steeper true response away from 30 mm, while keeping oversizing minimal and well within [20,31]."
-    }
-   ],
-   "history": [
+      "level": "L0",
+      "taskId": "T05",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": false,
+      "finalHeightMm": null,
+      "finalDisplacementMm": null,
+      "stopReason": "single_shot_failed",
+      "proposals": [
+        {
+          "heightMm": 27,
+          "rationale": "Cantilever plate model (fixed long edge, load on opposite long edge): D = E·H³/[12(1−ν²)] = 208.9·H³ N·mm. Max tip deflection δ = (P/b)·L³/(3D) = 2067/H³ mm, with L=135 mm span, b=190 mm, P=100 N. At H0=23: δ≈0.170 mm (fails). Requirement δ≤0.11 gives H≥(2067/0.11)^(1/3)≈26.6 mm. H=27 mm yields δ≈0.105 mm, just inside the limit with minimal oversizing. H=26 gives ≈0.118 mm (still fails)."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "verdict": "FAIL"
+        }
+      ]
+    },
     {
-     "heightMm": 28,
-     "displacementMm": 0.10363294359363535,
-     "verdict": "PASS"
+      "level": "L0",
+      "taskId": "T05",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": false,
+      "finalHeightMm": null,
+      "finalDisplacementMm": null,
+      "stopReason": "single_shot_failed",
+      "proposals": [
+        {
+          "heightMm": 27,
+          "rationale": "Cantilever plate (span L=135 mm, width=190 mm): δ ∝ PL³/(3·E_eff·I) with I=190·H³/12 and E_eff=E/(1−ν²)=2508 MPa. Solving gives δ≈2065/H³ mm. At H=23 → 0.170 mm (fails). Critical H where δ=0.11: H=(2065/0.11)^(1/3)≈26.6 mm. H=27 yields ≈0.105 mm, just inside the 0.11 limit with ~5% margin and minimal oversizing."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "verdict": "FAIL"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T01",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 31,
+      "finalDisplacementMm": 0.0772715691731774,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 31,
+          "rationale": "H0=29mm fails at T=0.088mm. The domain ceiling is 31mm. Displacement scales roughly as 1/H^3 for a plate in bending, so going from 29 to 31mm gives a factor of (29/31)^3 ≈ 0.82 reduction — likely enough to pass. Starting at the maximum avoids wasting solves on intermediate heights that may still fail."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 31,
+          "displacementMm": 0.0772715691731774,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T01",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 31,
+      "finalDisplacementMm": 0.0772715691731774,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 31,
+          "rationale": "29 mm fails and the allowed domain ceiling is 31 mm. Testing the maximum first confirms whether any solution exists in the domain and, if it passes, gives us a bracket [29, 31] for bisection in a subsequent solve."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 31,
+          "displacementMm": 0.0772715691731774,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T01",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "H0=29 mm fails. Domain ceiling is 31 mm. With only two candidates left (30 and 31), trying 30 mm first minimises oversizing: if it passes, we stop; if it fails, 31 mm is the only remaining option."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T02",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Bisect between 28 (fails) and 31 (upper bound). 30 mm is a reasonable midpoint to quickly narrow the feasible range with one solve."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T02",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Binary search start: midpoint between 28 (fails) and 31 (upper bound). Displacement scales roughly as H^-3 for bending stiffness, so going from 28 to 30 gives ~(28/30)^3 ≈ 0.82x displacement reduction. If H0=28 is close to the threshold, 30 mm should suffice without oversizing to 31."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T02",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Binary search between 28 (fails) and 31 (upper bound). Starting at 30 mm as a first probe to narrow the range efficiently."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T03",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "H0=27 fails; domain is [27,31]. Binary search midpoint of [27,31] is 29. This splits the remaining range efficiently to converge in ~2 more solves."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T03",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Binary search in the feasible domain [27, 31] mm. H0=27 fails; upper bound 31 is assumed to pass. Midpoint 29 mm splits the interval efficiently — one solve determines which half to pursue next."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T03",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Binary search in [27, 31]: H0=27 fails, upper bound=31. Mid-point is 29 mm — minimises oversizing while halving the search space in one solve."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T04",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "No FEA data yet. Displacement scales roughly as 1/H^3 for a plate in bending. At H0=25 mm the tray fails T=0.1 mm. To comfortably meet the target while staying within [20,31] mm and leaving room for a binary-search refinement, start near the top of the domain at 30 mm."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T04",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "No FEA data yet. Displacement scales roughly as H^-3 for bending stiffness. At H0=25 mm the tray fails T=0.1 mm. To meet a tight 0.1 mm limit I need meaningful stiffness gain; H=30 mm gives (25/30)^3 ≈ 0.58 reduction in displacement — a strong first probe near the upper bound to establish feasibility before bisecting downward."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T04",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "No FEA data yet. Displacement scales roughly as H^-3 for bending stiffness. At H0=25mm we fail T=0.1mm. To meet the requirement with margin while staying in [20,31], start at H=30mm — near the stiff end of the domain to likely satisfy the constraint in one solve, minimizing total solves."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T05",
+      "rep": 1,
+      "nSolves": 2,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 27,
+          "rationale": "No FEA data yet. Binary search in [23, 31]: midpoint is 27 mm. This splits the feasible range efficiently and avoids oversizing."
+        },
+        {
+          "heightMm": 29,
+          "rationale": "Binary search between 27 mm (FAIL) and 31 mm (upper bound). Midpoint is 29 mm."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "verdict": "FAIL"
+        },
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T05",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 28,
+      "finalDisplacementMm": 0.10363294359363535,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 28,
+          "rationale": "Binary search in [24, 31] (23 fails). Midpoint is 27.5, rounded up to 28 mm to bias toward passing on first try."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L1",
+      "taskId": "T05",
+      "rep": 3,
+      "nSolves": 2,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 27,
+          "rationale": "Binary search in [23, 31]: H0=23 fails, upper bound 31 likely passes. Midpoint 27 mm splits the domain efficiently to converge in ~2 more solves."
+        },
+        {
+          "heightMm": 29,
+          "rationale": "Binary search between 27 mm (fail) and 31 mm (upper bound). Trying 29 mm as midpoint to converge efficiently."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "verdict": "FAIL"
+        },
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T01",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 31,
+      "finalDisplacementMm": 0.0772715691731774,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 31,
+          "rationale": "No FEA data yet. H0=29 mm fails. Domain ceiling is 31 mm. Probing the maximum first confirms whether the requirement is achievable at all. If H=31 passes, bisect between 29 and 31 to find the minimal height. If H=31 fails, the requirement cannot be met in [20,31]. Sensitivity of -0.008 mm/mm is too small to extrapolate reliably without a known baseline displacement."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 31,
+          "displacementMm": 0.0772715691731774,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T01",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "H0=29 mm fails. Sensitivity is measured at H=30 mm (-0.008018 mm/mm). Probing at 30 mm gives a displacement co-located with the sensitivity, letting me apply a one-step linear correction toward T=0.088 mm in the next solve if needed. Most information-efficient first point."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T01",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Using the 1/H³ plate stiffness model calibrated on the local sensitivity at 30 mm (−0.008018 mm/mm): C = sensitivity × H⁴ / 3 ≈ 2165, giving disp(30) ≈ 0.0802 mm &lt; 0.088 mm and disp(29) ≈ 0.0888 mm &gt; 0.088 mm. H=30 is the minimum integer height within [20,31] predicted to satisfy the requirement with no oversizing beyond 1 mm above H0."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T02",
+      "rep": 1,
+      "nSolves": 2,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Using the 1/H^3 beam scaling law: sensitivity at H=30 is -0.008018 mm/mm → δ(30) ≈ 0.008018×30/3 ≈ 0.0802 mm. Linear extrapolation gives δ(29) ≈ 0.0802 + 0.008018 ≈ 0.0882 mm < 0.092 mm (passes), and δ(28) ≈ 0.0962 mm (fails, consistent). H=29 mm is the minimal integer step above H0 expected to satisfy T=0.092 mm."
+        },
+        {
+          "heightMm": 30,
+          "rationale": "At H=29 displacement is 0.09388 mm, excess = 0.00188 mm. Local sensitivity at H=30 is -0.008018 mm/mm, so ΔH ≈ 0.00188/0.008018 ≈ 0.23 mm above 29. H=29.23 rounds to 30 mm — smallest integer that should clear the 0.092 mm threshold."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "FAIL"
+        },
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T02",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "Sensitivity at H=30 mm is -0.008018 mm/mm. Plate-bending scaling gives disp(30)≈0.080 mm &lt; 0.092 mm target; linear back-extrapolation to H=28 adds +0.016 mm, consistent with H0 failing. Response is steeper below 30 mm, so H=30 is the reliable anchor. It keeps overshoot minimal while confirming the measurement reference point."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T02",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "H0=28 mm fails. The sensitivity edge is measured at H=30 mm, making that point the most reliable for estimation. Starting at 30 mm uses the oracle's own neighbourhood, avoids oversizing toward 31 mm, and gives a verified displacement to anchor any subsequent binary search within [30, 31] if needed."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T03",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 30,
+      "finalDisplacementMm": 0.08528957185789164,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 30,
+          "rationale": "No FEA data yet. Sensitivity is measured at H=30 mm, making it the best-informed first probe. H0=27 fails; H=30 adds 3 mm of bending stiffness (~×1.37 via H³) and sits where the local gradient −0.008 mm/mm is valid. Pass → back off toward 28–29 to reduce oversizing. Fail → H=31 is the only remaining option."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 30,
+          "displacementMm": 0.08528957185789164,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T03",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Sensitivity at H=30: dδ/dH=-0.008018 → δ(30)≈0.080 mm (below 0.095). 1/H³ crossover is near 28.4 mm. H=29 sits just above, accounting for steeper response below H=30, minimising oversizing. One more step to H=30 closes the loop if it fails."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T03",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Using u(h) ~ C/h³ with the local sensitivity d(u)/dh = -0.008018 at h=30 gives C = 0.008018 × 30⁴/3 ≈ 2165, hence u(30) ≈ 0.080 mm and u(27) ≈ 0.110 mm (consistent with the fail). The threshold crossing is near h ≈ (C/T)^(1/3) = (2165/0.095)^(1/3) ≈ 28.4 mm. Proposing 29 mm provides a one-step margin above the predicted crossing while avoiding oversizing beyond 30 mm."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T04",
+      "rep": 1,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Cubic model (disp∝H^-3) calibrated via local sensitivity at 30 mm: -0.008018≈-3·disp(30)/30 → disp(30)≈0.080 mm. Back-project to H=25: 0.080·(30/25)^3≈0.138 mm. Crossover: 0.1=0.138·(25/H)^3 → H≈27.9 mm. +1 mm margin for steeper true response far from 30 mm neighbourhood → 29 mm."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T04",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 29,
+          "rationale": "Local sensitivity at H=30: dδ/dH=−0.008018 → δ(30)≈0.080 mm. Cubic scaling δ∝H^−3 gives δ(29)≈0.089 mm &lt; T=0.1 mm, δ(28)≈0.098 mm too close to limit. H=29 gives confidence margin without oversizing to 30."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T04",
+      "rep": 3,
+      "nSolves": 2,
+      "converged": true,
+      "finalHeightMm": 29,
+      "finalDisplacementMm": 0.09387707145784678,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 28,
+          "rationale": "Using the sensitivity -0.008018 mm/mm at h=30 with 1/h³ cantilever scaling: d(δ)/d(h) = -3δ/h gives δ(30) ≈ 0.008018×30/3 ≈ 0.080 mm. Extrapolating to the threshold 0.1 mm: h = 30×(0.080/0.100)^(1/3) ≈ 27.8 mm. Rounding up to 28 mm targets the constraint boundary with minimal oversizing."
+        },
+        {
+          "heightMm": 29,
+          "rationale": "At H=28 displacement=0.1036mm, need -0.0036mm. Sensitivity at H=30 is -0.008018 mm/mm; scaled to H=28 via (30/28)^4 gives ~-0.0105 mm/mm. Required ΔH≈0.34mm → H≈28.34mm. Rounding to 29mm adds a small margin against nonlinearity without oversizing, staying well inside [20,31]."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "verdict": "FAIL"
+        },
+        {
+          "heightMm": 29,
+          "displacementMm": 0.09387707145784678,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T05",
+      "rep": 1,
+      "nSolves": 2,
+      "converged": true,
+      "finalHeightMm": 28,
+      "finalDisplacementMm": 0.10363294359363535,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 27,
+          "rationale": "Using the local sensitivity dD/dh = -0.008018 mm/mm at h=30 mm and the bending-stiffness scaling D ∝ 1/h³, I back-calculated D(30) ≈ 0.080 mm. Solving 0.080*(30/h)³ = 0.11 gives h ≈ 27 mm. This is the predicted compliance threshold; a single solve here will either confirm satisfaction or bound the remaining search to [27, 30]."
+        },
+        {
+          "heightMm": 28,
+          "rationale": "At H=27 the displacement is 0.1153 mm, 0.005 mm above the 0.11 mm limit. Using a plate-bending scaling d(disp)/dH ≈ -3·disp/H ≈ -0.0128 mm/mm at H=27, a +1 mm step yields an estimated displacement of ~0.102 mm, comfortably below 0.11 mm with minimal oversizing. H=28 mm is the smallest integer step likely to clear the requirement."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 27,
+          "displacementMm": 0.11526128958458563,
+          "verdict": "FAIL"
+        },
+        {
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T05",
+      "rep": 2,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 28,
+      "finalDisplacementMm": 0.10363294359363535,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 28,
+          "rationale": "Using plate bending theory (displacement ∝ 1/H³) with the local sensitivity d(disp)/dH = -0.008018 mm/mm at H=30 mm: d(30) ≈ 0.008018×30/3 = 0.0802 mm. Inverting the power law gives the threshold H = 30×(0.0802/0.11)^(1/3) ≈ 27.0 mm. H=28 mm sits just above this estimate, likely satisfying the ≤0.11 mm requirement with minimal oversizing and one solve."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "verdict": "PASS"
+        }
+      ]
+    },
+    {
+      "level": "L2",
+      "taskId": "T05",
+      "rep": 3,
+      "nSolves": 1,
+      "converged": true,
+      "finalHeightMm": 28,
+      "finalDisplacementMm": 0.10363294359363535,
+      "stopReason": "converged",
+      "proposals": [
+        {
+          "heightMm": 28,
+          "rationale": "Using the local sensitivity at 30 mm (-0.008018 mm/mm) and assuming d ~ 1/H^3, back-solving gives C ≈ 2165, d(30) ≈ 0.080 mm and d(23) ≈ 0.178 mm (consistent with failure). The crossing d(H)=0.11 mm solves to H ≈ 27.0 mm. A +1 mm margin to 28 mm guards against the stated steeper true response away from 30 mm, while keeping oversizing minimal and well within [20,31]."
+        }
+      ],
+      "history": [
+        {
+          "heightMm": 28,
+          "displacementMm": 0.10363294359363535,
+          "verdict": "PASS"
+        }
+      ]
     }
-   ]
-  }
- ]
+  ]
 }

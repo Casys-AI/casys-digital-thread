@@ -118,12 +118,12 @@ two bounded bootstrap operations:
    blank SysML document, and root package, reads the root back, normalizes its
    identities into `syson-model-seed-capture/2.0`, and publishes r2.
 
-The separate `coffee-machine-cm01-v3` golden path registers five bounded
-operations for its fixed architecture, semantic CAD, nominal Modelica observation,
-read-only ERP BOM observation, and isolated DripTray proof. They do not turn the
-historical CM-01 r6 record into a fallback. Its five case-specific correction/recovery
-operations then lead to provider-free R10 → R11 identity recovery; local R11 → R12
-closeout reconciles the retained failed R2 work without relabelling its run. See the
+The separate `coffee-machine-cm01-v3` golden path registers five bounded operations for
+its fixed architecture, semantic CAD, nominal Modelica observation, read-only ERP BOM
+observation, and isolated DripTray proof. They do not turn the historical CM-01 r6
+record into a fallback. Its five case-specific correction/recovery operations then lead
+to provider-free R10 → R11 identity recovery; local R11 → R12 closeout reconciles the
+retained failed R2 work without relabelling its run. See the
 [local CM-01 V3 guide](how-to/run-cm01-v3-golden-local.md) for exact scope, provider
 topology, evidence locations, and comparison boundary.
 
@@ -136,7 +136,8 @@ or compliance claim.
 
 The generic route stops at r2. Any future architecture, CAD, physics, cost, compliance,
 or verified-requirement capability must begin with a sourced, reviewed definition and a
-separate executor/output contract. CM-01 remains the sole current CAD/physics proof case.
+separate executor/output contract. CM-01 remains the sole current CAD/physics proof
+case.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
 SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its

@@ -1,361 +1,361 @@
 {
- "schemaVersion": "oracle-2d-traversal-campaign/1.0",
- "reusedMeasurements": {
-  "count": 3,
-  "provenance": [
-   "hard-campaign reconnaissance 2026-08-04: u(6)=4.998906, u(8)=4.281648 at T=6",
-   "two-parameter bench smoke 2026-08-04: u(T=6)=4.998906, u(T=8)=2.512263 at R=6"
-  ]
- },
- "start": {
-  "rib": 6,
-  "plate": 6
- },
- "edges": [
-  {
-   "parameter": "rib",
-   "metric": "disp",
-   "derivative": -0.3586289953098927,
-   "unit": "mm/mm",
-   "neighbourhood": {
-    "base": 7,
-    "radius": 1
-   },
-   "provenance": "hard-campaign reconnaissance 2026-08-04: u(6)=4.998906, u(8)=4.281648 at T=6"
+  "schemaVersion": "oracle-2d-traversal-campaign/1.0",
+  "reusedMeasurements": {
+    "count": 3,
+    "provenance": [
+      "hard-campaign reconnaissance 2026-08-04: u(6)=4.998906, u(8)=4.281648 at T=6",
+      "two-parameter bench smoke 2026-08-04: u(T=6)=4.998906, u(T=8)=2.512263 at R=6"
+    ]
   },
-  {
-   "parameter": "plate",
-   "metric": "disp",
-   "derivative": -1.243321299687428,
-   "unit": "mm/mm",
-   "neighbourhood": {
-    "base": 7,
-    "radius": 1
-   },
-   "provenance": "two-parameter bench smoke 2026-08-04: u(T=6)=4.998906, u(T=8)=2.512263 at R=6"
+  "start": {
+    "rib": 6,
+    "plate": 6
   },
-  {
-   "parameter": "rib",
-   "metric": "added_mass",
-   "derivative": 5.04,
-   "unit": "g/mm",
-   "neighbourhood": {
-    "base": 7,
-    "radius": 1000
-   },
-   "provenance": "analytic: 5 ribs x 8 x 120 mm2 x 0.00105 g/mm3, exact"
-  },
-  {
-   "parameter": "plate",
-   "metric": "added_mass",
-   "derivative": 26.932499999999997,
-   "unit": "g/mm",
-   "neighbourhood": {
-    "base": 7,
-    "radius": 1000
-   },
-   "provenance": "analytic: 190 x 135 mm2 x 0.00105 g/mm3, exact"
-  }
- ],
- "tasks": [
-  {
-   "id": "T2D-1",
-   "dispThresholdMm": 4.5,
-   "addedMassCapG": 15
-  },
-  {
-   "id": "T2D-2",
-   "dispThresholdMm": 4,
-   "addedMassCapG": 25
-  },
-  {
-   "id": "T2D-3",
-   "dispThresholdMm": 3.5,
-   "addedMassCapG": 40
-  },
-  {
-   "id": "T2D-4",
-   "dispThresholdMm": 3,
-   "addedMassCapG": 45
-  }
- ],
- "summary": [
-  {
-   "arm": "TRAV",
-   "converged": 4,
-   "runs": 4,
-   "totalSolves": 4,
-   "totalAddedMassG": 102.63194365215605
-  },
-  {
-   "arm": "BASE",
-   "converged": 3,
-   "runs": 4,
-   "totalSolves": 13,
-   "totalAddedMassG": 70.63874999999999
-  }
- ],
- "results": [
-  {
-   "arm": "TRAV",
-   "taskId": "T2D-1",
-   "nSolves": 1,
-   "converged": true,
-   "final": {
-    "rib": 8,
-    "plate": 6.005346615712047,
-    "addedMassG": 10.223997727664692
-   },
-   "stopReason": "converged",
-   "log": [
+  "edges": [
     {
-     "rib": 8,
-     "plate": 6.005346615712047,
-     "displacementMm": 4.271214992119997,
-     "addedMassG": 10.223997727664692,
-     "dispVerdict": "PASS",
-     "massVerdict": "PASS"
+      "parameter": "rib",
+      "metric": "disp",
+      "derivative": -0.3586289953098927,
+      "unit": "mm/mm",
+      "neighbourhood": {
+        "base": 7,
+        "radius": 1
+      },
+      "provenance": "hard-campaign reconnaissance 2026-08-04: u(6)=4.998906, u(8)=4.281648 at T=6"
+    },
+    {
+      "parameter": "plate",
+      "metric": "disp",
+      "derivative": -1.243321299687428,
+      "unit": "mm/mm",
+      "neighbourhood": {
+        "base": 7,
+        "radius": 1
+      },
+      "provenance": "two-parameter bench smoke 2026-08-04: u(T=6)=4.998906, u(T=8)=2.512263 at R=6"
+    },
+    {
+      "parameter": "rib",
+      "metric": "added_mass",
+      "derivative": 5.04,
+      "unit": "g/mm",
+      "neighbourhood": {
+        "base": 7,
+        "radius": 1000
+      },
+      "provenance": "analytic: 5 ribs x 8 x 120 mm2 x 0.00105 g/mm3, exact"
+    },
+    {
+      "parameter": "plate",
+      "metric": "added_mass",
+      "derivative": 26.932499999999997,
+      "unit": "g/mm",
+      "neighbourhood": {
+        "base": 7,
+        "radius": 1000
+      },
+      "provenance": "analytic: 190 x 135 mm2 x 0.00105 g/mm3, exact"
     }
-   ],
-   "notes": [
-    "observed u at start reused from reconnaissance (0 solves)"
-   ]
-  },
-  {
-   "arm": "BASE",
-   "taskId": "T2D-1",
-   "nSolves": 2,
-   "converged": true,
-   "final": {
-    "rib": 8,
-    "plate": 6,
-    "addedMassG": 10.08
-   },
-   "stopReason": "converged",
-   "log": [
+  ],
+  "tasks": [
     {
-     "rib": 7,
-     "plate": 6,
-     "displacementMm": 4.604345401704748,
-     "addedMassG": 5.04,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
+      "id": "T2D-1",
+      "dispThresholdMm": 4.5,
+      "addedMassCapG": 15
     },
     {
-     "rib": 8,
-     "plate": 6,
-     "displacementMm": 4.281647561196031,
-     "addedMassG": 10.08,
-     "dispVerdict": "PASS",
-     "massVerdict": "PASS"
+      "id": "T2D-2",
+      "dispThresholdMm": 4,
+      "addedMassCapG": 25
+    },
+    {
+      "id": "T2D-3",
+      "dispThresholdMm": 3.5,
+      "addedMassCapG": 40
+    },
+    {
+      "id": "T2D-4",
+      "dispThresholdMm": 3,
+      "addedMassCapG": 45
     }
-   ],
-   "notes": []
-  },
-  {
-   "arm": "TRAV",
-   "taskId": "T2D-2",
-   "nSolves": 1,
-   "converged": true,
-   "final": {
-    "rib": 8,
-    "plate": 6.38738784682376,
-    "addedMassG": 20.513323184580912
-   },
-   "stopReason": "converged",
-   "log": [
+  ],
+  "summary": [
     {
-     "rib": 8,
-     "plate": 6.38738784682376,
-     "displacementMm": 3.7040448635549375,
-     "addedMassG": 20.513323184580912,
-     "dispVerdict": "PASS",
-     "massVerdict": "PASS"
+      "arm": "TRAV",
+      "converged": 4,
+      "runs": 4,
+      "totalSolves": 4,
+      "totalAddedMassG": 102.63194365215605
+    },
+    {
+      "arm": "BASE",
+      "converged": 3,
+      "runs": 4,
+      "totalSolves": 13,
+      "totalAddedMassG": 70.63874999999999
     }
-   ],
-   "notes": [
-    "observed u at start reused from reconnaissance (0 solves)"
-   ]
-  },
-  {
-   "arm": "BASE",
-   "taskId": "T2D-2",
-   "nSolves": 3,
-   "converged": true,
-   "final": {
-    "rib": 8,
-    "plate": 6.5,
-    "addedMassG": 23.546249999999997
-   },
-   "stopReason": "converged",
-   "log": [
+  ],
+  "results": [
     {
-     "rib": 7,
-     "plate": 6,
-     "displacementMm": 4.604345401704748,
-     "addedMassG": 5.04,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
+      "arm": "TRAV",
+      "taskId": "T2D-1",
+      "nSolves": 1,
+      "converged": true,
+      "final": {
+        "rib": 8,
+        "plate": 6.005346615712047,
+        "addedMassG": 10.223997727664692
+      },
+      "stopReason": "converged",
+      "log": [
+        {
+          "rib": 8,
+          "plate": 6.005346615712047,
+          "displacementMm": 4.271214992119997,
+          "addedMassG": 10.223997727664692,
+          "dispVerdict": "PASS",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": [
+        "observed u at start reused from reconnaissance (0 solves)"
+      ]
     },
     {
-     "rib": 8,
-     "plate": 6,
-     "displacementMm": 4.281647561196031,
-     "addedMassG": 10.08,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
+      "arm": "BASE",
+      "taskId": "T2D-1",
+      "nSolves": 2,
+      "converged": true,
+      "final": {
+        "rib": 8,
+        "plate": 6,
+        "addedMassG": 10.08
+      },
+      "stopReason": "converged",
+      "log": [
+        {
+          "rib": 7,
+          "plate": 6,
+          "displacementMm": 4.604345401704748,
+          "addedMassG": 5.04,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 6,
+          "displacementMm": 4.281647561196031,
+          "addedMassG": 10.08,
+          "dispVerdict": "PASS",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": []
     },
     {
-     "rib": 8,
-     "plate": 6.5,
-     "displacementMm": 3.5556747659444743,
-     "addedMassG": 23.546249999999997,
-     "dispVerdict": "PASS",
-     "massVerdict": "PASS"
+      "arm": "TRAV",
+      "taskId": "T2D-2",
+      "nSolves": 1,
+      "converged": true,
+      "final": {
+        "rib": 8,
+        "plate": 6.38738784682376,
+        "addedMassG": 20.513323184580912
+      },
+      "stopReason": "converged",
+      "log": [
+        {
+          "rib": 8,
+          "plate": 6.38738784682376,
+          "displacementMm": 3.7040448635549375,
+          "addedMassG": 20.513323184580912,
+          "dispVerdict": "PASS",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": [
+        "observed u at start reused from reconnaissance (0 solves)"
+      ]
+    },
+    {
+      "arm": "BASE",
+      "taskId": "T2D-2",
+      "nSolves": 3,
+      "converged": true,
+      "final": {
+        "rib": 8,
+        "plate": 6.5,
+        "addedMassG": 23.546249999999997
+      },
+      "stopReason": "converged",
+      "log": [
+        {
+          "rib": 7,
+          "plate": 6,
+          "displacementMm": 4.604345401704748,
+          "addedMassG": 5.04,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 6,
+          "displacementMm": 4.281647561196031,
+          "addedMassG": 10.08,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 6.5,
+          "displacementMm": 3.5556747659444743,
+          "addedMassG": 23.546249999999997,
+          "dispVerdict": "PASS",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "arm": "TRAV",
+      "taskId": "T2D-3",
+      "nSolves": 1,
+      "converged": true,
+      "final": {
+        "rib": 8,
+        "plate": 6.769429077935473,
+        "addedMassG": 30.802648641497136
+      },
+      "stopReason": "converged",
+      "log": [
+        {
+          "rib": 8,
+          "plate": 6.769429077935473,
+          "displacementMm": 3.253750916221998,
+          "addedMassG": 30.802648641497136,
+          "dispVerdict": "PASS",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": [
+        "observed u at start reused from reconnaissance (0 solves)"
+      ]
+    },
+    {
+      "arm": "BASE",
+      "taskId": "T2D-3",
+      "nSolves": 4,
+      "converged": true,
+      "final": {
+        "rib": 8,
+        "plate": 7,
+        "addedMassG": 37.012499999999996
+      },
+      "stopReason": "converged",
+      "log": [
+        {
+          "rib": 7,
+          "plate": 6,
+          "displacementMm": 4.604345401704748,
+          "addedMassG": 5.04,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 6,
+          "displacementMm": 4.281647561196031,
+          "addedMassG": 10.08,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 6.5,
+          "displacementMm": 3.5556747659444743,
+          "addedMassG": 23.546249999999997,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 7,
+          "displacementMm": 3.0083360617136785,
+          "addedMassG": 37.012499999999996,
+          "dispVerdict": "PASS",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "arm": "TRAV",
+      "taskId": "T2D-4",
+      "nSolves": 1,
+      "converged": true,
+      "final": {
+        "rib": 8,
+        "plate": 7.151470309047186,
+        "addedMassG": 41.091974098413324
+      },
+      "stopReason": "converged",
+      "log": [
+        {
+          "rib": 8,
+          "plate": 7.151470309047186,
+          "displacementMm": 2.8468530371846024,
+          "addedMassG": 41.091974098413324,
+          "dispVerdict": "PASS",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": [
+        "observed u at start reused from reconnaissance (0 solves)"
+      ]
+    },
+    {
+      "arm": "BASE",
+      "taskId": "T2D-4",
+      "nSolves": 4,
+      "converged": false,
+      "final": null,
+      "stopReason": "budget_exceeded",
+      "log": [
+        {
+          "rib": 7,
+          "plate": 6,
+          "displacementMm": 4.604345401704748,
+          "addedMassG": 5.04,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 6,
+          "displacementMm": 4.281647561196031,
+          "addedMassG": 10.08,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 6.5,
+          "displacementMm": 3.5556747659444743,
+          "addedMassG": 23.546249999999997,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        },
+        {
+          "rib": 8,
+          "plate": 7,
+          "displacementMm": 3.0083360617136785,
+          "addedMassG": 37.012499999999996,
+          "dispVerdict": "FAIL",
+          "massVerdict": "PASS"
+        }
+      ],
+      "notes": []
     }
-   ],
-   "notes": []
-  },
-  {
-   "arm": "TRAV",
-   "taskId": "T2D-3",
-   "nSolves": 1,
-   "converged": true,
-   "final": {
-    "rib": 8,
-    "plate": 6.769429077935473,
-    "addedMassG": 30.802648641497136
-   },
-   "stopReason": "converged",
-   "log": [
-    {
-     "rib": 8,
-     "plate": 6.769429077935473,
-     "displacementMm": 3.253750916221998,
-     "addedMassG": 30.802648641497136,
-     "dispVerdict": "PASS",
-     "massVerdict": "PASS"
-    }
-   ],
-   "notes": [
-    "observed u at start reused from reconnaissance (0 solves)"
-   ]
-  },
-  {
-   "arm": "BASE",
-   "taskId": "T2D-3",
-   "nSolves": 4,
-   "converged": true,
-   "final": {
-    "rib": 8,
-    "plate": 7,
-    "addedMassG": 37.012499999999996
-   },
-   "stopReason": "converged",
-   "log": [
-    {
-     "rib": 7,
-     "plate": 6,
-     "displacementMm": 4.604345401704748,
-     "addedMassG": 5.04,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
-    },
-    {
-     "rib": 8,
-     "plate": 6,
-     "displacementMm": 4.281647561196031,
-     "addedMassG": 10.08,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
-    },
-    {
-     "rib": 8,
-     "plate": 6.5,
-     "displacementMm": 3.5556747659444743,
-     "addedMassG": 23.546249999999997,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
-    },
-    {
-     "rib": 8,
-     "plate": 7,
-     "displacementMm": 3.0083360617136785,
-     "addedMassG": 37.012499999999996,
-     "dispVerdict": "PASS",
-     "massVerdict": "PASS"
-    }
-   ],
-   "notes": []
-  },
-  {
-   "arm": "TRAV",
-   "taskId": "T2D-4",
-   "nSolves": 1,
-   "converged": true,
-   "final": {
-    "rib": 8,
-    "plate": 7.151470309047186,
-    "addedMassG": 41.091974098413324
-   },
-   "stopReason": "converged",
-   "log": [
-    {
-     "rib": 8,
-     "plate": 7.151470309047186,
-     "displacementMm": 2.8468530371846024,
-     "addedMassG": 41.091974098413324,
-     "dispVerdict": "PASS",
-     "massVerdict": "PASS"
-    }
-   ],
-   "notes": [
-    "observed u at start reused from reconnaissance (0 solves)"
-   ]
-  },
-  {
-   "arm": "BASE",
-   "taskId": "T2D-4",
-   "nSolves": 4,
-   "converged": false,
-   "final": null,
-   "stopReason": "budget_exceeded",
-   "log": [
-    {
-     "rib": 7,
-     "plate": 6,
-     "displacementMm": 4.604345401704748,
-     "addedMassG": 5.04,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
-    },
-    {
-     "rib": 8,
-     "plate": 6,
-     "displacementMm": 4.281647561196031,
-     "addedMassG": 10.08,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
-    },
-    {
-     "rib": 8,
-     "plate": 6.5,
-     "displacementMm": 3.5556747659444743,
-     "addedMassG": 23.546249999999997,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
-    },
-    {
-     "rib": 8,
-     "plate": 7,
-     "displacementMm": 3.0083360617136785,
-     "addedMassG": 37.012499999999996,
-     "dispVerdict": "FAIL",
-     "massVerdict": "PASS"
-    }
-   ],
-   "notes": []
-  }
- ],
- "finishedAt": "2026-08-04T16:35:29.528Z"
+  ],
+  "finishedAt": "2026-08-04T16:35:29.528Z"
 }

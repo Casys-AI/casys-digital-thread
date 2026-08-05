@@ -113,12 +113,12 @@ exact documentary r1
 
 The `syson-model-seed-capture/2.0` record contains normalized project, document, and
 root-package identities plus the exact approved-brief, project-change and documentary
-artifact authorization chain.
-It does not add a system architecture, requirements, CAD, simulation, measurement, or
-verification verdict. Before each non-idempotent SysON creation, the executor persists a
-write-ahead attempt record. If the provider outcome is unknown, it stops for explicit
-review instead of blindly retrying a possibly successful creation. This control flow is
-a closed executor contract, not a reusable YAML-node pattern.
+artifact authorization chain. It does not add a system architecture, requirements, CAD,
+simulation, measurement, or verification verdict. Before each non-idempotent SysON
+creation, the executor persists a write-ahead attempt record. If the provider outcome is
+unknown, it stops for explicit review instead of blindly retrying a possibly successful
+creation. This control flow is a closed executor contract, not a reusable YAML-node
+pattern.
 
 ## Historical r6 mechanical slice
 
@@ -127,9 +127,8 @@ drives the retained r6 provenance only. The current CM-01 V3 golden path uses it
 registered code-owned executors and captures, not a generic YAML operation; see the
 [golden-run guide](../how-to/run-cm01-v3-golden-local.md).
 
-That historical YAML
-declares the solve/normalize/evaluate DAG. The CM-01 product runner surrounds it with
-the approved SysON preflight and build123d generation:
+That historical YAML declares the solve/normalize/evaluate DAG. The CM-01 product runner
+surrounds it with the approved SysON preflight and build123d generation:
 
 ```text
 SysON preflight ──▶ build123d STEP ──▶ CalculiX ──▶ normalization ──▶ SysON evaluation

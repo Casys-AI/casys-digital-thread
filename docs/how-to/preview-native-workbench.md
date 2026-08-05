@@ -317,8 +317,8 @@ from exact r1. These operations persist and read back their closed captures and 
 an uncertain non-idempotent write instead of retrying it blindly. Any future
 requirements, CAD, simulation, measurement, or verification step still needs its own
 reviewed executor, output validator, materializer, and evidence contract. The fixed
-CM-01 V3 catalog is the current exception; its historical r5/r6 proof is provenance,
-not a generic agent lifecycle recipe.
+CM-01 V3 catalog is the current exception; its historical r5/r6 proof is provenance, not
+a generic agent lifecycle recipe.
 
 The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
 attention, and where to go next. The five product sections have distinct jobs:

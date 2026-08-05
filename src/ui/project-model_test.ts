@@ -150,9 +150,7 @@ Deno.test("Project Path reads an unfinished lifecycle as retained history, never
   (retry as unknown as { status: string }).status = "ready";
 
   const path = buildProjectPath(mutable, thread);
-  const mechanical = path.phases.find((item) =>
-    item.phase.id === "verification"
-  );
+  const mechanical = path.phases.find((item) => item.phase.id === "verification");
   assertEquals(mechanical?.lifecycle?.state, "retained");
   for (const item of path.phases) {
     if (!item.lifecycle) continue;
@@ -274,9 +272,7 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
     "a measurement feeding a folded enrichment folds with it — it is " +
       "instrumentation of the model, not an engineering gate",
   );
-  const architecture = path.phases.find((item) =>
-    item.phase.id === "architecture"
-  );
+  const architecture = path.phases.find((item) => item.phase.id === "architecture");
   assertEquals(architecture?.lifecycle, {
     affectedComponentIds: [],
     correctionCount: 0,
@@ -292,9 +288,7 @@ Deno.test("Project Path folds the exact R3 identity repair into Mechanical proof
     includeIdentityRepair: true,
   });
   const path = buildProjectPath(project, thread);
-  const mechanical = path.phases.find((item) =>
-    item.phase.id === "verification"
-  );
+  const mechanical = path.phases.find((item) => item.phase.id === "verification");
 
   assertEquals(
     PROJECT_PATH_PRESENTATION_POLICY.identityRepair.operationId,
@@ -360,8 +354,7 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
                 snapshotRevision: 10,
               },
             ],
-            rationale:
-              "The recorded R3 successor closed the failed R2 attempt.",
+            rationale: "The recorded R3 successor closed the failed R2 attempt.",
           },
         }
         : item
@@ -450,14 +443,12 @@ Deno.test("browser project contract accepts an approved-brief baseline and rejec
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
   const forgedBasis = structuredClone(valid) as Record<string, unknown>;
-  const forgedRun =
-    (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const forgedRun = (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
   (forgedRun.basis as Record<string, unknown>).briefId = "other-approved-brief";
   assertEquals(isEngineeringProjectSnapshot(forgedBasis), false);
 
   const v1Fallback = structuredClone(valid) as Record<string, unknown>;
-  const fallbackRun =
-    (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const fallbackRun = (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
   delete fallbackRun.basis;
   fallbackRun.baseSnapshot = (v1Fallback.threadSnapshots as unknown[])[0];
   assertEquals(isEngineeringProjectSnapshot(v1Fallback), false);
@@ -472,8 +463,7 @@ Deno.test("browser project contract accepts a V3 run anchored to its declared th
   const project = structuredClone(
     COFFEE_MACHINE_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
-  const reference =
-    (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
+  const reference = (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
   project.schemaVersion = "3.0";
   project.agentRuns = [{
     id: "run-v3-thread-snapshot",

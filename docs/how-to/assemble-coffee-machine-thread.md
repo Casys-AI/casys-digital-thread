@@ -92,7 +92,8 @@ approved CM-01 mechanical path is retained as an exact historical reference: it 
 what the bounded DripTray loop captured, not an executable public project-control
 recipe. The Console MCP server has no public `start`, `progress`, `publish`, or `fail`
 lifecycle tools. Its historical r6 runner is not the CM-01 V3 executor path; that fresh
-path is documented in the [CM-01 V3 local golden-run guide](run-cm01-v3-golden-local.md).
+path is documented in the
+[CM-01 V3 local golden-run guide](run-cm01-v3-golden-local.md).
 
 For a local maintainer auditing an already prepared historical run, the underlying
 command-side runner accepts its exact recorded run ID:
@@ -123,9 +124,10 @@ MCP.
 
 CM-01 r6 remains historical evidence rather than a re-runnable public workflow. The
 separate `coffee-machine-cm01-v3` path now has registered, server-owned operations with
-fresh identities and no r6 fallback. See the [CM-01 V3 local golden-run guide](run-cm01-v3-golden-local.md)
-for that path, and the [mechanical workflow reference](view-coffee-machine-cm01.md) for
-the recorded r6 case and its safe-resume boundary.
+fresh identities and no r6 fallback. See the
+[CM-01 V3 local golden-run guide](run-cm01-v3-golden-local.md) for that path, and the
+[mechanical workflow reference](view-coffee-machine-cm01.md) for the recorded r6 case
+and its safe-resume boundary.
 
 ## Inspect the assembled state
 
