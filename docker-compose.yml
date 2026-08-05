@@ -34,10 +34,13 @@ services:
     networks: [chain]
 
   syson-app:
-    # SysON is amd64-only. Make the architecture explicit so
-    # Docker Desktop/Colima emulates it on Apple Silicon.
-    platform: linux/amd64
-    image: "${SYSON_IMAGE:-eclipsesyson/syson:v2026.7.0}"
+    # Upstream publishes amd64 only; docker/syson-native repacks the identical
+    # jar onto a multi-arch JRE so the app runs natively on Apple Silicon
+    # (startup measured 40.6 s emulated vs 14.4 s native). Set SYSON_IMAGE to
+    # the upstream image to bypass the local build and take emulation instead.
+    build:
+      context: docker/syson-native
+    image: "${SYSON_IMAGE:-casys-digital-thread/syson-native:v2026.7.0}"
     ports:
       - "127.0.0.1:8180:8080"
     environment:
