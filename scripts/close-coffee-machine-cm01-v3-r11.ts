@@ -1,5 +1,5 @@
 import { FileEngineeringProjectRevisionStore } from "../src/adapters/engineering-project-store.ts";
-import { ExactThreadReconciliationSnapshotValidator } from "../src/adapters/engineering-project-completion-evidence-validator.ts";
+import { ExactThreadReconciliationSnapshotValidator } from "../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/file-thread-snapshot-store.ts";
 import {
   assertR12RequirementFamilyCloseout,

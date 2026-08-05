@@ -56,7 +56,7 @@ import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
   CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts";
-import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/executors/approved-brief-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/executors/syson-model-seed-run-executor.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/cm01-nominal-modelica-capture.ts";
@@ -127,8 +127,8 @@ import {
 } from "./src/adapters/engineering-thread-snapshot-resolver.ts";
 import { ModelicaRunObserver } from "./src/adapters/modelica-run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
-import { ScenarioContractVerifier } from "./src/adapters/scenario-contract-verifier.ts";
-import { ScenarioVerifiedRunCatalog } from "./src/adapters/scenario-verified-run-catalog.ts";
+import { ScenarioContractVerifier } from "./src/adapters/validators/scenario-contract-verifier.ts";
+import { ScenarioVerifiedRunCatalog } from "./src/adapters/validators/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
 import {

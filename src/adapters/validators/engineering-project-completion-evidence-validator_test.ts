@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { EngineeringThreadSnapshotRef } from "../domain/engineering-project.ts";
-import type { ThreadSnapshot } from "../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../domain/thread-snapshot-validation.ts";
+import type { EngineeringThreadSnapshotRef } from "../../domain/engineering-project.ts";
+import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";
 
 Deno.test("completion evidence must be new or changed since the exact run base", async () => {

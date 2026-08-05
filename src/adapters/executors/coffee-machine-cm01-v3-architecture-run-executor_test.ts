@@ -25,8 +25,8 @@ import {
 } from "../../orchestration/operations/registry.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
-import { ExactThreadCompletionEvidenceValidator } from "../engineering-project-completion-evidence-validator.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
 import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";

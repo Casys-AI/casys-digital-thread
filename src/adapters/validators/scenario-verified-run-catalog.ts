@@ -9,7 +9,7 @@ import type {
   RunStage,
   RunSummary,
   VerdictStatus,
-} from "../domain/types.ts";
+} from "../../domain/types.ts";
 import type {
   ModelicaScenarioEvidence,
   ScenarioConstraint,

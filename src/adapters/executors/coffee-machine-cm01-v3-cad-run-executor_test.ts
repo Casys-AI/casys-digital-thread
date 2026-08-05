@@ -18,7 +18,7 @@ import {
   COFFEE_MACHINE_CM01_V3_CAD_PROJECT_ID,
   CoffeeMachineCm01V3CadRunExecutor,
 } from "./coffee-machine-cm01-v3-cad-run-executor.ts";
-import { ExactThreadCompletionEvidenceValidator } from "../engineering-project-completion-evidence-validator.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { FileCm01SemanticCadAttemptStore } from "../file-cm01-semantic-cad-attempt-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
@@ -27,7 +27,7 @@ import {
 } from "../file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
 import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
 import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
 import { LiveThreadUpdateStore } from "../live-thread-update-store.ts";

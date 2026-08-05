@@ -1,24 +1,24 @@
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectInitialCompletionEvidenceValidator,
-} from "../domain/engineering-project-command-service.ts";
+} from "../../domain/engineering-project-command-service.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "../domain/deterministic-json.ts";
+} from "../../domain/deterministic-json.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringOperationRef,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
-} from "../domain/engineering-project.ts";
+} from "../../domain/engineering-project.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadSnapshot,
-} from "../domain/thread-snapshot.ts";
-import type { ExactThreadSnapshotReader } from "./engineering-thread-snapshot-resolver.ts";
+} from "../../domain/thread-snapshot.ts";
+import type { ExactThreadSnapshotReader } from "../engineering-thread-snapshot-resolver.ts";
 
 export interface ApprovedBriefBaselineCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;

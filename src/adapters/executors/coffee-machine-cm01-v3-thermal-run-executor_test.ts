@@ -24,7 +24,7 @@ import {
   CM01_NOMINAL_MODELICA_SCENARIO,
   type Cm01NominalModelicaCapture,
 } from "../cm01-nominal-modelica-capture.ts";
-import { ExactThreadCompletionEvidenceValidator } from "../engineering-project-completion-evidence-validator.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { FileCm01NominalModelicaAttemptStore } from "../file-cm01-nominal-modelica-attempt-store.ts";
 import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
 import {
@@ -33,7 +33,7 @@ import {
   FileCaptureStore,
 } from "../file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
 import { LiveThreadUpdateStore } from "../live-thread-update-store.ts";
 

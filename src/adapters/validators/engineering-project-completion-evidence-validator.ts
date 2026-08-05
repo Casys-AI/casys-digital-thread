@@ -2,15 +2,15 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCompletionEvidenceValidator,
   type EngineeringProjectReconciliationSnapshotValidator,
-} from "../domain/engineering-project-command-service.ts";
+} from "../../domain/engineering-project-command-service.ts";
 import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
-} from "../domain/engineering-project.ts";
-import type { ThreadSnapshot } from "../domain/thread-snapshot.ts";
-import { deterministicJson } from "../domain/deterministic-json.ts";
-import type { ExactThreadSnapshotReader } from "./engineering-thread-snapshot-resolver.ts";
-import { threadSnapshotDescendsFrom } from "./thread-snapshot-lineage.ts";
+} from "../../domain/engineering-project.ts";
+import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import { deterministicJson } from "../../domain/deterministic-json.ts";
+import type { ExactThreadSnapshotReader } from "../engineering-thread-snapshot-resolver.ts";
+import { threadSnapshotDescendsFrom } from "../thread-snapshot-lineage.ts";
 
 /** Fail-closed bridge from run completion to exact canonical thread evidence. */
 export class ExactThreadCompletionEvidenceValidator

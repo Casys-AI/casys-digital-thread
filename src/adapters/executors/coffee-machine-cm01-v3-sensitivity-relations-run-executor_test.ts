@@ -44,8 +44,8 @@ import { FileEngineeringProjectRevisionStore } from "../engineering-project-stor
 import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
 import { FileSensitivityRelationsAttemptStore } from "../file-sensitivity-relations-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../file-thread-snapshot-store.ts";
-import { ExactThreadCompletionEvidenceValidator } from "../engineering-project-completion-evidence-validator.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { LiveThreadUpdateStore } from "../live-thread-update-store.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";

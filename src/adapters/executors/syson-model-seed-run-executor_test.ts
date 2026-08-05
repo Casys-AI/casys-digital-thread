@@ -11,9 +11,9 @@ import {
   type RegisteredEngineeringOperationInput,
 } from "../../orchestration/operations/registry.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
-import { ExactThreadCompletionEvidenceValidator } from "../engineering-project-completion-evidence-validator.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { FileEngineeringProjectRevisionStore } from "../engineering-project-store.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
 import { FileSysonModelSeedAttemptStore } from "../file-syson-model-seed-attempt-store.ts";
 import {

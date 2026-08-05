@@ -6,7 +6,7 @@ import {
   FileCaptureStore,
 } from "../file-capture-store.ts";
 import { FileEngineeringProjectRunLease } from "../file-engineering-project-run-lease.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { EngineeringProjectCommandService } from "../../domain/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";

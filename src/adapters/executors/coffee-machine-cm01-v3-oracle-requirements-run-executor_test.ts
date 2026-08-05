@@ -32,8 +32,8 @@ import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,
 } from "./coffee-machine-cm01-v3-architecture-run-executor.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
-import { ExactThreadCompletionEvidenceValidator } from "../engineering-project-completion-evidence-validator.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import type {
   McpToolCall,
   McpToolClient,
