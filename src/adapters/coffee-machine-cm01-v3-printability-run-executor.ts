@@ -666,7 +666,8 @@ export async function materializePrintabilitySnapshot(
       metric: "drip_tray_printability_not_checked_count",
       quantity: {
         value: allNotChecked.length,
-        unit: "items",
+        // Dimensionless count — convention: "1" (same as BOM componentCount).
+        unit: "1",
       },
       source: {
         operation: localOp,

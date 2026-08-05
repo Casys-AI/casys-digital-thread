@@ -706,7 +706,7 @@ function projectPhaseLifecycle(
    * lifecycle is shown as retained history instead of a perpetual promise.
    * A failed latest run keeps its attention signal even on a closed project.
    */
-  const projectClosed = snapshot.status === "completed";
+  const projectClosed = deriveEngineeringProjectStatus(snapshot) === "completed";
   const state = latestRun?.status === "failed"
     ? "attention"
     : !latestLifecycleRecord

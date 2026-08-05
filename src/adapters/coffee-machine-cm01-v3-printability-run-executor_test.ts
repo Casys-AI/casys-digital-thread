@@ -59,7 +59,7 @@ Deno.test(
       2,
       "not_checked count must reflect the items list length",
     );
-    assertEquals(countObs?.quantity.unit, "items");
+    assertEquals(countObs?.quantity.unit, "1");
   },
 );
 

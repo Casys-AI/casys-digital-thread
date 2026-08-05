@@ -93,7 +93,10 @@ Deno.test("CM-01 V3 Product Structure still resolves when anchored requirements 
       tool: "syson_element_insert_sysml",
       runId: "run:anchor-oracle-requirements",
     },
-    inputArtifactIds: [fixture.architectureId],
+    // The live artifact derives from the architecture with full verified
+    // lineage; this fixture exercises only the selector's ambiguity, so it
+    // declares no inputs rather than fabricate consumer fingerprints.
+    inputArtifactIds: [],
     freshness: fresh(),
   };
   const snapshot = validateThreadSnapshot({
