@@ -287,11 +287,11 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
-// Guard: wrong-sign (zero derivative)
+// Guard: zero-derivative
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "proposeVectorCorrection returns wrong-sign when the derivative is zero",
+  "proposeVectorCorrection returns zero-derivative when the derivative is zero",
   () => {
     const zeroDerivativeEdge: SensitivityEdge = {
       ...DISPLACEMENT_EDGE,
@@ -311,7 +311,7 @@ Deno.test(
       "assembly_max_displacement",
     ) as UnresolvedCorrection;
     assertEquals(result.status, "unresolved");
-    assertEquals(result.reason, "wrong-sign");
+    assertEquals(result.reason, "zero-derivative");
     assertMatch(result.detail, /derivative value 0/);
   },
 );
@@ -642,34 +642,42 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
-// Fallback: first edge incompatible, second edge applicable
+// Fallback: first edge fails out-of-validity-neighborhood, second edge applies
+//
+// Uses only valid SensitivityEdge fixtures (both pass validateSensitivityEdge).
+// Scenario: edgeTight has [30.8, 31.0] neighborhood — the correction target of
+// z* ≈ 30 mm falls below the lower bound 30.8 → out-of-validity-neighborhood.
+// DISPLACEMENT_EDGE has [29, 31] — the same z* ≈ 30 mm is inside.
+// The function must skip edgeTight and use DISPLACEMENT_EDGE.
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "proposeVectorCorrection falls back to the second edge when the first has incompatible units",
+  "proposeVectorCorrection falls back to the second edge when the first has a too-tight validity neighborhood",
   () => {
-    // Create a displacement edge with the WRONG response unit for this test
-    const wrongUnitEdge: SensitivityEdge = {
-      ...DISPLACEMENT_EDGE,
-      response: {
-        ...DISPLACEMENT_EDGE.response,
-        unit: "Pa/mm", // not valid SensitivityEdge but workable for test isolation
-      },
-      derivative: { value: -0.008, unit: "Pa/mm" },
-    };
-    const goodEdge: SensitivityEdge = {
+    // A second displacement edge with a tight neighborhood [30.8, 31.0].
+    // The correction from z_current = 28 mm targets z* ≈ 30 mm, which is
+    // below 30.8 → out-of-validity-neighborhood for this edge.
+    const edgeTight: SensitivityEdge = {
       ...DISPLACEMENT_EDGE,
       driver: {
         ...DISPLACEMENT_EDGE.driver,
-        sysmlAttrName: "sizeZ_for_assembly_max_displacement_v2",
+        sysmlAttrName: "sizeZ_for_assembly_max_displacement_tight",
+        validityNeighborhood: {
+          lower: { value: 30.8, unit: "mm" },
+          upper: { value: 31.0, unit: "mm" },
+          lowerConstraintName: "disp_validity_tight_lower",
+          upperConstraintName: "disp_validity_tight_upper",
+        },
       },
       response: {
         ...DISPLACEMENT_EDGE.response,
-        sysmlAttrName: "d_assembly_max_displacement_mm_per_mm_v2",
+        sysmlAttrName: "d_assembly_max_displacement_tight",
       },
     };
-    const k = goodEdge.derivative.value;
+    // DISPLACEMENT_EDGE (wide neighborhood [29, 31]) is the fallback.
+    const k = DISPLACEMENT_EDGE.derivative.value;
     const limitMm = 1.0;
+    // actual set so z* = z_current + 2 ≈ 30 mm (inside [29,31], outside [30.8,31.0])
     const actualMm = limitMm - 2 * k;
     const comparison: EvaluationComparison = {
       observationId: "obs:fallback",
@@ -680,15 +688,17 @@ Deno.test(
     };
     const result = proposeVectorCorrection(
       failingEvaluation(comparison),
-      [wrongUnitEdge, goodEdge],
+      [edgeTight, DISPLACEMENT_EDGE],
       { value: 28, unit: "mm" },
       "assembly_max_displacement",
     ) as CorrectionProposal;
-    // Should succeed with the goodEdge
+    // Must succeed by falling back to DISPLACEMENT_EDGE
     assertEquals(result.status, "proposed");
     assertEquals(
       result.edgeUsed.driver.sysmlAttrName,
-      "sizeZ_for_assembly_max_displacement_v2",
+      "sizeZ_for_assembly_max_displacement",
     );
+    // z* ≈ 30 mm inside [29, 31]
+    assertEquals(Math.abs(result.driverProposed.value - 30) < 1e-9, true);
   },
 );

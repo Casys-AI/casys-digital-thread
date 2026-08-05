@@ -26,7 +26,7 @@
  *   2. evaluation.comparison MUST be present → else "evaluation-missing-comparison".
  *   3. comparison.normalizedUnit MUST equal edge.response.unit → else
  *      "incompatible-units". Never compare bare numbers across units.
- *   4. edge.derivative.value MUST be non-zero → else "wrong-sign". A zero
+ *   4. edge.derivative.value MUST be non-zero → else "zero-derivative". A zero
  *      derivative means the driver has no measurable local effect on the
  *      metric; the edge cannot guide a correction.
  *   5. The proposed z* MUST lie within [edge.driver.validityNeighborhood.lower.value,
@@ -84,8 +84,13 @@ export type UnresolvedCorrectionReason =
    * The edge derivative is zero. The driver parameter has no measurable local
    * effect on the metric in the studied neighborhood; the edge cannot guide
    * a correction.
+   *
+   * NOTE — named "zero-derivative", NOT "wrong-sign". The linear-inversion
+   * formula ∂z = (limit − actual) / k always points in the corrective direction
+   * for any non-zero k, regardless of sign. There is no "wrong-sign" scenario;
+   * only a zero derivative makes an edge inapplicable.
    */
-  | "wrong-sign"
+  | "zero-derivative"
   /**
    * The first-order correction target z* falls outside the edge's declared
    * validity neighborhood [lower, upper]. The linearization is only locally
@@ -253,7 +258,7 @@ export function proposeVectorCorrection(
 
     // Guard — non-zero derivative.
     if (k === 0) {
-      lastReason = "wrong-sign";
+      lastReason = "zero-derivative";
       lastDetail =
         `Edge "${edge.driver.sysmlAttrName}" → "${edge.response.sysmlAttrName}" ` +
         `has derivative value 0. The driver has no measurable local effect on ` +
