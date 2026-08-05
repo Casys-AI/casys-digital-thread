@@ -72,6 +72,15 @@ export interface CurrentProjectWork {
  * retained R3/r10 evidence named in its input and that evidence already
  * belongs to the explicitly anchored component correction lifecycle.
  *
+ * A second bounded exception is a model enrichment: a later phase whose every
+ * artifact evidence is a sysml-model derived (recorded `derived_from`
+ * lineage) from a sysml-model owned by a strictly earlier visible phase. It
+ * writes into that earlier phase's model rather than opening a new
+ * engineering stage — requirement anchoring is the canonical case — so it
+ * folds under the phase that owns the enriched model. A phase deriving only
+ * from its own evidence (the architecture growing out of its seed) never
+ * folds into itself.
+ *
  * It deliberately uses no labels, title fragments or loose identifiers. If a
  * future project does not provide this evidence, its phase remains visible.
  */
@@ -86,6 +95,10 @@ export const PROJECT_PATH_PRESENTATION_POLICY = {
     requiredLineage:
       "direct supersedes successor of an anchored R3/r10 correction descendant",
   },
+  modelEnrichment: {
+    requiredLineage:
+      "every artifact evidence is a sysml-model with recorded derived_from lineage to a sysml-model of a strictly earlier visible phase",
+  },
 } as const;
 
 export interface ProjectPhaseLifecycle {
@@ -96,6 +109,8 @@ export interface ProjectPhaseLifecycle {
   readonly revisionAttemptCount: number;
   /** Identity-only repairs are retained beside the evidence, never as gates. */
   readonly identityRepairCount?: number;
+  /** Later phases that wrote into this phase's model (requirement anchoring). */
+  readonly modelEnrichmentCount?: number;
   /**
    * The compact macro-stage reading state, not a replacement for its history.
    * All three states are durable readings of the versioned record: "current"
@@ -246,6 +261,13 @@ export function buildProjectPath(
     ...revisions.map((attachment) => attachment.phaseId),
     ...identityRepairs.map((attachment) => attachment.phaseId),
   ]);
+  const enrichments = modelEnrichmentAttachments(
+    thread,
+    brief,
+    artifactPhases,
+    hiddenPhaseIds,
+  );
+  enrichments.forEach((attachment) => hiddenPhaseIds.add(attachment.phaseId));
   const lifecycles = new Map<string, MutableProjectPhaseLifecycle>();
 
   for (const correction of corrections) {
@@ -284,6 +306,14 @@ export function buildProjectPath(
     if (!phaseById.has(repair.parentPhaseId)) continue;
     mutableLifecycle(lifecycles, repair.parentPhaseId).identityRepairPhaseIds
       .add(repair.phaseId);
+  }
+
+  for (const enrichment of enrichments) {
+    for (const parentPhaseId of enrichment.parentPhaseIds) {
+      if (!phaseById.has(parentPhaseId)) continue;
+      mutableLifecycle(lifecycles, parentPhaseId).enrichmentPhaseIds
+        .add(enrichment.phaseId);
+    }
   }
 
   const phases = brief.phases
@@ -338,6 +368,80 @@ interface MutableProjectPhaseLifecycle {
   readonly correctionEvidenceKeys: Set<string>;
   readonly revisionPhaseIds: Set<string>;
   readonly identityRepairPhaseIds: Set<string>;
+  readonly enrichmentPhaseIds: Set<string>;
+}
+
+interface ModelEnrichmentAttachment {
+  readonly phaseId: string;
+  readonly parentPhaseIds: readonly string[];
+}
+
+/**
+ * A later phase whose every artifact evidence is a sysml-model derived from a
+ * sysml-model owned by a strictly earlier visible phase writes into that
+ * model instead of opening a new engineering stage, so it folds under the
+ * owning phase. Requirement anchoring is the canonical case. Deriving from
+ * your own phase (the architecture growing out of its seed) never counts.
+ */
+function modelEnrichmentAttachments(
+  thread: ThreadWorkbenchSnapshot,
+  brief: ProjectBrief,
+  artifactPhases: ReadonlyMap<string, ReadonlySet<string>>,
+  hiddenPhaseIds: ReadonlySet<string>,
+): readonly ModelEnrichmentAttachment[] {
+  const nodesByRef = new Map(
+    thread.graph.nodes.map((node) => [graphRefKey(node.ref), node]),
+  );
+  const derivedFromByTarget = new Map<string, typeof thread.graph.edges>();
+  for (const edge of thread.graph.edges) {
+    if (edge.relation !== "derived_from") continue;
+    const target = graphRefKey(edge.to);
+    const existing = derivedFromByTarget.get(target) ?? [];
+    existing.push(edge);
+    derivedFromByTarget.set(target, existing);
+  }
+  const orderByPhaseId = new Map(
+    brief.phases.map((item) => [item.phase.id, item.phase.order]),
+  );
+
+  const attachments: ModelEnrichmentAttachment[] = [];
+  for (const view of brief.phases) {
+    if (hiddenPhaseIds.has(view.phase.id)) continue;
+    const evidenceKeys = view.phase.evidenceRefs
+      .filter((ref) => ref.kind === "artifact")
+      .map((ref) => graphRefKey(ref));
+    if (evidenceKeys.length === 0) continue;
+    const candidateOrder = orderByPhaseId.get(view.phase.id);
+    if (candidateOrder === undefined) continue;
+
+    const parentPhaseIds = new Set<string>();
+    const everyEvidenceIsEnrichment = evidenceKeys.every((evidenceKey) => {
+      const evidenceNode = nodesByRef.get(evidenceKey);
+      if (evidenceNode?.artifactKind !== "sysml-model") return false;
+      const parents = (derivedFromByTarget.get(evidenceKey) ?? [])
+        .filter((edge) =>
+          nodesByRef.get(graphRefKey(edge.from))?.artifactKind === "sysml-model"
+        )
+        .flatMap((
+          edge,
+        ) => [...(artifactPhases.get(graphRefKey(edge.from)) ?? [])])
+        .filter((phaseId) =>
+          phaseId !== view.phase.id &&
+          !hiddenPhaseIds.has(phaseId) &&
+          (orderByPhaseId.get(phaseId) ?? Number.POSITIVE_INFINITY) <
+            candidateOrder
+        );
+      if (parents.length === 0) return false;
+      parents.forEach((phaseId) => parentPhaseIds.add(phaseId));
+      return true;
+    });
+    if (!everyEvidenceIsEnrichment || parentPhaseIds.size === 0) continue;
+    attachments.push({
+      phaseId: view.phase.id,
+      parentPhaseIds: [...parentPhaseIds],
+    });
+  }
+  return attachments;
 }
 
 /**
@@ -688,6 +792,7 @@ function mutableLifecycle(
     correctionEvidenceKeys: new Set<string>(),
     revisionPhaseIds: new Set<string>(),
     identityRepairPhaseIds: new Set<string>(),
+    enrichmentPhaseIds: new Set<string>(),
   };
   lifecycles.set(phaseId, lifecycle);
   return lifecycle;
@@ -710,7 +815,17 @@ function projectPhaseLifecycle(
       return view ? [view] : [];
     })
     .toSorted((left, right) => left.phase.order - right.phase.order);
-  const latestLifecycleRecord = [...revisions, ...identityRepairs]
+  const enrichments = [...lifecycle.enrichmentPhaseIds]
+    .flatMap((id) => {
+      const view = phaseById.get(id);
+      return view ? [view] : [];
+    })
+    .toSorted((left, right) => left.phase.order - right.phase.order);
+  const latestLifecycleRecord = [
+    ...revisions,
+    ...identityRepairs,
+    ...enrichments,
+  ]
     .toSorted((left, right) => left.phase.order - right.phase.order)
     .at(-1);
   const latestRun = latestLifecycleRecord
@@ -734,6 +849,9 @@ function projectPhaseLifecycle(
     revisionAttemptCount: revisions.length,
     ...(identityRepairs.length > 0
       ? { identityRepairCount: identityRepairs.length }
+      : {}),
+    ...(enrichments.length > 0
+      ? { modelEnrichmentCount: enrichments.length }
       : {}),
     state,
   };

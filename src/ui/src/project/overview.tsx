@@ -373,8 +373,11 @@ function projectPhaseLifecycleLabel(
   >,
 ): string {
   const componentCount = lifecycle.affectedComponentIds.length;
+  const enrichmentCount = lifecycle.modelEnrichmentCount ?? 0;
   const subject = componentCount > 0
     ? `${componentCount} component${componentCount === 1 ? "" : "s"}`
+    : enrichmentCount > 0 && lifecycle.correctionCount === 0
+    ? `${enrichmentCount} model enrichment${enrichmentCount === 1 ? "" : "s"}`
     : `${lifecycle.correctionCount} evidence update${
       lifecycle.correctionCount === 1 ? "" : "s"
     }`;

@@ -164,6 +164,103 @@ Deno.test("Project Path reads an unfinished lifecycle as retained history, never
   }
 });
 
+Deno.test("Project Path folds a model enrichment under the phase that owns the enriched model", () => {
+  // Requirement anchoring writes into the system model rather than opening a
+  // new engineering stage: its only evidence is a sysml-model derived from the
+  // sysml-model an earlier phase owns, so it folds under that phase.
+  const { project, thread } = correctionPathFixture();
+  const enriched = structuredClone(project);
+  const enrichedThread = structuredClone(thread);
+  const ref = (id: string) => ({
+    kind: "artifact" as const,
+    id,
+    snapshotId: "thread-correction",
+    snapshotRevision: 10,
+  });
+  const sysmlWork = (id: string, phaseId: string, evidenceId: string) => ({
+    id,
+    phaseId,
+    title: id,
+    description: id,
+    kind: "verify" as const,
+    operation: {
+      id: `model.${id}`,
+      version: "1",
+      bindings: [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+    },
+    status: "completed" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [ref(evidenceId)],
+    decisionIds: [],
+    blockerIds: [],
+  });
+  (enriched.phases as unknown as unknown[]).push({
+    id: "architecture",
+    name: "System architecture",
+    order: 0,
+    description: "The reviewed system model.",
+    workItemIds: ["arch-work"],
+    requiredDecisionIds: [],
+    evidenceRefs: [ref("arch-model")],
+  }, {
+    id: "anchoring",
+    name: "Requirement anchoring",
+    order: 7,
+    description: "Anchor requirements as SysML constraints in the model.",
+    workItemIds: ["anchoring-work"],
+    requiredDecisionIds: [],
+    evidenceRefs: [ref("req-model")],
+  });
+  (enriched.workItems as unknown as unknown[]).push(
+    sysmlWork("arch-work", "architecture", "arch-model"),
+    sysmlWork("anchoring-work", "anchoring", "req-model"),
+  );
+  const sysmlNode = (id: string) => ({
+    id: `graph:artifact:${id}`,
+    ref: { kind: "artifact" as const, id },
+    entityKind: "artifact" as const,
+    artifactKind: "sysml-model",
+    label: "intentionally ignored presentation label",
+    system: "test",
+    freshness: "fresh" as const,
+    summary: "test evidence",
+    recordedAt: "2026-08-03T12:00:00.000Z",
+  });
+  (enrichedThread.graph.nodes as unknown as unknown[]).push(
+    sysmlNode("arch-model"),
+    sysmlNode("req-model"),
+  );
+  (enrichedThread.graph.edges as unknown as unknown[]).push({
+    id: "graph:edge:model-enrichment",
+    from: { kind: "artifact" as const, id: "arch-model" },
+    to: { kind: "artifact" as const, id: "req-model" },
+    relation: "derived_from" as const,
+    origin: "provenance" as const,
+  });
+
+  const path = buildProjectPath(enriched, enrichedThread);
+
+  assertEquals(
+    path.phases.some((item) => item.phase.id === "anchoring"),
+    false,
+    "the anchoring phase must fold under the model owner, not stay a gate",
+  );
+  const architecture = path.phases.find((item) =>
+    item.phase.id === "architecture"
+  );
+  assertEquals(architecture?.lifecycle, {
+    affectedComponentIds: [],
+    correctionCount: 0,
+    revisionAttemptCount: 0,
+    modelEnrichmentCount: 1,
+    state: "current",
+  });
+});
+
 Deno.test("Project Path folds the exact R3 identity repair into Mechanical proof", () => {
   const { project, thread } = correctionPathFixture({
     includeIdentityRepair: true,
