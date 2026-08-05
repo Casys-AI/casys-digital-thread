@@ -3,8 +3,9 @@
 > Provenance: market-coverage study of 2026-08-05 (web research over Printables category
 > volumes, maker/engineering forums, simulation-service tiers and upload-check
 > offerings). Figures are estimates over a typology of ~10 project families; sources and
-> the full matrix live in the study output. This page records the conclusions the
-> roadmap acts on — it is strategy, not evidence.
+> the full matrix are preserved verbatim in
+> [oracle-market-study-2026-08-05](oracle-market-study-2026-08-05.md). This page records
+> the conclusions the roadmap acts on — it is strategy, not evidence.
 
 ## The demand, measured where it lives
 
