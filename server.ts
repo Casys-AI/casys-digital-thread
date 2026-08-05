@@ -23,6 +23,7 @@ import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_EDGES_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
@@ -46,6 +47,10 @@ import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_RELATIONS_OPERATION,
   CoffeeMachineCm01V3SensitivityRelationsRunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_SENSITIVITY_EDGES_OPERATION,
+  CoffeeMachineCm01V3SensitivityEdgesRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
@@ -224,6 +229,10 @@ const DEFAULT_SENSITIVITY_RELATIONS_SEED_ATTEMPT_DIRECTORY =
   "state/local/sensitivity-relations-seed-attempts";
 const DEFAULT_SENSITIVITY_RELATIONS_SEED_CAPTURE_DIRECTORY =
   "state/local/sensitivity-relations-seed-captures";
+const DEFAULT_SENSITIVITY_EDGES_SEED_ATTEMPT_DIRECTORY =
+  "state/local/sensitivity-edges-seed-attempts";
+const DEFAULT_SENSITIVITY_EDGES_SEED_CAPTURE_DIRECTORY =
+  "state/local/sensitivity-edges-seed-captures";
 const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DIRECTORY =
   "state/local/cm01-drip-tray-printability-captures";
 const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_ATTEMPT_DIRECTORY =
@@ -305,6 +314,8 @@ export interface CreateConsoleServerOptions {
   sensitivityRunAttemptDirectory?: string;
   sensitivityRelationsSeedAttemptDirectory?: string;
   sensitivityRelationsSeedCaptureDirectory?: string;
+  sensitivityEdgesSeedAttemptDirectory?: string;
+  sensitivityEdgesSeedCaptureDirectory?: string;
   cm01DripTrayPrintabilityCaptureDirectory?: string;
   cm01DripTrayPrintabilityAttemptDirectory?: string;
   cm01DripTrayPrintEstimateCaptureDirectory?: string;
@@ -565,6 +576,35 @@ async function createProjectControl(
       attempts: new FileSensitivityRelationsAttemptStore(
         options.sensitivityRelationsSeedAttemptDirectory ??
           DEFAULT_SENSITIVITY_RELATIONS_SEED_ATTEMPT_DIRECTORY,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+    })
+    : undefined;
+  const cm01SensitivityEdges = sysonMcpUrl
+    ? new CoffeeMachineCm01V3SensitivityEdgesRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      architectureCaptures: new FileCaptureStore({
+        ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.cm01ArchitectureCaptureDirectory ??
+          DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      seedCaptures: sysonModelSeedCaptures,
+      sensitivityCaptures: new FileCaptureStore({
+        ...SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+        directory: options.sensitivityStudyCaptureDirectory ??
+          DEFAULT_SENSITIVITY_STUDY_CAPTURE_DIRECTORY,
+      }),
+      sensitivityEdgesCaptures: new FileCaptureStore({
+        ...SENSITIVITY_EDGES_SEED_CAPTURE_DESCRIPTOR,
+        directory: options.sensitivityEdgesSeedCaptureDirectory ??
+          DEFAULT_SENSITIVITY_EDGES_SEED_CAPTURE_DIRECTORY,
+      }),
+      attempts: new FileSensitivityRelationsAttemptStore(
+        options.sensitivityEdgesSeedAttemptDirectory ??
+          DEFAULT_SENSITIVITY_EDGES_SEED_ATTEMPT_DIRECTORY,
       ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
@@ -910,6 +950,12 @@ async function createProjectControl(
             executor: cm01SensitivityRelations,
             unavailableMessage:
               "The server has no trusted CM-01 sensitivity-relations executor configured for this run (SysON provider is required).",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_SENSITIVITY_EDGES_OPERATION,
+            executor: cm01SensitivityEdges,
+            unavailableMessage:
+              "The server has no trusted CM-01 sensitivity-edges executor configured for this run (SysON provider is required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
