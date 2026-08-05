@@ -38,7 +38,7 @@ categories deliberately answer different questions.
 
 ## Reference — look up exact contracts and locations
 
-- [MCP console reference](console.md) documents the console resource, tools, evidence
+- [MCP console reference](reference/console.md) documents the console resource, tools, evidence
   model, agent project-control tools, signed MRTR elicitation, and authority boundary.
 - [Workspace map and local ports](reference/workspace-map.md) identifies the workflow,
   scenario-contract plan, observers, UI sources, generated bundle, harness, volumes, and
@@ -71,12 +71,12 @@ categories deliberately answer different questions.
 - [Product direction and delivery boundary](explanations/product-direction.md) is the
   canonical product compass: beginner-first human-agent work, idea/CAD/product entry
   points, vendor independence, and the verified-now/V1/V2 boundary.
-- [CoffeeMachine verification architecture](verification-architecture.md) explains the
+- [CoffeeMachine verification architecture](reference/verification-architecture.md) explains the
   Modelica/SysON/CalculiX split and why the current comparison is a provisional scenario
   contract rather than a product requirement.
 - [Proofs and verdicts](explanations/proofs-and-verdicts.md) explains why CAD, FEA,
   physical simulation, and constraint evaluation remain separate stages.
-- [Industry positioning and state of the art](positioning.md) explains the
+- [Industry positioning and state of the art](explanations/positioning.md) explains the
   executable-digital-thread and physics-in-the-loop framing.
 - [Native digital-thread Workbench](explanations/native-digital-thread-workbench.md)
   records the accepted product direction: one linked thread model, one native Preact

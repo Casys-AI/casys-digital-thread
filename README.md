@@ -49,7 +49,7 @@ DripTray, not whole-machine, release, manufacturing, or certification evidence.
 
 The research community is converging on this pattern under the name
 **physics-in-the-loop** (generate-and-verify / LLM-Modulo family): the agent proposes,
-sound physical tools dispose. See [docs/positioning.md](docs/positioning.md) for the
+sound physical tools dispose. See [docs/explanations/positioning.md](docs/explanations/positioning.md) for the
 full analysis and references. What distinguishes this implementation:
 
 - **Model-grounded** — the verified CM-01 loop starts from a SysML v2 model. CAD-first
@@ -269,7 +269,7 @@ organized with [Diátaxis](https://diataxis.fr/): start at the
 [CM-01 assembly guide](docs/how-to/assemble-coffee-machine-thread.md) and the
 [CoffeeMachine workflow guide](docs/how-to/view-coffee-machine-cm01.md). Look up exact
 paths and ports in the [workspace reference](docs/reference/workspace-map.md). The
-[console reference](docs/console.md) retains the observer contract, evidence model, and
+[console reference](docs/reference/console.md) retains the observer contract, evidence model, and
 security boundary.
 
 ## Repository map
@@ -291,9 +291,9 @@ security boundary.
 | `docs/how-to/`                                | Focused operating guides for native workflows and MCP Apps                         |
 | `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                              |
 | `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                |
-| `docs/console.md`                             | Console resource, tools, truth model, limitations, and security boundary           |
-| `docs/positioning.md`                         | Explanation: industry & SOTA positioning and references                            |
-| `docs/verification-architecture.md`           | Explanation: CoffeeMachine verification boundaries and Modelica decision           |
+| `docs/reference/console.md`                   | Console resource, tools, truth model, limitations, and security boundary           |
+| `docs/explanations/positioning.md`            | Explanation: industry & SOTA positioning and references                            |
+| `docs/reference/verification-architecture.md` | Explanation: CoffeeMachine verification boundaries and Modelica decision           |
 | `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                       |
 | `experiments/oracle/`                         | The oracle experiment — the project's decisive measurement                         |
 
