@@ -99,6 +99,10 @@ export const PROJECT_PATH_PRESENTATION_POLICY = {
     requiredLineage:
       "every artifact evidence is a sysml-model with recorded derived_from lineage to a sysml-model of a strictly earlier visible phase",
   },
+  enrichmentMeasurement: {
+    requiredLineage:
+      "every artifact evidence is the recorded derived_from source of an already-folded model enrichment owned by a strictly earlier parent",
+  },
 } as const;
 
 export interface ProjectPhaseLifecycle {
@@ -111,6 +115,8 @@ export interface ProjectPhaseLifecycle {
   readonly identityRepairCount?: number;
   /** Later phases that wrote into this phase's model (requirement anchoring). */
   readonly modelEnrichmentCount?: number;
+  /** Measurement phases whose evidence fed a folded enrichment (sensitivity). */
+  readonly modelMeasurementCount?: number;
   /**
    * The compact macro-stage reading state, not a replacement for its history.
    * All three states are durable readings of the versioned record: "current"
@@ -268,6 +274,13 @@ export function buildProjectPath(
     hiddenPhaseIds,
   );
   enrichments.forEach((attachment) => hiddenPhaseIds.add(attachment.phaseId));
+  const measurements = enrichmentMeasurementAttachments(
+    thread,
+    brief,
+    enrichments,
+    hiddenPhaseIds,
+  );
+  measurements.forEach((attachment) => hiddenPhaseIds.add(attachment.phaseId));
   const lifecycles = new Map<string, MutableProjectPhaseLifecycle>();
 
   for (const correction of corrections) {
@@ -313,6 +326,14 @@ export function buildProjectPath(
       if (!phaseById.has(parentPhaseId)) continue;
       mutableLifecycle(lifecycles, parentPhaseId).enrichmentPhaseIds
         .add(enrichment.phaseId);
+    }
+  }
+
+  for (const measurement of measurements) {
+    for (const parentPhaseId of measurement.parentPhaseIds) {
+      if (!phaseById.has(parentPhaseId)) continue;
+      mutableLifecycle(lifecycles, parentPhaseId).measurementPhaseIds
+        .add(measurement.phaseId);
     }
   }
 
@@ -369,11 +390,92 @@ interface MutableProjectPhaseLifecycle {
   readonly revisionPhaseIds: Set<string>;
   readonly identityRepairPhaseIds: Set<string>;
   readonly enrichmentPhaseIds: Set<string>;
+  readonly measurementPhaseIds: Set<string>;
 }
 
 interface ModelEnrichmentAttachment {
   readonly phaseId: string;
   readonly parentPhaseIds: readonly string[];
+}
+
+interface EnrichmentMeasurementAttachment {
+  readonly phaseId: string;
+  readonly parentPhaseIds: readonly string[];
+}
+
+/**
+ * A measurement phase exists to feed a model enrichment: its evidence is the
+ * recorded `derived_from` source of an enrichment that already folded (the
+ * sensitivity study feeding the anchored relations is the canonical case).
+ * Measuring and anchoring are one gesture, so the measurement folds under the
+ * same owner as its enrichment. The enrichment's own parent never folds into
+ * itself, and only phases later than that parent qualify — instrumentation
+ * follows the model it teaches, never the other way around.
+ */
+function enrichmentMeasurementAttachments(
+  thread: ThreadWorkbenchSnapshot,
+  brief: ProjectBrief,
+  enrichments: readonly ModelEnrichmentAttachment[],
+  hiddenPhaseIds: ReadonlySet<string>,
+): readonly EnrichmentMeasurementAttachment[] {
+  if (enrichments.length === 0) return [];
+  const phaseById = new Map(brief.phases.map((item) => [item.phase.id, item]));
+  const sourcesByEnrichment = new Map<string, Set<string>>();
+  const enrichmentEvidence = new Map<string, ModelEnrichmentAttachment>();
+  for (const enrichment of enrichments) {
+    const view = phaseById.get(enrichment.phaseId);
+    if (!view) continue;
+    for (const ref of view.phase.evidenceRefs) {
+      if (ref.kind !== "artifact") continue;
+      enrichmentEvidence.set(graphRefKey(ref), enrichment);
+    }
+  }
+  for (const edge of thread.graph.edges) {
+    if (edge.relation !== "derived_from") continue;
+    const target = graphRefKey(edge.to);
+    if (!enrichmentEvidence.has(target)) continue;
+    const sources = sourcesByEnrichment.get(target) ?? new Set<string>();
+    sources.add(graphRefKey(edge.from));
+    sourcesByEnrichment.set(target, sources);
+  }
+  const orderByPhaseId = new Map(
+    brief.phases.map((item) => [item.phase.id, item.phase.order]),
+  );
+
+  const attachments: EnrichmentMeasurementAttachment[] = [];
+  for (const view of brief.phases) {
+    if (hiddenPhaseIds.has(view.phase.id)) continue;
+    const evidenceKeys = view.phase.evidenceRefs
+      .filter((ref) => ref.kind === "artifact")
+      .map((ref) => graphRefKey(ref));
+    if (evidenceKeys.length === 0) continue;
+
+    const parentPhaseIds = new Set<string>();
+    const everyEvidenceFeedsAnEnrichment = evidenceKeys.every((evidenceKey) => {
+      for (const [target, sources] of sourcesByEnrichment) {
+        if (!sources.has(evidenceKey)) continue;
+        const enrichment = enrichmentEvidence.get(target);
+        if (!enrichment) continue;
+        const parents = enrichment.parentPhaseIds.filter((parentPhaseId) => {
+          if (parentPhaseId === view.phase.id) return false;
+          const parentOrder = orderByPhaseId.get(parentPhaseId);
+          const candidateOrder = orderByPhaseId.get(view.phase.id);
+          return parentOrder !== undefined && candidateOrder !== undefined &&
+            parentOrder < candidateOrder;
+        });
+        if (parents.length === 0) continue;
+        parents.forEach((parentPhaseId) => parentPhaseIds.add(parentPhaseId));
+        return true;
+      }
+      return false;
+    });
+    if (!everyEvidenceFeedsAnEnrichment || parentPhaseIds.size === 0) continue;
+    attachments.push({
+      phaseId: view.phase.id,
+      parentPhaseIds: [...parentPhaseIds],
+    });
+  }
+  return attachments;
 }
 
 /**
@@ -793,6 +895,7 @@ function mutableLifecycle(
     revisionPhaseIds: new Set<string>(),
     identityRepairPhaseIds: new Set<string>(),
     enrichmentPhaseIds: new Set<string>(),
+    measurementPhaseIds: new Set<string>(),
   };
   lifecycles.set(phaseId, lifecycle);
   return lifecycle;
@@ -821,10 +924,17 @@ function projectPhaseLifecycle(
       return view ? [view] : [];
     })
     .toSorted((left, right) => left.phase.order - right.phase.order);
+  const measurements = [...lifecycle.measurementPhaseIds]
+    .flatMap((id) => {
+      const view = phaseById.get(id);
+      return view ? [view] : [];
+    })
+    .toSorted((left, right) => left.phase.order - right.phase.order);
   const latestLifecycleRecord = [
     ...revisions,
     ...identityRepairs,
     ...enrichments,
+    ...measurements,
   ]
     .toSorted((left, right) => left.phase.order - right.phase.order)
     .at(-1);
@@ -852,6 +962,9 @@ function projectPhaseLifecycle(
       : {}),
     ...(enrichments.length > 0
       ? { modelEnrichmentCount: enrichments.length }
+      : {}),
+    ...(measurements.length > 0
+      ? { modelMeasurementCount: measurements.length }
       : {}),
     state,
   };
