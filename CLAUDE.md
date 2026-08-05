@@ -313,11 +313,23 @@ travers `src/domain/proof-case.ts` — un contrat d'exigence sans rien de Calcul
 CM-01, où l'unité est obligatoire et où le critère ignore d'où vient la mesure. C'est
 cette indifférence à la source qui le rend réutilisable par un second projet.
 
-La suite, dans l'ordre : faire vivre les exigences comme éléments SysML du modèle plutôt
-que dans un JSON ; y ajouter les **relations** entre attributs de structure et
-métriques, sans lesquelles ni z3 ni l'agent ne peuvent déduire quel paramètre corriger ;
-puis brancher l'analyse de sensibilité comme second oracle — mesurer
-∂métrique/∂paramètre par différences finies en rejouant la chaîne, ce qui produit ces
-relations par le calcul plutôt que par supposition. C'est aussi ce qui rend enfin
-mesurable l'expérience d'`experiments/oracle/` : nombre de solves nécessaires pour
-converger, avec et sans ces arêtes.
+Les trois marches suivantes ont été franchies le 2026-08-05, chacune par le chemin agent
+complet (append → queue → execute) avec consentement explicite : la sensibilité
+re-mesurée sur le projet partagé (R14, dérivées identiques au run local —
+reproductible), la première observation d'un nouvel oracle du parc (R15, printability
+dfm : mesures et `not_checked`, jamais un verdict), et **les relations de sensibilité
+ancrées comme élément SysML du modèle** (R16, `DripTraySensitivityRelations` : quatre
+attributs unités, deux contraintes de voisinage, provenance du run de mesure, cliquet
+`sensitivity_relations_artifact_removed`). Le modèle porte désormais structure,
+exigences et physique mesurée. Chaque échec du chemin a été retenu comme état de
+première classe : le contrat DFM réel a invalidé deux fois les mocks du chantier, et
+l'identification par exclusion d'IDs est morte le jour où le paquet a grandi — elle est
+désormais idempotente par nom serveur-fixe, avec adoption d'un élément déjà inséré.
+
+La suite, dans l'ordre : rebrancher `syson_constraint_solve` (z3) sur le système
+désormais couplé (u ≈ u₀ + k·(z−z₀) dans son voisinage déclaré) — sonder par
+`probe:constraint-solver` avant tout chemin de run ; puis le mécanisme de correction
+générique : échec d'exigence → lire les arêtes du modèle → `proposeVectorCorrection` →
+proposition MRTR → opération, ce qui transforme la correction 28→30 codée à la main en
+boucle pilotée par le modèle ; enfin le deuxième projet, seul vrai test que le Golden
+Path est générique.
