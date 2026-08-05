@@ -10,10 +10,7 @@ import {
   type EngineeringProjectStatus,
   type EngineeringWorkItem,
 } from "../../../domain/engineering-project.ts";
-import type {
-  ThreadGraphRef,
-  ThreadWorkbenchSnapshot,
-} from "../thread/types.ts";
+import type { ThreadGraphRef, ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { currentRequirements } from "../thread/versioned-provenance-model.ts";
 
 export interface ProjectPhaseView {
@@ -96,8 +93,12 @@ export interface ProjectPhaseLifecycle {
   readonly revisionAttemptCount: number;
   /** Identity-only repairs are retained beside the evidence, never as gates. */
   readonly identityRepairCount?: number;
-  /** The compact macro-stage reading state, not a replacement for its history. */
-  readonly state: "current" | "recomputing" | "attention";
+  /**
+   * The compact macro-stage reading state, not a replacement for its history.
+   * "retained" is the terminal reading on a completed project: the lifecycle
+   * never finished and never will — history kept, no recomputation promised.
+   */
+  readonly state: "current" | "recomputing" | "attention" | "retained";
 }
 
 export interface ProjectPathPhaseView extends ProjectPhaseView {
@@ -118,15 +119,11 @@ export function buildProjectBrief(
     .sort((left, right) => left.order - right.order)
     .map((phase): ProjectPhaseView => {
       const workItems = phase.workItemIds.flatMap((id) => {
-        const item = snapshot.workItems.find((candidate) =>
-          candidate.id === id
-        );
+        const item = snapshot.workItems.find((candidate) => candidate.id === id);
         return item ? [item] : [];
       });
       const decisions = phase.requiredDecisionIds.flatMap((id) => {
-        const decision = snapshot.decisions.find((candidate) =>
-          candidate.id === id
-        );
+        const decision = snapshot.decisions.find((candidate) => candidate.id === id);
         return decision ? [decision] : [];
       });
       return {
@@ -161,9 +158,7 @@ export function buildProjectBrief(
       decision.status === "required" || decision.status === "proposed" ||
       decision.status === "rejected"
     ),
-    openBlockers: snapshot.blockers.filter((blocker) =>
-      blocker.status === "open"
-    ),
+    openBlockers: snapshot.blockers.filter((blocker) => blocker.status === "open"),
   };
 }
 
@@ -190,9 +185,7 @@ export function buildCurrentProjectWork(
   }
 
   return {
-    nextWork: brief.nextWork.filter((item) =>
-      !historicalWorkItemIds.has(item.id)
-    ),
+    nextWork: brief.nextWork.filter((item) => !historicalWorkItemIds.has(item.id)),
     historicalWorkItemIds: [...historicalWorkItemIds].toSorted(),
     closedActionTargetIds: [...closedActionTargetIds].toSorted(),
   };
@@ -494,9 +487,7 @@ function revisionAttachments(
     if (!parent) continue;
 
     const correctionReachesParent = corrections.some((correction) =>
-      correction.evidenceKeys.some((key) =>
-        consumedCorrections.includes(key)
-      ) &&
+      correction.evidenceKeys.some((key) => consumedCorrections.includes(key)) &&
       correction.parentPhaseIds.includes(parent.phase.id)
     );
     if (!correctionReachesParent) continue;
@@ -709,15 +700,22 @@ function projectPhaseLifecycle(
   const latestRun = latestLifecycleRecord
     ? latestRunForPhase(snapshot, latestLifecycleRecord.phase)
     : undefined;
-  const state = !latestLifecycleRecord
-    ? "recomputing"
-    : latestRun?.status === "failed"
+  /**
+   * "recomputing" promises that new evidence is on its way. Once the project
+   * itself is completed nothing will ever recompute again, so an unfinished
+   * lifecycle is shown as retained history instead of a perpetual promise.
+   * A failed latest run keeps its attention signal even on a closed project.
+   */
+  const projectClosed = snapshot.status === "completed";
+  const state = latestRun?.status === "failed"
     ? "attention"
+    : !latestLifecycleRecord
+    ? (projectClosed ? "retained" : "recomputing")
     : latestRun && isActiveRun(latestRun)
     ? "recomputing"
     : latestLifecycleRecord.status === "completed"
     ? "current"
-    : "recomputing";
+    : (projectClosed ? "retained" : "recomputing");
   return {
     affectedComponentIds: [...lifecycle.affectedComponentIds].toSorted(),
     correctionCount: lifecycle.correctionEvidenceKeys.size,
@@ -900,9 +898,7 @@ export function agentRunSummary(
   const summary = run.summary.trim();
   if (isReadableRunSummary(summary)) return summary;
 
-  const workItem = snapshot.workItems.find((item) =>
-    item.id === run.workItemId
-  );
+  const workItem = snapshot.workItems.find((item) => item.id === run.workItemId);
   return workItem
     ? `Working on: ${workItem.title}`
     : "The agent is working on a recorded engineering task.";

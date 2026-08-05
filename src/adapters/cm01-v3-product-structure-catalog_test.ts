@@ -76,6 +76,43 @@ Deno.test("CM-01 V3 Product Structure derives only exact SysON definitions and t
   );
 });
 
+Deno.test("CM-01 V3 Product Structure still resolves when anchored requirements share the architecture's producer", async () => {
+  // The live regression: anchoring the oracle requirements (R13) inserted a
+  // second fresh sysml-model through the very same SysON tool, and a
+  // provenance-based selector went ambiguous — the Product panel emptied.
+  const fixture = await v3Fixture();
+  const requirementsArtifact = {
+    id: `oracle-requirements-${"4".repeat(64)}`,
+    name: "CM-01 oracle requirements declaration",
+    kind: "sysml-model",
+    version: "4".repeat(64),
+    fingerprint: fingerprint("4"),
+    uri: `casys://oracle-requirements-seed-capture/sha256/${"4".repeat(64)}`,
+    producer: {
+      serverId: "syson",
+      tool: "syson_element_insert_sysml",
+      runId: "run:anchor-oracle-requirements",
+    },
+    inputArtifactIds: [fixture.architectureId],
+    freshness: fresh(),
+  };
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [...fixture.snapshot.artifacts, requirementsArtifact],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  assertEquals(catalog?.components.length, 11);
+  assertEquals(
+    catalog?.components[0]?.bindings[0]?.evidenceArtifactId,
+    fixture.architectureId,
+  );
+});
+
 Deno.test("CM-01 V3 Product Structure withholds an assembly facet without its exact fresh R2 lineage", async () => {
   const fixture = await v3Fixture();
   const snapshot = structuredClone(fixture.snapshot);
@@ -211,6 +248,8 @@ async function v3Fixture(): Promise<{
       kind: "sysml-model",
       version: architectureFingerprint.digest,
       fingerprint: architectureFingerprint,
+      uri:
+        `casys://coffee-machine-cm01-v3-architecture/sha256/${architectureFingerprint.digest}`,
       producer: {
         serverId: "syson",
         tool: "syson_element_insert_sysml",

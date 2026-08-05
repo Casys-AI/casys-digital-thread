@@ -155,13 +155,22 @@ function unavailable(subjectId: string, rationale: string): ThreadComponentCatal
   };
 }
 
+/**
+ * The architecture capture's content-addressed URI namespace — the same store
+ * identity the capture reader is wired to. Selecting by producer tool broke
+ * the day the anchored oracle requirements were inserted through the very
+ * same SysON tool: provenance stopped identifying the artifact, while the
+ * store namespace still does.
+ */
+const CM01_V3_ARCHITECTURE_URI_PREFIX =
+  "casys://coffee-machine-cm01-v3-architecture/" as const;
+
 function oneFreshArchitecture(
   artifacts: readonly ThreadArtifact[],
 ): ThreadArtifact | undefined {
   const matches = artifacts.filter((artifact) =>
     artifact.kind === "sysml-model" &&
-    artifact.producer.serverId === "syson" &&
-    artifact.producer.tool === "syson_element_insert_sysml" &&
+    artifact.uri?.startsWith(CM01_V3_ARCHITECTURE_URI_PREFIX) === true &&
     artifact.freshness.status === "fresh"
   );
   return matches.length === 1 ? matches[0] : undefined;
