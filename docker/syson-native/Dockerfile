@@ -8,5 +8,10 @@
 FROM --platform=linux/amd64 eclipsesyson/syson:v2026.7.0 AS source
 
 FROM eclipse-temurin:21-jre
+# SysON's textual SysML path (SysmlToAst) extracts a bundled Syside CLI and
+# runs it through `node`; without Node every insertTextualSysMLv2 dies with a
+# generic "Unable to convert" — probed for real on 2026-08-05.
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=source /syson-application.jar /syson-application.jar
 ENTRYPOINT ["java", "-jar", "/syson-application.jar"]
