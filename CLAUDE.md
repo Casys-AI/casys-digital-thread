@@ -339,12 +339,22 @@ voisinage + réponse + dérivée + provenance, tout unité, indifférent à la s
 bornée au voisinage déclaré ou `unresolved` motivé : `no-applicable-edge`,
 `out-of-neighborhood`, `zero-derivative`, unités incompatibles ; jamais de clamp ni
 d'epsilon), et `buildCorrectionMrtrProposal` qui produit le DTO de décision humaine. La
-reproduction du 28→30 depuis les arêtes R16 réelles est un test. Les opérations
-`sensitivityRelations@2` (élément générique `DripTraySensitivityEdges`, N usages —
-`specializes` évité car il dégrade les `featurePaths` à la ré-extraction) et
-`design.apply-vector-correction@1` sont enregistrées planning-only.
+reproduction du 28→30 depuis les arêtes R16 réelles est un test. L'opération
+`sensitivityRelations@2` porte l'élément générique `DripTraySensitivityEdges` (N usages
+— `specializes` évité car il dégrade les `featurePaths` à la ré-extraction) ;
+`design.apply-vector-correction@1` reste enregistrée planning-only.
 
-La suite : les exécutions consenties en attente (migration de l'élément relations vers
-la forme @2 dans le modèle partagé ; run CAD @3 pour matérialiser les STL de
-présentation que les fiches Product attendent) ; puis le deuxième projet, seul vrai test
-que le Golden Path est générique.
+Les deux exécutions consenties ont suivi le même jour, chacune par le chemin agent
+complet (append → queue → execute) : R17 ancre `DripTraySensitivityEdges` dans le modèle
+partagé en conservant l'artefact relations historique — le cliquet interdit de l'omettre
+— et R18 matérialise les 11 STL de présentation attestés (assemblage + 10 parts, kind
+`mesh`) qui alimentent les fiches Product. Deux leçons de couture au passage : une
+opération `trusted` au registre ne suffit pas, son executor doit être branché dans le
+composition root (`server.ts`) — le refus « not backed by a trusted registered executor
+» est le fail-fast qui protège cette frontière ; et le preview a deux modes —
+`preview:thread` sert le dossier documentaire historique, seul `preview:cockpit`
+(`--workspace-id=primary`) lit le focus cockpit et sert le projet actif.
+
+La suite : le deuxième projet, seul vrai test que le Golden Path est générique. Le
+premier usage réel de `design.apply-vector-correction@1` attendra un vrai échec
+d'exigence — on n'en fabrique pas un.
