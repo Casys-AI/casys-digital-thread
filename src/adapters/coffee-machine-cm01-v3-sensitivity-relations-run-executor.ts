@@ -641,6 +641,32 @@ export class CoffeeMachineCm01V3SensitivityRelationsRunExecutor {
     sysmlText: string,
     inputs: SensitivityRelationsInputs,
   ): Promise<string> {
+    // Idempotent recovery first: a prior attempt may have landed without an
+    // acknowledged outcome. If the exact server-fixed element name already
+    // exists, adopt it instead of inserting a duplicate — the downstream
+    // re-extraction verifies its fidelity before anything is published.
+    // Two same-named elements are a state only an operator may resolve.
+    try {
+      const preChildren = await this.#syson.callTool({
+        name: "syson_element_children",
+        arguments: {
+          editing_context_id: inputs.editingContextId,
+          element_id: inputs.architecturePackageId,
+        },
+      });
+      const existing = identifyRelationsElements(
+        preChildren.structuredContent,
+        inputs.architecturePackageId,
+      );
+      if (existing.length > 1) {
+        throw new SensitivityRelationsWriteOutcomeUnknownError();
+      }
+      if (existing.length === 1) return existing[0]!.id;
+    } catch (error) {
+      if (error instanceof SensitivityRelationsWriteOutcomeUnknownError) throw error;
+      throw new SensitivityRelationsWriteOutcomeUnknownError();
+    }
+
     try {
       const insertResult = await this.#syson.callTool({
         name: "syson_element_insert_sysml",
@@ -665,11 +691,14 @@ export class CoffeeMachineCm01V3SensitivityRelationsRunExecutor {
           element_id: inputs.architecturePackageId,
         },
       });
-      elementId = identifyNewElement(
+      const matches = identifyRelationsElements(
         childrenResult.structuredContent,
         inputs.architecturePackageId,
-        inputs.declarationIds,
       );
+      if (matches.length !== 1) {
+        throw new SensitivityRelationsWriteOutcomeUnknownError();
+      }
+      elementId = matches[0]!.id;
     } catch (error) {
       if (error instanceof SensitivityRelationsWriteOutcomeUnknownError) throw error;
       throw new SensitivityRelationsWriteOutcomeUnknownError();
@@ -1112,18 +1141,18 @@ function verifyInsertionAck(value: unknown, expectedParentId: string): void {
 // Private: element identification by exclusion
 // ---------------------------------------------------------------------------
 
-function identifyNewElement(
+/**
+ * The inserted element carries the server-fixed part-def name, which is the
+ * only durable identity this executor controls. Exclusion-by-known-ids broke
+ * the day the package gained the anchored requirements element (R13): after
+ * insertion two children were "unknown" and the outcome went unresolvable.
+ */
+function identifyRelationsElements(
   value: unknown,
   expectedParentId: string,
-  declarationIds: readonly string[],
-): string {
+): SysmlElement[] {
   const items = parseChildrenResponse(value, expectedParentId);
-  const known = new Set(declarationIds);
-  const candidates = items.filter((item) => !known.has(item.id));
-  if (candidates.length === 0 || candidates.length > 1) {
-    throw new SensitivityRelationsWriteOutcomeUnknownError();
-  }
-  return candidates[0]!.id;
+  return items.filter((item) => item.label === SENSITIVITY_RELATIONS_PART_DEF_NAME);
 }
 
 function parseChildrenResponse(

@@ -523,19 +523,22 @@ Deno.test(
       );
       assertEquals(relationsArtifact.fingerprint.algorithm, "sha256");
 
-      // The SysON call sequence must be:
-      // insert → children (identification) → constraint_extract + element_children (verification)
+      // The SysON call sequence must be: preflight children (idempotent
+      // adoption guard) → insert → children (identification by server-fixed
+      // name) → constraint_extract + element_children (verification).
       assertEquals(syson.calls.map((c) => c.name), [
+        "syson_element_children",
         "syson_element_insert_sysml",
         "syson_element_children",
         "syson_constraint_extract",
         "syson_element_children",
       ]);
-      assertEquals(syson.calls[0]?.arguments?.parent_id, ARCH_PACKAGE_ID);
-      assertEquals(syson.calls[0]?.arguments?.editing_context_id, EDITING_CONTEXT_ID);
-      assertEquals(syson.calls[1]?.arguments?.element_id, ARCH_PACKAGE_ID);
-      assertEquals(syson.calls[2]?.arguments?.element_id, NEW_ELEMENT_ID);
+      assertEquals(syson.calls[0]?.arguments?.element_id, ARCH_PACKAGE_ID);
+      assertEquals(syson.calls[1]?.arguments?.parent_id, ARCH_PACKAGE_ID);
+      assertEquals(syson.calls[1]?.arguments?.editing_context_id, EDITING_CONTEXT_ID);
+      assertEquals(syson.calls[2]?.arguments?.element_id, ARCH_PACKAGE_ID);
       assertEquals(syson.calls[3]?.arguments?.element_id, NEW_ELEMENT_ID);
+      assertEquals(syson.calls[4]?.arguments?.element_id, NEW_ELEMENT_ID);
 
       // Idempotent replay: same command, no extra SysON calls.
       const replay = await executor.execute(
@@ -551,7 +554,7 @@ Deno.test(
       assertEquals(replay.revision, completed.revision);
       assertEquals(
         syson.calls.length,
-        4,
+        5,
         "Idempotent replay must not add SysON calls.",
       );
     } finally {
@@ -755,6 +758,7 @@ interface SensitivityRelationsSysonOptions {
 class SensitivityRelationsSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
   readonly #opts: SensitivityRelationsSysonOptions;
+  #inserted = false;
 
   constructor(opts: SensitivityRelationsSysonOptions) {
     this.#opts = opts;
@@ -772,6 +776,7 @@ class SensitivityRelationsSyson implements McpToolClient {
     this.calls.push(structuredClone(call));
 
     if (call.name === "syson_element_insert_sysml") {
+      this.#inserted = true;
       return Promise.resolve({
         text: "inserted",
         structuredContent: {
@@ -843,7 +848,7 @@ class SensitivityRelationsSyson implements McpToolClient {
             label: "dVonMisesDSizeZ_MPa_per_mm",
           },
         ];
-      } else {
+      } else if (this.#inserted) {
         allChildren = [
           ...knownChildren,
           {
@@ -852,6 +857,9 @@ class SensitivityRelationsSyson implements McpToolClient {
             label: "DripTraySensitivityRelations",
           },
         ];
+      } else {
+        // Preflight before insertion: the package holds only known elements.
+        allChildren = [...knownChildren];
       }
       return Promise.resolve({
         text: "children",
