@@ -17,6 +17,10 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "calculix",
     "modelica",
     "erpnext",
+    "dfm",
+    "tolerance",
+    "prusaslicer",
+    "spice",
   ]);
   assertEquals(manifest.servers[1].network?.exposure, "loopback-only");
   assertEquals(

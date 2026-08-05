@@ -217,6 +217,131 @@
           "ERPNext API credentials are supplied at runtime and never stored in this manifest."
         ]
       }
+    },
+    {
+      "id": "dfm",
+      "displayName": "DFM checks",
+      "role": "FDM printability verification on produced STL geometry",
+      "serviceName": "mcp-dfm",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3018/mcp",
+      "healthUrl": "http://127.0.0.1:3018/health",
+      "image": "ghcr.io/casys-ai/mcp-dfm@sha256:b0013717a77712bab741ec1ec54c10f74b09ac66ad66f988e33d96ca660d93a6",
+      "required": false,
+      "expectedTools": [
+        "dfm_check_envelope",
+        "dfm_check_min_thickness",
+        "dfm_check_overhangs"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread_exports:/exports:ro"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Every threshold is caller-supplied; the server embeds no printer defaults.",
+          "Each report names what was NOT checked; absence of a warning is never a guarantee."
+        ]
+      }
+    },
+    {
+      "id": "tolerance",
+      "displayName": "ISO 286 tolerances",
+      "role": "Fit limits and 1D stack-ups from the ISO 286-1 normative formulas",
+      "serviceName": "mcp-tolerance",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3019/mcp",
+      "healthUrl": "http://127.0.0.1:3019/health",
+      "image": "ghcr.io/casys-ai/mcp-tolerance@sha256:0a45eaade244bfb4beb0c179bd42efb0aabe9ec1de20edaff1fc1b069b03f323",
+      "required": false,
+      "expectedTools": [
+        "tolerance_fit",
+        "tolerance_fit_analyze",
+        "tolerance_it",
+        "tolerance_limits",
+        "tolerance_stackup"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Pure normative computation; unsupported tolerance classes are refused, never interpolated.",
+          "The tools report limits with provenance; fit suitability stays with the caller."
+        ]
+      }
+    },
+    {
+      "id": "prusaslicer",
+      "displayName": "PrusaSlicer estimation",
+      "role": "Print time and material measured from real G-code, never heuristics",
+      "serviceName": "mcp-prusaslicer",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3022/mcp",
+      "healthUrl": "http://127.0.0.1:3022/health",
+      "image": "ghcr.io/casys-ai/mcp-prusaslicer@sha256:6d55cb3d8c62d1f0372fa65a772a5f6941b7175c49881dfaba168cb1a3389975",
+      "required": false,
+      "expectedTools": [
+        "prusaslicer_estimate_fff"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread_exports:/exports:ro"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "Profiles are caller-owned attested inputs; no speed or temperature lives in the server.",
+          "Mass is reported only when a filament density is supplied."
+        ]
+      }
+    },
+    {
+      "id": "spice",
+      "displayName": "ngspice verification",
+      "role": "DC operating points and reduced transients from attested netlists",
+      "serviceName": "mcp-spice",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3023/mcp",
+      "healthUrl": "http://127.0.0.1:3023/health",
+      "image": "ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69",
+      "required": false,
+      "expectedTools": [
+        "spice_simulate_op",
+        "spice_simulate_tran"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "casys-digital-thread_exports:/exports:ro"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local",
+        "executesArbitraryCode": false,
+        "notes": [
+          "The server owns the .control block; caller netlists are circuit-only and .control/.include/.lib/shell are refused with typed errors.",
+          "Reduced statistics only; the full time series never crosses the boundary."
+        ]
+      }
     }
   ]
 }

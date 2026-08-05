@@ -77,6 +77,10 @@
 | `http://127.0.0.1:3014/mcp` | `mcp-build123d`             | CAD execution and exports                      |
 | `http://127.0.0.1:3015/mcp` | `mcp-calculix`              | Meshing and static FEA                         |
 | `http://127.0.0.1:3016/mcp` | `mcp-modelica`              | Approved simulations and run records           |
+| `http://127.0.0.1:3018/mcp` | `mcp-dfm`                   | FDM printability checks on produced STL        |
+| `http://127.0.0.1:3019/mcp` | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                |
+| `http://127.0.0.1:3022/mcp` | `mcp-prusaslicer`           | Print time and material from real G-code       |
+| `http://127.0.0.1:3023/mcp` | `mcp-spice`                 | ngspice operating points and transients        |
 | `http://127.0.0.1:3020/mcp` | `deno task start`           | Fleet reads plus agent project control         |
 | `http://127.0.0.1:3021/`    | `deno task preview:browser` | Console MCP App browser harness                |
 | `http://127.0.0.1:5175/`    | `deno task preview:cockpit` | Canonical project cockpit and live Project tab |
@@ -103,16 +107,13 @@ a second backend inside the first (a CuraEngine oracle would be `mcp-curaengine`
 option on `mcp-prusaslicer`); and renaming after a JSR release deprecates a package, so
 the naming decision is made before first publication.
 
-Published servers not yet wired into the workshop compose topology, with their reserved
-ports — presence in this list is a paper reservation, never evidence of a running
-service:
-
-| Reserved port | Server            | Engine                         |
-| ------------- | ----------------- | ------------------------------ |
-| `3018`        | `mcp-dfm`         | gmsh + in-house geometry       |
-| `3019`        | `mcp-tolerance`   | ISO 286-1 formulas (no binary) |
-| `3022`        | `mcp-prusaslicer` | PrusaSlicer 2.9.2 CLI          |
-| `3023`        | `mcp-spice`       | ngspice 44.2 batch             |
+The four standalone oracle servers (`mcp-dfm` 3018, `mcp-tolerance` 3019,
+`mcp-prusaslicer` 3022, `mcp-spice` 3023) are wired into the workshop compose topology
+and the fleet manifest since 2026-08-05, each pinned to its published multi-arch
+`ghcr.io/casys-ai/*` image digest. Wiring in the manifest declares the desired state
+only — the MCP and Docker probes remain the execution truth, including when they answer
+`unavailable`. The same images also carry a `stdio` entrypoint mode used by the Docker
+MCP Catalog submissions; the workshop always talks to them over stateless HTTP.
 
 `config/mechanical-proof-cases/` holds two different schemas, and the distinction
 matters. Three files use `cm01-v3-drip-tray-static-proof/{1,2,3}.0` and _are_ loaded by

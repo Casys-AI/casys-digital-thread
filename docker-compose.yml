@@ -153,6 +153,85 @@ services:
       retries: 6
     networks: [chain, erpnext]
 
+  # The four standalone oracle servers, each pinned to its published ghcr
+  # image. Their entrypoints default to HTTP mode binding 0.0.0.0 inside the
+  # container on their park port; the mappings stay loopback-only. dfm,
+  # prusaslicer and spice mount /exports read-only: they verify artifacts the
+  # chain produced (or dropped) there — they never write into it.
+  mcp-dfm:
+    image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:b0013717a77712bab741ec1ec54c10f74b09ac66ad66f988e33d96ca660d93a6}"
+    ports:
+      - "127.0.0.1:3018:3018"
+    volumes:
+      - exports:/exports:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3018/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+  mcp-tolerance:
+    image: "${MCP_TOLERANCE_IMAGE:-ghcr.io/casys-ai/mcp-tolerance@sha256:0a45eaade244bfb4beb0c179bd42efb0aabe9ec1de20edaff1fc1b069b03f323}"
+    ports:
+      - "127.0.0.1:3019:3019"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3019/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+  mcp-prusaslicer:
+    image: "${MCP_PRUSASLICER_IMAGE:-ghcr.io/casys-ai/mcp-prusaslicer@sha256:6d55cb3d8c62d1f0372fa65a772a5f6941b7175c49881dfaba168cb1a3389975}"
+    ports:
+      - "127.0.0.1:3022:3022"
+    volumes:
+      - exports:/exports:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3022/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
+  mcp-spice:
+    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:cabf9a87e2006811484625f833859b96724faaf5dab6d60f1a10dc7cc6777a69}"
+    ports:
+      - "127.0.0.1:3023:3023"
+    volumes:
+      - exports:/exports:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const response = await fetch('http://127.0.0.1:3023/health'); if (!response.ok) Deno.exit(1);",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [chain]
+
 networks:
   chain:
   erpnext:
