@@ -217,6 +217,15 @@ export const CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR: CaptureStoreDescrip
   label: "CM-01 DripTray printability",
 };
 
+export const SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-relations-seed"
+> = {
+  kind: "sensitivity-relations-seed",
+  directory: "state/local/sensitivity-relations-seed-captures",
+  uriNamespace: "sensitivity-relations-seed-capture",
+  label: "Sensitivity relations seed",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

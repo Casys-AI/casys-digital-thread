@@ -28,6 +28,7 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-static-proof-height-30-r3"
   | "cm01.drip-tray-static-proof-height-30-r3-identity-recovery"
   | "cm01.drip-tray-sensitivity"
+  | "cm01.drip-tray-sensitivity-relations"
   | "cm01.drip-tray-printability";
 
 export type CoffeeMachineCm01V3PresentationRole =
@@ -212,6 +213,18 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
         version: "1",
       } as const,
     ),
+    /**
+     * Writes the reviewed DripTray sensitivity-relations declaration into the
+     * SysML model as a named PartDef element. No agent values, no solver, no
+     * provider arguments — the declaration is built server-side from the
+     * committed sensitivity-study capture.
+     */
+    sensitivityRelations: Object.freeze(
+      {
+        id: "model.write-coffee-machine-cm01-sensitivity-relations",
+        version: "1",
+      } as const,
+    ),
   } as const satisfies Record<string, CoffeeMachineCm01V3OperationRef>,
 );
 
@@ -224,6 +237,14 @@ const APPROVED_BRIEF_AND_ARCHITECTURE_ARTIFACT_BINDINGS = [
   ...APPROVED_BRIEF_BINDING,
   {
     name: "architectureArtifact",
+    allowedSourceKinds: ["thread-entity"],
+  },
+] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
+
+const APPROVED_BRIEF_AND_SENSITIVITY_ARTIFACT_BINDINGS = [
+  ...APPROVED_BRIEF_BINDING,
+  {
+    name: "sensitivityArtifact",
     allowedSourceKinds: ["thread-entity"],
   },
 ] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
@@ -688,6 +709,56 @@ const KITS = [
       riskClass: "low",
       execution: "trusted",
       bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.drip-tray-sensitivity-relations",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/sensitivity-relations.ts",
+          purpose:
+            "Provides the validated declaration contract, deterministic SysML renderer, and fingerprint that produce the canonical sensitivity-relations element text.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/syson-sensitivity-relations-extractor.ts",
+          purpose:
+            "Defines the two-phase extraction and verification contract that re-reads the anchored sensitivity-relations element after insertion.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path:
+            "src/adapters/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts",
+          purpose:
+            "Holds the server-fixed metric-to-attribute mapping and the closed WAL sequence that builds the declaration from the sensitivity-study capture.",
+        },
+      ],
+    },
+    /**
+     * Anchors a reviewed sensitivity-relations declaration only. This kit does
+     * not produce a verification verdict, run a solver, generate CAD, make a
+     * cost or supply claim, assess durability or safety, or constitute
+     * certification of the product or the component.
+     */
+    evidenceBoundary:
+      "Anchors the reviewed DripTray sensitivity-relations declaration (parameter, derivative attributes, validity bounds) as a named SysML element. It is not a verification verdict, solver run, CAD result, whole-machine claim, durability assessment, safety analysis, or certification.",
+    presentationRole: "architecture",
+    activityCategory: "model",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelations,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Write the CM-01 sensitivity-relations into the SysML model",
+      description:
+        "Build the reviewed DripTray sensitivity-relations declaration from the committed sensitivity-study capture and insert it as a named PartDef into the CM-01 SysON model, then verify re-extraction matches the canonical fingerprint.",
+      workItemKind: "architect",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_SENSITIVITY_ARTIFACT_BINDINGS,
     },
   },
   {

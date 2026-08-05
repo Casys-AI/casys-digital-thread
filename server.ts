@@ -21,6 +21,7 @@ import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/file-capture-store.ts";
@@ -33,10 +34,15 @@ import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/file-cm01-erpn
 import { FileCm01SemanticCadAttemptStore } from "./src/adapters/file-cm01-semantic-cad-attempt-store.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/file-cm01-drip-tray-mechanical-attempt-store.ts";
 import { FileOracleRequirementsSeedAttemptStore } from "./src/adapters/file-oracle-requirements-seed-attempt-store.ts";
+import { FileSensitivityRelationsAttemptStore } from "./src/adapters/file-sensitivity-relations-attempt-store.ts";
 import {
   COFFEE_MACHINE_CM01_V3_ORACLE_REQUIREMENTS_OPERATION,
   CoffeeMachineCm01V3OracleRequirementsRunExecutor,
 } from "./src/adapters/coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_SENSITIVITY_RELATIONS_OPERATION,
+  CoffeeMachineCm01V3SensitivityRelationsRunExecutor,
+} from "./src/adapters/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
@@ -198,6 +204,10 @@ const DEFAULT_SENSITIVITY_STUDY_CAPTURE_DIRECTORY =
   "state/local/sensitivity-study-captures";
 const DEFAULT_SENSITIVITY_RUN_ATTEMPT_DIRECTORY =
   "state/local/sensitivity-run-attempts";
+const DEFAULT_SENSITIVITY_RELATIONS_SEED_ATTEMPT_DIRECTORY =
+  "state/local/sensitivity-relations-seed-attempts";
+const DEFAULT_SENSITIVITY_RELATIONS_SEED_CAPTURE_DIRECTORY =
+  "state/local/sensitivity-relations-seed-captures";
 const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DIRECTORY =
   "state/local/cm01-drip-tray-printability-captures";
 const DEFAULT_CM01_DRIP_TRAY_PRINTABILITY_ATTEMPT_DIRECTORY =
@@ -269,6 +279,8 @@ export interface CreateConsoleServerOptions {
   oracleRequirementsSeedCaptureDirectory?: string;
   sensitivityStudyCaptureDirectory?: string;
   sensitivityRunAttemptDirectory?: string;
+  sensitivityRelationsSeedAttemptDirectory?: string;
+  sensitivityRelationsSeedCaptureDirectory?: string;
   cm01DripTrayPrintabilityCaptureDirectory?: string;
   cm01DripTrayPrintabilityAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
@@ -496,6 +508,35 @@ async function createProjectControl(
           DEFAULT_ORACLE_REQUIREMENTS_SEED_ATTEMPT_DIRECTORY,
       ),
       proof: await loadCm01DripTrayMechanicalProof(),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+    })
+    : undefined;
+  const cm01SensitivityRelations = sysonMcpUrl
+    ? new CoffeeMachineCm01V3SensitivityRelationsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      architectureCaptures: new FileCaptureStore({
+        ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.cm01ArchitectureCaptureDirectory ??
+          DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      seedCaptures: sysonModelSeedCaptures,
+      sensitivityCaptures: new FileCaptureStore({
+        ...SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+        directory: options.sensitivityStudyCaptureDirectory ??
+          DEFAULT_SENSITIVITY_STUDY_CAPTURE_DIRECTORY,
+      }),
+      sensitivityRelationsCaptures: new FileCaptureStore({
+        ...SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
+        directory: options.sensitivityRelationsSeedCaptureDirectory ??
+          DEFAULT_SENSITIVITY_RELATIONS_SEED_CAPTURE_DIRECTORY,
+      }),
+      attempts: new FileSensitivityRelationsAttemptStore(
+        options.sensitivityRelationsSeedAttemptDirectory ??
+          DEFAULT_SENSITIVITY_RELATIONS_SEED_ATTEMPT_DIRECTORY,
+      ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
     })
@@ -784,6 +825,12 @@ async function createProjectControl(
             executor: cm01OracleRequirements,
             unavailableMessage:
               "The server has no trusted CM-01 oracle-requirements executor configured for this run.",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_SENSITIVITY_RELATIONS_OPERATION,
+            executor: cm01SensitivityRelations,
+            unavailableMessage:
+              "The server has no trusted CM-01 sensitivity-relations executor configured for this run (SysON provider is required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,

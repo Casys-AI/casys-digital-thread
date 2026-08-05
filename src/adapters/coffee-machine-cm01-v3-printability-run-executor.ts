@@ -509,14 +509,14 @@ export class CoffeeMachineCm01V3PrintabilityRunExecutor {
  * source their artifactIds on the capture document artifact, which contains the
  * complete check record including not_checked items.
  */
-export async function materializePrintabilitySnapshot(
+export function materializePrintabilitySnapshot(
   base: ThreadSnapshot,
   runId: string,
   pc: PrintabilityCheckCase,
   captureFingerprint: ContentFingerprint,
   uri: string,
   record: PrintabilityCaptureRecord,
-): Promise<PrintabilityMaterialization> {
+): PrintabilityMaterialization {
   const captureDigest = captureFingerprint.digest;
   const prefix = `drip-tray-printability-${captureDigest}`;
   const capturedAt = record.capturedAt;

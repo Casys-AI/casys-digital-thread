@@ -293,7 +293,7 @@ export function verifyExtractedConstraint(row: unknown, req: OracleRequirement):
 // Private helpers
 // ---------------------------------------------------------------------------
 
-function extractedId(row: unknown): string | undefined {
+function _extractedId(row: unknown): string | undefined {
   if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
   const item = row as Record<string, unknown>;
   return typeof item.id === "string" && item.id.length > 0 ? item.id : undefined;
