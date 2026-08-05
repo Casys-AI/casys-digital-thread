@@ -7,8 +7,6 @@ import {
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
-  EngineeringThreadSnapshotBasis,
-  EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
 import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
@@ -53,6 +51,13 @@ import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
 import type { FileCaptureStore } from "./file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
+import {
+  requireBasis,
+  requiredStart,
+  requireRun,
+  snapshotRef,
+  unexpectedStatus,
+} from "./executor-run-helpers.ts";
 
 export const COFFEE_MACHINE_CM01_V3_CAD_R2_OPERATION =
   COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30;
@@ -441,7 +446,7 @@ class R2ExecutorCommon {
           await this.reconcile(project.project.subjectId, run.id);
           return project;
         }
-        if (run.status !== "running") throw unexpected(run, "running");
+        if (run.status !== "running") throw unexpectedStatus(run, "running");
         const startedAt = requiredStart(run);
         await this.recordLive(
           project.project.subjectId,
@@ -487,7 +492,7 @@ class R2ExecutorCommon {
             summary: `Publishing the CM-01 R2 ${kind} successor evidence.`,
           });
         } else if (run.status !== "publishing" && run.status !== "completed") {
-          throw unexpected(run, "publishing");
+          throw unexpectedStatus(run, "publishing");
         }
         project = await this.requiredProject(command.projectId);
         run = requireRun(project, command.runId);
@@ -505,7 +510,7 @@ class R2ExecutorCommon {
               id: materialized.evidenceArtifactId,
             }],
           });
-        } else if (run.status !== "completed") throw unexpected(run, "completed");
+        } else if (run.status !== "completed") throw unexpectedStatus(run, "completed");
         const completed = await this.requiredProject(command.projectId);
         assertCompleted(completed, command);
         await this.reconcile(completed.project.subjectId, command.runId);
@@ -883,44 +888,6 @@ function requireMechanicalCadBinding(
   }
 }
 
-function requireRun(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-): EngineeringAgentRun {
-  const run = project.agentRuns.find((item) => item.id === runId);
-  if (!run) {
-    throw new EngineeringProjectCommandError(
-      "entity_not_found",
-      `Agent run ${runId} does not exist in project ${project.project.id}.`,
-    );
-  }
-  return run;
-}
-function requireBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
-  if (run.basis?.kind !== "thread-snapshot") {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 R2 run ${run.id} must have an exact ThreadSnapshot basis.`,
-    );
-  }
-  return run.basis;
-}
-function requiredStart(run: EngineeringAgentRun): string {
-  if (!run.startedAt || Number.isNaN(Date.parse(run.startedAt))) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 R2 run ${run.id} has no durable start timestamp.`,
-    );
-  }
-  return run.startedAt;
-}
-function snapshotRef(snapshot: ThreadSnapshot): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: snapshot.id,
-    revision: snapshot.revision,
-    subjectId: snapshot.subject.id,
-  };
-}
 function assertCompleted(
   project: EngineeringProjectSnapshot,
   command: CoffeeMachineCm01V3R2RunExecutorCommand,
@@ -937,15 +904,6 @@ function assertCompleted(
       `CM-01 R2 run ${run.id} did not complete through this exact execution command.`,
     );
   }
-}
-function unexpected(
-  run: EngineeringAgentRun,
-  expected: string,
-): EngineeringProjectCommandError {
-  return new EngineeringProjectCommandError(
-    "invalid_transition",
-    `CM-01 R2 run ${run.id} is ${run.status}; expected ${expected} while resuming this exact execution command.`,
-  );
 }
 function step(commandId: string, suffix: string): string {
   return `${commandId}:${suffix}`;

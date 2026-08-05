@@ -9,7 +9,6 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
-  EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
 import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
@@ -45,6 +44,13 @@ import { FileCaptureStore } from "./file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
+import {
+  requireBasis,
+  requiredStart,
+  requireRun,
+  snapshotRef,
+  unexpectedStatus,
+} from "./executor-run-helpers.ts";
 
 export const COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA =
   "coffee-machine-cm01-v3-architecture-capture/1.0" as const;
@@ -304,7 +310,7 @@ export class CoffeeMachineCm01V3ArchitectureRunExecutor {
           expectedRevision: project.revision,
           summary:
             "Recorded the bounded CM-01 system-model architecture and its SysON read-back.",
-          resultSnapshot: snapshotReference(materialized.snapshot),
+          resultSnapshot: snapshotRef(materialized.snapshot),
           evidenceRefs: [artifactReference(materialized.snapshot)],
         });
       } else if (run.status !== "completed") {
@@ -950,48 +956,6 @@ function liveSummary(
   } completed; canonical evidence validation remains server-owned.`;
 }
 
-function requireRun(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-): EngineeringAgentRun {
-  const run = project.agentRuns.find((candidate) => candidate.id === runId);
-  if (!run) {
-    throw new EngineeringProjectCommandError(
-      "entity_not_found",
-      `Agent run ${runId} does not exist in project ${project.project.id}.`,
-    );
-  }
-  return run;
-}
-
-function requireBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
-  if (run.basis?.kind !== "thread-snapshot") {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 architecture run ${run.id} must be bound to an exact ThreadSnapshot.`,
-    );
-  }
-  return structuredClone(run.basis);
-}
-
-function requiredStart(run: EngineeringAgentRun): string {
-  if (!run.startedAt || Number.isNaN(Date.parse(run.startedAt))) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 architecture run ${run.id} has no durable start timestamp.`,
-    );
-  }
-  return run.startedAt;
-}
-
-function snapshotReference(snapshot: ThreadSnapshot): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: snapshot.id,
-    revision: snapshot.revision,
-    subjectId: snapshot.subject.id,
-  };
-}
-
 function artifactReference(snapshot: ThreadSnapshot): EngineeringThreadEntityRef {
   const artifact = snapshot.artifacts.find((candidate) =>
     candidate.id.startsWith("coffee-machine-cm01-v3-architecture-")
@@ -1023,16 +987,6 @@ function assertCompleted(
       `CM-01 architecture run ${command.runId} did not complete through this exact execution command.`,
     );
   }
-}
-
-function unexpectedStatus(
-  run: EngineeringAgentRun,
-  expected: string,
-): EngineeringProjectCommandError {
-  return new EngineeringProjectCommandError(
-    "invalid_transition",
-    `CM-01 architecture run ${run.id} is ${run.status}; expected ${expected}.`,
-  );
 }
 
 function commandStep(commandId: string, step: string): string {

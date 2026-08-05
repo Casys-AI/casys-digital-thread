@@ -8,8 +8,6 @@ import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
-  EngineeringThreadSnapshotBasis,
-  EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
 import { deterministicJson } from "../domain/deterministic-json.ts";
@@ -21,6 +19,13 @@ import type { ThreadSnapshotStore } from "../domain/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../domain/thread-snapshot-validation.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
+import {
+  requireBasis,
+  requiredStart,
+  requireRun,
+  snapshotRef,
+  unexpectedStatus,
+} from "./executor-run-helpers.ts";
 
 /**
  * The one server-owned mutation admitted by the first CM-01 feedback loop.
@@ -196,7 +201,7 @@ export class CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor {
           expectedRevision: project.revision,
           summary:
             "Recorded the CM-01 28 mm to 30 mm DripTray correction and its bounded recomputation obligations.",
-          resultSnapshot: snapshotReference(materialized.snapshot),
+          resultSnapshot: snapshotRef(materialized.snapshot),
           evidenceRefs: [materialized.evidence],
         });
       } else if (run.status !== "completed") {
@@ -370,20 +375,6 @@ export class CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor {
   }
 }
 
-function requireRun(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-): EngineeringAgentRun {
-  const run = project.agentRuns.find((item) => item.id === runId);
-  if (!run) {
-    throw new EngineeringProjectCommandError(
-      "entity_not_found",
-      `Agent run ${runId} does not exist in project ${project.project.id}.`,
-    );
-  }
-  return run;
-}
-
 function requireCorrectionRunShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
@@ -436,34 +427,6 @@ function hasOnlyApprovedBriefBinding(
     bindings[0]?.source?.kind === "approved-brief";
 }
 
-function requireBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
-  if (run.basis?.kind !== "thread-snapshot") {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 correction run ${run.id} must have an exact ThreadSnapshot basis.`,
-    );
-  }
-  return run.basis;
-}
-
-function requiredStart(run: EngineeringAgentRun): string {
-  if (!run.startedAt || Number.isNaN(Date.parse(run.startedAt))) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 correction run ${run.id} has no durable start timestamp.`,
-    );
-  }
-  return run.startedAt;
-}
-
-function snapshotReference(snapshot: ThreadSnapshot): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: snapshot.id,
-    revision: snapshot.revision,
-    subjectId: snapshot.subject.id,
-  };
-}
-
 function assertCompleted(
   project: EngineeringProjectSnapshot,
   command: CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutorCommand,
@@ -506,16 +469,6 @@ async function persistedPresence(
   } catch {
     return "unknown";
   }
-}
-
-function unexpectedStatus(
-  run: EngineeringAgentRun,
-  expected: string,
-): EngineeringProjectCommandError {
-  return new EngineeringProjectCommandError(
-    "invalid_transition",
-    `CM-01 correction run ${run.id} is ${run.status}; expected ${expected} while resuming this exact execution command.`,
-  );
 }
 
 function step(commandId: string, name: string): string {

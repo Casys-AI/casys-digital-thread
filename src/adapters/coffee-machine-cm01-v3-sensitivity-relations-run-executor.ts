@@ -23,7 +23,6 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
-  EngineeringThreadSnapshotRef,
 } from "../domain/engineering-project.ts";
 import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
 import {
@@ -56,6 +55,13 @@ import {
   FileSensitivityRelationsAttemptStore,
   SensitivityRelationsWriteOutcomeUnknownError,
 } from "./file-sensitivity-relations-attempt-store.ts";
+import {
+  requireBasis,
+  requiredStart,
+  requireRun,
+  snapshotRef,
+  unexpectedStatus,
+} from "./executor-run-helpers.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -1357,40 +1363,6 @@ async function exactSnapshot(
   }
 }
 
-function requireRun(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-): EngineeringAgentRun {
-  const run = project.agentRuns.find((candidate) => candidate.id === runId);
-  if (!run) {
-    throw new EngineeringProjectCommandError(
-      "entity_not_found",
-      `Agent run ${runId} does not exist in project ${project.project.id}.`,
-    );
-  }
-  return run;
-}
-
-function requireBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
-  if (run.basis?.kind !== "thread-snapshot") {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Sensitivity-relations run ${run.id} must be bound to an exact ThreadSnapshot.`,
-    );
-  }
-  return structuredClone(run.basis);
-}
-
-function requiredStart(run: EngineeringAgentRun): string {
-  if (!run.startedAt || Number.isNaN(Date.parse(run.startedAt))) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Sensitivity-relations run ${run.id} has no durable start timestamp.`,
-    );
-  }
-  return run.startedAt;
-}
-
 function assertCompleted(
   project: EngineeringProjectSnapshot,
   command: CoffeeMachineCm01V3SensitivityRelationsRunExecutorCommand,
@@ -1410,26 +1382,8 @@ function assertCompleted(
   }
 }
 
-function unexpectedStatus(
-  run: EngineeringAgentRun,
-  expected: string,
-): EngineeringProjectCommandError {
-  return new EngineeringProjectCommandError(
-    "invalid_transition",
-    `Sensitivity-relations run ${run.id} is ${run.status}; expected ${expected}.`,
-  );
-}
-
 function commandStep(commandId: string, step: string): string {
   return `${commandId}:coffee-machine-cm01-v3-sensitivity-relations:${step}`;
-}
-
-function snapshotRef(snapshot: ThreadSnapshot): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: snapshot.id,
-    revision: snapshot.revision,
-    subjectId: snapshot.subject.id,
-  };
 }
 
 function artifactEntityRef(snapshot: ThreadSnapshot): EngineeringThreadEntityRef {

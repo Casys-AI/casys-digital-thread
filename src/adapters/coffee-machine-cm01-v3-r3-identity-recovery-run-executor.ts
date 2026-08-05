@@ -31,6 +31,12 @@ import {
   type Cm01R3MechanicalMaterialization,
   CoffeeMachineCm01V3MechanicalR3SuccessorMaterializer,
 } from "./coffee-machine-cm01-v3-r3-successor-materializer.ts";
+import {
+  requireBasis,
+  requireRun,
+  snapshotRef,
+  unexpectedStatus,
+} from "./executor-run-helpers.ts";
 
 export const COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION =
   COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30R3IdentityRecovery;
@@ -149,7 +155,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
         assertCompleted(project, command);
         return project;
       }
-      if (run.status !== "running") throw unexpected(run, "running");
+      if (run.status !== "running") throw unexpectedStatus(run, "running");
 
       const basis = await this.#requiredBasis(project, run);
       // Fidelity gate: same check as the other mechanical executors — if the
@@ -209,7 +215,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
           summary: "Publishing the correctly identified CM-01 R3 mechanical evidence.",
         });
       } else if (run.status !== "publishing" && run.status !== "completed") {
-        throw unexpected(run, "publishing");
+        throw unexpectedStatus(run, "publishing");
       }
 
       project = await this.#requiredProject(command.projectId);
@@ -221,7 +227,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
           expectedRevision: project.revision,
           summary:
             "Recorded the R3-identified CM-01 mechanical successor from the immutable completed R3 capture; R10 remains retained as superseded history.",
-          resultSnapshot: snapshotReference(materialized.snapshot),
+          resultSnapshot: snapshotRef(materialized.snapshot),
           evidenceRefs: [{
             snapshotId: materialized.snapshot.id,
             snapshotRevision: materialized.snapshot.revision,
@@ -230,7 +236,7 @@ export class CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor {
           }],
         });
       } else if (run.status !== "completed") {
-        throw unexpected(run, "completed");
+        throw unexpectedStatus(run, "completed");
       }
       const completed = await this.#requiredProject(command.projectId);
       assertCompleted(completed, command);
@@ -402,16 +408,6 @@ function requireOwnedRecoveryRun(
   }
 }
 
-function requireBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
-  if (run.basis?.kind !== "thread-snapshot") {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 R3 identity-recovery run ${run.id} must have an exact ThreadSnapshot basis.`,
-    );
-  }
-  return run.basis;
-}
-
 function requireHistoricalR3Evidence(
   project: EngineeringProjectSnapshot,
   basis: EngineeringThreadSnapshotBasis,
@@ -481,20 +477,6 @@ function requireRecoveryBinding(
   }
 }
 
-function requireRun(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-): EngineeringAgentRun {
-  const run = project.agentRuns.find((item) => item.id === runId);
-  if (!run) {
-    throw new EngineeringProjectCommandError(
-      "entity_not_found",
-      `Agent run ${runId} does not exist in project ${project.project.id}.`,
-    );
-  }
-  return run;
-}
-
 function sameSnapshot(
   value: (EngineeringThreadSnapshotRef | EngineeringThreadEntityRef) | undefined,
   expected: EngineeringThreadSnapshotBasis,
@@ -503,14 +485,6 @@ function sameSnapshot(
   const revision = (value as { readonly revision?: unknown }).revision ??
     (value as { readonly snapshotRevision?: unknown }).snapshotRevision;
   return revision === expected.revision;
-}
-
-function snapshotReference(snapshot: ThreadSnapshot): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: snapshot.id,
-    revision: snapshot.revision,
-    subjectId: snapshot.subject.id,
-  };
 }
 
 function assertCompleted(
@@ -545,16 +519,6 @@ async function snapshotPresence(
   } catch {
     return "unknown";
   }
-}
-
-function unexpected(
-  run: EngineeringAgentRun,
-  expected: string,
-): EngineeringProjectCommandError {
-  return new EngineeringProjectCommandError(
-    "invalid_transition",
-    `CM-01 R3 identity-recovery run ${run.id} is ${run.status}; expected ${expected}.`,
-  );
 }
 
 function step(commandId: string, suffix: string): string {

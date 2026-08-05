@@ -8,8 +8,6 @@ import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
-  EngineeringThreadSnapshotBasis,
-  EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
 import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
@@ -35,6 +33,13 @@ import { FileCaptureStore } from "./file-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "./file-cm01-erpnext-bom-run-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
+import {
+  requireBasis,
+  requiredStart,
+  requireRun,
+  snapshotRef,
+  unexpectedStatus,
+} from "./executor-run-helpers.ts";
 
 export const COFFEE_MACHINE_CM01_V3_ERPNEXT_BOM_OPERATION =
   COFFEE_MACHINE_CM01_V3_OPERATION_REFS.bom;
@@ -596,19 +601,6 @@ function parseCapture(value: unknown): Cm01ErpNextBomCapture {
   return capture;
 }
 
-function requireRun(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-): EngineeringAgentRun {
-  const run = project.agentRuns.find((item) => item.id === runId);
-  if (!run) {
-    throw new EngineeringProjectCommandError(
-      "entity_not_found",
-      `Agent run ${runId} does not exist in project ${project.project.id}.`,
-    );
-  }
-  return run;
-}
 function requireShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
@@ -642,31 +634,6 @@ function requireClaimedShape(
   }
   return item;
 }
-function requireBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
-  if (run.basis?.kind !== "thread-snapshot") {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 ERPNext BOM run ${run.id} must have an exact ThreadSnapshot basis.`,
-    );
-  }
-  return run.basis;
-}
-function requiredStart(run: EngineeringAgentRun): string {
-  if (!run.startedAt || Number.isNaN(Date.parse(run.startedAt))) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 ERPNext BOM run ${run.id} has no durable start timestamp.`,
-    );
-  }
-  return run.startedAt;
-}
-function snapshotRef(snapshot: ThreadSnapshot): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: snapshot.id,
-    revision: snapshot.revision,
-    subjectId: snapshot.subject.id,
-  };
-}
 function assertCompleted(
   project: EngineeringProjectSnapshot,
   command: CoffeeMachineCm01V3ErpNextBomRunExecutorCommand,
@@ -683,15 +650,6 @@ function assertCompleted(
       `CM-01 ERPNext BOM run ${run.id} did not complete through this exact execution command.`,
     );
   }
-}
-function unexpectedStatus(
-  run: EngineeringAgentRun,
-  expected: string,
-): EngineeringProjectCommandError {
-  return new EngineeringProjectCommandError(
-    "invalid_transition",
-    `CM-01 ERPNext BOM run ${run.id} is ${run.status}; expected ${expected} while resuming this exact execution command.`,
-  );
 }
 function step(commandId: string, name: string): string {
   return `${commandId}:cm01-erpnext-bom:${name}`;

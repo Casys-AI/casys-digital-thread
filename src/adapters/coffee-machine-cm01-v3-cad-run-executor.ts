@@ -8,8 +8,6 @@ import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
-  EngineeringThreadSnapshotBasis,
-  EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "../domain/engineering-project.ts";
 import { deterministicJson, sha256Fingerprint } from "../domain/deterministic-json.ts";
@@ -46,6 +44,13 @@ import { FileCaptureStore } from "./file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "./file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "./live-thread-update-store.ts";
+import {
+  requireBasis,
+  requiredStart,
+  requireRun,
+  snapshotRef,
+  unexpectedStatus,
+} from "./executor-run-helpers.ts";
 
 export const COFFEE_MACHINE_CM01_V3_CAD_OPERATION =
   COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cad;
@@ -218,7 +223,7 @@ export class CoffeeMachineCm01V3CadRunExecutor {
           commandId: commandStep(command.commandId, "complete"),
           expectedRevision: project.revision,
           summary: "Recorded the reviewed CM-01 CAD plan, script and STEP evidence.",
-          resultSnapshot: snapshotReference(materialized.snapshot),
+          resultSnapshot: snapshotRef(materialized.snapshot),
           evidenceRefs: [materialized.evidence],
         });
       } else if (run.status !== "completed") {
@@ -702,48 +707,6 @@ function requireClaimedCadRun(
   return workItem;
 }
 
-function requireRun(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-): EngineeringAgentRun {
-  const run = project.agentRuns.find((candidate) => candidate.id === runId);
-  if (!run) {
-    throw new EngineeringProjectCommandError(
-      "entity_not_found",
-      `Agent run ${runId} does not exist in project ${project.project.id}.`,
-    );
-  }
-  return run;
-}
-
-function requireBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
-  if (run.basis?.kind !== "thread-snapshot") {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 CAD run ${run.id} must have an exact ThreadSnapshot basis.`,
-    );
-  }
-  return run.basis;
-}
-
-function requiredStart(run: EngineeringAgentRun): string {
-  if (!run.startedAt || Number.isNaN(Date.parse(run.startedAt))) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `CM-01 CAD run ${run.id} has no durable start timestamp.`,
-    );
-  }
-  return run.startedAt;
-}
-
-function snapshotReference(snapshot: ThreadSnapshot): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: snapshot.id,
-    revision: snapshot.revision,
-    subjectId: snapshot.subject.id,
-  };
-}
-
 function assertCompleted(
   project: EngineeringProjectSnapshot,
   command: CoffeeMachineCm01V3CadRunExecutorCommand,
@@ -760,16 +723,6 @@ function assertCompleted(
       `CM-01 CAD run ${run.id} did not complete through this exact execution command.`,
     );
   }
-}
-
-function unexpectedStatus(
-  run: EngineeringAgentRun,
-  expected: string,
-): EngineeringProjectCommandError {
-  return new EngineeringProjectCommandError(
-    "invalid_transition",
-    `CM-01 CAD run ${run.id} is ${run.status}; expected ${expected} while resuming this exact execution command.`,
-  );
 }
 
 async function assertExactSnapshot(
