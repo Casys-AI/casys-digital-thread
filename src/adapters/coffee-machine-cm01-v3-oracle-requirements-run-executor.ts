@@ -39,7 +39,7 @@ import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import {
   extractAndVerifyOracleRequirements,
   RequirementExtractionError,
-} from "./syson-requirements-extractor.ts";
+} from "./extractors/syson-requirements-extractor.ts";
 import {
   requireBasis,
   requiredStart,

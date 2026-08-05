@@ -29,8 +29,8 @@
  * to "FeatureReferenceExpression").
  */
 
-import type { SensitivityEdge } from "../domain/sensitivity-edge.ts";
-import type { McpToolClient } from "./http-mcp-tool-client.ts";
+import type { SensitivityEdge } from "../../domain/sensitivity-edge.ts";
+import type { McpToolClient } from "../http-mcp-tool-client.ts";
 
 // ---------------------------------------------------------------------------
 // Error types

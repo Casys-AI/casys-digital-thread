@@ -372,7 +372,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/adapters/syson-requirements-extractor.ts",
+          path: "src/adapters/extractors/syson-requirements-extractor.ts",
           purpose:
             "Defines the extraction and verification contract that re-reads the anchored requirements after insertion.",
         },
@@ -810,7 +810,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/adapters/syson-sensitivity-relations-extractor.ts",
+          path: "src/adapters/extractors/syson-sensitivity-relations-extractor.ts",
           purpose:
             "Defines the two-phase extraction and verification contract that re-reads the anchored sensitivity-relations element after insertion.",
         },
@@ -862,7 +862,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/adapters/syson-sensitivity-edge-extractor.ts",
+          path: "src/adapters/extractors/syson-sensitivity-edge-extractor.ts",
           purpose:
             "Defines the two-phase extraction and verification contract for a SensitivityEdge[] set. " +
             "Phase 1 uses syson_constraint_extract; phase 2 uses syson_element_children. " +

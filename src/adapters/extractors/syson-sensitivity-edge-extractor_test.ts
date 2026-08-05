@@ -4,8 +4,8 @@ import {
   SensitivityEdgeExtractionError,
   verifyExtractedEdgeBound,
 } from "./syson-sensitivity-edge-extractor.ts";
-import { validateSensitivityEdgeSet } from "../domain/sensitivity-edge.ts";
-import { SENSITIVITY_EDGE_SCHEMA } from "../domain/sensitivity-edge.ts";
+import { validateSensitivityEdgeSet } from "../../domain/sensitivity-edge.ts";
+import { SENSITIVITY_EDGE_SCHEMA } from "../../domain/sensitivity-edge.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures — shapes copied from actual probe D response (2026-08-05)
@@ -181,7 +181,7 @@ type CallOutcome =
 
 function stubClient(
   responses: CallOutcome[],
-): import("./http-mcp-tool-client.ts").McpToolClient {
+): import("../http-mcp-tool-client.ts").McpToolClient {
   const queue = [...responses];
   return {
     callTool: (_args) => {
@@ -191,7 +191,7 @@ function stubClient(
       return Promise.resolve(
         {
           structuredContent: next.structuredContent,
-        } as import("./http-mcp-tool-client.ts").McpToolResult,
+        } as import("../http-mcp-tool-client.ts").McpToolResult,
       );
     },
     callToolTextResult: (_args) =>

@@ -50,7 +50,7 @@ import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import {
   extractAndVerifySensitivityRelations,
   SensitivityRelationsExtractionError,
-} from "./syson-sensitivity-relations-extractor.ts";
+} from "./extractors/syson-sensitivity-relations-extractor.ts";
 import {
   FileSensitivityRelationsAttemptStore,
   SensitivityRelationsWriteOutcomeUnknownError,

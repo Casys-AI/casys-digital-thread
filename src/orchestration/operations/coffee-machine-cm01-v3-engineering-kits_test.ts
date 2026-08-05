@@ -223,7 +223,7 @@ Deno.test(
       [
         "config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-static.json",
         "src/domain/proof-case.ts",
-        "src/adapters/syson-requirements-extractor.ts",
+        "src/adapters/extractors/syson-requirements-extractor.ts",
       ],
     );
     for (const ref of kit.qualification.sourceRefs) {

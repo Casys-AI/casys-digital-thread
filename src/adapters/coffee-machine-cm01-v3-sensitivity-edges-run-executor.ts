@@ -71,7 +71,7 @@ import type { McpToolClient } from "./http-mcp-tool-client.ts";
 import {
   extractAndVerifySensitivityEdges,
   SensitivityEdgeExtractionError,
-} from "./syson-sensitivity-edge-extractor.ts";
+} from "./extractors/syson-sensitivity-edge-extractor.ts";
 import {
   requireBasis,
   requiredStart,

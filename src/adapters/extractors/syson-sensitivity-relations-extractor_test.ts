@@ -2,12 +2,12 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   SENSITIVITY_RELATIONS_SCHEMA,
   validateSensitivityRelationsDeclaration,
-} from "../domain/sensitivity-relations.ts";
+} from "../../domain/sensitivity-relations.ts";
 import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "./http-mcp-tool-client.ts";
+} from "../http-mcp-tool-client.ts";
 import {
   extractAndVerifySensitivityRelations,
   SensitivityRelationsExtractionError,
