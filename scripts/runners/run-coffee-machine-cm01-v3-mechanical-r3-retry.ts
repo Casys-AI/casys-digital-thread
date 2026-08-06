@@ -1,4 +1,5 @@
 import { parseArgs } from "../lib/cli.ts";
+import { array, object, positive, string } from "../lib/validation.ts";
 import {
   HttpMcpToolClient,
   type McpToolClient,
@@ -696,32 +697,6 @@ function threadEntityRef(value: unknown, name: string): ThreadEntityRef {
     kind: "artifact",
     id: string(record.id, `${name}.id`),
   };
-}
-
-function object(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be an object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function array(value: unknown, name: string): readonly unknown[] {
-  if (!Array.isArray(value)) throw new Error(`${name} must be an array.`);
-  return value;
-}
-
-function string(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${name} must be a non-empty string.`);
-  }
-  return value;
-}
-
-function positive(value: unknown, name: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-  return value;
 }
 
 function assertLoopbackServerMcpUrl(value: string): void {

@@ -21,6 +21,8 @@ import {
   deriveSizeZBound,
   normalizeValue,
   ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
+} from "../../src/domain/analysis/coupled-correction-math.ts";
+import {
   parseOracleConstraints,
   parseValidityBounds,
 } from "./probe-coupled-correction.ts";
