@@ -36,6 +36,20 @@ export interface EvidenceExplorationProps {
   focus?: ThreadGraphRef;
   /** Fires on clickNode or clickStage (undefined = background click). */
   onSelectionChange?: (selection: ThreadGraphSelection | undefined) => void;
+  /**
+   * Compact mode — intended for the feed card vignette (FeedLineageGraph).
+   *
+   * When true:
+   *   - Labels are always rendered regardless of node size
+   *     (labelRenderedSizeThreshold: 0 instead of 10). The bounded
+   *     neighbourhood at depth 2 is small enough that all labels fit.
+   *   - The "COMPOSANTES" legend aside is hidden — a single-component
+   *     local view carries no useful component information.
+   *
+   * The layout pipeline (dagre LR) is identical in both modes: causal
+   * origins land on the left, observations/verdicts on the right.
+   */
+  compact?: boolean;
 }
 
 export function EvidenceExploration({
@@ -44,6 +58,7 @@ export function EvidenceExploration({
   selection,
   focus: _focus,
   onSelectionChange,
+  compact = false,
 }: EvidenceExplorationProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma<SigmaNodeAttrs, SigmaEdgeAttrs>>();
@@ -81,10 +96,12 @@ export function EvidenceExploration({
         defaultEdgeType: "arrow",
         minCameraRatio: 0.3,
         maxCameraRatio: 6,
-        // Hide labels until the node occupies at least 10 rendered pixels.
-        // At the default zoom (full ~60-node map), most nodes are below this
-        // threshold, so the overview is clean. Labels appear as the user zooms in.
-        labelRenderedSizeThreshold: 10,
+        // compact=true (feed vignette): always show labels — the bounded
+        // neighbourhood at depth 2 is small enough that all labels fit.
+        // compact=false (full-map): hide labels until the node occupies at
+        // least 10 rendered pixels; at the default zoom the overview stays
+        // clean and labels appear as the user zooms in.
+        labelRenderedSizeThreshold: compact ? 0 : 10,
       },
     );
     sigmaRef.current = sigma;
@@ -119,7 +136,7 @@ export function EvidenceExploration({
       sigma.kill();
       sigmaRef.current = undefined;
     };
-  }, [explorationModel]);
+  }, [explorationModel, compact]);
 
   // Highlight selected node in sigma whenever selection changes.
   useEffect(() => {
@@ -154,7 +171,7 @@ export function EvidenceExploration({
         ref={containerRef}
         aria-label="Evidence exploration graph — sigma renderer"
       />
-      {legend.length > 0 && (
+      {legend.length > 0 && !compact && (
         <aside
           class="evidence-exploration-legend"
           aria-label="Evidence components"

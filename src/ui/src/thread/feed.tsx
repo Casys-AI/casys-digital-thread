@@ -5,6 +5,7 @@ import { useMemo } from "preact/hooks";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
+  compactLineageCounters,
   isActivityEntryExpanded,
   refKey,
   traceThreadLineage,
@@ -39,8 +40,13 @@ export interface ThreadFeedProps {
   onSelectNode: (node: ThreadGraphNode, origin: "feed" | "lineage") => void;
   onSelectEdge: (edge: ThreadGraphEdge) => void;
   onInspect: (selection: ThreadRef, node: ThreadGraphNode) => void;
-  /** Opens the dedicated evidence canvas without interrupting the live feed. */
-  onOpenGraphCanvas?: () => void;
+  /**
+   * Opens the evidence canvas anchored on the given node ref.
+   * Used by both the "Open evidence canvas" button (anchored on the card's
+   * fact) and by node clicks inside the vignette (anchored on the clicked node).
+   * Implements changeView("verification") + setLineageFocus(ref) + setGraphSelection.
+   */
+  onOpenEvidenceAnchored?: (ref: ThreadGraphRef) => void;
 }
 
 /**
@@ -60,7 +66,7 @@ export function ThreadFeed({
   onSelectNode,
   onSelectEdge,
   onInspect,
-  onOpenGraphCanvas,
+  onOpenEvidenceAnchored,
 }: ThreadFeedProps): JSX.Element {
   const feedNodes = activityFeedNodes(nodes, edges);
   const focusNode = focus
@@ -109,11 +115,20 @@ export function ThreadFeed({
           const lineage = active
             ? traceThreadLineage(nodes, edges, focus)
             : undefined;
+          // True upstream+downstream count for the collapsed card badge:
+          // uses the raw graph lineage (full depth, not bounded).
           const lineageCount = lineage
             ? lineage.upstream.length + lineage.downstream.length +
               lineage.feedback.length
             : traceThreadLineage(nodes, edges, node.ref).upstream.length +
               traceThreadLineage(nodes, edges, node.ref).downstream.length;
+
+          // Compact counters for the expanded lineage header: reflect what the
+          // sigma vignette actually renders (bounded neighbourhood, depth 2).
+          const compact = active && evidenceModel
+            ? compactLineageCounters(evidenceModel, node.ref)
+            : undefined;
+
           return (
             <li
               key={node.id}
@@ -167,14 +182,24 @@ export function ThreadFeed({
                         <strong>Complete chain for this event</strong>
                       </div>
                       <div class="thread-feed-lineage-actions">
-                        <span>
-                          {lineage.upstream.length} upstream ·{" "}
-                          {lineage.downstream.length} downstream
-                        </span>
-                        {onOpenGraphCanvas && (
+                        {compact
+                          ? (
+                            <span>
+                              {compact.total} faits · profondeur 2 ·{" "}
+                              {compact.upstream} amont /{" "}
+                              {compact.downstream} aval
+                            </span>
+                          )
+                          : (
+                            <span>
+                              {lineage.upstream.length} upstream ·{" "}
+                              {lineage.downstream.length} downstream
+                            </span>
+                          )}
+                        {onOpenEvidenceAnchored && (
                           <button
                             type="button"
-                            onClick={onOpenGraphCanvas}
+                            onClick={() => onOpenEvidenceAnchored(node.ref)}
                           >
                             Open evidence canvas
                           </button>
@@ -201,9 +226,7 @@ export function ThreadFeed({
                           evidenceModel={evidenceModel}
                           focusRef={node.ref}
                           selection={selection}
-                          nodes={nodes}
-                          onSelectNode={(related) =>
-                            onSelectNode(related, "lineage")}
+                          onOpenEvidenceAnchored={onOpenEvidenceAnchored}
                           ariaLabel={`Complete recorded lineage for ${node.label}`}
                         />
                       )
@@ -251,43 +274,53 @@ export function ThreadFeed({
 }
 
 // ---------------------------------------------------------------------------
-// FeedLineageGraph — local sigma view for the expanded card lineage
+// FeedLineageGraph — compact sigma view for the expanded card lineage
 // ---------------------------------------------------------------------------
 
 interface FeedLineageGraphProps {
   evidenceModel: EvidenceGraphModel;
   focusRef: ThreadGraphRef;
   selection?: ThreadGraphSelection;
-  nodes: ThreadGraphNode[];
-  onSelectNode: (node: ThreadGraphNode) => void;
-  // Note: edge clicks and inspect are not wired in the sigma feed view
-  // (known deviation documented at commit 1188f15). The full Evidence tab
-  // remains the entry-point for edge-level exploration.
+  /**
+   * Opens the evidence canvas anchored on the given ref.
+   * Called on every node click in the vignette — single click, no dblclick.
+   * This is the same flow as the "Open evidence canvas" button but anchored
+   * on the clicked node rather than on the card's own fact.
+   */
+  onOpenEvidenceAnchored?: (ref: ThreadGraphRef) => void;
   ariaLabel: string;
 }
 
 /**
- * Local sigma view for a single expanded feed card.
+ * Compact sigma view for a single expanded feed card.
  *
  * Uses `boundedNeighborhood(focusRef, 2)` from the evidence model. Depth 2
  * (direct neighbours + their direct neighbours) keeps the card view compact
  * and legible without losing the immediate causal context. The full graph is
  * available in the Evidence tab via the "Open evidence canvas" button.
  *
+ * Layout: same dagre LR pipeline as the grand canvas via buildExplorationModel
+ * (called inside EvidenceExploration). Causal origins land on the left;
+ * observations and verdicts on the right. compact=true suppresses the
+ * Composantes legend and sets labelRenderedSizeThreshold=0 so all labels are
+ * always visible in the bounded view.
+ *
  * Performance contract: only ONE instance is mounted at a time. This component
  * is rendered only when the card is expanded; it unmounts on collapse or on
  * selection of a different card (key={refKey(focusRef)} in the parent).
+ *
+ * Click contract: single click on a node opens the evidence canvas anchored
+ * on that node (changeView verification + lineageFocus). No dblclick action.
  */
 function FeedLineageGraph({
   evidenceModel,
   focusRef,
   selection,
-  nodes,
-  onSelectNode,
+  onOpenEvidenceAnchored,
   ariaLabel,
 }: FeedLineageGraphProps): JSX.Element {
   // Bounded neighborhood depth 2: direct neighbours + their direct neighbours.
-  // Keeps the card-level sigma view compact (profondeur bornée à 1-2 sauts).
+  // Keeps the card-level sigma view compact (profondeur bornée à 2 sauts).
   const neighborhood = useMemo(
     () => evidenceModel.boundedNeighborhood(focusRef, 2),
     [evidenceModel, focusRef],
@@ -321,17 +354,16 @@ function FeedLineageGraph({
         evidenceModel={evidenceModel}
         projection={projection}
         selection={selection}
+        compact
         onSelectionChange={(next) => {
-          if (next?.kind === "node") {
-            // Resolve the ThreadGraphNode from the full nodes array so the
-            // parent workbench receives the correct object (not just the ref).
-            const selected = nodes.find(
-              (n) => `${n.ref.kind}:${n.ref.id}` ===
-                `${next.ref.kind}:${next.ref.id}`,
-            );
-            if (selected) onSelectNode(selected);
+          // Single click on a vignette node: open the evidence canvas anchored
+          // on that node. This reuses the same flow as the "Open evidence
+          // canvas" button (changeView verification + lineageFocus/selection).
+          // Edge clicks and background clicks are not handled in the vignette —
+          // the full Evidence tab is the entry-point for those interactions.
+          if (next?.kind === "node" && onOpenEvidenceAnchored) {
+            onOpenEvidenceAnchored(next.ref);
           }
-          // Edge clicks and background clicks do not change feed selection.
         }}
       />
     </div>

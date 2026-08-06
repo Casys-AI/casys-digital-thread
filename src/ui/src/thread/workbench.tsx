@@ -260,6 +260,25 @@ export function ThreadWorkbench({
     }
   };
 
+  /**
+   * Opens the evidence canvas anchored on the given node ref.
+   *
+   * Used by:
+   *   - The "Open evidence canvas" button in the feed card lineage header
+   *     (anchored on the card's own fact — ensures the canvas opens on the
+   *     correct node even if lineageFocus drifted due to vignette interactions).
+   *   - Node clicks inside the feed vignette (anchored on the clicked node).
+   *
+   * Flow: setLineageFocus → setGraphSelection → changeView("verification").
+   * The evidence canvas then shows the bounded neighbourhood (depth 3) around
+   * the anchored ref via buildEvidenceCanvasProjection.
+   */
+  const openEvidenceAnchored = (ref: ThreadGraphRef) => {
+    setLineageFocus(ref);
+    setGraphSelection({ kind: "node", ref });
+    changeView("verification");
+  };
+
   if (error) {
     return (
       <StateMessage title="Engineering project unavailable" tone="danger">
@@ -797,7 +816,7 @@ export function ThreadWorkbench({
                         setDrawerMode("tool");
                         setInspectorOpen(true);
                       }}
-                      onOpenGraphCanvas={() => changeView("verification")}
+                      onOpenEvidenceAnchored={openEvidenceAnchored}
                     />
                   )
                   : activeView === "verification"

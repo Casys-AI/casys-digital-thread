@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   activityFeedNodes,
+  compactLineageCounters,
   isActivityEntryExpanded,
   traceThreadLineage,
 } from "./src/thread/feed-model.ts";
@@ -441,3 +442,106 @@ function edge(from: string, to: string): ThreadGraphEdge {
     origin: "provenance",
   };
 }
+
+// ---------------------------------------------------------------------------
+// compactLineageCounters — truthful counters for the feed vignette bandeau
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "compactLineageCounters: focus-only node yields total=1, upstream=0, downstream=0",
+  () => {
+    // Isolated node — no edges in the visible graph.
+    const focus = artifact("focus");
+    const evidenceModel = buildEvidenceGraphModel(
+      { nodes: [focus], edges: [] },
+      EMPTY_FAMILY,
+      {},
+    );
+    const counters = compactLineageCounters(evidenceModel, focus.ref);
+    assertEquals(
+      counters.total,
+      1,
+      "isolated focus node: total must be 1 (the node itself)",
+    );
+    assertEquals(counters.upstream, 0, "isolated: no upstream nodes");
+    assertEquals(counters.downstream, 0, "isolated: no downstream nodes");
+  },
+);
+
+Deno.test(
+  "compactLineageCounters: linear chain A→B(focus)→C yields upstream=1, downstream=1",
+  () => {
+    // A → B (focus) → C
+    const nodeA = artifact("A");
+    const nodeB = artifact("B");
+    const nodeC = artifact("C");
+    const evidenceModel = buildEvidenceGraphModel(
+      {
+        nodes: [nodeA, nodeB, nodeC],
+        edges: [
+          link("e1", nodeA.ref, nodeB.ref, "input_to"),
+          link("e2", nodeB.ref, nodeC.ref, "source_of"),
+        ],
+      },
+      EMPTY_FAMILY,
+      {},
+    );
+    const counters = compactLineageCounters(evidenceModel, nodeB.ref);
+    assertEquals(counters.total, 3, "linear chain: 3 nodes in neighbourhood");
+    assertEquals(counters.upstream, 1, "one upstream node (A)");
+    assertEquals(counters.downstream, 1, "one downstream node (C)");
+  },
+);
+
+Deno.test(
+  "compactLineageCounters: depth 2 upstream/downstream are counted correctly",
+  () => {
+    // A → B → focus(C) → D → E
+    // At depth 2 from C: upstream = {A, B} (2), downstream = {D, E} (2), total = 5.
+    const [nA, nB, nC, nD, nE] = ["A", "B", "C", "D", "E"].map((id) =>
+      artifact(id)
+    );
+    const evidenceModel = buildEvidenceGraphModel(
+      {
+        nodes: [nA, nB, nC, nD, nE],
+        edges: [
+          link("e1", nA.ref, nB.ref, "input_to"),
+          link("e2", nB.ref, nC.ref, "input_to"),
+          link("e3", nC.ref, nD.ref, "source_of"),
+          link("e4", nD.ref, nE.ref, "source_of"),
+        ],
+      },
+      EMPTY_FAMILY,
+      {},
+    );
+    const counters = compactLineageCounters(evidenceModel, nC.ref);
+    assertEquals(counters.total, 5, "all five nodes are within depth 2 of C");
+    assertEquals(counters.upstream, 2, "A and B are upstream of C (depth 1 and 2)");
+    assertEquals(counters.downstream, 2, "D and E are downstream of C");
+  },
+);
+
+Deno.test(
+  "compactLineageCounters: node 3 hops away is excluded from counters",
+  () => {
+    // Focus = A; chain A → B → C → D (D is 3 hops downstream from A)
+    // At depth 2: downstream = {B, C} only; D is excluded.
+    const [nA, nB, nC, nD] = ["A", "B", "C", "D"].map((id) => artifact(id));
+    const evidenceModel = buildEvidenceGraphModel(
+      {
+        nodes: [nA, nB, nC, nD],
+        edges: [
+          link("e1", nA.ref, nB.ref, "input_to"),
+          link("e2", nB.ref, nC.ref, "input_to"),
+          link("e3", nC.ref, nD.ref, "input_to"),
+        ],
+      },
+      EMPTY_FAMILY,
+      {},
+    );
+    const counters = compactLineageCounters(evidenceModel, nA.ref);
+    assertEquals(counters.total, 3, "A (focus) + B + C — D is beyond depth 2");
+    assertEquals(counters.upstream, 0, "no upstream from A");
+    assertEquals(counters.downstream, 2, "B and C are downstream (D excluded)");
+  },
+);

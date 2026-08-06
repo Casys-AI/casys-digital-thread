@@ -1,3 +1,4 @@
+import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -255,5 +256,50 @@ function append(map: Map<string, string[]>, key: string, value: string): void {
 }
 
 export function refKey(ref: ThreadGraphRef): string {
-  return `${ref.kind}\u0000${ref.id}`;
+  return `${ref.kind}\0${ref.id}`;
+}
+
+// ---------------------------------------------------------------------------
+// Compact lineage counters — feed card vignette (sigma, depth 2)
+// ---------------------------------------------------------------------------
+
+export interface CompactLineageCounters {
+  /** Total nodes in the bounded neighbourhood (including the focus node). */
+  total: number;
+  /**
+   * Upstream nodes within depth 2 (incoming direction), excluding the focus.
+   * Matches what the compact vignette renders to the left of the focus node.
+   */
+  upstream: number;
+  /**
+   * Downstream nodes within depth 2 (outgoing direction), excluding the focus.
+   * Matches what the compact vignette renders to the right of the focus node.
+   */
+  downstream: number;
+}
+
+/**
+ * Computes the truthful counters for the feed lineage bandeau.
+ *
+ * The header says what the sigma vignette actually renders:
+ *   « N faits · profondeur 2 · X amont / Y aval »
+ *
+ * Both upstream and downstream exclude the focus node itself to avoid
+ * double-counting (the focus appears once, in the centre of the dagre LR
+ * layout). Nodes reachable from both directions (cycles) are counted in the
+ * total but may appear in both the upstream and downstream counts — that is
+ * intentional: the vignette shows them, so they are counted.
+ */
+export function compactLineageCounters(
+  evidenceModel: EvidenceGraphModel,
+  focusRef: ThreadGraphRef,
+): CompactLineageCounters {
+  const all = evidenceModel.boundedNeighborhood(focusRef, 2);
+  const up = evidenceModel.boundedNeighborhood(focusRef, 2, "upstream");
+  const down = evidenceModel.boundedNeighborhood(focusRef, 2, "downstream");
+  return {
+    total: all.nodes.length,
+    upstream: Math.max(0, up.nodes.length - 1),
+    downstream: Math.max(0, down.nodes.length - 1),
+  };
 }
