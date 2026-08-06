@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { deriveCm01DripTrayHeight30Proof } from "../../domain/cm01-drip-tray-height-correction.ts";
-import { parseCm01DripTrayMechanicalProof } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+import { deriveCm01DripTrayHeight30Proof } from "../../domain/cm01/cm01-drip-tray-height-correction.ts";
+import { parseCm01DripTrayMechanicalProof } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import {
   captureCm01DripTrayMechanicalR2,
   parseCm01DripTrayMechanicalR2Capture,

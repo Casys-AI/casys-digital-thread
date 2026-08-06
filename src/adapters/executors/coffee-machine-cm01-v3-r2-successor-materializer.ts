@@ -16,7 +16,7 @@ import {
   evaluationFromOracle,
   type ParsedOracleResult,
 } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
-import type { Cm01DripTrayMechanicalProofR2 } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+import type { Cm01DripTrayMechanicalProofR2 } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import type { Cm01SemanticCadR2Capture } from "../captures/cm01-semantic-cad-capture-r2.ts";
 import type { Cm01DripTrayMechanicalR2Capture } from "../captures/cm01-drip-tray-mechanical-capture-r2.ts";
 import {

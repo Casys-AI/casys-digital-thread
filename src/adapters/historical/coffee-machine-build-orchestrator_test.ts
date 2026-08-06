@@ -16,7 +16,7 @@ import {
 import type {
   CoffeeMachineBuildTemplateId,
   CoffeeMachineSourceUnitBinding,
-} from "../../domain/coffee-machine-build-plan.ts";
+} from "../../domain/cm01/coffee-machine-build-plan.ts";
 
 const NOW = "2026-08-01T09:10:11.000Z";
 const EDITING_CONTEXT_ID = uuid(1);

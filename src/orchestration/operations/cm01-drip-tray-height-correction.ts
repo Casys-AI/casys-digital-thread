@@ -1,7 +1,7 @@
 import {
   applyCm01DripTrayHeight28To30Correction,
   type Cm01DripTrayHeight28To30CorrectionResult,
-} from "../../domain/cm01-drip-tray-height-correction.ts";
+} from "../../domain/cm01/cm01-drip-tray-height-correction.ts";
 import type {
   EngineeringOperationInputBinding,
   EngineeringThreadEntityRef,

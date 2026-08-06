@@ -17,11 +17,11 @@ import {
 import {
   compileCoffeeMachineCm01SemanticCadPlan,
   type CompiledCoffeeMachineCm01SemanticCadPlan,
-} from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
+} from "../../domain/cm01/coffee-machine-cm01-semantic-cad-plan.ts";
 import {
   type CoffeeMachineCm01SemanticRecipe,
   parseCoffeeMachineCm01SemanticRecipe,
-} from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
+} from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

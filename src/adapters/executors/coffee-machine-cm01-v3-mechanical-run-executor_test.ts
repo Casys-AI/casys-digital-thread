@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { EngineeringProjectCommandError } from "../../domain/engineering-project-command-service.ts";
-import { parseCm01DripTrayMechanicalProof } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+import { parseCm01DripTrayMechanicalProof } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import {
   createThreadSnapshot,
   validateThreadSnapshot,

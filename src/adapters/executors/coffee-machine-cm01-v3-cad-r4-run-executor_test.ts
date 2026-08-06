@@ -32,7 +32,7 @@ import { FileEngineeringProjectRevisionStore } from "../stores/engineering-proje
 import { FileEngineeringAssetReader } from "../engineering-asset-resolver.ts";
 import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
-import { parseCoffeeMachineCm01SemanticRecipeR2 } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
+import { parseCoffeeMachineCm01SemanticRecipeR2 } from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import {
   CM01_SEMANTIC_CAD_R3_ASSEMBLY_EXPORT_NAME,
   CM01_SEMANTIC_CAD_R3_PART_EXPORT_PREFIX,

@@ -9,7 +9,7 @@ import {
 const CONFIG = JSON.parse(
   await Deno.readTextFile(
     new URL(
-      "../../config/golden-references/coffee-machine-cm01-v3.json",
+      "../../../config/golden-references/coffee-machine-cm01-v3.json",
       import.meta.url,
     ),
   ),

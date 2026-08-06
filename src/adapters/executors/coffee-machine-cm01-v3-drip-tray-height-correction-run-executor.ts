@@ -13,7 +13,7 @@ import type {
 import { deterministicJson } from "../../domain/deterministic-json.ts";
 import {
   applyCm01DripTrayHeight28To30Correction,
-} from "../../domain/cm01-drip-tray-height-correction.ts";
+} from "../../domain/cm01/cm01-drip-tray-height-correction.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";

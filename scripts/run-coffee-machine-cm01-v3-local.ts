@@ -51,14 +51,14 @@ import { HttpMcpToolClient } from "../src/adapters/mcp/http-mcp-tool-client.ts";
 import { FileSysonModelSeedAttemptStore } from "../src/adapters/wal/file-syson-model-seed-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import { SysonModelSeedRunExecutor } from "../src/adapters/executors/syson-model-seed-run-executor.ts";
-import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01-drip-tray-mechanical-proof.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "../src/domain/coffee-machine-cm01-semantic-recipe.ts";
+import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01/cm01-drip-tray-mechanical-proof.ts";
+import { parseCoffeeMachineCm01SemanticRecipe } from "../src/domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import { validateSensitivityStudyCase } from "../src/domain/analysis/sensitivity-study.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   type GoldenReferenceComparison,
   validateCoffeeMachineCm01V3GoldenReference,
-} from "../src/domain/coffee-machine-cm01-v3-golden-reference.ts";
+} from "../src/domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
 import {
   type EngineeringProjectCommandOrigin,
   EngineeringProjectCommandService,

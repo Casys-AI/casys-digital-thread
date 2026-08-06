@@ -3,7 +3,7 @@ import {
   cm01DripTrayMechanicalRequestR3,
   parseCm01DripTrayMechanicalProofR3,
 } from "./cm01-drip-tray-mechanical-proof.ts";
-import R3_PROOF from "../../config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-height-30-static-r3.json" with {
+import R3_PROOF from "../../../config/mechanical-proof-cases/coffee-machine-cm01-v3-drip-tray-height-30-static-r3.json" with {
   type: "json",
 };
 

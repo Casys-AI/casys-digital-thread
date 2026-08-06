@@ -17,7 +17,7 @@ import {
 import {
   type Cm01DripTrayMechanicalProof,
   parseCm01DripTrayMechanicalProof,
-} from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+} from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import type {
   ContentFingerprint,
   ProposedThreadAction,

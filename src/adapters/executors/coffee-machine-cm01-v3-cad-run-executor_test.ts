@@ -31,7 +31,7 @@ import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
+import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
 const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };

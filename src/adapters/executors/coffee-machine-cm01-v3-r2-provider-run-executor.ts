@@ -15,17 +15,17 @@ import {
 } from "../../domain/deterministic-json.ts";
 import {
   compileCoffeeMachineCm01SemanticCadPlanR2,
-} from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
+} from "../../domain/cm01/coffee-machine-cm01-semantic-cad-plan.ts";
 import {
   type CoffeeMachineCm01SemanticRecipeR2,
   parseCoffeeMachineCm01SemanticRecipeR2,
-} from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
+} from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import {
   type Cm01DripTrayMechanicalProofR2,
   type Cm01DripTrayMechanicalProofR3,
   parseCm01DripTrayMechanicalProofR2,
   parseCm01DripTrayMechanicalProofR3,
-} from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+} from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import type {
   ContentFingerprint,
   ThreadSnapshot,

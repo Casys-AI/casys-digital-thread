@@ -9,7 +9,7 @@ import {
 } from "./coffee-machine-cm01-semantic-recipe.ts";
 
 const RECIPE_URL = new URL(
-  "../../config/product-recipes/coffee-machine-cm01-v1.json",
+  "../../../config/product-recipes/coffee-machine-cm01-v1.json",
   import.meta.url,
 );
 const RECIPE = JSON.parse(await Deno.readTextFile(RECIPE_URL)) as Record<

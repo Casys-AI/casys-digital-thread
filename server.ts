@@ -139,12 +139,12 @@ import { EngineeringProjectCommandError } from "./src/domain/engineering-project
 import {
   parseCoffeeMachineCm01SemanticRecipe,
   parseCoffeeMachineCm01SemanticRecipeR2,
-} from "./src/domain/coffee-machine-cm01-semantic-recipe.ts";
+} from "./src/domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import {
   parseCm01DripTrayMechanicalProof,
   parseCm01DripTrayMechanicalProofR2,
   parseCm01DripTrayMechanicalProofR3,
-} from "./src/domain/cm01-drip-tray-mechanical-proof.ts";
+} from "./src/domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import { ProjectBriefCommandService } from "./src/domain/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import type {

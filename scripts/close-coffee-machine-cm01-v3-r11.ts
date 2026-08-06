@@ -7,7 +7,7 @@ import {
   CM01_V3_R12_REQUIREMENT_CLOSEOUT_EXTENSION_ID,
   inspectCoffeeMachineCm01V3R11Closeout,
   materializeCoffeeMachineCm01V3R12RequirementCloseout,
-} from "../src/domain/cm01-v3-r11-closeout.ts";
+} from "../src/domain/cm01/cm01-v3-r11-closeout.ts";
 import {
   deriveEngineeringProjectStatus,
   type EngineeringThreadSnapshotRef,

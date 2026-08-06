@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { compileCoffeeMachineCm01SemanticCadPlan } from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
+import { compileCoffeeMachineCm01SemanticCadPlan } from "../../domain/cm01/coffee-machine-cm01-semantic-cad-plan.ts";
+import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import {
   captureCm01SemanticCadExport,
   parseCm01SemanticCadCapture,

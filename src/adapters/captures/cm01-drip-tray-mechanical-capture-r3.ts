@@ -2,7 +2,7 @@ import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
 import {
   type Cm01DripTrayMechanicalProofR3,
   parseCm01DripTrayMechanicalProofR3,
-} from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+} from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import {

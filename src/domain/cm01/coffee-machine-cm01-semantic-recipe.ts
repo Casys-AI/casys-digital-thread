@@ -1,4 +1,4 @@
-import type { ContentFingerprint } from "./thread-snapshot.ts";
+import type { ContentFingerprint } from "../thread-snapshot.ts";
 
 /**
  * A closed, provider-identity-free product definition for the CM-01 golden

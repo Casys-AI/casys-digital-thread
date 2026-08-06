@@ -3,7 +3,7 @@ import {
   compareCoffeeMachineCm01V3GoldenReference,
   validateCoffeeMachineCm01V3GoldenObservation,
   validateCoffeeMachineCm01V3GoldenReference,
-} from "../src/domain/coffee-machine-cm01-v3-golden-reference.ts";
+} from "../src/domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
 
 const DEFAULT_REFERENCE_PATH = "config/golden-references/coffee-machine-cm01-v3.json";
 

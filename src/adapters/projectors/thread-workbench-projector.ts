@@ -22,7 +22,7 @@ import {
 } from "./cm01-v3-product-structure-catalog.ts";
 import {
   CM01_DRIP_TRAY_HEIGHT_28_TO_30_CORRECTION,
-} from "../../domain/cm01-drip-tray-height-correction.ts";
+} from "../../domain/cm01/cm01-drip-tray-height-correction.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type {
   ThreadAction,

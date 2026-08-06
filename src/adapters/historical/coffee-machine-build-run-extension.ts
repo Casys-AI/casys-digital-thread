@@ -1,4 +1,4 @@
-import { verifyCoffeeMachineBuildPlan } from "../../domain/coffee-machine-build-plan.ts";
+import { verifyCoffeeMachineBuildPlan } from "../../domain/cm01/coffee-machine-build-plan.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

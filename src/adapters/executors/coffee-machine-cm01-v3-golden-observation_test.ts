@@ -3,7 +3,7 @@ import type { EngineeringProjectSnapshot } from "../../domain/engineering-projec
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   validateCoffeeMachineCm01V3GoldenReference,
-} from "../../domain/coffee-machine-cm01-v3-golden-reference.ts";
+} from "../../domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import {
   projectCoffeeMachineCm01V3GoldenObservation,

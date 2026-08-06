@@ -463,7 +463,7 @@ const KITS = [
       sourceRefs: [
         {
           kind: "reviewed-configuration",
-          path: "src/domain/cm01-drip-tray-height-correction.ts",
+          path: "src/domain/cm01/cm01-drip-tray-height-correction.ts",
           purpose:
             "Defines the one code-owned 28 mm to 30 mm DripTray correction and its bounded impact set.",
         },
@@ -529,13 +529,13 @@ const KITS = [
       sourceRefs: [
         {
           kind: "reviewed-configuration",
-          path: "src/domain/coffee-machine-cm01-semantic-recipe.ts",
+          path: "src/domain/cm01/coffee-machine-cm01-semantic-recipe.ts",
           purpose:
             "Defines the closed R2 semantic recipe with DripTray size-z fixed at 30 mm.",
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/cm01-drip-tray-height-correction.ts",
+          path: "src/domain/cm01/cm01-drip-tray-height-correction.ts",
           purpose:
             "Defines the code-owned 28 mm to 30 mm correction and its bounded impact set.",
         },
@@ -572,13 +572,13 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/coffee-machine-cm01-semantic-cad-plan.ts",
+          path: "src/domain/cm01/coffee-machine-cm01-semantic-cad-plan.ts",
           purpose:
             "Provides renderBuild123dPartScript — the server-fixed, deterministic per-component script renderer. Tessellation parameters are build123d defaults (server constants), not agent inputs.",
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/coffee-machine-cm01-semantic-recipe.ts",
+          path: "src/domain/cm01/coffee-machine-cm01-semantic-recipe.ts",
           purpose:
             "Defines the closed R2 semantic recipe with DripTray size-z fixed at 30 mm.",
         },
@@ -740,13 +740,13 @@ const KITS = [
       sourceRefs: [
         {
           kind: "reviewed-configuration",
-          path: "src/domain/cm01-drip-tray-mechanical-proof.ts",
+          path: "src/domain/cm01/cm01-drip-tray-mechanical-proof.ts",
           purpose:
             "Defines the closed R2 isolated DripTray static proof with height fixed at 30 mm.",
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/cm01-drip-tray-height-correction.ts",
+          path: "src/domain/cm01/cm01-drip-tray-height-correction.ts",
           purpose:
             "Binds the mechanical recomputation to the same explicit design correction as CAD.",
         },

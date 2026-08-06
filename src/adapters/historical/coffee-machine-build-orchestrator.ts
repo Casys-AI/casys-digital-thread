@@ -9,7 +9,7 @@ import {
   type CoffeeMachineBuildTemplateId,
   type CoffeeMachineSourceUnitBinding,
   compileCoffeeMachineBuildPlan,
-} from "../../domain/coffee-machine-build-plan.ts";
+} from "../../domain/cm01/coffee-machine-build-plan.ts";
 
 export const COFFEE_MACHINE_BUILD_DECLARATION_SCHEMA =
   "coffee-machine-build-declaration/1.0" as const;

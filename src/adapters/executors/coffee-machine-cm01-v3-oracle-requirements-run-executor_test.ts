@@ -1,6 +1,6 @@
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
-import type { Cm01DripTrayMechanicalProof } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+import type { Cm01DripTrayMechanicalProof } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {

@@ -6,7 +6,7 @@ import {
 import {
   parseCm01DripTrayMechanicalProof,
   renderCm01DripTrayMechanicalScript,
-} from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+} from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import {
   captureCm01DripTrayMechanical,
   parseCm01DripTrayMechanicalCapture,

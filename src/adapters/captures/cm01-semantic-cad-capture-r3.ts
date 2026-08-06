@@ -3,8 +3,8 @@ import {
   sha256Fingerprint,
 } from "../../domain/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
-import type { CompiledCoffeeMachineCm01SemanticCadPlan } from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
-import { renderBuild123dPartScript } from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
+import type { CompiledCoffeeMachineCm01SemanticCadPlan } from "../../domain/cm01/coffee-machine-cm01-semantic-cad-plan.ts";
+import { renderBuild123dPartScript } from "../../domain/cm01/coffee-machine-cm01-semantic-cad-plan.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import { CM01_SEMANTIC_CAD_R2_EXPORT_NAME } from "./cm01-semantic-cad-capture-r2.ts";
 

@@ -7,7 +7,7 @@ import type {
 import {
   type CoffeeMachineCm01V3GoldenObservation,
   validateCoffeeMachineCm01V3GoldenObservation,
-} from "../../domain/coffee-machine-cm01-v3-golden-reference.ts";
+} from "../../domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
 import type {
   ThreadArtifact,
   ThreadObservation,

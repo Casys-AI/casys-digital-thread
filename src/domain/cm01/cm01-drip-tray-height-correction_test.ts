@@ -12,18 +12,18 @@ import type {
   ThreadArtifactKind,
   ThreadOperationRef,
   ThreadSnapshot,
-} from "./thread-snapshot.ts";
-import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
+} from "../thread-snapshot.ts";
+import { validateThreadSnapshot } from "../thread-snapshot-validation.ts";
 import {
   compileCm01DripTrayHeight28To30CorrectionPlan,
   prepareCm01DripTrayHeight30MechanicalQueue,
-} from "../orchestration/operations/cm01-drip-tray-height-correction.ts";
-import { applyThreadSnapshotExtension } from "./thread-snapshot-extension.ts";
+} from "../../orchestration/operations/cm01-drip-tray-height-correction.ts";
+import { applyThreadSnapshotExtension } from "../thread-snapshot-extension.ts";
 
 const AT = "2026-08-03T10:00:00.000Z";
 const APPLIED_AT = "2026-08-03T10:01:00.000Z";
 const RECIPE_URL = new URL(
-  "../../config/product-recipes/coffee-machine-cm01-v1.json",
+  "../../../config/product-recipes/coffee-machine-cm01-v1.json",
   import.meta.url,
 );
 const RECIPE_V1 = JSON.parse(await Deno.readTextFile(RECIPE_URL)) as Record<

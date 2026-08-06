@@ -21,7 +21,7 @@ import {
   fingerprintCoffeeMachineCm01Sysml,
   parseCoffeeMachineCm01SemanticRecipe,
   renderCoffeeMachineCm01Sysml,
-} from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
+} from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import {
   parseSysonModelSeedCapture,
   requireExactSysonModelSeed,

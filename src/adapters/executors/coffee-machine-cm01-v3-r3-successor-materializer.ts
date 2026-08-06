@@ -1,5 +1,5 @@
 import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
-import type { Cm01DripTrayMechanicalProofR3 } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+import type { Cm01DripTrayMechanicalProofR3 } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import type {
   ContentFingerprint,
   ProposedThreadAction,

@@ -12,7 +12,7 @@ import {
   parseCoffeeMachineCm01SemanticRecipe,
   parseCoffeeMachineCm01SemanticRecipeR2,
 } from "./coffee-machine-cm01-semantic-recipe.ts";
-import { sha256Fingerprint } from "./deterministic-json.ts";
+import { sha256Fingerprint } from "../deterministic-json.ts";
 import type {
   ProposedThreadAction,
   RequirementEvaluation,
@@ -23,8 +23,8 @@ import type {
   ThreadObservation,
   ThreadSnapshot,
   ThreadViolation,
-} from "./thread-snapshot.ts";
-import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
+} from "../thread-snapshot.ts";
+import { validateThreadSnapshot } from "../thread-snapshot-validation.ts";
 
 /**
  * The only correction admitted by this first feedback-loop slice.

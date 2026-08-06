@@ -16,7 +16,7 @@ import { deterministicJson } from "../../domain/deterministic-json.ts";
 import {
   type Cm01DripTrayMechanicalProofR3,
   parseCm01DripTrayMechanicalProofR3,
-} from "../../domain/cm01-drip-tray-mechanical-proof.ts";
+} from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import type { ThreadArtifact, ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
