@@ -18,9 +18,9 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   buildExplorationModel,
+  type CssTokens,
   FALLBACK_TOKENS,
   normalizeEdgeDirection,
-  type CssTokens,
   type SigmaEdgeAttrs,
   type SigmaNodeAttrs,
 } from "./src/thread/evidence-exploration-model.ts";
@@ -148,47 +148,52 @@ Deno.test(
 );
 
 Deno.test(
-  "normalizeEdgeDirection: supersedes conserve la direction (from=ancien, to=successeur)",
+  "normalizeEdgeDirection: supersedes est inversé (les données font nouveau --supersedes--> ancien)",
   () => {
-    const result = normalizeEdgeDirection("V1", "V2", "supersedes");
-    // V1 --supersedes--> V2 : V1 est l'ancien (gauche), V2 est le successeur (droite).
+    const result = normalizeEdgeDirection("V2", "V1", "supersedes");
+    // V2 --supersedes--> V1 (lecture anglaise : le nouveau remplace l'ancien) :
+    // l'ancien V1 est en amont (gauche), inversion requise.
     assertEquals(result, { from: "V1", to: "V2" });
   },
 );
 
 Deno.test(
-  "normalizeEdgeDirection: derived_from est inversé (from=dérivé, to=source → source en amont)",
+  "normalizeEdgeDirection: derived_from conserve la direction stockée (convention réelle : source --derived_from--> dérivé)",
   () => {
-    const result = normalizeEdgeDirection("DERIVED", "SOURCE", "derived_from");
-    // DERIVED --derived_from--> SOURCE : SOURCE est en amont, inversion requise.
+    const result = normalizeEdgeDirection("SOURCE", "DERIVED", "derived_from");
+    // Vérifié sur les 65 arêtes réelles du r104 : le nom de la relation se lit
+    // à l'envers, mais la direction STOCKÉE est source → dérivé. Pas d'inversion.
     assertEquals(result, { from: "SOURCE", to: "DERIVED" });
   },
 );
 
 Deno.test(
-  "normalizeEdgeDirection: uses est inversé (from=consommateur, to=dépendance → dépendance en amont)",
+  "normalizeEdgeDirection: uses conserve la direction stockée (convention réelle : source --uses--> attestation d'entrée)",
   () => {
-    const result = normalizeEdgeDirection("CONSUMER", "DEP", "uses");
-    // CONSUMER --uses--> DEP : DEP est la dépendance (en amont), inversion.
-    assertEquals(result, { from: "DEP", to: "CONSUMER" });
+    const result = normalizeEdgeDirection("SOURCE", "ATTESTATION", "uses");
+    // Vérifié sur les 37 arêtes réelles : l'artefact source est en amont de
+    // l'attestation d'entrée qui enregistre son usage. Pas d'inversion.
+    assertEquals(result, { from: "SOURCE", to: "ATTESTATION" });
   },
 );
 
 Deno.test(
-  "normalizeEdgeDirection: evaluates est inversé (from=évaluation, to=évalué → évalué en amont)",
+  "normalizeEdgeDirection: evaluates conserve la direction stockée (convention réelle : exigence --evaluates--> évaluation)",
   () => {
-    const result = normalizeEdgeDirection("EVAL", "REQ", "evaluates");
-    // EVAL --evaluates--> REQ : REQ est en amont, inversion.
+    const result = normalizeEdgeDirection("REQ", "EVAL", "evaluates");
+    // Vérifié sur les 6 arêtes réelles : l'exigence (spécifiée d'abord) est en
+    // amont de son évaluation. Pas d'inversion.
     assertEquals(result, { from: "REQ", to: "EVAL" });
   },
 );
 
 Deno.test(
-  "normalizeEdgeDirection: evidences est inversé (from=preuve, to=exigence → exigence en amont)",
+  "normalizeEdgeDirection: evidences conserve la direction stockée (convention réelle : résultat --evidences--> évaluation)",
   () => {
-    const result = normalizeEdgeDirection("PROOF", "CLAIM", "evidences");
-    // PROOF --evidences--> CLAIM : CLAIM est en amont, inversion.
-    assertEquals(result, { from: "CLAIM", to: "PROOF" });
+    const result = normalizeEdgeDirection("RESULT", "EVAL", "evidences");
+    // Vérifié sur les 6 arêtes réelles : le résultat de calcul est en amont de
+    // l'évaluation qu'il soutient. Pas d'inversion.
+    assertEquals(result, { from: "RESULT", to: "EVAL" });
   },
 );
 
@@ -269,16 +274,16 @@ Deno.test(
 );
 
 Deno.test(
-  "layout LR: avec derived_from, la source est à gauche du dérivé (inversion appliquée)",
+  "layout LR: avec derived_from, la source est à gauche du dérivé (convention réelle : source --derived_from--> dérivé)",
   () => {
-    // DERIVED --derived_from--> SOURCE
+    // SOURCE --derived_from--> DERIVED (direction stockée, vérifiée sur r104)
     // Attendu : SOURCE à gauche, DERIVED à droite.
     const nodeSource = node("SOURCE", "artifact", "syson", "artifact");
     const nodeDerived = node("DERIVED", "artifact", "build123d", "artifact");
     const edgeDerived = edge(
       "e1",
-      nodeDerived.ref,
       nodeSource.ref,
+      nodeDerived.ref,
       "derived_from",
     );
 
@@ -290,7 +295,7 @@ Deno.test(
     assertEquals(
       xSource < xDerived,
       true,
-      `SOURCE (x=${xSource}) doit être à gauche de DERIVED (x=${xDerived}) après inversion derived_from`,
+      `SOURCE (x=${xSource}) doit être à gauche de DERIVED (x=${xDerived}) — convention stockée source → dérivé`,
     );
   },
 );
@@ -360,7 +365,11 @@ Deno.test(
 
     // La projection contient au moins un moignon (id commence par "stub:")
     const hasStub = projection.edges.some((e) => e.id.startsWith("stub:"));
-    assertEquals(hasStub, true, "La projection doit contenir au moins un moignon");
+    assertEquals(
+      hasStub,
+      true,
+      "La projection doit contenir au moins un moignon",
+    );
 
     const explorationModel = buildExplorationModel(
       evidenceModel,
@@ -423,9 +432,17 @@ Deno.test(
 
     // Chaque entrée doit avoir un nom non vide, un compte de 1, et au moins un componentId.
     for (const item of explorationModel.legend) {
-      assertNotEquals(item.name, "", "Le nom de composante ne doit pas être vide");
+      assertNotEquals(
+        item.name,
+        "",
+        "Le nom de composante ne doit pas être vide",
+      );
       assertEquals(item.visibleNodeCount, 1);
-      assertEquals(item.componentIds.length >= 1, true, "Chaque entrée doit référencer au moins un component");
+      assertEquals(
+        item.componentIds.length >= 1,
+        true,
+        "Chaque entrée doit référencer au moins un component",
+      );
     }
   },
 );
@@ -453,7 +470,11 @@ Deno.test(
       cyan: "#123456",
     };
 
-    const model = buildExplorationModel(evidenceModel, projection, customTokens);
+    const model = buildExplorationModel(
+      evidenceModel,
+      projection,
+      customTokens,
+    );
 
     let sysonColor: string | undefined;
     model.graph.forEachNode((_key: string, attrs: SigmaNodeAttrs) => {
@@ -500,7 +521,11 @@ Deno.test(
       new Map(),
     );
 
-    const model = buildExplorationModel(evidenceModel, projection, FALLBACK_TOKENS);
+    const model = buildExplorationModel(
+      evidenceModel,
+      projection,
+      FALLBACK_TOKENS,
+    );
 
     // Vérifie que les stubs ont des endpoints présents dans le graphe sigma.
     projection.edges.filter((e) => e.id.startsWith("stub:")).forEach((stub) => {

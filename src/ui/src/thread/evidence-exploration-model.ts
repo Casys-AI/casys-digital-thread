@@ -148,112 +148,54 @@ export function normalizeEdgeDirection(
 ): { from: string; to: string } {
   switch (relation) {
     /**
-     * input_to: edge.from IS the provider/input (upstream).
-     * edge.to IS the consumer (downstream).
-     * Example: SysML-model --input_to--> CAD-artifact
-     *   → SysML is upstream (left), CAD is downstream (right). No reversal.
+     * Data convention verified on the live r104 graph (2026-08-06): these
+     * relations are already stored flow-oriented — edge.from is causally
+     * UPSTREAM, edge.to is DOWNSTREAM. No reversal.
+     *
+     * input_to     : model-container --input_to-->     architecture-model
+     * source_of    : computed-evidence --source_of-->  observation
+     * changes      : change-record --changes-->        produced-artifact
+     * derived_from : model-container --derived_from--> architecture-model
+     *                (the relation NAME reads backwards; the stored direction
+     *                 is source → derived — verified on all 65 live edges)
+     * uses         : source-artifact --uses-->         input-attestation
+     * evaluates    : requirement --evaluates-->        evaluation-record
+     * evidences    : result-artifact --evidences-->    evaluation-record
      */
     case "input_to":
-
-    /**
-     * source_of: edge.from IS the source artifact (upstream).
-     * edge.to IS the derived record (downstream).
-     * Example: CAD-artifact --source_of--> mass-observation
-     *   → CAD is upstream (left), observation is downstream (right). No reversal.
-     */
     case "source_of":
-
-    /**
-     * changes: edge.from IS the change event (upstream initiator).
-     * edge.to IS the artifact introduced or modified by that change (downstream).
-     * Example: change-record --changes--> artifact-it-produced
-     *   → change is upstream (left), artifact is downstream (right). No reversal.
-     */
     case "changes":
-
-    /**
-     * supersedes: edge.from IS the older artifact (upstream in version history).
-     * edge.to IS the newer successor (downstream).
-     * Version history reads left → right; old on left, current on right.
-     * Example: artifact@v1 --supersedes--> artifact@v2
-     *   → v1 is upstream (left), v2 is downstream (right). No reversal.
-     */
-    case "supersedes":
+    case "derived_from":
+    case "uses":
+    case "evaluates":
+    case "evidences":
       return { from: fromKey, to: toKey };
 
     /**
-     * derived_from: edge.from IS the DERIVED artifact (downstream result).
-     * edge.to IS the SOURCE (upstream origin).
-     * The relation name reads "from was derived from to" → to is upstream.
-     * Reversed so the source (to) appears on the left.
-     * Example: derived-model --derived_from--> source-model
-     *   → dagre edge: source-model → derived-model
+     * These relations are stored downstream → upstream and must be reversed
+     * so the causal origin lands on the left.
+     *
+     * supersedes : newer --supersedes--> older (English reading; verified:
+     *              the @2 CAD plan supersedes the r8 correction record).
+     *              Version history reads left → right, so dagre gets
+     *              older → newer.
+     * traces_to  : implementation-artifact --traces_to--> requirement.
+     *              The requirement is the upstream specification.
+     * caused_by  : effect --caused_by--> cause (no live occurrence on r104;
+     *              direction from the relation's English reading).
+     * addresses  : fix --addresses--> issue (no live occurrence on r104;
+     *              direction from the relation's English reading).
      */
-    case "derived_from":
-
-    /**
-     * uses: edge.from IS the CONSUMER (downstream).
-     * edge.to IS the USED item (upstream dependency).
-     * "from uses to" → to is the dependency that must come first (upstream).
-     * Reversed so the used item (to) appears on the left.
-     * Example: consumer-artifact --uses--> shared-artifact
-     *   → dagre edge: shared-artifact → consumer-artifact
-     */
-    case "uses":
-
-    /**
-     * evaluates: edge.from IS the EVALUATION record (downstream result).
-     * edge.to IS the artifact/requirement being evaluated (upstream subject).
-     * "from evaluates to" → to came first (upstream), evaluation is downstream.
-     * Reversed so the evaluated item (to) appears on the left.
-     * Example: evaluation --evaluates--> requirement
-     *   → dagre edge: requirement → evaluation
-     */
-    case "evaluates":
-
-    /**
-     * evidences: edge.from IS the EVIDENCE artifact (downstream proof).
-     * edge.to IS the claim/requirement being evidenced (upstream).
-     * "from evidences to" → to is the claim (upstream), from is the proof.
-     * Reversed so the claim (to) appears on the left, proof on the right.
-     * Example: proof-artifact --evidences--> requirement
-     *   → dagre edge: requirement → proof-artifact
-     */
-    case "evidences":
-
-    /**
-     * traces_to: edge.from IS the IMPLEMENTATION (downstream artifact).
-     * edge.to IS the REQUIREMENT (upstream specification).
-     * "from traces to to" → to is the requirement that came first (upstream).
-     * Reversed so the requirement (to) appears on the left.
-     * Example: artifact --traces_to--> requirement
-     *   → dagre edge: requirement → artifact
-     */
+    case "supersedes":
     case "traces_to":
-
-    /**
-     * caused_by: edge.from IS the EFFECT (downstream consequence).
-     * edge.to IS the CAUSE (upstream origin).
-     * "from was caused by to" → to is upstream.
-     * Reversed so the cause (to) appears on the left.
-     * Example: derived-violation --caused_by--> upstream-artifact
-     *   → dagre edge: upstream-artifact → derived-violation
-     */
     case "caused_by":
-
-    /**
-     * addresses: edge.from IS the ACTION/FIX (downstream response).
-     * edge.to IS the VIOLATION (upstream trigger that prompted the action).
-     * "from addresses to" → to (violation) came first (upstream).
-     * Reversed so the violation (to) appears on the left, fix on the right.
-     * Example: action --addresses--> violation
-     *   → dagre edge: violation → action
-     */
     case "addresses":
       return { from: toKey, to: fromKey };
 
+    /**
+     * Unknown relation: keep the stored direction rather than guessing.
+     */
     default:
-      // Unknown relation: keep stored direction unchanged.
       return { from: fromKey, to: toKey };
   }
 }
@@ -421,7 +363,12 @@ export function buildExplorationModel(
   // camera-focus handler can jump to the union of all matching nodes.
   const legendByName = new Map<
     string,
-    { componentIds: number[]; visibleNodeCount: number; intentionallyIsolated: boolean; color: string }
+    {
+      componentIds: number[];
+      visibleNodeCount: number;
+      intentionallyIsolated: boolean;
+      color: string;
+    }
   >();
   for (const comp of evidenceModel.components) {
     const visibleNodeCount = [...comp.visibleNodeRefKeys].filter((k) =>
