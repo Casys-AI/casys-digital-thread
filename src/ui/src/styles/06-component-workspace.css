@@ -1010,3 +1010,120 @@ button.erp-bom-row {
     display: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+   SysML sub-tree diagram (native SVG facet of the SysON structure surface).
+   The SVG carries no inline fill/stroke on purpose: every shape reads the
+   atelier tokens here, so the diagram follows the theme instead of falling
+   back to the SVG default (solid black), which rendered it unreadable.
+   -------------------------------------------------------------------------- */
+.syson-subtree-diagram {
+  margin: 0.75rem 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+
+.syson-subtree-diagram svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.syson-svg-node rect {
+  fill: var(--surface-1);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.syson-svg-root[data-current="true"] rect,
+.syson-svg-selected rect {
+  stroke: var(--green);
+  stroke-width: 1.5;
+  fill: var(--green-dim);
+}
+
+.syson-svg-kind {
+  fill: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.syson-svg-label {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.syson-svg-label-selected {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.syson-svg-edge {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.syson-svg-siblings .syson-svg-sibling-header {
+  fill: var(--text-soft);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.syson-svg-sibling {
+  fill: var(--cyan);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.syson-svg-sibling:hover {
+  text-decoration: underline;
+}
+
+svg marker#arrowhead path {
+  fill: var(--line-strong);
+}
+
+/* The assembly is the root of the product structure, not one part among the
+   others: it gets its own full-width row above the part grid. */
+.syson-assembly-root {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0.75rem 0 0.35rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.syson-assembly-root.is-selected {
+  border-color: var(--green);
+  background: var(--green-dim);
+}
+
+.syson-assembly-root em {
+  font-style: normal;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.syson-assembly-root strong {
+  font-size: 0.85rem;
+}
+
+.syson-assembly-root code {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--text-soft);
+}

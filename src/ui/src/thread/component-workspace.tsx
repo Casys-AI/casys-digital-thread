@@ -270,7 +270,7 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
       {subtree.sensitivityRecords.length > 0 && (
         <div class="syson-sensitivity-records">
           <p class="syson-section-label">
-            SENSITIVITY RELATIONS (DripTraySensitivityRelations)
+            SENSITIVITY RELATIONS ANCHORED IN MODEL
           </p>
           {subtree.sensitivityRecords.map((rec, index) => (
             <div key={index} class="syson-sensitivity-row">
@@ -281,26 +281,54 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
         </div>
       )}
 
-      {/* Component grid: compact selector, now secondary to the SVG */}
-      <div class="syson-part-grid">
-        {snapshot.components.components.map((component, index) => {
-          const binding = bindingFor(component, "syson");
+      {
+        /* The assembly is the structure root — one dedicated row, never one
+          card among the parts it contains. */
+      }
+      {snapshot.components.components
+        .filter((component) => component.kind === "assembly")
+        .map((assembly) => {
+          const binding = bindingFor(assembly, "syson");
           return (
             <button
-              key={component.id}
+              key={assembly.id}
               type="button"
-              class={component.id === selected.id ? "is-selected" : undefined}
+              class={`syson-assembly-root${
+                assembly.id === selected.id ? " is-selected" : ""
+              }`}
               data-state={binding?.status ?? "missing"}
-              onClick={() => onSelect(component)}
+              onClick={() => onSelect(assembly)}
               onDblClick={() => binding && onInspect(binding)}
             >
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <strong>{component.label}</strong>
-              <small>{binding?.label ?? terminology.missingLabel}</small>
+              <em>Assembly</em>
+              <strong>{assembly.label}</strong>
               <code>{binding?.id ?? "TRACE GAP"}</code>
             </button>
           );
         })}
+
+      {/* Part grid: compact selector, secondary to the SVG */}
+      <div class="syson-part-grid">
+        {snapshot.components.components
+          .filter((component) => component.kind !== "assembly")
+          .map((component, index) => {
+            const binding = bindingFor(component, "syson");
+            return (
+              <button
+                key={component.id}
+                type="button"
+                class={component.id === selected.id ? "is-selected" : undefined}
+                data-state={binding?.status ?? "missing"}
+                onClick={() => onSelect(component)}
+                onDblClick={() => binding && onInspect(binding)}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{component.label}</strong>
+                <small>{binding?.label ?? terminology.missingLabel}</small>
+                <code>{binding?.id ?? "TRACE GAP"}</code>
+              </button>
+            );
+          })}
       </div>
 
       {sysonBinding && (
