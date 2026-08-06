@@ -9,7 +9,7 @@ import {
   buildExplorationModel,
   FALLBACK_TOKENS,
 } from "./src/thread/evidence-exploration-model.ts";
-import { buildEvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
+import type { EvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
@@ -295,21 +295,25 @@ Deno.test(
     const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
 
     // Simulate FeedLineageGraph preparation twice — same inputs → same positions.
+    // The projection is built from the *neighborhood* (not the full model),
+    // mirroring the useMemo in FeedLineageGraph exactly.
     const neighborhood1 = evidenceModel.boundedNeighborhood(nodeCAD.ref, 2);
     const neighborhood2 = evidenceModel.boundedNeighborhood(nodeCAD.ref, 2);
 
-    const projection1 = buildEvidenceCanvasProjection(
-      evidenceModel,
-      0,
-      undefined,
-      new Map(),
-    );
-    const projection2 = buildEvidenceCanvasProjection(
-      evidenceModel,
-      0,
-      undefined,
-      new Map(),
-    );
+    const projection1: EvidenceCanvasProjection = {
+      nodes: neighborhood1.nodes,
+      edges: neighborhood1.edges,
+      displayedCount: neighborhood1.nodes.length,
+      foldedInstrumentCount: 0,
+      isFiltered: true,
+    };
+    const projection2: EvidenceCanvasProjection = {
+      nodes: neighborhood2.nodes,
+      edges: neighborhood2.edges,
+      displayedCount: neighborhood2.nodes.length,
+      foldedInstrumentCount: 0,
+      isFiltered: true,
+    };
 
     const m1 = buildExplorationModel(evidenceModel, projection1, FALLBACK_TOKENS);
     const m2 = buildExplorationModel(evidenceModel, projection2, FALLBACK_TOKENS);

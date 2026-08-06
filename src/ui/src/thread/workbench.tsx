@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
 
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComponentChildren, JSX } from "preact";
 import {
   Badge,
@@ -50,7 +50,10 @@ import {
   isAnalyzeInstrumentNode,
   makeEvidenceComponentLabeler,
 } from "./evidence-canvas-model.ts";
-import { buildEvidenceGraphModel } from "./evidence-graph-model.ts";
+import {
+  buildEvidenceGraphModel,
+  type EvidenceGraphModel,
+} from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import { ComponentWorkspace } from "./component-workspace.tsx";
 import {
@@ -219,6 +222,29 @@ export function ThreadWorkbench({
     };
   }, [client]);
 
+  // Memoize evidenceModel on the workbench reference so sigma is NOT killed on
+  // every non-data state change (followLive, graphSelection, inspectorOpen, …).
+  // workbench is stable between SSE events — it changes only when
+  // setWorkbench(incoming) fires. The guards below (planning, documentary,
+  // !workbench) prevent the null sentinel from ever being consumed.
+  const evidenceModel = useMemo((): EvidenceGraphModel => {
+    if (!workbench || workbench.surface !== "evidence") {
+      return null as unknown as EvidenceGraphModel;
+    }
+    const thread = workbench.thread;
+    const work = buildCurrentProjectWork(workbench.project);
+    const closedIds = new Set(work.closedActionTargetIds);
+    const rawGraph = graphWithoutClosedActions(
+      thread.graph,
+      thread.actions,
+      closedIds,
+    );
+    return buildEvidenceGraphModel(rawGraph, thread.evidenceFamilyGraph, {
+      isAnalyzeInstrumentNode,
+      intentionallyIsolatedSystems: ["openmodelica", "mcp-modelica"],
+    });
+  }, [workbench]);
+
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);
     // A selected record can belong to another tool surface. Keep the main
@@ -276,35 +302,14 @@ export function ThreadWorkbench({
   const snapshot = workbench.thread;
   const project = workbench.project;
   const projectBrief = buildProjectBrief(project);
-  const currentProjectWork = buildCurrentProjectWork(project);
   const projectPath = buildProjectPath(project, snapshot);
   const versionedProvenance = buildVersionedProvenanceProjection(
     snapshot.graph,
     snapshot.evidenceFamilyGraph,
   );
-  // Filter closed-action nodes from the raw graph BEFORE versioning so the
-  // evidence model never sees completed obligations as open work.
-  const closedActionTargetIds = new Set(
-    currentProjectWork.closedActionTargetIds,
-  );
-  const rawGraphForEvidence = graphWithoutClosedActions(
-    snapshot.graph,
-    snapshot.actions,
-    closedActionTargetIds,
-  );
-
-  // Evidence canvas model — computed on the FULL raw graph (minus closed
-  // actions) so components are detected before any folding. Analyze.* instrument
-  // artifacts (intermediate CAD/FEA runs for the sensitivity study) are folded
-  // here; stubs bridge any links they severed.
-  const evidenceModel = buildEvidenceGraphModel(
-    rawGraphForEvidence,
-    snapshot.evidenceFamilyGraph,
-    {
-      isAnalyzeInstrumentNode,
-      intentionallyIsolatedSystems: ["openmodelica", "mcp-modelica"],
-    },
-  );
+  // evidenceModel is memoized above (useMemo([workbench])) to avoid killing
+  // the sigma instance on every non-data state change. We know it is defined
+  // here because the planning/documentary early returns have already fired.
   const evidenceCanvas = buildEvidenceCanvasProjection(
     evidenceModel,
     versionedProvenance.collapsedVersionCount,

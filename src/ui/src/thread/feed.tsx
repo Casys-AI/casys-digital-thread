@@ -204,8 +204,6 @@ export function ThreadFeed({
                           nodes={nodes}
                           onSelectNode={(related) =>
                             onSelectNode(related, "lineage")}
-                          onSelectEdge={onSelectEdge}
-                          onInspect={onInspect}
                           ariaLabel={`Complete recorded lineage for ${node.label}`}
                         />
                       )
@@ -262,8 +260,9 @@ interface FeedLineageGraphProps {
   selection?: ThreadGraphSelection;
   nodes: ThreadGraphNode[];
   onSelectNode: (node: ThreadGraphNode) => void;
-  onSelectEdge: (edge: ThreadGraphEdge) => void;
-  onInspect: (selection: ThreadRef, node: ThreadGraphNode) => void;
+  // Note: edge clicks and inspect are not wired in the sigma feed view
+  // (known deviation documented at commit 1188f15). The full Evidence tab
+  // remains the entry-point for edge-level exploration.
   ariaLabel: string;
 }
 
