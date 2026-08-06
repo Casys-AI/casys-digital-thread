@@ -224,10 +224,12 @@ function requireSafeFilename(filename: string): void {
 
 function requireSha256Digest(digest: string, filename: string): void {
   if (!/^[a-f0-9]{64}$/.test(digest)) {
-    throw new HostAssetMaterializationError(
-      "copy_failed",
-      { filename },
-      `Invalid expected SHA-256 digest for ${filename}.`,
+    // Throw TypeError, not HostAssetMaterializationError, because this is a
+    // programmer error (bad argument), not a Docker or I/O failure.  The
+    // "copy_failed" code would mislead a caller diagnosing infrastructure
+    // problems; TypeError is consistent with requireSafeFilename above.
+    throw new TypeError(
+      `Expected SHA-256 digest for "${filename}" is not a valid 64-character hex string.`,
     );
   }
 }
