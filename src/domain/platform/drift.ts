@@ -4,7 +4,7 @@ import type {
   DriftStatus,
   ObservedServer,
   ServerRecord,
-} from "./types.ts";
+} from "../types.ts";
 
 export function buildServerRecord(
   desired: DesiredServer,

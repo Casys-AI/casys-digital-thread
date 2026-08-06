@@ -17,7 +17,7 @@ import {
 } from "../captures/file-capture-store.ts";
 import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import {
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
   type RegisteredEngineeringOperation,

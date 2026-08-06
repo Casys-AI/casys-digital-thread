@@ -6,7 +6,7 @@ import type {
   ToolHandlerContext,
 } from "@casys/mcp-server";
 import type { CockpitFocusStore } from "../adapters/stores/file-cockpit-focus-store.ts";
-import type { CockpitFocusSnapshot } from "../domain/cockpit-focus.ts";
+import type { CockpitFocusSnapshot } from "../domain/platform/cockpit-focus.ts";
 import { registerCockpitFocusTools } from "./cockpit-focus.ts";
 
 Deno.test("cockpit focus tools verify the selected durable target before changing browser focus", async () => {

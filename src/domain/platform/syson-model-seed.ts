@@ -2,24 +2,24 @@ import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "./deterministic-json.ts";
+} from "../deterministic-json.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringCommandActor,
   EngineeringThreadSnapshotRef,
-} from "./engineering-project.ts";
+} from "../engineering-project.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadFreshness,
   ThreadOperationRef,
   ThreadSnapshot,
-} from "./thread-snapshot.ts";
+} from "../thread-snapshot.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
   type ThreadSnapshotExtension,
-} from "./thread-snapshot-extension.ts";
-import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
+} from "../thread-snapshot-extension.ts";
+import { validateThreadSnapshot } from "../thread-snapshot-validation.ts";
 
 /** Canonical local capture of the first SysON project/document/root-package seed. */
 export const SYSON_MODEL_SEED_CAPTURE_SCHEMA = "syson-model-seed-capture/2.0" as const;

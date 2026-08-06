@@ -1,5 +1,5 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
-import type { ControlPlane } from "../domain/control-plane.ts";
+import type { ControlPlane } from "../domain/platform/control-plane.ts";
 
 export const CONSOLE_RESOURCE_URI = "ui://casys-digital-thread/console";
 

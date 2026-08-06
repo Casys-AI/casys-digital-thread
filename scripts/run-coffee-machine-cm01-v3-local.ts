@@ -69,7 +69,7 @@ import type {
   EngineeringThreadSnapshotRef,
 } from "../src/domain/engineering-project.ts";
 import { ProjectBriefCommandService } from "../src/domain/project-brief-command-service.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/platform/syson-model-seed.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
 

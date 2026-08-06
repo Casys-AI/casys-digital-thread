@@ -1,13 +1,13 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { deterministicJson, sha256Fingerprint } from "./deterministic-json.ts";
+import { deterministicJson, sha256Fingerprint } from "../deterministic-json.ts";
 import {
   materializeSysonModelSeed,
   parseSysonModelSeedCapture,
   SysonModelSeedMaterializationError,
 } from "./syson-model-seed.ts";
-import { applyThreadSnapshotExtensionIfNew } from "./thread-snapshot-extension.ts";
-import type { ThreadSnapshot } from "./thread-snapshot.ts";
-import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../thread-snapshot-extension.ts";
+import type { ThreadSnapshot } from "../thread-snapshot.ts";
+import { validateThreadSnapshot } from "../thread-snapshot-validation.ts";
 
 const AT = "2026-08-02T12:10:00.000Z";
 const DOCUMENT_DIGEST = "a".repeat(64);

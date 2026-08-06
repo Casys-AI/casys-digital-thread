@@ -26,7 +26,7 @@ import {
   parseSysonModelSeedCapture,
   requireExactSysonModelSeed,
   type SysonModelSeedCapture,
-} from "../../domain/syson-model-seed.ts";
+} from "../../domain/platform/syson-model-seed.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

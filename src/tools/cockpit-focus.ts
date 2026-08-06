@@ -4,7 +4,7 @@ import type { EngineeringProjectSnapshot } from "../domain/engineering-project.t
 import {
   COCKPIT_FOCUS_SCHEMA_VERSION,
   type CockpitFocusTarget,
-} from "../domain/cockpit-focus.ts";
+} from "../domain/platform/cockpit-focus.ts";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,

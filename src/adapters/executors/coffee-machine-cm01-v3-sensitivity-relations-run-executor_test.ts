@@ -54,7 +54,7 @@ import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,
 } from "./coffee-machine-cm01-v3-architecture-run-executor.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import type {
   McpToolCall,
   McpToolClient,

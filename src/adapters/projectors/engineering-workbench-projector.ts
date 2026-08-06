@@ -4,7 +4,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../../domain/engineering-project.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import type {
   LiveThreadUpdate,
   LiveThreadUpdateState,

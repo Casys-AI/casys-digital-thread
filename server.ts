@@ -134,7 +134,7 @@ import { ModelicaRunObserver } from "./src/adapters/historical/modelica-run-obse
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
 import { ScenarioContractVerifier } from "./src/adapters/validators/scenario-contract-verifier.ts";
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/validators/scenario-verified-run-catalog.ts";
-import { ControlPlane } from "./src/domain/control-plane.ts";
+import { ControlPlane } from "./src/domain/platform/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
 import {
   parseCoffeeMachineCm01SemanticRecipe,

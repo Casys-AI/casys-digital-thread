@@ -21,7 +21,7 @@ import {
   SYSON_MODEL_SEED_OPERATION,
   type SysonModelSeedLineage,
   type SysonModelSeedMaterialization,
-} from "../../domain/syson-model-seed.ts";
+} from "../../domain/platform/syson-model-seed.ts";
 import type { McpToolClient, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {

@@ -7,7 +7,7 @@ import {
   requireRegisteredEngineeringOperation,
   validateRegisteredEngineeringOperationInput,
 } from "./registry.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {

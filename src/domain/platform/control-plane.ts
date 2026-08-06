@@ -1,5 +1,5 @@
-import type { DockerObserver } from "../adapters/docker-observer.ts";
-import type { McpProbe, McpProbeResult } from "../adapters/mcp/http-mcp-probe.ts";
+import type { DockerObserver } from "../../adapters/docker-observer.ts";
+import type { McpProbe, McpProbeResult } from "../../adapters/mcp/http-mcp-probe.ts";
 import { buildServerRecord } from "./drift.ts";
 import type {
   Availability,
@@ -15,7 +15,7 @@ import type {
   RunSummary,
   ServerRecord,
   SnapshotOptions,
-} from "./types.ts";
+} from "../types.ts";
 
 export interface ControlPlaneOptions {
   manifest: FleetManifest;

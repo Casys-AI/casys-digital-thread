@@ -28,7 +28,7 @@ import type {
   McpToolClient,
   McpToolResult,
 } from "../mcp/http-mcp-tool-client.ts";
-import { materializeSysonModelSeed } from "../../domain/syson-model-seed.ts";
+import { materializeSysonModelSeed } from "../../domain/platform/syson-model-seed.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };

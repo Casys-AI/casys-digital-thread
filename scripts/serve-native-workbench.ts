@@ -28,7 +28,7 @@ import {
 } from "../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../src/adapters/stores/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/platform/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,

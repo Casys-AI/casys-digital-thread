@@ -7,7 +7,7 @@ import {
   EngineeringProjectCommandService,
 } from "../../domain/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import {
   ApprovedBriefBaselineRunExecutor,
 } from "./approved-brief-baseline-run-executor.ts";
