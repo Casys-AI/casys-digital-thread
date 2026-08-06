@@ -1,9 +1,9 @@
-import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../../domain/engineering-project-command-service.ts";
-import { validateEngineeringProjectSnapshot } from "../../domain/engineering-project-validation.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
+import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 import {
   deterministicJson,
   sha256Fingerprint,

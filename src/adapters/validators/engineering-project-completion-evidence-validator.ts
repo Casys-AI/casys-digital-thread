@@ -2,11 +2,11 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCompletionEvidenceValidator,
   type EngineeringProjectReconciliationSnapshotValidator,
-} from "../../domain/engineering-project-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ExactThreadSnapshotReader } from "../stores/engineering-thread-snapshot-resolver.ts";

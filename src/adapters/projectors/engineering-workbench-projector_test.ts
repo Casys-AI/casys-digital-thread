@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
   projectEngineeringPlanningWorkbenchSnapshot,
   projectEngineeringWorkbenchSnapshot,

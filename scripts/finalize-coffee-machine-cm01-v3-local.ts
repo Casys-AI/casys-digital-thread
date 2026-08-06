@@ -9,7 +9,7 @@ import {
   type GoldenReferenceComparison,
   validateCoffeeMachineCm01V3GoldenReference,
 } from "../src/domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
-import type { EngineeringThreadSnapshotRef } from "../src/domain/engineering-project.ts";
+import type { EngineeringThreadSnapshotRef } from "../src/domain/project/engineering-project.ts";
 
 const RUNS_ROOT = "state/local/cm01-v3-local-runs";
 const PROJECT_ID = "coffee-machine-cm01-v3";

@@ -8,12 +8,12 @@ import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../src/domain/engineering-project-command-service.ts";
+} from "../src/domain/project/engineering-project-command-service.ts";
 import { sha256Fingerprint } from "../src/domain/kernel/deterministic-json.ts";
 import type {
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
-} from "../src/domain/engineering-project.ts";
+} from "../src/domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtension,

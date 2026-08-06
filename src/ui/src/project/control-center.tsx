@@ -4,7 +4,7 @@ import type { JSX } from "preact";
 import type {
   EngineeringDecision,
   EngineeringProjectSnapshot,
-} from "../../../domain/engineering-project.ts";
+} from "../../../domain/project/engineering-project.ts";
 
 export interface ProjectReviewProps {
   readonly project: EngineeringProjectSnapshot;

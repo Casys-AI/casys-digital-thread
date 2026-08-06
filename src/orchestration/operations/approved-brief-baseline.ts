@@ -11,9 +11,9 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItemKind,
   EngineeringWorkOwner,
-} from "../../domain/engineering-project.ts";
-import { validateEngineeringProjectSnapshot } from "../../domain/engineering-project-validation.ts";
-import type { ProjectBriefRevision } from "../../domain/project-brief.ts";
+} from "../../domain/project/engineering-project.ts";
+import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
+import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts";
 import type {
   ContentFingerprint,
   ThreadSnapshot,

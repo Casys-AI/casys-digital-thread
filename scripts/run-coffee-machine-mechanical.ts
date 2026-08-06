@@ -27,8 +27,8 @@ import type {
   EngineeringDecision,
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
-} from "../src/domain/engineering-project.ts";
-import { validateEngineeringProjectSnapshot } from "../src/domain/engineering-project-validation.ts";
+} from "../src/domain/project/engineering-project.ts";
+import { validateEngineeringProjectSnapshot } from "../src/domain/project/engineering-project-validation.ts";
 import { type WorkflowExecution, WorkflowExecutor } from "../src/workflow/executor.ts";
 import { InternalThreadToolClient } from "../src/workflow/internal-thread-tools.ts";
 import { loadAndCompileThreadWorkflow } from "../src/workflow/loader.ts";

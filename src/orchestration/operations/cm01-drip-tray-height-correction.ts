@@ -5,7 +5,7 @@ import {
 import type {
   EngineeringOperationInputBinding,
   EngineeringThreadEntityRef,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import type {
   ProposedThreadAction,
   ThreadArtifact,

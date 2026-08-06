@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import type {
   EngineeringProjectFraming,
   ProjectBriefItemKind,
-} from "../domain/project-brief.ts";
+} from "../domain/project/project-brief.ts";
 import { buildProjectBriefRecord } from "./src/project/brief-record-model.ts";
 
 Deno.test("project brief record reads the approved canonical brief, not a pending proposal", () => {

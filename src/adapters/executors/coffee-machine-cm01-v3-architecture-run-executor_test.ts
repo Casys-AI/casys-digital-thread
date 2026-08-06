@@ -2,8 +2,8 @@ import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectPlanOperationRegistry,
-} from "../../domain/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import {
   coffeeMachineCm01V3ArchitectureGoldenArtifact,
   CoffeeMachineCm01V3ArchitectureRunExecutor,

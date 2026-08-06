@@ -10,7 +10,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
   EngineeringWorkItemStatus,
-} from "../../../domain/engineering-project.ts";
+} from "../../../domain/project/engineering-project.ts";
 
 const WORK_ITEM_STATUSES: readonly EngineeringWorkItemStatus[] = [
   "planned",

@@ -5,8 +5,8 @@ import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/opera
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {
   EngineeringProjectCommandService,
-} from "../../domain/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import {
   ApprovedBriefBaselineRunExecutor,
@@ -49,7 +49,7 @@ import {
   OracleRequirementsArtifactRemovedError,
 } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import { EngineeringProjectCommandError } from "../../domain/engineering-project-command-service.ts";
+import { EngineeringProjectCommandError } from "../../domain/project/engineering-project-command-service.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 
 // ---------------------------------------------------------------------------

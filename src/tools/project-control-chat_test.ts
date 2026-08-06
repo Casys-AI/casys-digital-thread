@@ -5,8 +5,8 @@ import type {
   ToolHandler,
   ToolHandlerContext,
 } from "@casys/mcp-server";
-import type { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
-import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
+import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
+import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,

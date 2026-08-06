@@ -17,7 +17,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
-} from "../src/domain/engineering-project.ts";
+} from "../src/domain/project/engineering-project.ts";
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
 import {

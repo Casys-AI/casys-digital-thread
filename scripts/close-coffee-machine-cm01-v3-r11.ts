@@ -11,10 +11,10 @@ import {
 import {
   deriveEngineeringProjectStatus,
   type EngineeringThreadSnapshotRef,
-} from "../src/domain/engineering-project.ts";
+} from "../src/domain/project/engineering-project.ts";
 import {
   EngineeringProjectCommandService,
-} from "../src/domain/engineering-project-command-service.ts";
+} from "../src/domain/project/engineering-project-command-service.ts";
 import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 

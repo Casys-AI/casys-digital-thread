@@ -13,13 +13,13 @@
 
 import {
   EngineeringProjectCommandError,
-} from "../../domain/engineering-project-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
   EngineeringThreadSnapshotRef,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 
 /**

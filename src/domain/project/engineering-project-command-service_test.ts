@@ -16,7 +16,7 @@ import {
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
 
 const CONFIG = new URL(
-  "../../config/projects/coffee-machine-cm01.project.json",
+  "../../../config/projects/coffee-machine-cm01.project.json",
   import.meta.url,
 );
 const HUMAN = { kind: "human" as const, actorId: "operator-7" };

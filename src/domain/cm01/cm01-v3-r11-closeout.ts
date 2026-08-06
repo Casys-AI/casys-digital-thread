@@ -2,7 +2,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
-} from "../engineering-project.ts";
+} from "../project/engineering-project.ts";
 import { applyThreadSnapshotExtension } from "../thread-snapshot-extension.ts";
 import type {
   RequirementEvaluation,

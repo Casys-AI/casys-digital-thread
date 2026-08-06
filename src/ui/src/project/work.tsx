@@ -5,7 +5,7 @@ import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
-} from "../../../domain/engineering-project.ts";
+} from "../../../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import {
   agentRunSummary,

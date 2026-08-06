@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any require-await
 import { assertEquals, assertRejects } from "@std/assert";
-import { EngineeringProjectCommandError } from "../../domain/engineering-project-command-service.ts";
+import { EngineeringProjectCommandError } from "../../domain/project/engineering-project-command-service.ts";
 import {
   CoffeeMachineCm01V3CadR2RunExecutor,
   CoffeeMachineCm01V3MechanicalR2RunExecutor,

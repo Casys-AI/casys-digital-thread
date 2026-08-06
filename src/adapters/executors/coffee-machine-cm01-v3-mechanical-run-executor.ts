@@ -3,13 +3,13 @@ import {
   type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,
-} from "../../domain/engineering-project-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringWorkItem,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import {
   deterministicJson,
   sha256Fingerprint,

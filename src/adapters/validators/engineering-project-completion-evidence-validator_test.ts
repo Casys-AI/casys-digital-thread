@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { EngineeringThreadSnapshotRef } from "../../domain/engineering-project.ts";
+import type { EngineeringThreadSnapshotRef } from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
 import { ExactThreadCompletionEvidenceValidator } from "./engineering-project-completion-evidence-validator.ts";

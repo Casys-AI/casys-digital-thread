@@ -10,7 +10,7 @@ import type {
   EngineeringProjectSnapshot,
 } from "./engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
-import { fingerprintsEqual, sha256Fingerprint } from "./kernel/deterministic-json.ts";
+import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,
   type ProjectAnswerSource,
@@ -22,7 +22,7 @@ import {
   type ProjectQuestionOption,
   type ProjectQuestionRisk,
 } from "./project-brief.ts";
-import type { ContentFingerprint } from "./thread-snapshot.ts";
+import type { ContentFingerprint } from "../thread-snapshot.ts";
 
 export interface StartEngineeringProjectCommand {
   readonly commandId: string;

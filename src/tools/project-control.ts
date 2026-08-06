@@ -1,6 +1,6 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
-import type { EngineeringProjectCommandService } from "../domain/engineering-project-command-service.ts";
+import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringBasisRef,
   EngineeringOperationInputBinding,
@@ -10,7 +10,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
   EngineeringWorkOwner,
-} from "../domain/engineering-project.ts";
+} from "../domain/project/engineering-project.ts";
 import type {
   ContentFingerprint,
   ThreadEntityKind,

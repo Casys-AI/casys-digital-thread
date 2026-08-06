@@ -1,9 +1,9 @@
 import { parseArgs } from "./cli.ts";
 import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
-import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
-import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
-import { validateEngineeringProjectThreadReferences } from "../src/domain/engineering-project-validation.ts";
+import type { EngineeringProjectSnapshot } from "../src/domain/project/engineering-project.ts";
+import type { EngineeringProjectRevisionStore } from "../src/domain/project/engineering-project-command-service.ts";
+import { validateEngineeringProjectThreadReferences } from "../src/domain/project/engineering-project-validation.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   type CockpitFocusStore,

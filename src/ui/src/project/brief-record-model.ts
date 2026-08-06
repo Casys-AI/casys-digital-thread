@@ -5,7 +5,7 @@ import {
   type ProjectBriefItem,
   type ProjectBriefItemKind,
   projectBriefItems,
-} from "../../../domain/project-brief.ts";
+} from "../../../domain/project/project-brief.ts";
 
 export interface ProjectBriefRecordSection {
   readonly id: string;

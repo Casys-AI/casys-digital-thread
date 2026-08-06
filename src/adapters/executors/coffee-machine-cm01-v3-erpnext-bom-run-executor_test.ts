@@ -2,7 +2,7 @@ import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import {

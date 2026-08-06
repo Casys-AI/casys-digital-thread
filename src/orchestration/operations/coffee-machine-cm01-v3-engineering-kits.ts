@@ -2,7 +2,7 @@ import type {
   EngineeringOperationInputBinding,
   EngineeringProjectStartingPoint,
   EngineeringWorkItemKind,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 
 /**
  * Static, reviewed CM-01 reference kits.

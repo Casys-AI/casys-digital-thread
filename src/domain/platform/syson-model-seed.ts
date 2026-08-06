@@ -7,7 +7,7 @@ import type {
   EngineeringApprovedBriefBasis,
   EngineeringCommandActor,
   EngineeringThreadSnapshotRef,
-} from "../engineering-project.ts";
+} from "../project/engineering-project.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

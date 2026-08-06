@@ -135,7 +135,7 @@ import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
 import { ScenarioContractVerifier } from "./src/adapters/validators/scenario-contract-verifier.ts";
 import { ScenarioVerifiedRunCatalog } from "./src/adapters/validators/scenario-verified-run-catalog.ts";
 import { ControlPlane } from "./src/domain/platform/control-plane.ts";
-import { EngineeringProjectCommandError } from "./src/domain/engineering-project-command-service.ts";
+import { EngineeringProjectCommandError } from "./src/domain/project/engineering-project-command-service.ts";
 import {
   parseCoffeeMachineCm01SemanticRecipe,
   parseCoffeeMachineCm01SemanticRecipeR2,
@@ -145,7 +145,7 @@ import {
   parseCm01DripTrayMechanicalProofR2,
   parseCm01DripTrayMechanicalProofR3,
 } from "./src/domain/cm01/cm01-drip-tray-mechanical-proof.ts";
-import { ProjectBriefCommandService } from "./src/domain/project-brief-command-service.ts";
+import { ProjectBriefCommandService } from "./src/domain/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import type {
   FleetManifest,

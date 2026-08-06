@@ -23,8 +23,8 @@ import {
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,
-} from "../../domain/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import {
   SENSITIVITY_RELATIONS_SCHEMA,
   validateSensitivityRelationsDeclaration,

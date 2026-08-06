@@ -3,8 +3,8 @@ import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectPlanOperationRegistry,
-} from "../../domain/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import {

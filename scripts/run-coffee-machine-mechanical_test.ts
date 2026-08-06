@@ -9,11 +9,11 @@ import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../src/domain/engineering-project-command-service.ts";
+} from "../src/domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
-} from "../src/domain/engineering-project.ts";
+} from "../src/domain/project/engineering-project.ts";
 import { deterministicJson } from "../src/domain/kernel/deterministic-json.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SYSON_EDITING_CONTEXT_ID,

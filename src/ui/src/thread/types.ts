@@ -5,7 +5,7 @@
  * tool calls and projects their persisted, linked evidence into this snapshot.
  */
 
-import type { EngineeringProjectSnapshot } from "../../../domain/engineering-project.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadComponent,
   ThreadComponentBinding,

@@ -1,8 +1,8 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   EngineeringProjectCommandError,
-} from "../../domain/engineering-project-command-service.ts";
-import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import {
   requireBasis,

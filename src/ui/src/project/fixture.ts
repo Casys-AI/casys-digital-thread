@@ -1,4 +1,4 @@
-import type { EngineeringProjectSnapshot } from "../../../domain/engineering-project.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "../thread/fixture.ts";
 import type { EngineeringEvidenceWorkbenchSnapshot } from "../thread/types.ts";
 

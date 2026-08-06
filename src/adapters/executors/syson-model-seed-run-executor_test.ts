@@ -2,9 +2,9 @@ import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectPlanOperationRegistry,
-} from "../../domain/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";
-import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
   type RegisteredEngineeringOperation,

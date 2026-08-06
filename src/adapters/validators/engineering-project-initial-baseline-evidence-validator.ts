@@ -1,7 +1,7 @@
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectInitialCompletionEvidenceValidator,
-} from "../../domain/engineering-project-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -12,7 +12,7 @@ import type {
   EngineeringOperationRef,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

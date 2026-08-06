@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
 
 import type { JSX } from "preact";
-import type { EngineeringProjectSnapshot } from "../../../domain/engineering-project.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { buildProjectBriefRecord } from "./brief-record-model.ts";
 
 /**

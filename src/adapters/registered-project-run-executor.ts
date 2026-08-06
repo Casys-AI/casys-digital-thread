@@ -1,9 +1,9 @@
 import type {
   EngineeringProjectCommandOrigin,
   EngineeringProjectRevisionStore,
-} from "../domain/engineering-project-command-service.ts";
-import { EngineeringProjectCommandError } from "../domain/engineering-project-command-service.ts";
-import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
+} from "../domain/project/engineering-project-command-service.ts";
+import { EngineeringProjectCommandError } from "../domain/project/engineering-project-command-service.ts";
+import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../domain/platform/syson-model-seed.ts";
 import type { ApprovedBriefBaselineRunExecutor } from "./executors/approved-brief-baseline-run-executor.ts";

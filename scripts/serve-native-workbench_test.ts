@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { CockpitFocusStore } from "../src/adapters/stores/file-cockpit-focus-store.ts";
-import type { EngineeringProjectSnapshot } from "../src/domain/engineering-project.ts";
-import type { EngineeringProjectRevisionStore } from "../src/domain/engineering-project-command-service.ts";
+import type { EngineeringProjectSnapshot } from "../src/domain/project/engineering-project.ts";
+import type { EngineeringProjectRevisionStore } from "../src/domain/project/engineering-project-command-service.ts";
 import type { CockpitFocusSnapshot } from "../src/domain/platform/cockpit-focus.ts";
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../src/domain/platform/cockpit-focus.ts";
 import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";

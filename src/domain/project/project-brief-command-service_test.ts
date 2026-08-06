@@ -14,7 +14,7 @@ import {
   type ProjectBriefMutationCommand,
 } from "./project-brief-command-service.ts";
 import type { ProjectBriefItem } from "./project-brief.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import { collectEngineeringProjectIssues } from "./engineering-project-validation.ts";
 
 const PROJECT_ID = "project-v3";

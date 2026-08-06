@@ -3,7 +3,7 @@ import type {
   EngineeringAgentRunStatus,
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import type {
   LiveThreadUpdate,

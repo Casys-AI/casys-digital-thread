@@ -3,7 +3,7 @@ import {
   type EngineeringProjectInitialCompletionEvidenceValidator,
   type EngineeringProjectPlanningDependencies,
   EngineeringProjectStoreConflictError,
-} from "../domain/engineering-project-command-service.ts";
+} from "../domain/project/engineering-project-command-service.ts";
 import {
   FileEngineeringProjectRevisionStore,
   FileEngineeringProjectStore,

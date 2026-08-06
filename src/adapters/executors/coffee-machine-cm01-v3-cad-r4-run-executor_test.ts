@@ -3,10 +3,10 @@ import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectPlanOperationRegistry,
-} from "../../domain/engineering-project-command-service.ts";
+} from "../../domain/project/engineering-project-command-service.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-extension.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
-import { ProjectBriefCommandService } from "../../domain/project-brief-command-service.ts";
+import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import {
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
   type RegisteredEngineeringOperation,

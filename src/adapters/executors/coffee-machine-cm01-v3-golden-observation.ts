@@ -3,7 +3,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
-} from "../../domain/engineering-project.ts";
+} from "../../domain/project/engineering-project.ts";
 import {
   type CoffeeMachineCm01V3GoldenObservation,
   validateCoffeeMachineCm01V3GoldenObservation,

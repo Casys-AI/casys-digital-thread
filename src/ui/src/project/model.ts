@@ -9,7 +9,7 @@ import {
   type EngineeringProjectSnapshot,
   type EngineeringProjectStatus,
   type EngineeringWorkItem,
-} from "../../../domain/engineering-project.ts";
+} from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,

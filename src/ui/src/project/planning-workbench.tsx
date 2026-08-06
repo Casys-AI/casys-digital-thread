@@ -4,13 +4,13 @@ import type { JSX } from "preact";
 import type {
   EngineeringProjectPhase,
   EngineeringWorkItem,
-} from "../../../domain/engineering-project.ts";
+} from "../../../domain/project/engineering-project.ts";
 import {
   currentProjectAnswer,
   engineeringProjectFramingStatus,
   projectBriefItems,
   type ProjectBriefRevision,
-} from "../../../domain/project-brief.ts";
+} from "../../../domain/project/project-brief.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
 import type { EngineeringPlanningWorkbenchSnapshot } from "../thread/types.ts";
 import { BaselineRunActivity } from "./baseline-run-activity.tsx";
