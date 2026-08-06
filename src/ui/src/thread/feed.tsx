@@ -1,6 +1,7 @@
 /** @jsxImportSource preact */
 
 import type { JSX } from "preact";
+import { useMemo } from "preact/hooks";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
@@ -9,6 +10,9 @@ import {
   traceThreadLineage,
 } from "./feed-model.ts";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
+import { EvidenceExploration } from "./evidence-exploration.tsx";
+import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
+import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import { RecomputeHistoryPanel } from "./recompute.tsx";
 import type {
   ThreadGraphEdge,
@@ -24,6 +28,13 @@ export interface ThreadFeedProps {
   selection?: ThreadGraphSelection;
   followLive: boolean;
   streamStatus: ThreadStreamStatus | "snapshot";
+  /**
+   * When provided, the active card's lineage is rendered as a local sigma
+   * view (one instance only, mounted on expand and killed on collapse) instead
+   * of the SVG canvas. Reuses the same EvidenceExploration component and
+   * dagre layout as the Evidence Exploration mode.
+   */
+  evidenceModel?: EvidenceGraphModel;
   onFollowLiveChange: (follow: boolean) => void;
   onSelectNode: (node: ThreadGraphNode, origin: "feed" | "lineage") => void;
   onSelectEdge: (edge: ThreadGraphEdge) => void;
@@ -44,6 +55,7 @@ export function ThreadFeed({
   selection,
   followLive,
   streamStatus,
+  evidenceModel,
   onFollowLiveChange,
   onSelectNode,
   onSelectEdge,
@@ -183,6 +195,20 @@ export function ThreadFeed({
                           it to another fact yet.
                         </p>
                       )
+                      : evidenceModel
+                      ? (
+                        <FeedLineageGraph
+                          evidenceModel={evidenceModel}
+                          focusRef={node.ref}
+                          selection={selection}
+                          nodes={nodes}
+                          onSelectNode={(related) =>
+                            onSelectNode(related, "lineage")}
+                          onSelectEdge={onSelectEdge}
+                          onInspect={onInspect}
+                          ariaLabel={`Complete recorded lineage for ${node.label}`}
+                        />
+                      )
                       : (
                         <ThreadGraph
                           key={refKey(node.ref)}
@@ -225,6 +251,94 @@ export function ThreadFeed({
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// FeedLineageGraph — local sigma view for the expanded card lineage
+// ---------------------------------------------------------------------------
+
+interface FeedLineageGraphProps {
+  evidenceModel: EvidenceGraphModel;
+  focusRef: ThreadGraphRef;
+  selection?: ThreadGraphSelection;
+  nodes: ThreadGraphNode[];
+  onSelectNode: (node: ThreadGraphNode) => void;
+  onSelectEdge: (edge: ThreadGraphEdge) => void;
+  onInspect: (selection: ThreadRef, node: ThreadGraphNode) => void;
+  ariaLabel: string;
+}
+
+/**
+ * Local sigma view for a single expanded feed card.
+ *
+ * Uses `boundedNeighborhood(focusRef, 3)` from the evidence model — the same
+ * query used by the Evidence canvas when a node is selected — so the lineage
+ * reads the folded, version-aware visible graph rather than the raw edges.
+ *
+ * Performance contract: only ONE instance is mounted at a time. This component
+ * is rendered only when the card is expanded; it unmounts on collapse or on
+ * selection of a different card (key={refKey(focusRef)} in the parent).
+ */
+function FeedLineageGraph({
+  evidenceModel,
+  focusRef,
+  selection,
+  nodes,
+  onSelectNode,
+  ariaLabel,
+}: FeedLineageGraphProps): JSX.Element {
+  // Compute bounded neighborhood (depth 3 — same as Evidence canvas).
+  const neighborhood = useMemo(
+    () => evidenceModel.boundedNeighborhood(focusRef, 3),
+    [evidenceModel, focusRef],
+  );
+
+  // Build the EvidenceCanvasProjection from the neighborhood.
+  const projection = useMemo((): EvidenceCanvasProjection => {
+    return {
+      nodes: neighborhood.nodes,
+      edges: neighborhood.edges,
+      displayedCount: neighborhood.nodes.length,
+      foldedInstrumentCount: 0,
+      isFiltered: true,
+    };
+  }, [neighborhood]);
+
+  // Fall back gracefully when the focus node is not in the visible graph.
+  if (neighborhood.nodes.length === 0) {
+    return (
+      <p class="thread-feed-unlinked">
+        This fact is recorded, but it is not currently present in the evidence
+        graph (it may be a folded historical version).
+      </p>
+    );
+  }
+
+  return (
+    <div class="thread-feed-lineage-sigma" aria-label={ariaLabel}>
+      <EvidenceExploration
+        evidenceModel={evidenceModel}
+        projection={projection}
+        selection={selection}
+        onSelectionChange={(next) => {
+          if (next?.kind === "node") {
+            // Resolve the ThreadGraphNode from the full nodes array so the
+            // parent workbench receives the correct object (not just the ref).
+            const selected = nodes.find(
+              (n) => `${n.ref.kind}:${n.ref.id}` ===
+                `${next.ref.kind}:${next.ref.id}`,
+            );
+            if (selected) onSelectNode(selected);
+          }
+          // Edge clicks and background clicks do not change feed selection.
+        }}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function kindLabel(node: ThreadGraphNode): string {
   return node.entityKind === "artifact" && node.artifactKind

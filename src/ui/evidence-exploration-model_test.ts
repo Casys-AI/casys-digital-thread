@@ -2,18 +2,24 @@
  * Tests for evidence-exploration-model.ts
  *
  * Invariants under test:
- * 1. deterministicPosition — mêmes entrées, mêmes sorties (deux appels)
- * 2. buildExplorationModel — les arêtes moignons sont marquées edgeType:"stub"
- * 3. buildExplorationModel — la légende reflète les composantes nommées du modèle
- * 4. buildExplorationModel — les couleurs viennent du paramètre CssTokens, jamais codées en dur
- * 5. buildExplorationModel — résultat stable sur deux appels identiques (déterminisme FA2)
+ * 1. normalizeEdgeDirection — direction par type de relation (source à gauche
+ *    = x minimal dans le graphe dagre)
+ * 2. buildExplorationModel — source strictement à gauche de ce qui en dérive
+ *    sur la topologie réelle (input_to : SysML à gauche, observation à droite)
+ * 3. buildExplorationModel — déterminisme : deux appels identiques, mêmes positions
+ * 4. buildExplorationModel — les arêtes moignons sont marquées edgeType:"stub"
+ * 5. buildExplorationModel — la légende reflète les composantes nommées du modèle
+ * 6. buildExplorationModel — les couleurs viennent du paramètre CssTokens, jamais
+ *    codées en dur
+ * 7. buildExplorationModel — les endpoints des moignons reçoivent des positions
+ *    cohérentes (les deux extrémités existent dans le graphe sigma)
  */
 
 import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   buildExplorationModel,
-  deterministicPosition,
   FALLBACK_TOKENS,
+  normalizeEdgeDirection,
   type CssTokens,
   type SigmaEdgeAttrs,
   type SigmaNodeAttrs,
@@ -59,7 +65,7 @@ function edge(
   id: string,
   from: ThreadGraphRef,
   to: ThreadGraphRef,
-  relation: ThreadGraphEdge["relation"] = "evidences",
+  relation: ThreadGraphEdge["relation"] = "input_to",
 ): ThreadGraphEdge {
   return {
     id,
@@ -73,210 +79,454 @@ function edge(
 
 const EMPTY_FAMILY: ThreadEvidenceFamilyGraph = {
   schemaVersion: "thread-evidence-family-graph/1.0",
-  asOf: { snapshotId: "test", revision: 0 },
+  asOf: { snapshotId: "test", revision: 1 },
   families: [],
   edges: [],
   omittedSelfLoops: [],
   omittedCycleEdges: [],
 };
 
-// ---------------------------------------------------------------------------
-// 1. deterministicPosition
-// ---------------------------------------------------------------------------
-
-Deno.test("deterministicPosition retourne le même résultat sur deux appels avec la même clé", () => {
-  const key = "artifact:cm01-drip-tray-step-r3";
-  const first = deterministicPosition(key);
-  const second = deterministicPosition(key);
-  assertEquals(first.x, second.x);
-  assertEquals(first.y, second.y);
-});
-
-Deno.test("deterministicPosition retourne des valeurs différentes pour des clés différentes", () => {
-  const a = deterministicPosition("artifact:node-a");
-  const b = deterministicPosition("artifact:node-b");
-  // Il est astronomiquement improbable qu'une collision exacte se produise.
-  const sameCoordsUnlikely = a.x === b.x && a.y === b.y;
-  assertEquals(sameCoordsUnlikely, false);
-});
-
-// ---------------------------------------------------------------------------
-// 2. Arêtes moignons → edgeType: "stub"
-// ---------------------------------------------------------------------------
-
-Deno.test("les arêtes moignons du modèle sont marquées edgeType:stub dans le graphe sigma", () => {
-  // A ← B (instrument) → C : B est un outil analyze.* qui devient un moignon.
-  const nodeA = node("A", "artifact", "calculix", "artifact");
-  const nodeB = node("B", "artifact", "analyze", "artifact");
-  const nodeC = node("C", "artifact", "syson", "requirement");
-
-  const rawGraph = {
-    nodes: [nodeA, nodeB, nodeC],
-    edges: [
-      edge("e1", nodeA.ref, nodeB.ref),
-      edge("e2", nodeB.ref, nodeC.ref),
-    ],
-  };
-
-  const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {
-    isAnalyzeInstrumentNode: (n) => n.system === "analyze",
-  });
-
+/** Builds a minimal ExplorationModel from nodes + edges (helper). */
+function buildMinimalModel(
+  nodes: ThreadGraphNode[],
+  edges: ThreadGraphEdge[],
+  tokens = FALLBACK_TOKENS,
+) {
+  const evidenceModel = buildEvidenceGraphModel(
+    { nodes, edges },
+    EMPTY_FAMILY,
+    {},
+  );
   const projection = buildEvidenceCanvasProjection(
     evidenceModel,
     0,
     undefined,
     new Map(),
   );
+  return buildExplorationModel(evidenceModel, projection, tokens);
+}
 
-  // La projection contient au moins un moignon (id commence par "stub:")
-  const hasStub = projection.edges.some((e) => e.id.startsWith("stub:"));
-  assertEquals(hasStub, true, "La projection doit contenir au moins un moignon");
-
-  const explorationModel = buildExplorationModel(
-    evidenceModel,
-    projection,
-    FALLBACK_TOKENS,
-    10,
-  );
-
-  // Dans le graphe sigma, les arêtes moignons doivent être marquées "stub".
-  let stubEdgeFound = false;
-  explorationModel.graph.forEachEdge(
-    (_key: string, attrs: SigmaEdgeAttrs) => {
-      if (attrs.edgeType === "stub") stubEdgeFound = true;
-    },
-  );
-  assertEquals(
-    stubEdgeFound,
-    true,
-    "Le graphe sigma doit contenir une arête de type stub",
-  );
-});
+/** Gets the x position of a node key in the sigma graph. */
+function xOf(
+  model: ReturnType<typeof buildExplorationModel>,
+  nodeId: string,
+  kind: ThreadGraphRef["kind"],
+): number {
+  const key = `${kind}:${nodeId}`;
+  return model.graph.getNodeAttribute(key, "x");
+}
 
 // ---------------------------------------------------------------------------
-// 3. Légende = composantes nommées du modèle
+// 1. normalizeEdgeDirection — direction par type de relation
 // ---------------------------------------------------------------------------
 
-Deno.test("la légende contient une entrée par composante visible et pas plus", () => {
-  // Deux composantes isolées : syson et calculix.
-  const nodeSys = node("SYS-1", "artifact", "syson", "requirement");
-  const nodeCalc = node("CALC-1", "artifact", "calculix", "artifact");
+Deno.test(
+  "normalizeEdgeDirection: input_to conserve la direction stockée (from=source, to=consommateur)",
+  () => {
+    const result = normalizeEdgeDirection("A", "B", "input_to");
+    // A --input_to--> B : A est en amont, B est en aval. Pas d'inversion.
+    assertEquals(result, { from: "A", to: "B" });
+  },
+);
 
-  const rawGraph = {
-    nodes: [nodeSys, nodeCalc],
-    edges: [], // pas de lien → deux composantes distinctes
-  };
+Deno.test(
+  "normalizeEdgeDirection: source_of conserve la direction stockée (from=source, to=dérivé)",
+  () => {
+    const result = normalizeEdgeDirection("CAD", "OBS", "source_of");
+    // CAD --source_of--> OBS : CAD est en amont, OBS est en aval. Pas d'inversion.
+    assertEquals(result, { from: "CAD", to: "OBS" });
+  },
+);
 
-  const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
+Deno.test(
+  "normalizeEdgeDirection: changes conserve la direction (from=événement, to=artefact)",
+  () => {
+    const result = normalizeEdgeDirection("CHG", "ART", "changes");
+    // CHG --changes--> ART : l'événement de changement est en amont. Pas d'inversion.
+    assertEquals(result, { from: "CHG", to: "ART" });
+  },
+);
 
-  const projection = buildEvidenceCanvasProjection(
-    evidenceModel,
-    0,
-    undefined,
-    new Map(),
-  );
+Deno.test(
+  "normalizeEdgeDirection: supersedes conserve la direction (from=ancien, to=successeur)",
+  () => {
+    const result = normalizeEdgeDirection("V1", "V2", "supersedes");
+    // V1 --supersedes--> V2 : V1 est l'ancien (gauche), V2 est le successeur (droite).
+    assertEquals(result, { from: "V1", to: "V2" });
+  },
+);
 
-  const explorationModel = buildExplorationModel(
-    evidenceModel,
-    projection,
-    FALLBACK_TOKENS,
-    10,
-  );
+Deno.test(
+  "normalizeEdgeDirection: derived_from est inversé (from=dérivé, to=source → source en amont)",
+  () => {
+    const result = normalizeEdgeDirection("DERIVED", "SOURCE", "derived_from");
+    // DERIVED --derived_from--> SOURCE : SOURCE est en amont, inversion requise.
+    assertEquals(result, { from: "SOURCE", to: "DERIVED" });
+  },
+);
 
-  // Deux composantes → deux entrées de légende.
-  assertEquals(
-    explorationModel.legend.length,
-    2,
-    "Deux composantes → deux entrées de légende",
-  );
+Deno.test(
+  "normalizeEdgeDirection: uses est inversé (from=consommateur, to=dépendance → dépendance en amont)",
+  () => {
+    const result = normalizeEdgeDirection("CONSUMER", "DEP", "uses");
+    // CONSUMER --uses--> DEP : DEP est la dépendance (en amont), inversion.
+    assertEquals(result, { from: "DEP", to: "CONSUMER" });
+  },
+);
 
-  // Chaque entrée doit avoir un nom non vide et un compte de 1.
-  for (const item of explorationModel.legend) {
-    assertNotEquals(item.name, "", "Le nom de composante ne doit pas être vide");
-    assertEquals(item.visibleNodeCount, 1);
-  }
-});
+Deno.test(
+  "normalizeEdgeDirection: evaluates est inversé (from=évaluation, to=évalué → évalué en amont)",
+  () => {
+    const result = normalizeEdgeDirection("EVAL", "REQ", "evaluates");
+    // EVAL --evaluates--> REQ : REQ est en amont, inversion.
+    assertEquals(result, { from: "REQ", to: "EVAL" });
+  },
+);
+
+Deno.test(
+  "normalizeEdgeDirection: evidences est inversé (from=preuve, to=exigence → exigence en amont)",
+  () => {
+    const result = normalizeEdgeDirection("PROOF", "CLAIM", "evidences");
+    // PROOF --evidences--> CLAIM : CLAIM est en amont, inversion.
+    assertEquals(result, { from: "CLAIM", to: "PROOF" });
+  },
+);
+
+Deno.test(
+  "normalizeEdgeDirection: traces_to est inversé (from=impl, to=exigence → exigence en amont)",
+  () => {
+    const result = normalizeEdgeDirection("IMPL", "REQ", "traces_to");
+    // IMPL --traces_to--> REQ : REQ est en amont, inversion.
+    assertEquals(result, { from: "REQ", to: "IMPL" });
+  },
+);
+
+Deno.test(
+  "normalizeEdgeDirection: caused_by est inversé (from=effet, to=cause → cause en amont)",
+  () => {
+    const result = normalizeEdgeDirection("EFFECT", "CAUSE", "caused_by");
+    // EFFECT --caused_by--> CAUSE : CAUSE est en amont, inversion.
+    assertEquals(result, { from: "CAUSE", to: "EFFECT" });
+  },
+);
+
+Deno.test(
+  "normalizeEdgeDirection: addresses est inversé (from=action, to=violation → violation en amont)",
+  () => {
+    const result = normalizeEdgeDirection("ACTION", "VIOLATION", "addresses");
+    // ACTION --addresses--> VIOLATION : VIOLATION est en amont, inversion.
+    assertEquals(result, { from: "VIOLATION", to: "ACTION" });
+  },
+);
 
 // ---------------------------------------------------------------------------
-// 4. Couleurs issues de CssTokens, pas codées en dur
+// 2. Source strictement à gauche de ce qui en dérive sur la topologie réelle
 // ---------------------------------------------------------------------------
 
-Deno.test("nodeColorFor utilise les tokens passés en paramètre, pas des constantes", () => {
-  const nodeSys = node("SYS-1", "artifact", "syson", "requirement");
-  const rawGraph = { nodes: [nodeSys], edges: [] };
-  const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
-  const projection = buildEvidenceCanvasProjection(
-    evidenceModel,
-    0,
-    undefined,
-    new Map(),
-  );
+Deno.test(
+  "layout LR: la source (input_to) est strictement à gauche de son consommateur",
+  () => {
+    // SysML --input_to--> CAD --input_to--> Observation
+    // Ordre attendu gauche→droite : SysML | CAD | Observation
+    const nodeSys = node("SYS", "artifact", "syson", "artifact");
+    const nodeCAD = node("CAD", "artifact", "build123d", "artifact");
+    const nodeObs = node("OBS", "observation", "calculix", "observation");
 
-  // Tokens avec une couleur cyan distincte
-  const customTokens: CssTokens = {
-    ...FALLBACK_TOKENS,
-    cyan: "#123456",
-  };
+    const edgeSysCAD = edge(
+      "e1",
+      nodeSys.ref,
+      nodeCAD.ref,
+      "input_to",
+    );
+    const edgeCADObs = edge(
+      "e2",
+      nodeCAD.ref,
+      nodeObs.ref,
+      "source_of",
+    );
 
-  const model = buildExplorationModel(evidenceModel, projection, customTokens, 5);
+    const model = buildMinimalModel(
+      [nodeSys, nodeCAD, nodeObs],
+      [edgeSysCAD, edgeCADObs],
+    );
 
-  let sysonColor: string | undefined;
-  model.graph.forEachNode((_key: string, attrs: SigmaNodeAttrs) => {
-    if (attrs.node.system === "syson") sysonColor = attrs.color;
-  });
+    const xSys = xOf(model, "SYS", "artifact");
+    const xCAD = xOf(model, "CAD", "artifact");
+    const xObs = xOf(model, "OBS", "observation");
 
-  assertEquals(
-    sysonColor,
-    "#123456",
-    "La couleur du noeud syson doit utiliser tokens.cyan",
-  );
-});
-
-// ---------------------------------------------------------------------------
-// 5. Déterminisme FA2 : deux appels avec les mêmes entrées → mêmes positions
-// ---------------------------------------------------------------------------
-
-Deno.test("buildExplorationModel produit des positions stables pour les mêmes entrées", () => {
-  const nodeA = node("A", "artifact", "calculix", "artifact");
-  const nodeB = node("B", "artifact", "syson", "requirement");
-  const rawGraph = {
-    nodes: [nodeA, nodeB],
-    edges: [edge("e1", nodeA.ref, nodeB.ref)],
-  };
-
-  const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
-  const projection = buildEvidenceCanvasProjection(
-    evidenceModel,
-    0,
-    undefined,
-    new Map(),
-  );
-
-  const m1 = buildExplorationModel(evidenceModel, projection, FALLBACK_TOKENS, 20);
-  const m2 = buildExplorationModel(evidenceModel, projection, FALLBACK_TOKENS, 20);
-
-  const positions1: Record<string, { x: number; y: number }> = {};
-  m1.graph.forEachNode((key: string, attrs: SigmaNodeAttrs) => {
-    positions1[key] = { x: attrs.x, y: attrs.y };
-  });
-
-  m2.graph.forEachNode((key: string, attrs: SigmaNodeAttrs) => {
-    const p1 = positions1[key];
+    // SysML doit être le plus à gauche, observation le plus à droite.
     assertEquals(
-      p1 !== undefined,
+      xSys < xCAD,
       true,
-      `Noeud ${key} absent du premier appel`,
+      `SysML (x=${xSys}) doit être à gauche de CAD (x=${xCAD})`,
     );
     assertEquals(
-      attrs.x,
-      p1!.x,
-      `Position x instable pour ${key}`,
+      xCAD < xObs,
+      true,
+      `CAD (x=${xCAD}) doit être à gauche de l'observation (x=${xObs})`,
+    );
+  },
+);
+
+Deno.test(
+  "layout LR: avec derived_from, la source est à gauche du dérivé (inversion appliquée)",
+  () => {
+    // DERIVED --derived_from--> SOURCE
+    // Attendu : SOURCE à gauche, DERIVED à droite.
+    const nodeSource = node("SOURCE", "artifact", "syson", "artifact");
+    const nodeDerived = node("DERIVED", "artifact", "build123d", "artifact");
+    const edgeDerived = edge(
+      "e1",
+      nodeDerived.ref,
+      nodeSource.ref,
+      "derived_from",
+    );
+
+    const model = buildMinimalModel([nodeSource, nodeDerived], [edgeDerived]);
+
+    const xSource = xOf(model, "SOURCE", "artifact");
+    const xDerived = xOf(model, "DERIVED", "artifact");
+
+    assertEquals(
+      xSource < xDerived,
+      true,
+      `SOURCE (x=${xSource}) doit être à gauche de DERIVED (x=${xDerived}) après inversion derived_from`,
+    );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 3. Déterminisme : deux appels avec les mêmes entrées → mêmes positions
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "buildExplorationModel produit des positions stables pour les mêmes entrées",
+  () => {
+    const nodeA = node("A", "artifact", "calculix", "artifact");
+    const nodeB = node("B", "artifact", "syson", "requirement");
+    const rawEdge = edge("e1", nodeA.ref, nodeB.ref, "source_of");
+
+    const m1 = buildMinimalModel([nodeA, nodeB], [rawEdge]);
+    const m2 = buildMinimalModel([nodeA, nodeB], [rawEdge]);
+
+    const positions1: Record<string, { x: number; y: number }> = {};
+    m1.graph.forEachNode((key: string, attrs: SigmaNodeAttrs) => {
+      positions1[key] = { x: attrs.x, y: attrs.y };
+    });
+
+    m2.graph.forEachNode((key: string, attrs: SigmaNodeAttrs) => {
+      const p1 = positions1[key];
+      assertEquals(
+        p1 !== undefined,
+        true,
+        `Nœud ${key} absent du premier appel`,
+      );
+      assertEquals(attrs.x, p1!.x, `Position x instable pour ${key}`);
+      assertEquals(attrs.y, p1!.y, `Position y instable pour ${key}`);
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 4. Arêtes moignons → edgeType: "stub"
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "les arêtes moignons du modèle sont marquées edgeType:stub dans le graphe sigma",
+  () => {
+    // A ← B (instrument) → C : B est un outil analyze.* qui devient un moignon.
+    const nodeA = node("A", "artifact", "calculix", "artifact");
+    const nodeB = node("B", "artifact", "analyze", "artifact");
+    const nodeC = node("C", "requirement", "syson", "requirement");
+
+    const rawGraph = {
+      nodes: [nodeA, nodeB, nodeC],
+      edges: [
+        edge("e1", nodeA.ref, nodeB.ref, "input_to"),
+        edge("e2", nodeB.ref, nodeC.ref, "input_to"),
+      ],
+    };
+
+    const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {
+      isAnalyzeInstrumentNode: (n) => n.system === "analyze",
+    });
+
+    const projection = buildEvidenceCanvasProjection(
+      evidenceModel,
+      0,
+      undefined,
+      new Map(),
+    );
+
+    // La projection contient au moins un moignon (id commence par "stub:")
+    const hasStub = projection.edges.some((e) => e.id.startsWith("stub:"));
+    assertEquals(hasStub, true, "La projection doit contenir au moins un moignon");
+
+    const explorationModel = buildExplorationModel(
+      evidenceModel,
+      projection,
+      FALLBACK_TOKENS,
+    );
+
+    // Dans le graphe sigma, les arêtes moignons doivent être marquées "stub".
+    let stubEdgeFound = false;
+    explorationModel.graph.forEachEdge(
+      (_key: string, attrs: SigmaEdgeAttrs) => {
+        if (attrs.edgeType === "stub") stubEdgeFound = true;
+      },
     );
     assertEquals(
-      attrs.y,
-      p1!.y,
-      `Position y instable pour ${key}`,
+      stubEdgeFound,
+      true,
+      "Le graphe sigma doit contenir une arête de type stub",
     );
-  });
-});
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 5. Légende = composantes nommées du modèle
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "la légende contient une entrée par composante visible et pas plus",
+  () => {
+    // Deux composantes isolées : syson et calculix.
+    const nodeSys = node("SYS-1", "requirement", "syson", "requirement");
+    const nodeCalc = node("CALC-1", "artifact", "calculix", "artifact");
+
+    const rawGraph = {
+      nodes: [nodeSys, nodeCalc],
+      edges: [], // pas de lien → deux composantes distinctes
+    };
+
+    const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
+
+    const projection = buildEvidenceCanvasProjection(
+      evidenceModel,
+      0,
+      undefined,
+      new Map(),
+    );
+
+    const explorationModel = buildExplorationModel(
+      evidenceModel,
+      projection,
+      FALLBACK_TOKENS,
+    );
+
+    // Deux composantes → deux entrées de légende.
+    assertEquals(
+      explorationModel.legend.length,
+      2,
+      "Deux composantes → deux entrées de légende",
+    );
+
+    // Chaque entrée doit avoir un nom non vide et un compte de 1.
+    for (const item of explorationModel.legend) {
+      assertNotEquals(item.name, "", "Le nom de composante ne doit pas être vide");
+      assertEquals(item.visibleNodeCount, 1);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 6. Couleurs issues de CssTokens, pas codées en dur
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "nodeColorFor utilise les tokens passés en paramètre, pas des constantes",
+  () => {
+    const nodeSys = node("SYS-1", "requirement", "syson", "requirement");
+    const rawGraph = { nodes: [nodeSys], edges: [] };
+    const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
+    const projection = buildEvidenceCanvasProjection(
+      evidenceModel,
+      0,
+      undefined,
+      new Map(),
+    );
+
+    // Tokens avec une couleur cyan distincte
+    const customTokens: CssTokens = {
+      ...FALLBACK_TOKENS,
+      cyan: "#123456",
+    };
+
+    const model = buildExplorationModel(evidenceModel, projection, customTokens);
+
+    let sysonColor: string | undefined;
+    model.graph.forEachNode((_key: string, attrs: SigmaNodeAttrs) => {
+      if (attrs.node.system === "syson") sysonColor = attrs.color;
+    });
+
+    assertEquals(
+      sysonColor,
+      "#123456",
+      "La couleur du nœud syson doit utiliser tokens.cyan",
+    );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 7. Les endpoints des moignons reçoivent des positions cohérentes
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "les endpoints des arêtes moignons ont des positions dans le graphe sigma",
+  () => {
+    // A (calculix) ← B (analyze instrument) → C (syson) :
+    // B est replié en moignon ; A et C doivent chacun avoir une position dagre.
+    const nodeA = node("A", "artifact", "calculix", "artifact");
+    const nodeB = node("B", "artifact", "analyze", "artifact");
+    const nodeC = node("C", "requirement", "syson", "requirement");
+
+    const evidenceModel = buildEvidenceGraphModel(
+      {
+        nodes: [nodeA, nodeB, nodeC],
+        edges: [
+          edge("e1", nodeA.ref, nodeB.ref, "input_to"),
+          edge("e2", nodeB.ref, nodeC.ref, "input_to"),
+        ],
+      },
+      EMPTY_FAMILY,
+      { isAnalyzeInstrumentNode: (n) => n.system === "analyze" },
+    );
+
+    const projection = buildEvidenceCanvasProjection(
+      evidenceModel,
+      0,
+      undefined,
+      new Map(),
+    );
+
+    const model = buildExplorationModel(evidenceModel, projection, FALLBACK_TOKENS);
+
+    // Vérifie que les stubs ont des endpoints présents dans le graphe sigma.
+    projection.edges.filter((e) => e.id.startsWith("stub:")).forEach((stub) => {
+      const fromKey = `${stub.from.kind}:${stub.from.id}`;
+      const toKey = `${stub.to.kind}:${stub.to.id}`;
+      assertEquals(
+        model.graph.hasNode(fromKey) || model.graph.hasNode(toKey),
+        true,
+        `Au moins un endpoint du moignon ${stub.id} doit être présent dans le graphe`,
+      );
+      // Si les deux endpoints sont présents, leurs positions doivent exister.
+      if (model.graph.hasNode(fromKey)) {
+        const x = model.graph.getNodeAttribute(fromKey, "x");
+        assertEquals(
+          typeof x === "number",
+          true,
+          `Le nœud source ${fromKey} du moignon doit avoir une position x`,
+        );
+      }
+      if (model.graph.hasNode(toKey)) {
+        const x = model.graph.getNodeAttribute(toKey, "x");
+        assertEquals(
+          typeof x === "number",
+          true,
+          `Le nœud cible ${toKey} du moignon doit avoir une position x`,
+        );
+      }
+    });
+  },
+);

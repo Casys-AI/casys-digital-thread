@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@casys/mcp-view": "^0.7.1",
+    "@dagrejs/dagre": "^3.1.0",
     "graphology": "^0.26.0",
-    "graphology-layout-forceatlas2": "^0.10.1",
     "preact": "^10.29.7",
     "sigma": "^3.0.3",
     "three": "^0.185.1"

@@ -630,6 +630,22 @@
   min-height: 300px;
   max-height: 540px;
 }
+
+/* Sigma local view inside an expanded feed card.
+   Même vocabulaire visuel que le mode Exploration (même composant, même
+   position:relative, même containment) mais hauteur réduite pour s'intégrer
+   au flux du feed sans prendre toute la page. */
+.thread-feed-lineage-sigma {
+  padding: var(--space-10);
+}
+
+.thread-feed-lineage-sigma .evidence-exploration {
+  min-height: 300px;
+  max-height: 480px;
+  /* Pas de border redondante : la section .thread-feed-lineage apporte déjà
+     une bordure ; on garde celle du stage pour la profondeur visuelle. */
+}
+
 .thread-feed-unlinked,
 .thread-feed-empty {
   margin: 0;

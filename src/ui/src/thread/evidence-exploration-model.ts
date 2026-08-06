@@ -2,31 +2,34 @@
  * Preparation model for the sigma.js exploration renderer of the Evidence graph.
  *
  * Responsibilities (all pure, no I/O, no Preact):
- *   1. Build a graphology DirectedGraph from an EvidenceCanvasProjection, adding
- *      x/y positions via a deterministic ForceAtlas2 run (seeded by key hash,
- *      fixed iterations — same inputs always yield the same positions).
+ *   1. Build a graphology DirectedGraph from an EvidenceCanvasProjection, assigning
+ *      x/y positions via a deterministic dagre layout (rankdir: LR) — causal
+ *      origins on the left, observations/verdicts on the right.
  *   2. Attach sigma-ready visual attributes to each node and edge (color, size,
- *      type, label). Stub edges get a "dashed" type and a "via … — replié" label.
+ *      type, label). Stub edges get a "stub" type and a "via … — replié" label.
  *   3. Derive a legend of named components (EvidenceGraphComponent) with a count
  *      of their visible nodes in the current projection — never from layout coords.
  *
  * Why this lives here and not in the component:
- *   The component stays thin and testable.  This module imports no browser APIs;
+ *   The component stays thin and testable. This module imports no browser APIs;
  *   colors come in as a CssTokens parameter so Deno tests can pass mock values.
+ *
+ * Layout strategy: every relation type is normalized to a canonical
+ * upstream → downstream direction (see normalizeEdgeDirection) before dagre
+ * receives the graph. dagre (rankdir: LR) assigns x = causal depth, y =
+ * barycentric within each rank. The layout is synchronous and deterministic:
+ * same inputs always yield the same positions. forceatlas2 is no longer used.
  */
 
 // Vite (browser): résout graphology depuis node_modules et expose la classe.
 // Deno (tests): résout via npm: dans l'import map de deno.json.
-// Dans les deux cas, l'export nommé { DirectedGraph } est préféré pour
-// éviter les ambiguïtés de default export selon le bundler.
 import { DirectedGraph } from "graphology";
-// graphology-layout-forceatlas2 n'a pas d'export ESM propre ; on le cast.
-// deno.json référence "graphology-layout-forceatlas2": "npm:graphology-layout-forceatlas2@^0.10.1"
-// pour que le test Deno puisse résoudre le module.
+// @dagrejs/dagre: layout hiérarchique synchrone, ESM-compatible.
+// deno.json référence "@dagrejs/dagre": "npm:@dagrejs/dagre@^3.1.0".
 // deno-lint-ignore no-explicit-any
-import forceAtlas2Raw from "graphology-layout-forceatlas2";
+import dagreLib from "@dagrejs/dagre";
 // deno-lint-ignore no-explicit-any
-const forceAtlas2 = forceAtlas2Raw as any;
+const dagre = dagreLib as any;
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type {
@@ -36,7 +39,7 @@ import type {
 } from "./types.ts";
 
 // ---------------------------------------------------------------------------
-// Public API
+// Public API types
 // ---------------------------------------------------------------------------
 
 /** A legend item describing one named evidence component. */
@@ -84,8 +87,6 @@ export interface SigmaNodeAttrs {
   label: string;
   /** Component id for legend focus. */
   componentId: number | undefined;
-  /** True when this node is a stub endpoint (should not happen, stubs are edges). */
-  isStub?: boolean;
 }
 
 /** Edge attributes stored on the graphology graph for sigma. */
@@ -110,6 +111,139 @@ export interface ExplorationModel {
 }
 
 // ---------------------------------------------------------------------------
+// Edge direction normalization
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalizes a directed edge to the canonical causal direction for the dagre
+ * layout. Returns { from, to } where `from` is always causally UPSTREAM
+ * (rendered on the LEFT) and `to` is always causally DOWNSTREAM (rendered on
+ * the RIGHT).
+ *
+ * Every relation type is documented explicitly. Direction is never inferred
+ * from heuristics or guessed — each case names who is upstream of whom.
+ *
+ * This function is exported so tests can verify each relation's direction
+ * independently of dagre internals.
+ */
+export function normalizeEdgeDirection(
+  fromKey: string,
+  toKey: string,
+  relation: ThreadGraphEdge["relation"],
+): { from: string; to: string } {
+  switch (relation) {
+    /**
+     * input_to: edge.from IS the provider/input (upstream).
+     * edge.to IS the consumer (downstream).
+     * Example: SysML-model --input_to--> CAD-artifact
+     *   → SysML is upstream (left), CAD is downstream (right). No reversal.
+     */
+    case "input_to":
+
+    /**
+     * source_of: edge.from IS the source artifact (upstream).
+     * edge.to IS the derived record (downstream).
+     * Example: CAD-artifact --source_of--> mass-observation
+     *   → CAD is upstream (left), observation is downstream (right). No reversal.
+     */
+    case "source_of":
+
+    /**
+     * changes: edge.from IS the change event (upstream initiator).
+     * edge.to IS the artifact introduced or modified by that change (downstream).
+     * Example: change-record --changes--> artifact-it-produced
+     *   → change is upstream (left), artifact is downstream (right). No reversal.
+     */
+    case "changes":
+
+    /**
+     * supersedes: edge.from IS the older artifact (upstream in version history).
+     * edge.to IS the newer successor (downstream).
+     * Version history reads left → right; old on left, current on right.
+     * Example: artifact@v1 --supersedes--> artifact@v2
+     *   → v1 is upstream (left), v2 is downstream (right). No reversal.
+     */
+    case "supersedes":
+      return { from: fromKey, to: toKey };
+
+    /**
+     * derived_from: edge.from IS the DERIVED artifact (downstream result).
+     * edge.to IS the SOURCE (upstream origin).
+     * The relation name reads "from was derived from to" → to is upstream.
+     * Reversed so the source (to) appears on the left.
+     * Example: derived-model --derived_from--> source-model
+     *   → dagre edge: source-model → derived-model
+     */
+    case "derived_from":
+
+    /**
+     * uses: edge.from IS the CONSUMER (downstream).
+     * edge.to IS the USED item (upstream dependency).
+     * "from uses to" → to is the dependency that must come first (upstream).
+     * Reversed so the used item (to) appears on the left.
+     * Example: consumer-artifact --uses--> shared-artifact
+     *   → dagre edge: shared-artifact → consumer-artifact
+     */
+    case "uses":
+
+    /**
+     * evaluates: edge.from IS the EVALUATION record (downstream result).
+     * edge.to IS the artifact/requirement being evaluated (upstream subject).
+     * "from evaluates to" → to came first (upstream), evaluation is downstream.
+     * Reversed so the evaluated item (to) appears on the left.
+     * Example: evaluation --evaluates--> requirement
+     *   → dagre edge: requirement → evaluation
+     */
+    case "evaluates":
+
+    /**
+     * evidences: edge.from IS the EVIDENCE artifact (downstream proof).
+     * edge.to IS the claim/requirement being evidenced (upstream).
+     * "from evidences to" → to is the claim (upstream), from is the proof.
+     * Reversed so the claim (to) appears on the left, proof on the right.
+     * Example: proof-artifact --evidences--> requirement
+     *   → dagre edge: requirement → proof-artifact
+     */
+    case "evidences":
+
+    /**
+     * traces_to: edge.from IS the IMPLEMENTATION (downstream artifact).
+     * edge.to IS the REQUIREMENT (upstream specification).
+     * "from traces to to" → to is the requirement that came first (upstream).
+     * Reversed so the requirement (to) appears on the left.
+     * Example: artifact --traces_to--> requirement
+     *   → dagre edge: requirement → artifact
+     */
+    case "traces_to":
+
+    /**
+     * caused_by: edge.from IS the EFFECT (downstream consequence).
+     * edge.to IS the CAUSE (upstream origin).
+     * "from was caused by to" → to is upstream.
+     * Reversed so the cause (to) appears on the left.
+     * Example: derived-violation --caused_by--> upstream-artifact
+     *   → dagre edge: upstream-artifact → derived-violation
+     */
+    case "caused_by":
+
+    /**
+     * addresses: edge.from IS the ACTION/FIX (downstream response).
+     * edge.to IS the VIOLATION (upstream trigger that prompted the action).
+     * "from addresses to" → to (violation) came first (upstream).
+     * Reversed so the violation (to) appears on the left, fix on the right.
+     * Example: action --addresses--> violation
+     *   → dagre edge: violation → action
+     */
+    case "addresses":
+      return { from: toKey, to: fromKey };
+
+    default:
+      // Unknown relation: keep stored direction unchanged.
+      return { from: fromKey, to: toKey };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -117,30 +251,30 @@ export interface ExplorationModel {
  * Builds the sigma-ready ExplorationModel from the canonical evidence model
  * and the current canvas projection.
  *
+ * Positions are assigned by dagre (rankdir: LR) — the layout is synchronous
+ * and deterministic. No animation, no iterative spring force.
+ *
  * @param evidenceModel   Full model including component detection.
  * @param projection      Current canvas projection (already filtered/focused).
  * @param tokens          CSS color tokens resolved at call time.
- * @param faIterations    ForceAtlas2 iteration count (default 120, fixed for determinism).
  */
 export function buildExplorationModel(
   evidenceModel: EvidenceGraphModel,
   projection: EvidenceCanvasProjection,
   tokens: CssTokens,
-  faIterations = 120,
 ): ExplorationModel {
   const graph = new DirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>();
 
-  // Add nodes with deterministic initial positions derived from key hash.
+  // Add nodes with placeholder positions (dagre will set the final x/y).
   const nodes = projection.nodes as ThreadGraphNode[];
   for (const node of nodes) {
     const key = nodeKey(node.ref);
-    const { x, y } = deterministicPosition(key);
     const compId = evidenceModel.componentOf(node.ref);
     graph.addNode(key, {
       refKey: key,
       node,
-      x,
-      y,
+      x: 0,
+      y: 0,
       size: nodeSizeFor(node),
       color: nodeColorFor(node, tokens),
       label: node.label,
@@ -148,7 +282,7 @@ export function buildExplorationModel(
     });
   }
 
-  // Add regular edges.
+  // Separate regular edges from synthetic stubs.
   const regularEdges = projection.edges.filter(
     (e) => !e.id.startsWith("stub:"),
   ) as ThreadGraphEdge[];
@@ -156,6 +290,7 @@ export function buildExplorationModel(
     e.id.startsWith("stub:")
   ) as ThreadGraphEdge[];
 
+  // Add regular edges to the graphology graph.
   for (const edge of regularEdges) {
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
@@ -170,7 +305,7 @@ export function buildExplorationModel(
     });
   }
 
-  // Add stub edges (dashed rendering cue).
+  // Add stub edges (dashed rendering cue for folded instruments).
   for (const edge of stubEdges) {
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
@@ -185,18 +320,54 @@ export function buildExplorationModel(
     });
   }
 
-  // Run ForceAtlas2 only when there are at least 2 nodes.
-  // Initial positions (from deterministicPosition) are already set as node x/y,
-  // so FA2 starts from a stable state → same inputs → same output.
-  if (graph.order >= 2) {
-    forceAtlas2.assign(graph, {
-      iterations: faIterations,
-      settings: {
-        gravity: 1,
-        scalingRatio: 4,
-        strongGravityMode: false,
-        barnesHutOptimize: graph.order > 100,
-      },
+  // Apply dagre layered layout (LR = causal origins on the left).
+  if (graph.order >= 1) {
+    // deno-lint-ignore no-explicit-any
+    const g: any = new dagre.graphlib.Graph();
+    g.setGraph({
+      rankdir: "LR",
+      // Vertical gap between nodes within the same rank.
+      nodesep: 60,
+      // Horizontal gap between adjacent ranks (causal layers).
+      ranksep: 100,
+      marginx: 20,
+      marginy: 20,
+    });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    // Register all nodes with an approximate bounding box for dagre.
+    graph.forEachNode((key) => {
+      g.setNode(key, { width: 120, height: 40 });
+    });
+
+    // Feed normalized edges to dagre. Use all projection edges (both regular
+    // and stubs) so isolated nodes get pulled into the rank ordering when
+    // they are still connected via a stub after instrument folding.
+    for (const edge of [...regularEdges, ...stubEdges]) {
+      const from = nodeKey(edge.from);
+      const to = nodeKey(edge.to);
+      if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
+      const { from: dagFrom, to: dagTo } = normalizeEdgeDirection(
+        from,
+        to,
+        edge.relation,
+      );
+      // Dagre ignores duplicate edges (same from/to); skip explicitly to avoid
+      // the multigraph warning.
+      if (g.hasEdge(dagFrom, dagTo)) continue;
+      g.setEdge(dagFrom, dagTo);
+    }
+
+    dagre.layout(g);
+
+    // Write dagre positions back into the graphology attributes.
+    graph.forEachNode((key) => {
+      // deno-lint-ignore no-explicit-any
+      const pos: { x: number; y: number } | undefined = g.node(key) as any;
+      if (pos) {
+        graph.setNodeAttribute(key, "x", pos.x);
+        graph.setNodeAttribute(key, "y", pos.y);
+      }
     });
   }
 
@@ -291,27 +462,7 @@ function nodeKey(ref: ThreadGraphRef): string {
 }
 
 /**
- * Derives a stable (x, y) starting position from the node key.
- *
- * Uses a simple djb2-like hash. The initial positions lie on a unit circle
- * scaled by node count so ForceAtlas2 starts from a spread-out state that
- * converges quickly and reproducibly.
- */
-export function deterministicPosition(key: string): { x: number; y: number } {
-  let h = 5381;
-  for (let i = 0; i < key.length; i++) {
-    h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
-  }
-  const angle = (h % 10000) / 10000 * Math.PI * 2;
-  const radius = 10 + ((h >> 10) % 1000) / 100; // 10..20
-  return {
-    x: Math.cos(angle) * radius,
-    y: Math.sin(angle) * radius,
-  };
-}
-
-/**
- * Node visual size.  Requirements and verdicts deserve emphasis.
+ * Node visual size. Requirements and verdicts deserve emphasis.
  */
 function nodeSizeFor(node: ThreadGraphNode): number {
   switch (node.entityKind) {
@@ -329,7 +480,7 @@ function nodeSizeFor(node: ThreadGraphNode): number {
 }
 
 /**
- * Node color per dominant system.  Colours match the thread-blue/green/amber
+ * Node color per dominant system. Colours match the thread-blue/green/amber
  * tokens so the graph reads as the same design system as the SVG canvas.
  */
 function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {

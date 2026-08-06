@@ -777,6 +777,7 @@ export function ThreadWorkbench({
                       selection={graphSelection}
                       followLive={followLive}
                       streamStatus={streamStatus}
+                      evidenceModel={evidenceModel}
                       onFollowLiveChange={changeFollowLive}
                       onSelectNode={(node) =>
                         selectGraphNode(node, { pauseLive: true })}

@@ -8,11 +8,11 @@
     "jsr:@std/internal@^1.0.14": "1.0.14",
     "jsr:@std/path@*": "1.1.6",
     "jsr:@std/yaml@1": "1.1.2",
+    "npm:@dagrejs/dagre@^3.1.0": "3.1.0",
     "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3",
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.30.0_zod@4.4.3",
     "npm:@opentelemetry/api@^1.9.0": "1.9.1",
     "npm:ajv@^8.17.1": "8.20.0",
-    "npm:graphology-layout-forceatlas2@~0.10.1": "0.10.1_graphology-types@0.24.8",
     "npm:graphology@0.26": "0.26.0_graphology-types@0.24.8",
     "npm:hono@4": "4.12.32",
     "npm:jose@6": "6.2.5"
@@ -56,6 +56,15 @@
     }
   },
   "npm": {
+    "@dagrejs/dagre@3.1.0": {
+      "integrity": "sha512-22SWJOfiQVCSFF0qN43SMiYS7Ch9Z6HZoO8+5PycGzGgmtdXIvHoZ2DoT5BweVGf+wwHxBFZu4eO0do0RIYQaw==",
+      "dependencies": [
+        "@dagrejs/graphlib"
+      ]
+    },
+    "@dagrejs/graphlib@4.0.3": {
+      "integrity": "sha512-9kvysNliOxG5m3lr1Qq5uCc+SYxx+BaLDM2SDGkgoZvKJ1bSESzbZ3gn4rSxqX1xR07swcSdeuGyKYQhAURxAA=="
+    },
     "@hono/node-server@2.0.12_hono@4.12.32": {
       "integrity": "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==",
       "dependencies": [
@@ -329,21 +338,8 @@
     "gopd@1.2.0": {
       "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="
     },
-    "graphology-layout-forceatlas2@0.10.1_graphology-types@0.24.8": {
-      "integrity": "sha512-ogzBeF1FvWzjkikrIFwxhlZXvD2+wlY54lqhsrWprcdPjopM2J9HoMweUmIgwaTvY4bUYVimpSsOdvDv1gPRFQ==",
-      "dependencies": [
-        "graphology-types",
-        "graphology-utils"
-      ]
-    },
     "graphology-types@0.24.8": {
       "integrity": "sha512-hDRKYXa8TsoZHjgEaysSRyPdT6uB78Ci8WnjgbStlQysz7xR52PInxNsmnB7IBOM1BhikxkNyCVEFgmPKnpx3Q=="
-    },
-    "graphology-utils@2.5.2_graphology-types@0.24.8": {
-      "integrity": "sha512-ckHg8MXrXJkOARk56ZaSCM1g1Wihe2d6iTmz1enGOz4W/l831MBCKSayeFQfowgF8wd+PQ4rlch/56Vs/VZLDQ==",
-      "dependencies": [
-        "graphology-types"
-      ]
     },
     "graphology@0.26.0_graphology-types@0.24.8": {
       "integrity": "sha512-8SSImzgUUYC89Z042s+0r/vMibY7GX/Emz4LDO5e7jYXhuoWfHISPFJYjpRLUSJGq6UQ6xlenvX1p/hJdfXuXg==",
@@ -619,7 +615,7 @@
       "jsr:@std/assert@1.0.14",
       "jsr:@std/cli@1",
       "jsr:@std/yaml@1",
-      "npm:graphology-layout-forceatlas2@~0.10.1",
+      "npm:@dagrejs/dagre@^3.1.0",
       "npm:graphology@0.26"
     ]
   }
