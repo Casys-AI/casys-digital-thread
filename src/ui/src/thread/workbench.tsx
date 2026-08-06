@@ -45,6 +45,12 @@ import { activityFeedNodes } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
+import {
+  buildEvidenceCanvasProjection,
+  isAnalyzeInstrumentNode,
+  makeEvidenceComponentLabeler,
+} from "./evidence-canvas-model.ts";
+import { buildEvidenceGraphModel } from "./evidence-graph-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
 import {
   ToolInspectorPanel,
@@ -271,10 +277,38 @@ export function ThreadWorkbench({
     snapshot.graph,
     snapshot.evidenceFamilyGraph,
   );
-  const currentEvidenceGraph = graphWithoutClosedActions(
-    versionedProvenance.graph,
+  // Filter closed-action nodes from the raw graph BEFORE versioning so the
+  // evidence model never sees completed obligations as open work.
+  const closedActionTargetIds = new Set(
+    currentProjectWork.closedActionTargetIds,
+  );
+  const rawGraphForEvidence = graphWithoutClosedActions(
+    snapshot.graph,
     snapshot.actions,
-    new Set(currentProjectWork.closedActionTargetIds),
+    closedActionTargetIds,
+  );
+
+  // Evidence canvas model — computed on the FULL raw graph (minus closed
+  // actions) so components are detected before any folding. Analyze.* instrument
+  // artifacts (intermediate CAD/FEA runs for the sensitivity study) are folded
+  // here; stubs bridge any links they severed.
+  const evidenceModel = buildEvidenceGraphModel(
+    rawGraphForEvidence,
+    snapshot.evidenceFamilyGraph,
+    {
+      isAnalyzeInstrumentNode,
+      intentionallyIsolatedSystems: ["openmodelica", "mcp-modelica"],
+    },
+  );
+  const evidenceCanvas = buildEvidenceCanvasProjection(
+    evidenceModel,
+    versionedProvenance.collapsedVersionCount,
+    lineageFocus,
+    versionedProvenance.visibleRefByMemberRef,
+  );
+  const evidenceComponentLabeler = makeEvidenceComponentLabeler(
+    evidenceModel,
+    evidenceModel.components.length <= 1,
   );
 
   const currentDecisionEvidence = (decisionId?: string) => {
@@ -761,15 +795,22 @@ export function ThreadWorkbench({
                             Trace the evidence behind the current design
                           </h4>
                           <span>
-                            Select a result, requirement or component to see
-                            what supports it and what it affects. Previous
-                            versions stay inside the selected node.
+                            {evidenceCanvas.isFiltered
+                              ? "Vue locale — sélectionner le fond du canvas pour revenir à la carte complète."
+                              : "Select a result, requirement or component to see what supports it and what it affects. Previous versions stay inside the selected node."}
                           </span>
                         </div>
                         <span>
-                          {versionedProvenance.collapsedVersionCount > 0
-                            ? `${versionedProvenance.collapsedVersionCount} previous versions folded`
-                            : "Current evidence only"}
+                          {evidenceCanvas.isFiltered
+                            ? `${evidenceCanvas.displayedCount} faits affichés · vue locale`
+                            : evidenceCanvas.foldedInstrumentCount > 0 &&
+                                versionedProvenance.collapsedVersionCount > 0
+                            ? `${evidenceCanvas.foldedInstrumentCount} instruments repliés · ${versionedProvenance.collapsedVersionCount} versions repliées`
+                            : evidenceCanvas.foldedInstrumentCount > 0
+                            ? `${evidenceCanvas.foldedInstrumentCount} instruments d'analyse repliés · voir par provenance`
+                            : versionedProvenance.collapsedVersionCount > 0
+                            ? `${versionedProvenance.collapsedVersionCount} versions repliées`
+                            : "Preuves courantes uniquement"}
                         </span>
                       </header>
                       <div
@@ -783,8 +824,8 @@ export function ThreadWorkbench({
                         <span data-tone="mismatch">fingerprint mismatch</span>
                       </div>
                       <ThreadGraph
-                        nodes={currentEvidenceGraph.nodes}
-                        edges={currentEvidenceGraph.edges}
+                        nodes={evidenceCanvas.nodes as ThreadGraphNode[]}
+                        edges={evidenceCanvas.edges as ThreadGraphEdge[]}
                         selection={visibleGraphSelection(
                           versionedProvenance,
                           graphSelection,
@@ -799,6 +840,7 @@ export function ThreadWorkbench({
                         showDensityControl={false}
                         onSelectionChange={selectVerificationGraphItem}
                         onInspect={inspectVerificationGraphItem}
+                        componentLabeler={evidenceComponentLabeler}
                       />
                     </section>
                   )

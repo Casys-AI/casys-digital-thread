@@ -56,6 +56,17 @@ export interface ThreadGraphProps {
   onShowSupportingChange?: (showSupporting: boolean) => void;
   /** Opens the existing Workbench inspector when a node exposes a UI ref. */
   onInspect?: (selection: ThreadRef, node: ThreadGraphNode) => void;
+  /**
+   * Optional component frame title resolver. Called with all visible nodes
+   * inside each layout component and the component index.
+   *
+   * When omitted the canvas falls back to "LINKED EVIDENCE" (single component)
+   * or "EVIDENCE COMPONENT NN" (multiple components).
+   *
+   * Pass `makeEvidenceComponentLabeler(model, ...)` from evidence-canvas-model
+   * to get named frames derived from the full-graph component detection.
+   */
+  componentLabeler?: (nodes: ThreadGraphNode[], index: number) => string;
 }
 
 export interface PositionedThreadGraphNode {
@@ -324,6 +335,7 @@ export function ThreadGraph({
   onSelectionChange,
   onShowSupportingChange,
   onInspect,
+  componentLabeler,
 }: ThreadGraphProps): JSX.Element {
   const markerPrefix = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const nodeElements = useRef(new Map<string, SVGGElement>());
@@ -677,35 +689,43 @@ export function ThreadGraph({
             </marker>
           </defs>
 
-          {layout.components.map((component) => (
-            <g
-              key={component.id}
-              class="thread-graph-component"
-              data-disconnected={layout.components.length > 1
-                ? "true"
-                : "false"}
-            >
-              <rect
-                class="thread-graph-component-boundary"
-                x={component.x}
-                y={component.y}
-                width={component.width}
-                height={component.height}
-                rx="12"
-              />
-              <text
-                class="thread-graph-component-label"
-                x={component.x + COMPONENT_PADDING_X}
-                y={component.y + 21}
+          {layout.components.map((component) => {
+            const componentNodes = layout.nodes
+              .filter((item) => item.component === component.id)
+              .map((item) => item.node);
+            const label = componentLabeler
+              ? componentLabeler(componentNodes, component.id)
+              : layout.components.length > 1
+              ? `EVIDENCE COMPONENT ${
+                String(component.id + 1).padStart(2, "0")
+              }`
+              : "LINKED EVIDENCE";
+            return (
+              <g
+                key={component.id}
+                class="thread-graph-component"
+                data-disconnected={layout.components.length > 1
+                  ? "true"
+                  : "false"}
               >
-                {layout.components.length > 1
-                  ? `EVIDENCE COMPONENT ${
-                    String(component.id + 1).padStart(2, "0")
-                  }`
-                  : "LINKED EVIDENCE"}
-              </text>
-            </g>
-          ))}
+                <rect
+                  class="thread-graph-component-boundary"
+                  x={component.x}
+                  y={component.y}
+                  width={component.width}
+                  height={component.height}
+                  rx="12"
+                />
+                <text
+                  class="thread-graph-component-label"
+                  x={component.x + COMPONENT_PADDING_X}
+                  y={component.y + 21}
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
 
           <g class="thread-graph-edges" aria-label="Explicit relations">
             {layout.edges.map((item, index) => {
