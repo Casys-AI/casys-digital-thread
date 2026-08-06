@@ -5,7 +5,7 @@ import {
   captureCm01DripTrayMechanicalR2,
   parseCm01DripTrayMechanicalR2Capture,
 } from "./cm01-drip-tray-mechanical-capture-r2.ts";
-import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 
 const SHA = "ea061880c9efc043fa0ad8475594a12c447481723e4e46dfdd7dc62a8dca3c84";
 

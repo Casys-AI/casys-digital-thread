@@ -10,7 +10,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../http-mcp-tool-client.ts";
+} from "../mcp/http-mcp-tool-client.ts";
 
 Deno.test("CM-01 nominal Modelica capture owns exactly the reviewed calls and normalizes persisted evidence", async () => {
   const run = providerRun("run_00000000-0000-4000-8000-000000000000");

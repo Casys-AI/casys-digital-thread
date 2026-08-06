@@ -1,4 +1,4 @@
-import type { McpToolClient, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolClient, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 
 export const COFFEE_MACHINE_ERPNEXT_ITEM = "CASYS-CM01";
 export const COFFEE_MACHINE_ERPNEXT_SUBJECT_ID = "erpnext-item-CASYS-CM01";

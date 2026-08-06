@@ -3,7 +3,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../adapters/http-mcp-tool-client.ts";
+} from "../adapters/mcp/http-mcp-tool-client.ts";
 import { compileThreadWorkflowValue } from "./compiler.ts";
 import { WorkflowExecutor } from "./executor.ts";
 import { InternalThreadToolClient } from "./internal-thread-tools.ts";

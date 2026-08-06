@@ -22,7 +22,7 @@ import {
   type SysonModelSeedLineage,
   type SysonModelSeedMaterialization,
 } from "../../domain/syson-model-seed.ts";
-import type { McpToolClient, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolClient, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   FileSysonModelSeedAttemptStore,

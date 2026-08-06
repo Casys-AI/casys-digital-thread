@@ -1,7 +1,7 @@
 import {
   HttpMcpToolClient,
   type McpToolClient,
-} from "../src/adapters/http-mcp-tool-client.ts";
+} from "../src/adapters/mcp/http-mcp-tool-client.ts";
 
 /** Explicit consent for the provider-free R10 -> R11 identity recovery. */
 export const CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_ACKNOWLEDGEMENT =

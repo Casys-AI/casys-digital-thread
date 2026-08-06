@@ -2,7 +2,7 @@ import { parseArgs } from "./cli.ts";
 import {
   HttpMcpToolClient,
   type McpToolClient,
-} from "../src/adapters/http-mcp-tool-client.ts";
+} from "../src/adapters/mcp/http-mcp-tool-client.ts";
 
 /**
  * Explicit consent for the one reviewed CM-01 R3 mechanical retry. This runner

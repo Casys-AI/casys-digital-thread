@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { DesiredServer } from "../domain/types.ts";
+import type { DesiredServer } from "../../domain/types.ts";
 import { HttpMcpProbe } from "./http-mcp-probe.ts";
 
 Deno.test("HttpMcpProbe discovers a stateless server, tools, and resources", async () => {

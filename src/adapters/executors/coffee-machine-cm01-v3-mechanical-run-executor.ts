@@ -51,7 +51,7 @@ import {
 import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import { checkOracleRequirementsFidelityBeforeDispatch } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
-import type { McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   requireBasis,

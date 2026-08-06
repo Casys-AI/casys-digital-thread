@@ -36,7 +36,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../http-mcp-tool-client.ts";
+} from "../mcp/http-mcp-tool-client.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };

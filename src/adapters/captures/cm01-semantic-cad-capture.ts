@@ -4,7 +4,7 @@ import {
 } from "../../domain/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 import type { CompiledCoffeeMachineCm01SemanticCadPlan } from "../../domain/coffee-machine-cm01-semantic-cad-plan.ts";
-import type { McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 /** Normalized, closed evidence from the reviewed V3 build123d export. */
 export const CM01_SEMANTIC_CAD_CAPTURE_SCHEMA =

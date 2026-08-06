@@ -1,4 +1,4 @@
-import type { McpToolClient, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolClient, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 
 export const SYSON_COFFEE_MACHINE_BUILD_SOURCE_SCHEMA =
   "syson-coffee-machine-build-source/1.0" as const;

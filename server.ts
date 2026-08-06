@@ -3,8 +3,8 @@ import {
   DockerComposeObserver,
   type DockerObserver,
 } from "./src/adapters/docker-observer.ts";
-import { HttpMcpProbe, type McpProbe } from "./src/adapters/http-mcp-probe.ts";
-import { HttpMcpToolClient } from "./src/adapters/http-mcp-tool-client.ts";
+import { HttpMcpProbe, type McpProbe } from "./src/adapters/mcp/http-mcp-probe.ts";
+import { HttpMcpToolClient } from "./src/adapters/mcp/http-mcp-tool-client.ts";
 import { loadFleetManifest } from "./src/adapters/manifest.ts";
 import {
   isExplicitLoopbackHostname,

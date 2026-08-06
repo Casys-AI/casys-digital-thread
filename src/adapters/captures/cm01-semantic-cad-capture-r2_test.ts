@@ -6,7 +6,7 @@ import {
   captureCm01SemanticCadExportR2,
   parseCm01SemanticCadR2Capture,
 } from "./cm01-semantic-cad-capture-r2.ts";
-import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 
 Deno.test("CM-01 R2 CAD capture accepts only the named successor assembly export", async () => {
   const client = new FakeBuild123d();

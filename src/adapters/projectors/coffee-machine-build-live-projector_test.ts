@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import {
   LiveThreadUpdateStore,
   overlayLiveThreadUpdates,

@@ -29,7 +29,7 @@ import { FileEngineeringProjectRunLease } from "../stores/file-engineering-proje
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
-import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import { LiveThreadUpdateStore } from "../stores/live-thread-update-store.ts";
 import { parseCoffeeMachineCm01SemanticRecipeR2 } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
 import {

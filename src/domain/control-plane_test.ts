@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { DockerObserver } from "../adapters/docker-observer.ts";
-import type { McpProbe, McpProbeResult } from "../adapters/http-mcp-probe.ts";
+import type { McpProbe, McpProbeResult } from "../adapters/mcp/http-mcp-probe.ts";
 import { loadRunFixtures } from "../adapters/run-fixtures.ts";
 import { ControlPlane } from "./control-plane.ts";
 import type {

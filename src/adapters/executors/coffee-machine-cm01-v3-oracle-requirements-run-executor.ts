@@ -38,7 +38,7 @@ import {
 } from "../wal/file-oracle-requirements-seed-attempt-store.ts";
 import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
-import type { McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import {
   extractAndVerifyOracleRequirements,
   RequirementExtractionError,

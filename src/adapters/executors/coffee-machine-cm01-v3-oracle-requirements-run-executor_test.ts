@@ -38,7 +38,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../http-mcp-tool-client.ts";
+} from "../mcp/http-mcp-tool-client.ts";
 import {
   assertOracleRequirementsNotRemoved,
   canonicalRequirementsInPa,

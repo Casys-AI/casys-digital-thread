@@ -9,7 +9,7 @@
  * except its stdout line.
  */
 
-import { HttpMcpToolClient } from "../../src/adapters/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import {
   buildRibbedCalculixRequest,
   PLATE_THICKNESS_DEFAULT_MM,

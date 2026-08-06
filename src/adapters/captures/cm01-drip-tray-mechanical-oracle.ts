@@ -30,7 +30,7 @@ import type {
   TracedRequirement,
 } from "../../domain/thread-snapshot.ts";
 import { buildConstraintAst, type OracleRequirement } from "../../domain/proof-case.ts";
-import type { McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 // ---------------------------------------------------------------------------
 // Parsed oracle result — keyed by constraint ID in the result map

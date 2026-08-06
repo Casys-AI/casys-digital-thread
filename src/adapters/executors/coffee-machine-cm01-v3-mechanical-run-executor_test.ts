@@ -14,7 +14,7 @@ import {
   type ParsedOracleResult,
   parseOracleOutcome,
 } from "./coffee-machine-cm01-v3-mechanical-run-executor.ts";
-import type { McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import type { OracleRequirement } from "../../domain/proof-case.ts";
 
 Deno.test("CM-01 V3 mechanical executor rejects human and foreign project commands before a provider call", async () => {

@@ -3,7 +3,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../src/adapters/http-mcp-tool-client.ts";
+} from "../src/adapters/mcp/http-mcp-tool-client.ts";
 import {
   CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_ACKNOWLEDGEMENT,
   recoverCoffeeMachineCm01V3MechanicalR3Identity,

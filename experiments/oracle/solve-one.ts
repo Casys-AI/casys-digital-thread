@@ -11,7 +11,7 @@
  */
 
 import { validateSensitivityStudyCase } from "../../src/domain/sensitivity-study.ts";
-import { HttpMcpToolClient } from "../../src/adapters/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import { solveAtHeight } from "./harness.ts";
 
 const SENSITIVITY_CASE_PATH =

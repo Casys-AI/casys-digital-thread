@@ -47,7 +47,7 @@ import { ExactThreadCompletionEvidenceValidator } from "../src/adapters/validato
 import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
 import { loadFleetManifest } from "../src/adapters/manifest.ts";
-import { HttpMcpToolClient } from "../src/adapters/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../src/adapters/mcp/http-mcp-tool-client.ts";
 import { FileSysonModelSeedAttemptStore } from "../src/adapters/wal/file-syson-model-seed-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
 import { SysonModelSeedRunExecutor } from "../src/adapters/executors/syson-model-seed-run-executor.ts";

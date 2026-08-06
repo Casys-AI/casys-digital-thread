@@ -3,7 +3,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../http-mcp-tool-client.ts";
+} from "../mcp/http-mcp-tool-client.ts";
 import { SysonCoffeeMachineBuildObserver } from "./syson-coffee-machine-build-observer.ts";
 
 const EDITING_CONTEXT_ID = "01942665-6cce-35fa-a7de-94588419c4a8";

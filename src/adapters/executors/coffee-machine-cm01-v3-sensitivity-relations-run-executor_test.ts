@@ -59,7 +59,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../http-mcp-tool-client.ts";
+} from "../mcp/http-mcp-tool-client.ts";
 import {
   assertSensitivityRelationsNotRemoved,
   CoffeeMachineCm01V3SensitivityRelationsRunExecutor,

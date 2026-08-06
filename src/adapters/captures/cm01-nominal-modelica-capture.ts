@@ -1,6 +1,6 @@
 import { deterministicJson } from "../../domain/deterministic-json.ts";
 import type { PersistedModelicaRunEvidence } from "../observed-modelica-thread-branch.ts";
-import type { McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 /**
  * Normalized, server-owned evidence captured from the approved CM-01 nominal

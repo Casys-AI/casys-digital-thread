@@ -4,7 +4,7 @@ import type {
   IsoDateTime,
   ObservedMcp,
   ObservedTool,
-} from "../domain/types.ts";
+} from "../../domain/types.ts";
 
 export interface McpProbeResult {
   checkedAt: IsoDateTime;

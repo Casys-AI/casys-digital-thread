@@ -1,4 +1,4 @@
-import type { McpToolCall, McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import {
   SysonCoffeeMachineBuildObserver,
   type SysonCoffeeMachineBuildSourceCapture,

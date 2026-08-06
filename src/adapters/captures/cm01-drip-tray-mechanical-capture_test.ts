@@ -15,7 +15,7 @@ import {
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
 } from "./file-capture-store.ts";
-import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 
 const proof = parseCm01DripTrayMechanicalProof({
   schemaVersion: "cm01-v3-drip-tray-static-proof/1.0",

@@ -181,7 +181,7 @@ type CallOutcome =
 
 function stubClient(
   responses: CallOutcome[],
-): import("../http-mcp-tool-client.ts").McpToolClient {
+): import("../mcp/http-mcp-tool-client.ts").McpToolClient {
   const queue = [...responses];
   return {
     callTool: (_args) => {
@@ -191,7 +191,7 @@ function stubClient(
       return Promise.resolve(
         {
           structuredContent: next.structuredContent,
-        } as import("../http-mcp-tool-client.ts").McpToolResult,
+        } as import("../mcp/http-mcp-tool-client.ts").McpToolResult,
       );
     },
     callToolTextResult: (_args) =>

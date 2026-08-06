@@ -5,7 +5,7 @@ import {
   captureCm01SemanticCadExport,
   parseCm01SemanticCadCapture,
 } from "./cm01-semantic-cad-capture.ts";
-import type { McpToolCall, McpToolResult } from "../http-mcp-tool-client.ts";
+import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 
 Deno.test("CM-01 semantic CAD capture accepts the real build123d path contract but persists only safe basenames and hashes", async () => {
   const client = new FakeBuild123d();

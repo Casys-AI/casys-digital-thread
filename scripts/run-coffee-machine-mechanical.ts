@@ -11,7 +11,7 @@ import {
   type McpToolCall,
   type McpToolClient,
   type McpToolResult,
-} from "../src/adapters/http-mcp-tool-client.ts";
+} from "../src/adapters/mcp/http-mcp-tool-client.ts";
 import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SYSON_EDITING_CONTEXT_ID,

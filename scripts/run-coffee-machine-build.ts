@@ -16,7 +16,7 @@ import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snap
 import {
   HttpMcpToolClient,
   type McpToolClient,
-} from "../src/adapters/http-mcp-tool-client.ts";
+} from "../src/adapters/mcp/http-mcp-tool-client.ts";
 
 export interface RunCoffeeMachineBuildOptions {
   declarationPath?: string;

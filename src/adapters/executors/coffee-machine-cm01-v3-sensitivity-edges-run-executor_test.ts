@@ -60,7 +60,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../http-mcp-tool-client.ts";
+} from "../mcp/http-mcp-tool-client.ts";
 import {
   assertSensitivityEdgesNotRemoved,
   CoffeeMachineCm01V3SensitivityEdgesRunExecutor,

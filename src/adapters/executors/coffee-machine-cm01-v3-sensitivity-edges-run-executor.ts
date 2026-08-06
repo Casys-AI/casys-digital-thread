@@ -70,7 +70,7 @@ import {
   FileSensitivityRelationsAttemptStore,
   SensitivityRelationsWriteOutcomeUnknownError,
 } from "../wal/file-sensitivity-relations-attempt-store.ts";
-import type { McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import {
   extractAndVerifySensitivityEdges,
   SensitivityEdgeExtractionError,

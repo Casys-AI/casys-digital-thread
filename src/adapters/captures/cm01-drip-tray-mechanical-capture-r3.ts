@@ -4,7 +4,7 @@ import {
   parseCm01DripTrayMechanicalProofR3,
 } from "../../domain/cm01-drip-tray-mechanical-proof.ts";
 import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
-import type { McpToolClient } from "../http-mcp-tool-client.ts";
+import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import {
   captureCm01DripTrayMechanicalR2,
   type Cm01DripTrayMechanicalR2Capture,

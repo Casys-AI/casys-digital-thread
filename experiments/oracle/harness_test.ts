@@ -3,7 +3,7 @@ import { validateSensitivityStudyCase } from "../../src/domain/sensitivity-study
 import type {
   McpToolCall,
   McpToolResult,
-} from "../../src/adapters/http-mcp-tool-client.ts";
+} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import { buildCalculixArgs, judgeDisplacement, solveAtHeight } from "./harness.ts";
 
 // ── Shared fixtures ────────────────────────────────────────────────────────────
