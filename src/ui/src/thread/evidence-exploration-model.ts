@@ -30,6 +30,7 @@ import { DirectedGraph } from "graphology";
 import dagreLib from "@dagrejs/dagre";
 // deno-lint-ignore no-explicit-any
 const dagre = dagreLib as any;
+import { applyEssentialFilter } from "./essential-graph-filter.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type {
@@ -44,12 +45,17 @@ import type {
 
 /** A legend item describing one named evidence component. */
 export interface ExplorationLegendItem {
-  /** Component id (from EvidenceGraphModel.components). */
-  readonly componentId: number;
+  /**
+   * All component ids that share this legend entry name.
+   * Multiple model components may share the same structural name (e.g. when
+   * the same dominant system produces several disconnected sub-graphs). The
+   * chip focuses the camera on the union of all matching nodes.
+   */
+  readonly componentIds: readonly number[];
   /** Structural name derived from the full raw graph. */
   readonly name: string;
   readonly intentionallyIsolated: boolean;
-  /** Number of visible nodes (after folding) in this component. */
+  /** Number of visible nodes (after folding + essential filter) in this entry. */
   readonly visibleNodeCount: number;
   /**
    * Accent color for the legend chip — same color family used for the dominant
@@ -106,8 +112,17 @@ export interface ExplorationModel {
    * Sigma consumes this instance directly — no conversion step.
    */
   readonly graph: DirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>;
+  /**
+   * Legend deduplicated by component name. Multiple model components with the
+   * same structural name are merged into a single entry — one chip, all nodes.
+   */
   readonly legend: readonly ExplorationLegendItem[];
   readonly tokens: CssTokens;
+  /**
+   * Count of supporting nodes hidden by the essential filter in full-map mode.
+   * 0 when the projection is already a bounded local view (isFiltered=true).
+   */
+  readonly hiddenSupportingCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,9 +280,33 @@ export function buildExplorationModel(
 ): ExplorationModel {
   const graph = new DirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>();
 
+  // Apply the essential display mask on full-map views (no active focus).
+  // The mask reduces ~161 visible nodes to the ~60 semantically essential ones:
+  // supporting artifacts (mesh, script, solver-input…), change events, and
+  // consumption records are hidden unless they are the sole path between two
+  // essential nodes. The upstream EvidenceGraphModel is NOT mutated — the local
+  // inspector and boundedNeighborhood still reach hidden nodes.
+  let displayNodes: readonly ThreadGraphNode[];
+  let displayEdges: readonly ThreadGraphEdge[];
+  let hiddenSupportingCount = 0;
+
+  if (!projection.isFiltered) {
+    const filtered = applyEssentialFilter(
+      projection.nodes as ThreadGraphNode[],
+      projection.edges as ThreadGraphEdge[],
+    );
+    displayNodes = filtered.nodes;
+    displayEdges = filtered.edges;
+    hiddenSupportingCount = filtered.hiddenCount;
+  } else {
+    // Local view (bounded neighbourhood): show all nodes including supporting ones
+    // so the inspector context is complete.
+    displayNodes = projection.nodes as ThreadGraphNode[];
+    displayEdges = projection.edges as ThreadGraphEdge[];
+  }
+
   // Add nodes with placeholder positions (dagre will set the final x/y).
-  const nodes = projection.nodes as ThreadGraphNode[];
-  for (const node of nodes) {
+  for (const node of displayNodes) {
     const key = nodeKey(node.ref);
     const compId = evidenceModel.componentOf(node.ref);
     graph.addNode(key, {
@@ -283,12 +322,12 @@ export function buildExplorationModel(
   }
 
   // Separate regular edges from synthetic stubs.
-  const regularEdges = projection.edges.filter(
+  const regularEdges = (displayEdges as ThreadGraphEdge[]).filter(
     (e) => !e.id.startsWith("stub:"),
-  ) as ThreadGraphEdge[];
-  const stubEdges = projection.edges.filter((e) =>
+  );
+  const stubEdges = (displayEdges as ThreadGraphEdge[]).filter((e) =>
     e.id.startsWith("stub:")
-  ) as ThreadGraphEdge[];
+  );
 
   // Add regular edges to the graphology graph.
   for (const edge of regularEdges) {
@@ -371,23 +410,52 @@ export function buildExplorationModel(
     });
   }
 
-  // Build legend from model components.
-  const legend: ExplorationLegendItem[] = evidenceModel.components.map(
-    (comp) => {
-      const visibleNodeCount = [...comp.visibleNodeRefKeys].filter((k) =>
-        graph.hasNode(k)
-      ).length;
-      return {
-        componentId: comp.id,
-        name: comp.name,
-        intentionallyIsolated: comp.intentionallyIsolated,
+  // Build legend from model components, deduplicated by structural name.
+  //
+  // Multiple model components can share the same structural name when the same
+  // dominant system (e.g. "FEA", "Thermique") produces several disconnected
+  // sub-graphs in the raw evidence. In that situation, showing 18 chips with
+  // duplicate labels is misleading — it looks like 3 separate "Thermique"
+  // branches when there is conceptually one thermal family. We merge by name:
+  // one chip per unique structural name, accumulating all componentIds so the
+  // camera-focus handler can jump to the union of all matching nodes.
+  const legendByName = new Map<
+    string,
+    { componentIds: number[]; visibleNodeCount: number; intentionallyIsolated: boolean; color: string }
+  >();
+  for (const comp of evidenceModel.components) {
+    const visibleNodeCount = [...comp.visibleNodeRefKeys].filter((k) =>
+      graph.hasNode(k)
+    ).length;
+    if (visibleNodeCount === 0) continue;
+    const color = componentColor(comp.name, tokens);
+    const existing = legendByName.get(comp.name);
+    if (existing) {
+      existing.componentIds.push(comp.id);
+      existing.visibleNodeCount += visibleNodeCount;
+      // intentionallyIsolated: true only when ALL merged components are isolated.
+      existing.intentionallyIsolated = existing.intentionallyIsolated &&
+        comp.intentionallyIsolated;
+    } else {
+      legendByName.set(comp.name, {
+        componentIds: [comp.id],
         visibleNodeCount,
-        color: componentColor(comp.name, tokens),
-      };
-    },
-  ).filter((item) => item.visibleNodeCount > 0);
+        intentionallyIsolated: comp.intentionallyIsolated,
+        color,
+      });
+    }
+  }
+  const legend: ExplorationLegendItem[] = [...legendByName.entries()].map(
+    ([name, entry]) => ({
+      componentIds: entry.componentIds,
+      name,
+      intentionallyIsolated: entry.intentionallyIsolated,
+      visibleNodeCount: entry.visibleNodeCount,
+      color: entry.color,
+    }),
+  );
 
-  return { graph, legend, tokens };
+  return { graph, legend, tokens, hiddenSupportingCount };
 }
 
 // ---------------------------------------------------------------------------

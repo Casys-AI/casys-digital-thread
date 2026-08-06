@@ -301,6 +301,7 @@ function FeedLineageGraph({
       displayedCount: neighborhood.nodes.length,
       foldedInstrumentCount: 0,
       isFiltered: true,
+      supportingNodeCount: 0,
     };
   }, [neighborhood]);
 

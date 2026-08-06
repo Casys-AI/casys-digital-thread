@@ -18,6 +18,7 @@ import type {
   EvidenceGraphModel,
   EvidenceGraphStub,
 } from "./evidence-graph-model.ts";
+import { isSupportingNode } from "./essential-graph-filter.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -135,6 +136,15 @@ export interface EvidenceCanvasProjection {
   readonly foldedInstrumentCount: number;
   /** True when the canvas shows a bounded neighbourhood instead of the full graph. */
   readonly isFiltered: boolean;
+  /**
+   * Count of supporting nodes present in the full visible projection.
+   * These are hidden by the default "current-design" essential filter applied
+   * by both the SVG carte (showSupporting=false) and the sigma exploration
+   * renderer. Used by the banner to say "Z hors vue courante".
+   *
+   * Always 0 when isFiltered=true (local view already bounded).
+   */
+  readonly supportingNodeCount: number;
 }
 
 /**
@@ -162,6 +172,10 @@ export function buildEvidenceCanvasProjection(
     model.rawNodeCount - model.nodes.length - collapsedVersionCount,
   );
 
+  // supportingNodeCount is measured on the full visible set (before any
+  // essential filter). The banner uses it to show "Z hors vue courante".
+  const supportingNodeCount = model.nodes.filter(isSupportingNode).length;
+
   // Full graph (no focus): show all visible nodes + stubs.
   if (!focusRef) {
     return {
@@ -170,6 +184,7 @@ export function buildEvidenceCanvasProjection(
       displayedCount: model.nodes.length,
       foldedInstrumentCount,
       isFiltered: false,
+      supportingNodeCount,
     };
   }
 
@@ -182,6 +197,7 @@ export function buildEvidenceCanvasProjection(
       displayedCount: neighborhood.nodes.length,
       foldedInstrumentCount,
       isFiltered: true,
+      supportingNodeCount: 0, // local view: essential filter not applied.
     };
   }
 
@@ -197,6 +213,7 @@ export function buildEvidenceCanvasProjection(
         displayedCount: repNeighborhood.nodes.length,
         foldedInstrumentCount,
         isFiltered: true,
+        supportingNodeCount: 0, // local view: essential filter not applied.
       };
     }
   }
@@ -208,5 +225,6 @@ export function buildEvidenceCanvasProjection(
     displayedCount: model.nodes.length,
     foldedInstrumentCount,
     isFiltered: false,
+    supportingNodeCount,
   };
 }

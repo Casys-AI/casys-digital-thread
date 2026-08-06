@@ -13,6 +13,7 @@ import type {
   ThreadGraphRef,
   ThreadRef,
 } from "./types.ts";
+import { isSupportingNode } from "./essential-graph-filter.ts";
 
 const NODE_WIDTH = 216;
 const NODE_HEIGHT = 82;
@@ -964,19 +965,13 @@ interface EssentialGraphProjection {
   hiddenNodeCount: number;
 }
 
-const SUPPORTING_ARTIFACT_KINDS = new Set([
-  "script",
-  "mesh",
-  "solver-input",
-  "evidence",
-  "document",
-  "other",
-]);
-
 /**
  * Keeps the essential reading compact without replacing the canonical graph.
  * Supporting nodes which connect two essential entities stay visible so the
  * condensed view never invents a direct edge or breaks an existing path.
+ *
+ * SUPPORTING_ARTIFACT_KINDS and isSupportingNode are imported from
+ * essential-graph-filter.ts (shared with the sigma exploration renderer).
  */
 function essentialGraphProjection(
   nodes: ThreadGraphNode[],
@@ -1032,12 +1027,6 @@ function essentialGraphProjection(
     supportingCount,
     hiddenNodeCount: nodes.length - projectedNodes.length,
   };
-}
-
-function isSupportingNode(node: ThreadGraphNode): boolean {
-  return node.entityKind === "consumption" || node.entityKind === "change" ||
-    (node.entityKind === "artifact" &&
-      !!node.artifactKind && SUPPORTING_ARTIFACT_KINDS.has(node.artifactKind));
 }
 
 function shortestPath(

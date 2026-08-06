@@ -421,10 +421,11 @@ Deno.test(
       "Deux composantes → deux entrées de légende",
     );
 
-    // Chaque entrée doit avoir un nom non vide et un compte de 1.
+    // Chaque entrée doit avoir un nom non vide, un compte de 1, et au moins un componentId.
     for (const item of explorationModel.legend) {
       assertNotEquals(item.name, "", "Le nom de composante ne doit pas être vide");
       assertEquals(item.visibleNodeCount, 1);
+      assertEquals(item.componentIds.length >= 1, true, "Chaque entrée doit référencer au moins un component");
     }
   },
 );

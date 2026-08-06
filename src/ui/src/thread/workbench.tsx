@@ -824,14 +824,28 @@ export function ThreadWorkbench({
                           <span>
                             {evidenceCanvas.isFiltered
                               ? `${evidenceCanvas.displayedCount} faits affichés · vue locale`
-                              : evidenceCanvas.foldedInstrumentCount > 0 &&
-                                  versionedProvenance.collapsedVersionCount > 0
-                              ? `${evidenceCanvas.foldedInstrumentCount} instruments repliés · ${versionedProvenance.collapsedVersionCount} versions repliées`
-                              : evidenceCanvas.foldedInstrumentCount > 0
-                              ? `${evidenceCanvas.foldedInstrumentCount} instruments d'analyse repliés · voir par provenance`
-                              : versionedProvenance.collapsedVersionCount > 0
-                              ? `${versionedProvenance.collapsedVersionCount} versions repliées`
-                              : "Preuves courantes uniquement"}
+                              : (() => {
+                                // Essential nodes displayed in the default map
+                                // (supporting nodes are hidden by both renderers).
+                                const essentialCount =
+                                  evidenceCanvas.displayedCount -
+                                  evidenceCanvas.supportingNodeCount;
+                                const totalFolded =
+                                  evidenceCanvas.foldedInstrumentCount +
+                                  versionedProvenance.collapsedVersionCount;
+                                const parts: string[] = [
+                                  `${essentialCount} faits affichés`,
+                                ];
+                                if (totalFolded > 0) {
+                                  parts.push(`${totalFolded} pliés`);
+                                }
+                                if (evidenceCanvas.supportingNodeCount > 0) {
+                                  parts.push(
+                                    `${evidenceCanvas.supportingNodeCount} hors vue courante`,
+                                  );
+                                }
+                                return parts.join(" · ");
+                              })()}
                           </span>
                           <div
                             class="evidence-graph-mode-toggle"

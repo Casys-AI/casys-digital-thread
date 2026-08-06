@@ -81,6 +81,10 @@ export function EvidenceExploration({
         defaultEdgeType: "arrow",
         minCameraRatio: 0.3,
         maxCameraRatio: 6,
+        // Hide labels until the node occupies at least 10 rendered pixels.
+        // At the default zoom (full ~60-node map), most nodes are below this
+        // threshold, so the overview is clean. Labels appear as the user zooms in.
+        labelRenderedSizeThreshold: 10,
       },
     );
     sigmaRef.current = sigma;
@@ -158,7 +162,7 @@ export function EvidenceExploration({
           <p class="evidence-exploration-legend-title">COMPOSANTES</p>
           {legend.map((item) => (
             <LegendChip
-              key={item.componentId}
+              key={item.componentIds[0]}
               item={item}
               sigma={sigmaRef}
               graph={explorationModel.graph}
@@ -184,10 +188,12 @@ function LegendChip({
   const handleClick = () => {
     const s = sigmaRef.current;
     if (!s) return;
-    // Collect x/y of all nodes in this component.
+    // Collect x/y of all nodes belonging to ANY component in this legend entry.
+    // componentIds may cover multiple raw components merged under the same name.
+    const componentIdSet = new Set(item.componentIds);
     const positions: { x: number; y: number }[] = [];
     graph.forEachNode((_key, attrs) => {
-      if (attrs.componentId === item.componentId) {
+      if (attrs.componentId !== undefined && componentIdSet.has(attrs.componentId)) {
         const disp = s.getNodeDisplayData(_key);
         if (disp) positions.push({ x: disp.x, y: disp.y });
       }

@@ -306,6 +306,7 @@ Deno.test(
       displayedCount: neighborhood1.nodes.length,
       foldedInstrumentCount: 0,
       isFiltered: true,
+      supportingNodeCount: 0,
     };
     const projection2: EvidenceCanvasProjection = {
       nodes: neighborhood2.nodes,
@@ -313,6 +314,7 @@ Deno.test(
       displayedCount: neighborhood2.nodes.length,
       foldedInstrumentCount: 0,
       isFiltered: true,
+      supportingNodeCount: 0,
     };
 
     const m1 = buildExplorationModel(evidenceModel, projection1, FALLBACK_TOKENS);
