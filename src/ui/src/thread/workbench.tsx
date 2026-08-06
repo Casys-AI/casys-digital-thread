@@ -392,6 +392,13 @@ export function ThreadWorkbench({
       return;
     }
     setGraphSelection(next);
+    if (next === undefined) {
+      // Background click deselects: clear the bounded-neighbourhood focus so
+      // the canvas returns from "vue locale" to the full visible graph, and
+      // close the inspector panel (whose selection was the source of the focus).
+      setLineageFocus(undefined);
+      setInspectorOpen(false);
+    }
     if (next?.kind === "edge") {
       setDrawerMode("tool");
       setInspectorOpen(true);

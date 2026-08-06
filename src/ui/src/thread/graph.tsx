@@ -666,6 +666,18 @@ export function ThreadGraph({
           }}
           onPointerCancel={finishPanning}
           onLostPointerCapture={finishPanning}
+          onClick={(event) => {
+            // Background click (not on a node or edge) clears the selection so
+            // the canvas returns from the bounded-neighbourhood "vue locale" to
+            // the full visible graph.  Node/edge clicks are handled by their own
+            // onClick and stop propagation implicitly via the closest() guard.
+            if (presentation !== "canvas") return;
+            const target = event.target as Element;
+            if (target.closest(".thread-graph-node, .thread-graph-edge")) {
+              return;
+            }
+            onSelectionChange?.(undefined);
+          }}
         >
           <desc>
             {`${layout.nodes.length} evidence nodes and ${layout.edges.length} explicit relations in ${layout.components.length} connected component${
