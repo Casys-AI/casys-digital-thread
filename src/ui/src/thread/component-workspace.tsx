@@ -21,7 +21,6 @@ import {
   resolveCadMeshStatus,
   resolveCadSurface,
   type SysmlAnchoredRequirement,
-  type SysmlSubtreeModel,
 } from "./component-workspace-model.ts";
 
 export interface ComponentWorkspaceProps {
@@ -273,13 +272,6 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
         </small>
       </div>
 
-      {/* Native SVG sub-tree — no iframe, no external lib */}
-      <SysmlSubtreeDiagram
-        subtree={subtree}
-        onSelect={onSelect}
-        components={snapshot.components.components}
-      />
-
       {/* Anchored requirements and sensitivity from the snapshot projection */}
       {subtree.anchoredRequirements.length > 0 && (
         <div class="syson-anchored-requirements">
@@ -338,181 +330,6 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
         </footer>
       )}
     </section>
-  );
-}
-
-/**
- * Native SVG diagram showing the selected component's position in the SysML
- * structure tree.  The diagram is purely declarative — no layout engine, no
- * external library.
- *
- * Layout:  root node at top centre → connector → selected node (highlighted)
- *          → sibling labels listed below.
- *
- * All data comes from the pre-computed SysmlSubtreeModel; no snapshot reads
- * are performed here.
- */
-function SysmlSubtreeDiagram({ subtree, onSelect, components }: {
-  subtree: SysmlSubtreeModel;
-  onSelect: (component: ThreadComponent) => void;
-  components: readonly ThreadComponent[];
-}): JSX.Element {
-  const W = 480;
-  const H = subtree.siblings.length > 0
-    ? 220 + Math.ceil(subtree.siblings.length / 2) * 32
-    : 200;
-  const rootX = W / 2;
-  const rootY = 44;
-  const selX = W / 2;
-  const selY = 140;
-
-  function selectById(id: string): void {
-    const component = components.find((c) => c.id === id);
-    if (component) onSelect(component);
-  }
-
-  const rootNode = subtree.root;
-  const selNode = subtree.selected;
-  const isAssemblySelected = rootNode.id === selNode.id;
-
-  return (
-    <div class="syson-subtree-diagram" aria-label="SysML structure sub-tree">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        width="100%"
-        height={H}
-        aria-hidden="true"
-        role="img"
-      >
-        {/* Root assembly node */}
-        <g
-          class="syson-svg-node syson-svg-root"
-          data-current={isAssemblySelected ? "true" : undefined}
-        >
-          <rect
-            x={rootX - 90}
-            y={rootY - 18}
-            width={180}
-            height={36}
-            rx={4}
-          />
-          <text
-            x={rootX}
-            y={rootY - 4}
-            text-anchor="middle"
-            class="syson-svg-kind"
-          >
-            {rootNode.kind === "assembly" ? "PartDefinition" : "PartDefinition"}
-          </text>
-          <text
-            x={rootX}
-            y={rootY + 13}
-            text-anchor="middle"
-            class="syson-svg-label"
-          >
-            {rootNode.label}
-          </text>
-        </g>
-
-        {/* Connector from root to selected (only when different) */}
-        {!isAssemblySelected && (
-          <>
-            <line
-              x1={rootX}
-              y1={rootY + 18}
-              x2={selX}
-              y2={selY - 18}
-              class="syson-svg-edge"
-              marker-end="url(#arrowhead)"
-            />
-
-            {/* Selected component node (highlighted) */}
-            <g
-              class="syson-svg-node syson-svg-selected"
-              role="button"
-              tabIndex={0}
-              aria-label={`Selected: ${selNode.label}`}
-            >
-              <rect
-                x={selX - 100}
-                y={selY - 18}
-                width={200}
-                height={36}
-                rx={4}
-              />
-              <text
-                x={selX}
-                y={selY - 4}
-                text-anchor="middle"
-                class="syson-svg-kind"
-              >
-                PartDefinition
-              </text>
-              <text
-                x={selX}
-                y={selY + 13}
-                text-anchor="middle"
-                class="syson-svg-label-selected"
-              >
-                {selNode.label}
-              </text>
-            </g>
-          </>
-        )}
-
-        {/* Sibling labels — compact list below the selected node */}
-        {subtree.siblings.length > 0 && (
-          <g class="syson-svg-siblings">
-            <text
-              x={W / 2}
-              y={selY + 44}
-              text-anchor="middle"
-              class="syson-svg-sibling-header"
-            >
-              {subtree.siblings.length} sibling
-              {subtree.siblings.length === 1 ? "" : "s"} in assembly
-            </text>
-            {subtree.siblings.slice(0, 8).map((sib, index) => (
-              <text
-                key={sib.id}
-                x={W / 2 + ((index % 2 === 0 ? -1 : 1) * 110)}
-                y={selY + 64 + Math.floor(index / 2) * 28}
-                text-anchor="middle"
-                class="syson-svg-sibling"
-                role="button"
-                onClick={() => selectById(sib.id)}
-              >
-                {sib.label}
-              </text>
-            ))}
-            {subtree.siblings.length > 8 && (
-              <text
-                x={W / 2}
-                y={selY + 64 + 4 * 28}
-                text-anchor="middle"
-                class="syson-svg-sibling-more"
-              >
-                +{subtree.siblings.length - 8} more
-              </text>
-            )}
-          </g>
-        )}
-
-        {/* Arrow marker definition */}
-        <defs>
-          <marker
-            id="arrowhead"
-            markerWidth="8"
-            markerHeight="6"
-            refX="6"
-            refY="3"
-            orient="auto"
-          >
-            <polygon points="0 0, 8 3, 0 6" class="syson-svg-arrowhead" />
-          </marker>
-        </defs>
-      </svg>
-    </div>
   );
 }
 

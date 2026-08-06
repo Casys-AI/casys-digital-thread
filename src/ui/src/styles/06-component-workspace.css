@@ -1012,79 +1012,96 @@ button.erp-bom-row {
 }
 
 /* --------------------------------------------------------------------------
-   SysML sub-tree diagram (native SVG facet of the SysON structure surface).
-   The SVG carries no inline fill/stroke on purpose: every shape reads the
-   atelier tokens here, so the diagram follows the theme instead of falling
-   back to the SVG default (solid black), which rendered it unreadable.
+   Anchored requirements and sensitivity relations inside the SysON facet.
+   Both read straight from the snapshot projection; the styling keeps them
+   visually subordinate to the root banner and clearly separated from the
+   part grid below.
    -------------------------------------------------------------------------- */
-.syson-subtree-diagram {
-  margin: 0.75rem 0 0.5rem;
+.syson-section-label {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.syson-anchored-requirements,
+.syson-sensitivity-records {
+  margin-bottom: 0.9rem;
+}
+
+.syson-req-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  margin-bottom: 0.3rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-2);
-  overflow-x: auto;
+  border-radius: 5px;
+  background: var(--surface-1);
 }
 
-.syson-subtree-diagram svg {
-  display: block;
-  margin: 0 auto;
-  max-width: 100%;
+.syson-req-row[data-status="pass"] {
+  border-left: 3px solid var(--green);
 }
 
-.syson-svg-node rect {
-  fill: var(--surface-1);
-  stroke: var(--line-strong);
-  stroke-width: 1;
+.syson-req-row[data-status="fail"] {
+  border-left: 3px solid var(--red);
 }
 
-.syson-svg-root[data-current="true"] rect,
-.syson-svg-selected rect {
-  stroke: var(--green);
-  stroke-width: 1.5;
-  fill: var(--green-dim);
+.syson-req-status {
+  font-size: 0.8rem;
+  color: var(--text-soft);
 }
 
-.syson-svg-kind {
-  fill: var(--muted);
-  font-size: 9px;
+.syson-req-row[data-status="pass"] .syson-req-status {
+  color: var(--green);
+}
+
+.syson-req-row[data-status="fail"] .syson-req-status {
+  color: var(--red);
+}
+
+.syson-req-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.syson-req-row strong {
+  font-size: 0.78rem;
+}
+
+.syson-req-row code {
+  font-size: 0.68rem;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+
+.syson-req-verdict {
+  margin-left: auto;
+  font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--text-soft);
 }
 
-.syson-svg-label {
-  fill: var(--text);
-  font-size: 12px;
-  font-weight: 600;
+.syson-sensitivity-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.7rem;
+  margin-bottom: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-1);
+  font-size: 0.75rem;
 }
 
-.syson-svg-label-selected {
-  fill: var(--text);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.syson-svg-edge {
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-
-.syson-svg-siblings .syson-svg-sibling-header {
-  fill: var(--text-soft);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.syson-svg-sibling {
-  fill: var(--cyan);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.syson-svg-sibling:hover {
-  text-decoration: underline;
-}
-
-svg marker#arrowhead path {
-  fill: var(--line-strong);
+.syson-sensitivity-row code {
+  font-size: 0.72rem;
+  color: var(--cyan);
+  white-space: nowrap;
 }
