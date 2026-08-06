@@ -104,18 +104,18 @@ commiter le bundle régénéré, sinon le preview et la ressource MCP servent l'
 
 Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 
-| Couche                          | Rôle                                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------------------ |
-| `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*` |
+| Couche                          | Rôle                                                                                                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*`                                                                                     |
 | `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/` |
-| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning               |
-| `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                       |
-| `src/workflow/`                 | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                    |
-| `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                             |
-| `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)    |
-| `src/testing/`                  | Fixtures partagées entre suites                                                            |
-| `scripts/`                      | Entry points exécutables : BFF, runners CM-01, harness, gates de release                   |
-| `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine          |
+| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning                                                                                                   |
+| `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                                                                                                           |
+| `src/workflow/`                 | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                                                                                                        |
+| `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                                                                                                                 |
+| `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)                                                                                        |
+| `src/testing/`                  | Fixtures partagées entre suites                                                                                                                                                |
+| `scripts/`                      | Entry points exécutables : BFF, runners CM-01, harness, gates de release                                                                                                       |
+| `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine                                                                                              |
 
 Les invariants suivants sont structurels — les casser casse le produit, pas seulement un
 test :
@@ -354,6 +354,22 @@ composition root (`server.ts`) — le refus « not backed by a trusted registere
 » est le fail-fast qui protège cette frontière ; et le preview a deux modes —
 `preview:thread` sert le dossier documentaire historique, seul `preview:cockpit`
 (`--workspace-id=primary`) lit le focus cockpit et sert le projet actif.
+
+Le 2026-08-06, le chantier rangement a restructuré le repo sans en changer le
+comportement : ~1 250 lignes dupliquées résorbées dans quatre modules partagés
+(`case-validation`, `executor-run-helpers`, `wal/file-attempt-store`, `scripts/cli` —
+première lib JSR, `@std/cli`), puis `src/adapters/` rangé en neuf familles avec 17
+fichiers gardés à plat pour raison documentée. Le geste protecteur a précédé le geste :
+`kit-source-refs_test.ts` pince l'existence sur disque de chaque chemin cité par la
+qualification des kits. La méthode a aussi changé : entre un workflow qui produit des
+findings et un workflow qui les implémente s'insère désormais un fact-check indépendant
+(VRAI/FAUX/NUANCE, ancré sur un commit) — il a attrapé deux prémisses fausses que les
+reviews d'implémentation n'auraient jamais vues, dont un store de briefs approuvés
+jamais migré après un renommage de code. Enfin, `design.build-coffee-machine-cm01-cad@4`
+est enregistrée et câblée : elle matérialise les octets STL attestés du volume Docker
+vers `state/local/thread-assets` (vérification SHA-256 fail-closed) — son premier run
+reste soumis au consentement ; les viewers actuels servent la matérialisation manuelle
+vérifiée du R18.
 
 La suite : le deuxième projet, seul vrai test que le Golden Path est générique. Le
 premier usage réel de `design.apply-vector-correction@1` attendra un vrai échec
