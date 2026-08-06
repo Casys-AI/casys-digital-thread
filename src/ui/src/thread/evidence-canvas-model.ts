@@ -38,11 +38,14 @@ import type {
  * Artifacts:
  *   - entityKind "artifact"
  *   - system "build123d" or "calculix" (intermediate CAD/FEA steps)
- *   - ref.id contains "sensitivity" (encodes the operation family via server-fixed naming)
+ *     → ref.id contains "sensitivity" (server-fixed operation-family prefix)
+ *   - system "syson" with ref.id starting with "sensitivity-relations-" or
+ *     "sensitivity-edges-" (SysML structural trace declarations anchored by the
+ *     analyze.* run — not independent model specifications)
  *
  *   Excluded from artifact folding (kept visible):
  *   - The sensitivity capture artifact (digital-thread system)
- *   - Anchored SysML declarations (syson system)
+ *   - All other syson elements (model specifications, requirements, etc.)
  *
  * Observations:
  *   - entityKind "observation"
@@ -61,10 +64,21 @@ import type {
  */
 export function isAnalyzeInstrumentNode(node: ThreadGraphNode): boolean {
   if (node.entityKind === "artifact") {
-    return (
-      node.ref.id.includes("sensitivity") &&
-      (node.system === "build123d" || node.system === "calculix")
-    );
+    // Intermediate CAD/FEA steps produced by the sensitivity instrument run.
+    if (node.system === "build123d" || node.system === "calculix") {
+      return node.ref.id.includes("sensitivity");
+    }
+    // SysML structural trace declarations anchored by the analyze.* run.
+    // The server-fixed id prefixes "sensitivity-relations-" and
+    // "sensitivity-edges-" identify these elements uniquely; all other syson
+    // elements (model specs, requirements, DripTray geometry) are kept visible.
+    if (node.system === "syson") {
+      return (
+        node.ref.id.startsWith("sensitivity-relations-") ||
+        node.ref.id.startsWith("sensitivity-edges-")
+      );
+    }
+    return false;
   }
   if (node.entityKind === "observation") {
     // Sensitivity observations share the same server-fixed id prefix as their

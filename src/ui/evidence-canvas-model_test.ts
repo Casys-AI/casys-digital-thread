@@ -106,9 +106,43 @@ Deno.test("isAnalyzeInstrumentNode keeps sensitivity capture (digital-thread)", 
   assertEquals(isAnalyzeInstrumentNode(n), false);
 });
 
-Deno.test("isAnalyzeInstrumentNode keeps sensitivity SysML declaration (syson)", () => {
+Deno.test("isAnalyzeInstrumentNode folds sensitivity-relations syson declaration", () => {
+  // sensitivity-relations-* artifacts are structural traces of the analyze.* run
+  // anchored as SysML elements. They belong to the instrument family and are folded.
   const n = node(
     "sensitivity-relations-abc123",
+    "artifact",
+    "syson",
+  );
+  assertEquals(isAnalyzeInstrumentNode(n), true);
+});
+
+Deno.test("isAnalyzeInstrumentNode folds sensitivity-edges syson declaration", () => {
+  // sensitivity-edges-* artifacts are the SysML edge-set declarations produced
+  // alongside sensitivity-relations-* by the same analyze.* run.
+  const n = node(
+    "sensitivity-edges-def456",
+    "artifact",
+    "syson",
+  );
+  assertEquals(isAnalyzeInstrumentNode(n), true);
+});
+
+Deno.test("isAnalyzeInstrumentNode keeps non-sensitivity syson artifact (e.g. DripTray geometry)", () => {
+  // A regular syson element (model spec, requirement, geometry declaration) is kept visible.
+  const n = node(
+    "drip-tray-geometry-v3",
+    "artifact",
+    "syson",
+  );
+  assertEquals(isAnalyzeInstrumentNode(n), false);
+});
+
+Deno.test("isAnalyzeInstrumentNode keeps syson sensitivity-oracle-requirements (model spec, not trace)", () => {
+  // The oracle requirements declaration is a model specification, not an analyze.* trace.
+  // Its id does not start with sensitivity-relations- or sensitivity-edges-.
+  const n = node(
+    "sensitivity-oracle-requirements-abc",
     "artifact",
     "syson",
   );
