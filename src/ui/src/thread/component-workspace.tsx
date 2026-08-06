@@ -151,10 +151,6 @@ export function ComponentWorkspace({
               selected={selected}
               onSelect={onComponentSelect}
               onInspect={onBindingSelect}
-              onOpenGeometry={(component) => {
-                onComponentSelect(component);
-                onProviderChange("build123d");
-              }}
             />
           )
           : activeProvider === "erpnext"
@@ -233,15 +229,12 @@ function PartTraceStrip({
   );
 }
 
-function SysonStructure(
-  { snapshot, selected, onSelect, onInspect, onOpenGeometry }: {
-    snapshot: ThreadWorkbenchSnapshot;
-    selected: ThreadComponent;
-    onSelect: (component: ThreadComponent) => void;
-    onInspect: (binding: ThreadComponentBinding) => void;
-    onOpenGeometry: (component: ThreadComponent) => void;
-  },
-): JSX.Element {
+function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
+  snapshot: ThreadWorkbenchSnapshot;
+  selected: ThreadComponent;
+  onSelect: (component: ThreadComponent) => void;
+  onInspect: (binding: ThreadComponentBinding) => void;
+}): JSX.Element {
   const view = snapshot.components.systemViews.syson;
   const terminology = sysonTerminology(snapshot.components.components);
   const subtree = buildSysmlSubtree(snapshot, selected);
@@ -265,30 +258,23 @@ function SysonStructure(
           assembly component when the catalog declares one. */
       }
       <div
-        class="syson-root-node"
+        class={`syson-root-node${
+          assemblyComponent && assemblyComponent.id === selected.id
+            ? " is-selected"
+            : ""
+        }`}
         role={assemblyComponent ? "button" : undefined}
         tabIndex={assemblyComponent ? 0 : undefined}
         onClick={assemblyComponent
           ? () => onSelect(assemblyComponent)
           : undefined}
       >
-        <span>ASSEMBLY</span>
+        <span>ASSEMBLY · PART DEF</span>
         <strong>{snapshot.subject.label}</strong>
         <small>
           {snapshot.components.components.length} {terminology.countLabel}
         </small>
       </div>
-
-      {
-        /* The full structure tree: assembly root, every part connected and
-          clickable, current selection highlighted. */
-      }
-      <SysmlStructureTree
-        components={snapshot.components.components}
-        selectedId={selected.id}
-        onSelect={onSelect}
-        onOpenGeometry={onOpenGeometry}
-      />
 
       {/* Anchored requirements from the snapshot projection */}
       {subtree.anchoredRequirements.length > 0 && (
@@ -334,137 +320,6 @@ function SysonStructure(
         </footer>
       )}
     </section>
-  );
-}
-
-/**
- * Full product-structure tree as a native SVG org chart: the assembly root
- * on top, one horizontal bus, and every part hanging under it. Every box is
- * a real component and clicking it selects that component. Long labels are
- * truncated in the box; the full label lives in the SVG <title> tooltip.
- */
-function SysmlStructureTree(
-  { components, selectedId, onSelect, onOpenGeometry }: {
-    components: readonly ThreadComponent[];
-    selectedId: string;
-    onSelect: (component: ThreadComponent) => void;
-    onOpenGeometry: (component: ThreadComponent) => void;
-  },
-): JSX.Element {
-  const root = components.find((c) => c.kind === "assembly");
-  const parts = components.filter((c) => c.kind !== "assembly");
-  if (parts.length === 0) return <></>;
-
-  const BOX_W = 118;
-  const BOX_H = 40;
-  const GAP = 12;
-  const rowW = parts.length * (BOX_W + GAP) - GAP;
-  const W = Math.max(rowW + 24, 480);
-  const rootY = 28;
-  const busY = 78;
-  const partY = 104;
-  const H = partY + BOX_H + 16;
-  const rowX0 = (W - rowW) / 2;
-  const rootX = W / 2;
-
-  const truncate = (label: string): string =>
-    label.length > 14 ? label.slice(0, 13) + "…" : label;
-
-  return (
-    <div class="syson-structure-tree" aria-label="SysML structure tree">
-      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img">
-        {/* Assembly root */}
-        <g
-          class="syson-svg-node syson-svg-root"
-          data-current={root && root.id === selectedId ? "true" : undefined}
-          onClick={root ? () => onSelect(root) : undefined}
-          onDblClick={root ? () => onOpenGeometry(root) : undefined}
-          role={root ? "button" : undefined}
-        >
-          <rect x={rootX - 110} y={rootY - 20} width={220} height={40} rx={4} />
-          <text
-            x={rootX}
-            y={rootY - 4}
-            text-anchor="middle"
-            class="syson-svg-kind"
-          >
-            PartDefinition
-          </text>
-          <text
-            x={rootX}
-            y={rootY + 12}
-            text-anchor="middle"
-            class="syson-svg-label"
-          >
-            {root?.label ?? "Assembly"}
-          </text>
-        </g>
-
-        {/* Trunk + bus + one drop per part */}
-        <line
-          x1={rootX}
-          y1={rootY + 20}
-          x2={rootX}
-          y2={busY}
-          class="syson-svg-edge"
-        />
-        <line
-          x1={rowX0 + BOX_W / 2}
-          y1={busY}
-          x2={rowX0 + rowW - BOX_W / 2}
-          y2={busY}
-          class="syson-svg-edge"
-        />
-        {parts.map((part, index) => {
-          const cx = rowX0 + index * (BOX_W + GAP) + BOX_W / 2;
-          const isCurrent = part.id === selectedId;
-          return (
-            <g
-              key={part.id}
-              class="syson-svg-node syson-svg-part"
-              data-current={isCurrent ? "true" : undefined}
-              onClick={() => onSelect(part)}
-              onDblClick={() => onOpenGeometry(part)}
-              role="button"
-              tabIndex={0}
-              aria-label={`Select ${part.label}`}
-            >
-              <title>{part.label}</title>
-              <line
-                x1={cx}
-                y1={busY}
-                x2={cx}
-                y2={partY}
-                class="syson-svg-edge"
-              />
-              <rect
-                x={cx - BOX_W / 2}
-                y={partY}
-                width={BOX_W}
-                height={BOX_H}
-                rx={4}
-              />
-              <text
-                x={cx}
-                y={partY + 16}
-                text-anchor="middle"
-                class="syson-svg-kind"
-              >
-                part
-              </text>
-              <text
-                x={cx}
-                y={partY + 30}
-                text-anchor="middle"
-                class="syson-svg-label"
-              >
-                {truncate(part.label)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
   );
 }
 

@@ -1086,60 +1086,17 @@ button.erp-bom-row {
   color: var(--text-soft);
 }
 
-/* --------------------------------------------------------------------------
-   SysML structure tree — the full product tree as a native SVG org chart.
-   Shapes carry no inline fill/stroke: everything reads the atelier tokens
-   here so the diagram can never regress to the SVG black default again.
-   -------------------------------------------------------------------------- */
-.syson-structure-tree {
-  margin: 0.9rem 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-2);
-  overflow-x: auto;
-  padding: 0.4rem 0.2rem;
-}
-
-.syson-structure-tree svg {
-  display: block;
-  margin: 0 auto;
-}
-
-.syson-svg-node {
+/* The root banner is selectable like any component card: same green accent
+   as the part grid so "the assembly is selected" reads instantly. */
+.syson-root-node {
   cursor: pointer;
 }
 
-.syson-svg-node rect {
-  fill: var(--surface-1);
-  stroke: var(--line-strong);
-  stroke-width: 1;
+.syson-root-node:hover {
+  border-color: var(--green);
 }
 
-.syson-svg-node:hover rect {
-  stroke: var(--green);
-}
-
-.syson-svg-node[data-current="true"] rect {
-  fill: var(--green-dim);
-  stroke: var(--green);
-  stroke-width: 1.5;
-}
-
-.syson-svg-kind {
-  fill: var(--muted);
-  font-size: 8.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.syson-svg-label {
-  fill: var(--text);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.syson-svg-edge {
-  stroke: var(--line-strong);
-  stroke-width: 1;
-  fill: none;
+.syson-root-node.is-selected {
+  border-color: var(--green);
+  background: var(--green-dim);
 }
