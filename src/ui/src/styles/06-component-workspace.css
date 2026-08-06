@@ -1025,8 +1025,7 @@ button.erp-bom-row {
   color: var(--muted);
 }
 
-.syson-anchored-requirements,
-.syson-sensitivity-records {
+.syson-anchored-requirements {
   margin-bottom: 0.9rem;
 }
 
@@ -1087,21 +1086,60 @@ button.erp-bom-row {
   color: var(--text-soft);
 }
 
-.syson-sensitivity-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.4rem 0.7rem;
-  margin-bottom: 0.3rem;
+/* --------------------------------------------------------------------------
+   SysML structure tree — the full product tree as a native SVG org chart.
+   Shapes carry no inline fill/stroke: everything reads the atelier tokens
+   here so the diagram can never regress to the SVG black default again.
+   -------------------------------------------------------------------------- */
+.syson-structure-tree {
+  margin: 0.9rem 0;
   border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--surface-1);
-  font-size: 0.75rem;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow-x: auto;
+  padding: 0.4rem 0.2rem;
 }
 
-.syson-sensitivity-row code {
-  font-size: 0.72rem;
-  color: var(--cyan);
-  white-space: nowrap;
+.syson-structure-tree svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.syson-svg-node {
+  cursor: pointer;
+}
+
+.syson-svg-node rect {
+  fill: var(--surface-1);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.syson-svg-node:hover rect {
+  stroke: var(--green);
+}
+
+.syson-svg-node[data-current="true"] rect {
+  fill: var(--green-dim);
+  stroke: var(--green);
+  stroke-width: 1.5;
+}
+
+.syson-svg-kind {
+  fill: var(--muted);
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.syson-svg-label {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.syson-svg-edge {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  fill: none;
 }
