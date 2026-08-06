@@ -617,7 +617,8 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/adapters/executors/coffee-machine-cm01-v3-cad-r4-run-executor.ts",
+          path:
+            "src/adapters/executors/cm01/coffee-machine-cm01-v3-cad-r4-run-executor.ts",
           purpose:
             "Holds the @4 executor: same N+1 build123d calls as @3, followed by " +
             "host-side materialization of every presentation STL into state/local/thread-assets. " +
@@ -806,7 +807,7 @@ const KITS = [
       sourceRefs: [{
         kind: "reviewed-configuration",
         path:
-          "src/adapters/executors/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts",
+          "src/adapters/executors/cm01/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts",
         purpose:
           "Defines the bounded, provider-free recovery from the retained R10 naming defect to a correctly identified R3 successor.",
       }],
@@ -891,7 +892,7 @@ const KITS = [
         {
           kind: "reviewed-configuration",
           path:
-            "src/adapters/executors/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts",
+            "src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts",
           purpose:
             "Holds the server-fixed metric-to-attribute mapping and the closed WAL sequence that builds the declaration from the sensitivity-study capture.",
         },

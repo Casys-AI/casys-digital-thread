@@ -42,20 +42,20 @@ import { FileSensitivityRelationsAttemptStore } from "./src/adapters/wal/file-se
 import {
   COFFEE_MACHINE_CM01_V3_ORACLE_REQUIREMENTS_OPERATION,
   CoffeeMachineCm01V3OracleRequirementsRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_RELATIONS_OPERATION,
   CoffeeMachineCm01V3SensitivityRelationsRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_EDGES_OPERATION,
   CoffeeMachineCm01V3SensitivityEdgesRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/captures/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
   CoffeeMachineCm01V3MechanicalR3IdentityRecoveryRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-r3-identity-recovery-run-executor.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/executors/approved-brief-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/executors/syson-model-seed-run-executor.ts";
@@ -63,43 +63,43 @@ import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
   CoffeeMachineCm01V3ThermalRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-thermal-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-thermal-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
   CoffeeMachineCm01V3ArchitectureRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-architecture-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-architecture-run-executor.ts";
 import { Cm01ErpNextBomCaptureAdapter } from "./src/adapters/captures/cm01-erpnext-bom-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_ERPNEXT_BOM_OPERATION,
   CoffeeMachineCm01V3ErpNextBomRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_CAD_OPERATION,
   CoffeeMachineCm01V3CadRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-cad-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-cad-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,
   CoffeeMachineCm01V3MechanicalRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-mechanical-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-mechanical-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_OPERATION,
   CoffeeMachineCm01V3SensitivityRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
 import { validateSensitivityStudyCase } from "./src/domain/analysis/sensitivity-study.ts";
 import {
   COFFEE_MACHINE_CM01_V3_PRINTABILITY_OPERATION,
   CoffeeMachineCm01V3PrintabilityRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-printability-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-printability-run-executor.ts";
 import { validatePrintabilityCheckCase } from "./src/domain/analysis/printability-case.ts";
 import {
   COFFEE_MACHINE_CM01_V3_PRINT_ESTIMATE_OPERATION,
   CoffeeMachineCm01V3PrintEstimateRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-print-estimate-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-print-estimate-run-executor.ts";
 import { validatePrintEstimateCase } from "./src/domain/analysis/print-estimate-case.ts";
 import {
   COFFEE_MACHINE_CM01_V3_DRIP_TRAY_HEIGHT_CORRECTION_OPERATION,
   CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-drip-tray-height-correction-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-drip-tray-height-correction-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_CAD_R2_OPERATION,
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R2_OPERATION,
@@ -107,15 +107,15 @@ import {
   CoffeeMachineCm01V3CadR2RunExecutor,
   CoffeeMachineCm01V3MechanicalR2RunExecutor,
   CoffeeMachineCm01V3MechanicalR3RunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-r2-provider-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-r2-provider-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION,
   CoffeeMachineCm01V3CadR3RunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-cad-r3-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-cad-r3-run-executor.ts";
 import {
   COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION,
   CoffeeMachineCm01V3CadR4RunExecutor,
-} from "./src/adapters/executors/coffee-machine-cm01-v3-cad-r4-run-executor.ts";
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-cad-r4-run-executor.ts";
 import { DockerVolumeAssetMaterializer } from "./src/adapters/executors/host-asset-materializer.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/stores/file-engineering-project-run-lease.ts";

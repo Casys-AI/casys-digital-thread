@@ -19,7 +19,7 @@ import {
 import {
   parseBuild123dSensitivityExport,
   parseCalculixSensitivitySolve,
-} from "../../src/adapters/executors/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
 import type { McpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 
 export interface SolveResult {

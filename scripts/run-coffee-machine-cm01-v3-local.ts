@@ -4,22 +4,22 @@ import { Cm01ErpNextBomCaptureAdapter } from "../src/adapters/captures/cm01-erpn
 import { Cm01NominalModelicaCaptureAdapter } from "../src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,
-} from "../src/adapters/executors/coffee-machine-cm01-v3-architecture-run-executor.ts";
+} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-architecture-run-executor.ts";
 import {
   CoffeeMachineCm01V3CadRunExecutor,
-} from "../src/adapters/executors/coffee-machine-cm01-v3-cad-run-executor.ts";
+} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-cad-run-executor.ts";
 import {
   CoffeeMachineCm01V3ErpNextBomRunExecutor,
-} from "../src/adapters/executors/coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
+} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
 import {
   projectCoffeeMachineCm01V3GoldenObservation,
-} from "../src/adapters/executors/coffee-machine-cm01-v3-golden-observation.ts";
+} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-golden-observation.ts";
 import {
   CoffeeMachineCm01V3MechanicalRunExecutor,
-} from "../src/adapters/executors/coffee-machine-cm01-v3-mechanical-run-executor.ts";
+} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-mechanical-run-executor.ts";
 import {
   CoffeeMachineCm01V3ThermalRunExecutor,
-} from "../src/adapters/executors/coffee-machine-cm01-v3-thermal-run-executor.ts";
+} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-thermal-run-executor.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "../src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "../src/adapters/captures/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "../src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
@@ -27,7 +27,7 @@ import { FileCm01SemanticCadAttemptStore } from "../src/adapters/wal/file-cm01-s
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import {
   CoffeeMachineCm01V3SensitivityRunExecutor,
-} from "../src/adapters/executors/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
+} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
