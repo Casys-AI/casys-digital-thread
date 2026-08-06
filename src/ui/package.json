@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@casys/mcp-view": "^0.7.1",
+    "graphology": "^0.26.0",
     "preact": "^10.29.7",
     "three": "^0.185.1"
   },

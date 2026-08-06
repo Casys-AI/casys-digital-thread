@@ -12,6 +12,7 @@
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.30.0_zod@4.4.3",
     "npm:@opentelemetry/api@^1.9.0": "1.9.1",
     "npm:ajv@^8.17.1": "8.20.0",
+    "npm:graphology@0.26": "0.26.0_graphology-types@0.24.8",
     "npm:hono@4": "4.12.32",
     "npm:jose@6": "6.2.5"
   },
@@ -223,6 +224,9 @@
     "etag@1.8.1": {
       "integrity": "sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg=="
     },
+    "events@3.3.0": {
+      "integrity": "sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q=="
+    },
     "eventsource-parser@3.1.0": {
       "integrity": "sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg=="
     },
@@ -323,6 +327,16 @@
     },
     "gopd@1.2.0": {
       "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="
+    },
+    "graphology-types@0.24.8": {
+      "integrity": "sha512-hDRKYXa8TsoZHjgEaysSRyPdT6uB78Ci8WnjgbStlQysz7xR52PInxNsmnB7IBOM1BhikxkNyCVEFgmPKnpx3Q=="
+    },
+    "graphology@0.26.0_graphology-types@0.24.8": {
+      "integrity": "sha512-8SSImzgUUYC89Z042s+0r/vMibY7GX/Emz4LDO5e7jYXhuoWfHISPFJYjpRLUSJGq6UQ6xlenvX1p/hJdfXuXg==",
+      "dependencies": [
+        "events",
+        "graphology-types"
+      ]
     },
     "has-symbols@1.1.0": {
       "integrity": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ=="
@@ -590,7 +604,8 @@
       "jsr:@casys/mcp-server@0.24.1",
       "jsr:@std/assert@1.0.14",
       "jsr:@std/cli@1",
-      "jsr:@std/yaml@1"
+      "jsr:@std/yaml@1",
+      "npm:graphology@0.26"
     ]
   }
 }
