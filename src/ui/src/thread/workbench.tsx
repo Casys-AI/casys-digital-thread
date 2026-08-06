@@ -51,6 +51,7 @@ import {
   makeEvidenceComponentLabeler,
 } from "./evidence-canvas-model.ts";
 import { buildEvidenceGraphModel } from "./evidence-graph-model.ts";
+import { EvidenceExploration } from "./evidence-exploration.tsx";
 import { ComponentWorkspace } from "./component-workspace.tsx";
 import {
   ToolInspectorPanel,
@@ -115,6 +116,10 @@ export function ThreadWorkbench({
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [error, setError] = useState<string>();
+  // Mode Exploration (sigma) par défaut sur la surface Evidence.
+  const [evidenceMode, setEvidenceMode] = useState<"carte" | "exploration">(
+    "exploration",
+  );
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
 
   // Retour arriere et avance du navigateur : le fragment fait autorite sur
@@ -807,48 +812,95 @@ export function ThreadWorkbench({
                               : "Select a result, requirement or component to see what supports it and what it affects. Previous versions stay inside the selected node."}
                           </span>
                         </div>
-                        <span>
-                          {evidenceCanvas.isFiltered
-                            ? `${evidenceCanvas.displayedCount} faits affichés · vue locale`
-                            : evidenceCanvas.foldedInstrumentCount > 0 &&
-                                versionedProvenance.collapsedVersionCount > 0
-                            ? `${evidenceCanvas.foldedInstrumentCount} instruments repliés · ${versionedProvenance.collapsedVersionCount} versions repliées`
-                            : evidenceCanvas.foldedInstrumentCount > 0
-                            ? `${evidenceCanvas.foldedInstrumentCount} instruments d'analyse repliés · voir par provenance`
-                            : versionedProvenance.collapsedVersionCount > 0
-                            ? `${versionedProvenance.collapsedVersionCount} versions repliées`
-                            : "Preuves courantes uniquement"}
-                        </span>
+                        <div
+                          style={{ display: "flex", gap: "var(--space-12)", alignItems: "center" }}
+                        >
+                          <span>
+                            {evidenceCanvas.isFiltered
+                              ? `${evidenceCanvas.displayedCount} faits affichés · vue locale`
+                              : evidenceCanvas.foldedInstrumentCount > 0 &&
+                                  versionedProvenance.collapsedVersionCount > 0
+                              ? `${evidenceCanvas.foldedInstrumentCount} instruments repliés · ${versionedProvenance.collapsedVersionCount} versions repliées`
+                              : evidenceCanvas.foldedInstrumentCount > 0
+                              ? `${evidenceCanvas.foldedInstrumentCount} instruments d'analyse repliés · voir par provenance`
+                              : versionedProvenance.collapsedVersionCount > 0
+                              ? `${versionedProvenance.collapsedVersionCount} versions repliées`
+                              : "Preuves courantes uniquement"}
+                          </span>
+                          <div
+                            class="evidence-graph-mode-toggle"
+                            role="group"
+                            aria-label="Mode de rendu du graphe"
+                          >
+                            <button
+                              type="button"
+                              aria-pressed={evidenceMode === "exploration"}
+                              onClick={() => setEvidenceMode("exploration")}
+                            >
+                              Exploration
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={evidenceMode === "carte"}
+                              onClick={() => setEvidenceMode("carte")}
+                            >
+                              Carte
+                            </button>
+                          </div>
+                        </div>
                       </header>
-                      <div
-                        class="thread-graph-legend"
-                        aria-label="Graph legend"
-                      >
-                        <span data-tone="source">upstream evidence</span>
-                        <span data-tone="focus">selected fact</span>
-                        <span data-tone="impact">downstream impact</span>
-                        <span data-tone="attested">verified fingerprint</span>
-                        <span data-tone="mismatch">fingerprint mismatch</span>
-                      </div>
-                      <ThreadGraph
-                        nodes={evidenceCanvas.nodes as ThreadGraphNode[]}
-                        edges={evidenceCanvas.edges as ThreadGraphEdge[]}
-                        selection={visibleGraphSelection(
-                          versionedProvenance,
-                          graphSelection,
-                        )}
-                        focus={visibleGraphRef(
-                          versionedProvenance,
-                          lineageFocus,
-                        )}
-                        presentation="canvas"
-                        initialZoom={2.25}
-                        showSupporting={false}
-                        showDensityControl={false}
-                        onSelectionChange={selectVerificationGraphItem}
-                        onInspect={inspectVerificationGraphItem}
-                        componentLabeler={evidenceComponentLabeler}
-                      />
+                      {evidenceMode === "carte" && (
+                        <>
+                          <div
+                            class="thread-graph-legend"
+                            aria-label="Graph legend"
+                          >
+                            <span data-tone="source">upstream evidence</span>
+                            <span data-tone="focus">selected fact</span>
+                            <span data-tone="impact">downstream impact</span>
+                            <span data-tone="attested">
+                              verified fingerprint
+                            </span>
+                            <span data-tone="mismatch">
+                              fingerprint mismatch
+                            </span>
+                          </div>
+                          <ThreadGraph
+                            nodes={evidenceCanvas.nodes as ThreadGraphNode[]}
+                            edges={evidenceCanvas.edges as ThreadGraphEdge[]}
+                            selection={visibleGraphSelection(
+                              versionedProvenance,
+                              graphSelection,
+                            )}
+                            focus={visibleGraphRef(
+                              versionedProvenance,
+                              lineageFocus,
+                            )}
+                            presentation="canvas"
+                            initialZoom={2.25}
+                            showSupporting={false}
+                            showDensityControl={false}
+                            onSelectionChange={selectVerificationGraphItem}
+                            onInspect={inspectVerificationGraphItem}
+                            componentLabeler={evidenceComponentLabeler}
+                          />
+                        </>
+                      )}
+                      {evidenceMode === "exploration" && (
+                        <EvidenceExploration
+                          evidenceModel={evidenceModel}
+                          projection={evidenceCanvas}
+                          selection={visibleGraphSelection(
+                            versionedProvenance,
+                            graphSelection,
+                          )}
+                          focus={visibleGraphRef(
+                            versionedProvenance,
+                            lineageFocus,
+                          )}
+                          onSelectionChange={selectVerificationGraphItem}
+                        />
+                      )}
                     </section>
                   )
                   : activeView === "product"

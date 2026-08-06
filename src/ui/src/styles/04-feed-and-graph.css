@@ -1123,3 +1123,128 @@
     padding: var(--space-4) 0;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Evidence exploration — mode sigma
+   Sigma prend le canvas / WebGL ; la légende de composantes est une aside HTML.
+   -------------------------------------------------------------------------- */
+
+.evidence-graph-mode-toggle {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.evidence-graph-mode-toggle button {
+  padding: var(--space-4) var(--space-10);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: var(--muted);
+  background: transparent;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+
+.evidence-graph-mode-toggle button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-0);
+  border-color: var(--line-strong);
+}
+
+.evidence-exploration {
+  position: relative;
+  display: flex;
+  min-height: 540px;
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.evidence-exploration-stage {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Sigma injecte ses propres canvas dans ce conteneur.
+   height:100% est requis pour que Sigma mesure la dimension correctement. */
+.evidence-exploration-stage > canvas,
+.evidence-exploration-stage > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.evidence-exploration-legend {
+  flex: 0 0 180px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-16) var(--space-12);
+  border-left: 1px solid var(--line);
+  background: var(--surface-0);
+  overflow-y: auto;
+}
+
+.evidence-exploration-legend-title {
+  margin: 0 0 var(--space-8);
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.evidence-exploration-legend-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  background: var(--surface-1);
+  transition: border-color 120ms, background 120ms;
+}
+
+.evidence-exploration-legend-chip:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.evidence-exploration-legend-chip-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.evidence-exploration-legend-chip-name {
+  flex: 1;
+  font: var(--text-xs)/1.3 var(--sans);
+  color: var(--text);
+}
+
+.evidence-exploration-legend-chip-count {
+  flex: 0 0 auto;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  color: var(--muted);
+}
+
+@media (width <= 720px) {
+  .evidence-exploration {
+    flex-direction: column;
+  }
+  .evidence-exploration-legend {
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}
