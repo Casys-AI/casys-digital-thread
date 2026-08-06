@@ -1,24 +1,24 @@
 import {
   materializeErpNextCoffeeMachineBomDetailExtension,
   materializeErpNextCoffeeMachineBomExtension,
-} from "../src/adapters/historical/erpnext-coffee-machine-extension.ts";
-import { ErpNextCoffeeMachineObserver } from "../src/adapters/historical/erpnext-coffee-machine-observer.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
-import { HttpMcpToolClient } from "../src/adapters/mcp/http-mcp-tool-client.ts";
-import { ModelicaRunObserver } from "../src/adapters/historical/modelica-run-observer.ts";
-import { createObservedModelicaRunExtension } from "../src/adapters/observed-modelica-thread-branch.ts";
+} from "../../src/adapters/historical/erpnext-coffee-machine-extension.ts";
+import { ErpNextCoffeeMachineObserver } from "../../src/adapters/historical/erpnext-coffee-machine-observer.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { ModelicaRunObserver } from "../../src/adapters/historical/modelica-run-observer.ts";
+import { createObservedModelicaRunExtension } from "../../src/adapters/observed-modelica-thread-branch.ts";
 import {
   materializeSysonInventorySubject,
   sysonModelInventoryExtension,
-} from "../src/adapters/historical/syson-model-inventory-extension.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../src/domain/thread/thread-snapshot-extension.ts";
-import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
-import type { ThreadSnapshotExtension } from "../src/domain/thread/thread-snapshot-extension.ts";
+} from "../../src/adapters/historical/syson-model-inventory-extension.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../../src/domain/thread/thread-snapshot-extension.ts";
+import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotExtension } from "../../src/domain/thread/thread-snapshot-extension.ts";
 import {
   bindThreadSnapshotExtension,
   validateThreadSubjectManifest,
-} from "../src/domain/thread/thread-subject-manifest.ts";
-import { parseArgs } from "./cli.ts";
+} from "../../src/domain/thread/thread-subject-manifest.ts";
+import { parseArgs } from "../lib/cli.ts";
 
 const args = parseArgs(Deno.args);
 const manifestPath = args["manifest"] ??

@@ -62,7 +62,7 @@ preuves locales**, jamais « pour voir » : les runners provider écrivent des r
 immuables sous `state/local/`.
 
 ```bash
-deno task thread:assemble                        # assemblage read-only des branches CM-01
+deno task thread:assemble                        # assemble les branches CM-01 ; écrit des snapshots immuables sous state/local/ (ne mute pas les providers)
 deno task thread:run-coffee-machine-build        # SysON → build123d
 deno task thread:attach-coffee-machine-build     # valide, publie, réconcilie le feed
 deno task thread:run-coffee-machine-mechanical --run-id=<id>      # run humain-autorisé

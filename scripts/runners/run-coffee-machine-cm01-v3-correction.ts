@@ -1,8 +1,8 @@
-import { parseArgs } from "./cli.ts";
+import { parseArgs } from "../lib/cli.ts";
 import {
   HttpMcpToolClient,
   type McpToolClient,
-} from "../src/adapters/mcp/http-mcp-tool-client.ts";
+} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 
 /**
  * Explicit local consent for the only real CM-01 V3 28 mm -> 30 mm feedback

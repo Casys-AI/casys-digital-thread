@@ -1,22 +1,22 @@
-import { parseArgs, stableId } from "./cli.ts";
+import { parseArgs, stableId } from "../lib/cli.ts";
 import {
   CoffeeMachineBuildOrchestrator,
   type CoffeeMachineBuildRunCapture,
-} from "../src/adapters/historical/coffee-machine-build-orchestrator.ts";
+} from "../../src/adapters/historical/coffee-machine-build-orchestrator.ts";
 import {
   COFFEE_MACHINE_CAD_OPERATION_ID,
   COFFEE_MACHINE_SYSON_OPERATION_ID,
   createCoffeeMachineCadLiveProjector,
   createCoffeeMachineSysonLiveProjector,
   SerializedLiveThreadUpdateJournal,
-} from "../src/adapters/projectors/coffee-machine-build-live-projector.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
-import { RecordingMcpToolClient } from "../src/adapters/recording-mcp-tool-client.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
+} from "../../src/adapters/projectors/coffee-machine-build-live-projector.ts";
+import { FileLiveThreadUpdateStore } from "../../src/adapters/stores/live-thread-update-store.ts";
+import { RecordingMcpToolClient } from "../../src/adapters/recording-mcp-tool-client.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   HttpMcpToolClient,
   type McpToolClient,
-} from "../src/adapters/mcp/http-mcp-tool-client.ts";
+} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 
 export interface RunCoffeeMachineBuildOptions {
   declarationPath?: string;

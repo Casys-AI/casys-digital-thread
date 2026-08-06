@@ -188,7 +188,7 @@ addition to a shared signing key.
 ## Verification
 
 ```bash
-deno run --allow-read scripts/verify-console-evidence.ts
+deno task verify:evidence
 ```
 
 This checks the Console fixture, cross-file values, byte counts and SHA-256 identities

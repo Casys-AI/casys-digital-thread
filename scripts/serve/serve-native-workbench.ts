@@ -1,51 +1,51 @@
-import { parseArgs } from "./cli.ts";
-import type { ThreadSnapshotStore } from "../src/domain/thread/thread-snapshot-store.ts";
-import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
-import type { EngineeringProjectSnapshot } from "../src/domain/project/engineering-project.ts";
-import type { EngineeringProjectRevisionStore } from "../src/domain/project/engineering-project-command-service.ts";
-import { validateEngineeringProjectThreadReferences } from "../src/domain/project/engineering-project-validation.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
+import { parseArgs } from "../lib/cli.ts";
+import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
+import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
+import type { EngineeringProjectRevisionStore } from "../../src/domain/project/engineering-project-command-service.ts";
+import { validateEngineeringProjectThreadReferences } from "../../src/domain/project/engineering-project-validation.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   type CockpitFocusStore,
   FileCockpitFocusStore,
-} from "../src/adapters/stores/file-cockpit-focus-store.ts";
+} from "../../src/adapters/stores/file-cockpit-focus-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../src/adapters/captures/file-capture-store.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { createEngineeringProjectCommandRuntime } from "../src/adapters/engineering-project-command-runtime.ts";
+} from "../../src/adapters/captures/file-capture-store.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
+import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
 import {
   type EngineeringWorkbenchSnapshot,
   projectEngineeringPlanningWorkbenchSnapshot,
   projectEngineeringWorkbenchSnapshot,
-} from "../src/adapters/projectors/engineering-workbench-projector.ts";
+} from "../../src/adapters/projectors/engineering-workbench-projector.ts";
 import {
   type ExactThreadSnapshotReader,
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
-} from "../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
-import { threadSnapshotDescendsFrom } from "../src/adapters/stores/thread-snapshot-lineage.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/platform/syson-model-seed.ts";
+} from "../../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
+import { threadSnapshotDescendsFrom } from "../../src/adapters/stores/thread-snapshot-lineage.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../src/orchestration/operations/registry.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/platform/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
   OrderedEngineeringAssetReader,
-} from "../src/adapters/engineering-asset-resolver.ts";
-import { projectThreadWorkbenchSnapshot } from "../src/adapters/projectors/thread-workbench-projector.ts";
+} from "../../src/adapters/engineering-asset-resolver.ts";
+import { projectThreadWorkbenchSnapshot } from "../../src/adapters/projectors/thread-workbench-projector.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadUpdate,
   type LiveThreadUpdateJournal,
   overlayLiveThreadUpdates,
-} from "../src/adapters/stores/live-thread-update-store.ts";
+} from "../../src/adapters/stores/live-thread-update-store.ts";
 import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
-} from "../src/domain/thread/thread-component-catalog.ts";
-import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
+} from "../../src/domain/thread/thread-component-catalog.ts";
+import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;

@@ -3,22 +3,22 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../src/adapters/mcp/http-mcp-tool-client.ts";
-import { LiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
+} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { LiveThreadUpdateStore } from "../../src/adapters/stores/live-thread-update-store.ts";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../src/domain/project/engineering-project-command-service.ts";
+} from "../../src/domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
-} from "../src/domain/project/engineering-project.ts";
-import { deterministicJson } from "../src/domain/kernel/deterministic-json.ts";
+} from "../../src/domain/project/engineering-project.ts";
+import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SYSON_EDITING_CONTEXT_ID,
   COFFEE_MACHINE_MECHANICAL_SYSON_REQUIREMENTS_ELEMENT_ID,
-} from "../src/adapters/historical/coffee-machine-mechanical-run-extension.ts";
+} from "../../src/adapters/historical/coffee-machine-mechanical-run-extension.ts";
 import {
   extractApprovedProofCase,
   type MechanicalCaptureStore,
@@ -26,11 +26,11 @@ import {
 } from "./run-coffee-machine-mechanical.ts";
 
 const CONFIG = new URL(
-  "../config/projects/coffee-machine-cm01.project.json",
+  "../../config/projects/coffee-machine-cm01.project.json",
   import.meta.url,
 );
 const CANONICAL_WORKFLOW = new URL(
-  "../config/thread-workflows/coffee-machine-mechanical-v1.yaml",
+  "../../config/thread-workflows/coffee-machine-mechanical-v1.yaml",
   import.meta.url,
 );
 const RUN_ID = "run:mechanical-test-v1";

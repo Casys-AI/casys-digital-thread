@@ -179,7 +179,7 @@ Before running a changed design through providers, the repository has one delibe
 inert proof for the reviewed DripTray height correction (`28 mm → 30 mm`):
 
 ```bash
-deno task thread:verify-coffee-machine-cm01-v3-correction-loop
+deno task verify:cm01-v3-correction-loop
 ```
 
 It reads the reviewed 28 mm proof case and a small correction declaration, makes zero
@@ -305,7 +305,7 @@ harness writes that projection as `<run>/golden-observation.json`; a paired agen
 produce an equivalent reviewed projection from its completed V3 evidence. Then run:
 
 ```bash
-deno task thread:verify-coffee-machine-cm01-v3-golden \
+deno task verify:cm01-v3-golden \
   --observation=<normalized-v3-observation.json>
 ```
 

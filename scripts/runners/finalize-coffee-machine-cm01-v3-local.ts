@@ -1,15 +1,15 @@
-import { parseArgs } from "./cli.ts";
+import { parseArgs } from "../lib/cli.ts";
 import {
   projectCoffeeMachineCm01V3GoldenObservation,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-golden-observation.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-golden-observation.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   type GoldenReferenceComparison,
   validateCoffeeMachineCm01V3GoldenReference,
-} from "../src/domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
-import type { EngineeringThreadSnapshotRef } from "../src/domain/project/engineering-project.ts";
+} from "../../src/domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
+import type { EngineeringThreadSnapshotRef } from "../../src/domain/project/engineering-project.ts";
 
 const RUNS_ROOT = "state/local/cm01-v3-local-runs";
 const PROJECT_ID = "coffee-machine-cm01-v3";

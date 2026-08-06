@@ -1,22 +1,22 @@
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
-import { ExactThreadReconciliationSnapshotValidator } from "../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
+import { ExactThreadReconciliationSnapshotValidator } from "../../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   assertR12RequirementFamilyCloseout,
   CM01_V3_PROJECT_ID,
   CM01_V3_R12_REQUIREMENT_CLOSEOUT_EXTENSION_ID,
   inspectCoffeeMachineCm01V3R11Closeout,
   materializeCoffeeMachineCm01V3R12RequirementCloseout,
-} from "../src/domain/cm01/cm01-v3-r11-closeout.ts";
+} from "../../src/domain/cm01/cm01-v3-r11-closeout.ts";
 import {
   deriveEngineeringProjectStatus,
   type EngineeringThreadSnapshotRef,
-} from "../src/domain/project/engineering-project.ts";
+} from "../../src/domain/project/engineering-project.ts";
 import {
   EngineeringProjectCommandService,
-} from "../src/domain/project/engineering-project-command-service.ts";
-import { validateThreadSnapshot } from "../src/domain/thread/thread-snapshot-validation.ts";
-import type { ThreadSnapshotStore } from "../src/domain/thread/thread-snapshot-store.ts";
+} from "../../src/domain/project/engineering-project-command-service.ts";
+import { validateThreadSnapshot } from "../../src/domain/thread/thread-snapshot-validation.ts";
+import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 
 /** Explicit consent for the provider-free, immutable R11 -> R12 closeout. */
 export const CM01_V3_R11_CLOSEOUT_ACKNOWLEDGEMENT =

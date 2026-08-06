@@ -1,29 +1,29 @@
-import { parseArgs, stableId } from "./cli.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
-import type { LiveThreadUpdateJournal } from "../src/adapters/stores/live-thread-update-store.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
-import { threadSnapshotDescendsFrom } from "../src/adapters/stores/thread-snapshot-lineage.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
+import { parseArgs, stableId } from "../lib/cli.ts";
+import { FileLiveThreadUpdateStore } from "../../src/adapters/stores/live-thread-update-store.ts";
+import type { LiveThreadUpdateJournal } from "../../src/adapters/stores/live-thread-update-store.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { threadSnapshotDescendsFrom } from "../../src/adapters/stores/thread-snapshot-lineage.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SUBJECT_ID,
   materializeCoffeeMachineMechanicalRunExtension,
-} from "../src/adapters/historical/coffee-machine-mechanical-run-extension.ts";
+} from "../../src/adapters/historical/coffee-machine-mechanical-run-extension.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "../src/domain/kernel/deterministic-json.ts";
+} from "../../src/domain/kernel/deterministic-json.ts";
 import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
-} from "../src/domain/project/engineering-project.ts";
-import type { ThreadSnapshotStore } from "../src/domain/thread/thread-snapshot-store.ts";
-import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
+} from "../../src/domain/project/engineering-project.ts";
+import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
   type ThreadSnapshotExtension,
-} from "../src/domain/thread/thread-snapshot-extension.ts";
+} from "../../src/domain/thread/thread-snapshot-extension.ts";
 
 type MechanicalMaterializer = typeof materializeCoffeeMachineMechanicalRunExtension;
 

@@ -61,6 +61,6 @@ following to one immutable run:
 
 Until such a receipt is implemented and checked at the execution boundary, this schema
 remains a reviewable candidate declaration only. The existing
-[`run-coffee-machine-mechanical.ts`](../../scripts/run-coffee-machine-mechanical.ts)
+`deno task thread:run-coffee-machine-mechanical`
 continues to derive its inputs from the approved project proposal and does not consume
 this file.

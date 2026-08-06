@@ -1,8 +1,8 @@
-import { parseArgs } from "./cli.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
-import { ModelicaRunObserver } from "../src/adapters/historical/modelica-run-observer.ts";
-import { createObservedModelicaRunExtension } from "../src/adapters/observed-modelica-thread-branch.ts";
-import { applyThreadSnapshotExtension } from "../src/domain/thread/thread-snapshot-extension.ts";
+import { parseArgs } from "../lib/cli.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { ModelicaRunObserver } from "../../src/adapters/historical/modelica-run-observer.ts";
+import { createObservedModelicaRunExtension } from "../../src/adapters/observed-modelica-thread-branch.ts";
+import { applyThreadSnapshotExtension } from "../../src/domain/thread/thread-snapshot-extension.ts";
 
 const args = parseArgs(Deno.args);
 const runId = args["run"];

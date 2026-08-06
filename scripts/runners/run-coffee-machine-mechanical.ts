@@ -1,46 +1,49 @@
-import { parseArgs, stableId } from "./cli.ts";
+import { parseArgs, stableId } from "../lib/cli.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadGraphPatch,
   type LiveThreadUpdate,
   type LiveThreadUpdateJournal,
-} from "../src/adapters/stores/live-thread-update-store.ts";
-import { RecordingMcpToolClient } from "../src/adapters/recording-mcp-tool-client.ts";
+} from "../../src/adapters/stores/live-thread-update-store.ts";
+import { RecordingMcpToolClient } from "../../src/adapters/recording-mcp-tool-client.ts";
 import {
   HttpMcpToolClient,
   type McpToolCall,
   type McpToolClient,
   type McpToolResult,
-} from "../src/adapters/mcp/http-mcp-tool-client.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
+} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SYSON_EDITING_CONTEXT_ID,
   COFFEE_MACHINE_MECHANICAL_SYSON_REQUIREMENTS_ELEMENT_ID,
-} from "../src/adapters/historical/coffee-machine-mechanical-run-extension.ts";
+} from "../../src/adapters/historical/coffee-machine-mechanical-run-extension.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "../src/domain/kernel/deterministic-json.ts";
+} from "../../src/domain/kernel/deterministic-json.ts";
 import type {
   EngineeringAgentRun,
   EngineeringDecision,
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
-} from "../src/domain/project/engineering-project.ts";
-import { validateEngineeringProjectSnapshot } from "../src/domain/project/engineering-project-validation.ts";
-import { type WorkflowExecution, WorkflowExecutor } from "../src/workflow/executor.ts";
-import { InternalThreadToolClient } from "../src/workflow/internal-thread-tools.ts";
-import { loadAndCompileThreadWorkflow } from "../src/workflow/loader.ts";
+} from "../../src/domain/project/engineering-project.ts";
+import { validateEngineeringProjectSnapshot } from "../../src/domain/project/engineering-project-validation.ts";
+import {
+  type WorkflowExecution,
+  WorkflowExecutor,
+} from "../../src/workflow/executor.ts";
+import { InternalThreadToolClient } from "../../src/workflow/internal-thread-tools.ts";
+import { loadAndCompileThreadWorkflow } from "../../src/workflow/loader.ts";
 import type {
   ThreadGraphNode,
   ThreadGraphRef,
-} from "../src/contracts/thread-workbench.ts";
+} from "../../src/contracts/thread-workbench.ts";
 import type {
   CompiledBinding,
   CompiledThreadWorkflow,
   WorkflowOutputType,
-} from "../src/workflow/types.ts";
+} from "../../src/workflow/types.ts";
 
 export const COFFEE_MACHINE_MECHANICAL_RUN_SCHEMA =
   "coffee-machine-mechanical-run/1.0" as const;
@@ -51,7 +54,7 @@ export const COFFEE_MACHINE_MECHANICAL_WORK_ITEM_ID =
   "verify-current-mechanical-design" as const;
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANONICAL_MECHANICAL_WORKFLOW = new URL(
-  "../config/thread-workflows/coffee-machine-mechanical-v1.yaml",
+  "../../config/thread-workflows/coffee-machine-mechanical-v1.yaml",
   import.meta.url,
 );
 const EXPECTED_PARAMETER_KEYS = [
@@ -1199,7 +1202,8 @@ function recordingClient(input: {
   baseRevision: number;
   now: () => Date;
   projector: (
-    event: import("../src/adapters/recording-mcp-tool-client.ts").RecordingMcpToolEvent,
+    event:
+      import("../../src/adapters/recording-mcp-tool-client.ts").RecordingMcpToolEvent,
   ) => LiveThreadGraphPatch;
 }): RecordingMcpToolClient {
   return new RecordingMcpToolClient({
@@ -1218,7 +1222,8 @@ function recordingClient(input: {
 
 function createMechanicalLiveProjector(runId: string) {
   return (
-    event: import("../src/adapters/recording-mcp-tool-client.ts").RecordingMcpToolEvent,
+    event:
+      import("../../src/adapters/recording-mcp-tool-client.ts").RecordingMcpToolEvent,
   ): LiveThreadGraphPatch => {
     if (event.runId !== runId) throw new Error("Mechanical live run mismatch.");
     const projection = toolProjection(runId, event.toolName, event.serverId);

@@ -3,33 +3,33 @@ import type {
   AppendLiveThreadUpdate,
   LiveThreadUpdate,
   LiveThreadUpdateJournal,
-} from "../src/adapters/stores/live-thread-update-store.ts";
+} from "../../src/adapters/stores/live-thread-update-store.ts";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../src/domain/project/engineering-project-command-service.ts";
-import { sha256Fingerprint } from "../src/domain/kernel/deterministic-json.ts";
+} from "../../src/domain/project/engineering-project-command-service.ts";
+import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
 import type {
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
-} from "../src/domain/project/engineering-project.ts";
-import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
+} from "../../src/domain/project/engineering-project.ts";
+import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtension,
   type ThreadSnapshotExtension,
-} from "../src/domain/thread/thread-snapshot-extension.ts";
+} from "../../src/domain/thread/thread-snapshot-extension.ts";
 import {
   attachCoffeeMachineMechanicalRun,
   type MechanicalPublicationSnapshotStore,
 } from "./attach-coffee-machine-mechanical-run.ts";
 
 const BASELINE = new URL(
-  "../config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
+  "../../config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
   import.meta.url,
 );
 const PROJECT = new URL(
-  "../config/projects/coffee-machine-cm01.project.json",
+  "../../config/projects/coffee-machine-cm01.project.json",
   import.meta.url,
 );
 const RUN_ID = "run:mechanical-attach-test";

@@ -23,8 +23,7 @@ identifiers below are the current CM-01 binding, not values inferred from a disp
 name:
 
 ```bash
-deno run --allow-net=127.0.0.1:3009 --allow-write=state/local \
-  scripts/capture-syson-model-inventory.ts \
+deno task thread:capture-syson-inventory \
   --project-id=54607f66-c590-4d5e-ac25-2abebe33dfd8 \
   --project-name='Casys CoffeeMachine CM-01' \
   --editing-context-id=01942665-3ded-4d3a-9902-08691eae190e

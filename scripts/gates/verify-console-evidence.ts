@@ -61,7 +61,7 @@ interface FleetManifest {
   }>;
 }
 
-const repoRoot = new URL("../", import.meta.url);
+const repoRoot = new URL("../../", import.meta.url);
 const failures: string[] = [];
 
 function fail(message: string): void {

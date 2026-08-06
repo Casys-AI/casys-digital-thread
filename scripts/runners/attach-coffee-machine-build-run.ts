@@ -1,8 +1,8 @@
-import { parseArgs, stableId } from "./cli.ts";
-import { materializeCoffeeMachineBuildRunExtension } from "../src/adapters/historical/coffee-machine-build-run-extension.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../src/domain/thread/thread-snapshot-extension.ts";
+import { parseArgs, stableId } from "../lib/cli.ts";
+import { materializeCoffeeMachineBuildRunExtension } from "../../src/adapters/historical/coffee-machine-build-run-extension.ts";
+import { FileLiveThreadUpdateStore } from "../../src/adapters/stores/live-thread-update-store.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../../src/domain/thread/thread-snapshot-extension.ts";
 
 export interface AttachCoffeeMachineBuildOptions {
   runId: string;

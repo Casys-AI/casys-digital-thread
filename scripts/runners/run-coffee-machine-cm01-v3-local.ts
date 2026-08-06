@@ -1,33 +1,33 @@
-import { parseArgs } from "./cli.ts";
-import { ApprovedBriefBaselineRunExecutor } from "../src/adapters/executors/approved-brief-baseline-run-executor.ts";
-import { Cm01ErpNextBomCaptureAdapter } from "../src/adapters/captures/cm01-erpnext-bom-capture.ts";
-import { Cm01NominalModelicaCaptureAdapter } from "../src/adapters/captures/cm01-nominal-modelica-capture.ts";
+import { parseArgs } from "../lib/cli.ts";
+import { ApprovedBriefBaselineRunExecutor } from "../../src/adapters/executors/approved-brief-baseline-run-executor.ts";
+import { Cm01ErpNextBomCaptureAdapter } from "../../src/adapters/captures/cm01-erpnext-bom-capture.ts";
+import { Cm01NominalModelicaCaptureAdapter } from "../../src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   CoffeeMachineCm01V3ArchitectureRunExecutor,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-architecture-run-executor.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-architecture-run-executor.ts";
 import {
   CoffeeMachineCm01V3CadRunExecutor,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-cad-run-executor.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-cad-run-executor.ts";
 import {
   CoffeeMachineCm01V3ErpNextBomRunExecutor,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
 import {
   projectCoffeeMachineCm01V3GoldenObservation,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-golden-observation.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-golden-observation.ts";
 import {
   CoffeeMachineCm01V3MechanicalRunExecutor,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-mechanical-run-executor.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-mechanical-run-executor.ts";
 import {
   CoffeeMachineCm01V3ThermalRunExecutor,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-thermal-run-executor.ts";
-import { FileCm01DripTrayMechanicalAttemptStore } from "../src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
-import { FileCm01ErpNextBomRunCaptureStore } from "../src/adapters/captures/file-cm01-erpnext-bom-run-capture-store.ts";
-import { FileCm01NominalModelicaAttemptStore } from "../src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
-import { FileCm01SemanticCadAttemptStore } from "../src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
-import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-thermal-run-executor.ts";
+import { FileCm01DripTrayMechanicalAttemptStore } from "../../src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
+import { FileCm01ErpNextBomRunCaptureStore } from "../../src/adapters/captures/file-cm01-erpnext-bom-run-capture-store.ts";
+import { FileCm01NominalModelicaAttemptStore } from "../../src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
+import { FileCm01SemanticCadAttemptStore } from "../../src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
+import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "../../src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import {
   CoffeeMachineCm01V3SensitivityRunExecutor,
-} from "../src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
+} from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
@@ -39,39 +39,39 @@ import {
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "../src/adapters/captures/file-capture-store.ts";
-import { FileSensitivityRunAttemptStore } from "../src/adapters/wal/file-sensitivity-run-attempt-store.ts";
-import { FileEngineeringProjectRunLease } from "../src/adapters/stores/file-engineering-project-run-lease.ts";
-import { FileEngineeringProjectRevisionStore } from "../src/adapters/stores/engineering-project-store.ts";
-import { ExactThreadCompletionEvidenceValidator } from "../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { FileLiveThreadUpdateStore } from "../src/adapters/stores/live-thread-update-store.ts";
-import { loadFleetManifest } from "../src/adapters/manifest.ts";
-import { HttpMcpToolClient } from "../src/adapters/mcp/http-mcp-tool-client.ts";
-import { FileSysonModelSeedAttemptStore } from "../src/adapters/wal/file-syson-model-seed-attempt-store.ts";
-import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snapshot-store.ts";
-import { SysonModelSeedRunExecutor } from "../src/adapters/executors/syson-model-seed-run-executor.ts";
-import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01/cm01-drip-tray-mechanical-proof.ts";
-import { parseCoffeeMachineCm01SemanticRecipe } from "../src/domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
-import { validateSensitivityStudyCase } from "../src/domain/analysis/sensitivity-study.ts";
+} from "../../src/adapters/captures/file-capture-store.ts";
+import { FileSensitivityRunAttemptStore } from "../../src/adapters/wal/file-sensitivity-run-attempt-store.ts";
+import { FileEngineeringProjectRunLease } from "../../src/adapters/stores/file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../../src/adapters/validators/engineering-project-completion-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
+import { FileLiveThreadUpdateStore } from "../../src/adapters/stores/live-thread-update-store.ts";
+import { loadFleetManifest } from "../../src/adapters/manifest.ts";
+import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { FileSysonModelSeedAttemptStore } from "../../src/adapters/wal/file-syson-model-seed-attempt-store.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { SysonModelSeedRunExecutor } from "../../src/adapters/executors/syson-model-seed-run-executor.ts";
+import { parseCm01DripTrayMechanicalProof } from "../../src/domain/cm01/cm01-drip-tray-mechanical-proof.ts";
+import { parseCoffeeMachineCm01SemanticRecipe } from "../../src/domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
+import { validateSensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   type GoldenReferenceComparison,
   validateCoffeeMachineCm01V3GoldenReference,
-} from "../src/domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
+} from "../../src/domain/cm01/coffee-machine-cm01-v3-golden-reference.ts";
 import {
   type EngineeringProjectCommandOrigin,
   EngineeringProjectCommandService,
-} from "../src/domain/project/engineering-project-command-service.ts";
+} from "../../src/domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringBasisRef,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
-} from "../src/domain/project/engineering-project.ts";
-import { ProjectBriefCommandService } from "../src/domain/project/project-brief-command-service.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../src/domain/platform/syson-model-seed.ts";
-import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../src/orchestration/operations/registry.ts";
+} from "../../src/domain/project/engineering-project.ts";
+import { ProjectBriefCommandService } from "../../src/domain/project/project-brief-command-service.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/platform/syson-model-seed.ts";
+import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../src/orchestration/operations/registry.ts";
 
 export const CM01_V3_LOCAL_EXECUTION_ACKNOWLEDGEMENT =
   "EXECUTE_CM01_V3_LOCAL_RUN" as const;

@@ -29,7 +29,7 @@
 import {
   HttpMcpToolClient,
   type McpToolClient,
-} from "../src/adapters/mcp/http-mcp-tool-client.ts";
+} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
