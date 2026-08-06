@@ -3,6 +3,7 @@ import {
   HttpMcpToolClient,
   type McpToolClient,
 } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { parseZ3Result, type Z3Result } from "../../src/adapters/mcp/z3-result.ts";
 
 /**
  * Diagnostic probe for syson_constraint_solve.
@@ -44,11 +45,6 @@ export interface ProbeConstraintSolverResult {
   readonly extractErrors: readonly unknown[];
   readonly z3: Z3Result;
 }
-
-export type Z3Result =
-  | { readonly status: "sat"; readonly model: Record<string, unknown> }
-  | { readonly status: "unsat"; readonly conflict: readonly string[] }
-  | { readonly status: "error"; readonly message: string };
 
 /**
  * Run the probe and return a machine-readable result.
@@ -111,47 +107,6 @@ export async function probeConstraintSolver(
     extractErrors,
     z3,
   };
-}
-
-/**
- * Map the raw JSON object from syson_constraint_solve to a typed Z3Result.
- *
- * z3 surfaces exactly two non-error states: sat (with a variable model) and
- * unsat (with a conflict set). Any deviation from those shapes is a provider
- * contract violation and surfaces as an error state rather than silently
- * returning incomplete data.
- */
-function parseZ3Result(raw: Record<string, unknown>): Z3Result {
-  const status = raw.status;
-  if (status === "sat") {
-    const model = raw.model;
-    if (!isRecord(model)) {
-      return { status: "error", message: "sat response missing model object" };
-    }
-    return { status: "sat", model };
-  }
-  if (status === "unsat") {
-    const conflict = raw.conflict;
-    if (!Array.isArray(conflict)) {
-      return { status: "error", message: "unsat response missing conflict array" };
-    }
-    const ids = conflict.filter((item): item is string => typeof item === "string");
-    if (ids.length !== conflict.length) {
-      return {
-        status: "error",
-        message: "unsat conflict contains non-string entries",
-      };
-    }
-    return { status: "unsat", conflict: ids };
-  }
-  return {
-    status: "error",
-    message: `unexpected z3 status: ${JSON.stringify(status)}`,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 if (import.meta.main) {

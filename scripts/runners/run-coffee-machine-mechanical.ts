@@ -44,6 +44,12 @@ import type {
   CompiledThreadWorkflow,
   WorkflowOutputType,
 } from "../../src/workflow/types.ts";
+import {
+  type CoffeeMachineMechanicalProofCase,
+  extractApprovedProofCase,
+  type MechanicalCaptureStore,
+} from "../../src/domain/cm01/coffee-machine-cm01-mechanical-proposal.ts";
+import { FileMechanicalCaptureStore } from "../../src/adapters/captures/file-mechanical-capture-store.ts";
 
 export const COFFEE_MACHINE_MECHANICAL_RUN_SCHEMA =
   "coffee-machine-mechanical-run/1.0" as const;
@@ -57,39 +63,12 @@ const CANONICAL_MECHANICAL_WORKFLOW = new URL(
   "../../config/thread-workflows/coffee-machine-mechanical-v1.yaml",
   import.meta.url,
 );
-const EXPECTED_PARAMETER_KEYS = [
-  "analysis_scope",
-  "evidence_boundary",
-  "fixed_region",
-  "load_case",
-  "material_basis",
-  "max_displacement_mm",
-  "max_von_mises_mpa",
-  "mesh_size_mm",
-  "poisson_ratio",
-  "young_modulus_mpa",
-] as const;
 const TARGET_MODEL_NAMES = new Set([
   "assembly_max_displacement",
   "assembly_max_von_mises",
   "assembly_displacement_limit",
   "assembly_von_mises_limit",
 ]);
-
-export interface CoffeeMachineMechanicalProofCase {
-  readonly analysisScope: string;
-  readonly dimensionsMm: readonly [number, number, number];
-  readonly materialBasis: string;
-  readonly youngModulusMpa: number;
-  readonly poissonRatio: number;
-  readonly fixedRegion: "rear-vertical-face";
-  readonly loadCase: string;
-  readonly loadForceN: readonly [number, number, number];
-  readonly meshSizeMm: number;
-  readonly maxVonMisesMpa: number;
-  readonly maxDisplacementMm: number;
-  readonly evidenceBoundary: string;
-}
 
 export interface CoffeeMachineMechanicalStepArtifact {
   readonly format: "step";
@@ -137,13 +116,6 @@ export interface CoffeeMachineMechanicalRunCapture {
     readonly artifact: CoffeeMachineMechanicalStepArtifact;
   };
   readonly workflow: WorkflowExecution;
-}
-
-export interface MechanicalCaptureStore {
-  prepare(path: string): Promise<void>;
-  persist(path: string, deterministicContents: string): Promise<void>;
-  /** Release a production claim after success or failure. Test stores may omit it. */
-  release?(path: string): Promise<void>;
 }
 
 export interface RunCoffeeMachineMechanicalOptions {
@@ -641,68 +613,6 @@ function assertSafePreflightResume(
   }
 }
 
-/**
- * The persistent `.lock` file is only a rendezvous point; the OS file lock is
- * the claim. A process crash releases that claim automatically, so recovery
- * never depends on an unsafe age-based stale-lock heuristic.
- */
-class FileMechanicalCaptureStore implements MechanicalCaptureStore {
-  readonly #claims = new Map<string, Deno.FsFile>();
-
-  async prepare(path: string): Promise<void> {
-    if (this.#claims.has(path)) {
-      throw new Error(`Mechanical capture is already claimed at ${path}.`);
-    }
-    await Deno.mkdir(directoryName(path), { recursive: true });
-    const claim = await Deno.open(`${path}.lock`, {
-      create: true,
-      read: true,
-      write: true,
-    });
-    let locked = false;
-    try {
-      locked = await claim.tryLock(true);
-      if (!locked) {
-        throw new Error(
-          `Mechanical capture is already claimed by another runner at ${path}.`,
-        );
-      }
-      try {
-        await Deno.stat(path);
-      } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
-          this.#claims.set(path, claim);
-          return;
-        }
-        throw error;
-      }
-      throw new Error(`Mechanical capture already exists at ${path}.`);
-    } catch (error) {
-      if (locked) await claim.unlock();
-      claim.close();
-      throw error;
-    }
-  }
-
-  async persist(path: string, contents: string): Promise<void> {
-    if (!this.#claims.has(path)) {
-      throw new Error(`Mechanical capture has no active claim at ${path}.`);
-    }
-    await Deno.writeTextFile(path, contents, { createNew: true });
-  }
-
-  async release(path: string): Promise<void> {
-    const claim = this.#claims.get(path);
-    if (!claim) return;
-    this.#claims.delete(path);
-    try {
-      await claim.unlock();
-    } finally {
-      claim.close();
-    }
-  }
-}
-
 interface Authorization {
   decision: EngineeringDecision;
   run: EngineeringAgentRun;
@@ -805,70 +715,6 @@ async function authorizeRun(
     run,
     approvedBy: approvals[0].decidedBy,
     queuedBy: queued.actor.id,
-  };
-}
-
-export function extractApprovedProofCase(
-  decision: EngineeringDecision,
-): CoffeeMachineMechanicalProofCase {
-  if (decision.status !== "approved" || !decision.proposal) {
-    throw new Error("Cannot extract an unapproved mechanical proposal.");
-  }
-  const parameters = parameterMap(decision.proposal.parameters);
-  const analysisScope = textParameter(parameters, "analysis_scope");
-  const dimensionsMatch = analysisScope.match(
-    /^CM-01 drip tray; isolated current CAD component, ([0-9]+(?:\.[0-9]+)?) x ([0-9]+(?:\.[0-9]+)?) x ([0-9]+(?:\.[0-9]+)?) mm$/,
-  );
-  if (!dimensionsMatch) {
-    throw new TypeError(
-      "analysis_scope does not identify one typed CM-01 drip-tray box.",
-    );
-  }
-  const dimensionsMm = dimensionsMatch.slice(1).map(Number) as [number, number, number];
-  dimensionsMm.forEach((value) => positive(value, "analysis_scope dimension"));
-  const fixed = textParameter(parameters, "fixed_region");
-  if (fixed !== "Rear vertical face fully fixed") {
-    throw new TypeError(
-      "fixed_region is not the supported reviewed rear-face condition.",
-    );
-  }
-  const loadCase = textParameter(parameters, "load_case");
-  const loadMatch = loadCase.match(
-    /^([0-9]+(?:\.[0-9]+)?) N total downward force on the front vertical face(?: \(about [^)]+\))?$/,
-  );
-  if (!loadMatch) {
-    throw new TypeError("load_case is not one typed front-face downward force.");
-  }
-  const loadN = positive(Number(loadMatch[1]), "load_case force");
-  const poissonRatio = numberParameter(parameters, "poisson_ratio", "1");
-  if (poissonRatio <= 0 || poissonRatio >= 0.5) {
-    throw new TypeError("poisson_ratio must be greater than zero and below 0.5.");
-  }
-  return {
-    analysisScope,
-    dimensionsMm,
-    materialBasis: textParameter(parameters, "material_basis"),
-    youngModulusMpa: positive(
-      numberParameter(parameters, "young_modulus_mpa", "MPa"),
-      "young_modulus_mpa",
-    ),
-    poissonRatio,
-    fixedRegion: "rear-vertical-face",
-    loadCase,
-    loadForceN: [0, 0, -loadN],
-    meshSizeMm: positive(
-      numberParameter(parameters, "mesh_size_mm", "mm"),
-      "mesh_size_mm",
-    ),
-    maxVonMisesMpa: positive(
-      numberParameter(parameters, "max_von_mises_mpa", "MPa"),
-      "max_von_mises_mpa",
-    ),
-    maxDisplacementMm: positive(
-      numberParameter(parameters, "max_displacement_mm", "mm"),
-      "max_displacement_mm",
-    ),
-    evidenceBoundary: textParameter(parameters, "evidence_boundary"),
   };
 }
 
@@ -1359,51 +1205,6 @@ function edge(
   };
 }
 
-function parameterMap(
-  parameters: readonly EngineeringDecisionProposalParameter[],
-): ReadonlyMap<string, EngineeringDecisionProposalParameter> {
-  const result = new Map<string, EngineeringDecisionProposalParameter>();
-  for (const parameter of parameters) {
-    if (result.has(parameter.key)) {
-      throw new TypeError(`Duplicate proposal parameter: ${parameter.key}.`);
-    }
-    result.set(parameter.key, parameter);
-  }
-  const actual = [...result.keys()].sort();
-  if (!sameJson(actual, EXPECTED_PARAMETER_KEYS)) {
-    throw new TypeError(
-      "Mechanical proposal parameters do not match the exact runner contract.",
-    );
-  }
-  return result;
-}
-
-function textParameter(
-  parameters: ReadonlyMap<string, EngineeringDecisionProposalParameter>,
-  key: string,
-): string {
-  const value = parameters.get(key)?.value;
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new TypeError(`${key} must be a non-empty reviewed string.`);
-  }
-  return value;
-}
-
-function numberParameter(
-  parameters: ReadonlyMap<string, EngineeringDecisionProposalParameter>,
-  key: string,
-  unit: string,
-): number {
-  const parameter = parameters.get(key);
-  if (
-    typeof parameter?.value !== "number" || !Number.isFinite(parameter.value) ||
-    parameter.unit !== unit
-  ) {
-    throw new TypeError(`${key} must be a finite reviewed number in ${unit}.`);
-  }
-  return parameter.value;
-}
-
 function coordinates(input: {
   editingContextId: string;
   requirementsElementId: string;
@@ -1435,13 +1236,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function positive(value: number, label: string): number {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new TypeError(`${label} must be a positive finite number.`);
-  }
-  return value;
-}
-
 function decimal(value: number): string {
   if (!Number.isFinite(value)) {
     throw new TypeError("Cannot render a non-finite number.");
@@ -1471,11 +1265,6 @@ function sameJson(left: unknown, right: unknown): boolean {
 function joinPath(directory: string, name: string): string {
   if (directory.trim() === "") throw new TypeError("directory must not be empty");
   return `${directory.replace(/\/$/, "")}/${name}`;
-}
-
-function directoryName(path: string): string {
-  const index = path.lastIndexOf("/");
-  return index < 0 ? "." : path.slice(0, index) || "/";
 }
 
 if (import.meta.main) {

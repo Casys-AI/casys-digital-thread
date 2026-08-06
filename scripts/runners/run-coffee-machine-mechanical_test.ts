@@ -22,8 +22,8 @@ import {
 import {
   extractApprovedProofCase,
   type MechanicalCaptureStore,
-  runCoffeeMachineMechanical,
-} from "./run-coffee-machine-mechanical.ts";
+} from "../../src/domain/cm01/coffee-machine-cm01-mechanical-proposal.ts";
+import { runCoffeeMachineMechanical } from "./run-coffee-machine-mechanical.ts";
 
 const CONFIG = new URL(
   "../../config/projects/coffee-machine-cm01.project.json",
