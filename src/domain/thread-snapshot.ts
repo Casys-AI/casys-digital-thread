@@ -1,4 +1,6 @@
-import type { IsoDateTime } from "./types.ts";
+import type { ContentFingerprint, IsoDateTime } from "./types.ts";
+
+export type { ContentFingerprint } from "./types.ts";
 
 /**
  * Versioned, transport-independent state of one executable digital thread.
@@ -18,11 +20,6 @@ export interface ThreadFreshness {
   reason?: string;
   /** Changes which made this entity stale or caused its recomputation. */
   invalidatedByChangeIds: string[];
-}
-
-export interface ContentFingerprint {
-  algorithm: "sha256";
-  digest: string;
 }
 
 export interface EngineeringQuantity {

@@ -1,4 +1,4 @@
-import type { ContentFingerprint } from "./thread-snapshot.ts";
+import type { ContentFingerprint } from "./types.ts";
 
 /** Canonical JSON with lexicographically sorted object keys and stable arrays. */
 export function deterministicJson(value: unknown): string {

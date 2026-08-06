@@ -7,6 +7,11 @@
 
 export type IsoDateTime = string;
 
+export interface ContentFingerprint {
+  algorithm: "sha256";
+  digest: string;
+}
+
 export type ConsoleMode = "live" | "mixed" | "demo";
 
 export type Availability =
