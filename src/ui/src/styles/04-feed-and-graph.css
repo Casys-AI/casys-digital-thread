@@ -1171,10 +1171,17 @@
 .evidence-exploration-stage {
   flex: 1;
   min-width: 0;
+  /* position:relative est obligatoire : les canvas sigma sont position:absolute.
+     Sans lui, ils utilisent .evidence-exploration (parent positionné) comme
+     containing block, soit stage + légende — le hit-testing sigma est alors
+     décalé de la largeur de la légende et les clics sur nœuds ne s'enregistrent pas. */
+  position: relative;
 }
 
 /* Sigma injecte ses propres canvas dans ce conteneur.
-   height:100% est requis pour que Sigma mesure la dimension correctement. */
+   width/height 100% sont calculés depuis le stage (position:relative ci-dessus),
+   ce qui garantit que la résolution CSS des canvases correspond à leurs pixels
+   physiques initialisés au montage. */
 .evidence-exploration-stage > canvas,
 .evidence-exploration-stage > div {
   width: 100% !important;
