@@ -24,7 +24,7 @@
  * authority.
  */
 
-import type { SensitivityRelationsDeclaration } from "../../domain/sensitivity-relations.ts";
+import type { SensitivityRelationsDeclaration } from "../../domain/analysis/sensitivity-relations.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 // ---------------------------------------------------------------------------

@@ -48,7 +48,7 @@ import {
   type PrintEstimateCase,
   renderDripTrayPrintEstimateScript,
   validatePrintEstimateCase,
-} from "../../domain/print-estimate-case.ts";
+} from "../../domain/analysis/print-estimate-case.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

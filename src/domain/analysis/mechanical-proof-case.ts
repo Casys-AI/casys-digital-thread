@@ -16,7 +16,7 @@ import {
   positiveInteger,
   rejectDuplicates,
   safeId,
-} from "./case-validation.ts";
+} from "../case-validation.ts";
 
 export const MECHANICAL_PROOF_CASE_SCHEMA = "mechanical-proof-case/1.0" as const;
 

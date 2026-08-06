@@ -33,7 +33,7 @@ import {
   type SensitivityMetricMeasurement,
   type SensitivityStudyCase,
   validateSensitivityStudyCase,
-} from "../../domain/sensitivity-study.ts";
+} from "../../domain/analysis/sensitivity-study.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

@@ -34,7 +34,7 @@ import {
   SENSITIVITY_RELATIONS_SCHEMA,
   type SensitivityRelationsDeclaration,
   validateSensitivityRelationsDeclaration,
-} from "../../domain/sensitivity-relations.ts";
+} from "../../domain/analysis/sensitivity-relations.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

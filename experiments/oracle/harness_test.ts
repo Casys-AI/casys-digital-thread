@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { validateSensitivityStudyCase } from "../../src/domain/sensitivity-study.ts";
+import { validateSensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
 import type {
   McpToolCall,
   McpToolResult,

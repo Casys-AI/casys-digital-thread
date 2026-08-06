@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { validateSensitivityStudyCase } from "../../domain/sensitivity-study.ts";
+import { validateSensitivityStudyCase } from "../../domain/analysis/sensitivity-study.ts";
 import {
   createThreadSnapshot,
   validateThreadSnapshot,

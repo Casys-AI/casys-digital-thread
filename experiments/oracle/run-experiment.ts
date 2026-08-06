@@ -16,7 +16,7 @@
  */
 
 import { sha256Fingerprint } from "../../src/domain/deterministic-json.ts";
-import { validateSensitivityStudyCase } from "../../src/domain/sensitivity-study.ts";
+import { validateSensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
 import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import {
   armBStep,

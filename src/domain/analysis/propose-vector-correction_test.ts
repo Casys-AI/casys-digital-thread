@@ -23,7 +23,10 @@ import {
   type UnresolvedCorrection,
 } from "./propose-vector-correction.ts";
 import type { SensitivityEdge } from "./sensitivity-edge.ts";
-import type { EvaluationComparison, RequirementEvaluation } from "./thread-snapshot.ts";
+import type {
+  EvaluationComparison,
+  RequirementEvaluation,
+} from "../thread-snapshot.ts";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures — copied from the real R16 capture

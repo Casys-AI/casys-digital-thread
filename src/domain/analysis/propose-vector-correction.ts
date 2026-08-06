@@ -46,9 +46,9 @@
 import type {
   EngineeringCommandActor,
   EngineeringDecisionProposal,
-} from "./engineering-project.ts";
+} from "../engineering-project.ts";
 import type { SensitivityEdge } from "./sensitivity-edge.ts";
-import type { RequirementEvaluation } from "./thread-snapshot.ts";
+import type { RequirementEvaluation } from "../thread-snapshot.ts";
 
 // ---------------------------------------------------------------------------
 // Schema version

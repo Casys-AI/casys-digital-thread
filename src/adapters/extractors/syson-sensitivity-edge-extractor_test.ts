@@ -4,8 +4,8 @@ import {
   SensitivityEdgeExtractionError,
   verifyExtractedEdgeBound,
 } from "./syson-sensitivity-edge-extractor.ts";
-import { validateSensitivityEdgeSet } from "../../domain/sensitivity-edge.ts";
-import { SENSITIVITY_EDGE_SCHEMA } from "../../domain/sensitivity-edge.ts";
+import { validateSensitivityEdgeSet } from "../../domain/analysis/sensitivity-edge.ts";
+import { SENSITIVITY_EDGE_SCHEMA } from "../../domain/analysis/sensitivity-edge.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures — shapes copied from actual probe D response (2026-08-05)

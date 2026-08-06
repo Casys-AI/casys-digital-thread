@@ -18,7 +18,7 @@ import {
   positiveInteger,
   rejectDuplicates,
   safeId,
-} from "./case-validation.ts";
+} from "../case-validation.ts";
 
 export const SENSITIVITY_STUDY_CASE_SCHEMA = "sensitivity-study-case/1.0" as const;
 

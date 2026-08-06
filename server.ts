@@ -85,17 +85,17 @@ import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_OPERATION,
   CoffeeMachineCm01V3SensitivityRunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
-import { validateSensitivityStudyCase } from "./src/domain/sensitivity-study.ts";
+import { validateSensitivityStudyCase } from "./src/domain/analysis/sensitivity-study.ts";
 import {
   COFFEE_MACHINE_CM01_V3_PRINTABILITY_OPERATION,
   CoffeeMachineCm01V3PrintabilityRunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-printability-run-executor.ts";
-import { validatePrintabilityCheckCase } from "./src/domain/printability-case.ts";
+import { validatePrintabilityCheckCase } from "./src/domain/analysis/printability-case.ts";
 import {
   COFFEE_MACHINE_CM01_V3_PRINT_ESTIMATE_OPERATION,
   CoffeeMachineCm01V3PrintEstimateRunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-print-estimate-run-executor.ts";
-import { validatePrintEstimateCase } from "./src/domain/print-estimate-case.ts";
+import { validatePrintEstimateCase } from "./src/domain/analysis/print-estimate-case.ts";
 import {
   COFFEE_MACHINE_CM01_V3_DRIP_TRAY_HEIGHT_CORRECTION_OPERATION,
   CoffeeMachineCm01V3DripTrayHeightCorrectionRunExecutor,

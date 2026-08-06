@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { validatePrintabilityCheckCase } from "../../domain/printability-case.ts";
+import { validatePrintabilityCheckCase } from "../../domain/analysis/printability-case.ts";
 import {
   createThreadSnapshot,
   validateThreadSnapshot,

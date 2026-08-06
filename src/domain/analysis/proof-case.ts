@@ -1,5 +1,5 @@
-import type { ContentFingerprint } from "./thread-snapshot.ts";
-import { sha256Fingerprint } from "./deterministic-json.ts";
+import type { ContentFingerprint } from "../thread-snapshot.ts";
+import { sha256Fingerprint } from "../deterministic-json.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -8,7 +8,7 @@ import {
   nonEmptyText,
   rejectDuplicates,
   safeId,
-} from "./case-validation.ts";
+} from "../case-validation.ts";
 
 /**
  * Generic oracle-requirement contract for any discipline that evaluates scalar

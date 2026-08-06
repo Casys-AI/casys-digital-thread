@@ -15,7 +15,7 @@
 import {
   renderDripTraySensitivityScriptForHeight,
   type SensitivityStudyCase,
-} from "../../src/domain/sensitivity-study.ts";
+} from "../../src/domain/analysis/sensitivity-study.ts";
 import {
   parseBuild123dSensitivityExport,
   parseCalculixSensitivitySolve,

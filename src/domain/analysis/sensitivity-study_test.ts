@@ -14,7 +14,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const CONFIG_URL = new URL(
-  "../../config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json",
+  "../../../config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json",
   import.meta.url,
 );
 

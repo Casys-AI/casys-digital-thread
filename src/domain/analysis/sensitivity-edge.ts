@@ -30,8 +30,8 @@
  * the only form for which syson_constraint_extract returns the correct featurePath.
  */
 
-import type { ContentFingerprint } from "./thread-snapshot.ts";
-import { sha256Fingerprint } from "./deterministic-json.ts";
+import type { ContentFingerprint } from "../thread-snapshot.ts";
+import { sha256Fingerprint } from "../deterministic-json.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -40,7 +40,7 @@ import {
   literalValue,
   nonEmptyText,
   rejectDuplicates,
-} from "./case-validation.ts";
+} from "../case-validation.ts";
 
 // ---------------------------------------------------------------------------
 // Schema constant

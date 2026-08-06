@@ -10,7 +10,7 @@
  * and logged. It writes nothing except its stdout line.
  */
 
-import { validateSensitivityStudyCase } from "../../src/domain/sensitivity-study.ts";
+import { validateSensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
 import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import { solveAtHeight } from "./harness.ts";
 

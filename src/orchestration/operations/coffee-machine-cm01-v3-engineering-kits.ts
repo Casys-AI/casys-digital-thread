@@ -385,7 +385,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/proof-case.ts",
+          path: "src/domain/analysis/proof-case.ts",
           purpose:
             "Provides the deterministic SysML renderer and fingerprint that produce the canonical requirement element text.",
         },
@@ -843,7 +843,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/sensitivity-study.ts",
+          path: "src/domain/analysis/sensitivity-study.ts",
           purpose:
             "Provides the pure-domain validator, deterministic script renderer, and derivative arithmetic with unit composition.",
         },
@@ -878,7 +878,7 @@ const KITS = [
       sourceRefs: [
         {
           kind: "reviewed-configuration",
-          path: "src/domain/sensitivity-relations.ts",
+          path: "src/domain/analysis/sensitivity-relations.ts",
           purpose:
             "Provides the validated declaration contract, deterministic SysML renderer, and fingerprint that produce the canonical sensitivity-relations element text.",
         },
@@ -928,7 +928,7 @@ const KITS = [
       sourceRefs: [
         {
           kind: "reviewed-configuration",
-          path: "src/domain/sensitivity-edge.ts",
+          path: "src/domain/analysis/sensitivity-edge.ts",
           purpose:
             "Provides the generic SensitivityEdge domain contract, deterministic SysML renderer " +
             "(flat PartDef, probe-confirmed form), and fingerprint. No METRIC_TO_ATTR_NAME map: " +
@@ -987,7 +987,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/printability-case.ts",
+          path: "src/domain/analysis/printability-case.ts",
           purpose:
             "Provides the fail-closed validator and server-fixed STL script renderer. The agent never supplies geometry, thresholds, or tool names.",
         },
@@ -1035,7 +1035,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "src/domain/print-estimate-case.ts",
+          path: "src/domain/analysis/print-estimate-case.ts",
           purpose:
             "Provides the fail-closed validator, server-fixed STL script renderer, and deterministic repo-to-container path mapping. The agent never supplies geometry, profiles, or density.",
         },

@@ -21,7 +21,7 @@
 import { PLATE_THICKNESS_DEFAULT_MM, ribbedTrayVolumeMm3 } from "./ribbed-geometry.ts";
 import { proposeVectorCorrection, type SensitivityEdge } from "./traversal.ts";
 import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
-import { validateSensitivityStudyCase } from "../../src/domain/sensitivity-study.ts";
+import { validateSensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
 import { solveAtHeight } from "./harness.ts";
 
 const ACK = "EXECUTE_ORACLE_2D_TRAVERSAL";

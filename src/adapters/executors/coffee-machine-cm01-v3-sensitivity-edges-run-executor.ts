@@ -51,7 +51,7 @@ import {
   SENSITIVITY_EDGE_SCHEMA,
   type SensitivityEdge,
   validateSensitivityEdgeSet,
-} from "../../domain/sensitivity-edge.ts";
+} from "../../domain/analysis/sensitivity-edge.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

@@ -29,7 +29,10 @@ import type {
   ThreadOperationRef,
   TracedRequirement,
 } from "../../domain/thread-snapshot.ts";
-import { buildConstraintAst, type OracleRequirement } from "../../domain/proof-case.ts";
+import {
+  buildConstraintAst,
+  type OracleRequirement,
+} from "../../domain/analysis/proof-case.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ import {
   fingerprintOracleRequirements,
   type OracleRequirement,
   renderOracleRequirementsSysml,
-} from "../../domain/proof-case.ts";
+} from "../../domain/analysis/proof-case.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

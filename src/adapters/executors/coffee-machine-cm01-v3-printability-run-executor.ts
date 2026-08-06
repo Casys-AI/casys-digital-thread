@@ -43,7 +43,7 @@ import {
   type PrintabilityCheckCase,
   renderDripTrayPrintabilityScript,
   validatePrintabilityCheckCase,
-} from "../../domain/printability-case.ts";
+} from "../../domain/analysis/printability-case.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

@@ -23,7 +23,7 @@
  */
 
 import { assertEquals, assertExists, assertThrows } from "@std/assert";
-import { validatePrintEstimateCase } from "../../domain/print-estimate-case.ts";
+import { validatePrintEstimateCase } from "../../domain/analysis/print-estimate-case.ts";
 import {
   createThreadSnapshot,
   validateThreadSnapshot,

@@ -20,8 +20,8 @@
  *      Attributes and bounds are sorted by name before output.
  */
 
-import type { ContentFingerprint } from "./thread-snapshot.ts";
-import { sha256Fingerprint } from "./deterministic-json.ts";
+import type { ContentFingerprint } from "../thread-snapshot.ts";
+import { sha256Fingerprint } from "../deterministic-json.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -31,7 +31,7 @@ import {
   nonEmptyArray,
   nonEmptyText,
   rejectDuplicates,
-} from "./case-validation.ts";
+} from "../case-validation.ts";
 
 // ---------------------------------------------------------------------------
 // Schema constant

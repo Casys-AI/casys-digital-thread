@@ -31,7 +31,7 @@ import {
   positiveInteger,
   rejectDuplicates,
   safeId,
-} from "./case-validation.ts";
+} from "../case-validation.ts";
 
 export const PRINTABILITY_CHECK_CASE_SCHEMA = "printability-check-case/1.0" as const;
 

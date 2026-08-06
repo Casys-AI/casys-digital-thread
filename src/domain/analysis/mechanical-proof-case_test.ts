@@ -7,19 +7,22 @@ import {
 } from "./mechanical-proof-case.ts";
 
 const CONFIG_URL = new URL(
-  "../../config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+  "../../../config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
   import.meta.url,
 );
 const CONFIG_TEXT = await Deno.readTextFile(CONFIG_URL);
 const PROJECT = JSON.parse(
   await Deno.readTextFile(
-    new URL("../../config/projects/coffee-machine-cm01.project.json", import.meta.url),
+    new URL(
+      "../../../config/projects/coffee-machine-cm01.project.json",
+      import.meta.url,
+    ),
   ),
 ) as Record<string, unknown>;
 const BASE_SNAPSHOT = JSON.parse(
   await Deno.readTextFile(
     new URL(
-      "../../config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
+      "../../../config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
       import.meta.url,
     ),
   ),
@@ -27,7 +30,7 @@ const BASE_SNAPSHOT = JSON.parse(
 const BUILD_DECLARATION = JSON.parse(
   await Deno.readTextFile(
     new URL(
-      "../../config/thread-subjects/coffee-machine-cm01.build.json",
+      "../../../config/thread-subjects/coffee-machine-cm01.build.json",
       import.meta.url,
     ),
   ),

@@ -29,7 +29,7 @@
  * to "FeatureReferenceExpression").
  */
 
-import type { SensitivityEdge } from "../../domain/sensitivity-edge.ts";
+import type { SensitivityEdge } from "../../domain/analysis/sensitivity-edge.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 // ---------------------------------------------------------------------------

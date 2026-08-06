@@ -53,7 +53,7 @@ import { FileThreadSnapshotStore } from "../src/adapters/stores/file-thread-snap
 import { SysonModelSeedRunExecutor } from "../src/adapters/executors/syson-model-seed-run-executor.ts";
 import { parseCm01DripTrayMechanicalProof } from "../src/domain/cm01-drip-tray-mechanical-proof.ts";
 import { parseCoffeeMachineCm01SemanticRecipe } from "../src/domain/coffee-machine-cm01-semantic-recipe.ts";
-import { validateSensitivityStudyCase } from "../src/domain/sensitivity-study.ts";
+import { validateSensitivityStudyCase } from "../src/domain/analysis/sensitivity-study.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   type GoldenReferenceComparison,

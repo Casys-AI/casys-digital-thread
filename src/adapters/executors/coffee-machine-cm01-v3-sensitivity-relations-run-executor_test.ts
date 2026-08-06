@@ -28,7 +28,7 @@ import { ProjectBriefCommandService } from "../../domain/project-brief-command-s
 import {
   SENSITIVITY_RELATIONS_SCHEMA,
   validateSensitivityRelationsDeclaration,
-} from "../../domain/sensitivity-relations.ts";
+} from "../../domain/analysis/sensitivity-relations.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";

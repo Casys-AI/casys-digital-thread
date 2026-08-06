@@ -1,4 +1,4 @@
-import type { OracleRequirement } from "../../domain/proof-case.ts";
+import type { OracleRequirement } from "../../domain/analysis/proof-case.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 /**
