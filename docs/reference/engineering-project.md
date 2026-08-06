@@ -1,7 +1,7 @@
 # Reference: `EngineeringProjectSnapshot` contract
 
 > **Diátaxis category: reference.** This page describes the project contract in
-> [`src/domain/engineering-project.ts`](../../src/domain/engineering-project.ts), its
+> [`src/domain/project/engineering-project.ts`](../../src/domain/project/engineering-project.ts), its
 > strict validator, and its relationship to canonical thread evidence and live activity.
 
 `EngineeringProjectSnapshot` is the immutable, versioned state of what an engineering
@@ -478,7 +478,7 @@ fabrication, or establish certification.
 
 ## Validation and persistence
 
-[`engineering-project-validation.ts`](../../src/domain/engineering-project-validation.ts)
+[`engineering-project-validation.ts`](../../src/domain/project/engineering-project-validation.ts)
 rejects non-JSON values, unknown properties, duplicate identities, broken reciprocal
 links, dependency cycles, inconsistent lifecycle timestamps, contradictory
 decision/approval states, undeclared snapshot revisions, and mismatched execution

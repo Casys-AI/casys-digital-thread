@@ -1,7 +1,7 @@
 # Reference: candidate mechanical-analysis declaration
 
 > **Diátaxis category: reference.** This page describes
-> [`mechanical-proof-case.ts`](../../src/domain/mechanical-proof-case.ts) and the
+> [`mechanical-proof-case.ts`](../../src/domain/analysis/mechanical-proof-case.ts) and the
 > tracked CM-01 example under
 > [`config/mechanical-proof-cases/`](../../config/mechanical-proof-cases/).
 

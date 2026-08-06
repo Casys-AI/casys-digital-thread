@@ -44,9 +44,9 @@ main, `deno task test` ne prend pas d'argument de chemin :
 
 ```bash
 deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env \
-  src/domain/thread-snapshot_test.ts
+  src/domain/thread/thread-snapshot_test.ts
 deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env \
-  src/domain/thread-snapshot_test.ts --filter "strictly JSON serializable"
+  src/domain/thread/thread-snapshot_test.ts --filter "strictly JSON serializable"
 ```
 
 Surfaces interactives locales (chacune rebuild son bundle puis sert un BFF loopback) :
@@ -106,7 +106,7 @@ Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 
 | Couche                          | Rôle                                                                                                                                                                           |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*`                                                                                     |
+| `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*`. Sous-familles : `kernel/` (types, hashing, validation), `thread/` (snapshot, catalogues), `project/` (brief, commandes projet), `analysis/` (proof-case, sensibilité, correction), `platform/` (focus, SysON seed, dérive), `cm01/` (preuves et plans spécifiques CoffeeMachine) |
 | `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/` |
 | `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning                                                                                                   |
 | `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                                                                                                           |
@@ -114,7 +114,7 @@ Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 | `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                                                                                                                 |
 | `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)                                                                                        |
 | `src/testing/`                  | Fixtures partagées entre suites                                                                                                                                                |
-| `scripts/`                      | Entry points exécutables : BFF, runners CM-01, harness, gates de release                                                                                                       |
+| `scripts/`                      | Entry points par rôle : `runners/` (écritures immuables), `gates/` (vérification read-only), `probes/` (sondes diagnostiques), `serve/` (preview). `lib/` : modules partagés, pas des entry points. |
 | `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine                                                                                              |
 
 Les invariants suivants sont structurels — les casser casse le produit, pas seulement un
@@ -124,7 +124,7 @@ test :
    jamais mutés. Toute commande nomme la révision attendue et écrit une nouvelle
    révision. Une révision publiée est relue avant d'être considérée comme vraie.
 2. **Hash déterministe** — toute empreinte passe par `deterministicJson` /
-   `sha256Fingerprint` (`src/domain/deterministic-json.ts`) : clés triées, `undefined`
+   `sha256Fingerprint` (`src/domain/kernel/deterministic-json.ts`) : clés triées, `undefined`
    omis, nombres non finis rejetés. Ne jamais hasher un `JSON.stringify` brut.
 3. **Validation fail-closed** — le pattern dominant est
    `exactRecord(value, [clés], path)` : une clé en trop _ou_ en moins est un rejet. Voir
@@ -151,8 +151,8 @@ autre.
 
 ### Tests
 
-- `_test.ts` co-localisé à côté du module (`src/domain/foo.ts` ↔
-  `src/domain/foo_test.ts`).
+- `_test.ts` co-localisé à côté du module (`src/domain/kernel/foo.ts` ↔
+  `src/domain/kernel/foo_test.ts` — la sous-famille détermine le répertoire).
 - Les tests UI sont des tests **Deno**, placés à la **racine de `src/ui/`** (ex.
   `src/ui/project-model_test.ts`) et non à côté des `.tsx`. Ils importent depuis
   `src/ui/src/` et testent les modèles (`*-model.ts`) et les contrats, pas le rendu
@@ -309,7 +309,7 @@ Deux marches ont été franchies depuis. Les sept capture stores content-address
 maintenant un seul `FileCaptureStore<Kind>` : un nouveau type de preuve coûte un
 descripteur, pas une classe, et le paramètre de type continue d'interdire qu'un executor
 reçoive le store d'une autre famille. Et le verdict mécanique appartient à l'oracle, à
-travers `src/domain/proof-case.ts` — un contrat d'exigence sans rien de CalculiX ni de
+travers `src/domain/analysis/proof-case.ts` — un contrat d'exigence sans rien de CalculiX ni de
 CM-01, où l'unité est obligatoire et où le critère ignore d'où vient la mesure. C'est
 cette indifférence à la source qui le rend réutilisable par un second projet.
 
@@ -333,9 +333,9 @@ en dur) et obtient de `syson_constraint_solve` une valeur de driver en `sat` et 
 `unsat` avec conflit nommé hors voisinage — la porte ne dit plus toujours oui. Limite
 découverte : le solve inline n'accepte que la forme `ref op littéral`, la réduction
 analytique des bornes précède donc l'appel ; z3 répond en unités SI de base (mètres).
-Ensuite la généralisation : `src/domain/sensitivity-edge.ts` (arête = driver +
+Ensuite la généralisation : `src/domain/analysis/sensitivity-edge.ts` (arête = driver +
 voisinage + réponse + dérivée + provenance, tout unité, indifférent à la source),
-`proposeVectorCorrection` (`src/domain/propose-vector-correction.ts` — proposition
+`proposeVectorCorrection` (`src/domain/analysis/propose-vector-correction.ts` — proposition
 bornée au voisinage déclaré ou `unresolved` motivé : `no-applicable-edge`,
 `out-of-neighborhood`, `zero-derivative`, unités incompatibles ; jamais de clamp ni
 d'epsilon), et `buildCorrectionMrtrProposal` qui produit le DTO de décision humaine. La

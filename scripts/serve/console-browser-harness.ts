@@ -7,7 +7,7 @@
  *
  * Usage:
  *   deno task preview:browser
- *   deno run --allow-net=127.0.0.1 scripts/console-browser-harness.ts \
+ *   deno run --allow-net=127.0.0.1 scripts/serve/console-browser-harness.ts \
  *     --port 3021 --mcp-url http://127.0.0.1:3020/mcp
  */
 
