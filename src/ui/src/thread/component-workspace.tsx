@@ -240,6 +240,9 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
   const terminology = sysonTerminology(snapshot.components.components);
   const subtree = buildSysmlSubtree(snapshot, selected);
   const sysonBinding = bindingFor(selected, "syson");
+  const assemblyComponent = snapshot.components.components.find(
+    (component) => component.kind === "assembly",
+  );
   return (
     <section class="syson-structure" aria-label="SysON product structure">
       <header class="provider-surface-header">
@@ -249,6 +252,26 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
         </div>
         <code>{view?.diagramId ?? "diagram identity unavailable"}</code>
       </header>
+
+      {
+        /* The assembly banner is the structure root — restored to its
+          pre-facet position above everything else. Clicking it selects the
+          assembly component when the catalog declares one. */
+      }
+      <div
+        class="syson-root-node"
+        role={assemblyComponent ? "button" : undefined}
+        tabIndex={assemblyComponent ? 0 : undefined}
+        onClick={assemblyComponent
+          ? () => onSelect(assemblyComponent)
+          : undefined}
+      >
+        <span>ASSEMBLY</span>
+        <strong>{snapshot.subject.label}</strong>
+        <small>
+          {snapshot.components.components.length} {terminology.countLabel}
+        </small>
+      </div>
 
       {/* Native SVG sub-tree — no iframe, no external lib */}
       <SysmlSubtreeDiagram
@@ -282,32 +305,9 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
       )}
 
       {
-        /* The assembly is the structure root — one dedicated row, never one
-          card among the parts it contains. */
+        /* Part grid: compact selector, secondary to the SVG. The assembly
+          lives in the root banner above, never among its own parts. */
       }
-      {snapshot.components.components
-        .filter((component) => component.kind === "assembly")
-        .map((assembly) => {
-          const binding = bindingFor(assembly, "syson");
-          return (
-            <button
-              key={assembly.id}
-              type="button"
-              class={`syson-assembly-root${
-                assembly.id === selected.id ? " is-selected" : ""
-              }`}
-              data-state={binding?.status ?? "missing"}
-              onClick={() => onSelect(assembly)}
-              onDblClick={() => binding && onInspect(binding)}
-            >
-              <em>Assembly</em>
-              <strong>{assembly.label}</strong>
-              <code>{binding?.id ?? "TRACE GAP"}</code>
-            </button>
-          );
-        })}
-
-      {/* Part grid: compact selector, secondary to the SVG */}
       <div class="syson-part-grid">
         {snapshot.components.components
           .filter((component) => component.kind !== "assembly")
