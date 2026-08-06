@@ -269,7 +269,7 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
           ? () => onSelect(assemblyComponent)
           : undefined}
       >
-        <span>ASSEMBLY · PART DEF</span>
+        <span>PART DEFINITION</span>
         <strong>{snapshot.subject.label}</strong>
         <small>
           {snapshot.components.components.length} {terminology.countLabel}
