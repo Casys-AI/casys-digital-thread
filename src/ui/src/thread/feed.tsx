@@ -270,9 +270,10 @@ interface FeedLineageGraphProps {
 /**
  * Local sigma view for a single expanded feed card.
  *
- * Uses `boundedNeighborhood(focusRef, 3)` from the evidence model — the same
- * query used by the Evidence canvas when a node is selected — so the lineage
- * reads the folded, version-aware visible graph rather than the raw edges.
+ * Uses `boundedNeighborhood(focusRef, 2)` from the evidence model. Depth 2
+ * (direct neighbours + their direct neighbours) keeps the card view compact
+ * and legible without losing the immediate causal context. The full graph is
+ * available in the Evidence tab via the "Open evidence canvas" button.
  *
  * Performance contract: only ONE instance is mounted at a time. This component
  * is rendered only when the card is expanded; it unmounts on collapse or on
@@ -286,9 +287,10 @@ function FeedLineageGraph({
   onSelectNode,
   ariaLabel,
 }: FeedLineageGraphProps): JSX.Element {
-  // Compute bounded neighborhood (depth 3 — same as Evidence canvas).
+  // Bounded neighborhood depth 2: direct neighbours + their direct neighbours.
+  // Keeps the card-level sigma view compact (profondeur bornée à 1-2 sauts).
   const neighborhood = useMemo(
-    () => evidenceModel.boundedNeighborhood(focusRef, 3),
+    () => evidenceModel.boundedNeighborhood(focusRef, 2),
     [evidenceModel, focusRef],
   );
 
