@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { deterministicJson, sha256Fingerprint } from "../deterministic-json.ts";
+import { deterministicJson, sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import {
   materializeSysonModelSeed,
   parseSysonModelSeedCapture,

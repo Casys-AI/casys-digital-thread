@@ -1,4 +1,4 @@
-import { deterministicJson, sha256Fingerprint } from "../deterministic-json.ts";
+import { deterministicJson, sha256Fingerprint } from "../kernel/deterministic-json.ts";
 
 export const CM01_DRIP_TRAY_MECHANICAL_PROOF_SCHEMA =
   "cm01-v3-drip-tray-static-proof/1.0" as const;

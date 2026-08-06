@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../domain/deterministic-json.ts";
+} from "../../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
 import {

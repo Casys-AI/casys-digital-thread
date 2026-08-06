@@ -1,5 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
-import type { ObservedRunCatalog, RunDetail, RunSummary } from "../../domain/types.ts";
+import type {
+  ObservedRunCatalog,
+  RunDetail,
+  RunSummary,
+} from "../../domain/kernel/types.ts";
 import type {
   ModelicaScenarioEvidence,
   ScenarioContractVerification,

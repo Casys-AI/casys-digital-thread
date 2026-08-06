@@ -1,4 +1,4 @@
-import type { DesiredServer, ObservedContainer } from "../domain/types.ts";
+import type { DesiredServer, ObservedContainer } from "../domain/kernel/types.ts";
 
 export interface CommandResult {
   success: boolean;

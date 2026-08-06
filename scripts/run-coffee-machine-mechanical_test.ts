@@ -14,7 +14,7 @@ import type {
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
 } from "../src/domain/engineering-project.ts";
-import { deterministicJson } from "../src/domain/deterministic-json.ts";
+import { deterministicJson } from "../src/domain/kernel/deterministic-json.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_SYSON_EDITING_CONTEXT_ID,
   COFFEE_MACHINE_MECHANICAL_SYSON_REQUIREMENTS_ELEMENT_ID,

@@ -12,7 +12,7 @@ import type {
   EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "../../domain/engineering-project.ts";
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import {
   APPROVED_BRIEF_BASELINE_OPERATION,

@@ -1,4 +1,4 @@
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 
 export const CM01_NOMINAL_MODELICA_ATTEMPT_SCHEMA =

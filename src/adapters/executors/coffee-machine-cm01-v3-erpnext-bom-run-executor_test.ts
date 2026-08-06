@@ -185,7 +185,9 @@ async function fixtureFor(directory: string) {
   };
   const captureFingerprint = async () => {
     const capture = await new FakeCapture().capture();
-    const { sha256Fingerprint } = await import("../../domain/deterministic-json.ts");
+    const { sha256Fingerprint } = await import(
+      "../../domain/kernel/deterministic-json.ts"
+    );
     return await sha256Fingerprint(capture);
   };
   return { directory, projects, commands, snapshots, captureFingerprint };

@@ -1,4 +1,4 @@
-import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

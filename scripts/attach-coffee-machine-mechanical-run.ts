@@ -12,7 +12,7 @@ import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "../src/domain/deterministic-json.ts";
+} from "../src/domain/kernel/deterministic-json.ts";
 import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,

@@ -1,4 +1,4 @@
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 
 export type CoffeeMachineCm01V3ArchitectureWriteAttempt = {
   readonly schemaVersion: "coffee-machine-cm01-v3-architecture-write-attempt/1.0";

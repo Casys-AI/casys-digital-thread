@@ -10,7 +10,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringWorkItem,
 } from "../../domain/engineering-project.ts";
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   applyCm01DripTrayHeight28To30Correction,
 } from "../../domain/cm01/cm01-drip-tray-height-correction.ts";

@@ -15,7 +15,7 @@ import {
   FileCaptureStore,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
-import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import {

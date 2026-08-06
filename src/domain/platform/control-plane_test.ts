@@ -10,7 +10,7 @@ import type {
   ObservedRunCatalog,
   RunDetail,
   RunSummary,
-} from "../types.ts";
+} from "../kernel/types.ts";
 
 Deno.test("ControlPlane combines honest offline fleet data with labelled demo run", async () => {
   const runs = await loadRunFixtures([

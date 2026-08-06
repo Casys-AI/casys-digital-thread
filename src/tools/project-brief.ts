@@ -1,5 +1,5 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
-import { fingerprintsEqual } from "../domain/deterministic-json.ts";
+import { fingerprintsEqual } from "../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../domain/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../domain/engineering-project-command-service.ts";
 import {

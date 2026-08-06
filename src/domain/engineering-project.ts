@@ -1,5 +1,5 @@
 import type { ContentFingerprint, ThreadEntityKind } from "./thread-snapshot.ts";
-import type { IsoDateTime } from "./types.ts";
+import type { IsoDateTime } from "./kernel/types.ts";
 import type { EngineeringProjectFraming } from "./project-brief.ts";
 
 /**

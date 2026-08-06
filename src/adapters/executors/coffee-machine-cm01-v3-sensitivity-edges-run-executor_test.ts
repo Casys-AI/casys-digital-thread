@@ -24,7 +24,7 @@ import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../domain/deterministic-json.ts";
+} from "../../domain/kernel/deterministic-json.ts";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectRevisionStore,

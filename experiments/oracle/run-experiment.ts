@@ -15,7 +15,7 @@
  * never updates a project revision. It is a measurement harness only.
  */
 
-import { sha256Fingerprint } from "../../src/domain/deterministic-json.ts";
+import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
 import { validateSensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
 import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import {

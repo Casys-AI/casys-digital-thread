@@ -13,7 +13,7 @@ import type {
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../domain/deterministic-json.ts";
+} from "../../domain/kernel/deterministic-json.ts";
 import {
   compileCoffeeMachineCm01SemanticCadPlanR2,
 } from "../../domain/cm01/coffee-machine-cm01-semantic-cad-plan.ts";

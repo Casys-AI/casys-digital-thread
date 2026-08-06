@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { DesiredServer } from "../domain/types.ts";
+import type { DesiredServer } from "../domain/kernel/types.ts";
 import {
   type CommandResult,
   type CommandRunner,

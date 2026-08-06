@@ -4,7 +4,7 @@ import {
   FileEngineeringProjectRevisionStore,
   FileEngineeringProjectStore,
 } from "./engineering-project-store.ts";
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/engineering-project.ts";
 import {
   EngineeringProjectCommandError,

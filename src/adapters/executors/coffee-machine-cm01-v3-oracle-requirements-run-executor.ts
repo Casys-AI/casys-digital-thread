@@ -13,7 +13,7 @@ import type {
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../domain/deterministic-json.ts";
+} from "../../domain/kernel/deterministic-json.ts";
 import type { Cm01DripTrayMechanicalProof } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import {
   fingerprintOracleRequirements,

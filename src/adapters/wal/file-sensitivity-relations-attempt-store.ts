@@ -12,7 +12,7 @@
  * reviewed declaration gets its own attempt record.
  */
 
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { AttemptFileSystem, DENO_FILE_SYSTEM } from "./file-attempt-store.ts";
 import type { ContentFingerprint as _ContentFingerprint } from "../../domain/thread-snapshot.ts";
 

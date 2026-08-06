@@ -12,7 +12,7 @@ import {
   parseCoffeeMachineCm01SemanticRecipe,
   parseCoffeeMachineCm01SemanticRecipeR2,
 } from "./coffee-machine-cm01-semantic-recipe.ts";
-import { sha256Fingerprint } from "../deterministic-json.ts";
+import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import type {
   ProposedThreadAction,
   RequirementEvaluation,

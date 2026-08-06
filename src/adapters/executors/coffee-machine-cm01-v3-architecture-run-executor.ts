@@ -14,7 +14,7 @@ import type {
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../domain/deterministic-json.ts";
+} from "../../domain/kernel/deterministic-json.ts";
 import {
   COFFEE_MACHINE_CM01_SEMANTIC_RECIPE_KEY,
   type CoffeeMachineCm01SemanticRecipe,

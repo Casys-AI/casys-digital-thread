@@ -1,4 +1,8 @@
-import type { EvidenceArtifact, RunDetail, RunMeasurement } from "../domain/types.ts";
+import type {
+  EvidenceArtifact,
+  RunDetail,
+  RunMeasurement,
+} from "../domain/kernel/types.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

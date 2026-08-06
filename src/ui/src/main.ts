@@ -18,7 +18,7 @@ import type {
   RunSummary,
   ServerRecord,
   VerdictStatus,
-} from "../../domain/types.ts";
+} from "../../domain/kernel/types.ts";
 import {
   initialSnapshotFromResult,
   toolResultErrorMessage,

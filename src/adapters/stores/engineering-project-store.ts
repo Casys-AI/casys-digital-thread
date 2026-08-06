@@ -7,7 +7,7 @@ import { validateEngineeringProjectSnapshot } from "../../domain/engineering-pro
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../domain/deterministic-json.ts";
+} from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 
 /** Read-only boundary used by the Workbench BFF. */

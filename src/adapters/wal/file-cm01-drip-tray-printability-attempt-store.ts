@@ -1,4 +1,4 @@
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
 
 export const PRINTABILITY_RUN_ATTEMPT_SCHEMA = "printability-run-attempt/1.0" as const;

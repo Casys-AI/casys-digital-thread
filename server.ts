@@ -151,7 +151,7 @@ import type {
   FleetManifest,
   ObservedRunCatalog,
   RunDetail,
-} from "./src/domain/types.ts";
+} from "./src/domain/kernel/types.ts";
 import {
   CONSOLE_RESOURCE_URI,
   registerControlPlaneTools,

@@ -2,7 +2,7 @@ import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../domain/deterministic-json.ts";
+} from "../../domain/kernel/deterministic-json.ts";
 import {
   parseCm01DripTrayMechanicalProof,
   renderCm01DripTrayMechanicalScript,

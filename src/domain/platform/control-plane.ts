@@ -15,7 +15,7 @@ import type {
   RunSummary,
   ServerRecord,
   SnapshotOptions,
-} from "../types.ts";
+} from "../kernel/types.ts";
 
 export interface ControlPlaneOptions {
   manifest: FleetManifest;

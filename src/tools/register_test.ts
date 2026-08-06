@@ -1,7 +1,11 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import type { DockerObserver } from "../adapters/docker-observer.ts";
 import type { McpProbe } from "../adapters/mcp/http-mcp-probe.ts";
-import type { FleetManifest, ObservedContainer, RunDetail } from "../domain/types.ts";
+import type {
+  FleetManifest,
+  ObservedContainer,
+  RunDetail,
+} from "../domain/kernel/types.ts";
 import { createConsoleServer } from "../../server.ts";
 import { CONSOLE_RESOURCE_URI } from "./register.ts";
 

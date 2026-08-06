@@ -2,7 +2,7 @@ import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "../deterministic-json.ts";
+} from "../kernel/deterministic-json.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringCommandActor,

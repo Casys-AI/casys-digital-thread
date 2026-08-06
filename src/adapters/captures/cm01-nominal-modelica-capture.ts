@@ -1,4 +1,4 @@
-import { deterministicJson } from "../../domain/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { PersistedModelicaRunEvidence } from "../observed-modelica-thread-branch.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 

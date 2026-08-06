@@ -34,7 +34,7 @@ import {
   positiveInteger,
   rejectDuplicates,
   safeId,
-} from "../case-validation.ts";
+} from "../kernel/case-validation.ts";
 
 export const PRINT_ESTIMATE_CASE_SCHEMA = "print-estimate-case/1.0" as const;
 

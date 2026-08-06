@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { sha256Fingerprint } from "../../domain/deterministic-json.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,

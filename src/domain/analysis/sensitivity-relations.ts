@@ -21,7 +21,7 @@
  */
 
 import type { ContentFingerprint } from "../thread-snapshot.ts";
-import { sha256Fingerprint } from "../deterministic-json.ts";
+import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -31,7 +31,7 @@ import {
   nonEmptyArray,
   nonEmptyText,
   rejectDuplicates,
-} from "../case-validation.ts";
+} from "../kernel/case-validation.ts";
 
 // ---------------------------------------------------------------------------
 // Schema constant

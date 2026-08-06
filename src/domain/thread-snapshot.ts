@@ -1,6 +1,6 @@
-import type { ContentFingerprint, IsoDateTime } from "./types.ts";
+import type { ContentFingerprint, IsoDateTime } from "./kernel/types.ts";
 
-export type { ContentFingerprint } from "./types.ts";
+export type { ContentFingerprint } from "./kernel/types.ts";
 
 /**
  * Versioned, transport-independent state of one executable digital thread.
