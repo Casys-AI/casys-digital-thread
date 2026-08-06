@@ -68,14 +68,16 @@ export function EvidenceExploration({
 
   // Build the exploration model once per projection change.
   // Tokens are read inside useMemo so they match the current theme.
+  // compact is stable for a given component instance (feed vignette vs full
+  // canvas), so including it in deps is correct even though it never changes.
   const explorationModel = useMemo(() => {
     // document.documentElement satisfies CssTokenSource (has nodeType).
     const root = typeof document !== "undefined"
       ? (document.documentElement as { nodeType: number })
       : null;
     const tokens = readCssTokens(root);
-    return buildExplorationModel(evidenceModel, projection, tokens);
-  }, [evidenceModel, projection]);
+    return buildExplorationModel(evidenceModel, projection, tokens, compact);
+  }, [evidenceModel, projection, compact]);
 
   // Mount sigma, bind events, clean up on unmount.
   useEffect(() => {
@@ -96,12 +98,20 @@ export function EvidenceExploration({
         defaultEdgeType: "arrow",
         minCameraRatio: 0.3,
         maxCameraRatio: 6,
-        // compact=true (feed vignette): always show labels — the bounded
-        // neighbourhood at depth 2 is small enough that all labels fit.
-        // compact=false (full-map): hide labels until the node occupies at
-        // least 10 rendered pixels; at the default zoom the overview stays
-        // clean and labels appear as the user zooms in.
+        // compact=true (feed vignette): always show labels.
+        //   labelRenderedSizeThreshold:0 — every node passes the size gate.
+        //   labelGridCellSize:10 — fine-grain grid so sigma renders a label per
+        //     10×10 px cell; at compact dagre spacing (nodesep=20, ranksep=50)
+        //     the bounded depth-2 view fits in ~300 px and each cell holds at
+        //     most one node → all labels visible without collision culling.
+        //   labelDensity:1 — disable the random density thinning sigma applies
+        //     on top of the grid (default 0.07 shows ~7% of eligible labels).
+        // compact=false (full-map): labels appear only for nodes ≥10 rendered
+        //   pixels; density and grid defaults keep the full canvas legible at
+        //   the overview zoom level.
         labelRenderedSizeThreshold: compact ? 0 : 10,
+        labelGridCellSize: compact ? 10 : 100,
+        labelDensity: compact ? 1 : 0.07,
       },
     );
     sigmaRef.current = sigma;

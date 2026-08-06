@@ -216,11 +216,18 @@ export function normalizeEdgeDirection(
  * @param evidenceModel   Full model including component detection.
  * @param projection      Current canvas projection (already filtered/focused).
  * @param tokens          CSS color tokens resolved at call time.
+ * @param compact         Compact mode for the feed card vignette (default false).
+ *                        Reduces dagre spacing so bounded-depth-2 neighbourhoods
+ *                        (≤ ~20 nodes) fit in the 298 px-tall card container
+ *                        without extreme zoom-out: nodesep 60→20, ranksep 100→50.
+ *                        At normal zoom levels all labels remain readable and
+ *                        nodes stay large enough to click.
  */
 export function buildExplorationModel(
   evidenceModel: EvidenceGraphModel,
   projection: EvidenceCanvasProjection,
   tokens: CssTokens,
+  compact = false,
 ): ExplorationModel {
   const graph = new DirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>();
 
@@ -299,11 +306,15 @@ export function buildExplorationModel(
     g.setGraph({
       rankdir: "LR",
       // Vertical gap between nodes within the same rank.
-      nodesep: 60,
-      // Horizontal gap between adjacent ranks (causal layers).
-      ranksep: 100,
-      marginx: 20,
-      marginy: 20,
+      // compact: 20 px — a depth-2 neighbourhood of ~13 siblings at the same
+      // rank occupies 13×20 = 260 px, fitting inside the 298 px vignette
+      // without sigma having to zoom way out. Full-map: 60 px.
+      nodesep: compact ? 20 : 60,
+      // Horizontal gap between adjacent causal layers.
+      // compact: 50 px — 3 ranks × 50 = 150 px, comfortable in a wide card.
+      ranksep: compact ? 50 : 100,
+      marginx: compact ? 10 : 20,
+      marginy: compact ? 10 : 20,
     });
     g.setDefaultEdgeLabel(() => ({}));
 
