@@ -71,6 +71,23 @@ export interface SysonModelSeedRunExecutorDependencies {
  * package. It never receives a provider URL, tool name, tool arguments, SysML
  * text, CAD data or a caller-supplied result. A durable write-ahead journal
  * prevents automatic replay of a possibly successful SysON mutation.
+ *
+ * WHY THIS EXECUTOR DOES NOT USE executor-run-helpers.ts
+ *
+ * - `stepCommandId` embeds the operation segment `:syson-model-seed:` which is
+ *   written into immutable commandReceipts on disk. Any shared helper that
+ *   produces a different segment would break the assertCompleted check for runs
+ *   whose receipts were already persisted.
+ *
+ * - `requiredRunStart` and `requireRun` carry "SysON seed" error context that
+ *   is contractual for this operation's observable error surface.
+ *
+ * - The write-ahead journal (FileSysonModelSeedAttemptStore) introduces
+ *   WAL state transitions absent from the standard executor state machine;
+ *   refactoring to shared helpers would silently bypass that boundary.
+ *
+ * Do not align these helpers with the shared module without a deliberate plan
+ * that accounts for every persisted commandReceipt and WAL record.
  */
 export class SysonModelSeedRunExecutor {
   readonly #projects: SysonModelSeedRunExecutorDependencies["projects"];

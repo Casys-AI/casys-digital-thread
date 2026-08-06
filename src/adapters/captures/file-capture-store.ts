@@ -316,7 +316,8 @@ async function writeNewDurably(
 /**
  * Fsync every directory from `path` up to (and including) the `state`
  * boundary, ensuring directory entries survive a crash before the caller
- * returns. Copied verbatim from file-cm01-nominal-modelica-capture-store.ts.
+ * returns. Derived from the original per-family store implementations, now
+ * consolidated into FileCaptureStore.
  */
 async function syncDirectoryChain(path: string): Promise<void> {
   let current = path.replace(/\/+$/, "") || ".";

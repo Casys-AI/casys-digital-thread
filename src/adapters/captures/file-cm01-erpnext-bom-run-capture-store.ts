@@ -13,6 +13,21 @@ export interface Cm01ErpNextBomRunCaptureRecord {
  * Links one project run to its immutable capture after a read-only provider
  * observation. Unlike a write-ahead mutation log, absence permits one fresh
  * read; once present, retry must re-read these exact content-addressed bytes.
+ *
+ * RESIDUAL — PRE-GENERIC INDEX STORE
+ *
+ * This store predates the FileCaptureStore<Kind> consolidation and uses a
+ * (projectId, runId) composite key encoded as
+ * `encodeURIComponent(JSON.stringify([projectId, runId]))` for its filenames,
+ * rather than the `<sha256-digest>.json` naming used by FileCaptureStore.
+ *
+ * Migration to FileCaptureStore was deliberately NOT performed because the
+ * existing capture file in state/local/cm01-erpnext-bom-run-captures/ was
+ * written with the old naming scheme and is immutable. A migration would
+ * require re-indexing that file under a new sha256-derived filename, which
+ * constitutes re-writing an existing capture — explicitly prohibited by the
+ * immutability invariant. Migration will happen at the next consented ERP run,
+ * when a new capture is written and the old index entry can be superseded.
  */
 export class FileCm01ErpNextBomRunCaptureStore {
   constructor(

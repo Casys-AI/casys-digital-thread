@@ -5,6 +5,8 @@
  * It never accepts Python, expressions, labels, or inferred component matches.
  */
 
+import type { ContentFingerprint } from "./thread-snapshot.ts";
+
 export type CoffeeMachineBuildPlanSchemaVersion = "coffee-machine-build-plan/1.0";
 
 export type CoffeeMachineBuildTemplateId =
@@ -71,11 +73,6 @@ export interface CoffeeMachineBuildPlanInput {
     max: [number, number, number];
   };
   components: CoffeeMachineBuildComponent[];
-}
-
-export interface ContentFingerprint {
-  algorithm: "sha256";
-  digest: string;
 }
 
 export interface CoffeeMachineBuildPlan extends CoffeeMachineBuildPlanInput {

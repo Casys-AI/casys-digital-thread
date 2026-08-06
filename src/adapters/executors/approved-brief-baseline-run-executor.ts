@@ -55,6 +55,22 @@ export interface ApprovedBriefBaselineRunExecutorDependencies {
  * persists and re-reads the root ThreadSnapshot, then attaches it through the
  * normal command service. Replaying the same command id is safe at every
  * durable transition.
+ *
+ * WHY THIS EXECUTOR DOES NOT USE executor-run-helpers.ts
+ *
+ * - `requireApprovedBriefBaselineShape` checks `run.basis?.kind === "approved-brief"`,
+ *   not "thread-snapshot". The shared `requireBasis` asserts thread-snapshot kind
+ *   only and would wrongly reject this executor's valid runs.
+ *
+ * - `stepCommandId` embeds the operation segment `:approved-brief-baseline:` which
+ *   is written into immutable commandReceipts. Changing it would break the
+ *   assertCompleted check for any run whose receipts were already persisted.
+ *
+ * - `requiredRunStart` carries the "Baseline run" prefix in its error message,
+ *   an intentional contract that differs from the shared generic wording.
+ *
+ * Do not align these helpers with the shared module without accounting for every
+ * persisted commandReceipt that embeds the step IDs.
  */
 export class ApprovedBriefBaselineRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;

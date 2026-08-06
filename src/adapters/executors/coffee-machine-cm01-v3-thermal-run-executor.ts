@@ -77,6 +77,27 @@ interface ThermalMaterialization {
  * owns all Modelica interaction through a closed capture adapter.  The agent
  * can neither inject provider payloads nor alter model/scenario parameters.
  */
+/**
+ * WHY THIS EXECUTOR DOES NOT USE executor-run-helpers.ts
+ *
+ * Three local helpers diverge structurally from the shared module:
+ *
+ * - `requireThreadBasis` — same logic as the shared `requireBasis` but carries
+ *   the "CM-01 thermal run" prefix in its error message, which is part of this
+ *   operation's public error contract as written in committed commandReceipts.
+ *   Swapping to the generic message would silently change observable error text.
+ *
+ * - `requiredRunStart` — same divergence: the prefix "CM-01 thermal run" in the
+ *   error message is intentional and contractual.
+ *
+ * - `stepCommandId` — returns `<commandId>:cm01-nominal-thermal:<step>`. These
+ *   step IDs are embedded in immutable commandReceipts on disk; replacing this
+ *   function with a shared one would break the assertCompleted check for any
+ *   run whose receipts were already written.
+ *
+ * Do not refactor these helpers toward the shared module without a deliberate
+ * migration plan that accounts for every persisted commandReceipt.
+ */
 export class CoffeeMachineCm01V3ThermalRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
