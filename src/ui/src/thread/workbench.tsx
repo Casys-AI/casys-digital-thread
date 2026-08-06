@@ -825,11 +825,12 @@ export function ThreadWorkbench({
                             {evidenceCanvas.isFiltered
                               ? `${evidenceCanvas.displayedCount} faits affichés · vue locale`
                               : (() => {
-                                // Essential nodes displayed in the default map
-                                // (supporting nodes are hidden by both renderers).
+                                // displayedCount is already the post-filter
+                                // essential count: the mask is applied once
+                                // upstream by buildEvidenceCanvasProjection.
+                                // supportingNodeCount is the hidden count.
                                 const essentialCount =
-                                  evidenceCanvas.displayedCount -
-                                  evidenceCanvas.supportingNodeCount;
+                                  evidenceCanvas.displayedCount;
                                 const totalFolded =
                                   evidenceCanvas.foldedInstrumentCount +
                                   versionedProvenance.collapsedVersionCount;

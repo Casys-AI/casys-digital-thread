@@ -18,7 +18,7 @@ import type {
   EvidenceGraphModel,
   EvidenceGraphStub,
 } from "./evidence-graph-model.ts";
-import { isSupportingNode } from "./essential-graph-filter.ts";
+import { applyEssentialFilter } from "./essential-graph-filter.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -30,26 +30,49 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true if `node` is an intermediate instrument artifact produced by a
- * sensitivity analysis run — one that should be folded out of the default
- * Evidence canvas but preserved as a stub link.
+ * Returns true if `node` belongs to the analyze.* instrument family and should
+ * be folded out of the default Evidence canvas, preserved only as a stub link.
  *
- * Structural criterion (system + entityKind + id content):
+ * Structural criterion (system + entityKind + id content — never label or summary):
+ *
+ * Artifacts:
  *   - entityKind "artifact"
  *   - system "build123d" or "calculix" (intermediate CAD/FEA steps)
- *   - ref.id contains "sensitivity" (encodes the operation family)
+ *   - ref.id contains "sensitivity" (encodes the operation family via server-fixed naming)
  *
- * Excluded from folding (kept visible):
+ *   Excluded from artifact folding (kept visible):
  *   - The sensitivity capture artifact (digital-thread system)
- *   - Derivative observations (digital-thread system)
  *   - Anchored SysML declarations (syson system)
+ *
+ * Observations:
+ *   - entityKind "observation"
+ *   - ref.id contains "sensitivity" (server-fixed prefix shared with the source
+ *     artifact, e.g. "drip-tray-sensitivity-<digest>-displacement")
+ *
+ *   Rationale: observations produced by the analyze.* family are intermediate
+ *   measurements — facts about the instrument run, not about the current design.
+ *   The validated rule is "facts produced by the analyze.* family hors vitrine,
+ *   products included". The structural signal is the server-fixed id prefix,
+ *   never a label or summary.
+ *
+ *   Excluded from observation folding:
+ *   - Any observation whose ref.id does not contain "sensitivity" (the id is
+ *     controlled server-side; no free-text criterion is used here).
  */
 export function isAnalyzeInstrumentNode(node: ThreadGraphNode): boolean {
-  return (
-    node.entityKind === "artifact" &&
-    node.ref.id.includes("sensitivity") &&
-    (node.system === "build123d" || node.system === "calculix")
-  );
+  if (node.entityKind === "artifact") {
+    return (
+      node.ref.id.includes("sensitivity") &&
+      (node.system === "build123d" || node.system === "calculix")
+    );
+  }
+  if (node.entityKind === "observation") {
+    // Sensitivity observations share the same server-fixed id prefix as their
+    // source artifact. The criterion is structural: presence of "sensitivity"
+    // in the stable ref.id — never derived from label, summary, or system name.
+    return node.ref.id.includes("sensitivity");
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,12 +160,15 @@ export interface EvidenceCanvasProjection {
   /** True when the canvas shows a bounded neighbourhood instead of the full graph. */
   readonly isFiltered: boolean;
   /**
-   * Count of supporting nodes present in the full visible projection.
-   * These are hidden by the default "current-design" essential filter applied
-   * by both the SVG carte (showSupporting=false) and the sigma exploration
-   * renderer. Used by the banner to say "Z hors vue courante".
+   * Count of supporting nodes HIDDEN by the essential filter in the full-map
+   * view. The essential filter is applied once, upstream, by
+   * buildEvidenceCanvasProjection — both the SVG carte (ThreadGraph) and the
+   * sigma exploration renderer (EvidenceExploration) consume the same
+   * already-filtered projection and never re-apply the filter independently.
+   * Used by the banner to say "Z hors vue courante".
    *
-   * Always 0 when isFiltered=true (local view already bounded).
+   * Always 0 when isFiltered=true (local view; essential filter not applied,
+   * all neighbours including supporting are shown for full inspector context).
    */
   readonly supportingNodeCount: number;
 }
@@ -172,19 +198,36 @@ export function buildEvidenceCanvasProjection(
     model.rawNodeCount - model.nodes.length - collapsedVersionCount,
   );
 
-  // supportingNodeCount is measured on the full visible set (before any
-  // essential filter). The banner uses it to show "Z hors vue courante".
-  const supportingNodeCount = model.nodes.filter(isSupportingNode).length;
-
-  // Full graph (no focus): show all visible nodes + stubs.
+  // Full graph (no focus): apply the essential display mask once, here.
+  //
+  // Both renderers — SVG carte (ThreadGraph) and sigma exploration
+  // (EvidenceExploration / buildExplorationModel) — consume this single
+  // pre-filtered result. No renderer applies the mask independently.
+  //
+  // The mask removes supporting nodes (mesh, script, solver-input, change
+  // events, consumption records) but preserves any supporting connector that
+  // is the sole path between two essential nodes, so no genuine link is lost.
+  //
+  // Local views (isFiltered=true) are exempt: they show all neighbours
+  // including supporting ones so the inspector context is complete.
   if (!focusRef) {
+    const allEdges: ThreadGraphEdge[] = [
+      ...(model.edges as ThreadGraphEdge[]),
+      ...model.stubs.map(stubToEdge),
+    ];
+    const filtered = applyEssentialFilter(
+      model.nodes as ThreadGraphNode[],
+      allEdges,
+    );
     return {
-      nodes: model.nodes,
-      edges: [...model.edges, ...model.stubs.map(stubToEdge)],
-      displayedCount: model.nodes.length,
+      nodes: filtered.nodes,
+      edges: filtered.edges,
+      displayedCount: filtered.nodes.length,
       foldedInstrumentCount,
       isFiltered: false,
-      supportingNodeCount,
+      // hiddenCount = supporting nodes removed by the filter; used by the
+      // banner as "Z hors vue courante".
+      supportingNodeCount: filtered.hiddenCount,
     };
   }
 
@@ -218,13 +261,21 @@ export function buildEvidenceCanvasProjection(
     }
   }
 
-  // Fallback: full visible graph.
+  // Fallback: full visible graph (same essential-filter path as the no-focus case).
+  const allEdgesFallback: ThreadGraphEdge[] = [
+    ...(model.edges as ThreadGraphEdge[]),
+    ...model.stubs.map(stubToEdge),
+  ];
+  const filteredFallback = applyEssentialFilter(
+    model.nodes as ThreadGraphNode[],
+    allEdgesFallback,
+  );
   return {
-    nodes: model.nodes,
-    edges: [...model.edges, ...model.stubs.map(stubToEdge)],
-    displayedCount: model.nodes.length,
+    nodes: filteredFallback.nodes,
+    edges: filteredFallback.edges,
+    displayedCount: filteredFallback.nodes.length,
     foldedInstrumentCount,
     isFiltered: false,
-    supportingNodeCount,
+    supportingNodeCount: filteredFallback.hiddenCount,
   };
 }

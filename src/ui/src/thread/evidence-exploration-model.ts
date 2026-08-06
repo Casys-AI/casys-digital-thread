@@ -30,7 +30,9 @@ import { DirectedGraph } from "graphology";
 import dagreLib from "@dagrejs/dagre";
 // deno-lint-ignore no-explicit-any
 const dagre = dagreLib as any;
-import { applyEssentialFilter } from "./essential-graph-filter.ts";
+// essential-graph-filter is no longer imported here: the mask is applied once,
+// upstream, by buildEvidenceCanvasProjection. Both renderers (Carte and
+// Exploration) consume the same pre-filtered EvidenceCanvasProjection.
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type {
@@ -222,30 +224,19 @@ export function buildExplorationModel(
 ): ExplorationModel {
   const graph = new DirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>();
 
-  // Apply the essential display mask on full-map views (no active focus).
-  // The mask reduces ~161 visible nodes to the ~60 semantically essential ones:
-  // supporting artifacts (mesh, script, solver-input…), change events, and
-  // consumption records are hidden unless they are the sole path between two
-  // essential nodes. The upstream EvidenceGraphModel is NOT mutated — the local
-  // inspector and boundedNeighborhood still reach hidden nodes.
-  let displayNodes: readonly ThreadGraphNode[];
-  let displayEdges: readonly ThreadGraphEdge[];
-  let hiddenSupportingCount = 0;
-
-  if (!projection.isFiltered) {
-    const filtered = applyEssentialFilter(
-      projection.nodes as ThreadGraphNode[],
-      projection.edges as ThreadGraphEdge[],
-    );
-    displayNodes = filtered.nodes;
-    displayEdges = filtered.edges;
-    hiddenSupportingCount = filtered.hiddenCount;
-  } else {
-    // Local view (bounded neighbourhood): show all nodes including supporting ones
-    // so the inspector context is complete.
-    displayNodes = projection.nodes as ThreadGraphNode[];
-    displayEdges = projection.edges as ThreadGraphEdge[];
-  }
+  // The essential display mask has been applied once, upstream, by
+  // buildEvidenceCanvasProjection. Consume the pre-filtered projection directly:
+  //   - Full-map (isFiltered=false): projection.nodes already excludes supporting
+  //     nodes (mesh, script, solver-input, change events, consumption records),
+  //     so the layout here starts from the essential set with no extra filtering.
+  //   - Local view (isFiltered=true): all neighbours including supporting nodes
+  //     are present for full inspector context — still no filtering here.
+  //
+  // hiddenSupportingCount is read from the projection (set by the upstream
+  // filter call) so the banner counters remain consistent across both renderers.
+  const displayNodes = projection.nodes as ThreadGraphNode[];
+  const displayEdges = projection.edges as ThreadGraphEdge[];
+  const hiddenSupportingCount = projection.supportingNodeCount;
 
   // Add nodes with placeholder positions (dagre will set the final x/y).
   for (const node of displayNodes) {

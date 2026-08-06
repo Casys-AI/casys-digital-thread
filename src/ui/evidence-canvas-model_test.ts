@@ -124,15 +124,44 @@ Deno.test("isAnalyzeInstrumentNode keeps non-sensitivity calculix artifacts", ()
   assertEquals(isAnalyzeInstrumentNode(n), false);
 });
 
-Deno.test("isAnalyzeInstrumentNode ignores observations (wrong entityKind)", () => {
+Deno.test("isAnalyzeInstrumentNode folds sensitivity observations (server-fixed id prefix)", () => {
+  // Sensitivity observations share the same id prefix as their source artifact.
+  // They are intermediate measurements about the instrument run, not the current design.
   const n: ThreadGraphNode = {
-    id: "sensitivity-obs",
-    ref: ref("drip-tray-sensitivity-abc123-base-displacement", "observation"),
+    id: "drip-tray-sensitivity-abc123-displacement",
+    ref: ref("drip-tray-sensitivity-abc123-displacement", "observation"),
     entityKind: "observation",
-    label: "obs",
+    label: "DripTray displacement sensitivity (size-z)",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "obs",
+  };
+  assertEquals(isAnalyzeInstrumentNode(n), true);
+});
+
+Deno.test("isAnalyzeInstrumentNode folds von-Mises sensitivity observation", () => {
+  const n: ThreadGraphNode = {
+    id: "drip-tray-sensitivity-abc123-von-mises",
+    ref: ref("drip-tray-sensitivity-abc123-von-mises", "observation"),
+    entityKind: "observation",
+    label: "von Mises sensitivity",
     system: "calculix",
     freshness: "fresh",
     summary: "obs",
+  };
+  assertEquals(isAnalyzeInstrumentNode(n), true);
+});
+
+Deno.test("isAnalyzeInstrumentNode keeps non-sensitivity observations", () => {
+  // A regular FEA observation (no sensitivity in the server-fixed id) stays visible.
+  const n: ThreadGraphNode = {
+    id: "drip-tray-r3-displacement",
+    ref: ref("drip-tray-r3-displacement", "observation"),
+    entityKind: "observation",
+    label: "DripTray displacement",
+    system: "calculix",
+    freshness: "fresh",
+    summary: "0.012 mm",
   };
   assertEquals(isAnalyzeInstrumentNode(n), false);
 });
@@ -306,3 +335,148 @@ Deno.test("makeEvidenceComponentLabeler returns multi-component fallback for emp
   const label = labeler([], 0);
   assertEquals(label, "Preuves");
 });
+
+// ---------------------------------------------------------------------------
+// 5 — Essential filter applied upstream: banner counter semantics
+// ---------------------------------------------------------------------------
+
+/**
+ * Fixture: essential node A (requirement) + supporting node B (mesh artifact).
+ * The two are isolated (no edges). Essential filter should:
+ *   - Keep A (essential)
+ *   - Remove B (supporting, no path to any essential node)
+ */
+function essentialPlusSupportingFixture(): { model: EvidenceGraphModel } {
+  const nodeA: ThreadGraphNode = {
+    id: "A-requirement",
+    ref: { kind: "requirement", id: "A-requirement" },
+    entityKind: "requirement",
+    label: "A requirement",
+    system: "syson",
+    freshness: "fresh",
+    summary: "essential",
+  };
+  const nodeB: ThreadGraphNode = {
+    id: "mesh-B",
+    ref: { kind: "artifact", id: "mesh-B" },
+    entityKind: "artifact",
+    artifactKind: "mesh",
+    label: "Mesh B",
+    system: "build123d",
+    freshness: "fresh",
+    summary: "supporting mesh file",
+  };
+  const model = buildEvidenceGraphModel(
+    { nodes: [nodeA, nodeB], edges: [] },
+    emptyFamilyGraph,
+    {},
+  );
+  return { model };
+}
+
+Deno.test(
+  "buildEvidenceCanvasProjection — displayedCount is the post-filter essential count",
+  () => {
+    const { model } = essentialPlusSupportingFixture();
+    const projection = buildEvidenceCanvasProjection(
+      model,
+      0,
+      undefined,
+      new Map(),
+    );
+    // displayedCount = essential nodes only (B was removed by the essential filter).
+    assertEquals(projection.displayedCount, 1);
+    assertEquals(projection.nodes.length, 1);
+    assertEquals(projection.nodes[0]!.ref.id, "A-requirement");
+  },
+);
+
+Deno.test(
+  "buildEvidenceCanvasProjection — supportingNodeCount is the hidden count (for banner)",
+  () => {
+    const { model } = essentialPlusSupportingFixture();
+    const projection = buildEvidenceCanvasProjection(
+      model,
+      0,
+      undefined,
+      new Map(),
+    );
+    // supportingNodeCount = B (hidden by the essential filter), not B's presence in
+    // the full visible set. The banner formula is: displayedCount + supportingNodeCount
+    // = total projected (essential + hidden).
+    assertEquals(projection.supportingNodeCount, 1);
+  },
+);
+
+Deno.test(
+  "buildEvidenceCanvasProjection — sensitivity observations are folded alongside instruments",
+  () => {
+    // Graph: capture(digital-thread) --source_of--> obs-sensitivity(digital-thread)
+    // The capture is NOT folded (digital-thread system). The sensitivity observation IS.
+    const capture: ThreadGraphNode = {
+      id: "drip-tray-sensitivity-h-capture",
+      ref: { kind: "artifact", id: "drip-tray-sensitivity-h-capture" },
+      entityKind: "artifact",
+      label: "Sensitivity capture",
+      system: "digital-thread",
+      freshness: "fresh",
+      summary: "capture",
+    };
+    const sensitivityObs: ThreadGraphNode = {
+      id: "drip-tray-sensitivity-h-displacement",
+      ref: {
+        kind: "observation",
+        id: "drip-tray-sensitivity-h-displacement",
+      },
+      entityKind: "observation",
+      label: "DripTray displacement sensitivity (size-z)",
+      system: "digital-thread",
+      freshness: "fresh",
+      summary: "0.012 mm",
+    };
+    const nonSensitivityObs: ThreadGraphNode = {
+      id: "drip-tray-r3-displacement",
+      ref: { kind: "observation", id: "drip-tray-r3-displacement" },
+      entityKind: "observation",
+      label: "DripTray displacement",
+      system: "calculix",
+      freshness: "fresh",
+      summary: "0.012 mm",
+    };
+    // Build the model with the extended predicate. sensitivityObs should be
+    // treated as an analyze instrument and folded.
+    const model = buildEvidenceGraphModel(
+      {
+        nodes: [capture, sensitivityObs, nonSensitivityObs],
+        edges: [
+          {
+            id: "e1",
+            from: capture.ref,
+            to: sensitivityObs.ref,
+            relation: "source_of",
+            rationale: "produced",
+            origin: "provenance",
+          },
+        ],
+      },
+      emptyFamilyGraph,
+      { isAnalyzeInstrumentNode },
+    );
+    const projection = buildEvidenceCanvasProjection(
+      model,
+      0,
+      undefined,
+      new Map(),
+    );
+    // capture: visible (digital-thread, not an instrument)
+    // sensitivityObs: folded by isAnalyzeInstrumentNode (observation + sensitivity id)
+    // nonSensitivityObs: visible (no sensitivity in id)
+    const visibleIds = projection.nodes.map((n) => n.ref.id);
+    assertEquals(visibleIds.includes("drip-tray-sensitivity-h-capture"), true);
+    assertEquals(
+      visibleIds.includes("drip-tray-sensitivity-h-displacement"),
+      false,
+    );
+    assertEquals(visibleIds.includes("drip-tray-r3-displacement"), true);
+  },
+);

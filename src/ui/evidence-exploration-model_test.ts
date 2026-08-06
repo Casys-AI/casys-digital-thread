@@ -556,3 +556,105 @@ Deno.test(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// 8. Parité de projection : Carte et Exploration reçoivent les mêmes refs
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "Carte et Exploration reçoivent exactement les mêmes node refs en mode full-map",
+  () => {
+    // Fixture: essential node (syson requirement) + supporting node (mesh artifact).
+    // The essential filter (applied once upstream by buildEvidenceCanvasProjection)
+    // must remove the supporting node from both renderers' inputs.
+    const nodeReq: ThreadGraphNode = {
+      id: "REQ-1",
+      ref: ref("REQ-1", "requirement"),
+      entityKind: "requirement",
+      label: "Requirement 1",
+      system: "syson",
+      freshness: "fresh",
+      summary: "essential",
+    };
+    const nodeMesh: ThreadGraphNode = {
+      id: "mesh-xyz",
+      ref: ref("mesh-xyz", "artifact"),
+      entityKind: "artifact",
+      artifactKind: "mesh",
+      label: "Mesh XYZ",
+      system: "build123d",
+      freshness: "fresh",
+      summary: "supporting mesh",
+    };
+    const nodeObs: ThreadGraphNode = {
+      id: "OBS-1",
+      ref: ref("OBS-1", "observation"),
+      entityKind: "observation",
+      label: "Observation 1",
+      system: "calculix",
+      freshness: "fresh",
+      summary: "0.015 mm",
+    };
+
+    const evidenceModel = buildEvidenceGraphModel(
+      // REQ-1 ← OBS-1 (via evidences edge); mesh-xyz is disconnected (supporting).
+      {
+        nodes: [nodeReq, nodeMesh, nodeObs],
+        edges: [
+          edge("e1", nodeObs.ref, nodeReq.ref, "evidences"),
+        ],
+      },
+      EMPTY_FAMILY,
+      {},
+    );
+
+    // Shared projection — this is what both renderers receive.
+    const projection = buildEvidenceCanvasProjection(
+      evidenceModel,
+      0,
+      undefined,
+      new Map(),
+    );
+
+    // Carte refs: the nodes list the SVG canvas would receive.
+    const carteRefs = new Set(
+      projection.nodes.map((n) => `${n.ref.kind}:${n.ref.id}`),
+    );
+
+    // Exploration refs: keys present in the sigma graphology graph.
+    const explorationModel = buildExplorationModel(
+      evidenceModel,
+      projection,
+      FALLBACK_TOKENS,
+    );
+    const explorationRefs = new Set<string>();
+    explorationModel.graph.forEachNode((key: string) => {
+      explorationRefs.add(key);
+    });
+
+    // Both renderers must show exactly the same set of nodes.
+    assertEquals(
+      carteRefs,
+      explorationRefs,
+      "Carte and Exploration must have identical visible node refs",
+    );
+
+    // mesh-xyz (supporting) must be absent from both.
+    assertEquals(
+      carteRefs.has("artifact:mesh-xyz"),
+      false,
+      "Supporting mesh node must not be visible in Carte",
+    );
+    assertEquals(
+      explorationRefs.has("artifact:mesh-xyz"),
+      false,
+      "Supporting mesh node must not be visible in Exploration",
+    );
+
+    // REQ-1 and OBS-1 (essential) must be present in both.
+    assertEquals(carteRefs.has("requirement:REQ-1"), true);
+    assertEquals(explorationRefs.has("requirement:REQ-1"), true);
+    assertEquals(carteRefs.has("observation:OBS-1"), true);
+    assertEquals(explorationRefs.has("observation:OBS-1"), true);
+  },
+);
