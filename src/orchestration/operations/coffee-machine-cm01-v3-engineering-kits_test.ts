@@ -19,6 +19,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "cm01.thermal-nominal@1",
       "cm01.cad-assembly-drip-tray-height-30@2",
       "cm01.cad-assembly-with-mesh-stls@3",
+      "cm01.cad-assembly-with-host-assets@4",
       "cm01.erp-bom-observation@1",
       "cm01.drip-tray-static-proof@1",
       "cm01.drip-tray-static-proof-height-30@2",
@@ -33,7 +34,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   );
   assertEquals(
     kits.map((kit) => kit.qualification.status),
-    Array(17).fill("manually-qualified"),
+    Array(18).fill("manually-qualified"),
   );
   assertEquals(
     kits.map((kit) => kit.presentationRole),
@@ -43,6 +44,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "cad",
       "cad",
       "simulation",
+      "cad",
       "cad",
       "cad",
       "supply",
@@ -65,6 +67,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "design",
       "design",
       "analysis",
+      "design",
       "design",
       "design",
       "observation",
@@ -90,7 +93,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   // 2026-08-05.
   assertEquals(
     kits.map((kit) => kit.operation.execution),
-    Array(17).fill("trusted"),
+    Array(18).fill("trusted"),
   );
   assertEquals(kits[5]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
@@ -98,13 +101,15 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   ]);
   // kits[6] = cm01.cad-assembly-with-mesh-stls@3 — same two bindings as @2.
   assertEquals(kits[6]?.operation.bindings, kits[5]?.operation.bindings);
-  assertEquals(kits[9]?.operation.bindings, [
+  // kits[7] = cm01.cad-assembly-with-host-assets@4 — same two bindings as @3.
+  assertEquals(kits[7]?.operation.bindings, kits[5]?.operation.bindings);
+  assertEquals(kits[10]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
     { name: "dripTrayHeightCorrection", allowedSourceKinds: ["thread-entity"] },
     { name: "revisedCadStep", allowedSourceKinds: ["thread-entity"] },
   ]);
-  assertEquals(kits[10]?.operation.bindings, kits[9]?.operation.bindings);
-  assertEquals(kits[11]?.operation.bindings, [
+  assertEquals(kits[11]?.operation.bindings, kits[10]?.operation.bindings);
+  assertEquals(kits[12]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
     {
       name: "historicalMechanicalR3Result",
@@ -126,6 +131,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.thermal.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30.id}@2`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30WithMeshStls.id}@3`,
+      `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30WithMeshStlsAndHostAssets.id}@4`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.bom.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanical.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.mechanicalDripTrayHeight30.id}@2`,
@@ -152,11 +158,12 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
   assertEquals(operations[11]?.execution, "trusted");
   assertEquals(operations[12]?.execution, "trusted");
   assertEquals(operations[13]?.execution, "trusted");
-  // operations[14] = sensitivityRelationsV2@2 — planning-only until the
-  // operator consented to live migration in chat on 2026-08-05.
   assertEquals(operations[14]?.execution, "trusted");
+  // operations[15] = sensitivityRelationsV2@2 — planning-only until the
+  // operator consented to live migration in chat on 2026-08-05.
   assertEquals(operations[15]?.execution, "trusted");
   assertEquals(operations[16]?.execution, "trusted");
+  assertEquals(operations[17]?.execution, "trusted");
   assertEquals(
     operations.every((operation) => operation.execution === "trusted"),
     true,

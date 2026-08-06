@@ -112,6 +112,11 @@ import {
   COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION,
   CoffeeMachineCm01V3CadR3RunExecutor,
 } from "./src/adapters/executors/coffee-machine-cm01-v3-cad-r3-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION,
+  CoffeeMachineCm01V3CadR4RunExecutor,
+} from "./src/adapters/executors/coffee-machine-cm01-v3-cad-r4-run-executor.ts";
+import { DockerVolumeAssetMaterializer } from "./src/adapters/executors/host-asset-materializer.ts";
 import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/stores/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/stores/live-thread-update-store.ts";
@@ -209,6 +214,11 @@ const DEFAULT_CM01_SEMANTIC_CAD_R3_ATTEMPT_DIRECTORY =
   "state/local/cm01-semantic-cad-r3-attempts";
 const DEFAULT_CM01_SEMANTIC_CAD_R3_CAPTURE_DIRECTORY =
   "state/local/cm01-semantic-cad-r3-captures";
+const DEFAULT_CM01_SEMANTIC_CAD_R4_ATTEMPT_DIRECTORY =
+  "state/local/cm01-semantic-cad-r4-attempts";
+const DEFAULT_CM01_SEMANTIC_CAD_R4_CAPTURE_DIRECTORY =
+  "state/local/cm01-semantic-cad-r4-captures";
+const DEFAULT_CM01_SEMANTIC_CAD_R4_ASSET_DIRECTORY = "state/local/thread-assets";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_ATTEMPT_DIRECTORY =
   "state/local/cm01-drip-tray-mechanical-r2-attempts";
 const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_R2_CAPTURE_DIRECTORY =
@@ -304,6 +314,10 @@ export interface CreateConsoleServerOptions {
   cm01SemanticCadR2CaptureDirectory?: string;
   cm01SemanticCadR3AttemptDirectory?: string;
   cm01SemanticCadR3CaptureDirectory?: string;
+  cm01SemanticCadR4AttemptDirectory?: string;
+  cm01SemanticCadR4CaptureDirectory?: string;
+  /** Local host directory where the @4 CAD executor materializes presentation STL files. */
+  cm01SemanticCadR4AssetDirectory?: string;
   cm01DripTrayMechanicalR2AttemptDirectory?: string;
   cm01DripTrayMechanicalR2CaptureDirectory?: string;
   cm01DripTrayMechanicalR3AttemptDirectory?: string;
@@ -735,6 +749,35 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const cm01CadR4 = build123dMcpUrl
+    ? new CoffeeMachineCm01V3CadR4RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      recipe: await loadCoffeeMachineCm01SemanticRecipeR2(),
+      build123d: new HttpMcpToolClient({
+        mcpUrl: build123dMcpUrl,
+        timeoutMs: 240_000,
+      }),
+      attempts: new FileCm01SemanticCadAttemptStore(
+        options.cm01SemanticCadR4AttemptDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_R4_ATTEMPT_DIRECTORY,
+      ),
+      captures: new FileCaptureStore({
+        ...CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
+        directory: options.cm01SemanticCadR4CaptureDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_R4_CAPTURE_DIRECTORY,
+      }),
+      assets: new DockerVolumeAssetMaterializer({
+        service: "mcp-build123d",
+        containerDirectory: "/exports",
+        localDirectory: options.cm01SemanticCadR4AssetDirectory ??
+          DEFAULT_CM01_SEMANTIC_CAD_R4_ASSET_DIRECTORY,
+      }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   const cm01Mechanical = sysonMcpUrl && build123dMcpUrl && calculixMcpUrl
     ? new CoffeeMachineCm01V3MechanicalRunExecutor({
       projects: runtime.projects,
@@ -990,6 +1033,12 @@ async function createProjectControl(
             executor: cm01CadR3,
             unavailableMessage:
               "The server has no trusted CM-01 @3 semantic CAD executor configured for this run (build123d provider is required).",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION,
+            executor: cm01CadR4,
+            unavailableMessage:
+              "The server has no trusted CM-01 @4 semantic CAD executor configured for this run (build123d provider and Docker are required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_MECHANICAL_OPERATION,

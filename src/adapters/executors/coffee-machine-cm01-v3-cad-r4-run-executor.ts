@@ -7,7 +7,6 @@ import {
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
-  EngineeringThreadEntityRef,
   EngineeringWorkItem,
 } from "../../domain/engineering-project.ts";
 import {
@@ -21,17 +20,9 @@ import {
   type CoffeeMachineCm01SemanticRecipeR2,
   parseCoffeeMachineCm01SemanticRecipeR2,
 } from "../../domain/coffee-machine-cm01-semantic-recipe.ts";
-import type {
-  ContentFingerprint,
-  ThreadArtifact,
-  ThreadArtifactConsumption,
-  ThreadFreshness,
-  ThreadOperationRef,
-  ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-extension.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   captureCm01SemanticCadExportR3,
@@ -48,8 +39,6 @@ import type { McpToolClient } from "../http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   CM01_DRIP_TRAY_HEIGHT_CORRECTION_ARTIFACT_ID,
-  cm01R2CadSupersedesLinks,
-  requireCm01R2CadPredecessors,
 } from "./cm01-r2-successor-lineage.ts";
 import {
   requireBasis,
@@ -58,21 +47,34 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "./executor-run-helpers.ts";
+import {
+  type CadR3Materialization,
+  materializeCadR3Snapshot,
+} from "./coffee-machine-cm01-v3-cad-r3-run-executor.ts";
+import {
+  HostAssetMaterializationError,
+  type HostAssetMaterializer,
+} from "./host-asset-materializer.ts";
 
 /**
- * The @3 CAD operation: same path as @2 with additional per-part presentation
- * STLs.  The agent supplies only the queued run identity; the server owns the
- * recipe, tool sequence, and naming contract.
+ * The @4 CAD operation: identical evidence chain to @3 (N+1 build123d calls,
+ * same cm01-semantic-cad-capture/3.0 schema) plus host-side materialization
+ * of every presentation STL file.
+ *
+ * Observable difference from @3: new *.stl files appear under
+ * `state/local/thread-assets/` on the host filesystem after the run.  That is
+ * why this is a separate operation version rather than a patch to @3 — the
+ * @3 published snapshots and evidence remain intact.
  */
-export const COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION =
-  COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30WithMeshStls;
+export const COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION =
+  COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30WithMeshStlsAndHostAssets;
 
-export const COFFEE_MACHINE_CM01_V3_CAD_R3_PROJECT_ID =
+export const COFFEE_MACHINE_CM01_V3_CAD_R4_PROJECT_ID =
   "coffee-machine-cm01-v3" as const;
-export const COFFEE_MACHINE_CM01_V3_CAD_R3_SUBJECT_ID =
+export const COFFEE_MACHINE_CM01_V3_CAD_R4_SUBJECT_ID =
   "project:coffee-machine-cm01-v3" as const;
 
-export interface CoffeeMachineCm01V3CadR3RunExecutorCommand {
+export interface CoffeeMachineCm01V3CadR4RunExecutorCommand {
   readonly commandId: string;
   readonly projectId: string;
   readonly expectedRevision: number;
@@ -80,7 +82,7 @@ export interface CoffeeMachineCm01V3CadR3RunExecutorCommand {
   readonly runId: string;
 }
 
-export interface CoffeeMachineCm01V3CadR3RunExecutorDependencies {
+export interface CoffeeMachineCm01V3CadR4RunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: EngineeringProjectCommandService;
   readonly snapshots: ThreadSnapshotStore;
@@ -88,25 +90,34 @@ export interface CoffeeMachineCm01V3CadR3RunExecutorDependencies {
   readonly recipe: CoffeeMachineCm01SemanticRecipeR2;
   readonly build123d: McpToolClient;
   readonly attempts: FileCm01SemanticCadAttemptStore;
+  /** Shares the cm01-semantic-cad-r3 capture store with the @3 executor. */
   readonly captures: FileCaptureStore<"cm01-semantic-cad-r3">;
   readonly lease: EngineeringProjectRunLease;
+  /**
+   * Host-side materializer for the presentation STL files.
+   *
+   * The production implementation (DockerVolumeAssetMaterializer) is an
+   * explicit CLI boundary: it calls `docker compose cp` and requires the
+   * Docker daemon and the compose project to be running.  A failing
+   * materializer throws HostAssetMaterializationError which the executor
+   * surfaces as stop-for-review — no automatic retry is attempted.
+   */
+  readonly assets: HostAssetMaterializer;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly now?: () => string;
 }
 
-export interface CadR3Materialization {
-  readonly snapshot: ThreadSnapshot;
-  readonly evidence: EngineeringThreadEntityRef;
-}
-
 /**
- * Executes the reviewed CM-01 @3 CAD export: N+1 build123d calls that produce
- * the assembly STEP/glTF/STL and one presentation STL per recipe component.
+ * CM-01 @4 CAD run executor.
  *
- * The WAL entry covers the entire N+1 sequence atomically: if any call fails
- * the "dispatched" marker prevents blind replay.
+ * Same N+1 build123d call sequence as @3.  Adds host-side materialization of
+ * every presentation STL file (assembly + per-part) before publishing the
+ * ThreadSnapshot.  If any materialization fails the snapshot is NOT published
+ * and a stop-for-review error is returned.  The operator can inspect the Docker
+ * build123d container state and retry the exact command — providers will not
+ * run again because the attempt WAL entry already exists.
  */
-export class CoffeeMachineCm01V3CadR3RunExecutor {
+export class CoffeeMachineCm01V3CadR4RunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
@@ -115,10 +126,11 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
   readonly #attempts: FileCm01SemanticCadAttemptStore;
   readonly #captures: FileCaptureStore<"cm01-semantic-cad-r3">;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #assets: HostAssetMaterializer;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #now: () => string;
 
-  constructor(deps: CoffeeMachineCm01V3CadR3RunExecutorDependencies) {
+  constructor(deps: CoffeeMachineCm01V3CadR4RunExecutorDependencies) {
     this.#projects = deps.projects;
     this.#commands = deps.commands;
     this.#snapshots = deps.snapshots;
@@ -127,22 +139,23 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
     this.#attempts = deps.attempts;
     this.#captures = deps.captures;
     this.#lease = deps.lease;
+    this.#assets = deps.assets;
     this.#liveUpdates = deps.liveUpdates;
     this.#now = deps.now ?? (() => new Date().toISOString());
   }
 
   async execute(
     origin: EngineeringProjectCommandOrigin,
-    command: CoffeeMachineCm01V3CadR3RunExecutorCommand,
+    command: CoffeeMachineCm01V3CadR4RunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     if (origin.kind !== "agent") {
       throw new EngineeringProjectCommandError(
         "permission_denied",
-        "Only an authenticated agent can execute the reviewed CM-01 @3 CAD export.",
+        "Only an authenticated agent can execute the reviewed CM-01 @4 CAD export.",
       );
     }
     const project = await this.requiredProject(command.projectId);
-    requireR3CadRunShape(project, requireRun(project, command.runId));
+    requireR4CadRunShape(project, requireRun(project, command.runId));
     return await this.#lease.withLease(
       command.projectId,
       command.runId,
@@ -152,28 +165,30 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
 
   private async executeLeased(
     origin: EngineeringProjectCommandOrigin,
-    command: CoffeeMachineCm01V3CadR3RunExecutorCommand,
+    command: CoffeeMachineCm01V3CadR4RunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
     let capturePersisted = false;
+    let assetsMaterialized = false;
     let snapshotPersisted = false;
     let materialized: CadR3Materialization | undefined;
     try {
       const beforeClaim = await this.requiredProject(command.projectId);
       const beforeClaimRun = requireRun(beforeClaim, command.runId);
-      requireR3CadRunShape(beforeClaim, beforeClaimRun);
+      requireR4CadRunShape(beforeClaim, beforeClaimRun);
       const basis = await this.requiredCorrectedBasis(beforeClaim, beforeClaimRun);
 
       await this.#commands.claimRun(origin, {
         ...command,
         commandId: commandStep(command.commandId, "claim"),
-        summary: "Started the reviewed CM-01 @3 semantic CAD export with part meshes.",
+        summary:
+          "Started the reviewed CM-01 @4 semantic CAD export with part meshes and host asset materialization.",
       });
       claimed = true;
 
       let project = await this.requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
-      requireClaimedR3CadRun(project, run, origin);
+      requireClaimedR4CadRun(project, run, origin);
       if (run.status === "completed") {
         assertCompleted(project, command);
         await this.reconcileLive(project.project.subjectId, run.id);
@@ -188,13 +203,21 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
         basis.revision,
         "running",
         startedAt,
-        "CM-01 @3 CAD export running",
+        "CM-01 @4 CAD export running",
         "Compiling the R2 recipe and exporting assembly + per-part presentation STLs.",
       );
 
       const compiled = await compileCoffeeMachineCm01SemanticCadPlanR2(this.#recipe);
       const capture = await this.captureOnce(project, run, startedAt, compiled);
       capturePersisted = true;
+
+      // Materialize every presentation STL to the host thread-assets directory
+      // and verify each file's SHA-256 fail-closed before publishing the snapshot.
+      // If any file fails the run stops for operator review; the capture WAL
+      // entry already exists so retrying skips providers and re-tries assets only.
+      await materializeStlAssets(capture, this.#assets);
+      assetsMaterialized = true;
+
       const captureStorageFingerprint = await sha256Fingerprint(capture);
       materialized = materializeCadR3Snapshot(
         basis,
@@ -209,7 +232,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
           "exact"
       ) {
         throw new Error(
-          "CM-01 @3 CAD snapshot was not durably readable after save.",
+          "CM-01 @4 CAD snapshot was not durably readable after save.",
         );
       }
       await this.recordLive(
@@ -218,8 +241,8 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
         basis.revision,
         "fresh",
         materialized.snapshot.generatedAt,
-        "CM-01 @3 CAD evidence captured",
-        "Assembly STEP, glTF, STL and per-part presentation STLs were attached to the project thread.",
+        "CM-01 @4 CAD evidence captured",
+        "Assembly STEP, glTF, STL and per-part presentation STLs were verified on the host and attached to the project thread.",
       );
 
       project = await this.requiredProject(command.projectId);
@@ -229,7 +252,8 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
           ...command,
           commandId: commandStep(command.commandId, "publish"),
           expectedRevision: project.revision,
-          summary: "Publishing the CM-01 @3 CAD assembly and part-mesh evidence.",
+          summary:
+            "Publishing the CM-01 @4 CAD assembly, part-mesh evidence and host-materialized assets.",
         });
       } else if (run.status !== "publishing" && run.status !== "completed") {
         throw unexpectedStatus(run, "publishing");
@@ -242,7 +266,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
           commandId: commandStep(command.commandId, "complete"),
           expectedRevision: project.revision,
           summary:
-            "Recorded the reviewed CM-01 @3 CAD plan, script, STEP and presentation mesh evidence.",
+            "Recorded the reviewed CM-01 @4 CAD plan, script, STEP, presentation mesh evidence and host assets.",
           resultSnapshot: snapshotRef(materialized.snapshot),
           evidenceRefs: [materialized.evidence],
         });
@@ -263,19 +287,37 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
         if (completed) return completed;
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          "CM-01 @3 CAD evidence is durable but project attachment did not finish. Retry this exact command; providers will not run again.",
+          "CM-01 @4 CAD evidence is durable but project attachment did not finish. Retry this exact command; providers will not run again.",
         );
       }
       if (error instanceof Cm01SemanticCadOutcomeUnknownError) {
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          "The CM-01 @3 CAD export outcome is unknown. An operator must inspect build123d before any reviewed recovery path.",
+          "The CM-01 @4 CAD export outcome is unknown. An operator must inspect build123d before any reviewed recovery path.",
+        );
+      }
+      if (error instanceof HostAssetMaterializationError) {
+        // Capture is persisted; materialization was attempted but failed.
+        // Retry the exact command after resolving the Docker state — providers
+        // will not run again.
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `CM-01 @4 CAD asset materialization stopped for operator review (${error.code}). ` +
+            "The capture is durable. Inspect the Docker build123d container state, " +
+            "then retry this exact command to re-attempt materialization without re-running providers.",
+        );
+      }
+      if (capturePersisted && !assetsMaterialized) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "The CM-01 @4 CAD capture is durable but host assets were not materialized. " +
+            "Inspect the Docker build123d container state, then retry this exact command.",
         );
       }
       if (capturePersisted) {
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          "The CM-01 @3 CAD capture is durable but its snapshot was not published. Retry this exact command to resume without re-running providers.",
+          "The CM-01 @4 CAD capture is durable but its snapshot was not published. Retry this exact command to resume without re-running providers.",
         );
       }
       if (claimed) await this.recordFailure(origin, command);
@@ -295,7 +337,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
     if (basis.subjectId !== project.project.subjectId) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The CM-01 @3 CAD run basis belongs to another project subject.",
+        "The CM-01 @4 CAD run basis belongs to another project subject.",
       );
     }
     const snapshot = await this.#snapshots.get(basis.snapshotId);
@@ -305,7 +347,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The exact ThreadSnapshot basis for this CM-01 @3 CAD run is unavailable.",
+        "The exact ThreadSnapshot basis for this CM-01 @4 CAD run is unavailable.",
       );
     }
     try {
@@ -313,7 +355,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The exact CM-01 @3 CAD basis is invalid: ${message(error)}`,
+        `The exact CM-01 @4 CAD basis is invalid: ${message(error)}`,
       );
     }
     const correction = snapshot.artifacts.find((a) =>
@@ -323,7 +365,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
     if (!correction) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The CM-01 @3 CAD run requires the fresh correction artifact in its basis.",
+        "The CM-01 @4 CAD run requires the fresh correction artifact in its basis.",
       );
     }
     const architecture = snapshot.artifacts.find((a) =>
@@ -333,7 +375,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
     if (!architecture) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The CM-01 @3 CAD run requires a fresh architecture-model artifact in its basis.",
+        "The CM-01 @4 CAD run requires a fresh architecture-model artifact in its basis.",
       );
     }
     return snapshot;
@@ -354,7 +396,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
       const text = await this.#captures.read(attempt.captureFingerprint);
       if (!text) {
         throw new Error(
-          "The completed CM-01 @3 CAD attempt has no readable content-addressed capture.",
+          "The completed CM-01 @4 CAD attempt has no readable content-addressed capture.",
         );
       }
       const existing = await parseCm01SemanticCadR3Capture(JSON.parse(text));
@@ -363,7 +405,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
         existing.script !== compiled.script
       ) {
         throw new Error(
-          "The persisted CM-01 @3 CAD capture does not match the reviewed semantic recipe.",
+          "The persisted CM-01 @4 CAD capture does not match the reviewed semantic recipe.",
         );
       }
       return existing;
@@ -399,14 +441,14 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
       await this.#liveUpdates.appendOnce({
         subjectId,
         runId,
-        operationId: COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION.id,
+        operationId: COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION.id,
         baseRevision,
         state,
         recordedAt,
         graph: {
           nodes: [{
-            id: `${runId}:cm01-cad-r3`,
-            ref: { kind: "artifact", id: `${runId}:cm01-cad-r3` },
+            id: `${runId}:cm01-cad-r4`,
+            ref: { kind: "artifact", id: `${runId}:cm01-cad-r4` },
             entityKind: "artifact",
             artifactKind: "cad-model",
             activityRole: "milestone",
@@ -430,7 +472,7 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
 
   private async recordFailure(
     origin: EngineeringProjectCommandOrigin,
-    command: CoffeeMachineCm01V3CadR3RunExecutorCommand,
+    command: CoffeeMachineCm01V3CadR4RunExecutorCommand,
   ): Promise<void> {
     try {
       const project = await this.requiredProject(command.projectId);
@@ -443,10 +485,10 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
         ...command,
         commandId: commandStep(command.commandId, "fail"),
         expectedRevision: project.revision,
-        summary: "CM-01 @3 CAD export stopped before durable evidence was published.",
-        code: "cm01-semantic-cad-r3-not-published",
+        summary: "CM-01 @4 CAD export stopped before durable evidence was published.",
+        code: "cm01-semantic-cad-r4-not-published",
         message:
-          "The reviewed CM-01 @3 CAD export did not produce durable project evidence. No automatic retry was attempted.",
+          "The reviewed CM-01 @4 CAD export did not produce durable project evidence. No automatic retry was attempted.",
       });
       await this.recordLive(
         project.project.subjectId,
@@ -454,14 +496,14 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
         run.basis?.kind === "thread-snapshot" ? run.basis.revision : 0,
         "failed",
         safeNow(this.#now),
-        "CM-01 @3 CAD export stopped",
+        "CM-01 @4 CAD export stopped",
         "The export stopped before canonical evidence was published. It was not automatically repeated.",
       );
     } catch { /* preserve original failure */ }
   }
 
   private async completedFor(
-    command: CoffeeMachineCm01V3CadR3RunExecutorCommand,
+    command: CoffeeMachineCm01V3CadR4RunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot | undefined> {
     try {
       const project = await this.requiredProject(command.projectId);
@@ -486,343 +528,46 @@ export class CoffeeMachineCm01V3CadR3RunExecutor {
   }
 }
 
-/**
- * Pure, no-I/O materializer for the CM-01 @3 successor: plan + script + STEP
- * (same as @2) plus assembly STL mesh and one mesh per recipe component.
- *
- * Exported so the @4 executor can reuse the same snapshot extension without
- * duplicating the pure computation. The @3 runtime behaviour is unchanged.
- */
-export function materializeCadR3Snapshot(
-  base: ThreadSnapshot,
-  runId: string,
-  capture: Cm01SemanticCadR3Capture,
-  captureUri: string,
-): CadR3Materialization {
-  const correction = requireFreshCorrection(base.artifacts);
-  const architecture = requireFreshArchitecture(base.artifacts);
-  const old = requireCm01R2CadPredecessors(base.artifacts);
+// ── Host-side STL materialization ────────────────────────────────────────────
 
-  const step = capture.files.find((f) => f.format === "step");
-  if (!step) throw new Error("CM-01 @3 CAD capture has no assembly STEP evidence.");
+/**
+ * Materialize every presentation STL from the capture into the host asset
+ * directory via the injected HostAssetMaterializer.
+ *
+ * Order: assembly STL first, then per-part STLs in component-declaration order.
+ * Any HostAssetMaterializationError propagates immediately to the caller, which
+ * translates it to stop-for-review; partial state is never silently accepted.
+ */
+async function materializeStlAssets(
+  capture: Cm01SemanticCadR3Capture,
+  materializer: HostAssetMaterializer,
+): Promise<void> {
   const assemblyStl = capture.files.find((f) => f.format === "stl");
   if (!assemblyStl) {
-    throw new Error("CM-01 @3 CAD capture has no assembly STL evidence.");
-  }
-
-  const prefix = `coffee-machine-cm01-v3-cad-r3-${capture.fingerprint.digest}`;
-  const planId = `${prefix}-plan`;
-  const scriptId = `${prefix}-script`;
-  const stepId = `${prefix}-step`;
-  const meshAssemblyId = `${prefix}-mesh-assembly`;
-
-  const compiler: ThreadOperationRef = {
-    serverId: "digital-thread",
-    tool: "compile_coffee_machine_cm01_semantic_cad_plan_r2",
-    runId,
-  };
-  const exporter: ThreadOperationRef = {
-    serverId: "build123d",
-    tool: "build123d_export",
-    runId,
-  };
-  const freshness = fresh(capture.capturedAt);
-  const planFingerprint = r2ArtifactFingerprint(capture.plan, "cad-plan");
-  const scriptFingerprint = r2ArtifactFingerprint(capture.plan, "cad-script");
-
-  // Assembly artifacts (same as @2) plus the assembly STL mesh.
-  const artifacts: ThreadArtifact[] = [
-    artifact(
-      planId,
-      "CM-01 30 mm DripTray semantic CAD plan",
-      "document",
-      planFingerprint,
-      captureUri,
-      "application/json",
-      compiler,
-      [architecture.id, correction.id],
-      freshness,
-    ),
-    artifact(
-      scriptId,
-      "CM-01 30 mm DripTray deterministic build123d script",
-      "script",
-      scriptFingerprint,
-      `${captureUri}#script`,
-      "text/x-python",
-      compiler,
-      [planId],
-      freshness,
-    ),
-    artifact(
-      stepId,
-      "CM-01 30 mm DripTray assembly STEP export",
-      "step",
-      step.fingerprint,
-      `${captureUri}#${step.name}`,
-      "model/step",
-      exporter,
-      [scriptId],
-      freshness,
-    ),
-    artifact(
-      meshAssemblyId,
-      "CM-01 30 mm DripTray assembly presentation STL",
-      "mesh",
-      assemblyStl.fingerprint,
-      `${captureUri}#${assemblyStl.name}`,
-      "model/stl",
-      exporter,
-      [scriptId],
-      freshness,
-    ),
-    // Per-component presentation STLs — one per recipe component, in order.
-    ...capture.partMeshes.map((part) =>
-      artifact(
-        `${prefix}-mesh-${part.semanticKey}`,
-        `CM-01 30 mm ${part.semanticKey} presentation STL`,
-        "mesh",
-        part.fingerprint,
-        `${captureUri}#${part.name}`,
-        "model/stl",
-        exporter,
-        [scriptId],
-        freshness,
-      )
-    ),
-  ];
-
-  const consumptions: ThreadArtifactConsumption[] = [
-    consumption(
-      `${prefix}-consumes-architecture`,
-      architecture.id,
-      compiler,
-      architecture.fingerprint,
-      capture.capturedAt,
-    ),
-    consumption(
-      `${prefix}-consumes-correction`,
-      correction.id,
-      compiler,
-      correction.fingerprint,
-      capture.capturedAt,
-    ),
-    consumption(
-      `${prefix}-consumes-plan`,
-      planId,
-      compiler,
-      planFingerprint,
-      capture.capturedAt,
-    ),
-    consumption(
-      `${prefix}-consumes-script`,
-      scriptId,
-      exporter,
-      scriptFingerprint,
-      capture.capturedAt,
-    ),
-  ];
-
-  const applied = applyThreadSnapshotExtensionIfNew(base, {
-    id: `${prefix}-extension`,
-    name: "Capture the reviewed CM-01 @3 CAD successor with presentation meshes",
-    subjectId: base.subject.id,
-    capturedAt: capture.capturedAt,
-    artifacts,
-    consumptions,
-    observations: [],
-    requirements: [],
-    evaluations: [],
-    violations: [],
-    proposedActions: [],
-    provenance: [
-      link(
-        `${prefix}-plan-from-architecture`,
-        planId,
-        architecture.id,
-        "derived_from",
-        "The R3 plan is compiled from the retained architecture basis.",
-      ),
-      link(
-        `${prefix}-plan-from-correction`,
-        planId,
-        correction.id,
-        "derived_from",
-        "The plan is derived from the explicit 28 mm to 30 mm correction record.",
-      ),
-      link(
-        `${prefix}-script-from-plan`,
-        scriptId,
-        planId,
-        "derived_from",
-        "The deterministic R3 script is rendered from the captured R3 plan.",
-      ),
-      link(
-        `${prefix}-step-from-script`,
-        stepId,
-        scriptId,
-        "derived_from",
-        "build123d_export produced the assembly STEP from the deterministic R3 script.",
-      ),
-      link(
-        `${prefix}-mesh-assembly-from-script`,
-        meshAssemblyId,
-        scriptId,
-        "derived_from",
-        "build123d_export produced the assembly presentation STL from the same deterministic R3 script.",
-      ),
-      ...capture.partMeshes.map((part) =>
-        link(
-          `${prefix}-mesh-${part.semanticKey}-from-script`,
-          `${prefix}-mesh-${part.semanticKey}`,
-          scriptId,
-          "derived_from",
-          `build123d_export produced the ${part.semanticKey} presentation STL from the server-rendered single-component script.`,
-        )
-      ),
-      ...cm01R2CadSupersedesLinks({ planId, scriptId, stepId }, old),
-      ...consumptions.map((item) =>
-        link(
-          `${item.id}-uses`,
-          item.id,
-          item.artifactId,
-          "uses",
-          "The operation attested the exact fingerprint it consumed.",
-          "consumption",
-        )
-      ),
-    ],
-  }, { appliedAt: capture.capturedAt });
-
-  if (!applied.applied || applied.snapshot.revision !== base.revision + 1) {
     throw new Error(
-      "CM-01 @3 CAD evidence did not produce exactly one successor snapshot.",
+      "CM-01 @4 CAD capture has no assembly STL entry to materialize.",
     );
   }
-  return {
-    snapshot: applied.snapshot,
-    evidence: {
-      snapshotId: applied.snapshot.id,
-      snapshotRevision: applied.snapshot.revision,
-      kind: "artifact",
-      id: stepId,
-    },
-  };
-}
-
-function requireFreshCorrection(artifacts: readonly ThreadArtifact[]): ThreadArtifact {
-  const found = artifacts.filter((a) =>
-    a.id === CM01_DRIP_TRAY_HEIGHT_CORRECTION_ARTIFACT_ID &&
-    a.freshness.status === "fresh"
-  );
-  if (found.length !== 1) {
-    throw new Error(
-      "CM-01 @3 CAD successor materialization requires the fresh correction record.",
-    );
+  await materializer.materialize(assemblyStl.name, assemblyStl.fingerprint.digest);
+  for (const part of capture.partMeshes) {
+    await materializer.materialize(part.name, part.fingerprint.digest);
   }
-  return found[0]!;
 }
 
-function requireFreshArchitecture(
-  artifacts: readonly ThreadArtifact[],
-): ThreadArtifact {
-  const found = artifacts.filter((a) =>
-    a.kind === "sysml-model" &&
-    a.id.startsWith("coffee-machine-cm01-v3-architecture-") &&
-    a.freshness.status === "fresh"
-  );
-  if (found.length !== 1) {
-    throw new Error(
-      "CM-01 @3 CAD materialization requires exactly one fresh V3 architecture artifact.",
-    );
-  }
-  return found[0]!;
-}
+// ── Shape guards ─────────────────────────────────────────────────────────────
 
-function artifact(
-  id: string,
-  name: string,
-  kind: ThreadArtifact["kind"],
-  fingerprint: ContentFingerprint,
-  uri: string,
-  mediaType: string,
-  producer: ThreadOperationRef,
-  inputArtifactIds: string[],
-  freshness: ThreadFreshness,
-): ThreadArtifact {
-  return {
-    id,
-    name,
-    kind,
-    version: fingerprint.digest,
-    fingerprint,
-    uri,
-    mediaType,
-    producer,
-    inputArtifactIds,
-    freshness,
-  };
-}
-
-function consumption(
-  id: string,
-  artifactId: string,
-  consumer: ThreadOperationRef,
-  observedFingerprint: ContentFingerprint,
-  verifiedAt: string,
-): ThreadArtifactConsumption {
-  return {
-    id,
-    artifactId,
-    consumer,
-    observedFingerprint,
-    verifiedAt,
-    status: "verified",
-  };
-}
-
-function fresh(at: string): ThreadFreshness {
-  return { status: "fresh", changedAt: at, invalidatedByChangeIds: [] };
-}
-
-function r2ArtifactFingerprint(
-  plan: Cm01SemanticCadR3Capture["plan"],
-  role: "cad-plan" | "cad-script",
-): ContentFingerprint {
-  const item = plan.artifacts.find((a) => a.role === role);
-  if (!item) throw new Error(`CM-01 @3 CAD plan is missing ${role}.`);
-  return structuredClone(item.fingerprint);
-}
-
-function link(
-  id: string,
-  fromId: string,
-  toId: string,
-  relation: "derived_from" | "uses",
-  rationale: string,
-  fromKind: "artifact" | "consumption" = "artifact",
-) {
-  return {
-    id,
-    relation,
-    from: { kind: fromKind, id: fromId },
-    to: { kind: "artifact" as const, id: toId },
-    rationale,
-  };
-}
-
-function requireR3CadRunShape(
+function requireR4CadRunShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
 ): EngineeringWorkItem {
   const workItem = project.workItems.find((w) => w.id === run.workItemId);
   if (
     project.schemaVersion !== "3.0" ||
-    project.project.id !== COFFEE_MACHINE_CM01_V3_CAD_R3_PROJECT_ID ||
-    project.project.subjectId !== COFFEE_MACHINE_CM01_V3_CAD_R3_SUBJECT_ID ||
+    project.project.id !== COFFEE_MACHINE_CM01_V3_CAD_R4_PROJECT_ID ||
+    project.project.subjectId !== COFFEE_MACHINE_CM01_V3_CAD_R4_SUBJECT_ID ||
     run.basis?.kind !== "thread-snapshot" ||
-    workItem?.operation?.id !== COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION.id ||
-    workItem.operation.version !== COFFEE_MACHINE_CM01_V3_CAD_R3_OPERATION.version ||
+    workItem?.operation?.id !== COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION.id ||
+    workItem.operation.version !== COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION.version ||
     workItem.operation.bindings.length !== 2 ||
     workItem.operation.bindings[0]?.name !== "approvedBrief" ||
     workItem.operation.bindings[0].source.kind !== "approved-brief" ||
@@ -831,22 +576,22 @@ function requireR3CadRunShape(
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "This executor may run only the canonical CM-01 V3 CAD @3 operation.",
+      "This executor may run only the canonical CM-01 V3 CAD @4 operation.",
     );
   }
   return workItem;
 }
 
-function requireClaimedR3CadRun(
+function requireClaimedR4CadRun(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
   origin: EngineeringProjectCommandOrigin,
 ): EngineeringWorkItem {
-  const workItem = requireR3CadRunShape(project, run);
+  const workItem = requireR4CadRunShape(project, run);
   if (run.claimedBy?.origin !== origin.kind || run.claimedBy.id !== origin.actorId) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "This executor may run only the exact CM-01 @3 CAD run it claimed.",
+      "This executor may run only the exact CM-01 @4 CAD run it claimed.",
     );
   }
   return workItem;
@@ -854,7 +599,7 @@ function requireClaimedR3CadRun(
 
 function assertCompleted(
   project: EngineeringProjectSnapshot,
-  command: CoffeeMachineCm01V3CadR3RunExecutorCommand,
+  command: CoffeeMachineCm01V3CadR4RunExecutorCommand,
 ): void {
   const run = requireRun(project, command.runId);
   if (
@@ -865,10 +610,12 @@ function assertCompleted(
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `CM-01 @3 CAD run ${run.id} did not complete through this exact execution command.`,
+      `CM-01 @4 CAD run ${run.id} did not complete through this exact execution command.`,
     );
   }
 }
+
+// ── Private helpers ───────────────────────────────────────────────────────────
 
 async function persistedSnapshotPresence(
   store: ThreadSnapshotStore,
@@ -886,7 +633,7 @@ async function persistedSnapshotPresence(
 }
 
 function commandStep(commandId: string, step: string): string {
-  return `${commandId}:cm01-semantic-cad-r3:${step}`;
+  return `${commandId}:cm01-semantic-cad-r4:${step}`;
 }
 
 function safeNow(now: () => string): string {

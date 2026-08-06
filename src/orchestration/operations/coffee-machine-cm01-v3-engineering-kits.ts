@@ -22,6 +22,7 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-height-correction"
   | "cm01.cad-assembly-drip-tray-height-30"
   | "cm01.cad-assembly-with-mesh-stls"
+  | "cm01.cad-assembly-with-host-assets"
   | "cm01.thermal-nominal"
   | "cm01.erp-bom-observation"
   | "cm01.drip-tray-static-proof"
@@ -73,7 +74,7 @@ export interface CoffeeMachineCm01V3KitQualification {
 
 export interface CoffeeMachineCm01V3OperationRef {
   readonly id: string;
-  readonly version: "1" | "2" | "3";
+  readonly version: "1" | "2" | "3" | "4";
 }
 
 /**
@@ -104,7 +105,7 @@ export interface CoffeeMachineCm01V3OperationDescriptor
 
 export interface CoffeeMachineCm01V3EngineeringKit {
   readonly kitId: CoffeeMachineCm01V3EngineeringKitId;
-  readonly kitVersion: "1" | "2" | "3";
+  readonly kitVersion: "1" | "2" | "3" | "4";
   readonly qualification: CoffeeMachineCm01V3KitQualification;
   /** Explicitly limits what a completed operation may claim. */
   readonly evidenceBoundary: string;
@@ -151,6 +152,24 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
       {
         id: "design.build-coffee-machine-cm01-cad",
         version: "3",
+      } as const,
+    ),
+    /**
+     * Extends @3 with host-side materialization of the presentation STL bytes.
+     *
+     * After the N+1 build123d calls capture fingerprints into the content-
+     * addressed store, a DockerVolumeAssetMaterializer copies each STL from the
+     * provider Docker volume to `state/local/thread-assets` and verifies the
+     * SHA-256 fail-closed against the attested capture. Any mismatch stops the
+     * run for operator review before the snapshot is published.
+     *
+     * Observable difference from @3: new files appear under thread-assets on
+     * the host, making them immediately servable by the BFF asset route.
+     */
+    cadDripTrayHeight30WithMeshStlsAndHostAssets: Object.freeze(
+      {
+        id: "design.build-coffee-machine-cm01-cad",
+        version: "4",
       } as const,
     ),
     thermal: Object.freeze(
@@ -576,6 +595,61 @@ const KITS = [
       title: "Rebuild CM-01 CAD with presentation meshes for the 30 mm DripTray",
       description:
         "Generate the reviewed CM-01 CAD evidence from the exact 28 mm to 30 mm DripTray correction record, including assembly STEP/glTF/STL and one presentation STL per component.",
+      workItemKind: "design",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_DRIP_TRAY_CORRECTION_BINDINGS,
+    },
+  },
+  {
+    kitId: "cm01.cad-assembly-with-host-assets",
+    kitVersion: "4",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/executors/host-asset-materializer.ts",
+          purpose:
+            "Defines the HostAssetMaterializer boundary and the DockerVolumeAssetMaterializer: " +
+            "the CLI dependency (docker compose cp), the fail-closed SHA-256 verification, " +
+            "and the idempotency guard. The stop-for-review contract is the invariant.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/executors/coffee-machine-cm01-v3-cad-r4-run-executor.ts",
+          purpose:
+            "Holds the @4 executor: same N+1 build123d calls as @3, followed by " +
+            "host-side materialization of every presentation STL into state/local/thread-assets. " +
+            "The snapshot is only published after all STL files are verified on the host.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/captures/cm01-semantic-cad-capture-r3.ts",
+          purpose: "Defines the cm01-semantic-cad-capture/3.0 schema shared with @3. " +
+            "Fingerprints in the capture are the reference for host-side SHA-256 verification.",
+        },
+      ],
+    },
+    evidenceBoundary:
+      "Same as @3 (CAD assembly + per-part presentation STLs) with the addition that " +
+      "every presentation STL is materialized to the host thread-assets directory and its " +
+      "SHA-256 is verified against the attested capture before the snapshot is published. " +
+      "It does not recalculate thermal behavior, refresh an ERP observation, release fabrication, " +
+      "or certify the product.",
+    presentationRole: "cad",
+    activityCategory: "design",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS
+        .cadDripTrayHeight30WithMeshStlsAndHostAssets,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title:
+        "Rebuild CM-01 CAD with presentation meshes and host asset materialization",
+      description:
+        "Generate the reviewed CM-01 CAD evidence from the exact 28 mm to 30 mm DripTray correction " +
+        "record, including assembly STEP/glTF/STL and one presentation STL per component, then copy " +
+        "and verify every STL to state/local/thread-assets so the BFF asset route can serve them.",
       workItemKind: "design",
       riskClass: "consequential",
       execution: "trusted",
