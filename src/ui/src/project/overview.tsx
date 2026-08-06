@@ -401,9 +401,12 @@ function productDefinitionDetail(thread: ThreadWorkbenchSnapshot): string {
   return `${thread.components.components.length} reviewed component records across ${scope}.`;
 }
 
-function providerLabel(provider: "syson" | "erpnext" | "build123d"): string {
+function providerLabel(
+  provider: "syson" | "erpnext" | "build123d" | "digital-thread" | string,
+): string {
   if (provider === "syson") return "SysON";
   if (provider === "build123d") return "CAD";
+  if (provider === "digital-thread") return "Thread";
   return "ERP";
 }
 

@@ -1,6 +1,15 @@
 import type { ThreadArtifact, ThreadSnapshot } from "./thread-snapshot.ts";
 
-export type ThreadComponentProvider = "syson" | "erpnext" | "build123d";
+/**
+ * Recognised provider namespaces for catalog bindings.
+ * "digital-thread" names the backend compiler that produces plan and script
+ * artifacts — distinct from build123d which executes the export.
+ */
+export type ThreadComponentProvider =
+  | "syson"
+  | "erpnext"
+  | "build123d"
+  | "digital-thread";
 
 export interface ThreadComponentBinding {
   provider: ThreadComponentProvider;
@@ -82,37 +91,42 @@ export interface ResolvedThreadComponentCatalog
 export function validateThreadComponentCatalog(
   value: unknown,
 ): ThreadComponentCatalog {
-  const root = record(value, "$"), views = record(root.systemViews, "$.systemViews");
+  const root = record(value, "$"),
+    views = record(root.systemViews, "$.systemViews");
   literal(root.schemaVersion, "thread-components/1.0", "$.schemaVersion");
   literal(root.authority, "workspace-declared", "$.authority");
-  const components = array(root.components, "$.components").map((value, index) => {
-    const path = `$.components[${index}]`;
-    const input = record(value, path);
-    const kind = oneOf(input.kind, ["assembly", "part"], `${path}.kind`);
-    const bindings = array(input.bindings, `${path}.bindings`).map(
-      (value, bindingIndex) => binding(value, `${path}.bindings[${bindingIndex}]`),
-    );
-    const bindingKeys = bindings.map((item) =>
-      `${item.provider}:${item.kind}:${item.id}`
-    );
-    if (new Set(bindingKeys).size !== bindingKeys.length) {
-      throw new Error(`${path}.bindings contains duplicate provider identities.`);
-    }
-    const preview = input.preview === undefined
-      ? undefined
-      : componentPreview(input.preview, `${path}.preview`);
-    return {
-      id: nonEmpty(input.id, `${path}.id`),
-      label: nonEmpty(input.label, `${path}.label`),
-      kind,
-      quantity: positiveNumber(input.quantity, `${path}.quantity`),
-      ...(input.parentId === undefined
-        ? {}
-        : { parentId: nonEmpty(input.parentId, `${path}.parentId`) }),
-      bindings,
-      ...(preview ? { preview } : {}),
-    };
-  });
+  const components = array(root.components, "$.components").map(
+    (value, index) => {
+      const path = `$.components[${index}]`;
+      const input = record(value, path);
+      const kind = oneOf(input.kind, ["assembly", "part"], `${path}.kind`);
+      const bindings = array(input.bindings, `${path}.bindings`).map(
+        (value, bindingIndex) => binding(value, `${path}.bindings[${bindingIndex}]`),
+      );
+      const bindingKeys = bindings.map((item) =>
+        `${item.provider}:${item.kind}:${item.id}`
+      );
+      if (new Set(bindingKeys).size !== bindingKeys.length) {
+        throw new Error(
+          `${path}.bindings contains duplicate provider identities.`,
+        );
+      }
+      const preview = input.preview === undefined
+        ? undefined
+        : componentPreview(input.preview, `${path}.preview`);
+      return {
+        id: nonEmpty(input.id, `${path}.id`),
+        label: nonEmpty(input.label, `${path}.label`),
+        kind,
+        quantity: positiveNumber(input.quantity, `${path}.quantity`),
+        ...(input.parentId === undefined
+          ? {}
+          : { parentId: nonEmpty(input.parentId, `${path}.parentId`) }),
+        bindings,
+        ...(preview ? { preview } : {}),
+      };
+    },
+  );
   const componentIds = components.map((component) => component.id);
   if (new Set(componentIds).size !== componentIds.length) {
     throw new Error("$.components contains duplicate component ids.");
@@ -120,10 +134,14 @@ export function validateThreadComponentCatalog(
   const knownIds = new Set(componentIds);
   for (const [index, component] of components.entries()) {
     if (component.parentId && !knownIds.has(component.parentId)) {
-      throw new Error(`$.components[${index}].parentId does not name a component.`);
+      throw new Error(
+        `$.components[${index}].parentId does not name a component.`,
+      );
     }
     if (component.parentId === component.id) {
-      throw new Error(`$.components[${index}].parentId cannot reference itself.`);
+      throw new Error(
+        `$.components[${index}].parentId cannot reference itself.`,
+      );
     }
   }
   rejectParentCycles(components);
@@ -210,7 +228,7 @@ function binding(value: unknown, path: string): ThreadComponentBinding {
   return {
     provider: oneOf(
       input.provider,
-      ["syson", "erpnext", "build123d"],
+      ["syson", "erpnext", "build123d", "digital-thread"],
       `${path}.provider`,
     ),
     kind: oneOf(
@@ -227,7 +245,10 @@ function binding(value: unknown, path: string): ThreadComponentBinding {
   };
 }
 
-function componentPreview(value: unknown, path: string): ThreadComponentPreview {
+function componentPreview(
+  value: unknown,
+  path: string,
+): ThreadComponentPreview {
   const input = record(value, path);
   literal(input.provider, "build123d", `${path}.provider`);
   literal(input.mediaType, "model/stl", `${path}.mediaType`);
@@ -252,7 +273,10 @@ function sysonView(value: unknown, path: string) {
   const input = record(value, path);
   return {
     projectId: nonEmpty(input.projectId, `${path}.projectId`),
-    editingContextId: nonEmpty(input.editingContextId, `${path}.editingContextId`),
+    editingContextId: nonEmpty(
+      input.editingContextId,
+      `${path}.editingContextId`,
+    ),
     diagramId: nonEmpty(input.diagramId, `${path}.diagramId`),
     diagramLabel: nonEmpty(input.diagramLabel, `${path}.diagramLabel`),
   };
@@ -302,7 +326,9 @@ function nonEmpty(value: unknown, path: string): string {
 }
 
 function literal(value: unknown, expected: unknown, path: string): void {
-  if (value !== expected) throw new Error(`${path} must equal ${String(expected)}.`);
+  if (value !== expected) {
+    throw new Error(`${path} must equal ${String(expected)}.`);
+  }
 }
 
 function oneOf<const T extends string>(

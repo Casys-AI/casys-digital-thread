@@ -745,7 +745,8 @@ function isThreadComponentBinding(
   if (!value || typeof value !== "object") return false;
   const binding = value as Partial<ThreadComponentBinding>;
   return (binding.provider === "syson" || binding.provider === "erpnext" ||
-    binding.provider === "build123d") &&
+    binding.provider === "build123d" ||
+    binding.provider === "digital-thread") &&
     (binding.kind === "part-definition" || binding.kind === "part-usage" ||
       binding.kind === "item" ||
       binding.kind === "artifact" || binding.kind === "assembly-child") &&

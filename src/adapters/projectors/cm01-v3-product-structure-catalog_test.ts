@@ -524,6 +524,318 @@ Deno.test("CM-01 V3 Product Structure ignores @3 meshes from two different captu
   );
 });
 
+// ── @3 whole-assembly binding tests ──────────────────────────────────────────
+
+Deno.test("CM-01 V3 Product Structure binds @3 whole-assembly plan, script, and STEP to assembly", async () => {
+  const fixture = await v3Fixture();
+  const captureDigest = "d".repeat(64);
+  const prefix = `coffee-machine-cm01-v3-cad-r3-${captureDigest}`;
+
+  const planArtifact = {
+    id: `${prefix}-plan`,
+    name: "CM-01 30 mm DripTray semantic CAD plan",
+    kind: "document",
+    version: captureDigest,
+    fingerprint: fingerprint("d"),
+    uri: `cm01-semantic-cad-r3://test#plan`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "compile_coffee_machine_cm01_semantic_cad_plan_r2",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+  const scriptArtifact = {
+    id: `${prefix}-script`,
+    name: "CM-01 30 mm DripTray deterministic build123d script",
+    kind: "script",
+    version: captureDigest,
+    fingerprint: fingerprint("d"),
+    uri: `cm01-semantic-cad-r3://test#script`,
+    mediaType: "text/x-python",
+    producer: {
+      serverId: "digital-thread",
+      tool: "compile_coffee_machine_cm01_semantic_cad_plan_r2",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+  const stepArtifact = {
+    id: `${prefix}-step`,
+    name: "CM-01 30 mm DripTray assembly STEP export",
+    kind: "step",
+    version: captureDigest,
+    fingerprint: fingerprint("d"),
+    uri: `cm01-semantic-cad-r3://test#step`,
+    mediaType: "model/step",
+    producer: {
+      serverId: "build123d",
+      tool: "build123d_export",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [
+      ...fixture.snapshot.artifacts,
+      planArtifact,
+      scriptArtifact,
+      stepArtifact,
+    ],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  const assemblyComponent = catalog?.components[0];
+  assertEquals(assemblyComponent?.id, "cm01-v3:coffee-machine");
+  assertEquals(assemblyComponent?.kind, "assembly");
+
+  // Plan binding: provider digital-thread, artifact kind
+  const planBinding = assemblyComponent?.bindings.find(
+    (b) => b.id === `${prefix}-plan`,
+  );
+  assertEquals(planBinding?.provider, "digital-thread");
+  assertEquals(planBinding?.kind, "artifact");
+  assertEquals(planBinding?.evidenceArtifactId, `${prefix}-plan`);
+
+  // Script binding: provider digital-thread, artifact kind
+  const scriptBinding = assemblyComponent?.bindings.find(
+    (b) => b.id === `${prefix}-script`,
+  );
+  assertEquals(scriptBinding?.provider, "digital-thread");
+  assertEquals(scriptBinding?.kind, "artifact");
+  assertEquals(scriptBinding?.evidenceArtifactId, `${prefix}-script`);
+
+  // STEP binding: provider build123d, artifact kind
+  const stepBinding = assemblyComponent?.bindings.find(
+    (b) => b.id === `${prefix}-step`,
+  );
+  assertEquals(stepBinding?.provider, "build123d");
+  assertEquals(stepBinding?.kind, "artifact");
+  assertEquals(stepBinding?.evidenceArtifactId, `${prefix}-step`);
+
+  // Total component count unchanged: 11 (assembly + 10 parts)
+  assertEquals(catalog?.components.length, 11);
+});
+
+Deno.test("CM-01 V3 Product Structure anchors @3 assembly STEP to assembly — not to any part", async () => {
+  const fixture = await v3Fixture();
+  const captureDigest = "e".repeat(64);
+  const prefix = `coffee-machine-cm01-v3-cad-r3-${captureDigest}`;
+
+  const stepArtifact = {
+    id: `${prefix}-step`,
+    name: "CM-01 30 mm DripTray assembly STEP export",
+    kind: "step",
+    version: captureDigest,
+    fingerprint: fingerprint("e"),
+    uri: `cm01-semantic-cad-r3://test#step`,
+    mediaType: "model/step",
+    producer: {
+      serverId: "build123d",
+      tool: "build123d_export",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+  const dripTrayMeshArtifact = {
+    id: `${prefix}-mesh-drip-tray`,
+    name: "CM-01 30 mm drip-tray presentation STL",
+    kind: "mesh",
+    version: captureDigest,
+    fingerprint: fingerprint("e"),
+    uri: `cm01-semantic-cad-r3://test#drip-tray.stl`,
+    mediaType: "model/stl",
+    producer: {
+      serverId: "build123d",
+      tool: "build123d_export",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [
+      ...fixture.snapshot.artifacts,
+      stepArtifact,
+      dripTrayMeshArtifact,
+    ],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  // STEP must be anchored to the assembly
+  const assemblyComponent = catalog?.components[0];
+  assertEquals(assemblyComponent?.id, "cm01-v3:coffee-machine");
+  const assemblyStepBinding = assemblyComponent?.bindings.find(
+    (b) => b.id === `${prefix}-step`,
+  );
+  assertEquals(assemblyStepBinding?.provider, "build123d");
+  assertEquals(assemblyStepBinding?.kind, "artifact");
+
+  // STEP must NOT appear in any part binding
+  const parts = catalog?.components.slice(1) ?? [];
+  assertEquals(
+    parts.some((c) => c.bindings.some((b) => b.id === `${prefix}-step`)),
+    false,
+  );
+
+  // Drip-tray mesh must remain anchored to the drip-tray part
+  const dripTrayComponent = catalog?.components.find(
+    (c) => c.id === "cm01-v3:drip-tray",
+  );
+  const dripTrayMeshBinding = dripTrayComponent?.bindings.find(
+    (b) => b.provider === "build123d",
+  );
+  assertEquals(dripTrayMeshBinding?.id, `${prefix}-mesh-drip-tray`);
+  assertEquals(
+    dripTrayMeshBinding?.evidenceArtifactId,
+    `${prefix}-mesh-drip-tray`,
+  );
+
+  // Drip-tray mesh must NOT appear in the assembly bindings
+  assertEquals(
+    assemblyComponent?.bindings.some((b) => b.id === `${prefix}-mesh-drip-tray`),
+    false,
+  );
+});
+
+Deno.test("CM-01 V3 Product Structure withholds @3 whole-assembly bindings from two different captures", async () => {
+  const fixture = await v3Fixture();
+  const prefixA = `coffee-machine-cm01-v3-cad-r3-${"a".repeat(64)}`;
+  const prefixB = `coffee-machine-cm01-v3-cad-r3-${"b".repeat(64)}`;
+
+  const wholeAssemblyArtifact = (
+    prefix: string,
+    suffix: "plan" | "script" | "step",
+    char: string,
+  ) => ({
+    id: `${prefix}-${suffix}`,
+    name: `CM-01 ${suffix}`,
+    kind: suffix === "plan" ? "document" : suffix,
+    version: char.repeat(64),
+    fingerprint: fingerprint(char),
+    uri: `cm01-semantic-cad-r3://test#${suffix}`,
+    mediaType: "application/octet-stream",
+    producer: {
+      serverId: suffix === "step" ? "build123d" : "digital-thread",
+      tool: suffix === "step"
+        ? "build123d_export"
+        : "compile_coffee_machine_cm01_semantic_cad_plan_r2",
+      runId: "run",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  });
+
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [
+      ...fixture.snapshot.artifacts,
+      wholeAssemblyArtifact(prefixA, "plan", "a"),
+      wholeAssemblyArtifact(prefixB, "script", "b"), // different capture prefix
+      wholeAssemblyArtifact(prefixA, "step", "a"),
+    ],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  const assemblyComponent = catalog?.components[0];
+  // Ambiguous set is ignored: no whole-assembly bindings should appear
+  assertEquals(
+    assemblyComponent?.bindings.some((b) =>
+      (b.id.endsWith("-plan") || b.id.endsWith("-script") ||
+        b.id.endsWith("-step")) &&
+      b.id.startsWith("coffee-machine-cm01-v3-cad-r3-")
+    ),
+    false,
+  );
+});
+
+Deno.test("CM-01 V3 Product Structure ignores @3 whole-assembly artifact with wrong kind", async () => {
+  const fixture = await v3Fixture();
+  const captureDigest = "f".repeat(64);
+  const prefix = `coffee-machine-cm01-v3-cad-r3-${captureDigest}`;
+
+  // "plan" id but wrong kind: "script" instead of "document" → must be excluded
+  const wrongKindPlan = {
+    id: `${prefix}-plan`,
+    name: "CM-01 wrong-kind plan",
+    kind: "script", // expected "document"
+    version: captureDigest,
+    fingerprint: fingerprint("f"),
+    uri: `cm01-semantic-cad-r3://test#plan`,
+    mediaType: "text/x-python",
+    producer: {
+      serverId: "digital-thread",
+      tool: "compile_coffee_machine_cm01_semantic_cad_plan_r2",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+  const stepArtifact = {
+    id: `${prefix}-step`,
+    name: "CM-01 assembly STEP",
+    kind: "step",
+    version: captureDigest,
+    fingerprint: fingerprint("f"),
+    uri: `cm01-semantic-cad-r3://test#step`,
+    mediaType: "model/step",
+    producer: {
+      serverId: "build123d",
+      tool: "build123d_export",
+      runId: "run:r3",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [
+      ...fixture.snapshot.artifacts,
+      wrongKindPlan,
+      stepArtifact,
+    ],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  // The wrong-kind plan must NOT appear in any binding
+  const assemblyComponent = catalog?.components[0];
+  assertEquals(
+    assemblyComponent?.bindings.some((b) => b.id === `${prefix}-plan`),
+    false,
+  );
+  // The step from the same prefix must still be present (only plan is wrong)
+  const stepBinding = assemblyComponent?.bindings.find(
+    (b) => b.id === `${prefix}-step`,
+  );
+  assertEquals(stepBinding?.provider, "build123d");
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fingerprint(character: string) {
@@ -531,7 +843,11 @@ function fingerprint(character: string) {
 }
 
 function fresh() {
-  return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] };
+  return {
+    status: "fresh" as const,
+    changedAt: AT,
+    invalidatedByChangeIds: [],
+  };
 }
 
 function semanticKey(label: string): string {

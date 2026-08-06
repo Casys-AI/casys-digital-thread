@@ -276,7 +276,16 @@ export interface ThreadAction {
   requiresConfirmation: boolean;
 }
 
-export type ThreadComponentProvider = "syson" | "erpnext" | "build123d";
+/**
+ * Recognised provider namespaces for catalog bindings.
+ * "digital-thread" names the backend compiler (plan, script artifacts) —
+ * kept separate from "build123d" which executes the export.
+ */
+export type ThreadComponentProvider =
+  | "syson"
+  | "erpnext"
+  | "build123d"
+  | "digital-thread";
 
 export interface ThreadComponentBinding {
   provider: ThreadComponentProvider;

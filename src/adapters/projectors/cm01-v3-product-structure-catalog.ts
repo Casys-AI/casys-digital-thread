@@ -115,13 +115,14 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
   const assemblyStep = freshR2AssemblyStep(snapshot.artifacts);
   const r3Meshes = freshR3MeshArtifactMap(snapshot.artifacts);
   const assemblyMesh = r3Meshes.get("assembly");
+  const r3WholeAssembly = freshR3WholeAssemblyArtifactMap(snapshot.artifacts);
   const rootDefinition = root[0]!;
   return validateThreadComponentCatalog({
     schemaVersion: "thread-components/1.0",
     authority: "workspace-declared",
     subjectId: snapshot.subject.id,
     rationale:
-      "This Product Structure is derived at read time from the exact hashed CM-01 V3 SysON architecture capture. It adds the one fresh R2 build123d assembly STEP when its explicit successor lineage is present, and the @3 presentation-mesh artifacts when a fresh @3 export is present; no ERPNext identity or individual CAD-child identity is inferred.",
+      "This Product Structure is derived at read time from the exact hashed CM-01 V3 SysON architecture capture. It adds the one fresh R2 build123d assembly STEP when its explicit successor lineage is present; the @3 presentation-mesh artifacts when a fresh @3 export is present; and the @3 whole-assembly plan, script, and STEP when a consistent @3 run is identified. No ERPNext identity or individual CAD-child identity is inferred.",
     systemViews: {},
     components: [
       {
@@ -133,6 +134,7 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
           sysonDefinitionBinding(rootDefinition, architecture.id),
           ...(assemblyStep ? [assemblyBinding(assemblyStep)] : []),
           ...(assemblyMesh ? [meshBinding(assemblyMesh)] : []),
+          ...r3WholeAssemblyBindings(r3WholeAssembly),
         ],
         ...(assemblyMesh
           ? {
@@ -164,7 +166,10 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
   });
 }
 
-function unavailable(subjectId: string, rationale: string): ThreadComponentCatalog {
+function unavailable(
+  subjectId: string,
+  rationale: string,
+): ThreadComponentCatalog {
   return {
     schemaVersion: "thread-components/1.0",
     authority: "workspace-declared",
@@ -195,6 +200,26 @@ const CM01_V3_ARCHITECTURE_URI_PREFIX =
  */
 const CM01_V3_CAD_R3_MESH_ID_RE =
   /^coffee-machine-cm01-v3-cad-r3-[a-f0-9]{64}-mesh-(.+)$/;
+
+/**
+ * Pattern that identifies a fresh @3 whole-assembly artifact: the CAD plan,
+ * the deterministic build123d script, or the assembly STEP export.
+ * Group 1 captures the role suffix: "plan" | "script" | "step".
+ *
+ * These share the same capture-digest prefix as the @3 mesh artifacts.
+ * The naming contract is server-fixed by the @3 run executor.
+ */
+const CM01_V3_CAD_R3_WHOLE_ASSEMBLY_ID_RE =
+  /^coffee-machine-cm01-v3-cad-r3-[a-f0-9]{64}-(plan|script|step)$/;
+
+type R3WholeAssemblySuffix = "plan" | "script" | "step";
+
+/** Expected artifact kind for each @3 whole-assembly role. */
+const R3_WHOLE_ASSEMBLY_ARTIFACT_KIND: Record<R3WholeAssemblySuffix, string> = {
+  plan: "document",
+  script: "script",
+  step: "step",
+};
 
 /**
  * Collect all fresh @3 presentation-mesh artifacts from the snapshot and
@@ -240,6 +265,44 @@ function freshR3MeshArtifactMap(
 }
 
 /**
+ * Collect all fresh @3 whole-assembly artifacts from the snapshot: the CAD
+ * plan, the deterministic build123d script, and the assembly STEP export.
+ *
+ * Fail-closed rules (mirror of freshR3MeshArtifactMap):
+ *  - Only fresh artifacts whose id matches the server-fixed pattern qualify.
+ *  - The artifact kind must match the declared role exactly.
+ *  - All matching artifacts must share the same capture prefix (same run).
+ *    Two concurrent @3 captures with different digests → return empty.
+ *  - Duplicate keys for the same prefix are rejected.
+ *
+ * Returns an empty map when no @3 whole-assembly evidence is present.
+ */
+function freshR3WholeAssemblyArtifactMap(
+  artifacts: readonly ThreadArtifact[],
+): ReadonlyMap<R3WholeAssemblySuffix, ThreadArtifact> {
+  const byKey = new Map<R3WholeAssemblySuffix, ThreadArtifact>();
+  let capturePrefix: string | undefined;
+
+  for (const artifact of artifacts) {
+    if (artifact.freshness.status !== "fresh") continue;
+    const match = CM01_V3_CAD_R3_WHOLE_ASSEMBLY_ID_RE.exec(artifact.id);
+    if (!match) continue;
+    const suffix = match[1] as R3WholeAssemblySuffix;
+    if (artifact.kind !== R3_WHOLE_ASSEMBLY_ARTIFACT_KIND[suffix]) continue;
+    const prefix = artifact.id.slice(0, artifact.id.length - suffix.length - 1);
+    if (capturePrefix === undefined) {
+      capturePrefix = prefix;
+    } else if (capturePrefix !== prefix) {
+      // Two distinct @3 captures are both fresh — ambiguous; ignore.
+      return new Map();
+    }
+    if (byKey.has(suffix)) return new Map(); // duplicate key — reject
+    byKey.set(suffix, artifact);
+  }
+  return byKey;
+}
+
+/**
  * Asset URL at which the BFF serves the given @3 part STL.
  * The BFF validates that the filename ends in ".stl" and contains only
  * safe characters before forwarding the bytes to the browser.
@@ -272,15 +335,18 @@ function freshR2AssemblyStep(
     return step.inputArtifactIds.some((scriptId) => {
       const script = byId.get(scriptId);
       if (
-        !script || script.kind !== "script" || script.freshness.status !== "fresh" ||
+        !script || script.kind !== "script" ||
+        script.freshness.status !== "fresh" ||
         script.producer.serverId !== "digital-thread" ||
-        script.producer.tool !== "compile_coffee_machine_cm01_semantic_cad_plan_r2"
+        script.producer.tool !==
+          "compile_coffee_machine_cm01_semantic_cad_plan_r2"
       ) return false;
       return script.inputArtifactIds.some((planId) => {
         const plan = byId.get(planId);
         return plan?.kind === "document" && plan.freshness.status === "fresh" &&
           plan.producer.serverId === "digital-thread" &&
-          plan.producer.tool === "compile_coffee_machine_cm01_semantic_cad_plan_r2";
+          plan.producer.tool ===
+            "compile_coffee_machine_cm01_semantic_cad_plan_r2";
       });
     });
   });
@@ -352,6 +418,43 @@ function meshPreview(
   };
 }
 
+/**
+ * Bindings for the @3 whole-assembly artifacts in canonical role order:
+ * plan → script → step.  The provider is read from the artifact's producer,
+ * not guessed: plan/script are compiled by "digital-thread", step exported by
+ * "build123d".  An empty map produces an empty array (no @3 run yet).
+ */
+function r3WholeAssemblyBindings(
+  artifacts: ReadonlyMap<R3WholeAssemblySuffix, ThreadArtifact>,
+): Array<ReturnType<typeof wholeAssemblyArtifactBinding>> {
+  const order: R3WholeAssemblySuffix[] = ["plan", "script", "step"];
+  return order.flatMap((key) => {
+    const artifact = artifacts.get(key);
+    return artifact ? [wholeAssemblyArtifactBinding(artifact)] : [];
+  });
+}
+
+/**
+ * Binding for a @3 whole-assembly artifact (plan, script, or STEP).
+ * Provider is derived from the artifact's producer so that the catalog
+ * remains an accurate mirror of the server-fixed run contract.
+ */
+function wholeAssemblyArtifactBinding(artifact: ThreadArtifact) {
+  // The R3 run has two distinct producers: digital-thread compiles the plan
+  // and script; build123d exports the STEP.  We derive the provider from
+  // the artifact's actual producer so that resolveBinding can verify it.
+  const provider = artifact.producer.serverId === "build123d"
+    ? "build123d" as const
+    : "digital-thread" as const;
+  return {
+    provider,
+    kind: "artifact" as const,
+    id: artifact.id,
+    label: artifact.name,
+    evidenceArtifactId: artifact.id,
+  };
+}
+
 interface Cm01V3PartDefinition {
   readonly id: string;
   readonly label: string;
@@ -392,7 +495,9 @@ async function parseArchitectureCapture(
     root.kind !== CM01_V3_ARCHITECTURE_CAPTURE_KIND ||
     root.semanticArtifactRole !== "architecture-model"
   ) {
-    throw new Error("CM-01 V3 architecture capture has an unsupported contract.");
+    throw new Error(
+      "CM-01 V3 architecture capture has an unsupported contract.",
+    );
   }
   const actualFingerprint = await sha256Fingerprint(root);
   if (
@@ -408,7 +513,11 @@ async function parseArchitectureCapture(
   }
   const declarations = root.declarations.map((value, index) => {
     const declaration = record(value, `CM-01 V3 declaration ${index}`);
-    exactKeys(declaration, ["id", "kind", "label"], `CM-01 V3 declaration ${index}`);
+    exactKeys(
+      declaration,
+      ["id", "kind", "label"],
+      `CM-01 V3 declaration ${index}`,
+    );
     if (declaration.kind !== CM01_V3_PART_DEFINITION_KIND) {
       throw new Error(
         "CM-01 V3 architecture capture includes an unsupported declaration.",
