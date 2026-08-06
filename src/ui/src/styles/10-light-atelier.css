@@ -803,6 +803,7 @@
 .component-provider-tabs button[aria-selected="true"],
 .part-trace-step button[aria-current="true"],
 .syson-part-grid button.is-selected,
+.syson-root-node.is-selected,
 .erp-bom-row.is-selected {
   color: var(--thread-ink);
   background: #e7f0e9;
