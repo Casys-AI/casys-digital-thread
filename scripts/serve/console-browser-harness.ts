@@ -156,6 +156,25 @@ function callMcp(method: string, params: unknown): Promise<JsonRpcResponse> {
   return call;
 }
 
+/**
+ * WHY NOT src/adapters/mcp/http-mcp-tool-client.ts — three deliberate deviations
+ * prevent forced unification:
+ *
+ * 1. METHOD SCOPE — the backend client handles `tools/call` only. This harness
+ *    also routes `resources/read` (used by fetchConsoleHtml above). Merging would
+ *    require adding a new code path to a backend-only adapter whose contract
+ *    explicitly covers only tool calls.
+ *
+ * 2. CLIENT IDENTITY — `_meta.io.modelcontextprotocol/clientInfo.name` is
+ *    "casys-console-browser-harness" here vs "casys-digital-thread-orchestrator"
+ *    in the backend client. The server logs these identities separately for
+ *    diagnostics; changing either silently would falsify the audit trail.
+ *
+ * 3. SEQUENTIAL QUEUE — `callMcp` serialises concurrent browser requests through
+ *    `mcpCallQueue` to avoid racing on the stateless endpoint. The backend client
+ *    has no queue (each executor call is independent). Adding it there would
+ *    change the backend's concurrency semantics.
+ */
 async function callMcpStateless(
   method: string,
   params: unknown,
