@@ -30,7 +30,7 @@ import {
   type EngineeringProjectRevisionStore,
 } from "../../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
@@ -68,7 +68,7 @@ import {
   SENSITIVITY_EDGES_URI_PREFIX,
   SensitivityEdgesArtifactRemovedError,
 } from "./coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 
 // ---------------------------------------------------------------------------
 // Constants

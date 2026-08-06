@@ -3,7 +3,7 @@ import { validateSensitivityStudyCase } from "../../domain/analysis/sensitivity-
 import {
   createThreadSnapshot,
   validateThreadSnapshot,
-} from "../../domain/thread-snapshot-validation.ts";
+} from "../../domain/thread/thread-snapshot-validation.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import { FileSensitivityRunAttemptStore } from "../wal/file-sensitivity-run-attempt-store.ts";
 import {

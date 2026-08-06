@@ -20,7 +20,7 @@ import type {
   EngineeringThreadSnapshotBasis,
   EngineeringThreadSnapshotRef,
 } from "../../domain/project/engineering-project.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 
 /**
  * Resolve a run by id from the project snapshot.

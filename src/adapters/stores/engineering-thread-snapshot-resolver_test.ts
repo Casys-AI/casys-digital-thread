@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import {
   type ExactThreadSnapshotFileEntry,
   type ExactThreadSnapshotFileIo,

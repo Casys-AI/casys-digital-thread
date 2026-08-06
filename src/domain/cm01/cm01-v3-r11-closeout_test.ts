@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { deriveCoffeeMachineCm01V3R12RequirementFamilyLinks } from "./cm01-v3-r11-closeout.ts";
-import type { ThreadSnapshot } from "../thread-snapshot.ts";
+import type { ThreadSnapshot } from "../thread/thread-snapshot.ts";
 
 Deno.test("CM-01 R12 links only the proven R1 -> R2 -> R3 requirement family", () => {
   const links = deriveCoffeeMachineCm01V3R12RequirementFamilyLinks(familySnapshot());

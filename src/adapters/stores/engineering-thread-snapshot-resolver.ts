@@ -1,5 +1,5 @@
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 
 /** Minimal read boundary needed to resolve project evidence by exact snapshot ID. */
 export interface ExactThreadSnapshotReader {

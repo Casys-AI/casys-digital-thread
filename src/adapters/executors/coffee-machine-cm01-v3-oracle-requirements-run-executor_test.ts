@@ -48,9 +48,9 @@ import {
   ORACLE_REQUIREMENTS_URI_PREFIX,
   OracleRequirementsArtifactRemovedError,
 } from "./coffee-machine-cm01-v3-oracle-requirements-run-executor.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { EngineeringProjectCommandError } from "../../domain/project/engineering-project-command-service.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 
 // ---------------------------------------------------------------------------
 // Constants shared across all tests

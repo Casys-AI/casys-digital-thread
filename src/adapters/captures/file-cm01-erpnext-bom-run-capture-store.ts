@@ -1,5 +1,5 @@
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 
 export interface Cm01ErpNextBomRunCaptureRecord {
   readonly schemaVersion: "cm01-erpnext-bom-run-capture/1.0";

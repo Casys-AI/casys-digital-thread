@@ -5,7 +5,7 @@
  * It never accepts Python, expressions, labels, or inferred component matches.
  */
 
-import type { ContentFingerprint } from "../thread-snapshot.ts";
+import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 
 export type CoffeeMachineBuildPlanSchemaVersion = "coffee-machine-build-plan/1.0";
 

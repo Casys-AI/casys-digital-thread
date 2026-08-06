@@ -1,4 +1,4 @@
-import type { ContentFingerprint } from "../thread-snapshot.ts";
+import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 import type { IsoDateTime } from "../kernel/types.ts";
 
 /** Human-readable project intent and its reviewable MBSE framing. */

@@ -11,8 +11,8 @@ import type {
   ThreadSnapshot,
   ThreadViolation,
   TracedRequirement,
-} from "../../domain/thread-snapshot.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-extension.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
 import {
   evaluationFromOracle,
   type ParsedOracleResult,

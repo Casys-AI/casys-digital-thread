@@ -18,7 +18,7 @@ import {
   projectBriefObjective,
   type ProjectBriefRevision,
 } from "./project-brief.ts";
-import type { ContentFingerprint, ThreadSnapshot } from "../thread-snapshot.ts";
+import type { ContentFingerprint, ThreadSnapshot } from "../thread/thread-snapshot.ts";
 
 export interface EngineeringProjectValidationIssue {
   readonly code: string;

@@ -15,8 +15,8 @@ import {
 import {
   EngineeringProjectCommandService,
 } from "../src/domain/project/engineering-project-command-service.ts";
-import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
-import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
+import { validateThreadSnapshot } from "../src/domain/thread/thread-snapshot-validation.ts";
+import type { ThreadSnapshotStore } from "../src/domain/thread/thread-snapshot-store.ts";
 
 /** Explicit consent for the provider-free, immutable R11 -> R12 closeout. */
 export const CM01_V3_R11_CLOSEOUT_ACKNOWLEDGEMENT =

@@ -20,9 +20,9 @@ import {
   type CoffeeMachineCm01SemanticRecipeR2,
   parseCoffeeMachineCm01SemanticRecipeR2,
 } from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   captureCm01SemanticCadExportR3,

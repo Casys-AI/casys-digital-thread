@@ -3,7 +3,7 @@ import {
   EngineeringProjectCommandError,
 } from "../../domain/project/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import {
   requireBasis,
   requiredStart,

@@ -1,5 +1,5 @@
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ExactThreadSnapshotReader } from "./engineering-thread-snapshot-resolver.ts";
 
 /**

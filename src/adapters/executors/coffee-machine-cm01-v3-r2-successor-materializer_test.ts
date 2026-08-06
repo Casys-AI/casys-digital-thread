@@ -2,8 +2,8 @@ import { assertEquals } from "@std/assert";
 import type {
   ContentFingerprint,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type { Cm01DripTrayMechanicalProofR2 } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import type { Cm01DripTrayMechanicalR2Capture } from "../captures/cm01-drip-tray-mechanical-capture-r2.ts";
 import type { ParsedOracleResult } from "../captures/cm01-drip-tray-mechanical-oracle.ts";

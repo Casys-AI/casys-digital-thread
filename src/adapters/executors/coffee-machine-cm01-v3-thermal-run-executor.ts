@@ -16,11 +16,11 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
-} from "../../domain/thread-snapshot-extension.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+} from "../../domain/thread/thread-snapshot-extension.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import type { RunDetail } from "../../domain/kernel/types.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {

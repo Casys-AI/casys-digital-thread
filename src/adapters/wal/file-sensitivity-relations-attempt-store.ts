@@ -14,7 +14,7 @@
 
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { AttemptFileSystem, DENO_FILE_SYSTEM } from "./file-attempt-store.ts";
-import type { ContentFingerprint as _ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { ContentFingerprint as _ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 
 export const SENSITIVITY_RELATIONS_ATTEMPT_SCHEMA =
   "sensitivity-relations-write-attempt/1.0" as const;

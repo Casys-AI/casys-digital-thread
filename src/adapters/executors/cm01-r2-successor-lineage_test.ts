@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import type { ThreadArtifact } from "../../domain/thread-snapshot.ts";
+import type { ThreadArtifact } from "../../domain/thread/thread-snapshot.ts";
 import {
   cm01R2CadSupersedesLinks,
   cm01R2MechanicalSupersedesLinks,

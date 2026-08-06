@@ -4,8 +4,8 @@ import type { EngineeringProjectSnapshot } from "../src/domain/project/engineeri
 import type { EngineeringProjectRevisionStore } from "../src/domain/project/engineering-project-command-service.ts";
 import type { CockpitFocusSnapshot } from "../src/domain/platform/cockpit-focus.ts";
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../src/domain/platform/cockpit-focus.ts";
-import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
-import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../src/domain/thread/thread-snapshot-store.ts";
 import {
   createNativeWorkbenchHandler,
   NATIVE_WORKBENCH_LEGACY_PROJECT_ID,

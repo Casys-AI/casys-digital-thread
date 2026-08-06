@@ -11,7 +11,7 @@ import {
   validateEngineeringProjectSnapshot,
   validateEngineeringProjectThreadReferences,
 } from "./engineering-project-validation.ts";
-import type { ThreadArtifact, ThreadSnapshot } from "../thread-snapshot.ts";
+import type { ThreadArtifact, ThreadSnapshot } from "../thread/thread-snapshot.ts";
 
 const CONFIG = new URL(
   "../../../config/projects/coffee-machine-cm01.project.json",

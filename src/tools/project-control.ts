@@ -14,7 +14,7 @@ import type {
 import type {
   ContentFingerprint,
   ThreadEntityKind,
-} from "../domain/thread-snapshot.ts";
+} from "../domain/thread/thread-snapshot.ts";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,

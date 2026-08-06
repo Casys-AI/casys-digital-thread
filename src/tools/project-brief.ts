@@ -12,7 +12,7 @@ import type {
   ProjectBriefItem,
   ProjectBriefSourceKind,
 } from "../domain/project/project-brief.ts";
-import type { ContentFingerprint } from "../domain/thread-snapshot.ts";
+import type { ContentFingerprint } from "../domain/thread/thread-snapshot.ts";
 
 const MUTATION = {
   readOnlyHint: false,

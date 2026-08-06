@@ -5,8 +5,8 @@ import {
   type EngineeringProjectPlanOperationRegistry,
 } from "../../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import {
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
   type RegisteredEngineeringOperation,

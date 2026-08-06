@@ -4,8 +4,8 @@ import type {
   ThreadFreshness,
   ThreadOperationRef,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
-import type { ThreadComponentCatalog } from "../../domain/thread-component-catalog.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadComponentCatalog } from "../../domain/thread/thread-component-catalog.ts";
 import { projectThreadWorkbenchSnapshot } from "./thread-workbench-projector.ts";
 
 const AT = "2026-08-01T08:00:00.000Z";

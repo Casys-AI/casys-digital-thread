@@ -1,10 +1,10 @@
-import type { ThreadSnapshotExtension } from "../../domain/thread-snapshot-extension.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import type { ThreadSnapshotExtension } from "../../domain/thread/thread-snapshot-extension.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
   type ThreadSubjectManifest,
   validateThreadSubjectManifest,
-} from "../../domain/thread-subject-manifest.ts";
+} from "../../domain/thread/thread-subject-manifest.ts";
 
 export interface CapturedSysonModelInventory {
   schemaVersion: "captured-syson-model-inventory/1.0";

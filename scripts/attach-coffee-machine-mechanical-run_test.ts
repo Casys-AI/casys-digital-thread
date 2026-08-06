@@ -14,11 +14,11 @@ import type {
   EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
 } from "../src/domain/project/engineering-project.ts";
-import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtension,
   type ThreadSnapshotExtension,
-} from "../src/domain/thread-snapshot-extension.ts";
+} from "../src/domain/thread/thread-snapshot-extension.ts";
 import {
   attachCoffeeMachineMechanicalRun,
   type MechanicalPublicationSnapshotStore,

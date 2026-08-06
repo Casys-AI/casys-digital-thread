@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { materializeAttestedMechanicalRun } from "../testing/attested-mechanical-run-fixture.ts";
+import { materializeAttestedMechanicalRun } from "../../testing/attested-mechanical-run-fixture.ts";
 import {
   applyThreadSnapshotExtension,
   applyThreadSnapshotExtensionIfNew,

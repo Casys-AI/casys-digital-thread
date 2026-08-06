@@ -1,7 +1,7 @@
 import type {
   ThreadArtifact,
   ThreadProvenanceLink,
-} from "../../domain/thread-snapshot.ts";
+} from "../../domain/thread/thread-snapshot.ts";
 
 /**
  * Immutable lineage helpers for the one CM-01 28 mm -> 30 mm successor.

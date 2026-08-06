@@ -1,4 +1,4 @@
-import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 
 /**
  * Descriptor for a content-addressed capture store.

@@ -17,8 +17,8 @@ import type {
   ThreadProvenanceLink,
   ThreadViolation,
   TracedRequirement,
-} from "../../domain/thread-snapshot.ts";
-import type { ThreadSnapshotExtension } from "../../domain/thread-snapshot-extension.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotExtension } from "../../domain/thread/thread-snapshot-extension.ts";
 
 export const COFFEE_MACHINE_MECHANICAL_CAPTURE_SCHEMA =
   "coffee-machine-mechanical-run/1.0" as const;

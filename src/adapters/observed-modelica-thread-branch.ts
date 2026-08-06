@@ -8,8 +8,8 @@ import type {
   ThreadArtifact,
   ThreadFreshness,
   ThreadOperationRef,
-} from "../domain/thread-snapshot.ts";
-import type { ThreadSnapshotExtension } from "../domain/thread-snapshot-extension.ts";
+} from "../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotExtension } from "../domain/thread/thread-snapshot-extension.ts";
 
 /**
  * Strict, transport-independent subset of a persisted mcp-modelica run.

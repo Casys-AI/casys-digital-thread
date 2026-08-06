@@ -1,5 +1,5 @@
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 /**

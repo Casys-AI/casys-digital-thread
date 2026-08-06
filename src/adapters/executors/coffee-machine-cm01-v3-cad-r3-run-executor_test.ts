@@ -4,8 +4,8 @@ import {
   EngineeringProjectCommandService,
   type EngineeringProjectPlanOperationRegistry,
 } from "../../domain/project/engineering-project-command-service.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-extension.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import {
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,

@@ -18,12 +18,12 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
 } from "../src/domain/project/engineering-project.ts";
-import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
-import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../src/domain/thread/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
   type ThreadSnapshotExtension,
-} from "../src/domain/thread-snapshot-extension.ts";
+} from "../src/domain/thread/thread-snapshot-extension.ts";
 
 type MechanicalMaterializer = typeof materializeCoffeeMachineMechanicalRunExtension;
 

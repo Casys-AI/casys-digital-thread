@@ -17,9 +17,12 @@ import {
   type Cm01DripTrayMechanicalProofR3,
   parseCm01DripTrayMechanicalProofR3,
 } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
-import type { ThreadArtifact, ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import type {
+  ThreadArtifact,
+  ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { callDripTrayMechanicalOracle } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "../captures/cm01-drip-tray-mechanical-r3-capture-recovery.ts";

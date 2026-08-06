@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
-import { applyThreadSnapshotExtension } from "../../domain/thread-snapshot-extension.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
+import { applyThreadSnapshotExtension } from "../../domain/thread/thread-snapshot-extension.ts";
 import {
   COFFEE_MACHINE_MECHANICAL_CAPTURE_SCHEMA,
   materializeCoffeeMachineMechanicalRunExtension,

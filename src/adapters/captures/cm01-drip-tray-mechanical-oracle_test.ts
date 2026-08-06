@@ -9,7 +9,7 @@ import type {
   ThreadFreshness,
   ThreadOperationRef,
   TracedRequirement,
-} from "../../domain/thread-snapshot.ts";
+} from "../../domain/thread/thread-snapshot.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures

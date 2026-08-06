@@ -11,13 +11,13 @@ import {
   materializeSysonInventorySubject,
   sysonModelInventoryExtension,
 } from "../src/adapters/historical/syson-model-inventory-extension.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../src/domain/thread-snapshot-extension.ts";
-import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
-import type { ThreadSnapshotExtension } from "../src/domain/thread-snapshot-extension.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../src/domain/thread/thread-snapshot-extension.ts";
+import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotExtension } from "../src/domain/thread/thread-snapshot-extension.ts";
 import {
   bindThreadSnapshotExtension,
   validateThreadSubjectManifest,
-} from "../src/domain/thread-subject-manifest.ts";
+} from "../src/domain/thread/thread-subject-manifest.ts";
 import { parseArgs } from "./cli.ts";
 
 const args = parseArgs(Deno.args);

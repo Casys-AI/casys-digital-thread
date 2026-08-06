@@ -1,6 +1,6 @@
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 
 export interface ThreadSnapshotFileEntry {
   name: string;

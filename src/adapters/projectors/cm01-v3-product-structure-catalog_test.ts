@@ -3,8 +3,8 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
   type Cm01V3ArchitectureCaptureReader,
   COFFEE_MACHINE_CM01_V3_SUBJECT_ID,

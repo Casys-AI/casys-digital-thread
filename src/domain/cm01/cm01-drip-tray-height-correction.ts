@@ -23,8 +23,8 @@ import type {
   ThreadObservation,
   ThreadSnapshot,
   ThreadViolation,
-} from "../thread-snapshot.ts";
-import { validateThreadSnapshot } from "../thread-snapshot-validation.ts";
+} from "../thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../thread/thread-snapshot-validation.ts";
 
 /**
  * The only correction admitted by this first feedback-loop slice.

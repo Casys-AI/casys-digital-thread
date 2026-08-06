@@ -5,9 +5,9 @@ import {
   parseSysonModelSeedCapture,
   SysonModelSeedMaterializationError,
 } from "./syson-model-seed.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../thread-snapshot-extension.ts";
-import type { ThreadSnapshot } from "../thread-snapshot.ts";
-import { validateThreadSnapshot } from "../thread-snapshot-validation.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../thread/thread-snapshot-extension.ts";
+import type { ThreadSnapshot } from "../thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../thread/thread-snapshot-validation.ts";
 
 const AT = "2026-08-02T12:10:00.000Z";
 const DOCUMENT_DIGEST = "a".repeat(64);

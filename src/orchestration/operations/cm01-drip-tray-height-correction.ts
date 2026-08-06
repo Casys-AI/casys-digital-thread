@@ -10,8 +10,8 @@ import type {
   ProposedThreadAction,
   ThreadArtifact,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   type RegisteredEngineeringOperation,

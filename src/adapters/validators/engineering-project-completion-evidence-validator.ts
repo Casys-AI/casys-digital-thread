@@ -7,7 +7,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
 } from "../../domain/project/engineering-project.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ExactThreadSnapshotReader } from "../stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../stores/thread-snapshot-lineage.ts";

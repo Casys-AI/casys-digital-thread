@@ -17,8 +17,8 @@ import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts
 import type {
   ContentFingerprint,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { validateRegisteredEngineeringOperationInput } from "./registry.ts";
 
 export const APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA =

@@ -41,9 +41,9 @@ import type {
   ThreadFreshness,
   ThreadOperationRef,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-extension.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import {

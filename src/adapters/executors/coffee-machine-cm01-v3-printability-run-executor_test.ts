@@ -3,7 +3,7 @@ import { validatePrintabilityCheckCase } from "../../domain/analysis/printabilit
 import {
   createThreadSnapshot,
   validateThreadSnapshot,
-} from "../../domain/thread-snapshot-validation.ts";
+} from "../../domain/thread/thread-snapshot-validation.ts";
 import { FileCm01DripTrayPrintabilityAttemptStore } from "../wal/file-cm01-drip-tray-printability-attempt-store.ts";
 import {
   materializePrintabilitySnapshot,

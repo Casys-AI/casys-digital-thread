@@ -3,13 +3,13 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
 } from "../project/engineering-project.ts";
-import { applyThreadSnapshotExtension } from "../thread-snapshot-extension.ts";
+import { applyThreadSnapshotExtension } from "../thread/thread-snapshot-extension.ts";
 import type {
   RequirementEvaluation,
   ThreadProvenanceLink,
   ThreadSnapshot,
   TracedRequirement,
-} from "../thread-snapshot.ts";
+} from "../thread/thread-snapshot.ts";
 
 export const CM01_V3_PROJECT_ID = "coffee-machine-cm01-v3" as const;
 export const CM01_V3_SUBJECT_ID = "project:coffee-machine-cm01-v3" as const;

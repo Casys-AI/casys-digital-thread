@@ -29,9 +29,9 @@ import {
 import type {
   ContentFingerprint,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   captureCm01DripTrayMechanicalR2,

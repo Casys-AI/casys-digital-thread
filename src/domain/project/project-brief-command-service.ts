@@ -22,7 +22,7 @@ import {
   type ProjectQuestionOption,
   type ProjectQuestionRisk,
 } from "./project-brief.ts";
-import type { ContentFingerprint } from "../thread-snapshot.ts";
+import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 
 export interface StartEngineeringProjectCommand {
   readonly commandId: string;

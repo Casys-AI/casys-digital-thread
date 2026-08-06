@@ -14,12 +14,12 @@ import type {
   ThreadFreshness,
   ThreadOperationRef,
   ThreadSnapshot,
-} from "../thread-snapshot.ts";
+} from "../thread/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
   type ThreadSnapshotExtension,
-} from "../thread-snapshot-extension.ts";
-import { validateThreadSnapshot } from "../thread-snapshot-validation.ts";
+} from "../thread/thread-snapshot-extension.ts";
+import { validateThreadSnapshot } from "../thread/thread-snapshot-validation.ts";
 
 /** Canonical local capture of the first SysON project/document/root-package seed. */
 export const SYSON_MODEL_SEED_CAPTURE_SCHEMA = "syson-model-seed-capture/2.0" as const;

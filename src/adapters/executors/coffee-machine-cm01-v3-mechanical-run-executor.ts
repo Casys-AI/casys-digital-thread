@@ -29,15 +29,15 @@ import type {
   ThreadSnapshot,
   ThreadViolation,
   TracedRequirement,
-} from "../../domain/thread-snapshot.ts";
-import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread-snapshot-extension.ts";
+} from "../../domain/thread/thread-snapshot.ts";
+import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
 import {
   callDripTrayMechanicalOracle,
   evaluationFromOracle,
   type ParsedOracleResult,
   parseOracleOutcome,
 } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   captureCm01DripTrayMechanical,

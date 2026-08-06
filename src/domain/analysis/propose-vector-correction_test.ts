@@ -26,7 +26,7 @@ import type { SensitivityEdge } from "./sensitivity-edge.ts";
 import type {
   EvaluationComparison,
   RequirementEvaluation,
-} from "../thread-snapshot.ts";
+} from "../thread/thread-snapshot.ts";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures — copied from the real R16 capture

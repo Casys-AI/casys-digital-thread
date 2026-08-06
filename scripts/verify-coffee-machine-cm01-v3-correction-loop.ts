@@ -5,8 +5,8 @@ import type {
   ThreadOperationRef,
   ThreadProvenanceLink,
   ThreadSnapshot,
-} from "../src/domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../src/domain/thread-snapshot-validation.ts";
+} from "../src/domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../src/domain/thread/thread-snapshot-validation.ts";
 
 const DEFAULT_PROOF_PATH =
   "config/correction-proofs/coffee-machine-cm01-v3-drip-tray-height-28-to-30.json";

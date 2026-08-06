@@ -12,11 +12,11 @@ import type {
   ThreadSnapshot,
   ThreadViolation as CanonicalViolation,
   TracedRequirement,
-} from "../../domain/thread-snapshot.ts";
+} from "../../domain/thread/thread-snapshot.ts";
 import {
   resolveThreadComponentCatalog,
   type ThreadComponentCatalog,
-} from "../../domain/thread-component-catalog.ts";
+} from "../../domain/thread/thread-component-catalog.ts";
 import {
   CM01_V3_PRODUCT_STRUCTURE_IDENTITIES,
 } from "./cm01-v3-product-structure-catalog.ts";

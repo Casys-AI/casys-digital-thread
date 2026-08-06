@@ -12,7 +12,7 @@ import type {
   ThreadArtifact,
   ThreadObservation,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
+} from "../../domain/thread/thread-snapshot.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   coffeeMachineCm01V3ArchitectureGoldenArtifact,

@@ -4,7 +4,7 @@ import { parseCm01DripTrayMechanicalProof } from "../../domain/cm01/cm01-drip-tr
 import {
   createThreadSnapshot,
   validateThreadSnapshot,
-} from "../../domain/thread-snapshot-validation.ts";
+} from "../../domain/thread/thread-snapshot-validation.ts";
 import { captureCm01DripTrayMechanical } from "../captures/cm01-drip-tray-mechanical-capture.ts";
 import {
   callMechanicalConstraintOracle,

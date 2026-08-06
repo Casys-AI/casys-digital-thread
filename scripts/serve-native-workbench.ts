@@ -1,6 +1,6 @@
 import { parseArgs } from "./cli.ts";
-import type { ThreadSnapshotStore } from "../src/domain/thread-snapshot-store.ts";
-import type { ThreadSnapshot } from "../src/domain/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../src/domain/thread/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../src/domain/thread/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../src/domain/project/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../src/domain/project/engineering-project-command-service.ts";
 import { validateEngineeringProjectThreadReferences } from "../src/domain/project/engineering-project-validation.ts";
@@ -44,7 +44,7 @@ import {
 import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
-} from "../src/domain/thread-component-catalog.ts";
+} from "../src/domain/thread/thread-component-catalog.ts";
 import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
 
 export interface NativeWorkbenchHandlerOptions {

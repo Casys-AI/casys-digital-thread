@@ -3,8 +3,8 @@ import type {
   ThreadFreshness,
   ThreadOperationRef,
   ThreadSnapshot,
-} from "../domain/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../domain/thread-snapshot-validation.ts";
+} from "../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../domain/thread/thread-snapshot-validation.ts";
 
 export interface AttestedMechanicalRun {
   schemaVersion: "attested-mechanical-run/1.0";

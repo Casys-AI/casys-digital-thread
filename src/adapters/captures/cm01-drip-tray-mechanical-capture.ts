@@ -8,7 +8,7 @@ import {
   parseCm01DripTrayMechanicalProof,
   renderCm01DripTrayMechanicalScript,
 } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
-import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
 export const CM01_DRIP_TRAY_MECHANICAL_CAPTURE_SCHEMA =

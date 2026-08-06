@@ -23,7 +23,7 @@ import {
 } from "./engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
 import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../thread-snapshot.ts";
+import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 import { currentProjectAnswer } from "./project-brief.ts";
 
 export interface EngineeringProjectRevisionStore {

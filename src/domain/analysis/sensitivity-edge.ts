@@ -30,7 +30,7 @@
  * the only form for which syson_constraint_extract returns the correct featurePath.
  */
 
-import type { ContentFingerprint } from "../thread-snapshot.ts";
+import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import {
   arrayOf,

@@ -5,7 +5,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringWorkItemKind,
 } from "../../domain/project/engineering-project.ts";
-import type { ThreadEntityKind } from "../../domain/thread-snapshot.ts";
+import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 

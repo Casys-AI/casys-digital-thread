@@ -24,7 +24,7 @@ import {
 import { parseCm01DripTrayMechanicalProof } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import { parseCm01DripTrayMechanicalProofR3 } from "../../domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import { parseCoffeeMachineCm01SemanticRecipe } from "../../domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
-import { createThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import { createThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import RECIPE from "../../../config/product-recipes/coffee-machine-cm01-v1.json" with {
   type: "json",
 };

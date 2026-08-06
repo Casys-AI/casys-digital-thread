@@ -14,9 +14,9 @@ import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   applyCm01DripTrayHeight28To30Correction,
 } from "../../domain/cm01/cm01-drip-tray-height-correction.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
-import { validateThreadSnapshot } from "../../domain/thread-snapshot-validation.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {

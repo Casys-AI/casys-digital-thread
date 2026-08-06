@@ -8,7 +8,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/thread-snapshot.ts";
+import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 
 /** Read-only boundary used by the Workbench BFF. */
 export interface EngineeringProjectStore {

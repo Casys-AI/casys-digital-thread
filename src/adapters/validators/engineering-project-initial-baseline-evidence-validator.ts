@@ -17,7 +17,7 @@ import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadSnapshot,
-} from "../../domain/thread-snapshot.ts";
+} from "../../domain/thread/thread-snapshot.ts";
 import type { ExactThreadSnapshotReader } from "../stores/engineering-thread-snapshot-resolver.ts";
 
 export interface ApprovedBriefBaselineCaptureReader {

@@ -3,8 +3,8 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
 } from "../../domain/project/engineering-project.ts";
-import type { ThreadSnapshot } from "../../domain/thread-snapshot.ts";
-import type { ThreadSnapshotStore } from "../../domain/thread-snapshot-store.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import {
   CoffeeMachineCm01V3ErpNextBomRunExecutor,
 } from "./coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
