@@ -2,7 +2,7 @@
  * Tests for part-lane-graph-model.ts
  *
  * Invariants under test:
- *  1. Assembly lane is always first (smallest yMin).
+ *  1. Assembly lane always renders on top (greatest y — sigma's y axis points UP).
  *  2. Exhaustive node assignment: every node in the sigma graph appears in
  *     exactly the lane given by its anchorage (or "assembly" if unanchored).
  *  3. No y overlap within a non-collapsed lane: all nodes have distinct y values.
@@ -23,18 +23,11 @@
  * exercised, matching the contract from part-anchorage-model.ts.
  */
 
-import {
-  assertEquals,
-  assertGreater,
-  assertNotEquals,
-} from "@std/assert";
-import {
-  buildPartAnchorage,
-} from "./src/thread/part-anchorage-model.ts";
+import { assertEquals, assertGreater } from "@std/assert";
+import { buildPartAnchorage } from "./src/thread/part-anchorage-model.ts";
 import {
   buildPartLaneLayout,
   buildStationAssignment,
-  COLLAPSED_FACT_THRESHOLD,
 } from "./src/thread/part-lane-model.ts";
 import {
   buildPartLaneGraphModel,
@@ -172,12 +165,47 @@ function buildFixture(): {
   rows: ReturnType<typeof buildPartLaneLayout>["rows"];
   counters: ReturnType<typeof buildPartLaneLayout>["counters"];
 } {
-  const archNode = node(ARCH_ID, "artifact", "syson", "artifact", "sysml-model");
-  const oracleNode = node(ORACLE_REQ_ID, "artifact", "syson", "artifact", "sysml-model");
-  const mechProofNode = node(MECH_R3_PROOF_ID, "artifact", "calculix", "artifact");
-  const sensNode = node(DT_SENS_ID, "artifact", "casys-digital-thread", "artifact", "capture");
-  const printNode = node(DT_PRINT_ID, "artifact", "casys-digital-thread", "artifact", "capture");
-  const boilerNode = node("boiler-artifact-001", "artifact", "syson", "artifact", "sysml-model");
+  const archNode = node(
+    ARCH_ID,
+    "artifact",
+    "syson",
+    "artifact",
+    "sysml-model",
+  );
+  const oracleNode = node(
+    ORACLE_REQ_ID,
+    "artifact",
+    "syson",
+    "artifact",
+    "sysml-model",
+  );
+  const mechProofNode = node(
+    MECH_R3_PROOF_ID,
+    "artifact",
+    "calculix",
+    "artifact",
+  );
+  const sensNode = node(
+    DT_SENS_ID,
+    "artifact",
+    "casys-digital-thread",
+    "artifact",
+    "capture",
+  );
+  const printNode = node(
+    DT_PRINT_ID,
+    "artifact",
+    "casys-digital-thread",
+    "artifact",
+    "capture",
+  );
+  const boilerNode = node(
+    "boiler-artifact-001",
+    "artifact",
+    "syson",
+    "artifact",
+    "sysml-model",
+  );
 
   const nodes: ThreadGraphNode[] = [
     archNode,
@@ -264,7 +292,11 @@ function buildFixture(): {
 // 1. Assembly lane is always first
 // ---------------------------------------------------------------------------
 
-Deno.test("assembly lane has the smallest yMin of all lanes", () => {
+// Sigma renders with the WebGL convention: GREATER y is HIGHER on screen. The
+// assembly lane (superior level) must therefore carry the greatest y range —
+// asserting on layout order alone would pass even when the rendered order is
+// inverted, which is exactly the defect this test now pins.
+Deno.test("assembly lane renders above every part lane (greatest y in sigma space)", () => {
   const { evidenceModel, projection, anchorage, rows } = buildFixture();
   const model = buildPartLaneGraphModel(
     evidenceModel,
@@ -284,9 +316,11 @@ Deno.test("assembly lane has the smallest yMin of all lanes", () => {
   );
   for (const other of otherLanes) {
     assertEquals(
-      assemblyLane!.yMin < other.yMin,
+      assemblyLane!.yMin > other.yMax,
       true,
-      `Assembly (yMin=${assemblyLane!.yMin}) must be above ${other.componentId} (yMin=${other.yMin})`,
+      `Assembly (yMin=${
+        assemblyLane!.yMin
+      }) must render above ${other.componentId} (yMax=${other.yMax})`,
     );
   }
 });
@@ -311,9 +345,7 @@ Deno.test("every graph node appears in exactly its anchored lane", () => {
     const anchor = anchorage.get(key);
     expectedLane.set(
       key,
-      anchor
-        ? (anchor.target === "assembly" ? "assembly" : anchor.target)
-        : "assembly",
+      anchor ? (anchor.target === "assembly" ? "assembly" : anchor.target) : "assembly",
     );
   });
 
@@ -410,8 +442,16 @@ Deno.test("buildPartLaneGraphModel is deterministic: same inputs → same positi
   // Lane boundaries must be identical.
   assertEquals(m1.lanes.length, m2.lanes.length);
   for (let i = 0; i < m1.lanes.length; i++) {
-    assertEquals(m1.lanes[i]!.yMin, m2.lanes[i]!.yMin, `yMin differs at index ${i}`);
-    assertEquals(m1.lanes[i]!.yMax, m2.lanes[i]!.yMax, `yMax differs at index ${i}`);
+    assertEquals(
+      m1.lanes[i]!.yMin,
+      m2.lanes[i]!.yMin,
+      `yMin differs at index ${i}`,
+    );
+    assertEquals(
+      m1.lanes[i]!.yMax,
+      m2.lanes[i]!.yMax,
+      `yMax differs at index ${i}`,
+    );
   }
 });
 
@@ -474,8 +514,8 @@ Deno.test("non-collapsed lane height matches formula for its node count", () => 
   for (const lane of model.lanes) {
     if (lane.collapsed) continue;
     const n = nodeCountByLane.get(lane.componentId) ?? 0;
-    const expectedH =
-      LANE_PADDING_TOP + Math.max(1, n) * LANE_NODE_SPACING + LANE_PADDING_BOTTOM;
+    const expectedH = LANE_PADDING_TOP + Math.max(1, n) * LANE_NODE_SPACING +
+      LANE_PADDING_BOTTOM;
     const actualH = lane.yMax - lane.yMin;
     assertEquals(
       actualH,
@@ -493,7 +533,11 @@ Deno.test("x positions in corridor model match dagre Exploration model", () => {
   const { evidenceModel, projection, anchorage, rows } = buildFixture();
 
   // Build exploration model (pure dagre, no y reassignment).
-  const exploration = buildExplorationModel(evidenceModel, projection, FALLBACK_TOKENS);
+  const exploration = buildExplorationModel(
+    evidenceModel,
+    projection,
+    FALLBACK_TOKENS,
+  );
 
   // Build corridor model (dagre x kept, y reassigned).
   const corridor = buildPartLaneGraphModel(
@@ -558,7 +602,11 @@ Deno.test("nodes in collapsed lanes are rendered small (size ≤ 4)", () => {
 Deno.test("hiddenSupportingCount equals the Exploration model value", () => {
   const { evidenceModel, projection, anchorage, rows } = buildFixture();
 
-  const exploration = buildExplorationModel(evidenceModel, projection, FALLBACK_TOKENS);
+  const exploration = buildExplorationModel(
+    evidenceModel,
+    projection,
+    FALLBACK_TOKENS,
+  );
   const corridor = buildPartLaneGraphModel(
     evidenceModel,
     projection,

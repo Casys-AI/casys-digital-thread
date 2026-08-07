@@ -92,8 +92,9 @@ export function PartLaneGraphView({
   // Build the corridor model once per projection change (same trigger as
   // EvidenceExploration). Tokens are read from CSS at call time.
   const model = useMemo((): PartLaneGraphModel => {
-    const root =
-      typeof document !== "undefined" ? document.documentElement : null;
+    const root = typeof document !== "undefined"
+      ? document.documentElement
+      : null;
     const tokens = readCssTokens(
       root as { nodeType: number } | null,
     );
@@ -166,8 +167,13 @@ export function PartLaneGraphView({
         ctx.restore();
 
         // ── Lane label (same font / letter-spacing as Carte component label) ─
-        const labelY = yTop + 14;
-        if (labelY < yTop + laneH) {
+        //
+        // Collapsed bands are only ~10-14 CSS pixels tall at full-graph zoom:
+        // a fixed yTop+14 offset would land OUTSIDE the band and the label
+        // would silently vanish. Centre the label vertically in thin bands;
+        // keep the top-anchored position for expanded lanes.
+        const labelY = lane.collapsed ? yTop + laneH / 2 + 3 : yTop + 14;
+        if (laneH >= 8) {
           ctx.save();
           ctx.font = "bold 9px Avenir Next, Avenir, Segoe UI, monospace";
           // CSS letterSpacing property is only available via canvas in modern browsers.
@@ -176,23 +182,22 @@ export function PartLaneGraphView({
             // deno-lint-ignore no-explicit-any
             (ctx as any).letterSpacing = "1.2px";
           } catch (_) { /* ignore */ }
-          ctx.fillStyle = isAssembly
-            ? "rgba(163, 91, 39, 0.85)"
-            : "#5e7169";
+          ctx.fillStyle = isAssembly ? "rgba(163, 91, 39, 0.85)" : "#5e7169";
           ctx.fillText(lane.label.toUpperCase(), 10, labelY);
           ctx.restore();
         }
 
-        // ── Collapsed lane summary text ────────────────────────────────────
-        if (lane.collapsed && laneH > 22) {
-          const reason =
-            `${lane.factCount} fait${lane.factCount !== 1 ? "s" : ""}, aucune preuve technique`;
+        // ── Collapsed lane summary text (same centred line as the label) ───
+        if (lane.collapsed && laneH >= 8) {
+          const reason = `${lane.factCount} fait${
+            lane.factCount !== 1 ? "s" : ""
+          }, aucune preuve technique`;
           ctx.save();
           ctx.font = "italic 10px Avenir Next, Avenir, Segoe UI, sans-serif";
           ctx.fillStyle = "#8a9c94";
           // Place after the label text (approximate width).
           const labelWidth = lane.label.toUpperCase().length * 7 + 18;
-          ctx.fillText(reason, labelWidth, yTop + laneH / 2 + 4);
+          ctx.fillText(reason, labelWidth, labelY + 1);
           ctx.restore();
         }
       }
@@ -222,6 +227,27 @@ export function PartLaneGraphView({
     );
     sigmaRef.current = sigma;
 
+    // The default camera frames the NODE extent only — lanes without any node
+    // (the thin collapsed bands) would fall outside the initial view. Frame the
+    // camera on the union of all lane bands instead, so every corridor row is
+    // visible on open.
+    if (model.lanes.length > 0) {
+      let xMin = Infinity;
+      let xMax = -Infinity;
+      model.graph.forEachNode((key: string) => {
+        const x = model.graph.getNodeAttribute(key, "x") as number ?? 0;
+        xMin = Math.min(xMin, x);
+        xMax = Math.max(xMax, x);
+      });
+      if (!Number.isFinite(xMin)) {
+        xMin = 0;
+        xMax = 1;
+      }
+      const yMin = Math.min(...model.lanes.map((lane) => lane.yMin));
+      const yMax = Math.max(...model.lanes.map((lane) => lane.yMax));
+      sigma.setCustomBBox({ x: [xMin, xMax], y: [yMin, yMax] });
+    }
+
     // Draw lane bands BEFORE sigma renders so bands appear behind nodes.
     sigma.on("beforeRender", drawLaneBands);
 
@@ -240,7 +266,12 @@ export function PartLaneGraphView({
     // ── Interaction: double-click → re-centre camera (no expansion) ─────────
     sigma.on(
       "doubleClickNode",
-      ({ node: nodeKey, event }: { node: string; event: { preventSigmaDefault: () => void } }) => {
+      (
+        { node: nodeKey, event }: {
+          node: string;
+          event: { preventSigmaDefault: () => void };
+        },
+      ) => {
         event.preventSigmaDefault();
         const nodePos = sigma.getNodeDisplayData(nodeKey);
         if (!nodePos) return;
@@ -261,10 +292,9 @@ export function PartLaneGraphView({
   useEffect(() => {
     const sigma = sigmaRef.current;
     if (!sigma) return;
-    const selectedKey =
-      selection?.kind === "node"
-        ? `${selection.ref.kind}:${selection.ref.id}`
-        : undefined;
+    const selectedKey = selection?.kind === "node"
+      ? `${selection.ref.kind}:${selection.ref.id}`
+      : undefined;
 
     sigma.setSetting("nodeReducer", (node, data) => {
       if (!selectedKey) return data;
@@ -282,10 +312,9 @@ export function PartLaneGraphView({
   }, [selection, model]);
 
   // ── Build INDEX DES PIÈCES data ──────────────────────────────────────────
-  const selectedNodeKey =
-    selection?.kind === "node"
-      ? `${selection.ref.kind}:${selection.ref.id}`
-      : undefined;
+  const selectedNodeKey = selection?.kind === "node"
+    ? `${selection.ref.kind}:${selection.ref.id}`
+    : undefined;
   void selectedNodeKey; // used only via sigma nodeReducer above
 
   return (
@@ -310,10 +339,9 @@ export function PartLaneGraphView({
       <aside class="part-lane-index" aria-label="Index des pièces">
         <p class="part-lane-index-title">INDEX DES PIÈCES</p>
         {rows.map((row) => {
-          const isFocused =
-            selectedComponentId !== undefined
-              ? selectedComponentId === row.componentId
-              : row.componentId === "assembly";
+          const isFocused = selectedComponentId !== undefined
+            ? selectedComponentId === row.componentId
+            : row.componentId === "assembly";
           const counts = counters.perRow.get(row.componentId);
           return (
             <button
@@ -330,9 +358,9 @@ export function PartLaneGraphView({
             >
               <span
                 class="part-lane-index-chip-dot"
-                data-assembly={
-                  row.componentId === "assembly" ? "true" : undefined
-                }
+                data-assembly={row.componentId === "assembly"
+                  ? "true"
+                  : undefined}
                 aria-hidden="true"
               />
               <span class="part-lane-index-chip-name">{row.label}</span>

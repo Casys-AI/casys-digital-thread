@@ -102,12 +102,14 @@
 }
 
 .part-lane-index-chip:hover {
-  background: color-mix(in srgb, var(--thread-panel) 80%, var(--thread-orange) 20%);
+  background: color-mix(in srgb, var(--thread-panel) 80%, var(--thread-orange)
+    20%);
   border-color: var(--thread-border);
 }
 
 .part-lane-index-chip[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--thread-panel) 75%, var(--thread-orange) 25%);
+  background: color-mix(in srgb, var(--thread-panel) 75%, var(--thread-orange)
+    25%);
   border-color: var(--thread-orange);
 }
 

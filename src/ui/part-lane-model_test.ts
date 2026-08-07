@@ -18,9 +18,7 @@
  */
 
 import { assertEquals, assertGreater } from "@std/assert";
-import {
-  buildPartAnchorage,
-} from "./src/thread/part-anchorage-model.ts";
+import { buildPartAnchorage } from "./src/thread/part-anchorage-model.ts";
 import {
   buildPartLaneLayout,
   buildStationAssignment,
@@ -34,17 +32,14 @@ import type {
   ThreadGraphNode,
   ThreadGraphRef,
 } from "./src/thread/types.ts";
-import type {
-  EvidenceCanvasProjection,
-} from "./src/thread/evidence-canvas-model.ts";
+import type { EvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
 import type { EvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 
 // ---------------------------------------------------------------------------
 // Stable IDs (same as part-anchorage-model_test.ts)
 // ---------------------------------------------------------------------------
 
-const R3_DIGEST =
-  "8484b759a788c018477f062863aff5f5a3ebaf06d28c5045534fb716c19d58f3";
+const R3_DIGEST = "8484b759a788c018477f062863aff5f5a3ebaf06d28c5045534fb716c19d58f3";
 const R3 = `coffee-machine-cm01-v3-cad-r3-${R3_DIGEST}`;
 
 const MECH_R3_PROOF_ID =
@@ -162,14 +157,29 @@ function catalogBinding(
 
 const FIXTURE_NODES: ThreadGraphNode[] = [
   // Assembly — model station
-  node(ORACLE_REQ_ID, "artifact", { artifactKind: "sysml-model", system: "syson" }),
-  node(SENS_REL_ID, "artifact", { artifactKind: "sysml-model", system: "syson" }),
+  node(ORACLE_REQ_ID, "artifact", {
+    artifactKind: "sysml-model",
+    system: "syson",
+  }),
+  node(SENS_REL_ID, "artifact", {
+    artifactKind: "sysml-model",
+    system: "syson",
+  }),
   // Assembly — industrialization (bom kind, not anchored by prefix but by nature)
-  node(ERPNEXT_BOM_ID, "artifact", { artifactKind: "bom", system: "digital-thread" }),
+  node(ERPNEXT_BOM_ID, "artifact", {
+    artifactKind: "bom",
+    system: "digital-thread",
+  }),
   // Assembly — geometry (via catalog binding in FIXTURE_CATALOG)
-  node(`${R3}-plan`, "artifact", { artifactKind: "document", system: "digital-thread" }),
+  node(`${R3}-plan`, "artifact", {
+    artifactKind: "document",
+    system: "digital-thread",
+  }),
   // Assembly — verification (thermal)
-  node(MODELICA_ID, "artifact", { artifactKind: "evidence", system: "mcp-modelica" }),
+  node(MODELICA_ID, "artifact", {
+    artifactKind: "evidence",
+    system: "mcp-modelica",
+  }),
   // Assembly — requirements
   node(REQUIREMENT_ID, "requirement", {}),
   // DripTray — verification mechanical
@@ -201,13 +211,31 @@ const FIXTURE_NODES: ThreadGraphNode[] = [
 
 const FIXTURE_EDGES: ThreadGraphEdge[] = [
   // Same-row: drip-tray artifact → drip-tray evaluation (both prefix-anchored to drip-tray)
-  edge("e-mech-eval", "artifact", MECH_R3_PROOF_ID, "evaluation", EVALUATION_ID),
+  edge(
+    "e-mech-eval",
+    "artifact",
+    MECH_R3_PROOF_ID,
+    "evaluation",
+    EVALUATION_ID,
+  ),
   // Cross-row: oracle-requirements (prefix b-2 → assembly) → mechanical-r3 proof
   //            (prefix b-10 → drip-tray). Both are prefix-anchored; no adjacency
   //            inheritance can change their rows.
-  edge("e-oracle-mech", "artifact", ORACLE_REQ_ID, "artifact", MECH_R3_PROOF_ID),
+  edge(
+    "e-oracle-mech",
+    "artifact",
+    ORACLE_REQ_ID,
+    "artifact",
+    MECH_R3_PROOF_ID,
+  ),
   // Same-component adjacency: requirement anchored by propagation (any adjacent)
-  edge("e-req-eval", "requirement", REQUIREMENT_ID, "evaluation", EVALUATION_ID),
+  edge(
+    "e-req-eval",
+    "requirement",
+    REQUIREMENT_ID,
+    "evaluation",
+    EVALUATION_ID,
+  ),
 ];
 
 const FIXTURE_GRAPH: ThreadGraph = {
@@ -356,12 +384,18 @@ Deno.test(
       FIXTURE_CATALOG,
     );
 
-    const dripTrayRow = layout.rows.find((r) =>
-      r.componentId === "cm01-v3:drip-tray"
-    );
+    const dripTrayRow = layout.rows.find((r) => r.componentId === "cm01-v3:drip-tray");
     assertEquals(dripTrayRow !== undefined, true, "drip-tray row must exist");
-    assertEquals(dripTrayRow!.collapsed, false, "drip-tray must not be collapsed");
-    assertGreater(dripTrayRow!.proofCount, 0, "drip-tray must have proof nodes");
+    assertEquals(
+      dripTrayRow!.collapsed,
+      false,
+      "drip-tray must not be collapsed",
+    );
+    assertGreater(
+      dripTrayRow!.proofCount,
+      0,
+      "drip-tray must have proof nodes",
+    );
   },
 );
 
@@ -394,7 +428,9 @@ Deno.test(
     assertEquals(
       boilerRow!.factCount <= COLLAPSED_FACT_THRESHOLD,
       true,
-      `boiler factCount (${boilerRow!.factCount}) must be <= threshold (${COLLAPSED_FACT_THRESHOLD})`,
+      `boiler factCount (${
+        boilerRow!.factCount
+      }) must be <= threshold (${COLLAPSED_FACT_THRESHOLD})`,
     );
     assertEquals(
       typeof boilerRow!.collapseReason,
@@ -417,7 +453,10 @@ Deno.test(
       ],
       edges: [],
     };
-    const sparseAnchorage = buildPartAnchorage(sparseAssemblyGraph, FIXTURE_CATALOG);
+    const sparseAnchorage = buildPartAnchorage(
+      sparseAssemblyGraph,
+      FIXTURE_CATALOG,
+    );
     const sparseStations = buildStationAssignment(sparseAssemblyGraph);
     const sparseProjection = makeProjection(sparseAssemblyGraph.nodes, []);
 
@@ -430,7 +469,11 @@ Deno.test(
     );
 
     const assemblyRow = layout.rows.find((r) => r.componentId === "assembly");
-    assertEquals(assemblyRow !== undefined, true, "assembly row must always exist");
+    assertEquals(
+      assemblyRow !== undefined,
+      true,
+      "assembly row must always exist",
+    );
     assertEquals(
       assemblyRow!.collapsed,
       false,
@@ -504,9 +547,21 @@ Deno.test(
       FIXTURE_CATALOG,
     );
 
-    assertEquals(layout1.facts.size, layout2.facts.size, "fact map sizes must match");
-    assertEquals(layout1.rows.length, layout2.rows.length, "row counts must match");
-    assertEquals(layout1.edges.length, layout2.edges.length, "edge counts must match");
+    assertEquals(
+      layout1.facts.size,
+      layout2.facts.size,
+      "fact map sizes must match",
+    );
+    assertEquals(
+      layout1.rows.length,
+      layout2.rows.length,
+      "row counts must match",
+    );
+    assertEquals(
+      layout1.edges.length,
+      layout2.edges.length,
+      "edge counts must match",
+    );
 
     for (const [key, fact1] of layout1.facts) {
       const fact2 = layout2.facts.get(key);
@@ -628,7 +683,10 @@ Deno.test(
   () => {
     const stations = buildStationAssignment({
       nodes: [
-        node(ORACLE_REQ_ID, "artifact", { artifactKind: "sysml-model", system: "syson" }),
+        node(ORACLE_REQ_ID, "artifact", {
+          artifactKind: "sysml-model",
+          system: "syson",
+        }),
       ],
       edges: [],
     });
@@ -644,7 +702,10 @@ Deno.test(
   () => {
     const stations = buildStationAssignment({
       nodes: [
-        node(SENS_REL_ID, "artifact", { artifactKind: "sysml-model", system: "syson" }),
+        node(SENS_REL_ID, "artifact", {
+          artifactKind: "sysml-model",
+          system: "syson",
+        }),
       ],
       edges: [],
     });
@@ -672,7 +733,9 @@ Deno.test(
   "buildStationAssignment — drip-tray-printability artifact → observations",
   () => {
     const stations = buildStationAssignment({
-      nodes: [node(DT_PRINTABILITY_ID, "artifact", { artifactKind: "document" })],
+      nodes: [
+        node(DT_PRINTABILITY_ID, "artifact", { artifactKind: "document" }),
+      ],
       edges: [],
     });
     assertEquals(
@@ -701,7 +764,10 @@ Deno.test(
   () => {
     const stations = buildStationAssignment({
       nodes: [
-        node(ERPNEXT_BOM_ID, "artifact", { artifactKind: "bom", system: "erpnext" }),
+        node(ERPNEXT_BOM_ID, "artifact", {
+          artifactKind: "bom",
+          system: "erpnext",
+        }),
       ],
       edges: [],
     });
@@ -717,7 +783,10 @@ Deno.test(
   () => {
     const stations = buildStationAssignment({
       nodes: [
-        node(MODELICA_ID, "artifact", { artifactKind: "evidence", system: "mcp-modelica" }),
+        node(MODELICA_ID, "artifact", {
+          artifactKind: "evidence",
+          system: "mcp-modelica",
+        }),
       ],
       edges: [],
     });

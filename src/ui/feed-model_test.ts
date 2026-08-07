@@ -584,7 +584,11 @@ Deno.test(
     // Empty anchorage: no node has a known anchor.
     const counts = buildFeedComponentCounts(nodes, new Map());
     assertEquals(counts.size, 1, "only one target: assembly");
-    assertEquals(counts.get("assembly"), 3, "three unanchored nodes → 3 under assembly");
+    assertEquals(
+      counts.get("assembly"),
+      3,
+      "three unanchored nodes → 3 under assembly",
+    );
   },
 );
 
@@ -596,9 +600,18 @@ Deno.test(
     const cad = artifact("cad-artifact");
     // anchorage uses kind:id format (as produced by buildPartAnchorage)
     const anchorage = new Map([
-      ["artifact:obs-1", { target: "cm01-v3:drip-tray", criterion: "prefix" as const }],
-      ["artifact:obs-2", { target: "cm01-v3:drip-tray", criterion: "prefix" as const }],
-      ["artifact:cad-artifact", { target: "assembly", criterion: "prefix" as const }],
+      ["artifact:obs-1", {
+        target: "cm01-v3:drip-tray",
+        criterion: "prefix" as const,
+      }],
+      ["artifact:obs-2", {
+        target: "cm01-v3:drip-tray",
+        criterion: "prefix" as const,
+      }],
+      ["artifact:cad-artifact", {
+        target: "assembly",
+        criterion: "prefix" as const,
+      }],
     ]);
     const counts = buildFeedComponentCounts([obs1, obs2, cad], anchorage);
     assertEquals(counts.get("cm01-v3:drip-tray"), 2, "two drip-tray events");
@@ -617,7 +630,11 @@ Deno.test(
     ]);
     const counts = buildFeedComponentCounts([anchored, unanchored], anchorage);
     // Both resolve to "assembly": one via anchor, one via fallback.
-    assertEquals(counts.get("assembly"), 2, "anchored + unanchored both count as assembly");
+    assertEquals(
+      counts.get("assembly"),
+      2,
+      "anchored + unanchored both count as assembly",
+    );
     assertEquals(counts.size, 1);
   },
 );

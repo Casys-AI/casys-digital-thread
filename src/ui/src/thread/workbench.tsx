@@ -56,9 +56,7 @@ import {
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import { PartLaneGraphView } from "./part-lane-graph-view.tsx";
-import {
-  buildPartAnchorage,
-} from "./part-anchorage-model.ts";
+import { buildPartAnchorage } from "./part-anchorage-model.ts";
 import {
   buildPartLaneLayout,
   buildStationAssignment,
@@ -1031,7 +1029,7 @@ export function ThreadWorkbench({
                             )}
                             presentation="canvas"
                             initialZoom={2.25}
-                            showSupporting={true}
+                            showSupporting
                             showDensityControl={false}
                             onSelectionChange={selectVerificationGraphItem}
                             onInspect={inspectVerificationGraphItem}

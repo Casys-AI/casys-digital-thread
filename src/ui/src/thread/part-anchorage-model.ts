@@ -181,7 +181,10 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
       }
       if (suffix.startsWith("mesh-")) {
         // "mesh-drip-tray" → "cm01-v3:drip-tray"
-        return { target: `cm01-v3:${suffix.slice("mesh-".length)}`, family: "cad" };
+        return {
+          target: `cm01-v3:${suffix.slice("mesh-".length)}`,
+          family: "cad",
+        };
       }
       // Other suffixes (consumptions etc.) may be caught by later criteria.
       return null;

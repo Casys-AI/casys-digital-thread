@@ -494,7 +494,9 @@ export function buildPartLaneLayout(
       proofCount,
       collapsed,
       collapseReason: collapsed
-        ? `${factCount} fait${factCount !== 1 ? "s" : ""}, aucune preuve technique`
+        ? `${factCount} fait${
+          factCount !== 1 ? "s" : ""
+        }, aucune preuve technique`
         : undefined,
     });
   }

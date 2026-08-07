@@ -46,8 +46,16 @@ export const LANE_PADDING_BOTTOM = 20;
 export const LANE_NODE_SPACING = 80;
 /** Gap between adjacent lane bands. */
 export const LANE_GAP = 24;
-/** Height of a collapsed (thin) lane band. */
-export const COLLAPSED_LANE_HEIGHT = 40;
+/**
+ * Height of a collapsed (thin) lane band.
+ *
+ * Sized relative to the EXPANDED lanes, not to the viewport: a populated lane
+ * spans ~2000 graph units (one LANE_NODE_SPACING slot per node), so at
+ * full-graph zoom the camera scale is ~0.1 px/unit. 140 units keeps the band
+ * "thin" next to populated lanes while still rendering ≥ 10 CSS pixels — the
+ * minimum for the in-band label to stay readable without zooming.
+ */
+export const COLLAPSED_LANE_HEIGHT = 140;
 /** Top margin before the first lane. */
 export const LANE_MARGIN_TOP = 10;
 
@@ -208,13 +216,12 @@ export function buildPartLaneGraphModel(
       // An empty non-collapsed lane (assembly with 0 nodes is never collapsed)
       // gets one full slot so the band is still visible.
       const laneContentHeight = Math.max(1, nodeCount) * LANE_NODE_SPACING;
-      const laneBottom =
-        laneTop + LANE_PADDING_TOP + laneContentHeight + LANE_PADDING_BOTTOM;
+      const laneBottom = laneTop + LANE_PADDING_TOP + laneContentHeight +
+        LANE_PADDING_BOTTOM;
 
       laneNodes.forEach((key, i) => {
         // Node centre: laneTop + header + slot centre.
-        const newY =
-          laneTop +
+        const newY = laneTop +
           LANE_PADDING_TOP +
           i * LANE_NODE_SPACING +
           LANE_NODE_SPACING / 2;
@@ -235,9 +242,26 @@ export function buildPartLaneGraphModel(
     }
   }
 
+  // ── 4. Flip the vertical axis for sigma ──────────────────────────────────
+  //
+  // The layout above is computed top-down (assembly first, y increasing
+  // downward like a document). Sigma renders with the WebGL convention where
+  // GREATER y is HIGHER on screen — without this flip the first lane
+  // (assembly, the superior level) ends up at the BOTTOM. Negating every y
+  // keeps relative spacing intact and puts the first lane on top.
+  graph.forEachNode((key: string) => {
+    const y = graph.getNodeAttribute(key, "y") as number ?? 0;
+    graph.setNodeAttribute(key, "y", -y);
+  });
+  const flippedLanes = lanes.map((lane) => ({
+    ...lane,
+    yMin: -lane.yMax,
+    yMax: -lane.yMin,
+  }));
+
   return {
     graph,
-    lanes,
+    lanes: flippedLanes,
     tokens,
     hiddenSupportingCount: exploration.hiddenSupportingCount,
   };
