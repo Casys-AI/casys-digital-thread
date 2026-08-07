@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   activityFeedNodes,
+  buildFeedComponentCounts,
   compactLineageCounters,
   isActivityEntryExpanded,
   traceThreadLineage,
@@ -557,5 +558,94 @@ Deno.test(
     assertEquals(counters.total, 3, "A (focus) + B + C — D is beyond depth 2");
     assertEquals(counters.upstream, 0, "no upstream from A");
     assertEquals(counters.downstream, 2, "B and C are downstream (D excluded)");
+  },
+);
+
+// ---------------------------------------------------------------------------
+// buildFeedComponentCounts — per-part event counts for the feed selector
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "buildFeedComponentCounts: empty feed yields empty map",
+  () => {
+    const counts = buildFeedComponentCounts([], new Map());
+    assertEquals(counts.size, 0, "no nodes → no counts");
+  },
+);
+
+Deno.test(
+  "buildFeedComponentCounts: unanchored nodes all count as assembly",
+  () => {
+    const nodes = [
+      artifact("obs-1"),
+      artifact("obs-2"),
+      artifact("obs-3"),
+    ];
+    // Empty anchorage: no node has a known anchor.
+    const counts = buildFeedComponentCounts(nodes, new Map());
+    assertEquals(counts.size, 1, "only one target: assembly");
+    assertEquals(counts.get("assembly"), 3, "three unanchored nodes → 3 under assembly");
+  },
+);
+
+Deno.test(
+  "buildFeedComponentCounts: anchored nodes are attributed to their target",
+  () => {
+    const obs1 = artifact("obs-1");
+    const obs2 = artifact("obs-2");
+    const cad = artifact("cad-artifact");
+    // anchorage uses kind:id format (as produced by buildPartAnchorage)
+    const anchorage = new Map([
+      ["artifact:obs-1", { target: "cm01-v3:drip-tray", criterion: "prefix" as const }],
+      ["artifact:obs-2", { target: "cm01-v3:drip-tray", criterion: "prefix" as const }],
+      ["artifact:cad-artifact", { target: "assembly", criterion: "prefix" as const }],
+    ]);
+    const counts = buildFeedComponentCounts([obs1, obs2, cad], anchorage);
+    assertEquals(counts.get("cm01-v3:drip-tray"), 2, "two drip-tray events");
+    assertEquals(counts.get("assembly"), 1, "one assembly event");
+    assertEquals(counts.size, 2, "exactly two distinct targets");
+  },
+);
+
+Deno.test(
+  "buildFeedComponentCounts: mix of anchored and unanchored uses assembly fallback",
+  () => {
+    const anchored = artifact("req-1");
+    const unanchored = artifact("unknown-artifact");
+    const anchorage = new Map([
+      ["artifact:req-1", { target: "assembly", criterion: "nature" as const }],
+    ]);
+    const counts = buildFeedComponentCounts([anchored, unanchored], anchorage);
+    // Both resolve to "assembly": one via anchor, one via fallback.
+    assertEquals(counts.get("assembly"), 2, "anchored + unanchored both count as assembly");
+    assertEquals(counts.size, 1);
+  },
+);
+
+Deno.test(
+  "buildFeedComponentCounts: observation node (kind=observation) keyed correctly",
+  () => {
+    // The anchorage key format is kind:id — verify that non-artifact kinds work.
+    const obsNode: ThreadGraphNode = {
+      id: "graph:observation:obs-drip-1",
+      ref: { kind: "observation", id: "obs-drip-1" },
+      entityKind: "observation",
+      label: "Max displacement",
+      system: "calculix",
+      freshness: "fresh",
+      summary: "Observed displacement",
+    };
+    const anchorage = new Map([
+      ["observation:obs-drip-1", {
+        target: "cm01-v3:drip-tray",
+        criterion: "change-consumption" as const,
+      }],
+    ]);
+    const counts = buildFeedComponentCounts([obsNode], anchorage);
+    assertEquals(
+      counts.get("cm01-v3:drip-tray"),
+      1,
+      "observation node anchored to drip-tray via kind:id key",
+    );
   },
 );

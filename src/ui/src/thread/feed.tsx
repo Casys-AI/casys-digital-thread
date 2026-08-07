@@ -5,6 +5,7 @@ import { useMemo } from "preact/hooks";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
+  buildFeedComponentCounts,
   compactLineageCounters,
   isActivityEntryExpanded,
   refKey,
@@ -94,15 +95,23 @@ export function ThreadFeed({
   onOpenEvidenceAnchored,
 }: ThreadFeedProps): JSX.Element {
   const allFeedNodes = activityFeedNodes(nodes, edges);
+
+  // Counts per component target across ALL feed events (before filtering).
+  // Used to populate the selector with only meaningful options + true counts.
+  // The anchorage map is keyed as "kind:id" (produced by buildPartAnchorage),
+  // NOT the null-byte format used by the local refKey for lineage traversal.
+  const componentCounts = anchorage
+    ? buildFeedComponentCounts(allFeedNodes, anchorage)
+    : undefined;
+
   // Apply component filter if requested. Unanchored nodes fall back to
   // "assembly" scope and are shown in the project-wide and assembly views.
+  // Same key format as componentCounts: kind:id (matches anchorage map keys).
   const feedNodes = filterComponentId !== undefined && anchorage
     ? allFeedNodes.filter((node) => {
-      const key = refKey(node.ref);
+      const key = `${node.ref.kind}:${node.ref.id}`;
       const anchor = anchorage.get(key);
-      const target = anchor
-        ? (anchor.target === "assembly" ? "assembly" : anchor.target)
-        : "assembly";
+      const target = anchor ? anchor.target : "assembly";
       return target === filterComponentId;
     })
     : allFeedNodes;
@@ -117,8 +126,9 @@ export function ThreadFeed({
     : feedNodes;
 
   // Build component options for the filter selector.
+  // Only parts with >= 1 event appear; counts are shown in the label.
   const filterOptions = components
-    ? buildFilterOptions(components)
+    ? buildFilterOptions(components, componentCounts)
     : undefined;
 
   if (entries.length === 0 && !filterOptions) {
@@ -456,21 +466,41 @@ function kindLabel(node: ThreadGraphNode): string {
 
 /**
  * Build the list of options for the component filter selector.
+ *
  * Assembly first ("Tout l'assemblage"), then parts sorted by label.
+ * When `counts` is provided, options are filtered to only those with at least
+ * one attributed activity event (count > 0). The count is displayed in the
+ * option label so the reviewer knows at a glance how many events exist per part.
+ * Parts with zero events are not actionable filter targets and are omitted.
  */
 function buildFilterOptions(
   components: ThreadComponentCatalog,
+  counts?: ReadonlyMap<string, number>,
 ): { id: string; label: string }[] {
   const result: { id: string; label: string }[] = [];
   const assembly = components.components.find((c) => c.kind === "assembly");
   if (assembly) {
-    result.push({ id: "assembly", label: `${assembly.label} (assemblage)` });
+    const count = counts?.get("assembly") ?? 0;
+    // Assembly option is always shown when there are counts available (even if
+    // count is 0 — assembly is the scope for all unanchored events, so it
+    // appears once the anchorage is in place). Without counts, always shown.
+    if (!counts || count > 0) {
+      const suffix = counts ? ` · ${count}` : "";
+      result.push({
+        id: "assembly",
+        label: `${assembly.label} (assemblage)${suffix}`,
+      });
+    }
   }
   const parts = components.components
     .filter((c) => c.kind !== "assembly")
     .sort((a, b) => a.label.localeCompare(b.label));
   for (const part of parts) {
-    result.push({ id: part.id, label: part.label });
+    const count = counts?.get(part.id) ?? 0;
+    // Only include parts with at least one attributed event in the feed.
+    if (counts && count === 0) continue;
+    const suffix = counts ? ` · ${count}` : "";
+    result.push({ id: part.id, label: `${part.label}${suffix}` });
   }
   return result;
 }

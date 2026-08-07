@@ -505,6 +505,9 @@ export function ThreadWorkbench({
 
   const selectComponent = (component: ThreadComponent) => {
     setSelectedComponentId(component.id);
+    // Mirror the component selection to the feed filter so the Activity view
+    // pre-filters to this component when the reviewer navigates there.
+    setFeedFilterComponentId(component.id);
     setInspectorOpen(false);
     const binding = component.bindings.find((item) =>
       item.provider === activeComponentProvider && item.status === "verified"
@@ -995,6 +998,9 @@ export function ThreadWorkbench({
                           onSelectionChange={selectVerificationGraphItem}
                           onComponentFocus={(componentId) => {
                             setSelectedComponentId(componentId);
+                            // Mirror to the feed filter: focusing a row in the
+                            // Par pièce view pre-selects that part in Activity.
+                            setFeedFilterComponentId(componentId);
                           }}
                         />
                       )}
