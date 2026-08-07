@@ -107,6 +107,43 @@ Deno.test("ThreadSnapshot stale state names its cause and references a real chan
   );
 });
 
+Deno.test("ThreadSnapshot accepts an evidence artifact tracing to a design artifact without the derivation regime", () => {
+  const snapshot = coffeeMachineSnapshot();
+  // An immutable existing proof can never satisfy the derived_from regime
+  // retroactively (inputs + verified consumption). traces_to is the recorded
+  // way to attach evidence to the design element it measured.
+  snapshot.provenance.push({
+    id: "link-fea-traces-to-model",
+    relation: "traces_to",
+    from: { kind: "artifact", id: "fea-result-cm01" },
+    to: { kind: "artifact", id: "sysml-cm01" },
+    rationale: "The FEA result was computed on geometry defined by this model.",
+  });
+  const validated = validateThreadSnapshot(
+    JSON.parse(JSON.stringify(snapshot)),
+  );
+  assertEquals(
+    validated.provenance.some((link) => link.id === "link-fea-traces-to-model"),
+    true,
+  );
+});
+
+Deno.test("ThreadSnapshot rejects a traces_to link toward a non-artifact target", () => {
+  const snapshot = coffeeMachineSnapshot();
+  snapshot.provenance.push({
+    id: "link-traces-to-observation",
+    relation: "traces_to",
+    from: { kind: "artifact", id: "fea-result-cm01" },
+    to: { kind: "observation", id: "obs-displacement" },
+    rationale: "Invalid: traces_to targets must be artifacts.",
+  });
+  assertThrows(
+    () => validateThreadSnapshot(JSON.parse(JSON.stringify(snapshot))),
+    Error,
+    "traces_to",
+  );
+});
+
 Deno.test("ThreadSnapshot is strictly JSON serializable", () => {
   const candidate = coffeeMachineSnapshot() as unknown as Record<string, unknown>;
   candidate.nonJson = new Date(AT);

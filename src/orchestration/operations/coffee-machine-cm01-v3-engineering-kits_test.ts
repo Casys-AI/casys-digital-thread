@@ -30,11 +30,12 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "cm01.drip-tray-sensitivity-edges@2",
       "cm01.drip-tray-printability@1",
       "cm01.drip-tray-print-estimate@1",
+      "cm01.part-definitions@1",
     ],
   );
   assertEquals(
     kits.map((kit) => kit.qualification.status),
-    Array(18).fill("manually-qualified"),
+    Array(19).fill("manually-qualified"),
   );
   assertEquals(
     kits.map((kit) => kit.presentationRole),
@@ -57,6 +58,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "architecture", // cm01.drip-tray-sensitivity-edges@2
       "verification",
       "supply",
+      "architecture", // cm01.part-definitions@1
     ],
   );
   assertEquals(
@@ -80,6 +82,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
       "model", // cm01.drip-tray-sensitivity-edges@2
       "observation",
       "observation",
+      "model", // cm01.part-definitions@1
     ],
   );
 
@@ -93,7 +96,7 @@ Deno.test("CM-01 V3 exposes the baseline and bounded 30 mm correction kits", () 
   // 2026-08-05.
   assertEquals(
     kits.map((kit) => kit.operation.execution),
-    Array(18).fill("trusted"),
+    Array(19).fill("trusted"),
   );
   assertEquals(kits[5]?.operation.bindings, [
     { name: "approvedBrief", allowedSourceKinds: ["approved-brief"] },
@@ -142,6 +145,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.sensitivityRelationsV2.id}@2`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printabilityDripTray.id}@1`,
       `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.printEstimateDripTray.id}@1`,
+      `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.partDefinitions.id}@1`,
     ],
   );
   assertEquals(operations[0]?.execution, "trusted");
@@ -164,6 +168,7 @@ Deno.test("CM-01 V3 operation references are stable and descriptors retain no ex
   assertEquals(operations[15]?.execution, "trusted");
   assertEquals(operations[16]?.execution, "trusted");
   assertEquals(operations[17]?.execution, "trusted");
+  assertEquals(operations[18]?.execution, "trusted");
   assertEquals(
     operations.every((operation) => operation.execution === "trusted"),
     true,

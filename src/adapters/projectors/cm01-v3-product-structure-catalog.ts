@@ -116,6 +116,7 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
   const r3Meshes = freshR3MeshArtifactMap(snapshot.artifacts);
   const assemblyMesh = r3Meshes.get("assembly");
   const r3WholeAssembly = freshR3WholeAssemblyArtifactMap(snapshot.artifacts);
+  const partDefMap = buildPartDefinitionMap(snapshot.artifacts);
   const rootDefinition = root[0]!;
   return validateThreadComponentCatalog({
     schemaVersion: "thread-components/1.0",
@@ -131,7 +132,10 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
         kind: "assembly",
         quantity: 1,
         bindings: [
-          sysonDefinitionBinding(rootDefinition, architecture.id),
+          sysonDefinitionBinding(
+            rootDefinition,
+            partDefMap.get(rootDefinition.label) ?? architecture.id,
+          ),
           ...(assemblyStep ? [assemblyBinding(assemblyStep)] : []),
           ...(assemblyMesh ? [meshBinding(assemblyMesh)] : []),
           ...r3WholeAssemblyBindings(r3WholeAssembly),
@@ -152,7 +156,10 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
           quantity: 1,
           parentId: "cm01-v3:coffee-machine",
           bindings: [
-            sysonDefinitionBinding(declaration, architecture.id),
+            sysonDefinitionBinding(
+              declaration,
+              partDefMap.get(declaration.label) ?? architecture.id,
+            ),
             ...(partMesh ? [meshBinding(partMesh)] : []),
           ],
           ...(partMesh
@@ -189,6 +196,22 @@ function unavailable(
  */
 const CM01_V3_ARCHITECTURE_URI_PREFIX =
   "casys://coffee-machine-cm01-v3-architecture/" as const;
+
+/**
+ * URI namespace for part-definitions captures — mirrors the
+ * CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR uriNamespace in file-capture-store.
+ * Used to identify part-definition artifacts in the snapshot without importing
+ * the executor module (catalog layer must stay free of executor dependencies).
+ */
+const CM01_V3_PART_DEFINITIONS_URI_PREFIX =
+  "casys://part-definitions-capture/" as const;
+
+/**
+ * Artifact name pattern written by the part-definitions executor:
+ * "CM-01 <Label> part definition", where <Label> is the exact SysON label
+ * ("CoffeeMachine", "DripTray", …).  Group 1 captures the label.
+ */
+const CM01_V3_PART_DEF_NAME_RE = /^CM-01 (.+) part definition$/;
 
 /**
  * Pattern that identifies a fresh @3 presentation mesh artifact.
@@ -309,6 +332,39 @@ function freshR3WholeAssemblyArtifactMap(
  */
 function r3AssetUrl(semanticKey: string): string {
   return `/api/thread/assets/coffee-machine-cm01-v3-r3-${semanticKey}.stl`;
+}
+
+/**
+ * Scan the snapshot artifacts for part-definition captures and return a map
+ * from SysON label to artifact id.
+ *
+ * Only `sysml-model` artifacts whose URI starts with
+ * CM01_V3_PART_DEFINITIONS_URI_PREFIX and whose name matches
+ * "CM-01 <Label> part definition" are included.  Any other artifact —
+ * regardless of kind or producer — is ignored, keeping the selector
+ * fail-closed: an artifact with an ambiguous or missing name produces no entry
+ * rather than a best-effort guess.
+ *
+ * When no part-definition artifacts are present the returned map is empty and
+ * callers fall back to the architecture artifact id, preserving the
+ * pre-US-3 behaviour.
+ */
+function buildPartDefinitionMap(
+  artifacts: readonly ThreadArtifact[],
+): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  for (const a of artifacts) {
+    if (
+      a.kind !== "sysml-model" ||
+      typeof a.uri !== "string" ||
+      !a.uri.startsWith(CM01_V3_PART_DEFINITIONS_URI_PREFIX)
+    ) continue;
+    if (typeof a.name !== "string") continue;
+    const m = CM01_V3_PART_DEF_NAME_RE.exec(a.name);
+    if (!m) continue;
+    map.set(m[1]!, a.id);
+  }
+  return map;
 }
 
 function oneFreshArchitecture(

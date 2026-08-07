@@ -33,7 +33,8 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-sensitivity-relations"
   | "cm01.drip-tray-sensitivity-edges"
   | "cm01.drip-tray-printability"
-  | "cm01.drip-tray-print-estimate";
+  | "cm01.drip-tray-print-estimate"
+  | "cm01.part-definitions";
 
 export type CoffeeMachineCm01V3PresentationRole =
   | "architecture"
@@ -284,6 +285,18 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
       {
         id: "model.write-coffee-machine-cm01-sensitivity-relations",
         version: "2",
+      } as const,
+    ),
+    /**
+     * Read-only documentary capture of the CoffeeMachine and DripTray PartDef
+     * elements from the SysON architecture package. Performs no SysML insertion,
+     * produces no verdict, and constitutes no certification. Each element's full
+     * part-structure is captured as an independent content-addressed record.
+     */
+    partDefinitions: Object.freeze(
+      {
+        id: "model.capture-coffee-machine-cm01-part-definitions",
+        version: "1",
       } as const,
     ),
   } as const satisfies Record<string, CoffeeMachineCm01V3OperationRef>,
@@ -1060,6 +1073,55 @@ const KITS = [
         "Export the reviewed DripTray STL via the server-fixed script and slice with the committed generic 0.2 mm PLA profile. Records time and material observations with explicit units; produces no verdict and no pricing.",
       workItemKind: "industrialize",
       riskClass: "low",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.part-definitions",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/extractors/syson-part-structure-extractor.ts",
+          purpose:
+            "Defines the two-phase extraction contract: Phase 1 locates CoffeeMachine and DripTray " +
+            "PartDef elements by exact label; Phase 2 reads the full part-structure tree via " +
+            "syson_part_structure and validates strict shape, root label, partCount coherence, " +
+            "and DripTray usage presence in the CoffeeMachine tree.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path: "src/adapters/captures/file-capture-store.ts",
+          purpose:
+            "Provides the CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR with the reviewed " +
+            "directory and uriNamespace for the part-definitions content-addressed store.",
+        },
+      ],
+    },
+    /**
+     * Read-only documentary capture only. This kit performs no SysML insertion,
+     * produces no verdict, runs no solver, generates no CAD, makes no cost or
+     * supply claim, assesses no durability or safety, and constitutes no
+     * certification of the product or the component.
+     */
+    evidenceBoundary:
+      "Captures the SysON part-structure for CoffeeMachine and DripTray as a read-only documentary snapshot. " +
+      "It performs no model insertion, produces no verdict, and constitutes no certification.",
+    presentationRole: "architecture",
+    activityCategory: "model",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.partDefinitions,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Capture the CM-01 part definitions from the SysML model",
+      description:
+        "Read the CoffeeMachine and DripTray PartDef elements from the CM-01 SysON architecture " +
+        "package and persist each as a content-addressed documentary capture.",
+      workItemKind: "architect",
+      riskClass: "consequential",
       execution: "trusted",
       bindings: APPROVED_BRIEF_BINDING,
     },

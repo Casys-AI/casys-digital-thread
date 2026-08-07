@@ -1368,7 +1368,12 @@ function checkLinkShape(
   > = {
     changes: [["change"], ["artifact", "requirement"]],
     derived_from: [["artifact", "observation"], ["artifact", "observation"]],
-    traces_to: [["requirement"], ["artifact"]],
+    // traces_to carries requirement traceability AND evidence-to-design
+    // anchoring (an existing proof artifact traces to the part definition it
+    // measured). Artifact sources stay outside the derivation regime: unlike
+    // derived_from, traces_to never implies inputs or verified consumptions,
+    // so it is the one honest way to attach immutable historical evidence.
+    traces_to: [["requirement", "artifact"], ["artifact"]],
     uses: [["evaluation", "consumption"], ["observation", "artifact"]],
     evaluates: [["evaluation"], ["requirement"]],
     evidences: [["evaluation", "violation"], ["artifact"]],

@@ -18,6 +18,7 @@ import {
   CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR,
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
   CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+  CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -51,6 +52,10 @@ import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_EDGES_OPERATION,
   CoffeeMachineCm01V3SensitivityEdgesRunExecutor,
 } from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_PART_DEFINITIONS_OPERATION,
+  CoffeeMachineCm01V3PartDefinitionsRunExecutor,
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-part-definitions-run-executor.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/captures/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
@@ -270,6 +275,8 @@ const DEFAULT_CM01_DRIP_TRAY_MECHANICAL_PROOF_R3_PATH =
 const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
   "state/local/engineering-project-run-leases";
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
+const DEFAULT_CM01_PART_DEFINITIONS_CAPTURE_DIRECTORY =
+  "state/local/cm01-part-definitions-captures";
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -336,6 +343,7 @@ export interface CreateConsoleServerOptions {
   cm01DripTrayPrintEstimateAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
+  cm01PartDefinitionsCaptureDirectory?: string;
 }
 
 export async function createConsoleServer(
@@ -620,6 +628,26 @@ async function createProjectControl(
         options.sensitivityEdgesSeedAttemptDirectory ??
           DEFAULT_SENSITIVITY_EDGES_SEED_ATTEMPT_DIRECTORY,
       ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+    })
+    : undefined;
+  const cm01PartDefinitions = sysonMcpUrl
+    ? new CoffeeMachineCm01V3PartDefinitionsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      architectureCaptures: new FileCaptureStore({
+        ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.cm01ArchitectureCaptureDirectory ??
+          DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      seedCaptures: sysonModelSeedCaptures,
+      partDefinitionsCaptures: new FileCaptureStore({
+        ...CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+        directory: options.cm01PartDefinitionsCaptureDirectory ??
+          DEFAULT_CM01_PART_DEFINITIONS_CAPTURE_DIRECTORY,
+      }),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
     })
@@ -1081,6 +1109,12 @@ async function createProjectControl(
             executor: cm01DripTrayPrintEstimate,
             unavailableMessage:
               "The server has no trusted CM-01 DripTray FFF print-estimate executor configured for this run (build123d and prusaslicer providers are required).",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_PART_DEFINITIONS_OPERATION,
+            executor: cm01PartDefinitions,
+            unavailableMessage:
+              "The server has no trusted CM-01 part-definitions executor configured for this run (SysON provider is required).",
           },
         ],
       }),

@@ -836,6 +836,117 @@ Deno.test("CM-01 V3 Product Structure ignores @3 whole-assembly artifact with wr
   assertEquals(stepBinding?.provider, "build123d");
 });
 
+// ── Part-definition artifact binding tests (US-3) ────────────────────────────
+
+Deno.test("CM-01 V3 Product Structure falls back to architecture id when no part-definition artifacts are present", async () => {
+  // Baseline fixture has no part-definition artifacts; every binding should use
+  // architecture.id — exact same behaviour as before US-3.
+  const fixture = await v3Fixture();
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    fixture.snapshot,
+    fixture.reader,
+  );
+
+  assertEquals(catalog?.components.length, 11);
+  for (const component of catalog?.components ?? []) {
+    const sysonBinding = component.bindings.find(
+      (b) => b.provider === "syson" && b.kind === "part-definition",
+    );
+    assertEquals(
+      sysonBinding?.evidenceArtifactId,
+      fixture.architectureId,
+      `Component ${component.id} must fall back to architecture.id`,
+    );
+  }
+});
+
+Deno.test("CM-01 V3 Product Structure uses specific part-definition artifact ids for CoffeeMachine and DripTray", async () => {
+  const fixture = await v3Fixture();
+
+  const cmPartDefId = "part-definition-coffee-machine-" + "a".repeat(64);
+  const dtPartDefId = "part-definition-drip-tray-" + "b".repeat(64);
+
+  const cmPartDefArtifact = {
+    id: cmPartDefId,
+    name: "CM-01 CoffeeMachine part definition",
+    kind: "sysml-model",
+    version: "a".repeat(64),
+    fingerprint: fingerprint("a"),
+    uri: `casys://part-definitions-capture/sha256/${"a".repeat(64)}`,
+    producer: {
+      serverId: "syson",
+      tool: "syson_part_structure",
+      runId: "run:part-def",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+  const dtPartDefArtifact = {
+    id: dtPartDefId,
+    name: "CM-01 DripTray part definition",
+    kind: "sysml-model",
+    version: "b".repeat(64),
+    fingerprint: fingerprint("b"),
+    uri: `casys://part-definitions-capture/sha256/${"b".repeat(64)}`,
+    producer: {
+      serverId: "syson",
+      tool: "syson_part_structure",
+      runId: "run:part-def",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+
+  const snapshot = validateThreadSnapshot({
+    ...fixture.snapshot,
+    artifacts: [
+      ...fixture.snapshot.artifacts,
+      cmPartDefArtifact,
+      dtPartDefArtifact,
+    ],
+  });
+
+  const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    snapshot,
+    fixture.reader,
+  );
+
+  assertEquals(catalog?.components.length, 11);
+
+  // CoffeeMachine (assembly) must use the specific part-definition artifact.
+  const cmComponent = catalog?.components[0];
+  assertEquals(cmComponent?.id, "cm01-v3:coffee-machine");
+  const cmSysonBinding = cmComponent?.bindings.find(
+    (b) => b.provider === "syson" && b.kind === "part-definition",
+  );
+  assertEquals(cmSysonBinding?.evidenceArtifactId, cmPartDefId);
+
+  // DripTray must use its specific part-definition artifact.
+  const dtComponent = catalog?.components.find(
+    (c) => c.id === "cm01-v3:drip-tray",
+  );
+  const dtSysonBinding = dtComponent?.bindings.find(
+    (b) => b.provider === "syson" && b.kind === "part-definition",
+  );
+  assertEquals(dtSysonBinding?.evidenceArtifactId, dtPartDefId);
+
+  // The 9 other parts must still fall back to architecture.id.
+  const otherParts = catalog?.components.slice(1).filter(
+    (c) => c.id !== "cm01-v3:drip-tray",
+  ) ?? [];
+  assertEquals(otherParts.length, 9);
+  for (const component of otherParts) {
+    const sysonBinding = component.bindings.find(
+      (b) => b.provider === "syson" && b.kind === "part-definition",
+    );
+    assertEquals(
+      sysonBinding?.evidenceArtifactId,
+      fixture.architectureId,
+      `Part ${component.id} must still use architecture.id`,
+    );
+  }
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fingerprint(character: string) {

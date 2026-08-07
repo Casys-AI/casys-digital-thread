@@ -268,6 +268,15 @@ export const SENSITIVITY_EDGES_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity edges seed",
 };
 
+export const CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "cm01-part-definitions"
+> = {
+  kind: "cm01-part-definitions",
+  directory: "state/local/cm01-part-definitions-captures",
+  uriNamespace: "part-definitions-capture",
+  label: "CM-01 part definitions",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {
