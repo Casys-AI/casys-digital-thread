@@ -1271,3 +1271,39 @@
     border-top: 1px solid var(--line);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Filtre par pièce du feed Activity (sélecteur de composant en tête du feed).
+   Déplacé de 16-part-lane.css lors du retrait de la vue Par pièce : le filtre
+   du feed est la lecture par pièce qui survit.
+   --------------------------------------------------------------------------- */
+
+.thread-feed-component-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-8) var(--space-12);
+  border-bottom: 1px solid #303735;
+  background: rgba(17, 21, 20, 0.92);
+}
+
+.thread-feed-component-filter > label {
+  flex-shrink: 0;
+  color: var(--muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thread-feed-component-filter > select {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: var(--surface-0);
+  font: var(--text-sm)/1 var(--sans);
+  background: #1c2120;
+  cursor: pointer;
+  appearance: auto;
+}

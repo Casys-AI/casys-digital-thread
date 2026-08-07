@@ -216,7 +216,8 @@ export function buildEvidenceCanvasProjection(
   //
   // Both renderers — SVG carte (ThreadGraph) and sigma exploration
   // (EvidenceExploration / buildExplorationModel) — consume this single
-  // pre-filtered result. No renderer applies the mask independently.
+  // pre-filtered result. No renderer applies the mask independently, and no
+  // renderer gets its own reading: the two views must show the same facts.
   //
   // The mask removes supporting nodes (mesh, script, solver-input, change
   // events, consumption records) but preserves any supporting connector that

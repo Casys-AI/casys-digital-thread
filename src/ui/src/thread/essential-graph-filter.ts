@@ -49,6 +49,10 @@ export const SUPPORTING_ARTIFACT_KINDS: ReadonlySet<string> = new Set([
  *   - entityKind "consumption" — always supporting.
  *   - entityKind "change"      — always supporting.
  *   - entityKind "artifact" whose artifactKind is in SUPPORTING_ARTIFACT_KINDS.
+ *
+ * One single reading, shared by every renderer: the map shows produced
+ * artifacts, measures and verdicts; recorded operations and input
+ * attestations fold away and stay reachable through the inspector.
  */
 export function isSupportingNode(node: ThreadGraphNode): boolean {
   return (

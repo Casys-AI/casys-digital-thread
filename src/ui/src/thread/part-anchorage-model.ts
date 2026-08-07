@@ -61,9 +61,8 @@ export interface AnchorageCoverage {
 // Every entry is annotated with the executor file and line that defines the
 // server-fixed naming contract.
 //
-// `AnchorFamily` classifies the producing executor family.  It is consumed by
-// part-lane-model.ts to derive station assignment from the same structural
-// source without duplicating the prefix strings.
+// `AnchorFamily` classifies the producing executor family from the same
+// structural source, without duplicating the prefix strings.
 // ---------------------------------------------------------------------------
 
 const HEX64 = "[0-9a-f]{64}";
@@ -72,10 +71,11 @@ const HEX64 = "[0-9a-f]{64}";
  * Semantic family of the executor that produced a graph node, derived from
  * the same server-fixed id prefixes used for part anchoring.
  *
- * Consumers (e.g. part-lane-model.ts) import `anchorFamilyByPrefix` to map
- * node ids to stations without re-declaring the prefix strings.
+ * Consumers import `anchorFamilyByPrefix` to classify node ids without
+ * re-declaring the prefix strings.
  *
- * Family → canonical station mapping (documented in part-lane-model.ts):
+ * Family → engineering-step reading (historical station mapping, kept for
+ * reference):
  *   architecture | oracle-requirements | sensitivity-edges |
  *   sensitivity-relations  →  model
  *   cad                    →  geometry
@@ -332,8 +332,8 @@ function anchorByPrefix(id: string): PartTarget | null {
  * Classify a node id by the producer executor family that generated it.
  *
  * Uses the same server-fixed prefix patterns as `buildPartAnchorage` (criterion
- * b) so that callers — notably part-lane-model.ts — can map node ids to
- * stations without re-declaring the prefix strings.
+ * b) so that callers can classify node ids without re-declaring the prefix
+ * strings.
  *
  * Returns null for ids that do not match any server-fixed prefix (nature-based
  * or entity-kind-based classification must then be applied by the caller).

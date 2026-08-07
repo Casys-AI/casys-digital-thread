@@ -271,6 +271,65 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "applyEssentialFilter: an off-path change node folds away",
+  () => {
+    // OBS1 and REQ are directly linked; CHG hangs off OBS1 and is on no
+    // essential-pair shortest path, so it is not a connector and folds.
+    const obs1 = observationNode("OBS1");
+    const chg = changeNode("CHG");
+    const req = requirementNode("REQ");
+
+    const nodes = [obs1, chg, req];
+    const edges = [
+      edge("e1", obs1.ref, req.ref, "input_to"),
+      edge("e2", chg.ref, obs1.ref, "changes"),
+    ];
+
+    const result = applyEssentialFilter(nodes, edges);
+    assertEquals(
+      result.nodes.map((n) => n.ref.id).sort(),
+      ["OBS1", "REQ"],
+      "Off-path change must fold away",
+    );
+    assertEquals(result.hiddenCount, 1);
+  },
+);
+
+Deno.test(
+  "applyEssentialFilter: consumption node on sole path between two essential nodes is preserved",
+  () => {
+    // OBS1 --uses--> CONS --uses--> REQ : the consumption stays a fold target,
+    // so the connector-preservation guarantee must hold through it.
+    const obs1 = observationNode("OBS1");
+    const cons: ThreadGraphNode = {
+      id: "CONS",
+      ref: ref("CONS", "consumption"),
+      label: "Consumption CONS",
+      summary: "S",
+      system: "digital-thread",
+      entityKind: "consumption",
+      freshness: "fresh",
+      selection: undefined,
+    };
+    const req = requirementNode("REQ");
+
+    const nodes = [obs1, cons, req];
+    const edges = [
+      edge("e1", obs1.ref, cons.ref, "uses"),
+      edge("e2", cons.ref, req.ref, "uses"),
+    ];
+
+    const result = applyEssentialFilter(nodes, edges);
+    const ids = result.nodes.map((n) => n.ref.id).sort();
+    assertEquals(
+      ids,
+      ["CONS", "OBS1", "REQ"],
+      "Consumption connector must be preserved",
+    );
+  },
+);
+
 // ---------------------------------------------------------------------------
 // 4. applyEssentialFilter — essential nodes are never removed
 // ---------------------------------------------------------------------------
