@@ -52,34 +52,74 @@ export interface AnchorageCoverage {
 // ---------------------------------------------------------------------------
 // Server-fixed prefix table (criterion b)
 //
-// Each entry maps a well-known id prefix to a part target.  The table is
-// ordered: the first matching entry wins.  Entries with a digest placeholder
-// use a regex that matches exactly 64 lowercase hex characters so that
-// versioned siblings (e.g., -r2-, -r3-) never collide with the base pattern.
+// Each entry maps a well-known id prefix to a part target AND a producer
+// family.  The table is ordered: the first matching entry wins.  Entries with
+// a digest placeholder use a regex that matches exactly 64 lowercase hex
+// characters so that versioned siblings (e.g., -r2-, -r3-) never collide with
+// the base pattern.
 //
 // Every entry is annotated with the executor file and line that defines the
 // server-fixed naming contract.
+//
+// `AnchorFamily` classifies the producing executor family.  It is consumed by
+// part-lane-model.ts to derive station assignment from the same structural
+// source without duplicating the prefix strings.
 // ---------------------------------------------------------------------------
 
 const HEX64 = "[0-9a-f]{64}";
 
-type PrefixMatcher = (id: string) => PartTarget | null;
+/**
+ * Semantic family of the executor that produced a graph node, derived from
+ * the same server-fixed id prefixes used for part anchoring.
+ *
+ * Consumers (e.g. part-lane-model.ts) import `anchorFamilyByPrefix` to map
+ * node ids to stations without re-declaring the prefix strings.
+ *
+ * Family → canonical station mapping (documented in part-lane-model.ts):
+ *   architecture | oracle-requirements | sensitivity-edges |
+ *   sensitivity-relations  →  model
+ *   cad                    →  geometry
+ *   mechanical | sensitivity-study | drip-tray-correction |
+ *   run-queue-mechanical   →  verification
+ *   printability           →  observations
+ *   erpnext-bom | print-estimate  →  industrialization
+ */
+export type AnchorFamily =
+  | "architecture"
+  | "oracle-requirements"
+  | "sensitivity-edges"
+  | "sensitivity-relations"
+  | "erpnext-bom"
+  | "cad"
+  | "mechanical"
+  | "sensitivity-study"
+  | "printability"
+  | "print-estimate"
+  | "drip-tray-correction"
+  | "run-queue-mechanical";
+
+type PrefixResult = { target: PartTarget; family: AnchorFamily } | null;
+type PrefixMatcher = (id: string) => PrefixResult;
 
 /**
  * Return a matcher that fires when `id` starts with `prefix`.
  */
-function sp(prefix: string, target: PartTarget): PrefixMatcher {
-  return (id) => (id.startsWith(prefix) ? target : null);
+function sp(
+  prefix: string,
+  target: PartTarget,
+  family: AnchorFamily,
+): PrefixMatcher {
+  return (id) => (id.startsWith(prefix) ? { target, family } : null);
 }
 
 /**
  * Return a matcher for an id of the form `{base}{HEX64}{suffix-start}`.
- * The resolver receives the full regex match and returns a target (or null to
- * skip to the next entry).
+ * The resolver receives the full regex match and returns a combined result
+ * (or null to skip to the next entry).
  */
 function re(
   pattern: RegExp,
-  resolve: (match: RegExpMatchArray) => PartTarget | null,
+  resolve: (match: RegExpMatchArray) => PrefixResult,
 ): PrefixMatcher {
   return (id) => {
     const m = pattern.exec(id);
@@ -97,33 +137,33 @@ function re(
 const PREFIX_TABLE: readonly PrefixMatcher[] = [
   // (b-1) Architecture SysML model artifact
   //       coffee-machine-cm01-v3-architecture-run-executor.ts:651
-  sp("coffee-machine-cm01-v3-architecture-", "assembly"),
+  sp("coffee-machine-cm01-v3-architecture-", "assembly", "architecture"),
 
   // (b-2) Oracle requirements SysML artifact
   //       coffee-machine-cm01-v3-oracle-requirements-run-executor.ts:920
-  sp("oracle-requirements-", "assembly"),
+  sp("oracle-requirements-", "assembly", "oracle-requirements"),
 
   // (b-3) Oracle requirements capture document (extensionId)
   //       coffee-machine-cm01-v3-oracle-requirements-run-executor.ts:988
-  sp("capture-oracle-requirements-", "assembly"),
+  sp("capture-oracle-requirements-", "assembly", "oracle-requirements"),
 
   // (b-4) Sensitivity edges SysML artifact
   //       coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts:827
-  sp("sensitivity-edges-", "assembly"),
+  sp("sensitivity-edges-", "assembly", "sensitivity-edges"),
 
   // (b-5) Sensitivity relations SysML artifact
   //       coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts:805
-  sp("sensitivity-relations-", "assembly"),
+  sp("sensitivity-relations-", "assembly", "sensitivity-relations"),
 
   // (b-6) ERP BOM artifacts (erpnext-bom-quantity-*, erpnext-bom-components-*)
   //       coffee-machine-cm01-v3-erpnext-bom-run-executor.ts:504
-  sp("erpnext-bom-", "assembly"),
+  sp("erpnext-bom-", "assembly", "erpnext-bom"),
 
   // (b-7) CAD R2 whole-assembly artifacts (plan, script, step)
   //       coffee-machine-cm01-v3-r2-successor-materializer.ts:52
   re(
     new RegExp(`^coffee-machine-cm01-v3-cad-r2-${HEX64}-`),
-    () => "assembly",
+    () => ({ target: "assembly", family: "cad" }),
   ),
 
   // (b-8) CAD R3/R4 artifacts — cad-r3-run-executor.ts:513
@@ -137,11 +177,11 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
         suffix === "plan" || suffix === "script" || suffix === "step" ||
         suffix === "mesh-assembly"
       ) {
-        return "assembly";
+        return { target: "assembly", family: "cad" };
       }
       if (suffix.startsWith("mesh-")) {
         // "mesh-drip-tray" → "cm01-v3:drip-tray"
-        return `cm01-v3:${suffix.slice("mesh-".length)}`;
+        return { target: `cm01-v3:${suffix.slice("mesh-".length)}`, family: "cad" };
       }
       // Other suffixes (consumptions etc.) may be caught by later criteria.
       return null;
@@ -155,21 +195,21 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
   //       "cad-r2-" or "cad-r3-" which start with the letter 'r' (not hex).
   re(
     new RegExp(`^coffee-machine-cm01-v3-cad-${HEX64}-`),
-    () => "assembly",
+    () => ({ target: "assembly", family: "cad" }),
   ),
 
   // (b-10) Mechanical R3 DripTray artifacts (proof, isolated-step, solve, …)
   //        coffee-machine-cm01-v3-r3-successor-materializer.ts:102
   re(
     new RegExp(`^coffee-machine-cm01-v3-mechanical-r3-${HEX64}-`),
-    () => "cm01-v3:drip-tray",
+    () => ({ target: "cm01-v3:drip-tray", family: "mechanical" }),
   ),
 
   // (b-11) Mechanical R2 DripTray artifacts (proof, isolated-step, solve, …)
   //        coffee-machine-cm01-v3-r2-successor-materializer.ts:214
   re(
     new RegExp(`^coffee-machine-cm01-v3-mechanical-r2-${HEX64}-`),
-    () => "cm01-v3:drip-tray",
+    () => ({ target: "cm01-v3:drip-tray", family: "mechanical" }),
   ),
 
   // (b-12) Mechanical R1 DripTray artifacts (proof, step, solve, observations)
@@ -177,34 +217,42 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
   //        HEX64 guard prevents matching -r2- and -r3- variants.
   re(
     new RegExp(`^coffee-machine-cm01-v3-mechanical-${HEX64}-`),
-    () => "cm01-v3:drip-tray",
+    () => ({ target: "cm01-v3:drip-tray", family: "mechanical" }),
   ),
 
   // (b-13) DripTray sensitivity study (capture, STEPs, solves, observations)
   //        coffee-machine-cm01-v3-sensitivity-run-executor.ts:571
-  sp("drip-tray-sensitivity-", "cm01-v3:drip-tray"),
+  sp("drip-tray-sensitivity-", "cm01-v3:drip-tray", "sensitivity-study"),
 
   // (b-14) DripTray printability DFM (step, capture, observations)
   //        coffee-machine-cm01-v3-printability-run-executor.ts:570
-  sp("drip-tray-printability-", "cm01-v3:drip-tray"),
+  sp("drip-tray-printability-", "cm01-v3:drip-tray", "printability"),
 
   // (b-15) DripTray print estimate (STL, gcode, observations)
   //        coffee-machine-cm01-v3-print-estimate-run-executor.ts:588
-  sp("drip-tray-print-estimate-", "cm01-v3:drip-tray"),
+  sp("drip-tray-print-estimate-", "cm01-v3:drip-tray", "print-estimate"),
 
   // (b-16) DripTray height-correction action and run-queue artifacts
   //        src/domain/cm01/cm01-drip-tray-height-correction.ts:38,143
-  sp("coffee-machine-cm01-v3-drip-tray-height-", "cm01-v3:drip-tray"),
+  sp(
+    "coffee-machine-cm01-v3-drip-tray-height-",
+    "cm01-v3:drip-tray",
+    "drip-tray-correction",
+  ),
 
   // (b-17) Mechanical R2 re-verification run-queue artifact
   //        src/domain/cm01/cm01-v3-r11-closeout.ts:19
-  sp("run:cm01-v3-r7-r10-28-to-30-queue-mechanical-r2:", "cm01-v3:drip-tray"),
+  sp(
+    "run:cm01-v3-r7-r10-28-to-30-queue-mechanical-r2:",
+    "cm01-v3:drip-tray",
+    "run-queue-mechanical",
+  ),
 
   // (b-18) Printability run artifacts — id ends with :drip-tray-printability
   //        coffee-machine-cm01-v3-printability-run-executor.ts:495
   re(
     /:drip-tray-printability$/,
-    () => "cm01-v3:drip-tray",
+    () => ({ target: "cm01-v3:drip-tray", family: "printability" }),
   ),
 ];
 
@@ -268,11 +316,29 @@ function buildCatalogMap(
   return map;
 }
 
-/** Apply the prefix table against a node ref id. */
+/** Apply the prefix table against a node ref id — returns the PartTarget only. */
 function anchorByPrefix(id: string): PartTarget | null {
   for (const matcher of PREFIX_TABLE) {
-    const target = matcher(id);
-    if (target !== null) return target;
+    const result = matcher(id);
+    if (result !== null) return result.target;
+  }
+  return null;
+}
+
+/**
+ * Classify a node id by the producer executor family that generated it.
+ *
+ * Uses the same server-fixed prefix patterns as `buildPartAnchorage` (criterion
+ * b) so that callers — notably part-lane-model.ts — can map node ids to
+ * stations without re-declaring the prefix strings.
+ *
+ * Returns null for ids that do not match any server-fixed prefix (nature-based
+ * or entity-kind-based classification must then be applied by the caller).
+ */
+export function anchorFamilyByPrefix(id: string): AnchorFamily | null {
+  for (const matcher of PREFIX_TABLE) {
+    const result = matcher(id);
+    if (result !== null) return result.family;
   }
   return null;
 }
