@@ -16,11 +16,13 @@ import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import { RecomputeHistoryPanel } from "./recompute.tsx";
 import type {
+  ThreadComponentCatalog,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadRef,
 } from "./types.ts";
+import type { PartAnchor } from "./part-anchorage-model.ts";
 
 export interface ThreadFeedProps {
   nodes: ThreadGraphNode[];
@@ -36,6 +38,25 @@ export interface ThreadFeedProps {
    * dagre layout as the Evidence Exploration mode.
    */
   evidenceModel?: EvidenceGraphModel;
+  /**
+   * Component filter for the feed entries. When set, only activity events
+   * anchored to this component are shown. Unanchored events are treated as
+   * "assembly" scope (shown in project-wide and assembly views).
+   * undefined = "Tout le projet" (no filter).
+   */
+  filterComponentId?: string;
+  /**
+   * Anchorage map (nodeKey → PartAnchor) used to filter feed entries by
+   * component. Must be provided together with filterComponentId.
+   */
+  anchorage?: ReadonlyMap<string, PartAnchor>;
+  /**
+   * Component catalog for the filter selector labels. Must be provided when
+   * anchorage is present.
+   */
+  components?: ThreadComponentCatalog;
+  /** Fires when the user changes the component filter in the feed toolbar. */
+  onFilterChange?: (componentId: string | undefined) => void;
   onFollowLiveChange: (follow: boolean) => void;
   onSelectNode: (node: ThreadGraphNode, origin: "feed" | "lineage") => void;
   onSelectEdge: (edge: ThreadGraphEdge) => void;
@@ -62,13 +83,30 @@ export function ThreadFeed({
   followLive,
   streamStatus,
   evidenceModel,
+  filterComponentId,
+  anchorage,
+  components,
+  onFilterChange,
   onFollowLiveChange,
   onSelectNode,
   onSelectEdge,
   onInspect,
   onOpenEvidenceAnchored,
 }: ThreadFeedProps): JSX.Element {
-  const feedNodes = activityFeedNodes(nodes, edges);
+  const allFeedNodes = activityFeedNodes(nodes, edges);
+  // Apply component filter if requested. Unanchored nodes fall back to
+  // "assembly" scope and are shown in the project-wide and assembly views.
+  const feedNodes = filterComponentId !== undefined && anchorage
+    ? allFeedNodes.filter((node) => {
+      const key = refKey(node.ref);
+      const anchor = anchorage.get(key);
+      const target = anchor
+        ? (anchor.target === "assembly" ? "assembly" : anchor.target)
+        : "assembly";
+      return target === filterComponentId;
+    })
+    : allFeedNodes;
+
   const focusNode = focus
     ? nodes.find((node) => refKey(node.ref) === refKey(focus))
     : undefined;
@@ -78,7 +116,12 @@ export function ThreadFeed({
     ? [focusNode, ...feedNodes]
     : feedNodes;
 
-  if (entries.length === 0) {
+  // Build component options for the filter selector.
+  const filterOptions = components
+    ? buildFilterOptions(components)
+    : undefined;
+
+  if (entries.length === 0 && !filterOptions) {
     return (
       <div class="thread-feed-empty" role="status">
         Waiting for the first linked engineering fact.
@@ -108,6 +151,36 @@ export function ThreadFeed({
           {followLive ? "Pause follow" : "Resume live"}
         </button>
       </div>
+
+      {filterOptions && onFilterChange && (
+        <div
+          class="thread-feed-component-filter"
+          aria-label="Filtrer par pièce"
+        >
+          <label for="feed-component-filter">PIÈCE</label>
+          <select
+            id="feed-component-filter"
+            value={filterComponentId ?? ""}
+            onChange={(e) => {
+              const val = (e.target as HTMLSelectElement).value;
+              onFilterChange(val === "" ? undefined : val);
+            }}
+          >
+            <option value="">Tout le projet</option>
+            {filterOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {entries.length === 0 && (
+        <div class="thread-feed-empty" role="status">
+          {filterComponentId
+            ? "Aucun événement pour cette pièce."
+            : "Waiting for the first linked engineering fact."}
+        </div>
+      )}
 
       <ol class="thread-feed-list" aria-label="Linked engineering activity">
         {entries.map((node, index) => {
@@ -379,6 +452,27 @@ function kindLabel(node: ThreadGraphNode): string {
   return node.entityKind === "artifact" && node.artifactKind
     ? node.artifactKind
     : node.entityKind;
+}
+
+/**
+ * Build the list of options for the component filter selector.
+ * Assembly first ("Tout l'assemblage"), then parts sorted by label.
+ */
+function buildFilterOptions(
+  components: ThreadComponentCatalog,
+): { id: string; label: string }[] {
+  const result: { id: string; label: string }[] = [];
+  const assembly = components.components.find((c) => c.kind === "assembly");
+  if (assembly) {
+    result.push({ id: "assembly", label: `${assembly.label} (assemblage)` });
+  }
+  const parts = components.components
+    .filter((c) => c.kind !== "assembly")
+    .sort((a, b) => a.label.localeCompare(b.label));
+  for (const part of parts) {
+    result.push({ id: part.id, label: part.label });
+  }
+  return result;
 }
 
 function streamLabel(

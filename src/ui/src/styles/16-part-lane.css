@@ -1,0 +1,433 @@
+/* "Par pièce" evidence grid — mode par défaut de la surface Evidence.
+
+   Design : table HTML/CSS grid (pas sigma). ~45 faits en cellules fixes ne
+   justifient pas un renderer force-directed ; une grille CSS est plus lisible,
+   accessible et cohérente avec l'esthétique atelier.
+
+   Variables employées : uniquement les jetons définis dans
+   01-tokens-and-console.css et 10-light-atelier.css (--thread-*, --space-*,
+   --text-*, --line, --surface-*). Rien en dur. */
+
+/* ---------------------------------------------------------------------------
+   Conteneur principal : grille principale + index latéral
+   --------------------------------------------------------------------------- */
+
+.part-lane-view {
+  display: flex;
+  gap: 0;
+  min-height: 540px;
+  height: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+/* Scroll horizontal pour la grille ; l'index reste fixe à droite. */
+.part-lane-grid-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------------------------------------------------------------------------
+   Grille CSS : une colonne pour les en-têtes de lignes + N colonnes stations
+   --------------------------------------------------------------------------- */
+
+.part-lane-grid {
+  display: grid;
+  /* 1ère colonne : en-tête de ligne ; les 7 suivantes : 1 par station. */
+  grid-template-columns: minmax(120px, 160px) repeat(7, minmax(80px, 1fr));
+  width: max-content;
+  min-width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+   Ligne d'en-têtes de colonnes
+   --------------------------------------------------------------------------- */
+
+.part-lane-header-row {
+  display: contents;
+}
+
+.part-lane-row-header-cell--head,
+.part-lane-col-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--space-6) var(--space-10);
+  border-bottom: 2px solid var(--thread-border);
+  background: var(--thread-panel);
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.part-lane-row-header-cell--head {
+  z-index: 3; /* above col headers */
+  border-right: 1px solid var(--thread-border);
+  color: var(--thread-muted);
+}
+
+.part-lane-col-header[data-station="requirements"] { border-bottom-color: var(--cyan); }
+.part-lane-col-header[data-station="model"]        { border-bottom-color: var(--violet); }
+.part-lane-col-header[data-station="geometry"]     { border-bottom-color: var(--amber); }
+.part-lane-col-header[data-station="verification"] { border-bottom-color: var(--green); }
+.part-lane-col-header[data-station="observations"] { border-bottom-color: var(--blue); }
+.part-lane-col-header[data-station="industrialization"] { border-bottom-color: var(--amber); }
+.part-lane-col-header[data-station="uncategorized"] { border-bottom-color: var(--line-strong); }
+
+/* ---------------------------------------------------------------------------
+   Lignes de données
+   --------------------------------------------------------------------------- */
+
+.part-lane-row {
+  display: contents;
+}
+
+/* Highlight de la ligne focusée : demi-teinte sur toutes ses cellules. */
+.part-lane-row[data-focused="true"] > * {
+  background: color-mix(in srgb, var(--thread-panel) 85%, var(--thread-orange) 15%);
+}
+
+/* Assemblage : ligne d'en-tête distincte. */
+.part-lane-row--assembly > .part-lane-row-header-cell {
+  border-right: 2px solid var(--thread-orange);
+}
+
+/* En-tête de ligne */
+.part-lane-row-header-cell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-10);
+  border-right: 1px solid var(--thread-border);
+  border-bottom: 1px solid var(--thread-border);
+  background: var(--thread-panel);
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms;
+}
+
+.part-lane-row-header-cell:hover {
+  background: color-mix(in srgb, var(--thread-panel) 80%, var(--thread-orange) 20%);
+}
+
+.part-lane-row-label {
+  display: block;
+  max-width: 140px;
+  overflow: hidden;
+  color: var(--thread-ink);
+  font: 600 var(--text-sm)/1.2 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-lane-row-counts {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.part-lane-row-counts [data-tone="facts"] {
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1 var(--mono);
+}
+
+.part-lane-row-counts [data-tone="proofs"] {
+  color: var(--thread-green);
+  font: 700 var(--text-3xs)/1 var(--mono);
+}
+
+.part-lane-expand-hint {
+  align-self: flex-start;
+  color: var(--thread-muted);
+  font-size: var(--text-xs);
+}
+
+/* ---------------------------------------------------------------------------
+   Ligne repliée (collapsed) : bandeau fin
+   --------------------------------------------------------------------------- */
+
+.part-lane-row--collapsed .part-lane-row-header-cell {
+  min-height: 28px;
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-6);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.part-lane-row--collapsed .part-lane-row-label {
+  font-weight: 500;
+  color: var(--thread-muted);
+  font-size: var(--text-xs);
+}
+
+.part-lane-collapsed-bar {
+  display: flex;
+  align-items: center;
+  /* span toutes les colonnes stations */
+  grid-column: 2 / -1;
+  padding: var(--space-6) var(--space-12);
+  border-bottom: 1px solid var(--thread-border);
+  background: var(--surface-2);
+  color: var(--thread-muted);
+  font: var(--text-xs)/1 var(--sans);
+  font-style: italic;
+}
+
+/* ---------------------------------------------------------------------------
+   Cellules de faits
+   --------------------------------------------------------------------------- */
+
+.part-lane-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-8);
+  border-right: 1px solid var(--thread-border);
+  border-bottom: 1px solid var(--thread-border);
+  min-height: 48px;
+  vertical-align: top;
+}
+
+.part-lane-cell[data-station="requirements"] { background: color-mix(in srgb, var(--surface-1) 94%, var(--cyan) 6%); }
+.part-lane-cell[data-station="model"]        { background: color-mix(in srgb, var(--surface-1) 94%, var(--violet) 6%); }
+.part-lane-cell[data-station="geometry"]     { background: color-mix(in srgb, var(--surface-1) 96%, var(--amber) 4%); }
+.part-lane-cell[data-station="verification"] { background: color-mix(in srgb, var(--surface-1) 94%, var(--green) 6%); }
+.part-lane-cell[data-station="observations"] { background: color-mix(in srgb, var(--surface-1) 95%, var(--blue) 5%); }
+.part-lane-cell[data-station="industrialization"] { background: color-mix(in srgb, var(--surface-1) 97%, var(--amber) 3%); }
+.part-lane-cell[data-station="uncategorized"] { background: var(--surface-2); }
+
+/* ---------------------------------------------------------------------------
+   Chips de faits
+   --------------------------------------------------------------------------- */
+
+.part-lane-fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  background: var(--surface-0);
+  transition: border-color 100ms, background 100ms, box-shadow 100ms;
+}
+
+.part-lane-fact:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.part-lane-fact[data-selected="true"] {
+  border-color: var(--thread-orange);
+  background: color-mix(in srgb, var(--surface-0) 80%, var(--thread-orange) 20%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, transparent 70%, var(--thread-orange) 30%);
+}
+
+/* Entity kind tints */
+.part-lane-fact[data-kind="evaluation"] { border-left: 2px solid var(--green); }
+.part-lane-fact[data-kind="violation"]  { border-left: 2px solid var(--red); }
+.part-lane-fact[data-kind="requirement"] { border-left: 2px solid var(--cyan); }
+.part-lane-fact[data-kind="observation"] { border-left: 2px solid var(--blue); }
+
+/* Freshness dimming */
+.part-lane-fact[data-freshness="stale"] { opacity: 0.65; }
+
+/* System badge */
+.part-lane-fact-system {
+  flex-shrink: 0;
+  font: 600 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--thread-muted);
+}
+
+[data-system="syson"]    .part-lane-fact-system { color: var(--violet); }
+[data-system="build123d"] .part-lane-fact-system { color: var(--amber); }
+[data-system="calculix"]  .part-lane-fact-system { color: var(--green); }
+[data-system="modelica"]  .part-lane-fact-system { color: var(--cyan); }
+[data-system="erpnext"]   .part-lane-fact-system { color: var(--blue); }
+
+/* These selectors target the data-system attribute on the span itself */
+.part-lane-fact-system[data-system="syson"]     { color: var(--violet); }
+.part-lane-fact-system[data-system="build123d"] { color: var(--amber); }
+.part-lane-fact-system[data-system="calculix"]  { color: var(--green); }
+.part-lane-fact-system[data-system="modelica"]  { color: var(--cyan); }
+.part-lane-fact-system[data-system="erpnext"]   { color: var(--blue); }
+
+/* Fact label */
+.part-lane-fact-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--thread-ink);
+  font: var(--text-xs)/1.3 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+/* ---------------------------------------------------------------------------
+   Index des pièces (légende latérale)
+   --------------------------------------------------------------------------- */
+
+.part-lane-index {
+  flex-shrink: 0;
+  width: 164px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-12) var(--space-10);
+  border-left: 1px solid var(--thread-border);
+  overflow-y: auto;
+  background: var(--thread-panel);
+}
+
+.part-lane-index-title {
+  margin: 0 0 var(--space-8);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--thread-border);
+  color: var(--thread-orange);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.part-lane-index-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  background: transparent;
+  transition: background 100ms, border-color 100ms;
+}
+
+.part-lane-index-chip:hover {
+  background: color-mix(in srgb, var(--thread-panel) 80%, var(--thread-orange) 20%);
+  border-color: var(--thread-border);
+}
+
+.part-lane-index-chip[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--thread-panel) 75%, var(--thread-orange) 25%);
+  border-color: var(--thread-orange);
+}
+
+.part-lane-index-chip-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.part-lane-index-chip-dot[data-assembly="true"] {
+  background: var(--thread-orange);
+  width: 8px;
+  height: 8px;
+}
+
+.part-lane-index-chip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--thread-ink);
+  font: var(--text-xs)/1.2 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-lane-index-chip-count {
+  flex-shrink: 0;
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1 var(--mono);
+}
+
+.part-lane-index-chip-proofs {
+  color: var(--thread-green);
+  font-weight: 700;
+}
+
+.part-lane-index-totals {
+  margin-top: auto;
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--thread-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.part-lane-index-totals > span {
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1 var(--mono);
+}
+
+.part-lane-index-uncat {
+  color: var(--amber) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Filtres du feed (selecteur de composant en tete du feed Activity)
+   --------------------------------------------------------------------------- */
+
+.thread-feed-component-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-8) var(--space-12);
+  border-bottom: 1px solid #303735;
+  background: rgba(17, 21, 20, 0.92);
+}
+
+.thread-feed-component-filter > label {
+  flex-shrink: 0;
+  color: var(--muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thread-feed-component-filter > select {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: var(--surface-0);
+  font: var(--text-sm)/1 var(--sans);
+  background: #1c2120;
+  cursor: pointer;
+  appearance: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Réactivité : réduit la colonne d'en-tête de ligne sur écrans étroits
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .part-lane-grid {
+    grid-template-columns: minmax(90px, 110px) repeat(7, minmax(60px, 1fr));
+  }
+
+  .part-lane-index {
+    width: 128px;
+  }
+
+  .part-lane-fact-label {
+    max-width: 100px;
+  }
+}

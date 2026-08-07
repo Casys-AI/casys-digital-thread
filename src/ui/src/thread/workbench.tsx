@@ -55,6 +55,14 @@ import {
   type EvidenceGraphModel,
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
+import { PartLaneView } from "./part-lane-view.tsx";
+import {
+  buildPartAnchorage,
+} from "./part-anchorage-model.ts";
+import {
+  buildPartLaneLayout,
+  buildStationAssignment,
+} from "./part-lane-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
 import {
   ToolInspectorPanel,
@@ -119,10 +127,15 @@ export function ThreadWorkbench({
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [error, setError] = useState<string>();
-  // Mode Exploration (sigma) par défaut sur la surface Evidence.
-  const [evidenceMode, setEvidenceMode] = useState<"carte" | "exploration">(
-    "exploration",
-  );
+  // Mode "Par pièce" par défaut sur la surface Evidence.
+  // Les deux modes existants (Exploration sigma, Carte SVG) restent inchangés.
+  const [evidenceMode, setEvidenceMode] = useState<
+    "par-piece" | "carte" | "exploration"
+  >("par-piece");
+  // Feed component filter: undefined = "Tout le projet", string = part id or "assembly".
+  const [feedFilterComponentId, setFeedFilterComponentId] = useState<
+    string | undefined
+  >(undefined);
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
 
   // Retour arriere et avance du navigateur : le fragment fait autorite sur
@@ -245,6 +258,29 @@ export function ThreadWorkbench({
     });
   }, [workbench]);
 
+  // ---------------------------------------------------------------------------
+  // "Par pièce" layout — memoized on snapshot (same cost centre as evidenceModel).
+  // Built lazily only when the evidence surface is active; the planning/
+  // documentary early-returns above fire before these are consumed.
+  //
+  // anchorage: node anchorage uses the FULL graph (before closed-action filter)
+  // so the feed filter is consistent with the Product workspace anchor.
+  // stations: derived from the same full graph.
+  // layout: consumes the canvas projection (respects essential filter + versions).
+  // ---------------------------------------------------------------------------
+
+  const partAnchorage = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return new Map();
+    const thread = workbench.thread;
+    return buildPartAnchorage(thread.graph, thread.components);
+  }, [workbench]);
+
+  const partStations = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return new Map();
+    const thread = workbench.thread;
+    return buildStationAssignment(thread.graph);
+  }, [workbench]);
+
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);
     // A selected record can belong to another tool surface. Keep the main
@@ -338,6 +374,25 @@ export function ThreadWorkbench({
   const evidenceComponentLabeler = makeEvidenceComponentLabeler(
     evidenceModel,
     evidenceModel.components.length <= 1,
+  );
+
+  // Part-lane layout: built from the canvas projection (post-filter) and the
+  // full-graph anchorage/stations (pre-closed-action filter).
+  // Must be computed after evidenceCanvas (depends on it).
+  const partLaneLayout = buildPartLaneLayout(
+    evidenceModel,
+    evidenceCanvas,
+    partAnchorage,
+    partStations,
+    snapshot.components,
+  );
+
+  // Node lookup map for the PartLaneView fact chip renderer.
+  const nodeByKey = new Map<string, ThreadGraphNode>(
+    snapshot.graph.nodes.map((node) => [
+      `${node.ref.kind}:${node.ref.id}`,
+      node,
+    ]),
   );
 
   const currentDecisionEvidence = (decisionId?: string) => {
@@ -802,6 +857,15 @@ export function ThreadWorkbench({
                       followLive={followLive}
                       streamStatus={streamStatus}
                       evidenceModel={evidenceModel}
+                      filterComponentId={feedFilterComponentId}
+                      anchorage={partAnchorage}
+                      components={snapshot.components}
+                      onFilterChange={(id) => {
+                        setFeedFilterComponentId(id);
+                        // Mirror to the global selectedComponentId so the
+                        // Product workspace and Part-lane legend stay in sync.
+                        if (id !== undefined) setSelectedComponentId(id);
+                      }}
                       onFollowLiveChange={changeFollowLive}
                       onSelectNode={(node) =>
                         selectGraphNode(node, { pauseLive: true })}
@@ -845,7 +909,26 @@ export function ThreadWorkbench({
                           }}
                         >
                           <span>
-                            {evidenceCanvas.isFiltered
+                            {evidenceMode === "par-piece"
+                              ? (() => {
+                                const parts: string[] = [
+                                  `${partLaneLayout.counters.totalFacts} faits`,
+                                ];
+                                if (partLaneLayout.counters.totalProofs > 0) {
+                                  parts.push(
+                                    `${partLaneLayout.counters.totalProofs} vérif.`,
+                                  );
+                                }
+                                if (
+                                  partLaneLayout.counters.uncategorizedCount > 0
+                                ) {
+                                  parts.push(
+                                    `${partLaneLayout.counters.uncategorizedCount} non classés`,
+                                  );
+                                }
+                                return parts.join(" · ");
+                              })()
+                              : evidenceCanvas.isFiltered
                               ? `${evidenceCanvas.displayedCount} faits affichés · vue locale`
                               : (() => {
                                 // displayedCount is already the post-filter
@@ -878,6 +961,13 @@ export function ThreadWorkbench({
                           >
                             <button
                               type="button"
+                              aria-pressed={evidenceMode === "par-piece"}
+                              onClick={() => setEvidenceMode("par-piece")}
+                            >
+                              Par pièce
+                            </button>
+                            <button
+                              type="button"
                               aria-pressed={evidenceMode === "exploration"}
                               onClick={() => setEvidenceMode("exploration")}
                             >
@@ -893,6 +983,21 @@ export function ThreadWorkbench({
                           </div>
                         </div>
                       </header>
+                      {evidenceMode === "par-piece" && (
+                        <PartLaneView
+                          layout={partLaneLayout}
+                          nodeByKey={nodeByKey}
+                          selection={visibleGraphSelection(
+                            versionedProvenance,
+                            graphSelection,
+                          )}
+                          selectedComponentId={selectedComponentId}
+                          onSelectionChange={selectVerificationGraphItem}
+                          onComponentFocus={(componentId) => {
+                            setSelectedComponentId(componentId);
+                          }}
+                        />
+                      )}
                       {evidenceMode === "carte" && (
                         <>
                           <div
