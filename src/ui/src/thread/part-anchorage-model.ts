@@ -191,6 +191,21 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
   // (b-15) DripTray print estimate (STL, gcode, observations)
   //        coffee-machine-cm01-v3-print-estimate-run-executor.ts:588
   sp("drip-tray-print-estimate-", "cm01-v3:drip-tray"),
+
+  // (b-16) DripTray height-correction action and run-queue artifacts
+  //        src/domain/cm01/cm01-drip-tray-height-correction.ts:38,143
+  sp("coffee-machine-cm01-v3-drip-tray-height-", "cm01-v3:drip-tray"),
+
+  // (b-17) Mechanical R2 re-verification run-queue artifact
+  //        src/domain/cm01/cm01-v3-r11-closeout.ts:19
+  sp("run:cm01-v3-r7-r10-28-to-30-queue-mechanical-r2:", "cm01-v3:drip-tray"),
+
+  // (b-18) Printability run artifacts — id ends with :drip-tray-printability
+  //        coffee-machine-cm01-v3-printability-run-executor.ts:495
+  re(
+    /:drip-tray-printability$/,
+    () => "cm01-v3:drip-tray",
+  ),
 ];
 
 // ---------------------------------------------------------------------------
@@ -213,6 +228,19 @@ function edgeToKey(edge: ThreadGraphEdge): string {
  * Build a lookup map from evidence artifact id to component target using the
  * catalog's binding declarations.  Assembly components yield "assembly"; parts
  * yield their catalog component id.
+ *
+ * Duplicate evidenceArtifactId values across DIFFERENT components are resolved
+ * with assembly-wins merge semantics (same as mergeTargets): if both an assembly
+ * component and a part component bind the same evidenceArtifactId, "assembly"
+ * wins.  Two different parts that bind the same id produce an ambiguous result;
+ * the entry is removed from the map so that the artifact falls through to the
+ * prefix and nature criteria.
+ *
+ * Note: the catalog validator rejects duplicate provider:kind:id combinations
+ * within a single component's bindings, but it does NOT reject the same
+ * evidenceArtifactId appearing in bindings of different components — for
+ * example, the architecture artifact is bound by every component (assembly and
+ * all parts) because each SysML element definition was read from that artifact.
  */
 function buildCatalogMap(
   components: ThreadComponentCatalog,
@@ -223,9 +251,18 @@ function buildCatalogMap(
       ? "assembly"
       : component.id;
     for (const binding of component.bindings) {
-      // Last-writer-wins on duplicate evidenceArtifactIds is safe because the
-      // catalog validator already rejects duplicates within a validated catalog.
-      map.set(binding.evidenceArtifactId, target);
+      const existing = map.get(binding.evidenceArtifactId);
+      if (existing === undefined) {
+        map.set(binding.evidenceArtifactId, target);
+      } else {
+        // Assembly wins on conflict; two different parts → remove the entry.
+        const merged = mergeTargets(existing, target);
+        if (merged !== null) {
+          map.set(binding.evidenceArtifactId, merged);
+        } else {
+          map.delete(binding.evidenceArtifactId);
+        }
+      }
     }
   }
   return map;
