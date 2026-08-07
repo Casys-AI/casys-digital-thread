@@ -55,7 +55,7 @@ import {
   type EvidenceGraphModel,
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
-import { PartLaneView } from "./part-lane-view.tsx";
+import { PartLaneGraphView } from "./part-lane-graph-view.tsx";
 import {
   buildPartAnchorage,
 } from "./part-anchorage-model.ts";
@@ -387,13 +387,8 @@ export function ThreadWorkbench({
     snapshot.components,
   );
 
-  // Node lookup map for the PartLaneView fact chip renderer.
-  const nodeByKey = new Map<string, ThreadGraphNode>(
-    snapshot.graph.nodes.map((node) => [
-      `${node.ref.kind}:${node.ref.id}`,
-      node,
-    ]),
-  );
+  // (nodeByKey was used by PartLaneView chip renderer — no longer needed after
+  //  migration to PartLaneGraphView which uses sigma for node rendering)
 
   const currentDecisionEvidence = (decisionId?: string) => {
     const decision = decisionId
@@ -987,9 +982,12 @@ export function ThreadWorkbench({
                         </div>
                       </header>
                       {evidenceMode === "par-piece" && (
-                        <PartLaneView
-                          layout={partLaneLayout}
-                          nodeByKey={nodeByKey}
+                        <PartLaneGraphView
+                          evidenceModel={evidenceModel}
+                          projection={evidenceCanvas}
+                          anchorage={partAnchorage}
+                          rows={partLaneLayout.rows}
+                          counters={partLaneLayout.counters}
                           selection={visibleGraphSelection(
                             versionedProvenance,
                             graphSelection,

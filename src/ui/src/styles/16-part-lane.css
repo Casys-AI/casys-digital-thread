@@ -1,12 +1,48 @@
-/* "Par pièce" evidence grid — mode par défaut de la surface Evidence.
+/* "Par pièce" evidence — couloirs sigma (depuis 2026-08-07) + grille HTML/CSS
+   (PartLaneView conservé dans le repo mais plus rendu).
 
-   Design : table HTML/CSS grid (pas sigma). ~45 faits en cellules fixes ne
-   justifient pas un renderer force-directed ; une grille CSS est plus lisible,
-   accessible et cohérente avec l'esthétique atelier.
+   Le mode couloirs utilise sigma/dagre avec des séparateurs de bandes dessinés
+   sur un canvas de fond (langage visuel : cadres Carte de graph.tsx).
 
    Variables employées : uniquement les jetons définis dans
    01-tokens-and-console.css et 10-light-atelier.css (--thread-*, --space-*,
    --text-*, --line, --surface-*). Rien en dur. */
+
+/* ---------------------------------------------------------------------------
+   Couloirs sigma — zone principale
+   --------------------------------------------------------------------------- */
+
+/* Zone sigma : prend tout l'espace à gauche de l'index. */
+.part-lane-graph-area {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  /* La couleur de fond du canvas bg est dessinée par JS ; on garde une teinte
+     neutre ici pour éviter un flash blanc au montage. */
+  background: var(--surface-1);
+}
+
+/* Canvas de fond pour les bandes de couloirs — derrière sigma (z-index 0).
+   Le z-index sigma par défaut pour ses propres canvas est > 0 ; nos bandes
+   passent dessous grâce à ce positionnement. pointer-events: none garantit
+   que les clics traversent vers sigma. */
+.part-lane-graph-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* Les dimensions pixel sont pilotées par JS (sigma.getDimensions()) */
+}
+
+/* Conteneur sigma — position: relative est requis par sigma (piège connu).
+   Le fond transparent laisse passer les bandes du canvas bg. */
+.part-lane-graph-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  /* Sigma monte ses propres canvas/div ici avec position: absolute. */
+}
 
 /* ---------------------------------------------------------------------------
    Conteneur principal : grille principale + index latéral
