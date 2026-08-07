@@ -25,9 +25,7 @@ import {
   type SigmaNodeAttrs,
 } from "./src/thread/evidence-exploration-model.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
-import {
-  buildEvidenceCanvasProjection,
-} from "./src/thread/evidence-canvas-model.ts";
+import { buildEvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,

@@ -17,8 +17,8 @@ import { useEffect, useMemo, useRef } from "preact/hooks";
 import Sigma from "sigma";
 import {
   buildExplorationModel,
-  readCssTokens,
   type ExplorationLegendItem,
+  readCssTokens,
   type SigmaEdgeAttrs,
   type SigmaNodeAttrs,
 } from "./evidence-exploration-model.ts";
@@ -220,7 +220,9 @@ function LegendChip({
     const componentIdSet = new Set(item.componentIds);
     const positions: { x: number; y: number }[] = [];
     graph.forEachNode((_key, attrs) => {
-      if (attrs.componentId !== undefined && componentIdSet.has(attrs.componentId)) {
+      if (
+        attrs.componentId !== undefined && componentIdSet.has(attrs.componentId)
+      ) {
         const disp = s.getNodeDisplayData(_key);
         if (disp) positions.push({ x: disp.x, y: disp.y });
       }

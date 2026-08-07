@@ -318,8 +318,16 @@ Deno.test(
       supportingNodeCount: 0,
     };
 
-    const m1 = buildExplorationModel(evidenceModel, projection1, FALLBACK_TOKENS);
-    const m2 = buildExplorationModel(evidenceModel, projection2, FALLBACK_TOKENS);
+    const m1 = buildExplorationModel(
+      evidenceModel,
+      projection1,
+      FALLBACK_TOKENS,
+    );
+    const m2 = buildExplorationModel(
+      evidenceModel,
+      projection2,
+      FALLBACK_TOKENS,
+    );
 
     // Same node count.
     assertEquals(m1.graph.order, m2.graph.order);
@@ -369,7 +377,11 @@ Deno.test(
 
     // B is folded out — querying it must return empty (component renders fallback).
     const nb = evidenceModel.boundedNeighborhood(nodeB.ref, 2);
-    assertEquals(nb.nodes.length, 0, "invisible focus node → empty neighborhood");
+    assertEquals(
+      nb.nodes.length,
+      0,
+      "invisible focus node → empty neighborhood",
+    );
   },
 );
 
@@ -498,9 +510,7 @@ Deno.test(
   () => {
     // A → B → focus(C) → D → E
     // At depth 2 from C: upstream = {A, B} (2), downstream = {D, E} (2), total = 5.
-    const [nA, nB, nC, nD, nE] = ["A", "B", "C", "D", "E"].map((id) =>
-      artifact(id)
-    );
+    const [nA, nB, nC, nD, nE] = ["A", "B", "C", "D", "E"].map((id) => artifact(id));
     const evidenceModel = buildEvidenceGraphModel(
       {
         nodes: [nA, nB, nC, nD, nE],
@@ -516,7 +526,11 @@ Deno.test(
     );
     const counters = compactLineageCounters(evidenceModel, nC.ref);
     assertEquals(counters.total, 5, "all five nodes are within depth 2 of C");
-    assertEquals(counters.upstream, 2, "A and B are upstream of C (depth 1 and 2)");
+    assertEquals(
+      counters.upstream,
+      2,
+      "A and B are upstream of C (depth 1 and 2)",
+    );
     assertEquals(counters.downstream, 2, "D and E are downstream of C");
   },
 );

@@ -107,7 +107,14 @@ function edge(
   to: ThreadGraphRef,
   relation: ThreadGraphEdge["relation"] = "input_to",
 ): ThreadGraphEdge {
-  return { id, from, to, relation, rationale: `Relation ${id}`, origin: "structure" };
+  return {
+    id,
+    from,
+    to,
+    relation,
+    rationale: `Relation ${id}`,
+    origin: "structure",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -256,7 +263,11 @@ Deno.test(
 
     const result = applyEssentialFilter(nodes, edges);
     const ids = result.nodes.map((n) => n.ref.id).sort();
-    assertEquals(ids, ["CHG", "OBS1", "REQ"], "Change node connector must be preserved");
+    assertEquals(
+      ids,
+      ["CHG", "OBS1", "REQ"],
+      "Change node connector must be preserved",
+    );
   },
 );
 
@@ -297,7 +308,9 @@ Deno.test(
   () => {
     const req = requirementNode("REQ");
     const obs = observationNode("OBS");
-    const result = applyEssentialFilter([req, obs], [edge("e1", req.ref, obs.ref)]);
+    const result = applyEssentialFilter([req, obs], [
+      edge("e1", req.ref, obs.ref),
+    ]);
     assertEquals(result.hiddenCount, 0);
     assertEquals(result.supportingCount, 0);
   },
@@ -328,10 +341,22 @@ Deno.test(
 
     const result = applyEssentialFilter(nodes, edges);
     assertEquals(result.supportingCount, 3); // S1 + S2 + MESH
-    assertEquals(result.hiddenCount, 1);     // only MESH hidden
-    assertEquals(result.nodes.find((n) => n.ref.id === "MESH"), undefined, "MESH must be hidden");
-    assertNotEquals(result.nodes.find((n) => n.ref.id === "S1"), undefined, "S1 must be kept");
-    assertNotEquals(result.nodes.find((n) => n.ref.id === "S2"), undefined, "S2 must be kept");
+    assertEquals(result.hiddenCount, 1); // only MESH hidden
+    assertEquals(
+      result.nodes.find((n) => n.ref.id === "MESH"),
+      undefined,
+      "MESH must be hidden",
+    );
+    assertNotEquals(
+      result.nodes.find((n) => n.ref.id === "S1"),
+      undefined,
+      "S1 must be kept",
+    );
+    assertNotEquals(
+      result.nodes.find((n) => n.ref.id === "S2"),
+      undefined,
+      "S2 must be kept",
+    );
   },
 );
 
@@ -350,8 +375,16 @@ Deno.test(
     const e2 = edge("e2", req.ref, mesh.ref); // MESH is dead end → hidden
 
     const result = applyEssentialFilter([req, obs, mesh], [e1, e2]);
-    assertEquals(result.edges.some((e) => e.id === "e1"), true, "e1 must survive");
-    assertEquals(result.edges.some((e) => e.id === "e2"), false, "e2 must be removed (MESH hidden)");
+    assertEquals(
+      result.edges.some((e) => e.id === "e1"),
+      true,
+      "e1 must survive",
+    );
+    assertEquals(
+      result.edges.some((e) => e.id === "e2"),
+      false,
+      "e2 must be removed (MESH hidden)",
+    );
   },
 );
 
@@ -385,7 +418,11 @@ Deno.test(
     );
 
     // CHG (change) and SCRIPT (script artifact) are both supporting.
-    assertEquals(projection.supportingNodeCount, 2, "Should count CHG + SCRIPT as supporting");
+    assertEquals(
+      projection.supportingNodeCount,
+      2,
+      "Should count CHG + SCRIPT as supporting",
+    );
     // isFiltered is false (no focus) → supportingNodeCount is the full count.
     assertEquals(projection.isFiltered, false);
   },

@@ -16,7 +16,11 @@
  * This module is pure domain (no I/O, no Preact, no browser APIs).
  */
 
-import type { ThreadGraphEdge, ThreadGraphNode, ThreadGraphRef } from "./types.ts";
+import type {
+  ThreadGraphEdge,
+  ThreadGraphNode,
+  ThreadGraphRef,
+} from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Structural predicates
@@ -135,7 +139,12 @@ export function applyEssentialFilter(
   );
 
   const hiddenCount = nodes.length - filteredNodes.length;
-  return { nodes: filteredNodes, edges: filteredEdges, hiddenCount, supportingCount };
+  return {
+    nodes: filteredNodes,
+    edges: filteredEdges,
+    hiddenCount,
+    supportingCount,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +172,9 @@ function filterMakeAdjacency(
     values.get(from)?.add(to);
     values.get(to)?.add(from);
   }
-  return new Map([...values].map(([key, targets]) => [key, [...targets].sort()]));
+  return new Map(
+    [...values].map(([key, targets]) => [key, [...targets].sort()]),
+  );
 }
 
 /**

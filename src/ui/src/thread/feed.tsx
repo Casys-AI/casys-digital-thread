@@ -186,8 +186,9 @@ export function ThreadFeed({
                           ? (
                             <span>
                               {compact.total} faits · profondeur 2 ·{" "}
-                              {compact.upstream} amont /{" "}
-                              {compact.downstream} aval
+                              {compact.upstream} amont / {compact.downstream}
+                              {" "}
+                              aval
                             </span>
                           )
                           : (

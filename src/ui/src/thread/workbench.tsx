@@ -838,7 +838,11 @@ export function ThreadWorkbench({
                           </span>
                         </div>
                         <div
-                          style={{ display: "flex", gap: "var(--space-12)", alignItems: "center" }}
+                          style={{
+                            display: "flex",
+                            gap: "var(--space-12)",
+                            alignItems: "center",
+                          }}
                         >
                           <span>
                             {evidenceCanvas.isFiltered
