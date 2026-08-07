@@ -65,9 +65,12 @@ const VIOLATION_ID = "violation-drip-tray-overflow-r1";
 const OBSERVATION_ID = "obs-drip-tray-weight-r3";
 const UNCATEGORIZED_ID = "unknown-origin-artifact-xyz";
 
-// Boiler artifacts — thin component, should collapse
-const BOILER_ARTIFACT_1 = `coffee-machine-cm01-v3-architecture-boiler-fact-1`;
-const BOILER_ARTIFACT_2 = `coffee-machine-cm01-v3-architecture-boiler-fact-2`;
+// Boiler artifacts — thin component, should collapse.
+// IDs deliberately chosen to NOT match any server-fixed prefix or nature rule
+// so they reach the catalog criterion (a) only, anchored via explicit binding
+// on the boiler component in FIXTURE_CATALOG.
+const BOILER_ARTIFACT_1 = "boiler-test-cad-step-001";
+const BOILER_ARTIFACT_2 = "boiler-test-cad-step-002";
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -145,9 +148,9 @@ function catalogBinding(
 //    - VIOLATION_ID          violation                        → verification
 //    - OBSERVATION_ID        observation                      → observations
 //
-//  Boiler row (thin, should collapse — only 2 facts, 0 proofs):
-//    - BOILER_ARTIFACT_1     artifact (architecture prefix)   → model
-//    - BOILER_ARTIFACT_2     artifact (architecture prefix)   → model
+//  Boiler row (thin, should collapse — exactly 2 facts, 0 proofs):
+//    - BOILER_ARTIFACT_1     artifact (catalog binding → boiler) → geometry
+//    - BOILER_ARTIFACT_2     artifact (catalog binding → boiler) → geometry
 //
 //  Uncategorized:
 //    - UNCATEGORIZED_ID      artifact (no matching rule)      → uncategorized
@@ -180,14 +183,17 @@ const FIXTURE_NODES: ThreadGraphNode[] = [
   // DripTray — verification (proof nodes)
   node(EVALUATION_ID, "evaluation", {}),
   node(VIOLATION_ID, "violation", {}),
-  // Boiler — model (thin, collapse threshold)
+  // Boiler — geometry (thin, collapse threshold).
+  // Use artifactKind "step" + system "build123d" so no nature rule fires
+  // (sysml-model / bom / document would anchor to assembly via nature criterion).
+  // The catalog binds these to the boiler component explicitly (criterion a).
   node(BOILER_ARTIFACT_1, "artifact", {
-    artifactKind: "sysml-model",
-    system: "syson",
+    artifactKind: "step",
+    system: "build123d",
   }),
   node(BOILER_ARTIFACT_2, "artifact", {
-    artifactKind: "sysml-model",
-    system: "syson",
+    artifactKind: "step",
+    system: "build123d",
   }),
   // Uncategorized
   node(UNCATEGORIZED_ID, "artifact", { artifactKind: "other" }),
@@ -241,7 +247,12 @@ const FIXTURE_CATALOG: ThreadComponentCatalog = {
       kind: "part",
       quantity: 1,
       parentId: "cm01-v3:coffee-machine",
-      bindings: [],
+      // Explicit catalog bindings: route BOILER_ARTIFACT_1/2 to the boiler row
+      // via criterion (a) so the test genuinely exercises "2 facts, 0 proofs".
+      bindings: [
+        catalogBinding(BOILER_ARTIFACT_1, "build123d"),
+        catalogBinding(BOILER_ARTIFACT_2, "build123d"),
+      ],
     },
     {
       id: "cm01-v3:enclosure",
@@ -372,6 +383,13 @@ Deno.test(
       boilerRow!.proofCount,
       0,
       "boiler must have zero proof nodes",
+    );
+    // The fixture has exactly 2 boiler artifacts (catalog criterion a).
+    // This also asserts the threshold arithmetic: 2 == COLLAPSED_FACT_THRESHOLD.
+    assertEquals(
+      boilerRow!.factCount,
+      2,
+      "boiler must have exactly 2 facts (the two catalog-bound step artifacts)",
     );
     assertEquals(
       boilerRow!.factCount <= COLLAPSED_FACT_THRESHOLD,
