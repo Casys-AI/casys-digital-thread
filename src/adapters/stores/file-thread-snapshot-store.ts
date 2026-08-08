@@ -77,6 +77,18 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
     return snapshots.sort(compareNewestFirst)[0];
   }
 
+  /** Bypass the in-memory convenience cache at a durability readback boundary. */
+  async getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined> {
+    try {
+      return await this.readSnapshotFileFresh(
+        `${encodeURIComponent(snapshotId)}.json`,
+      );
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw error;
+    }
+  }
+
   async save(snapshot: ThreadSnapshot): Promise<void> {
     const validated = validateThreadSnapshot(snapshot);
     await this.io.mkdir(this.directory);
@@ -99,7 +111,7 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
     await this.claimRevision(validated);
     const fileName = `${encodeURIComponent(validated.id)}.json`;
     try {
-      await this.io.writeTextFile(
+      await this.writeNewDurably(
         this.pathFor(validated.id),
         `${JSON.stringify(validated, null, 2)}\n`,
       );
@@ -163,7 +175,7 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
   private async claimRevision(snapshot: ThreadSnapshot): Promise<void> {
     const claimPath = this.revisionClaimPathFor(snapshot.subject.id, snapshot.revision);
     try {
-      await this.io.writeTextFile(claimPath, snapshot.id);
+      await this.writeNewDurably(claimPath, snapshot.id);
       return;
     } catch (error) {
       if (!isAlreadyExists(error)) throw error;
@@ -180,6 +192,32 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
       this.directory,
       `.revision-${encodeURIComponent(subjectId)}-r${revision}.claim`,
     );
+  }
+
+  private async writeNewDurably(path: string, text: string): Promise<void> {
+    if (this.io !== DENO_FILE_IO) return await this.io.writeTextFile(path, text);
+    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+    try {
+      const file = await Deno.open(temporary, { createNew: true, write: true });
+      try {
+        const bytes = new TextEncoder().encode(text);
+        let written = 0;
+        while (written < bytes.length) {
+          const count = await file.write(bytes.subarray(written));
+          if (count <= 0) throw new Error("ThreadSnapshot write made no progress.");
+          written += count;
+        }
+        await file.syncData();
+      } finally {
+        file.close();
+      }
+      await Deno.link(temporary, path);
+      await syncDirectoryChain(this.directory);
+    } finally {
+      await Deno.remove(temporary).catch((error) => {
+        if (!isNotFound(error)) throw error;
+      });
+    }
   }
 }
 
@@ -214,4 +252,20 @@ function isNotFound(error: unknown): boolean {
 function isAlreadyExists(error: unknown): boolean {
   return error instanceof Deno.errors.AlreadyExists ||
     (error instanceof Error && /already exists/i.test(error.message));
+}
+
+async function syncDirectoryChain(path: string): Promise<void> {
+  let current = path.replace(/\/+$/, "") || ".";
+  while (current !== "/") {
+    const directory = await Deno.open(current, { read: true });
+    try {
+      await directory.sync();
+    } finally {
+      directory.close();
+    }
+    if (current === "state" || current.endsWith("/state")) return;
+    const parent = current.lastIndexOf("/");
+    current = parent < 0 ? "." : parent === 0 ? "/" : current.slice(0, parent);
+    if (current === ".") return;
+  }
 }

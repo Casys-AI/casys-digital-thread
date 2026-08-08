@@ -86,6 +86,9 @@ type Architecture = Readonly<
     rootUsages: readonly Readonly<{ usage: Element; type: Element }>[];
   }
 >;
+type PartDefinitionsInputs = Readonly<
+  { base: ThreadSnapshot; artifact: ThreadArtifact; architecture: Architecture }
+>;
 
 const FIXED_ARCHITECTURE_RECIPE_DIGEST =
   "eba0ccf48143a0f3ef8f8f0b985b373a97ead0ed57e7cbd6dff717c56693a530" as const;
@@ -150,7 +153,15 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       try {
         let project = await this.project(command.projectId);
         let run = requireRun(project, command.runId);
-        if (run.status === "completed") return complete(project, command);
+        if (run.status === "completed") {
+          const durable = await this.d.publications.read(project.project.id, run.id);
+          if (!durable) {
+            throw denied(
+              "A completed inspection-drone PartDefinitions run has no durable publication record to verify or repair.",
+            );
+          }
+          return await this.resumePublication(origin, command, project, run);
+        }
         if (run.status === "publishing" || run.status === "running") {
           const durable = await this.d.publications.read(project.project.id, run.id);
           if (durable) {
@@ -239,7 +250,7 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
         // snapshot write is then recoverable without re-reading SysON.
         await this.d.snapshots.save(snapshot);
         persisted = true;
-        const readback = await this.d.snapshots.get(snapshot.id);
+        const readback = await freshSnapshot(this.d.snapshots, snapshot.id);
         if (!readback || deterministicJson(readback) !== deterministicJson(snapshot)) {
           throw new Error(
             "The persisted inspection-drone PartDefinitions snapshot did not read back exactly.",
@@ -297,6 +308,9 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
         "The publishing PartDefinitions run has no durable exact publication record; it will not re-query SysON.",
       );
     }
+    // Reuse the same read-only exact basis, work-item binding, r3 artifact,
+    // architecture capture and seed-provenance checks as a fresh run.
+    const input = await this.inputs(project, run);
     const basis = requireBasis(run);
     if (
       basis.kind !== "thread-snapshot" ||
@@ -311,55 +325,45 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       );
     }
     const capture = await this.d.captures.read(publication.fingerprint);
-    let persisted = await this.d.snapshots.get(publication.snapshot.id);
+    if (!capture) {
+      throw denied(
+        "The publishing PartDefinitions run has no exact durable capture; it will not re-query SysON.",
+      );
+    }
+    const expected = await reconstructPublication(input, run, capture);
+    if (
+      deterministicJson(expected.fingerprint) !==
+        deterministicJson(publication.fingerprint) ||
+      deterministicJson(expected.snapshot) !== deterministicJson(publication.snapshot)
+    ) {
+      throw denied(
+        "The durable PartDefinitions publication does not reconstruct from the exact r3 capture and run.",
+      );
+    }
+    let persisted = await freshSnapshot(this.d.snapshots, publication.snapshot.id);
     if (!persisted) {
       // A filesystem snapshot store may lose a just-written directory entry
       // across a crash.  The durable publication record is the source of the
       // exact bytes and restores it before any project attachment.
       await this.d.snapshots.save(publication.snapshot);
-      persisted = await this.d.snapshots.get(publication.snapshot.id);
+      persisted = await freshSnapshot(this.d.snapshots, publication.snapshot.id);
     }
     if (
-      !capture || !persisted ||
+      !persisted ||
       deterministicJson(persisted) !== deterministicJson(publication.snapshot)
     ) {
       throw denied(
         "The publishing PartDefinitions run has no exact durable capture and snapshot pair; it will not re-query SysON.",
       );
     }
-    const artifact = one(
-      publication.snapshot.artifacts.filter((candidate) =>
-        candidate.id ===
-          `inspection-drone-v4-part-definitions-${publication.fingerprint.digest}` &&
-        deterministicJson(candidate.fingerprint) ===
-          deterministicJson(publication.fingerprint)
-      ),
-      "durable PartDefinitions artifact",
+    const artifact = partDefinitionArtifact(
+      publication.fingerprint,
+      run.id,
+      requiredStart(run),
+      input.artifact.id,
+      this.d.captures.uriFor(publication.fingerprint),
     );
-    if (
-      artifact.uri !==
-        `${INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX}${publication.fingerprint.digest}` ||
-      artifact.version !== publication.fingerprint.digest ||
-      artifact.producer.runId !== run.id || artifact.inputArtifactIds.length !== 1
-    ) {
-      throw denied(
-        "The durable PartDefinitions publication artifact is not canonically bound to this run.",
-      );
-    }
-    const base = await this.d.snapshots.get(basis.snapshotId);
-    const architecture =
-      base?.artifacts.filter((candidate) =>
-        candidate.id === artifact.inputArtifactIds[0] &&
-        candidate.id ===
-          `inspection-drone-v4-architecture-${candidate.fingerprint.digest}` &&
-        candidate.uri ===
-          `${INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX}${candidate.fingerprint.digest}`
-      ) ?? [];
-    if (architecture.length !== 1) {
-      throw denied(
-        "The durable PartDefinitions publication does not name one exact r3 architecture input.",
-      );
-    }
+    if (run.status === "completed") return complete(project, command);
     if (run.status === "running") {
       await this.d.commands.publishRun(origin, {
         ...command,
@@ -391,9 +395,7 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
   private async inputs(
     project: EngineeringProjectSnapshot,
     run: EngineeringAgentRun,
-  ): Promise<
-    { base: ThreadSnapshot; artifact: ThreadArtifact; architecture: Architecture }
-  > {
+  ): Promise<PartDefinitionsInputs> {
     const basis = requireBasis(run);
     if (
       basis.kind !== "thread-snapshot" || basis.revision !== 3 ||
@@ -514,6 +516,105 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       }
     } catch { /* original refusal wins */ }
   }
+}
+
+/** Rebuild the only r4 this exact r3/run/capture can authorize. */
+async function reconstructPublication(
+  input: PartDefinitionsInputs,
+  run: EngineeringAgentRun,
+  text: string,
+): Promise<Readonly<{ fingerprint: ContentFingerprint; snapshot: ThreadSnapshot }>> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw denied("The durable PartDefinitions capture is not JSON.");
+  }
+  const record = closed(raw, [
+    "architecture",
+    "capturedAt",
+    "definitions",
+    "kind",
+    "operation",
+    "schemaVersion",
+    "scope",
+    "statement",
+    "trustedRunId",
+  ]);
+  if (
+    record.schemaVersion !== INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA ||
+    record.kind !== "inspection-drone-v4-part-definitions" ||
+    record.scope !== "read-only-product-structure" ||
+    record.trustedRunId !== run.id || record.capturedAt !== requiredStart(run) ||
+    !same(record.operation, INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION) ||
+    !Array.isArray(record.definitions)
+  ) {
+    throw denied(
+      "The durable PartDefinitions capture does not attest this exact operation and run.",
+    );
+  }
+  const architecture = closed(record.architecture, [
+    "architecturePackage",
+    "artifactId",
+    "editingContextId",
+    "fingerprint",
+    "recipe",
+    "rootUsageTypes",
+    "uri",
+  ]);
+  const recipe = closed(architecture.recipe, ["textSha256"]);
+  if (
+    architecture.artifactId !== input.artifact.id ||
+    deterministicJson(architecture.fingerprint) !==
+      deterministicJson(input.artifact.fingerprint) ||
+    architecture.uri !== input.artifact.uri ||
+    architecture.editingContextId !== input.architecture.editingContextId ||
+    deterministicJson(architecture.architecturePackage) !==
+      deterministicJson(input.architecture.package) ||
+    recipe.textSha256 !== input.architecture.recipeDigest ||
+    !Array.isArray(architecture.rootUsageTypes) ||
+    deterministicJson(architecture.rootUsageTypes) !==
+      deterministicJson(input.architecture.rootUsages)
+  ) {
+    throw denied(
+      "The durable PartDefinitions capture is not bound to the exact r3 architecture readback.",
+    );
+  }
+  const structures = record.definitions.map((item, index) => {
+    const candidate = closed(item, ["definition", "structure"]);
+    const definition = element(
+      candidate.definition,
+      `definitions[${index}].definition`,
+    );
+    const expected = input.architecture.declarationByLabel.get(
+      INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT[index] ?? "",
+    );
+    if (!expected || deterministicJson(definition) !== deterministicJson(expected)) {
+      throw denied(
+        "The durable PartDefinitions capture substitutes a reviewed PartDefinition.",
+      );
+    }
+    return { definition, structure: parseStructure(candidate.structure, definition) };
+  });
+  verifyStructures(structures, input.architecture);
+  const fingerprint = await sha256Fingerprint(raw);
+  const artifact = partDefinitionArtifact(
+    fingerprint,
+    run.id,
+    requiredStart(run),
+    input.artifact.id,
+    `${INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX}${fingerprint.digest}`,
+  );
+  return {
+    fingerprint,
+    snapshot: materialize(
+      input.base,
+      artifact,
+      input.artifact,
+      requiredStart(run),
+      input.architecture.package.id,
+    ),
+  };
 }
 
 function shape(project: EngineeringProjectSnapshot, run: EngineeringAgentRun): void {
@@ -1019,4 +1120,16 @@ function kind(value: string, expected: string): boolean {
 }
 function count(tree: readonly Usage[]): number {
   return tree.reduce((total, item) => total + 1 + count(item.children), 0);
+}
+
+async function freshSnapshot(
+  store: ThreadSnapshotStore,
+  snapshotId: string,
+): Promise<ThreadSnapshot | undefined> {
+  const fresh = store as ThreadSnapshotStore & {
+    getFresh?: (id: string) => Promise<ThreadSnapshot | undefined>;
+  };
+  return fresh.getFresh
+    ? await fresh.getFresh(snapshotId)
+    : await store.get(snapshotId);
 }

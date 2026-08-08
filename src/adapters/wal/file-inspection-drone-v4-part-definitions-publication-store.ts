@@ -29,8 +29,9 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
     await Deno.mkdir(this.directory, { recursive: true });
     const path = this.pathFor(value.projectId, value.runId);
     const text = `${deterministicJson(value)}\n`;
+    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
     try {
-      const file = await Deno.open(path, { createNew: true, write: true });
+      const file = await Deno.open(temporary, { createNew: true, write: true });
       try {
         const bytes = new TextEncoder().encode(text);
         let written = 0;
@@ -47,6 +48,10 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
       } finally {
         file.close();
       }
+      // link(2) publishes the complete fsynced inode without rename's
+      // overwrite semantics.  A crash can leave only a disposable .tmp, never
+      // a truncated final WAL record.
+      await Deno.link(temporary, path);
       await syncDirectoryChain(this.directory);
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
@@ -55,6 +60,10 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
           "Inspection-drone PartDefinitions publication conflicts with its durable run record.",
         );
       }
+    } finally {
+      await Deno.remove(temporary).catch((error) => {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+      });
     }
   }
 

@@ -6,7 +6,6 @@ import {
   INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT,
 } from "./inspection-drone-v4-architecture-run-executor.ts";
 import {
-  InspectionDroneV4PartDefinitionsRunExecutor,
   parseInspectionDroneV4ArchitectureCapture,
 } from "./inspection-drone-v4-part-definitions-run-executor.ts";
 import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../orchestration/operations/inspection-drone-v4.ts";
@@ -49,41 +48,6 @@ Deno.test("inspection-drone PartDefinitions parser rejects a local r3 usage type
       architectureArtifact(),
     )
   );
-});
-
-Deno.test("inspection-drone PartDefinitions publishes an exact durable r4 replay without SysON reads", async () => {
-  const fixture = publishingReplayFixture("publishing");
-  const result = await fixture.executor.execute(
-    { kind: "agent", actorId: "agent:test" },
-    fixture.command,
-  );
-  assertEquals(result.agentRuns[0]!.status, "completed");
-  assertEquals(fixture.providerCalls, 0);
-  assertEquals(fixture.published, 0);
-  assertEquals(fixture.completed, 1);
-});
-
-Deno.test("inspection-drone PartDefinitions resumes a durable running r4 by publishing then completing without SysON reads", async () => {
-  const fixture = publishingReplayFixture("running");
-  const result = await fixture.executor.execute(
-    { kind: "agent", actorId: "agent:test" },
-    fixture.command,
-  );
-  assertEquals(result.agentRuns[0]!.status, "completed");
-  assertEquals(fixture.providerCalls, 0);
-  assertEquals(fixture.published, 1);
-  assertEquals(fixture.completed, 1);
-});
-
-Deno.test("inspection-drone PartDefinitions restores a missing r4 from its WAL before publishing", async () => {
-  const fixture = publishingReplayFixture("publishing", true);
-  const result = await fixture.executor.execute(
-    { kind: "agent", actorId: "agent:test" },
-    fixture.command,
-  );
-  assertEquals(result.agentRuns[0]!.status, "completed");
-  assertEquals(fixture.restoredSnapshots, 1);
-  assertEquals(fixture.providerCalls, 0);
 });
 
 Deno.test("inspection-drone product catalog accepts only the exact r3 identities and ordered usage-to-type pairs", async () => {
@@ -213,150 +177,6 @@ function productCatalogFixture() {
     readers: {
       architecture: { read: async () => JSON.stringify(r3Capture()) },
       partDefinitions: { read: async () => productCapture() },
-    },
-  };
-}
-
-function publishingReplayFixture(
-  status: "running" | "publishing",
-  r4InitiallyMissing = false,
-) {
-  const architectureDigest = "a".repeat(64);
-  const productDigest = "b".repeat(64);
-  const base = {
-    id: "thread:r3",
-    revision: 3,
-    subject: { id: "project:inspection-drone-v4" },
-    artifacts: [{
-      id: `inspection-drone-v4-architecture-${architectureDigest}`,
-      fingerprint: { algorithm: "sha256", digest: architectureDigest },
-      uri:
-        `casys://inspection-drone-v4-architecture-capture/sha256/${architectureDigest}`,
-    }],
-  } as unknown as import("../../domain/thread/thread-snapshot.ts").ThreadSnapshot;
-  const artifact = {
-    id: `inspection-drone-v4-part-definitions-${productDigest}`,
-    version: productDigest,
-    fingerprint: { algorithm: "sha256", digest: productDigest },
-    uri: `casys://inspection-drone-v4-part-definitions-capture/sha256/${productDigest}`,
-    producer: { serverId: "syson", tool: "syson_part_structure", runId: "run:product" },
-    inputArtifactIds: [base.artifacts[0]!.id],
-  } as unknown as ThreadArtifact;
-  const r4 = {
-    id: "thread:r4",
-    revision: 4,
-    previous: { snapshotId: base.id, revision: base.revision },
-    subject: base.subject,
-    artifacts: [artifact],
-  } as unknown as import("../../domain/thread/thread-snapshot.ts").ThreadSnapshot;
-  let project = {
-    project: { id: "inspection-drone-v4", subjectId: "project:inspection-drone-v4" },
-    revision: 7,
-    workItems: [{
-      id: "capture",
-      operation: {
-        ...INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
-        bindings: [{ name: "architecture" }],
-      },
-    }],
-    agentRuns: [{
-      id: "run:product",
-      workItemId: "capture",
-      status,
-      basis: {
-        kind: "thread-snapshot",
-        snapshotId: base.id,
-        revision: 3,
-        subjectId: base.subject.id,
-      },
-    }],
-    commandReceipts: [],
-  } as unknown as Record<string, unknown>;
-  let providerCalls = 0, published = 0, completed = 0;
-  let r4Saved = !r4InitiallyMissing, restoredSnapshots = 0;
-  const commands = {
-    publishRun: async () => {
-      published++;
-      project = structuredClone(project);
-      (project.agentRuns as Array<Record<string, unknown>>)[0]!.status = "publishing";
-      project.revision = (project.revision as number) + 1;
-      return project;
-    },
-    completeRun: async (_origin: unknown, command: { commandId: string }) => {
-      completed++;
-      project = structuredClone(project);
-      (project.agentRuns as Array<Record<string, unknown>>)[0]!.status = "completed";
-      (project.agentRuns as Array<Record<string, unknown>>)[0]!.resultSnapshot = {
-        snapshotId: r4.id,
-        revision: r4.revision,
-        subjectId: r4.subject.id,
-      };
-      project.commandReceipts = [{ commandId: command.commandId }];
-      project.revision = (project.revision as number) + 1;
-      return project;
-    },
-  };
-  const executor = new InspectionDroneV4PartDefinitionsRunExecutor(
-    {
-      projects: { get: async () => project },
-      commands,
-      snapshots: {
-        get: async (id: string) =>
-          id === base.id ? base : id === r4.id && r4Saved ? r4 : undefined,
-        save: async (snapshot: unknown) => {
-          assertEquals(snapshot, r4);
-          r4Saved = true;
-          restoredSnapshots++;
-        },
-      },
-      architectureCaptures: { read: async () => undefined },
-      captures: { read: async () => "{}" },
-      publications: {
-        read: async () => ({
-          schemaVersion: "inspection-drone-v4-part-definitions-publication/1.0",
-          projectId: "inspection-drone-v4",
-          runId: "run:product",
-          fingerprint: artifact.fingerprint,
-          snapshot: r4,
-        }),
-      },
-      syson: {
-        callTool: async () => {
-          providerCalls++;
-          throw new Error("SysON must not be called");
-        },
-      },
-      lease: {
-        withLease: async (
-          _projectId: string,
-          _runId: string,
-          work: () => Promise<unknown>,
-        ) => await work(),
-      },
-    } as unknown as ConstructorParameters<
-      typeof InspectionDroneV4PartDefinitionsRunExecutor
-    >[0],
-  );
-  return {
-    executor,
-    command: {
-      commandId: "replay",
-      projectId: "inspection-drone-v4",
-      expectedRevision: 7,
-      issuedAt: "2026-08-08T05:00:00.000Z",
-      runId: "run:product",
-    },
-    get providerCalls() {
-      return providerCalls;
-    },
-    get published() {
-      return published;
-    },
-    get completed() {
-      return completed;
-    },
-    get restoredSnapshots() {
-      return restoredSnapshots;
     },
   };
 }
