@@ -61,7 +61,10 @@ import {
   ToolInspectorPanel,
   type WorkbenchToolIdentity,
 } from "./tool-inspectors.tsx";
-import { resolveToolInspectorTarget } from "./tool-inspector-model.ts";
+import {
+  graphNodeForSelection,
+  resolveToolInspectorTarget,
+} from "./tool-inspector-model.ts";
 import { EvidenceVersionHistory } from "./version-history.tsx";
 import {
   buildVersionedProvenanceProjection,
@@ -1849,15 +1852,6 @@ function branchDefinition(
   return { id: "other", label: "Other evidence" };
 }
 
-function graphNodeForSelection(
-  snapshot: ThreadWorkbenchSnapshot,
-  selection: ThreadRef,
-): ThreadGraphNode | undefined {
-  return snapshot.graph.nodes.findLast((node) =>
-    node.selection && sameRef(node.selection, selection)
-  );
-}
-
 function graphNodeByRef(
   snapshot: ThreadWorkbenchSnapshot,
   reference: ThreadGraphRef,
@@ -1950,10 +1944,6 @@ function verdictTone(status: ThreadRequirement["status"]): PresentationTone {
   if (status === "pass") return "success";
   if (status === "fail") return "danger";
   return "warning";
-}
-
-function sameRef(left: ThreadRef, right: ThreadRef): boolean {
-  return left.kind === right.kind && left.id === right.id;
 }
 
 function pad(value: number): string {

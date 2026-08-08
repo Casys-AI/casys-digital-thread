@@ -251,7 +251,7 @@ function ArtifactSummary({ artifacts, onSelect }: {
       {artifacts.map((artifact) => (
         <ContextRow
           key={artifact.id}
-          ref={{ kind: "artifact", id: artifact.id }}
+          target={{ kind: "artifact", id: artifact.id }}
           eyebrow={`${artifact.system} · ${artifact.kind}`}
           title={artifact.label}
           detail={`${artifact.revision} · ${artifact.freshness}`}
@@ -272,7 +272,7 @@ function ObservationSummary({ observations, onSelect }: {
       {observations.map((observation) => (
         <ContextRow
           key={observation.id}
-          ref={{ kind: "observation", id: observation.id }}
+          target={{ kind: "observation", id: observation.id }}
           eyebrow={observation.id}
           title={observation.label}
           detail={`${observation.display} · ${observation.freshness}`}
@@ -293,7 +293,7 @@ function RequirementSummary({ requirements, onSelect }: {
       {requirements.map((requirement) => (
         <ContextRow
           key={requirement.id}
-          ref={{ kind: "requirement", id: requirement.id }}
+          target={{ kind: "requirement", id: requirement.id }}
           eyebrow={`${requirement.source} · ${requirement.status}`}
           title={requirement.label}
           detail={requirement.expression}
@@ -314,7 +314,7 @@ function ViolationSummary({ violations, onSelect }: {
       {violations.map((violation) => (
         <ContextRow
           key={violation.id}
-          ref={{ kind: "violation", id: violation.id }}
+          target={{ kind: "violation", id: violation.id }}
           eyebrow={`${violation.severity} · ${violation.status}`}
           title={violation.name}
           detail={violation.margin || violation.message}
@@ -341,8 +341,8 @@ function InspectorSection({ title, count, children }: {
   );
 }
 
-function ContextRow({ ref, eyebrow, title, detail, onSelect }: {
-  ref: ThreadRef;
+function ContextRow({ target, eyebrow, title, detail, onSelect }: {
+  target: ThreadRef;
   eyebrow: string;
   title: string;
   detail: string;
@@ -360,7 +360,7 @@ function ContextRow({ ref, eyebrow, title, detail, onSelect }: {
       <button
         class="tool-inspector-row"
         type="button"
-        onClick={() => onSelect(ref)}
+        onClick={() => onSelect(target)}
       >
         {content}
         <b aria-hidden="true">↗</b>

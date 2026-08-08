@@ -277,6 +277,26 @@ export function resolveToolInspectorContext(
   }
 }
 
+/**
+ * Returns the last graph node whose recorded selection matches the given
+ * ThreadRef, or undefined when no node in the current graph represents it.
+ *
+ * This is the resolution path for inspector list clicks: records listed
+ * in the inspector panels (artifacts, observations, requirements, violations)
+ * may not have a corresponding node in the current graph projection — they
+ * can be historical, folded, or from a different surface. When the ref is
+ * absent the caller is expected to treat the result as a no-op on the graph
+ * focus, leaving only the record selection updated.
+ */
+export function graphNodeForSelection(
+  snapshot: ThreadWorkbenchSnapshot,
+  selection: ThreadRef,
+): ThreadGraphNode | undefined {
+  return snapshot.graph.nodes.findLast(
+    (node) => node.selection && sameRef(node.selection, selection),
+  );
+}
+
 export function toolIdentity(system: string): WorkbenchToolIdentity {
   const id = toolId(system);
   if (id === "digital-thread") return THREAD_OWNER;

@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
+  graphNodeForSelection,
   resolveToolInspectorContext,
   resolveToolInspectorTarget,
 } from "./src/thread/tool-inspector-model.ts";
@@ -97,6 +98,34 @@ Deno.test("edge routing does not leak the previous record into its handoff panel
 
   assertEquals(target, {});
 });
+
+Deno.test(
+  "graphNodeForSelection returns undefined without throwing when the ref is absent from the graph",
+  () => {
+    // Regression: inspector list rows were silently passing `undefined` as the
+    // ThreadRef (the 'ref' JSX prop is reserved by Preact and swallowed before
+    // reaching the component). The downstream sameRef() call crashed on
+    // undefined.kind. After the fix, a valid ref simply absent from the current
+    // graph projection must return undefined without throwing.
+    const result = graphNodeForSelection(COFFEE_MACHINE_THREAD_FIXTURE, {
+      kind: "artifact",
+      id: "ART-NOT-IN-GRAPH",
+    });
+
+    assertEquals(result, undefined);
+  },
+);
+
+Deno.test(
+  "graphNodeForSelection returns a node whose selection matches the given ref when it is present",
+  () => {
+    // REQ-MECH-014 has exactly one graph node whose selection is this ref.
+    const ref = { kind: "requirement" as const, id: "REQ-MECH-014" };
+    const result = graphNodeForSelection(COFFEE_MACHINE_THREAD_FIXTURE, ref);
+
+    assertEquals(result?.selection, ref);
+  },
+);
 
 function graphNode(
   kind: ThreadGraphNode["ref"]["kind"],
