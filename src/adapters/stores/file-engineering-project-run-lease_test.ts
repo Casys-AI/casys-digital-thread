@@ -49,8 +49,9 @@ Deno.test("file project-run lease keeps maximum identities in one stable short c
       await releaseFirst.promise;
     });
     await firstEntered.promise;
-    const second = secondLease.withLease(projectId, runId, async () => {
+    const second = secondLease.withLease(projectId, runId, () => {
       secondEntered = true;
+      return Promise.resolve();
     });
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
     assertEquals(secondEntered, false);
