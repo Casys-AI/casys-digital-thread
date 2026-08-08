@@ -220,10 +220,16 @@ const OPERATIONS = [
    * SysML, and verifies by re-extraction. No SysML text or requirement value
    * is supplied by the agent.
    *
-   * The D1 envelope fingerprint covers the resolved target (usageName,
-   * elementId), the architecture basis, the server-derived partDefName, and
-   * the OracleRequirement list. The human signs this fingerprint in the MRTR
-   * decision before any SysON write takes place.
+   * WHAT THE HUMAN ACTUALLY SIGNS — the canonical decision fingerprint over
+   * {baseSnapshot, inputEvidenceRefs, proposal}, computed by the command
+   * service and by it alone. There is no separate "envelope" fingerprint to
+   * sign, and no tool could produce one: the resolved target (usageName,
+   * elementId), the architecture basis and the server-derived partDefName are
+   * DERIVED deterministically from those signed inputs. The executor proves
+   * both halves before any SysON write — that the decision carries the
+   * service's own fingerprint, and that its derivation matches — so the
+   * signature commits the exact target and architecture without ever asking a
+   * human to sign a value no interface can show them.
    */
   {
     id: MODEL_WRITE_REQUIREMENTS_OPERATION.id,

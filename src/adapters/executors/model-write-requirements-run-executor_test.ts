@@ -1095,6 +1095,13 @@ async function queuedRequirementsFixture(
       question: "Which requirements are proposed for Wing?",
     }],
   });
+  // WHY THE REGISTERED HANDLER AND NOT commands.proposeDecision DIRECTLY — the
+  // defect this fixture exists to prevent was invisible precisely because tests
+  // called the service directly with a fingerprint no tool can produce, so the
+  // operation was unexecutable through MCP while the suite stayed green. The
+  // proposal therefore crosses the real tool boundary. Approval, queue and
+  // execution are then driven directly: they are covered by their own cases,
+  // and this fixture claims only the boundary that failed.
   const mcp = new RequirementsMcpApp();
   registerProjectControlTools(mcp as unknown as McpApp, { projects, commands });
   await mcp.handler("project_decision_propose")({
