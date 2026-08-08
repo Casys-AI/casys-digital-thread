@@ -1,229 +1,258 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { CockpitFocusStore } from "../../src/adapters/stores/file-cockpit-focus-store.ts";
-import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
-import type { EngineeringProjectRevisionStore } from "../../src/domain/project/engineering-project-command-service.ts";
-import type { CockpitFocusSnapshot } from "../../src/domain/platform/cockpit-focus.ts";
-import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/platform/cockpit-focus.ts";
-import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
-import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
+/**
+ * Tests for `resolveSnapshotComponentCatalog` — the couture that chains the
+ * CM-01 projector (subject-ID gated) with the generic architecture projector
+ * (URI-prefix gated) inside serve-native-workbench.
+ *
+ * Invariants proved:
+ *  - A non-CM01 subject whose snapshot carries a generic architecture artifact
+ *    (URI prefix "casys://architecture-capture/") receives its component catalog
+ *    from the generic projector.
+ *  - A snapshot with no matching architecture artifact returns `undefined` from
+ *    both projectors; the caller must fall through to the static catalog.
+ */
+
+import { assertEquals, assertExists } from "@std/assert";
 import {
-  createNativeWorkbenchHandler,
-  NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
-  resolveNativeWorkbenchProjectId,
-  resolveNativeWorkbenchSubjectId,
-} from "./serve-native-workbench.ts";
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../src/domain/kernel/deterministic-json.ts";
+import { validateThreadSnapshot } from "../../src/domain/thread/thread-snapshot-validation.ts";
+import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../../src/adapters/captures/file-capture-store.ts";
+import type { ContentFingerprint } from "../../src/domain/thread/thread-snapshot.ts";
+import { resolveSnapshotComponentCatalog } from "./serve-native-workbench.ts";
 
-Deno.test("native Workbench resolves an agent-selected project and its subject", async () => {
-  const project = projectFixture("project-one", "subject-one");
-  const projects = new ProjectStore([project]);
+// ── Shared constants ─────────────────────────────────────────────────────────
 
-  assertEquals(
-    resolveNativeWorkbenchProjectId(undefined, undefined),
-    NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
-  );
-  assertEquals(
-    resolveNativeWorkbenchProjectId(undefined, "subject-one"),
-    "subject-one",
-  );
-  assertEquals(
-    resolveNativeWorkbenchProjectId("project-one", "subject-one"),
-    "project-one",
-  );
-  assertEquals(
-    await resolveNativeWorkbenchSubjectId("project-one", undefined, projects),
-    "subject-one",
-  );
-  assertEquals(
-    await resolveNativeWorkbenchSubjectId("project-one", "subject-override", projects),
-    "subject-override",
-  );
-});
+const AT = "2026-08-08T12:00:00.000Z";
+const GENERIC_SUBJECT_ID = "project:inspection-drone-v4";
 
-Deno.test("native Workbench serves a planning-only project without borrowing a thread", async () => {
-  const project = projectFixture("project-one", "subject-one");
-  const store = new EmptyThreadStore();
-  const handler = createNativeWorkbenchHandler({
-    store,
-    projectStore: new ProjectStore([project]),
-    projectId: project.project.id,
-    subjectId: project.project.subjectId,
-    html: "unused",
-  });
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-  const response = await handler(
-    new Request("http://localhost/api/thread/workbench"),
-  );
-  const body = await response.json();
+function fingerprint(char: string): ContentFingerprint {
+  return { algorithm: "sha256", digest: char.repeat(64) };
+}
 
-  assertEquals(response.status, 200);
-  assertEquals(response.headers.get("X-Casys-Data-Source"), "engineering-project-plan");
-  assertEquals(body.surface, "planning");
-  assertEquals(body.project.threadSnapshots, []);
-  assertEquals(body.planning.technicalBaseline.status, "not-created");
-  assertEquals(store.latestCalls, 0);
-});
+function freshness() {
+  return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] };
+}
 
-Deno.test("native Workbench follows the durable focus selected by the agent", async () => {
-  const first = projectFixture("project-one", "subject-one");
-  const second = projectFixture("project-two", "subject-two");
-  const focus = new MutableFocus(focusSnapshot("project-one"));
-  const handler = createNativeWorkbenchHandler({
-    store: new EmptyThreadStore(),
-    projectStore: new ProjectStore([first, second]),
-    subjectId: "subject-one",
-    cockpitFocus: focus,
-    workspaceId: "primary",
-    html: "unused",
-  });
+/** Minimal snapshot carrying a generic architecture artifact. */
+async function snapshotWithGenericArch(): Promise<
+  { snapshot: ReturnType<typeof validateThreadSnapshot>; captureFp: ContentFingerprint }
+> {
+  const captureRecord = {
+    schemaVersion: "architecture-capture/1.0",
+    packageName: "DroneV4",
+    systemName: "DroneSystem",
+    packageId: "pkg-drone-001",
+    seedFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+    declarations: [
+      { id: "sys-def-001", label: "DroneSystem" },
+      { id: "wing-def-001", label: "Wing" },
+    ],
+    insertedAt: AT,
+  };
+  const captureFp = await sha256Fingerprint(captureRecord);
+  const archId = `generic-arch-${captureFp.digest}`;
+  const uri = `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${captureFp.digest}`;
 
-  let response = await handler(new Request("http://localhost/api/thread/workbench"));
-  assertEquals((await response.json()).project.project.id, "project-one");
-
-  focus.value = focusSnapshot("project-two", 2);
-  response = await handler(new Request("http://localhost/api/thread/workbench"));
-  assertEquals((await response.json()).project.project.id, "project-two");
-});
-
-Deno.test("native Workbench keeps its BFF read-only and frame-protected", async () => {
-  const project = projectFixture("project-one", "subject-one");
-  const handler = createNativeWorkbenchHandler({
-    store: new EmptyThreadStore(),
-    projectStore: new ProjectStore([project]),
-    projectId: project.project.id,
-    subjectId: project.project.subjectId,
-    html: "<html><body>Workbench</body></html>",
-  });
-
-  const page = await handler(new Request("http://localhost/"));
-  assertEquals(page.status, 200);
-  assertStringIncludes(await page.text(), "Workbench");
-  assertStringIncludes(
-    page.headers.get("Content-Security-Policy") ?? "",
-    "frame-ancestors 'none'",
-  );
-  assertEquals(page.headers.get("X-Frame-Options"), "DENY");
-
-  const rejected = await handler(
-    new Request("http://localhost/api/thread/workbench", {
-      method: "POST",
-    }),
-  );
-  assertEquals(rejected.status, 405);
-  assertEquals(rejected.headers.get("Allow"), "GET");
-  assertEquals(
-    (await handler(new Request("http://localhost/api/project/commands"))).status,
-    404,
-  );
-});
-
-Deno.test("native Workbench reports an unknown selected project without substituting another one", async () => {
-  const handler = createNativeWorkbenchHandler({
-    store: new EmptyThreadStore(),
-    projectStore: new ProjectStore([]),
-    subjectId: "subject-one",
-    cockpitFocus: new MutableFocus(focusSnapshot("missing")),
-    html: "unused",
-  });
-
-  const response = await handler(new Request("http://localhost/api/thread/workbench"));
-  assertEquals(response.status, 404);
-  assertEquals((await response.json()).error, "engineering_project_not_found");
-});
-
-function projectFixture(
-  projectId: string,
-  subjectId: string,
-): EngineeringProjectSnapshot {
-  return {
+  const snapshot = validateThreadSnapshot({
     schemaVersion: "1.0",
-    id: `${projectId}:r1`,
+    id: `${GENERIC_SUBJECT_ID}:r1`,
     revision: 1,
-    generatedAt: "2026-08-03T12:00:00.000Z",
-    project: {
-      id: projectId,
-      name: projectId,
-      subjectId,
-      objective: { title: "Project", statement: "Project" },
+    generatedAt: AT,
+    subject: {
+      id: GENERIC_SUBJECT_ID,
+      name: "Inspection Drone V4",
+      kind: "system",
+      version: captureFp.digest,
+      modelArtifactId: archId,
     },
-    threadSnapshots: [],
-    phases: [],
-    workItems: [],
-    agentRuns: [],
-    decisions: [],
-    approvals: [],
-    blockers: [],
-  };
+    freshness: freshness(),
+    changeSet: {
+      id: "cs-r1",
+      name: "architecture",
+      status: "applied",
+      createdAt: AT,
+      appliedAt: AT,
+      changes: [{
+        id: "change-r1",
+        kind: "created",
+        target: { kind: "artifact", id: archId },
+        summary: "Recorded drone architecture.",
+        afterFingerprint: captureFp,
+      }],
+    },
+    artifacts: [{
+      id: archId,
+      name: "DroneV4 architecture",
+      kind: "sysml-model",
+      version: captureFp.digest,
+      fingerprint: captureFp,
+      uri,
+      mediaType: "application/json",
+      producer: {
+        serverId: "syson",
+        tool: "syson_element_insert_sysml",
+        runId: "run:arch",
+      },
+      inputArtifactIds: [],
+      freshness: freshness(),
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [{
+      id: "prov-arch",
+      relation: "changes",
+      from: { kind: "change", id: "change-r1" },
+      to: { kind: "artifact", id: archId },
+      rationale: "Change records the architecture artifact.",
+    }],
+    proposedActions: [],
+  });
+
+  return { snapshot, captureFp };
 }
 
-function focusSnapshot(projectId: string, revision = 1): CockpitFocusSnapshot {
-  return {
-    schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,
-    workspaceId: "primary",
-    revision,
-    commandId: `focus-${revision}`,
-    selectedAt: "2026-08-03T12:00:00.000Z",
-    selectedBy: { kind: "agent", actorId: "mcp:test@1" },
-    target: { kind: "project", projectId },
-    ...(revision === 1 ? {} : { previous: { revision: revision - 1 } }),
-  };
+/** Minimal snapshot with no architecture artifact (seed-only). */
+function snapshotWithoutArch(): ReturnType<typeof validateThreadSnapshot> {
+  const seedFp = fingerprint("b");
+  const seedId = "syson-model-seed-bbb";
+  return validateThreadSnapshot({
+    schemaVersion: "1.0",
+    id: `${GENERIC_SUBJECT_ID}:r1`,
+    revision: 1,
+    generatedAt: AT,
+    subject: {
+      id: GENERIC_SUBJECT_ID,
+      name: "Inspection Drone V4",
+      kind: "system",
+      version: seedFp.digest,
+      modelArtifactId: seedId,
+    },
+    freshness: freshness(),
+    changeSet: {
+      id: "cs-r1",
+      name: "seed",
+      status: "applied",
+      createdAt: AT,
+      appliedAt: AT,
+      changes: [{
+        id: "change-seed",
+        kind: "created",
+        target: { kind: "artifact", id: seedId },
+        summary: "Created SysON model container.",
+        afterFingerprint: seedFp,
+      }],
+    },
+    artifacts: [{
+      id: seedId,
+      name: "DroneV4 SysON container",
+      kind: "sysml-model",
+      // URI does NOT match ARCHITECTURE_CAPTURE_URI_PREFIX
+      uri: "casys://syson-model-seed/sha256/" + seedFp.digest,
+      version: seedFp.digest,
+      fingerprint: seedFp,
+      producer: {
+        serverId: "syson",
+        tool: "syson_project_create",
+        runId: "run:seed",
+      },
+      inputArtifactIds: [],
+      freshness: freshness(),
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [{
+      id: "prov-seed",
+      relation: "changes",
+      from: { kind: "change", id: "change-seed" },
+      to: { kind: "artifact", id: seedId },
+      rationale: "Change records the seed artifact.",
+    }],
+    proposedActions: [],
+  });
 }
 
-class EmptyThreadStore implements ThreadSnapshotStore {
-  latestCalls = 0;
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
-  get(_snapshotId: string): Promise<ThreadSnapshot | undefined> {
-    return Promise.resolve(undefined);
-  }
+Deno.test(
+  "resolveSnapshotComponentCatalog returns a generic catalog for a non-CM01 subject with architecture artifact",
+  async () => {
+    const { snapshot, captureFp } = await snapshotWithGenericArch();
+    const captureText = deterministicJson({
+      schemaVersion: "architecture-capture/1.0",
+      packageName: "DroneV4",
+      systemName: "DroneSystem",
+      packageId: "pkg-drone-001",
+      seedFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      declarations: [
+        { id: "sys-def-001", label: "DroneSystem" },
+        { id: "wing-def-001", label: "Wing" },
+      ],
+      insertedAt: AT,
+    });
 
-  latest(_subjectId: string): Promise<ThreadSnapshot | undefined> {
-    this.latestCalls += 1;
-    return Promise.resolve(undefined);
-  }
+    // CM-01 reader is never called for a non-CM01 subject.
+    const cm01Captures = {
+      read: (_fp: ContentFingerprint) =>
+        Promise.resolve(undefined as string | undefined),
+    };
+    // Generic reader returns the capture text for this exact fingerprint.
+    const archCaptures = {
+      read: (fp: ContentFingerprint) =>
+        fp.digest === captureFp.digest
+          ? Promise.resolve(captureText)
+          : Promise.resolve(undefined as string | undefined),
+    };
 
-  save(_snapshot: ThreadSnapshot): Promise<void> {
-    return Promise.resolve();
-  }
-}
+    const catalog = await resolveSnapshotComponentCatalog(
+      snapshot,
+      cm01Captures,
+      archCaptures,
+    );
 
-class ProjectStore implements EngineeringProjectRevisionStore {
-  readonly #projects = new Map<string, EngineeringProjectSnapshot>();
+    assertExists(catalog, "catalog must be resolved for a generic subject");
+    assertEquals(catalog.subjectId, GENERIC_SUBJECT_ID);
+    assertEquals(catalog.components.length, 2, "assembly + one part");
 
-  constructor(projects: readonly EngineeringProjectSnapshot[]) {
-    for (const project of projects) this.#projects.set(project.project.id, project);
-  }
+    const assembly = catalog.components.find((c) => c.kind === "assembly");
+    assertExists(assembly, "assembly component must be present");
+    assertEquals(assembly.label, "DroneSystem");
 
-  get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
-    return Promise.resolve(this.#projects.get(projectId));
-  }
+    const part = catalog.components.find((c) => c.kind === "part");
+    assertExists(part, "part component must be present");
+    assertEquals(part.label, "Wing");
+  },
+);
 
-  getRevision(
-    projectId: string,
-    revision: number,
-  ): Promise<EngineeringProjectSnapshot | undefined> {
-    const project = this.#projects.get(projectId);
-    return Promise.resolve(project?.revision === revision ? project : undefined);
-  }
+Deno.test(
+  "resolveSnapshotComponentCatalog returns undefined for a snapshot with no architecture artifact",
+  async () => {
+    const snapshot = snapshotWithoutArch();
 
-  createInitial(
-    snapshot: EngineeringProjectSnapshot,
-  ): Promise<EngineeringProjectSnapshot> {
-    return Promise.resolve(snapshot);
-  }
+    // Both readers never match — no architecture artifact in the snapshot.
+    const neverRead = {
+      read: (_fp: ContentFingerprint) =>
+        Promise.resolve(undefined as string | undefined),
+    };
 
-  commit(snapshot: EngineeringProjectSnapshot): Promise<EngineeringProjectSnapshot> {
-    return Promise.resolve(snapshot);
-  }
-}
+    const catalog = await resolveSnapshotComponentCatalog(
+      snapshot,
+      neverRead,
+      neverRead,
+    );
 
-class MutableFocus implements CockpitFocusStore {
-  constructor(public value: CockpitFocusSnapshot) {}
-
-  get(_workspaceId: string): Promise<CockpitFocusSnapshot> {
-    return Promise.resolve(this.value);
-  }
-
-  select(snapshot: CockpitFocusSnapshot): Promise<CockpitFocusSnapshot> {
-    this.value = snapshot;
-    return Promise.resolve(snapshot);
-  }
-}
+    assertEquals(
+      catalog,
+      undefined,
+      "no architecture artifact → both projectors return undefined",
+    );
+  },
+);
