@@ -75,6 +75,17 @@ Deno.test("inspection-drone PartDefinitions resumes a durable running r4 by publ
   assertEquals(fixture.completed, 1);
 });
 
+Deno.test("inspection-drone PartDefinitions restores a missing r4 from its WAL before publishing", async () => {
+  const fixture = publishingReplayFixture("publishing", true);
+  const result = await fixture.executor.execute(
+    { kind: "agent", actorId: "agent:test" },
+    fixture.command,
+  );
+  assertEquals(result.agentRuns[0]!.status, "completed");
+  assertEquals(fixture.restoredSnapshots, 1);
+  assertEquals(fixture.providerCalls, 0);
+});
+
 Deno.test("inspection-drone product catalog accepts only the exact r3 identities and ordered usage-to-type pairs", async () => {
   const fixture = productCatalogFixture();
   const catalog = await resolveInspectionDroneV4ProductStructureCatalog(
@@ -206,7 +217,10 @@ function productCatalogFixture() {
   };
 }
 
-function publishingReplayFixture(status: "running" | "publishing") {
+function publishingReplayFixture(
+  status: "running" | "publishing",
+  r4InitiallyMissing = false,
+) {
   const architectureDigest = "a".repeat(64);
   const productDigest = "b".repeat(64);
   const base = {
@@ -259,6 +273,7 @@ function publishingReplayFixture(status: "running" | "publishing") {
     commandReceipts: [],
   } as unknown as Record<string, unknown>;
   let providerCalls = 0, published = 0, completed = 0;
+  let r4Saved = !r4InitiallyMissing, restoredSnapshots = 0;
   const commands = {
     publishRun: async () => {
       published++;
@@ -287,7 +302,12 @@ function publishingReplayFixture(status: "running" | "publishing") {
       commands,
       snapshots: {
         get: async (id: string) =>
-          id === base.id ? base : id === r4.id ? r4 : undefined,
+          id === base.id ? base : id === r4.id && r4Saved ? r4 : undefined,
+        save: async (snapshot: unknown) => {
+          assertEquals(snapshot, r4);
+          r4Saved = true;
+          restoredSnapshots++;
+        },
       },
       architectureCaptures: { read: async () => undefined },
       captures: { read: async () => "{}" },
@@ -334,6 +354,9 @@ function publishingReplayFixture(status: "running" | "publishing") {
     },
     get completed() {
       return completed;
+    },
+    get restoredSnapshots() {
+      return restoredSnapshots;
     },
   };
 }

@@ -224,8 +224,6 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
           capturedAt,
           input.architecture.package.id,
         );
-        await this.d.snapshots.save(snapshot);
-        persisted = true;
         await this.d.publications.save({
           schemaVersion: "inspection-drone-v4-part-definitions-publication/1.0",
           projectId: command.projectId,
@@ -233,6 +231,10 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
           fingerprint,
           snapshot,
         });
+        // The WAL must exist before r4 can become durable: a crash after the
+        // snapshot write is then recoverable without re-reading SysON.
+        await this.d.snapshots.save(snapshot);
+        persisted = true;
         const readback = await this.d.snapshots.get(snapshot.id);
         if (!readback || deterministicJson(readback) !== deterministicJson(snapshot)) {
           throw new Error(
@@ -298,7 +300,14 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       );
     }
     const capture = await this.d.captures.read(publication.fingerprint);
-    const persisted = await this.d.snapshots.get(publication.snapshot.id);
+    let persisted = await this.d.snapshots.get(publication.snapshot.id);
+    if (!persisted) {
+      // A filesystem snapshot store may lose a just-written directory entry
+      // across a crash.  The durable publication record is the source of the
+      // exact bytes and restores it before any project attachment.
+      await this.d.snapshots.save(publication.snapshot);
+      persisted = await this.d.snapshots.get(publication.snapshot.id);
+    }
     if (
       !capture || !persisted ||
       deterministicJson(persisted) !== deterministicJson(publication.snapshot)
