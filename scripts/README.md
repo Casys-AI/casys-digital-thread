@@ -34,6 +34,7 @@ running the task writes local state. Scripts that write always write under
 | `probes/probe-constraint-solver.ts`       | `probe:constraint-solver`        | read  |
 | `probes/probe-coupled-correction.ts`      | `probe:coupled-correction`       | read  |
 | `probes/probe-archive-cascade.ts`         | `probe:archive-cascade`          | read  |
+| `probes/probe-requirement-units.ts`       | `probe:requirement-units`        | write |
 
 ## serve/ — serve local preview; preview:thread and preview:cockpit seed project on first run
 

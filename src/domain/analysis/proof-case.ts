@@ -257,6 +257,23 @@ export function renderOracleRequirementsSysml(
 }
 
 /**
+ * Unit strings that have a confirmed SysML attribute-type mapping and are safe
+ * to pass to renderOracleRequirementsSysml.
+ *
+ * This list mirrors UNIT_TO_SYSML_TYPE exactly and is exported so that the
+ * requirements proposal parser can validate units fail-closed at parse time,
+ * before the renderer is called.  Every entry is backed by a live probe that
+ * confirmed the insert → extract round-trip in SysON.
+ *
+ * Live-probe evidence:
+ *   mm — 2026-08-04, project probe-requirements-2026-08-04, element d6793ccf
+ *   Pa — 2026-08-04, project probe-requirements-2026-08-04, element d6793ccf
+ */
+export const SUPPORTED_ORACLE_UNITS: readonly string[] = [
+  ...UNIT_TO_SYSML_TYPE.keys(),
+];
+
+/**
  * Compute a deterministic SHA-256 fingerprint of a validated requirements
  * list.  Embed this fingerprint in the proof artifact to link the executed
  * evidence to the reviewed source declaration.
