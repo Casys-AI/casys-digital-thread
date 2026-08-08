@@ -3,10 +3,15 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
+import {
+  CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "../captures/file-capture-store.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
-  type Cm01V3ArchitectureCaptureReader,
+  type Cm01V3ProductStructureCaptureReaders,
   COFFEE_MACHINE_CM01_V3_SUBJECT_ID,
   resolveCoffeeMachineCm01V3ProductStructureCatalog,
 } from "./cm01-v3-product-structure-catalog.ts";
@@ -147,8 +152,9 @@ Deno.test("CM-01 V3 Product Structure fails closed when the read capture does no
     declarations: Array<{ id: string; kind: string; label: string }>;
   };
   corrupted.declarations[0]!.label = "TamperedCoffeeMachine";
-  const reader: Cm01V3ArchitectureCaptureReader = {
-    read: () => Promise.resolve(deterministicJson(corrupted)),
+  const reader: Cm01V3ProductStructureCaptureReaders = {
+    architecture: { read: () => Promise.resolve(deterministicJson(corrupted)) },
+    partDefinitions: fixture.reader.partDefinitions,
   };
 
   const catalog = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
@@ -179,7 +185,7 @@ Deno.test("CM-01 V3 Product Structure does not apply to another subject", async 
 async function v3Fixture(): Promise<{
   readonly snapshot: ThreadSnapshot;
   readonly capture: Record<string, unknown>;
-  readonly reader: Cm01V3ArchitectureCaptureReader;
+  readonly reader: Cm01V3ProductStructureCaptureReaders;
   readonly architectureId: string;
   readonly stepId: string;
 }> {
@@ -208,9 +214,15 @@ async function v3Fixture(): Promise<{
     kind: "cm01-sysml-architecture",
     operation: { serverId: "syson", tool: "syson_element_insert_sysml" },
     recipe: { key: "coffee-machine-cm01" },
-    schemaVersion: "coffee-machine-cm01-v3-architecture-capture/1.0",
+    schemaVersion: "coffee-machine-cm01-v3-architecture-capture/1.1",
     scope: { kind: "system" },
-    seed: { artifactId: "seed" },
+    seed: {
+      artifactId: "seed",
+      editingContextId: "editing-context-fixture",
+      fingerprint: fingerprint("e"),
+      projectId: "project-fixture",
+      rootPackageId: "root-package-fixture",
+    },
     semanticArtifactRole: "architecture-model",
     statement: "Exact fixture architecture.",
     trustedRunId: "run:fixture",
@@ -386,13 +398,16 @@ async function v3Fixture(): Promise<{
     }],
     proposedActions: [],
   });
-  const reader: Cm01V3ArchitectureCaptureReader = {
-    read: (fingerprint) =>
-      Promise.resolve(
-        fingerprint.digest === architectureFingerprint.digest
-          ? deterministicJson(capture)
-          : undefined,
-      ),
+  const reader: Cm01V3ProductStructureCaptureReaders = {
+    architecture: {
+      read: (fingerprint) =>
+        Promise.resolve(
+          fingerprint.digest === architectureFingerprint.digest
+            ? deterministicJson(capture)
+            : undefined,
+        ),
+    },
+    partDefinitions: { read: () => Promise.resolve(undefined) },
   };
   return { snapshot, capture, reader, architectureId, stepId };
 }
@@ -857,6 +872,120 @@ Deno.test("CM-01 V3 Product Structure falls back to architecture id when no part
       fixture.architectureId,
       `Component ${component.id} must fall back to architecture.id`,
     );
+  }
+});
+
+Deno.test("CM-01 V3 Product Structure reads verified PartDefinition captures only from their dedicated store", async () => {
+  const fixture = await v3Fixture();
+  const directory = await Deno.makeTempDir({ prefix: "casys-partdef-catalog-" });
+  try {
+    const architectureStore = new FileCaptureStore({
+      ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/architecture`,
+    });
+    const partDefinitionsStore = new FileCaptureStore({
+      ...CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/part-definitions`,
+    });
+    const architecture = fixture.snapshot.artifacts.find((artifact) =>
+      artifact.id === fixture.architectureId
+    );
+    if (!architecture) throw new Error("Fixture has no architecture artifact.");
+    await architectureStore.save(
+      architecture.fingerprint,
+      deterministicJson(fixture.capture),
+    );
+
+    const partCapture = {
+      schemaVersion: "cm01-part-definitions/1.0",
+      elementId: "sysml-coffee-machine",
+      label: "CoffeeMachine",
+      structure: {
+        root: {
+          id: "sysml-coffee-machine",
+          label: "CoffeeMachine",
+          kind: "PartDefinition",
+        },
+        tree: [],
+        partCount: 0,
+        maxDepthReached: false,
+      },
+      editingContextId: "editing-context-fixture",
+      architecturePackageId: "package",
+      capturedAt: AT,
+    };
+    const partFingerprint = await sha256Fingerprint(partCapture);
+    await partDefinitionsStore.save(
+      partFingerprint,
+      deterministicJson(partCapture),
+    );
+    const partArtifactId = `part-definition-coffee-machine-${partFingerprint.digest}`;
+    const partOperation = {
+      serverId: "syson" as const,
+      tool: "syson_part_structure",
+      runId: "run:part-definition",
+    };
+    const snapshot = validateThreadSnapshot({
+      ...fixture.snapshot,
+      artifacts: [...fixture.snapshot.artifacts, {
+        id: partArtifactId,
+        name: "CM-01 CoffeeMachine part definition",
+        kind: "sysml-model" as const,
+        version: partFingerprint.digest,
+        fingerprint: partFingerprint,
+        uri: partDefinitionsStore.uriFor(partFingerprint),
+        producer: partOperation,
+        inputArtifactIds: [fixture.architectureId],
+        freshness: fresh(),
+      }],
+      consumptions: [...fixture.snapshot.consumptions, {
+        id: "consume-architecture-by-part-definition",
+        artifactId: fixture.architectureId,
+        consumer: partOperation,
+        observedFingerprint: architecture.fingerprint,
+        verifiedAt: AT,
+        status: "verified" as const,
+      }],
+      provenance: [...fixture.snapshot.provenance, {
+        id: "part-definition-derived-from-architecture",
+        relation: "derived_from" as const,
+        from: { kind: "artifact" as const, id: partArtifactId },
+        to: { kind: "artifact" as const, id: fixture.architectureId },
+        rationale:
+          "The exact PartDefinition capture read the exact architecture capture.",
+      }, {
+        id: "part-definition-consumes-architecture",
+        relation: "uses" as const,
+        from: {
+          kind: "consumption" as const,
+          id: "consume-architecture-by-part-definition",
+        },
+        to: { kind: "artifact" as const, id: fixture.architectureId },
+        rationale: "The capture executor verified the architecture bytes it read.",
+      }],
+    });
+
+    const resolved = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+      snapshot,
+      { architecture: architectureStore, partDefinitions: partDefinitionsStore },
+    );
+    assertEquals(
+      resolved?.components[0]?.bindings[0]?.evidenceArtifactId,
+      partArtifactId,
+    );
+
+    const wrongDirectory = await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+      snapshot,
+      // This is intentionally the architecture store, not the part-definition
+      // directory. The binding must remain unanchored rather than cross-read.
+      { architecture: architectureStore, partDefinitions: architectureStore },
+    );
+    assertEquals(
+      wrongDirectory?.components[0]?.bindings[0]?.evidenceArtifactId,
+      fixture.architectureId,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
   }
 });
 

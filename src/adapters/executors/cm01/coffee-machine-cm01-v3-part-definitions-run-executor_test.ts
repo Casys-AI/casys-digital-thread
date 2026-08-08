@@ -199,6 +199,38 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "assertPartDefinitionsNotRemoved fails closed when the ancestor lineage cycles",
+  async () => {
+    const base = ratchetSnapshot("ratchet-cycle-basis", 3, {
+      snapshotId: "ratchet-cycle-one",
+      revision: 1,
+    });
+    const one = ratchetSnapshot("ratchet-cycle-one", 1, {
+      snapshotId: "ratchet-cycle-two",
+      revision: 2,
+    });
+    const two = ratchetSnapshot("ratchet-cycle-two", 2, {
+      snapshotId: "ratchet-cycle-one",
+      revision: 1,
+    });
+    const snapshots = {
+      get: (id: string) =>
+        Promise.resolve(
+          id === one.id ? one : id === two.id ? two : undefined,
+        ),
+      latest: () => Promise.resolve(undefined),
+      save: () => Promise.resolve(),
+    };
+
+    await assertRejects(
+      () => assertPartDefinitionsNotRemoved(base, snapshots),
+      PartDefinitionsArtifactRemovedError,
+      "contains a cycle",
+    );
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Ratchet — through executor path
 // ---------------------------------------------------------------------------
@@ -1662,6 +1694,62 @@ function ctx(commandId: string, expectedRevision: number) {
     projectId: "coffee-machine-cm01-v3",
     expectedRevision,
     issuedAt: "2026-08-08T09:00:00.000Z",
+  };
+}
+
+function ratchetSnapshot(
+  id: string,
+  revision: number,
+  previous?: { snapshotId: string; revision: number },
+): ThreadSnapshot {
+  const freshness = {
+    status: "fresh" as const,
+    changedAt: "2026-08-08T09:00:00.000Z",
+    invalidatedByChangeIds: [],
+  };
+  return {
+    schemaVersion: "1.0",
+    id,
+    revision,
+    ...(previous ? { previous } : {}),
+    generatedAt: "2026-08-08T09:00:00.000Z",
+    subject: {
+      id: "project:coffee-machine-cm01-v3",
+      name: "CM-01",
+      kind: "system",
+      version: "v3",
+      modelArtifactId: "ratchet-base-artifact",
+    },
+    freshness,
+    changeSet: {
+      id: `changeset-${id}`,
+      name: "Ratchet cycle fixture",
+      status: "applied",
+      createdAt: "2026-08-08T09:00:00.000Z",
+      appliedAt: "2026-08-08T09:00:00.000Z",
+      changes: [],
+    },
+    artifacts: [{
+      id: "ratchet-base-artifact",
+      name: "Base model",
+      kind: "sysml-model",
+      version: "v1",
+      fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      producer: {
+        serverId: "syson",
+        tool: "syson_part_structure",
+        runId: "run:ratchet-cycle",
+      },
+      inputArtifactIds: [],
+      freshness,
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
   };
 }
 

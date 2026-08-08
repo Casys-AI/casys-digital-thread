@@ -11,6 +11,7 @@ import {
 } from "../../src/adapters/stores/file-cockpit-focus-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
 } from "../../src/adapters/captures/file-capture-store.ts";
@@ -576,6 +577,9 @@ if (import.meta.main) {
     "state/local/approved-brief-captures";
   const cm01ArchitectureCaptureDirectory = cliArgs["cm01-architecture-capture-dir"] ??
     "state/local/coffee-machine-cm01-v3-architecture-captures";
+  const cm01PartDefinitionsCaptureDirectory =
+    cliArgs["cm01-part-definitions-capture-dir"] ??
+      "state/local/cm01-part-definitions-captures";
   const html = await Deno.readTextFile(htmlPath);
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
@@ -592,6 +596,10 @@ if (import.meta.main) {
   const cm01ArchitectureCaptures = new FileCaptureStore({
     ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
     directory: cm01ArchitectureCaptureDirectory,
+  });
+  const cm01PartDefinitionsCaptures = new FileCaptureStore({
+    ...CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+    directory: cm01PartDefinitionsCaptureDirectory,
   });
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
@@ -638,7 +646,10 @@ if (import.meta.main) {
     componentCatalogForSnapshot: async (snapshot) =>
       await resolveCoffeeMachineCm01V3ProductStructureCatalog(
         snapshot,
-        cm01ArchitectureCaptures,
+        {
+          architecture: cm01ArchitectureCaptures,
+          partDefinitions: cm01PartDefinitionsCaptures,
+        },
       ),
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),

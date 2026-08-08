@@ -263,7 +263,12 @@ export async function assertPartDefinitionsNotRemoved(
   const visited = new Set<string>();
   while (cursor) {
     const key = `${cursor.snapshotId}:${cursor.revision}`;
-    if (visited.has(key)) break;
+    if (visited.has(key)) {
+      throw new PartDefinitionsArtifactRemovedError(
+        basis.subject.id,
+        `Ancestor lineage contains a cycle at ${cursor.snapshotId}@${cursor.revision}.`,
+      );
+    }
     visited.add(key);
     let ancestor: ThreadSnapshot | undefined;
     try {

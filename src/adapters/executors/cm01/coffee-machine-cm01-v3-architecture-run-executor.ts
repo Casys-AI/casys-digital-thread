@@ -56,7 +56,7 @@ import {
 } from "../executor-run-helpers.ts";
 
 export const COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA =
-  "coffee-machine-cm01-v3-architecture-capture/1.0" as const;
+  "coffee-machine-cm01-v3-architecture-capture/1.1" as const;
 export const COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION =
   COFFEE_MACHINE_CM01_V3_OPERATION_REFS.architecture;
 export const COFFEE_MACHINE_CM01_V3_ARCHITECTURE_ARTIFACT_ROLE =
@@ -639,6 +639,7 @@ async function materializeArchitecture(input: {
     seed: {
       artifactId: input.seed.artifactId,
       fingerprint: input.seed.fingerprint,
+      editingContextId: input.seed.normalizedResults.project.editingContextId,
       projectId: input.seed.normalizedResults.project.id,
       rootPackageId: input.seed.normalizedResults.rootPackage.id,
     },

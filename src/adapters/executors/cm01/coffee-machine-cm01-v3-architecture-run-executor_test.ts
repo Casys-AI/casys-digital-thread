@@ -121,6 +121,18 @@ Deno.test("CM-01 architecture executor inserts the closed recipe once and publis
     );
     const snapshot = await fixture.snapshots.get(run.resultSnapshot!.snapshotId);
     assertExists(snapshot);
+    const architectureArtifact = snapshot.artifacts.find((artifact) =>
+      artifact.id.startsWith("coffee-machine-cm01-v3-architecture-")
+    );
+    assertExists(architectureArtifact);
+    const architectureCapture = JSON.parse(
+      await fixture.captures.read(architectureArtifact.fingerprint) ?? "",
+    ) as { seed?: { editingContextId?: unknown } };
+    assertEquals(
+      architectureCapture.seed?.editingContextId,
+      "editing-context-456",
+      "The verified architecture capture carries the provider editing context for downstream identity joins.",
+    );
     assertEquals(
       coffeeMachineCm01V3ArchitectureGoldenArtifact(snapshot).role,
       "architecture-model",

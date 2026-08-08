@@ -27,6 +27,8 @@ export const CM01_V3_PRODUCT_STRUCTURE_IDENTITIES = Object.freeze({
 });
 
 const CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA =
+  "coffee-machine-cm01-v3-architecture-capture/1.1" as const;
+const CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA_LEGACY =
   "coffee-machine-cm01-v3-architecture-capture/1.0" as const;
 const CM01_V3_ARCHITECTURE_CAPTURE_KIND = "cm01-sysml-architecture" as const;
 const CM01_V3_PART_DEFINITION_KIND =
@@ -37,8 +39,18 @@ const CM01_V3_PART_DEFINITION_KIND =
  * fingerprint before returning them. This narrow reader keeps the BFF free of
  * storage paths and provider clients.
  */
-export interface Cm01V3ArchitectureCaptureReader {
+export interface Cm01V3CaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+}
+
+/**
+ * The two capture namespaces are deliberately separate.  A part-definition
+ * digest must never be looked up in the architecture store simply because
+ * both records happen to be JSON.
+ */
+export interface Cm01V3ProductStructureCaptureReaders {
+  readonly architecture: Cm01V3CaptureReader;
+  readonly partDefinitions: Cm01V3CaptureReader;
 }
 
 /**
@@ -52,7 +64,7 @@ export interface Cm01V3ArchitectureCaptureReader {
  */
 export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
   snapshot: ThreadSnapshot,
-  captures: Cm01V3ArchitectureCaptureReader,
+  captures: Cm01V3ProductStructureCaptureReaders,
 ): Promise<ThreadComponentCatalog | undefined> {
   if (snapshot.subject.id !== COFFEE_MACHINE_CM01_V3_SUBJECT_ID) {
     return undefined;
@@ -68,10 +80,16 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
       "No single fresh CM-01 V3 SysON architecture capture is attached to this revision.",
     );
   }
+  if (!canonicalArchitectureArtifact(architecture)) {
+    return unavailable(
+      snapshot.subject.id,
+      "The CM-01 V3 architecture artifact does not carry its canonical content-addressed identity.",
+    );
+  }
 
   let capture: Cm01V3ArchitectureCapture;
   try {
-    const text = await captures.read(architecture.fingerprint);
+    const text = await captures.architecture.read(architecture.fingerprint);
     if (!text) {
       return unavailable(
         snapshot.subject.id,
@@ -122,9 +140,9 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
   const r3WholeAssembly = freshR3WholeAssemblyArtifactMap(artifacts);
   const partDefMap = await buildPartDefinitionMap(
     artifacts,
-    captures,
-    architecture.id,
-    capture.declarations,
+    captures.partDefinitions,
+    architecture,
+    capture,
   );
   const rootDefinition = root[0]!;
   return validateThreadComponentCatalog({
@@ -360,9 +378,9 @@ function r3AssetUrl(semanticKey: string): string {
  */
 async function buildPartDefinitionMap(
   artifacts: readonly ThreadArtifact[],
-  captures: Cm01V3ArchitectureCaptureReader,
-  architectureArtifactId: string,
-  declarations: readonly Cm01V3PartDefinition[],
+  captures: Cm01V3CaptureReader,
+  architecture: ThreadArtifact,
+  context: Cm01V3ArchitectureCapture,
 ): Promise<ReadonlyMap<string, string>> {
   const map = new Map<string, string>();
   for (const a of artifacts) {
@@ -372,20 +390,24 @@ async function buildPartDefinitionMap(
       !a.uri.startsWith(CM01_V3_PART_DEFINITIONS_URI_PREFIX)
     ) continue;
     if (
+      a.freshness.status !== "fresh" ||
       a.producer.serverId !== "syson" ||
       a.producer.tool !== "syson_part_structure" ||
-      !a.inputArtifactIds.includes(architectureArtifactId) ||
+      a.inputArtifactIds.length !== 1 ||
+      a.inputArtifactIds[0] !== architecture.id ||
       typeof a.name !== "string"
-    ) continue;
+    ) return new Map();
     const m = CM01_V3_PART_DEF_NAME_RE.exec(a.name);
-    if (!m) continue;
+    if (!m) return new Map();
     const label = m[1]!;
-    const expected = declarations.find((declaration) => declaration.label === label);
+    const expected = context.declarations.find((declaration) =>
+      declaration.label === label
+    );
     if (!expected || map.has(label)) return new Map();
     try {
       const text = await captures.read(a.fingerprint);
       if (
-        !text || !(await partDefinitionCaptureMatches(text, a.fingerprint, expected))
+        !text || !(await partDefinitionCaptureMatches(text, a, expected, context))
       ) {
         return new Map();
       }
@@ -405,8 +427,9 @@ async function buildPartDefinitionMap(
  */
 async function partDefinitionCaptureMatches(
   text: string,
-  expectedFingerprint: ContentFingerprint,
+  artifact: ThreadArtifact,
   expected: Cm01V3PartDefinition,
+  context: Cm01V3ArchitectureCapture,
 ): Promise<boolean> {
   try {
     const value = JSON.parse(text);
@@ -421,14 +444,78 @@ async function partDefinitionCaptureMatches(
       "structure",
     ], "CM-01 part-definition capture");
     const fingerprint = await sha256Fingerprint(capture);
-    return fingerprint.algorithm === expectedFingerprint.algorithm &&
-      fingerprint.digest === expectedFingerprint.digest &&
+    const digest = fingerprint.digest;
+    return fingerprint.algorithm === artifact.fingerprint.algorithm &&
+      digest === artifact.fingerprint.digest &&
+      artifact.version === digest &&
+      artifact.id === canonicalPartDefinitionArtifactId(expected.label, digest) &&
+      artifact.uri === `${CM01_V3_PART_DEFINITIONS_URI_PREFIX}sha256/${digest}` &&
       capture.schemaVersion === "cm01-part-definitions/1.0" &&
-      capture.elementId === expected.id && capture.label === expected.label &&
-      capture.structure !== undefined;
+      capture.elementId === expected.id &&
+      capture.label === expected.label &&
+      capture.architecturePackageId === context.architecturePackageId &&
+      context.editingContextId !== undefined &&
+      capture.editingContextId === context.editingContextId &&
+      validPartStructure(capture.structure, expected);
   } catch {
     return false;
   }
+}
+
+function canonicalPartDefinitionArtifactId(label: string, digest: string): string {
+  return `part-definition-${semanticKey(label)}-${digest}`;
+}
+
+function validPartStructure(
+  value: unknown,
+  expected: Cm01V3PartDefinition,
+): boolean {
+  try {
+    const structure = record(value, "CM-01 part-definition structure");
+    exactKeys(
+      structure,
+      ["maxDepthReached", "partCount", "root", "tree"],
+      "CM-01 part-definition structure",
+    );
+    if (
+      structure.maxDepthReached !== false || !Number.isInteger(structure.partCount) ||
+      (structure.partCount as number) < 0 || !Array.isArray(structure.tree)
+    ) return false;
+    const root = record(structure.root, "CM-01 part-definition root");
+    exactKeys(root, ["id", "kind", "label"], "CM-01 part-definition root");
+    if (
+      root.id !== expected.id || root.label !== expected.label ||
+      typeof root.kind !== "string" || !root.kind.trim()
+    ) return false;
+    return countPartTree(structure.tree, "CM-01 part-definition tree") ===
+      structure.partCount;
+  } catch {
+    return false;
+  }
+}
+
+function countPartTree(nodes: readonly unknown[], context: string): number {
+  let count = 0;
+  for (const [index, candidate] of nodes.entries()) {
+    const node = record(candidate, `${context}[${index}]`);
+    exactKeys(
+      node,
+      ["children", "id", "kind", "label", "quantity", "quantitySource"],
+      `${context}[${index}]`,
+    );
+    if (
+      typeof node.id !== "string" || !node.id.trim() ||
+      typeof node.label !== "string" || typeof node.kind !== "string" ||
+      !node.kind.trim() ||
+      (typeof node.quantity !== "number" && typeof node.quantity !== "string") ||
+      typeof node.quantitySource !== "string" || !node.quantitySource.trim() ||
+      !Array.isArray(node.children)
+    ) {
+      throw new Error(`${context}[${index}] has an invalid node.`);
+    }
+    count += 1 + countPartTree(node.children, `${context}[${index}].children`);
+  }
+  return count;
 }
 
 function oneFreshArchitecture(
@@ -440,6 +527,15 @@ function oneFreshArchitecture(
     artifact.freshness.status === "fresh"
   );
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+function canonicalArchitectureArtifact(artifact: ThreadArtifact): boolean {
+  const digest = artifact.fingerprint.digest;
+  return artifact.fingerprint.algorithm === "sha256" &&
+    /^[a-f0-9]{64}$/.test(digest) &&
+    artifact.version === digest &&
+    artifact.id === `coffee-machine-cm01-v3-architecture-${digest}` &&
+    artifact.uri === `${CM01_V3_ARCHITECTURE_URI_PREFIX}sha256/${digest}`;
 }
 
 function freshR2AssemblyStep(
@@ -582,6 +678,9 @@ interface Cm01V3PartDefinition {
 
 interface Cm01V3ArchitectureCapture {
   readonly declarations: readonly Cm01V3PartDefinition[];
+  readonly architecturePackageId: string;
+  /** Legacy 1.0 captures do not contain this context, so cannot anchor PartDefs. */
+  readonly editingContextId: string | undefined;
 }
 
 async function parseArchitectureCapture(
@@ -611,7 +710,8 @@ async function parseArchitectureCapture(
     "trustedRunId",
   ], "CM-01 V3 architecture capture");
   if (
-    root.schemaVersion !== CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA ||
+    (root.schemaVersion !== CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA &&
+      root.schemaVersion !== CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA_LEGACY) ||
     root.kind !== CM01_V3_ARCHITECTURE_CAPTURE_KIND ||
     root.semanticArtifactRole !== "architecture-model"
   ) {
@@ -656,7 +756,41 @@ async function parseArchitectureCapture(
       "CM-01 V3 architecture capture has duplicate SysON definition ids.",
     );
   }
-  return { declarations };
+  const architecturePackage = record(
+    root.architecturePackage,
+    "CM-01 V3 architecture package",
+  );
+  exactKeys(
+    architecturePackage,
+    ["id", "kind", "label"],
+    "CM-01 V3 architecture package",
+  );
+  const architecturePackageId = nonEmpty(
+    architecturePackage.id,
+    "CM-01 V3 architecture package id",
+  );
+  const seed = record(root.seed, "CM-01 V3 architecture seed");
+  const editingContextId = root.schemaVersion === CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA
+    ? (() => {
+      exactKeys(
+        seed,
+        ["artifactId", "editingContextId", "fingerprint", "projectId", "rootPackageId"],
+        "CM-01 V3 architecture seed",
+      );
+      return nonEmpty(
+        seed.editingContextId,
+        "CM-01 V3 architecture seed editing context id",
+      );
+    })()
+    : (() => {
+      exactKeys(
+        seed,
+        ["artifactId", "fingerprint", "projectId", "rootPackageId"],
+        "CM-01 V3 architecture seed",
+      );
+      return undefined;
+    })();
+  return { declarations, architecturePackageId, editingContextId };
 }
 
 function semanticKey(label: string): string {
