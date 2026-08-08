@@ -19,7 +19,10 @@ import type {
   EvidenceGraphModel,
   EvidenceGraphStub,
 } from "./evidence-graph-model.ts";
-import { applyEssentialFilter } from "./essential-graph-filter.ts";
+import {
+  applyEssentialFilter,
+  isSupportingNode,
+} from "./essential-graph-filter.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -182,6 +185,13 @@ export interface EvidenceCanvasProjection {
    * no camera reset (Obsidian-style). Undefined on the full map.
    */
   readonly localDepthByRefKey?: ReadonlyMap<string, number>;
+  /**
+   * Local view only: ref keys of the supporting (plumbing) nodes in the
+   * neighbourhood. Pure DISPLAY input for the burger toggle « éléments
+   * digital thread » — hiding them never re-layouts. Undefined on the full
+   * map, where the essential filter removes them upstream instead.
+   */
+  readonly localSupportingRefKeys?: ReadonlySet<string>;
   /**
    * Count of supporting nodes HIDDEN by the essential filter in the full-map
    * view. The essential filter is applied once, upstream, by
@@ -351,16 +361,16 @@ function bfsDepths(
 }
 
 /**
- * Builds the local-view projection: the SAME essential display mask as the
- * full map (operator decision 2026-08-08 — one reading everywhere; the folded
- * plumbing stays exhaustively listed in the inspector), plus two local rules:
+ * Builds the local-view projection. The local view computes EVERYTHING
+ * (essential facts AND supporting plumbing) and exposes two display maps —
+ * localDepthByRefKey and localSupportingRefKeys — so the renderers can filter
+ * without ever re-layouting:
  *
- *   1. Depths are measured BEFORE masking, over the raw neighbourhood, so the
- *      1/2/3 display filter counts real causal hops — a neighbour reached
- *      through a folded change stays a depth-2 neighbour, not a depth-1 one.
- *   2. The focused node is ALWAYS visible, even when it is itself a
- *      supporting record (e.g. opened from an inspector list): a local view
- *      without its own focus would read as a broken page.
+ *   - the 1/2/3 depth control (default 1) hides beyond-depth nodes in place;
+ *   - the burger toggle « éléments digital thread » (operator decision
+ *     2026-08-08, checked by default) shows or hides the supporting nodes in
+ *     place. Showing them keeps inspector-list clicks landing on a visible
+ *     node, which is the natural reading the operator asked for.
  */
 function localProjection(
   focusRef: ThreadGraphRef,
@@ -370,36 +380,21 @@ function localProjection(
   },
   foldedInstrumentCount: number,
 ): EvidenceCanvasProjection {
-  const key = (ref: ThreadGraphRef) => `${ref.kind}:${ref.id}`;
   const depths = bfsDepths(focusRef, neighborhood);
-  const filtered = applyEssentialFilter(
-    neighborhood.nodes as ThreadGraphNode[],
-    neighborhood.edges as ThreadGraphEdge[],
+  const supportingRefKeys = new Set<string>(
+    neighborhood.nodes
+      .filter((node) => isSupportingNode(node))
+      .map((node) => `${node.ref.kind}:${node.ref.id}`),
   );
 
-  const focusKey = key(focusRef);
-  let nodes = filtered.nodes;
-  let edges = filtered.edges;
-  if (!nodes.some((node) => key(node.ref) === focusKey)) {
-    const focusNode = neighborhood.nodes.find(
-      (node) => key(node.ref) === focusKey,
-    );
-    if (focusNode) {
-      nodes = [...nodes, focusNode];
-      const visible = new Set(nodes.map((node) => key(node.ref)));
-      edges = neighborhood.edges.filter(
-        (edge) => visible.has(key(edge.from)) && visible.has(key(edge.to)),
-      );
-    }
-  }
-
   return {
-    nodes,
-    edges,
-    displayedCount: nodes.length,
+    nodes: neighborhood.nodes,
+    edges: neighborhood.edges,
+    displayedCount: neighborhood.nodes.length,
     foldedInstrumentCount,
     isFiltered: true,
     localDepthByRefKey: depths,
-    supportingNodeCount: filtered.hiddenCount,
+    localSupportingRefKeys: supportingRefKeys,
+    supportingNodeCount: 0,
   };
 }

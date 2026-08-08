@@ -488,11 +488,13 @@ Deno.test(
 );
 
 Deno.test(
-  "the local view applies the same essential mask as the full map and counts what it hides",
+  "the local view keeps its supporting nodes and marks them for the display toggle",
   () => {
-    // Operator decision 2026-08-08: one reading everywhere. The off-path
-    // change folds in the local view too, and supportingNodeCount says so —
-    // the folded plumbing stays exhaustively listed in the inspector.
+    // Operator decision 2026-08-08 (burger « éléments digital thread »,
+    // coché par défaut) : la vue locale CALCULE tout et expose
+    // localSupportingRefKeys — le repli devient un filtre d'affichage
+    // débrayable, jamais une suppression. Un clic depuis les listes de
+    // l'inspecteur atterrit ainsi sur un nœud visible par défaut.
     const req = requirementNode("REQ");
     const obs = observationNode("OBS");
     const chg = changeNode("CHG");
@@ -517,48 +519,19 @@ Deno.test(
     assertEquals(projection.isFiltered, true);
     assertEquals(
       projection.nodes.map((n) => n.ref.id).sort(),
-      ["OBS", "REQ"],
-      "The off-path change folds in the local view exactly as on the full map.",
+      ["CHG", "OBS", "REQ"],
+      "The local view computes everything, plumbing included.",
     );
     assertEquals(
-      projection.supportingNodeCount,
-      1,
-      "The banner must count the supporting node hidden by the local mask.",
-    );
-  },
-);
-
-Deno.test(
-  "the focused node stays visible in the local view even when it is a supporting record",
-  () => {
-    // Clicking a change from an inspector list focuses a supporting node:
-    // the local view must keep it on screen — a local view without its own
-    // focus reads as a broken page.
-    const req = requirementNode("REQ");
-    const obs = observationNode("OBS");
-    const chg = changeNode("CHG");
-
-    const rawGraph = {
-      nodes: [req, obs, chg],
-      edges: [
-        edge("e1", chg.ref, req.ref, "changes"),
-        edge("e2", req.ref, obs.ref, "input_to"),
-      ],
-    };
-
-    const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
-    const projection = buildEvidenceCanvasProjection(
-      evidenceModel,
-      0,
-      chg.ref,
-      new Map(),
-    );
-
-    assertEquals(projection.isFiltered, true);
-    assertEquals(
-      projection.nodes.some((n) => n.ref.id === "CHG"),
+      projection.localSupportingRefKeys !== undefined &&
+        projection.localSupportingRefKeys.has("change:CHG"),
       true,
-      "The focused supporting node must never be masked out of its own view.",
+      "The supporting change must be marked for the display toggle.",
+    );
+    assertEquals(
+      projection.localSupportingRefKeys!.has("requirement:REQ"),
+      false,
+      "Essential facts are never marked as supporting.",
     );
   },
 );

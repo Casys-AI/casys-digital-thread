@@ -44,6 +44,13 @@ export interface EvidenceExplorationProps {
    */
   displayDepth?: number;
   /**
+   * LOCAL view: show the supporting (digital-thread plumbing) nodes. Pure
+   * display filter over projection.localSupportingRefKeys — toggling shows or
+   * hides them in place, no re-layout. Defaults to true (operator decision
+   * 2026-08-08: inspector-list clicks should land on a visible node).
+   */
+  showSupporting?: boolean;
+  /**
    * Compact mode — intended for the feed card vignette (FeedLineageGraph).
    *
    * When true:
@@ -63,6 +70,7 @@ export function EvidenceExploration({
   evidenceModel,
   projection,
   displayDepth,
+  showSupporting = true,
   selection,
   focus: _focus,
   onSelectionChange,
@@ -168,9 +176,15 @@ export function EvidenceExploration({
     const depths = projection.isFiltered
       ? projection.localDepthByRefKey
       : undefined;
+    const supporting = projection.isFiltered
+      ? projection.localSupportingRefKeys
+      : undefined;
     const hiddenAtDepth = (key: string): boolean => {
-      if (!depths || displayDepth === undefined) return false;
-      return (depths.get(key) ?? 0) > displayDepth;
+      if (depths && displayDepth !== undefined) {
+        if ((depths.get(key) ?? 0) > displayDepth) return true;
+      }
+      if (!showSupporting && supporting?.has(key)) return true;
+      return false;
     };
 
     sigma.setSetting("nodeReducer", (node, data) => {
@@ -189,7 +203,7 @@ export function EvidenceExploration({
       return { ...data, highlighted: false };
     });
     sigma.refresh();
-  }, [selection, explorationModel, displayDepth, projection]);
+  }, [selection, explorationModel, displayDepth, showSupporting, projection]);
 
   // Truthful legend counters: when the visible-depth filter hides nodes, the
   // OUTILS and COMPOSANTES counts must reflect what is actually on screen,
@@ -198,7 +212,12 @@ export function EvidenceExploration({
     const depths = projection.isFiltered
       ? projection.localDepthByRefKey
       : undefined;
-    if (!depths || displayDepth === undefined) {
+    const supporting = projection.isFiltered
+      ? projection.localSupportingRefKeys
+      : undefined;
+    const filtersActive = (depths && displayDepth !== undefined) ||
+      (!showSupporting && supporting);
+    if (!filtersActive) {
       return {
         legend: explorationModel.legend,
         systemLegend: explorationModel.systemLegend,
@@ -207,7 +226,10 @@ export function EvidenceExploration({
     const systemCounts = new Map<string, number>();
     const componentCounts = new Map<number, number>();
     explorationModel.graph.forEachNode((key, attrs) => {
-      if ((depths.get(key) ?? 0) > displayDepth) return;
+      if (depths && displayDepth !== undefined) {
+        if ((depths.get(key) ?? 0) > displayDepth) return;
+      }
+      if (!showSupporting && supporting?.has(key)) return;
       const system = attrs.node.system;
       systemCounts.set(system, (systemCounts.get(system) ?? 0) + 1);
       if (attrs.componentId !== undefined) {
@@ -231,7 +253,7 @@ export function EvidenceExploration({
         }))
         .filter((item) => item.visibleNodeCount > 0),
     };
-  }, [explorationModel, displayDepth, projection]);
+  }, [explorationModel, displayDepth, showSupporting, projection]);
 
   return (
     <div class="evidence-exploration">

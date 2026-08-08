@@ -134,6 +134,10 @@ export function ThreadWorkbench({
   const [localDepth, setLocalDepth] = useState<1 | 2 | 3>(1);
   // Panneau burger des réglages du graphe local (fermé par défaut).
   const [graphMenuOpen, setGraphMenuOpen] = useState(false);
+  // Affichage des éléments digital thread (plomberie) en vue locale.
+  // Décision opérateur 2026-08-08 : coché par défaut — un clic depuis les
+  // listes de l'inspecteur atterrit ainsi sur un nœud visible.
+  const [showSupportingLocal, setShowSupportingLocal] = useState(true);
   // Feed component filter: undefined = "Tout le projet", string = part id or "assembly".
   const [feedFilterComponentId, setFeedFilterComponentId] = useState<
     string | undefined
@@ -390,9 +394,12 @@ export function ThreadWorkbench({
   // shows — the truthful banner count and the Carte's filtered node set.
   const depthKey = (ref: ThreadGraphRef) => `${ref.kind}:${ref.id}`;
   const withinLocalDepth = (ref: ThreadGraphRef): boolean => {
+    if (!evidenceCanvas.isFiltered) return true;
     const depths = evidenceCanvas.localDepthByRefKey;
-    if (!evidenceCanvas.isFiltered || !depths) return true;
-    return (depths.get(depthKey(ref)) ?? 0) <= localDepth;
+    if (depths && (depths.get(depthKey(ref)) ?? 0) > localDepth) return false;
+    const supporting = evidenceCanvas.localSupportingRefKeys;
+    if (!showSupportingLocal && supporting?.has(depthKey(ref))) return false;
+    return true;
   };
   const localVisibleCount = evidenceCanvas.nodes
     .filter((n) => withinLocalDepth(n.ref)).length;
@@ -1006,6 +1013,21 @@ export function ThreadWorkbench({
                                   </button>
                                 ))}
                               </div>
+                              <p class="evidence-graph-menu-label">
+                                AFFICHER
+                              </p>
+                              <label class="evidence-graph-menu-check">
+                                <input
+                                  type="checkbox"
+                                  checked={showSupportingLocal}
+                                  onChange={(event) =>
+                                    setShowSupportingLocal(
+                                      (event.target as HTMLInputElement)
+                                        .checked,
+                                    )}
+                                />
+                                Éléments digital thread
+                              </label>
                             </div>
                           )}
                         </div>
@@ -1052,6 +1074,7 @@ export function ThreadWorkbench({
                           evidenceModel={evidenceModel}
                           projection={evidenceCanvas}
                           displayDepth={localDepth}
+                          showSupporting={showSupportingLocal}
                           selection={visibleGraphSelection(
                             versionedProvenance,
                             graphSelection,

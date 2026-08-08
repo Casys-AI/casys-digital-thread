@@ -1371,3 +1371,19 @@
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.06em;
 }
+
+.evidence-graph-menu-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-top: var(--space-4);
+  color: var(--text);
+  font: var(--text-xs)/1.2 var(--sans);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.evidence-graph-menu-check > input {
+  margin: 0;
+  accent-color: var(--muted);
+}
