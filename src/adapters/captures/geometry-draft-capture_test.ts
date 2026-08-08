@@ -31,7 +31,7 @@ import {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 const HEX64 = "a".repeat(64);
-const VALID_SCRIPT = `from build123d import *\nresult = Box(10, 10, 10)\n`;
+const VALID_SCRIPT = `from build123d import Box\nresult = Box(10, 10, 10)\n`;
 
 const VALID_MANIFEST: GeometryManifest = {
   schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
