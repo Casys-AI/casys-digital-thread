@@ -37,6 +37,13 @@ export interface EvidenceExplorationProps {
   /** Fires on clickNode or clickStage (undefined = background click). */
   onSelectionChange?: (selection: ThreadGraphSelection | undefined) => void;
   /**
+   * Visible neighbour depth in the LOCAL view (Obsidian-style). The layout is
+   * computed once at the projection's max depth; this value only drives sigma
+   * node/edge reducers, so changing it makes nodes appear or disappear in
+   * place — no re-layout, no camera reset. Ignored on the full map.
+   */
+  displayDepth?: number;
+  /**
    * Compact mode — intended for the feed card vignette (FeedLineageGraph).
    *
    * When true:
@@ -55,6 +62,7 @@ export interface EvidenceExplorationProps {
 export function EvidenceExploration({
   evidenceModel,
   projection,
+  displayDepth,
   selection,
   focus: _focus,
   onSelectionChange,
@@ -148,16 +156,25 @@ export function EvidenceExploration({
     };
   }, [explorationModel, compact]);
 
-  // Highlight selected node in sigma whenever selection changes.
+  // Highlight selected node + apply the visible-depth display filter.
+  // Both are pure sigma reducers on the SAME mounted instance: selection and
+  // depth changes repaint in place, never re-layout or reset the camera.
   useEffect(() => {
     const sigma = sigmaRef.current;
     if (!sigma) return;
     const selectedKey = selection?.kind === "node"
       ? `${selection.ref.kind}:${selection.ref.id}`
       : undefined;
+    const depths = projection.isFiltered
+      ? projection.localDepthByRefKey
+      : undefined;
+    const hiddenAtDepth = (key: string): boolean => {
+      if (!depths || displayDepth === undefined) return false;
+      return (depths.get(key) ?? 0) > displayDepth;
+    };
 
-    // Re-render with updated highlighted state.
     sigma.setSetting("nodeReducer", (node, data) => {
+      if (hiddenAtDepth(node)) return { ...data, hidden: true };
       if (!selectedKey) return data;
       if (node === selectedKey) {
         return {
@@ -172,9 +189,49 @@ export function EvidenceExploration({
       return { ...data, highlighted: false };
     });
     sigma.refresh();
-  }, [selection, explorationModel]);
+  }, [selection, explorationModel, displayDepth, projection]);
 
-  const legend = explorationModel.legend;
+  // Truthful legend counters: when the visible-depth filter hides nodes, the
+  // OUTILS and COMPOSANTES counts must reflect what is actually on screen,
+  // not the computed max-depth neighbourhood.
+  const { legend, systemLegend } = useMemo(() => {
+    const depths = projection.isFiltered
+      ? projection.localDepthByRefKey
+      : undefined;
+    if (!depths || displayDepth === undefined) {
+      return {
+        legend: explorationModel.legend,
+        systemLegend: explorationModel.systemLegend,
+      };
+    }
+    const systemCounts = new Map<string, number>();
+    const componentCounts = new Map<number, number>();
+    explorationModel.graph.forEachNode((key, attrs) => {
+      if ((depths.get(key) ?? 0) > displayDepth) return;
+      const system = attrs.node.system;
+      systemCounts.set(system, (systemCounts.get(system) ?? 0) + 1);
+      if (attrs.componentId !== undefined) {
+        componentCounts.set(
+          attrs.componentId,
+          (componentCounts.get(attrs.componentId) ?? 0) + 1,
+        );
+      }
+    });
+    return {
+      systemLegend: explorationModel.systemLegend
+        .map((item) => ({ ...item, count: systemCounts.get(item.system) ?? 0 }))
+        .filter((item) => item.count > 0),
+      legend: explorationModel.legend
+        .map((item) => ({
+          ...item,
+          visibleNodeCount: item.componentIds.reduce(
+            (acc, id) => acc + (componentCounts.get(id) ?? 0),
+            0,
+          ),
+        }))
+        .filter((item) => item.visibleNodeCount > 0),
+    };
+  }, [explorationModel, displayDepth, projection]);
 
   return (
     <div class="evidence-exploration">
@@ -188,10 +245,10 @@ export function EvidenceExploration({
           class="evidence-exploration-legend"
           aria-label="Evidence legend"
         >
-          {explorationModel.systemLegend.length > 0 && (
+          {systemLegend.length > 0 && (
             <>
               <p class="evidence-exploration-legend-title">OUTILS</p>
-              {explorationModel.systemLegend.map((item) => (
+              {systemLegend.map((item) => (
                 <span
                   key={item.system}
                   class="evidence-exploration-legend-chip"

@@ -129,6 +129,8 @@ export function ThreadWorkbench({
   // Profondeur du voisinage en vue locale (façon Obsidian). Décision
   // opérateur 2026-08-08 : défaut 1 — les voisins immédiats seulement.
   const [localDepth, setLocalDepth] = useState<1 | 2 | 3>(1);
+  // Panneau burger des réglages du graphe local (fermé par défaut).
+  const [graphMenuOpen, setGraphMenuOpen] = useState(false);
   // Feed component filter: undefined = "Tout le projet", string = part id or "assembly".
   const [feedFilterComponentId, setFeedFilterComponentId] = useState<
     string | undefined
@@ -270,6 +272,30 @@ export function ThreadWorkbench({
     return buildPartAnchorage(thread.graph, thread.components);
   }, [workbench]);
 
+  const versionedProvenanceMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    return buildVersionedProvenanceProjection(
+      workbench.thread.graph,
+      workbench.thread.evidenceFamilyGraph,
+    );
+  }, [workbench]);
+
+  // The projection identity must be stable across non-data renders (depth
+  // control, selection highlight): rebuilding it per render remounted sigma
+  // on every click — the "everything refreshes" defect. localDepth is NOT a
+  // dependency: the local neighbourhood is computed at max depth and the
+  // visible depth filters display only.
+  const evidenceCanvasMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!versionedProvenanceMemo || !evidenceModel) return undefined;
+    return buildEvidenceCanvasProjection(
+      evidenceModel,
+      versionedProvenanceMemo.collapsedVersionCount,
+      lineageFocus,
+      versionedProvenanceMemo.visibleRefByMemberRef,
+    );
+  }, [workbench, versionedProvenanceMemo, evidenceModel, lineageFocus]);
+
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);
     // A selected record can belong to another tool surface. Keep the main
@@ -347,19 +373,31 @@ export function ThreadWorkbench({
   const project = workbench.project;
   const projectBrief = buildProjectBrief(project);
   const projectPath = buildProjectPath(project, snapshot);
-  const versionedProvenance = buildVersionedProvenanceProjection(
-    snapshot.graph,
-    snapshot.evidenceFamilyGraph,
+  // versionedProvenance and evidenceCanvas are memoized above (guarded
+  // useMemo, same pattern as evidenceModel): a stable projection identity is
+  // what keeps the sigma instance alive across renders — the visible-depth
+  // control and selection highlights must never remount the canvas.
+  // We know they are defined here because the planning/documentary early
+  // returns have already fired.
+  const versionedProvenance = versionedProvenanceMemo!;
+  const evidenceCanvas = evidenceCanvasMemo!;
+
+  // Visible-depth display filter (local view only). The neighbourhood is
+  // computed at max depth; here we derive what the chosen depth actually
+  // shows — the truthful banner count and the Carte's filtered node set.
+  const depthKey = (ref: ThreadGraphRef) => `${ref.kind}:${ref.id}`;
+  const withinLocalDepth = (ref: ThreadGraphRef): boolean => {
+    const depths = evidenceCanvas.localDepthByRefKey;
+    if (!evidenceCanvas.isFiltered || !depths) return true;
+    return (depths.get(depthKey(ref)) ?? 0) <= localDepth;
+  };
+  const localVisibleCount = evidenceCanvas.nodes
+    .filter((n) => withinLocalDepth(n.ref)).length;
+  const carteNodes = evidenceCanvas.nodes.filter((n) =>
+    withinLocalDepth(n.ref)
   );
-  // evidenceModel is memoized above (useMemo([workbench])) to avoid killing
-  // the sigma instance on every non-data state change. We know it is defined
-  // here because the planning/documentary early returns have already fired.
-  const evidenceCanvas = buildEvidenceCanvasProjection(
-    evidenceModel,
-    versionedProvenance.collapsedVersionCount,
-    lineageFocus,
-    versionedProvenance.visibleRefByMemberRef,
-    localDepth,
+  const carteEdges = evidenceCanvas.edges.filter(
+    (e) => withinLocalDepth(e.from) && withinLocalDepth(e.to),
   );
   const evidenceComponentLabeler = makeEvidenceComponentLabeler(
     evidenceModel,
@@ -884,7 +922,7 @@ export function ThreadWorkbench({
                         >
                           <span>
                             {evidenceCanvas.isFiltered
-                              ? `${evidenceCanvas.displayedCount} faits affichés · vue locale · profondeur ${localDepth}`
+                              ? `${localVisibleCount} faits affichés · vue locale · profondeur ${localDepth}`
                               : (() => {
                                 // displayedCount is already the post-filter
                                 // essential count: the mask is applied once
@@ -909,25 +947,6 @@ export function ThreadWorkbench({
                                 return parts.join(" · ");
                               })()}
                           </span>
-                          {evidenceCanvas.isFiltered && (
-                            <div
-                              class="evidence-graph-mode-toggle"
-                              role="group"
-                              aria-label="Profondeur du voisinage local"
-                            >
-                              {([1, 2, 3] as const).map((depth) => (
-                                <button
-                                  key={depth}
-                                  type="button"
-                                  aria-pressed={localDepth === depth}
-                                  title={`Afficher les voisins jusqu'à la profondeur ${depth}`}
-                                  onClick={() => setLocalDepth(depth)}
-                                >
-                                  {depth}
-                                </button>
-                              ))}
-                            </div>
-                          )}
                           <div
                             class="evidence-graph-mode-toggle"
                             role="group"
@@ -950,6 +969,44 @@ export function ThreadWorkbench({
                           </div>
                         </div>
                       </header>
+                      {evidenceCanvas.isFiltered && (
+                        <div class="evidence-graph-menu">
+                          <button
+                            type="button"
+                            class="evidence-graph-menu-toggle"
+                            aria-expanded={graphMenuOpen}
+                            aria-label="Réglages du graphe local"
+                            title="Réglages du graphe local"
+                            onClick={() => setGraphMenuOpen(!graphMenuOpen)}
+                          >
+                            ☰
+                          </button>
+                          {graphMenuOpen && (
+                            <div class="evidence-graph-menu-panel">
+                              <p class="evidence-graph-menu-label">
+                                PROFONDEUR DES VOISINS
+                              </p>
+                              <div
+                                class="evidence-graph-mode-toggle"
+                                role="group"
+                                aria-label="Profondeur du voisinage local"
+                              >
+                                {([1, 2, 3] as const).map((depth) => (
+                                  <button
+                                    key={depth}
+                                    type="button"
+                                    aria-pressed={localDepth === depth}
+                                    title={`Afficher les voisins jusqu'à la profondeur ${depth}`}
+                                    onClick={() => setLocalDepth(depth)}
+                                  >
+                                    {depth}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {evidenceMode === "carte" && (
                         <>
                           <div
@@ -967,8 +1024,8 @@ export function ThreadWorkbench({
                             </span>
                           </div>
                           <ThreadGraph
-                            nodes={evidenceCanvas.nodes as ThreadGraphNode[]}
-                            edges={evidenceCanvas.edges as ThreadGraphEdge[]}
+                            nodes={carteNodes as ThreadGraphNode[]}
+                            edges={carteEdges as ThreadGraphEdge[]}
                             selection={visibleGraphSelection(
                               versionedProvenance,
                               graphSelection,
@@ -991,6 +1048,7 @@ export function ThreadWorkbench({
                         <EvidenceExploration
                           evidenceModel={evidenceModel}
                           projection={evidenceCanvas}
+                          displayDepth={localDepth}
                           selection={visibleGraphSelection(
                             versionedProvenance,
                             graphSelection,

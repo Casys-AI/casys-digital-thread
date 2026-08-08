@@ -10,8 +10,9 @@
  * - Folding never severs a link: stubs bridge folded-out segments.
  * - Analyze.* instruments are identified by structural fields only (system +
  *   entityKind + id content), never by label or summary.
- * - Bounded neighbourhood depth is caller-chosen (default 1) in both directions from the inspector
- *   selection when a focus is active.
+ * - Bounded neighbourhood is always COMPUTED at LOCAL_VIEW_MAX_DEPTH; the
+ *   operator's visible-depth control (default 1) filters DISPLAY only via
+ *   localDepthByRefKey, so depth changes never re-layout or reset the camera.
  */
 
 import type {
@@ -174,6 +175,14 @@ export interface EvidenceCanvasProjection {
   /** True when the canvas shows a bounded neighbourhood instead of the full graph. */
   readonly isFiltered: boolean;
   /**
+   * Local view only: BFS depth of every node from the focused node (focus =
+   * 0, immediate neighbours = 1, …). The neighbourhood is always COMPUTED at
+   * LOCAL_VIEW_MAX_DEPTH; renderers use this map as a pure DISPLAY filter so
+   * changing the visible depth adds or removes nodes in place — no re-layout,
+   * no camera reset (Obsidian-style). Undefined on the full map.
+   */
+  readonly localDepthByRefKey?: ReadonlyMap<string, number>;
+  /**
    * Count of supporting nodes HIDDEN by the essential filter in the full-map
    * view. The essential filter is applied once, upstream, by
    * buildEvidenceCanvasProjection — both the SVG carte (ThreadGraph) and the
@@ -200,16 +209,12 @@ export interface EvidenceCanvasProjection {
  * @param collapsedVersionCount From VersionedProvenanceProjection.
  * @param focusRef              Inspector selection (lineageFocus state).
  * @param visibleRefByMemberRef Map from historical ref key to visible ref.
- * @param localDepth            Neighbourhood depth of the local view (both
- *   directions from the focused node). Operator decision 2026-08-08: default
- *   1 — the immediate neighbours; the workbench exposes a 1/2/3 control.
  */
 export function buildEvidenceCanvasProjection(
   model: EvidenceGraphModel,
   collapsedVersionCount: number,
   focusRef: ThreadGraphRef | undefined,
   visibleRefByMemberRef: ReadonlyMap<string, ThreadGraphRef>,
-  localDepth: 1 | 2 | 3 = 1,
 ): EvidenceCanvasProjection {
   const foldedInstrumentCount = Math.max(
     0,
@@ -250,8 +255,12 @@ export function buildEvidenceCanvasProjection(
     };
   }
 
-  // Focus on a visible node: bounded neighbourhood at the chosen depth.
-  const neighborhood = model.boundedNeighborhood(focusRef, localDepth);
+  // Focus on a visible node: bounded neighbourhood, always computed at the
+  // MAX depth — the visible depth is a display filter over localDepthByRefKey.
+  const neighborhood = model.boundedNeighborhood(
+    focusRef,
+    LOCAL_VIEW_MAX_DEPTH,
+  );
   if (neighborhood.nodes.length > 0) {
     return {
       nodes: neighborhood.nodes,
@@ -259,6 +268,7 @@ export function buildEvidenceCanvasProjection(
       displayedCount: neighborhood.nodes.length,
       foldedInstrumentCount,
       isFiltered: true,
+      localDepthByRefKey: bfsDepths(focusRef, neighborhood),
       supportingNodeCount: 0, // local view: essential filter not applied.
     };
   }
@@ -267,7 +277,10 @@ export function buildEvidenceCanvasProjection(
   const focusKey = `${focusRef.kind}:${focusRef.id}`;
   const visibleRef = visibleRefByMemberRef.get(focusKey);
   if (visibleRef) {
-    const repNeighborhood = model.boundedNeighborhood(visibleRef, localDepth);
+    const repNeighborhood = model.boundedNeighborhood(
+      visibleRef,
+      LOCAL_VIEW_MAX_DEPTH,
+    );
     if (repNeighborhood.nodes.length > 0) {
       return {
         nodes: repNeighborhood.nodes,
@@ -275,6 +288,7 @@ export function buildEvidenceCanvasProjection(
         displayedCount: repNeighborhood.nodes.length,
         foldedInstrumentCount,
         isFiltered: true,
+        localDepthByRefKey: bfsDepths(visibleRef, repNeighborhood),
         supportingNodeCount: 0, // local view: essential filter not applied.
       };
     }
@@ -297,4 +311,53 @@ export function buildEvidenceCanvasProjection(
     isFiltered: false,
     supportingNodeCount: filteredFallback.hiddenCount,
   };
+}
+
+/**
+ * The local neighbourhood is always computed at this depth; the operator's
+ * 1/2/3 control filters DISPLAY only (default 1). Keeping computation and
+ * display separate is what lets depth changes add nodes in place without a
+ * re-layout or camera reset.
+ */
+export const LOCAL_VIEW_MAX_DEPTH = 3 as const;
+
+/**
+ * BFS depth of every neighbourhood node from the focus, over undirected
+ * edges. The focus is 0; nodes unreachable through the neighbourhood edges
+ * (defensive case) keep no entry and renderers treat them as visible.
+ */
+function bfsDepths(
+  focusRef: ThreadGraphRef,
+  neighborhood: {
+    readonly nodes: readonly ThreadGraphNode[];
+    readonly edges: readonly ThreadGraphEdge[];
+  },
+): ReadonlyMap<string, number> {
+  const key = (ref: ThreadGraphRef) => `${ref.kind}:${ref.id}`;
+  const adjacency = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    if (!adjacency.has(a)) adjacency.set(a, new Set());
+    adjacency.get(a)!.add(b);
+  };
+  for (const edge of neighborhood.edges) {
+    const from = key(edge.from);
+    const to = key(edge.to);
+    link(from, to);
+    link(to, from);
+  }
+  const depths = new Map<string, number>();
+  const start = key(focusRef);
+  depths.set(start, 0);
+  const queue = [start];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const depth = depths.get(current)!;
+    for (const next of adjacency.get(current) ?? []) {
+      if (!depths.has(next)) {
+        depths.set(next, depth + 1);
+        queue.push(next);
+      }
+    }
+  }
+  return depths;
 }

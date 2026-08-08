@@ -895,6 +895,8 @@
    ----------------------------------------------------------------------- */
 
 .thread-versioned-provenance {
+  /* Anchor for the absolutely-positioned local-graph burger menu. */
+  position: relative;
   min-width: 0;
   border: 1px solid var(--thread-border, var(--line));
   background: var(--thread-panel, var(--surface-1));
@@ -1306,4 +1308,66 @@
   background: #1c2120;
   cursor: pointer;
   appearance: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Menu burger des réglages du graphe local (vue Evidence).
+   Posé en haut à gauche du canvas, replié par défaut — façon Obsidian.
+   --------------------------------------------------------------------------- */
+
+/* Zero-height in-flow anchor placed between the section header and the
+   canvas: the toggle and panel float over the canvas' top-left corner
+   without depending on the header height. */
+.evidence-graph-menu {
+  position: relative;
+  height: 0;
+  z-index: 5;
+}
+
+.evidence-graph-menu-toggle,
+.evidence-graph-menu-panel {
+  position: absolute;
+  left: var(--space-12);
+}
+
+.evidence-graph-menu-toggle {
+  top: var(--space-8);
+}
+
+.evidence-graph-menu-panel {
+  top: 44px;
+}
+
+.evidence-graph-menu-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  background: var(--surface-0);
+  cursor: pointer;
+}
+
+.evidence-graph-menu-toggle[aria-expanded="true"],
+.evidence-graph-menu-toggle:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.evidence-graph-menu-panel {
+  padding: var(--space-8) var(--space-10);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.evidence-graph-menu-label {
+  margin: 0 0 var(--space-6);
+  color: var(--muted);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.06em;
 }

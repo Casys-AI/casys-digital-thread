@@ -308,9 +308,10 @@ Deno.test("buildEvidenceCanvasProjection — focus on historical node uses visib
   assertEquals(projection.nodes.length > 0, true);
 });
 
-Deno.test("buildEvidenceCanvasProjection — local view defaults to depth 1 (immediate neighbours only)", () => {
-  // Chain D0 → D1 → D2 → D3 : focused on D0, depth 1 shows D0+D1 only;
-  // depth 3 (explicit) reaches D3. The default is the operator-chosen 1.
+Deno.test("buildEvidenceCanvasProjection — local view computes max depth and reports BFS depths for display filtering", () => {
+  // Chain D0 → D1 → D2 → D3 : the neighbourhood is always COMPUTED at
+  // LOCAL_VIEW_MAX_DEPTH; renderers filter display by localDepthByRefKey so
+  // depth changes never re-layout. The map must carry exact BFS depths.
   const chain = ["D0", "D1", "D2", "D3"].map((id) =>
     node(id, "artifact", "digital-thread")
   );
@@ -326,31 +327,28 @@ Deno.test("buildEvidenceCanvasProjection — local view defaults to depth 1 (imm
     isAnalyzeInstrumentNode,
   });
 
-  const shallow = buildEvidenceCanvasProjection(
+  const projection = buildEvidenceCanvasProjection(
     model,
     0,
     ref("D0", "artifact"),
     new Map(),
   );
-  assertEquals(shallow.isFiltered, true);
+  assertEquals(projection.isFiltered, true);
   assertEquals(
-    shallow.nodes.map((n) => n.ref.id).sort(),
-    ["D0", "D1"],
-    "Default local depth must be 1: the focus and its immediate neighbours.",
-  );
-
-  const deep = buildEvidenceCanvasProjection(
-    model,
-    0,
-    ref("D0", "artifact"),
-    new Map(),
-    3,
-  );
-  assertEquals(
-    deep.nodes.map((n) => n.ref.id).sort(),
+    projection.nodes.map((n) => n.ref.id).sort(),
     ["D0", "D1", "D2", "D3"],
-    "Explicit depth 3 must reach three hops from the focus.",
+    "The neighbourhood is computed at LOCAL_VIEW_MAX_DEPTH (3).",
   );
+  const depths = projection.localDepthByRefKey;
+  assertEquals(depths !== undefined, true, "Local view must expose depths.");
+  assertEquals(depths!.get("artifact:D0"), 0);
+  assertEquals(depths!.get("artifact:D1"), 1);
+  assertEquals(depths!.get("artifact:D2"), 2);
+  assertEquals(depths!.get("artifact:D3"), 3);
+
+  // Full map: no depth map — the display filter only exists in local view.
+  const fullMap = buildEvidenceCanvasProjection(model, 0, undefined, new Map());
+  assertEquals(fullMap.localDepthByRefKey, undefined);
 });
 
 Deno.test("buildEvidenceCanvasProjection — foldedInstrumentCount is non-negative", () => {
