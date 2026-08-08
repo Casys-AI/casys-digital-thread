@@ -23,7 +23,7 @@
 
 // Vite (browser): résout graphology depuis node_modules et expose la classe.
 // Deno (tests): résout via npm: dans l'import map de deno.json.
-import { DirectedGraph } from "graphology";
+import { MultiDirectedGraph } from "graphology";
 // @dagrejs/dagre: layout hiérarchique synchrone, ESM-compatible.
 // deno.json référence "@dagrejs/dagre": "npm:@dagrejs/dagre@^3.1.0".
 import dagreLib from "@dagrejs/dagre";
@@ -133,7 +133,7 @@ export interface ExplorationModel {
    * A DirectedGraph with all visual attributes already set.
    * Sigma consumes this instance directly — no conversion step.
    */
-  readonly graph: DirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>;
+  readonly graph: MultiDirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>;
   /**
    * Legend deduplicated by component name. Multiple model components with the
    * same structural name are merged into a single entry — one chip, all nodes.
@@ -254,7 +254,10 @@ export function buildExplorationModel(
   tokens: CssTokens,
   compact = false,
 ): ExplorationModel {
-  const graph = new DirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>();
+  // Provenance can contain multiple independently recorded handoffs between
+  // the same endpoints. A simple DirectedGraph silently overwrites/drops all
+  // but one, which makes the inspector lie about the record.
+  const graph = new MultiDirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>();
 
   // The essential display mask has been applied once, upstream, by
   // buildEvidenceCanvasProjection. Consume the pre-filtered projection directly:
@@ -299,8 +302,7 @@ export function buildExplorationModel(
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
     if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
-    if (graph.hasEdge(from, to)) continue;
-    graph.addEdge(from, to, {
+    graph.addEdgeWithKey(edge.id, from, to, {
       edgeId: edge.id,
       label: edge.relation.replaceAll("_", " "),
       edgeType: "regular",
@@ -314,8 +316,7 @@ export function buildExplorationModel(
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
     if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
-    if (graph.hasEdge(from, to)) continue;
-    graph.addEdge(from, to, {
+    graph.addEdgeWithKey(edge.id, from, to, {
       edgeId: edge.id,
       label: edge.rationale ?? `via ${edge.relation} — replié`,
       edgeType: "stub",

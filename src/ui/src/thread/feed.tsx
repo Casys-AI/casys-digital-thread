@@ -116,14 +116,10 @@ export function ThreadFeed({
     })
     : allFeedNodes;
 
-  const focusNode = focus
-    ? nodes.find((node) => refKey(node.ref) === refKey(focus))
-    : undefined;
-  const focusIsPrimary = focusNode &&
-    feedNodes.some((node) => refKey(node.ref) === refKey(focusNode.ref));
-  const entries = focusNode && !focusIsPrimary
-    ? [focusNode, ...feedNodes]
-    : feedNodes;
+  // A component filter is authoritative. Keeping an old global focus by
+  // prepending it here made Activity show an out-of-filter fact while every
+  // counter still claimed the filtered total.
+  const entries = feedNodes;
 
   // Build component options for the filter selector.
   // Only parts with >= 1 event appear; counts are shown in the label.

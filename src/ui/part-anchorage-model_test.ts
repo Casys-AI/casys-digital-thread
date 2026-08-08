@@ -45,7 +45,8 @@ import type {
 // thread snapshot. Changing them would break the catalog binding contract.
 // ---------------------------------------------------------------------------
 
-const R3_DIGEST = "8484b759a788c018477f062863aff5f5a3ebaf06d28c5045534fb716c19d58f3";
+const R3_DIGEST =
+  "8484b759a788c018477f062863aff5f5a3ebaf06d28c5045534fb716c19d58f3";
 const R3 = `coffee-machine-cm01-v3-cad-r3-${R3_DIGEST}`;
 
 const ARCH_ID =
@@ -80,7 +81,9 @@ function node(
     id: `graph:${kind}:${id}`,
     ref: { kind, id },
     entityKind: kind,
-    ...(opts.artifactKind !== undefined ? { artifactKind: opts.artifactKind } : {}),
+    ...(opts.artifactKind !== undefined
+      ? { artifactKind: opts.artifactKind }
+      : {}),
     label: id.slice(-24),
     system: opts.system ?? "digital-thread",
     freshness: opts.freshness ?? "fresh",
@@ -436,6 +439,24 @@ Deno.test(
     }
   },
 );
+
+Deno.test("buildPartAnchorage is invariant to graph and catalog permutations", () => {
+  const baseline = [...buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG)]
+    .sort();
+  const permutedGraph: ThreadGraph = {
+    ...FIXTURE_GRAPH,
+    nodes: [...FIXTURE_GRAPH.nodes].reverse(),
+    edges: [...FIXTURE_GRAPH.edges].reverse(),
+  };
+  const permutedCatalog: ThreadComponentCatalog = {
+    ...FIXTURE_CATALOG,
+    components: [...FIXTURE_CATALOG.components].reverse(),
+  };
+  assertEquals(
+    [...buildPartAnchorage(permutedGraph, permutedCatalog)].sort(),
+    baseline,
+  );
+});
 
 Deno.test(
   "mechanical R3 proof resolves to cm01-v3:drip-tray via prefix criterion (b-10)",

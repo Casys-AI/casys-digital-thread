@@ -148,6 +148,15 @@ export function EvidenceExploration({
       });
     });
 
+    // Relations are first-class evidence. MultiDirectedGraph keeps parallel
+    // handoffs distinct, and selecting one opens the same edge inspector as
+    // the Carte renderer.
+    sigma.on("clickEdge", ({ edge: edgeKey }) => {
+      const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
+      if (!attrs) return;
+      onSelectionChangeRef.current?.({ kind: "edge", id: attrs.edgeId });
+    });
+
     // clickStage (background) → reset selection
     sigma.on("clickStage", () => {
       onSelectionChangeRef.current?.(undefined);
@@ -296,6 +305,13 @@ export function EvidenceExploration({
         class="evidence-exploration-stage"
         ref={containerRef}
         aria-label="Evidence exploration graph — sigma renderer"
+        role="application"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          // Sigma owns its canvas; provide a predictable keyboard escape
+          // route back to the surrounding inspection controls.
+          if (event.key === "Escape") onSelectionChange?.(undefined);
+        }}
       />
       {!compact && (
         <aside
@@ -357,6 +373,25 @@ export function EvidenceExploration({
                 />
               ))}
             </>
+          )}
+          {explorationModel.graph.size > 0 && (
+            <details class="evidence-exploration-relations">
+              <summary>RELATIONS ({explorationModel.graph.size})</summary>
+              <ul>
+                {explorationModel.graph.mapEdges((edgeKey, attrs) => (
+                  <li key={edgeKey}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSelectionChange?.({ kind: "edge", id: attrs.edgeId })}
+                    >
+                      {attrs.label}
+                      {attrs.edgeType === "stub" ? " · replié" : ""}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </aside>
       )}

@@ -812,7 +812,8 @@ Deno.test(
       "action",
     ];
     for (const kind of expectedKinds) {
-      const label = DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
+      const label =
+        DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
       assertEquals(
         typeof label,
         "string",
@@ -822,3 +823,46 @@ Deno.test(
     }
   },
 );
+
+Deno.test("Sigma preserves parallel recorded relations for inspection", () => {
+  const evidenceModel = buildEvidenceGraphModel(
+    {
+      nodes: [
+        node("source", "artifact", "build123d", "artifact"),
+        node("result", "observation", "calculix", "observation"),
+      ],
+      edges: [
+        edge(
+          "handoff-a",
+          ref("source", "artifact"),
+          ref("result", "observation"),
+          "source_of",
+        ),
+        edge(
+          "handoff-b",
+          ref("source", "artifact"),
+          ref("result", "observation"),
+          "evidences",
+        ),
+      ],
+    },
+    EMPTY_FAMILY,
+    {},
+  );
+  const projection = buildEvidenceCanvasProjection(
+    evidenceModel,
+    0,
+    undefined,
+    new Map(),
+  );
+  const model = buildExplorationModel(
+    evidenceModel,
+    projection,
+    FALLBACK_TOKENS,
+  );
+  assertEquals(model.graph.size, 2);
+  assertEquals(
+    new Set(model.graph.mapEdges((_key, attrs) => attrs.edgeId)).size,
+    2,
+  );
+});

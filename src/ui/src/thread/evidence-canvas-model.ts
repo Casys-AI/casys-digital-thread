@@ -174,7 +174,9 @@ export interface EvidenceCanvasProjection {
   readonly displayedCount: number;
   /**
    * Analyze.* instruments folded from the default view.
-   * Computed as max(0, rawNodeCount - visibleNodes - collapsedVersionCount).
+   * Computed from instrument folding only. Version folding is reported
+   * separately by VersionedProvenanceProjection and must never be subtracted
+   * here (the banner adds the two independent quantities).
    */
   readonly foldedInstrumentCount: number;
   /** True when the canvas shows a bounded neighbourhood instead of the full graph. */
@@ -224,13 +226,13 @@ export interface EvidenceCanvasProjection {
  */
 export function buildEvidenceCanvasProjection(
   model: EvidenceGraphModel,
-  collapsedVersionCount: number,
+  _collapsedVersionCount: number,
   focusRef: ThreadGraphRef | undefined,
   visibleRefByMemberRef: ReadonlyMap<string, ThreadGraphRef>,
 ): EvidenceCanvasProjection {
   const foldedInstrumentCount = Math.max(
     0,
-    model.rawNodeCount - model.nodes.length - collapsedVersionCount,
+    model.rawNodeCount - model.nodes.length,
   );
 
   // Full graph (no focus): apply the essential display mask once, here.
@@ -424,27 +426,79 @@ export function buildExplorationKindProjection(
   model: EvidenceGraphModel,
   visibleKinds: Record<DisplayKind, boolean>,
 ): EvidenceCanvasProjection {
-  const visibleNodes = (model.nodes as ThreadGraphNode[]).filter(
-    (n) => visibleKinds[displayKindOf(n)],
-  );
-  const hiddenByKind = model.nodes.length - visibleNodes.length;
-
-  const visibleKeys = new Set(
-    visibleNodes.map((n) => `${n.ref.kind}:${n.ref.id}`),
-  );
-
-  // Include both canonical edges and stubs; drop any edge where at least one
-  // endpoint is hidden by the type filter. This keeps the layout coherent
-  // (no dangling edges pointing at absent nodes).
   const allEdges: ThreadGraphEdge[] = [
     ...(model.edges as ThreadGraphEdge[]),
     ...model.stubs.map(stubToEdge),
   ];
-  const visibleEdges = allEdges.filter(
-    (e) =>
-      visibleKeys.has(`${e.from.kind}:${e.from.id}`) &&
-      visibleKeys.has(`${e.to.kind}:${e.to.id}`),
+  // Exploration must start from exactly the same essential mask as Carte.
+  // Applying the kind toggle to the raw model used to reintroduce mesh/script
+  // islands.  A supporting node is retained only when it is still a connector
+  // between two requested facts; hidden fact kinds are never traversed.
+  const essential = applyEssentialFilter(
+    model.nodes as ThreadGraphNode[],
+    allEdges,
   );
+  const requested = new Set(
+    essential.nodes
+      .filter((node) => visibleKinds[displayKindOf(node)])
+      .map((node) => `${node.ref.kind}:${node.ref.id}`),
+  );
+  const byKey = new Map<string, ThreadGraphNode>(essential.nodes.map((node) =>
+    [
+      `${node.ref.kind}:${node.ref.id}`,
+      node,
+    ] as const
+  ));
+  const adjacency = new Map<string, string[]>();
+  for (const edge of essential.edges) {
+    const from = `${edge.from.kind}:${edge.from.id}`;
+    const to = `${edge.to.kind}:${edge.to.id}`;
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    if (!adjacency.has(to)) adjacency.set(to, []);
+    // A disabled non-supporting fact cannot silently become plumbing.
+    if (!requested.has(to) && !isSupportingNode(byKey.get(to)!)) continue;
+    if (!requested.has(from) && !isSupportingNode(byKey.get(from)!)) continue;
+    adjacency.get(from)!.push(to);
+    adjacency.get(to)!.push(from);
+  }
+  const visibleKeys = new Set(requested);
+  const keys = [...requested].sort();
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const start = keys[i]!;
+      const goal = keys[j]!;
+      const previous = new Map<string, string | undefined>([[
+        start,
+        undefined,
+      ]]);
+      const queue = [start];
+      while (queue.length && !previous.has(goal)) {
+        const current = queue.shift()!;
+        for (const next of adjacency.get(current) ?? []) {
+          if (!previous.has(next)) {
+            previous.set(next, current);
+            queue.push(next);
+          }
+        }
+      }
+      if (!previous.has(goal)) {
+        continue;
+      }
+      for (
+        let cursor: string | undefined = goal;
+        cursor !== undefined;
+        cursor = previous.get(cursor)
+      ) visibleKeys.add(cursor);
+    }
+  }
+  const visibleNodes = essential.nodes.filter((node) =>
+    visibleKeys.has(`${node.ref.kind}:${node.ref.id}`)
+  );
+  const visibleEdges = essential.edges.filter((edge) =>
+    visibleKeys.has(`${edge.from.kind}:${edge.from.id}`) &&
+    visibleKeys.has(`${edge.to.kind}:${edge.to.id}`)
+  );
+  const hiddenByKind = essential.nodes.length - visibleNodes.length;
 
   // foldedInstrumentCount: how many nodes were folded by the model pipeline
   // (analyze.* instruments). This is a model-level count, independent of which

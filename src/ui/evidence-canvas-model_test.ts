@@ -239,7 +239,11 @@ function instrumentBridgeFixture(): {
   refC: ThreadGraphRef;
 } {
   const nodeA = node("A", "artifact", "digital-thread");
-  const nodeB = node("drip-tray-sensitivity-h-base-step", "artifact", "build123d");
+  const nodeB = node(
+    "drip-tray-sensitivity-h-base-step",
+    "artifact",
+    "build123d",
+  );
   const nodeC = node("C", "artifact", "syson");
   const graph = {
     nodes: [nodeA, nodeB, nodeC],
@@ -367,15 +371,15 @@ Deno.test("buildEvidenceCanvasProjection — foldedInstrumentCount is non-negati
 
 Deno.test("buildEvidenceCanvasProjection — collapsedVersionCount does not double-count", () => {
   const { model } = instrumentBridgeFixture();
-  // Pretend 1 version was collapsed (even though our fixture has none).
-  // foldedInstrumentCount should be max(0, 3-2-1) = 0.
+  // Version folding is reported separately; it must not erase the instrument
+  // that was actually folded by the evidence model.
   const projection = buildEvidenceCanvasProjection(
     model,
     1,
     undefined,
     new Map(),
   );
-  assertEquals(projection.foldedInstrumentCount, 0);
+  assertEquals(projection.foldedInstrumentCount, 1);
 });
 
 // ---------------------------------------------------------------------------
@@ -649,7 +653,11 @@ Deno.test(
       {
         nodes: [nodeA, nodeObs, nodeChg, nodeMesh],
         edges: [
-          edge("e1", ref("A-artifact", "artifact"), ref("obs-1", "observation")),
+          edge(
+            "e1",
+            ref("A-artifact", "artifact"),
+            ref("obs-1", "observation"),
+          ),
         ],
       },
       emptyFamilyGraph,
@@ -666,8 +674,9 @@ Deno.test(
     assertEquals(visibleIds.includes("chg-1"), false);
     // supporting-artifact (mesh): hidden (DEFAULT_MAP_KINDS["supporting-artifact"] = false)
     assertEquals(visibleIds.includes("mesh-1"), false);
-    // supportingNodeCount = 2 (change + mesh)
-    assertEquals(projection.supportingNodeCount, 2);
+    // The isolated mesh was already excluded by the Carte essential mask;
+    // Exploration must not reintroduce it just because it has a type toggle.
+    assertEquals(projection.supportingNodeCount, 0);
     assertEquals(projection.displayedCount, 2);
   },
 );
@@ -704,7 +713,7 @@ Deno.test(
 );
 
 Deno.test(
-  "buildExplorationKindProjection — displayedCount and supportingNodeCount sum to model.nodes.length",
+  "buildExplorationKindProjection — counters describe the shared essential mask",
   () => {
     const { model } = essentialPlusSupportingFixture();
     // essentialPlusSupportingFixture: one essential (requirement), one mesh (supporting).
@@ -712,8 +721,8 @@ Deno.test(
     const projection = buildExplorationKindProjection(model, DEFAULT_MAP_KINDS);
     assertEquals(
       projection.displayedCount + projection.supportingNodeCount,
-      model.nodes.length,
-      "displayedCount + supportingNodeCount must equal model.nodes.length",
+      1,
+      "an excluded isolated support is not reintroduced or counted as type-hidden",
     );
   },
 );

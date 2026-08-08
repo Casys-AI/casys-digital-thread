@@ -37,11 +37,8 @@ export interface PartAnchor {
  * unique + ambiguous + orphan === graph.nodes.length
  *
  * `unique`    — nodes with exactly one deterministic anchor (present in the map).
- * `ambiguous` — criteria fired but produced conflicting targets; assembly-wins
- *               tie-break did not apply.  Reported as (total − map.size) by
- *               convention; the implementation aims for zero.
- * `orphan`    — reported as 0 by convention; the implementation is designed to
- *               cover every node kind.
+ * `ambiguous` — criteria fired but produced conflicting part targets.
+ * `orphan`    — no anchorage criterion could resolve the node.
  */
 export interface AnchorageCoverage {
   readonly unique: number;
@@ -296,25 +293,24 @@ function edgeToKey(edge: ThreadGraphEdge): string {
 function buildCatalogMap(
   components: ThreadComponentCatalog,
 ): ReadonlyMap<string, PartTarget> {
-  const map = new Map<string, PartTarget>();
+  const candidates = new Map<string, Set<PartTarget>>();
   for (const component of components.components) {
     const target: PartTarget = component.kind === "assembly"
       ? "assembly"
       : component.id;
     for (const binding of component.bindings) {
-      const existing = map.get(binding.evidenceArtifactId);
-      if (existing === undefined) {
-        map.set(binding.evidenceArtifactId, target);
-      } else {
-        // Assembly wins on conflict; two different parts → remove the entry.
-        const merged = mergeTargets(existing, target);
-        if (merged !== null) {
-          map.set(binding.evidenceArtifactId, merged);
-        } else {
-          map.delete(binding.evidenceArtifactId);
-        }
-      }
+      const values = candidates.get(binding.evidenceArtifactId) ?? new Set();
+      values.add(target);
+      candidates.set(binding.evidenceArtifactId, values);
     }
+  }
+  const map = new Map<string, PartTarget>();
+  for (const [artifactId, values] of candidates) {
+    let target: PartTarget | null = null;
+    for (const candidate of values) {
+      target = target === null ? candidate : mergeTargets(target, candidate);
+    }
+    if (target !== null) map.set(artifactId, target);
   }
   return map;
 }
@@ -628,7 +624,11 @@ export function anchorageCoverage(
 ): AnchorageCoverage {
   return {
     unique: map.size,
-    ambiguous: graph.nodes.length - map.size,
-    orphan: 0,
+    // A node absent from the unique map is not automatically ambiguous: it
+    // may simply have no recorded binding, prefix, nature or adjacent fact.
+    // Keep that distinction truthful until a resolver exposes a conflicting
+    // candidate explicitly.
+    ambiguous: 0,
+    orphan: graph.nodes.length - map.size,
   };
 }
