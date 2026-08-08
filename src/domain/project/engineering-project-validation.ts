@@ -949,11 +949,20 @@ function validateOperationRef(
     validateOperationBinding,
   );
   if (Array.isArray(input.bindings)) {
+    // WHY (name + source) AND NOT name ALONE — a reviewed operation may declare
+    // a variadic slot: the archive operation names N entities to retire, each
+    // through a binding called `archiveTarget`. The registry is the authority on
+    // that contract and admits repeats only for a declared `one-or-more`
+    // cardinality, but this validator lives in the domain and cannot read the
+    // registry. Enforcing name-uniqueness here therefore contradicted a contract
+    // the registry accepts, and made every multi-target operation unqueueable.
+    // The invariant that remains is the one this layer can honestly state: the
+    // exact same binding may not be supplied twice.
     uniqueStrings(
       input.bindings.flatMap((binding) =>
         binding && typeof binding === "object" && !Array.isArray(binding) &&
           typeof (binding as Record<string, unknown>).name === "string"
-          ? [(binding as Record<string, unknown>).name as string]
+          ? [deterministicJson(binding)]
           : []
       ),
       `${path}.bindings`,

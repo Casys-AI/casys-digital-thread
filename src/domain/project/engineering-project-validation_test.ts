@@ -394,3 +394,73 @@ function fresh() {
     invalidatedByChangeIds: [],
   };
 }
+
+Deno.test(
+  "a reviewed variadic slot may repeat its binding name for distinct targets",
+  async () => {
+    // WHY THIS TEST EXISTS — the archive operation names N entities to retire
+    // through repeated `archiveTarget` bindings, a contract the registry admits
+    // for a declared one-or-more cardinality. Enforcing name-uniqueness in this
+    // validator contradicted it and made every multi-target operation
+    // unqueueable: the real path refused what the declared contract allowed.
+    const project = await projectJson() as Record<string, unknown>;
+    const workItems = project.workItems as Record<string, unknown>[];
+    const target = workItems[0];
+    if (!target) throw new Error("fixture lost its work items");
+    const ref = (id: string) => ({
+      kind: "thread-entity",
+      reference: {
+        snapshotId: "thread-variadic",
+        snapshotRevision: 1,
+        kind: "artifact",
+        id,
+      },
+    });
+    target.operation = {
+      id: "record.archive-coffee-machine-cm01-lineage",
+      version: "1",
+      bindings: [
+        { name: "archiveTarget", source: ref("artifact-a") },
+        { name: "archiveTarget", source: ref("artifact-b") },
+      ],
+    };
+
+    const issues = collectEngineeringProjectIssues(project);
+
+    assertEquals(
+      issues.filter((entry) => entry.code === "duplicate_reference"),
+      [],
+    );
+  },
+);
+
+Deno.test("the exact same binding may never be supplied twice", async () => {
+  const project = await projectJson() as Record<string, unknown>;
+  const workItems = project.workItems as Record<string, unknown>[];
+  const target = workItems[0];
+  if (!target) throw new Error("fixture lost its work items");
+  const binding = {
+    name: "archiveTarget",
+    source: {
+      kind: "thread-entity",
+      reference: {
+        snapshotId: "thread-variadic",
+        snapshotRevision: 1,
+        kind: "artifact",
+        id: "artifact-a",
+      },
+    },
+  };
+  target.operation = {
+    id: "record.archive-coffee-machine-cm01-lineage",
+    version: "1",
+    bindings: [binding, binding],
+  };
+
+  const issues = collectEngineeringProjectIssues(project);
+
+  assertEquals(
+    issues.some((entry) => entry.code === "duplicate_reference"),
+    true,
+  );
+});
