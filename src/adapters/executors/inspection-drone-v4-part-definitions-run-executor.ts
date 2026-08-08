@@ -146,6 +146,7 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       // than falsely recording a failed run beside an unattached r4.
       let persisted = false;
       let publicationPersisted = false;
+      let publicationAttempted = false;
       try {
         let project = await this.project(command.projectId);
         let run = requireRun(project, command.runId);
@@ -225,6 +226,7 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
           capturedAt,
           input.architecture.package.id,
         );
+        publicationAttempted = true;
         await this.d.publications.save({
           schemaVersion: "inspection-drone-v4-part-definitions-publication/1.0",
           projectId: command.projectId,
@@ -269,7 +271,12 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
         }
         return complete(await this.project(command.projectId), command);
       } catch (error) {
-        if (claimed && !persisted && !publicationPersisted) {
+        const recoveredPublication = publicationAttempted && !publicationPersisted
+          ? await this.d.publications.read(command.projectId, command.runId).catch(() =>
+            undefined
+          )
+          : undefined;
+        if (claimed && !persisted && !publicationPersisted && !recoveredPublication) {
           await this.fail(origin, command);
         }
         throw error;
