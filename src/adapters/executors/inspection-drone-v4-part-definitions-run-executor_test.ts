@@ -206,6 +206,22 @@ Deno.test("inspection-drone PartDefinitions rejects tampered WAL artifact, produ
   }
 });
 
+Deno.test("inspection-drone PartDefinitions rechecks the exact r3 work-item binding before WAL replay", async () => {
+  const fixture = await productFixture({ failSnapshotOnce: true });
+  await assertRejects(() => fixture.executor().execute(AGENT, fixture.command()));
+  const project = fixture.project as unknown as {
+    workItems: Array<
+      { operation: { bindings: Array<{ source: { reference: { id: string } } }> } }
+    >;
+  };
+  project.workItems[0]!.operation.bindings[0]!.source.reference.id =
+    "other-canonical-looking-r3";
+  fixture.syson.failIfCalled = true;
+  await assertRejects(() => fixture.executor().execute(AGENT, fixture.command()));
+  assertEquals(fixture.syson.calls.length, 6);
+  assertEquals(fixture.project.agentRuns[0]!.status, "running");
+});
+
 Deno.test("inspection-drone PartDefinitions restores a completed run's missing r4 from its exact WAL", async () => {
   const fixture = await productFixture();
   const completed = await fixture.executor().execute(AGENT, fixture.command());
