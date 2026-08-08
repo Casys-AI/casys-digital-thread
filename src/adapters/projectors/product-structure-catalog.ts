@@ -416,7 +416,7 @@ function buildCatalog(
       rationale:
         "This Product Structure is derived at read time from the exact hashed " +
         "architecture capture produced by the generic model.write-architecture@1 run. " +
-        "The system PartDef is the assembly root; each additional PartDef is a part. " +
+        "The system PartDef is the assembly root; each PartUsage occurrence is a distinct part. " +
         "No ERP identity, no CAD child path, and no inferred binding is included.",
       systemViews: {},
       components: [
