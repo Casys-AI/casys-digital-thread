@@ -41,6 +41,8 @@ import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.
 
 const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/2.0" as const;
 
+class ArchitectureCaptureUnreadableError extends Error {}
+
 // ── Narrow reader interface ───────────────────────────────────────────────────
 
 /** Minimal surface needed by the projector. Satisfied by FileCaptureStore. */
@@ -100,7 +102,8 @@ export async function resolveGenericProductStructureCatalog(
   snapshot: ThreadSnapshot,
   captures: GenericArchitectureCaptureReader,
 ): Promise<ThreadComponentCatalog | undefined> {
-  const selected = findArchitectureTip(snapshot);
+  const architectures = genericArchitectureArtifacts(snapshot);
+  const selected = findArchitectureTip(snapshot, architectures);
   if (selected.kind === "absent") return undefined;
   if (selected.kind === "retired") {
     return unavailable(
@@ -114,68 +117,44 @@ export async function resolveGenericProductStructureCatalog(
       "Generic architecture evidence has multiple current tips; manual lineage review is required.",
     );
   }
-  const architecture = selected.artifact;
-
-  let capture: GenericArchitectureCapture;
   try {
-    const text = await captures.read(architecture.fingerprint);
-    if (!text) {
-      return unavailable(
-        snapshot.subject.id,
-        "The architecture capture is not readable for this snapshot revision.",
-      );
-    }
-    capture = await parseAndVerifyCapture(text, architecture.fingerprint);
-    if (
-      architecture.id !== `architecture-${architecture.fingerprint.digest}` ||
-      architecture.version !== architecture.fingerprint.digest ||
-      architecture.uri !==
-        `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${architecture.fingerprint.digest}` ||
-      architecture.mediaType !== "application/json" ||
-      architecture.producer.serverId !== "syson" ||
-      architecture.producer.tool !== "syson_element_insert_sysml" ||
-      architecture.producer.runId !== capture.trustedRunId ||
-      architecture.freshness.changedAt !== capture.insertedAt ||
-      !sameInputs(
-        architecture.inputArtifactIds,
-        capture.predecessor === undefined
-          ? [capture.seed.artifactId]
-          : [capture.seed.artifactId, capture.predecessor.artifactId],
-      ) ||
-      (capture.predecessor !== undefined &&
-        (!architecture.inputArtifactIds.includes(capture.predecessor.artifactId) ||
-          !artifactMatches(snapshot, capture.predecessor!) ||
-          !hasExactConsumption(snapshot, capture.predecessor!, capture))) ||
-      !artifactMatches(snapshot, capture.seed) ||
-      !hasExactConsumption(snapshot, capture.seed, capture)
-    ) {
-      throw new Error(
-        "Architecture artifact metadata is not exactly bound to its capture and seed input.",
-      );
-    }
-  } catch {
+    const capture = await verifyArchitectureLineage(
+      snapshot,
+      captures,
+      selected.artifact,
+      architectures,
+    );
+    return buildCatalog(snapshot.subject.id, selected.artifact.id, capture);
+  } catch (error) {
     return unavailable(
       snapshot.subject.id,
-      "The architecture capture could not be verified for this snapshot revision.",
+      error instanceof ArchitectureCaptureUnreadableError
+        ? "The architecture capture is not readable for this snapshot revision."
+        : "The architecture capture could not be verified for this snapshot revision.",
     );
   }
-
-  return buildCatalog(snapshot.subject.id, architecture.id, capture);
 }
 
 // ── Private: artifact finder ──────────────────────────────────────────────────
 
-function findArchitectureTip(snapshot: ThreadSnapshot):
+function genericArchitectureArtifacts(
+  snapshot: ThreadSnapshot,
+): readonly ThreadArtifact[] {
+  return snapshot.artifacts.filter((artifact) =>
+    artifact.kind === "sysml-model" &&
+    typeof artifact.uri === "string" &&
+    artifact.uri.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
+  );
+}
+
+function findArchitectureTip(
+  snapshot: ThreadSnapshot,
+  matches: readonly ThreadArtifact[],
+):
   | { readonly kind: "absent" }
   | { readonly kind: "retired" }
   | { readonly kind: "ambiguous" }
   | { readonly kind: "one"; readonly artifact: ThreadArtifact } {
-  const matches = snapshot.artifacts.filter(
-    (a) =>
-      a.kind === "sysml-model" &&
-      typeof a.uri === "string" &&
-      a.uri.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX),
-  );
   if (matches.length === 0) return { kind: "absent" };
   const consumed = new Set(matches.flatMap((artifact) => artifact.inputArtifactIds));
   const tips = matches.filter((artifact) => !consumed.has(artifact.id));
@@ -188,6 +167,90 @@ function findArchitectureTip(snapshot: ThreadSnapshot):
   return activeTips.length === 1
     ? { kind: "one", artifact: activeTips[0]! }
     : { kind: "ambiguous" };
+}
+
+/**
+ * Re-read every capture from the selected current tip to its root.  A generic
+ * architecture catalog is an attested lineage, not merely a trustworthy last
+ * record: every generic artifact in the snapshot must occur exactly once in
+ * this linear chain.  This is deliberately iterative so hostile evidence
+ * cannot exhaust the stack.
+ */
+async function verifyArchitectureLineage(
+  snapshot: ThreadSnapshot,
+  captures: GenericArchitectureCaptureReader,
+  tip: ThreadArtifact,
+  architectures: readonly ThreadArtifact[],
+): Promise<GenericArchitectureCapture> {
+  const byId = new Map(architectures.map((artifact) => [artifact.id, artifact]));
+  if (byId.size !== architectures.length) {
+    throw new Error("Generic architecture artifact identities are ambiguous.");
+  }
+
+  const visited = new Set<string>();
+  let current = tip;
+  let tipCapture: GenericArchitectureCapture | undefined;
+
+  while (true) {
+    if (visited.has(current.id)) {
+      throw new Error("Generic architecture predecessor lineage contains a cycle.");
+    }
+    visited.add(current.id);
+
+    const text = await captures.read(current.fingerprint);
+    if (!text) {
+      throw new ArchitectureCaptureUnreadableError(
+        "A generic architecture capture is not durably readable.",
+      );
+    }
+    const capture = await parseAndVerifyCapture(text, current.fingerprint);
+    if (!tipCapture) tipCapture = capture;
+
+    if (!isExactArchitectureArtifact(current, capture)) {
+      throw new Error(
+        "A generic architecture artifact metadata is not exactly bound to its capture.",
+      );
+    }
+    if (
+      !artifactMatches(snapshot, capture.seed) ||
+      !hasExactConsumption(snapshot, capture.seed, capture)
+    ) {
+      throw new Error("A generic architecture capture has no exact seed evidence.");
+    }
+
+    if (!capture.predecessor) {
+      if (!sameInputs(current.inputArtifactIds, [capture.seed.artifactId])) {
+        throw new Error("The generic architecture root has non-exact inputs.");
+      }
+      break;
+    }
+
+    if (
+      !sameInputs(current.inputArtifactIds, [
+        capture.seed.artifactId,
+        capture.predecessor.artifactId,
+      ]) ||
+      !hasExactConsumption(snapshot, capture.predecessor, capture)
+    ) {
+      throw new Error("A generic architecture enrichment has non-exact inputs.");
+    }
+
+    const predecessor = byId.get(capture.predecessor.artifactId);
+    if (
+      !predecessor ||
+      !architectureEvidenceMatches(predecessor, capture.predecessor)
+    ) {
+      throw new Error("A generic architecture predecessor is not exact evidence.");
+    }
+    current = predecessor;
+  }
+
+  if (visited.size !== architectures.length) {
+    throw new Error(
+      "Generic architecture evidence does not form one complete linear lineage.",
+    );
+  }
+  return tipCapture!;
 }
 
 function sameInputs(actual: readonly string[], expected: readonly string[]): boolean {
@@ -211,12 +274,43 @@ function artifactMatches(
     artifact.producer.runId === evidence.producerRunId;
 }
 
+function architectureEvidenceMatches(
+  artifact: ThreadArtifact,
+  evidence: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly producerRunId: string;
+  },
+): boolean {
+  return artifact.id === evidence.artifactId &&
+    fingerprintsEqual(artifact.fingerprint, evidence.fingerprint) &&
+    artifact.producer.runId === evidence.producerRunId;
+}
+
+function isExactArchitectureArtifact(
+  artifact: ThreadArtifact,
+  capture: GenericArchitectureCapture,
+): boolean {
+  return artifact.id === `architecture-${artifact.fingerprint.digest}` &&
+    artifact.kind === "sysml-model" &&
+    artifact.version === artifact.fingerprint.digest &&
+    artifact.uri ===
+      `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${artifact.fingerprint.digest}` &&
+    artifact.mediaType === "application/json" &&
+    artifact.producer.serverId === "syson" &&
+    artifact.producer.tool === "syson_element_insert_sysml" &&
+    artifact.producer.runId === capture.trustedRunId &&
+    artifact.freshness.status === "fresh" &&
+    artifact.freshness.changedAt === capture.insertedAt &&
+    artifact.freshness.invalidatedByChangeIds.length === 0;
+}
+
 function hasExactConsumption(
   snapshot: ThreadSnapshot,
   evidence: { readonly artifactId: string; readonly fingerprint: ContentFingerprint },
   capture: GenericArchitectureCapture,
 ): boolean {
-  return snapshot.consumptions.some((consumption) =>
+  return snapshot.consumptions.filter((consumption) =>
     consumption.artifactId === evidence.artifactId &&
     fingerprintsEqual(consumption.observedFingerprint, evidence.fingerprint) &&
     consumption.status === "verified" &&
@@ -224,7 +318,7 @@ function hasExactConsumption(
     consumption.consumer.serverId === "syson" &&
     consumption.consumer.tool === "syson_element_insert_sysml" &&
     consumption.consumer.runId === capture.trustedRunId
-  );
+  ).length === 1;
 }
 
 // ── Private: catalog builder ──────────────────────────────────────────────────

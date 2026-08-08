@@ -3,7 +3,12 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
+import type {
+  ContentFingerprint,
+  ThreadArtifact,
+  ThreadArtifactConsumption,
+  ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
 import type { GenericArchitectureCaptureReader } from "./product-structure-catalog.ts";
@@ -201,6 +206,122 @@ function makeReader(
       fp.digest === captureFp.digest
         ? Promise.resolve(text)
         : Promise.resolve(undefined),
+  };
+}
+
+function architectureArtifact(
+  fingerprint: ContentFingerprint,
+  runId: string,
+  insertedAt: string,
+  inputArtifactIds: readonly string[],
+): ThreadArtifact {
+  return {
+    id: `architecture-${fingerprint.digest}`,
+    name: "Generic architecture",
+    kind: "sysml-model",
+    version: fingerprint.digest,
+    fingerprint,
+    uri: `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${fingerprint.digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "syson",
+      tool: "syson_element_insert_sysml",
+      runId,
+    },
+    inputArtifactIds: [...inputArtifactIds],
+    freshness: {
+      status: "fresh",
+      changedAt: insertedAt,
+      invalidatedByChangeIds: [],
+    },
+  };
+}
+
+function consumption(
+  artifactId: string,
+  fingerprint: ContentFingerprint,
+  runId: string,
+  insertedAt: string,
+): ThreadArtifactConsumption {
+  return {
+    id: `consume-${artifactId}-by-${runId}`,
+    artifactId,
+    consumer: {
+      serverId: "syson",
+      tool: "syson_element_insert_sysml",
+      runId,
+    },
+    observedFingerprint: fingerprint,
+    verifiedAt: insertedAt,
+    status: "verified",
+  };
+}
+
+async function appendEnrichment(
+  snapshot: ThreadSnapshot,
+  predecessor: {
+    readonly id: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly runId: string;
+  },
+  runId: string,
+  insertedAt: string,
+): Promise<{
+  readonly snapshot: ThreadSnapshot;
+  readonly capture: Record<string, unknown>;
+  readonly fingerprint: ContentFingerprint;
+  readonly artifact: ThreadArtifact;
+}> {
+  const capture = {
+    ...makeCaptureRecord(),
+    trustedRunId: runId,
+    predecessor: {
+      artifactId: predecessor.id,
+      fingerprint: predecessor.fingerprint,
+      producerRunId: predecessor.runId,
+    },
+    insertedAt,
+  };
+  const captureFingerprint = await sha256Fingerprint(capture);
+  const artifact = architectureArtifact(captureFingerprint, runId, insertedAt, [
+    "seed-artifact",
+    predecessor.id,
+  ]);
+  return {
+    snapshot: {
+      ...snapshot,
+      artifacts: [...snapshot.artifacts, artifact],
+      consumptions: [
+        ...snapshot.consumptions,
+        consumption("seed-artifact", fingerprint("1"), runId, insertedAt),
+        consumption(
+          predecessor.id,
+          predecessor.fingerprint,
+          runId,
+          insertedAt,
+        ),
+      ],
+    },
+    capture,
+    fingerprint: captureFingerprint,
+    artifact,
+  };
+}
+
+function readerFor(
+  records: readonly {
+    readonly fingerprint: ContentFingerprint;
+    readonly capture: Record<string, unknown>;
+  }[],
+): GenericArchitectureCaptureReader {
+  const textByDigest = new Map(
+    records.map(({ fingerprint, capture }) => [
+      fingerprint.digest,
+      deterministicJson(capture),
+    ]),
+  );
+  return {
+    read: (fingerprint) => Promise.resolve(textByDigest.get(fingerprint.digest)),
   };
 }
 
@@ -582,5 +703,256 @@ Deno.test(
 
     assertEquals(catalog?.components, []);
     assertStringIncludes(catalog?.rationale ?? "", "no component declarations");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog verifies every capture in a multi-enrichment lineage",
+  async () => {
+    const rootCapture = makeCaptureRecord();
+    const rootFingerprint = await sha256Fingerprint(rootCapture);
+    const rootSnapshot = snapshotWithArchArtifact(rootFingerprint);
+    const rootArtifact = rootSnapshot.artifacts.find((artifact) =>
+      artifact.id === `architecture-${rootFingerprint.digest}`
+    )!;
+    const second = await appendEnrichment(
+      rootSnapshot,
+      {
+        id: rootArtifact.id,
+        fingerprint: rootFingerprint,
+        runId: "run:arch",
+      },
+      "run:arch-2",
+      "2026-08-08T00:01:00.000Z",
+    );
+    const third = await appendEnrichment(
+      second.snapshot,
+      {
+        id: second.artifact.id,
+        fingerprint: second.fingerprint,
+        runId: "run:arch-2",
+      },
+      "run:arch-3",
+      "2026-08-08T00:02:00.000Z",
+    );
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      third.snapshot,
+      readerFor([
+        { fingerprint: rootFingerprint, capture: rootCapture },
+        { fingerprint: second.fingerprint, capture: second.capture },
+        { fingerprint: third.fingerprint, capture: third.capture },
+      ]),
+    );
+
+    assertEquals(catalog?.components.length, 3);
+    assertEquals(
+      catalog?.components[0]?.bindings[0]?.evidenceArtifactId,
+      third.artifact.id,
+    );
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects an unreadable N-1 predecessor capture",
+  async () => {
+    const rootCapture = makeCaptureRecord();
+    const rootFingerprint = await sha256Fingerprint(rootCapture);
+    const rootSnapshot = snapshotWithArchArtifact(rootFingerprint);
+    const rootArtifact = rootSnapshot.artifacts.find((artifact) =>
+      artifact.id === `architecture-${rootFingerprint.digest}`
+    )!;
+    const second = await appendEnrichment(
+      rootSnapshot,
+      { id: rootArtifact.id, fingerprint: rootFingerprint, runId: "run:arch" },
+      "run:arch-2",
+      "2026-08-08T00:01:00.000Z",
+    );
+    const third = await appendEnrichment(
+      second.snapshot,
+      { id: second.artifact.id, fingerprint: second.fingerprint, runId: "run:arch-2" },
+      "run:arch-3",
+      "2026-08-08T00:02:00.000Z",
+    );
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      third.snapshot,
+      readerFor([
+        { fingerprint: rootFingerprint, capture: rootCapture },
+        { fingerprint: third.fingerprint, capture: third.capture },
+      ]),
+    );
+
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "not readable");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects a tampered N-1 predecessor capture",
+  async () => {
+    const rootCapture = makeCaptureRecord();
+    const rootFingerprint = await sha256Fingerprint(rootCapture);
+    const rootSnapshot = snapshotWithArchArtifact(rootFingerprint);
+    const rootArtifact = rootSnapshot.artifacts.find((artifact) =>
+      artifact.id === `architecture-${rootFingerprint.digest}`
+    )!;
+    const second = await appendEnrichment(
+      rootSnapshot,
+      { id: rootArtifact.id, fingerprint: rootFingerprint, runId: "run:arch" },
+      "run:arch-2",
+      "2026-08-08T00:01:00.000Z",
+    );
+    const third = await appendEnrichment(
+      second.snapshot,
+      { id: second.artifact.id, fingerprint: second.fingerprint, runId: "run:arch-2" },
+      "run:arch-3",
+      "2026-08-08T00:02:00.000Z",
+    );
+    const tamperedSecond = { ...second.capture, packageName: "TamperedPackage" };
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      third.snapshot,
+      readerFor([
+        { fingerprint: rootFingerprint, capture: rootCapture },
+        { fingerprint: second.fingerprint, capture: tamperedSecond },
+        { fingerprint: third.fingerprint, capture: third.capture },
+      ]),
+    );
+
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects a disconnected generic cycle even with a valid tip",
+  async () => {
+    const rootCapture = makeCaptureRecord();
+    const rootFingerprint = await sha256Fingerprint(rootCapture);
+    const rootSnapshot = snapshotWithArchArtifact(rootFingerprint);
+    const cycleA = architectureArtifact(
+      fingerprint("a"),
+      "run:cycle-a",
+      "2026-08-08T00:01:00.000Z",
+      ["seed-artifact", `architecture-${fingerprint("b").digest}`],
+    );
+    const cycleB = architectureArtifact(
+      fingerprint("b"),
+      "run:cycle-b",
+      "2026-08-08T00:02:00.000Z",
+      ["seed-artifact", cycleA.id],
+    );
+    const snapshot: ThreadSnapshot = {
+      ...rootSnapshot,
+      artifacts: [...rootSnapshot.artifacts, cycleA, cycleB],
+    };
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      readerFor([{ fingerprint: rootFingerprint, capture: rootCapture }]),
+    );
+
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects an archived generic orphan instead of falling back",
+  async () => {
+    const rootCapture = makeCaptureRecord();
+    const rootFingerprint = await sha256Fingerprint(rootCapture);
+    const rootSnapshot = snapshotWithArchArtifact(rootFingerprint);
+    const orphanCapture = {
+      ...makeCaptureRecord(),
+      trustedRunId: "run:orphan",
+      insertedAt: "2026-08-08T00:01:00.000Z",
+    };
+    const orphanFingerprint = await sha256Fingerprint(orphanCapture);
+    const orphan = architectureArtifact(
+      orphanFingerprint,
+      "run:orphan",
+      "2026-08-08T00:01:00.000Z",
+      ["seed-artifact"],
+    );
+    const snapshot: ThreadSnapshot = {
+      ...rootSnapshot,
+      artifacts: [...rootSnapshot.artifacts, orphan],
+      changeSet: {
+        ...rootSnapshot.changeSet,
+        changes: [...rootSnapshot.changeSet.changes, {
+          id: "archive-orphan",
+          kind: "archived",
+          target: { kind: "artifact", id: orphan.id },
+          summary: "The unrelated generic root is historical only.",
+        }],
+      },
+    };
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      readerFor([
+        { fingerprint: rootFingerprint, capture: rootCapture },
+        { fingerprint: orphanFingerprint, capture: orphanCapture },
+      ]),
+    );
+
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects a capture whose predecessor artifact is missing",
+  async () => {
+    const unusedRoot = makeCaptureRecord();
+    const unusedRootFingerprint = await sha256Fingerprint(unusedRoot);
+    const base = snapshotWithArchArtifact(unusedRootFingerprint);
+    const missingFingerprint = fingerprint("m");
+    const missingId = `architecture-${missingFingerprint.digest}`;
+    const capture = {
+      ...makeCaptureRecord(),
+      trustedRunId: "run:broken",
+      predecessor: {
+        artifactId: missingId,
+        fingerprint: missingFingerprint,
+        producerRunId: "run:missing",
+      },
+      insertedAt: "2026-08-08T00:01:00.000Z",
+    };
+    const captureFingerprint = await sha256Fingerprint(capture);
+    const broken = architectureArtifact(
+      captureFingerprint,
+      "run:broken",
+      "2026-08-08T00:01:00.000Z",
+      ["seed-artifact", missingId],
+    );
+    const snapshot: ThreadSnapshot = {
+      ...base,
+      artifacts: [base.artifacts[0]!, broken],
+      consumptions: [
+        consumption(
+          "seed-artifact",
+          fingerprint("1"),
+          "run:broken",
+          "2026-08-08T00:01:00.000Z",
+        ),
+        consumption(
+          missingId,
+          missingFingerprint,
+          "run:broken",
+          "2026-08-08T00:01:00.000Z",
+        ),
+      ],
+    };
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      readerFor([{ fingerprint: captureFingerprint, capture }]),
+    );
+
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
   },
 );
