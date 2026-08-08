@@ -49,8 +49,9 @@ DripTray, not whole-machine, release, manufacturing, or certification evidence.
 
 The research community is converging on this pattern under the name
 **physics-in-the-loop** (generate-and-verify / LLM-Modulo family): the agent proposes,
-sound physical tools dispose. See [docs/explanations/positioning.md](docs/explanations/positioning.md) for the
-full analysis and references. What distinguishes this implementation:
+sound physical tools dispose. See
+[docs/explanations/positioning.md](docs/explanations/positioning.md) for the full
+analysis and references. What distinguishes this implementation:
 
 - **Model-grounded** — the verified CM-01 loop starts from a SysML v2 model. CAD-first
   and product-first entries must recover and review missing intent before they can make
@@ -205,8 +206,8 @@ Opening or refreshing the UI never launches CAD, FEA, or Modelica. In the produc
 calculation, modeling, ERP, and evidence publication belong to agent orchestration
 through bounded backend tools, with chat elicitation where human authority is
 consequential. Only registered operations are executable today; a missing executor stays
-an explicit capability gap. Provider execution, canonical attachment,
-and project completion remain separate operations. See the
+an explicit capability gap. Provider execution, canonical attachment, and project
+completion remain separate operations. See the
 [native preview how-to](docs/how-to/preview-native-workbench.md) and the
 [ThreadSnapshot reference](docs/reference/thread-snapshot.md).
 
@@ -260,11 +261,11 @@ organized with [Diátaxis](https://diataxis.fr/): start at the
 [CoffeeMachine run tutorial](docs/tutorials/coffee-machine-nominal.md), use the
 [browser-preview how-to](docs/how-to/preview-console.md), use the
 [native Workbench preview](docs/how-to/preview-native-workbench.md), or follow the
-[CM-01 assembly guide](docs/how-to/assemble-coffee-machine-thread.md) and the
-[CoffeeMachine workflow guide](docs/how-to/view-coffee-machine-cm01.md). Look up exact
-paths and ports in the [workspace reference](docs/reference/workspace-map.md). The
-[console reference](docs/reference/console.md) retains the observer contract, evidence model, and
-security boundary.
+[CM-01 V3 local golden-path guide](docs/how-to/run-cm01-v3-golden-local.md) and its
+[reviewed reference](docs/reference/cm01-v3-golden-reference.md). Look up exact paths
+and ports in the [workspace reference](docs/reference/workspace-map.md). The
+[console reference](docs/reference/console.md) retains the observer contract, evidence
+model, and security boundary.
 
 ## Repository map
 
