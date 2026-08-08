@@ -3282,6 +3282,9 @@ function matchesQueuedRunReceiptBinding(
   return receipt.type === "agent-run.queue" && !!binding &&
     queuedTransition?.status === "queued" &&
     receipt.commandId === queuedTransition.commandId &&
+    receipt.actor.id === queuedTransition.actor.id &&
+    receipt.actor.origin === queuedTransition.actor.origin &&
+    Date.parse(receipt.appliedAt) === Date.parse(queuedTransition.at) &&
     binding.runId === run.id &&
     binding.workItemId === run.workItemId;
 }
@@ -3301,7 +3304,7 @@ function queueAndCancellationReceiptBindingsAgree(
 /**
  * New queue receipts seal their queued run, while receipts created before the
  * binding was introduced remain valid legacy history. When the field exists,
- * it is a one-to-one target anchor for the initial queued transition.
+ * it is a one-to-one, actor-and-time anchor for the initial queued transition.
  */
 function validateQueuedRunReceiptBindings(
   project: EngineeringProjectSnapshot,

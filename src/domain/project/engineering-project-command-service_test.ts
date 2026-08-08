@@ -337,6 +337,42 @@ Deno.test("browser cannot claim and a second agent cannot hijack a claimed run",
   );
 });
 
+Deno.test("a bound queue receipt seals the initial queued transition actor and timestamp", async () => {
+  const store = await memoryStore();
+  const service = serviceFor(store);
+  const approved = await approveAll(service, store);
+  const queued = await service.queueRun(AGENT, {
+    ...context("queue-receipt-transition-seal", approved.revision),
+    runId: "verify-run-queue-receipt-transition-seal",
+    workItemId: "verify-current-mechanical-design",
+    summary: "Queue reviewed verification inputs for receipt sealing.",
+    baseSnapshot: baseSnapshot(approved),
+  });
+
+  const forgedActor = structuredClone(queued) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  forgedActor.commandReceipts!.find((receipt) => receipt.type === "agent-run.queue")!
+    .actor = { id: "agent-forger", origin: "agent" };
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(forgedActor),
+    EngineeringProjectValidationError,
+    "must identify exactly one run and its initial queued transition",
+  );
+
+  const forgedTimestamp = structuredClone(queued) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  forgedTimestamp.commandReceipts!.find((receipt) =>
+    receipt.type === "agent-run.queue"
+  )!.appliedAt = "2026-08-01T11:00:02.000Z";
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(forgedTimestamp),
+    EngineeringProjectValidationError,
+    "must identify exactly one run and its initial queued transition",
+  );
+});
+
 Deno.test("only a human can append-only cancel an unclaimed queued run", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);
