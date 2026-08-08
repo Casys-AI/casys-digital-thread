@@ -65,6 +65,7 @@ import {
 import {
   type OracleRequirement,
   renderOracleRequirementsSysml,
+  SUPPORTED_ORACLE_UNITS,
 } from "../../domain/analysis/proof-case.ts";
 import type {
   ContentFingerprint,
@@ -438,33 +439,46 @@ export class ModelWriteRequirementsRunExecutor {
         );
       }
 
-      // Only the requirements to insert matter for the SysML render; adopted
-      // metrics remain unchanged in the model and are re-verified via extraction.
+      // Build the full requirements list to render.
+      //
+      // syson_element_insert_sysml PROBE (2026-08-08, SysON 0.5.1):
+      //   Inserting the same partDef name twice into the same parent package
+      //   produces TWO distinct elements with the same label — it is a pure
+      //   insert, NOT a replace. Enrichment cannot call insert twice; D5
+      //   identification would find two matches and fail with ambiguity.
+      //
+      // ENRICHMENT STRATEGY — delete + reinsert:
+      //   Before WAL begin, we locate the prior element by label (below). In the
+      //   dispatch path, we delete it with syson_element_delete, then insert a
+      //   NEW element containing the full set (toInsert + adopted). After the
+      //   insert, D5 finds exactly one element. The verification step
+      //   (extractAndVerifyOracleRequirements) confirms all metrics are present.
+      //   If delete succeeds but insert fails the WAL is still "dispatched" and
+      //   the run quarantines → human review, not silent retry.
       const insertOracleRequirements = requirementEntriesToOracleRequirements(
         enrichmentPlan.toInsert,
       );
-      // The partition of what to insert vs. adopt shapes the partDef rendered: for
-      // initial mode, the full list; for enrichment, only toInsert. But SysON's
-      // syson_element_insert_sysml always replaces or creates the entire partDef —
-      // so we must render all requirements (toInsert + adopted) to preserve existing
-      // constraints. The adopted ones are re-verified by extraction.
-      const renderRequirements = [...insertOracleRequirements];
+      const adoptedOracleRequirements = enrichmentPlan.adopted.length > 0
+        ? requirementEntriesToOracleRequirements(enrichmentPlan.adopted)
+        : [];
+      // renderRequirements = full set: initial mode ⇒ toInsert only;
+      // enrichment mode ⇒ toInsert + adopted (re-renders entire partDef).
+      const renderRequirements = [
+        ...insertOracleRequirements,
+        ...adoptedOracleRequirements,
+      ];
+
+      // Pre-WAL enrichment lookup: find the existing partDef element to delete.
+      // This must happen before WAL begin so quarantine protects delete+insert atomicity.
+      let priorRequirementsElementId: string | undefined;
       if (enrichmentPlan.adopted.length > 0) {
-        // Adopted requirements were already in the prior capture, and must be
-        // included in the SysML to preserve them. However, syson_element_insert_sysml
-        // creates a NEW element alongside the existing one (it is a pure insert, not
-        // a replace). We only insert the new metrics; the adopted ones remain in the
-        // existing element. The verification step must find ALL (insert + adopt).
-        //
-        // RE-VERIFICATION NOTE: since enrichment inserts a NEW element with only the
-        // new metrics (not a replacement), the verification below checks the new element
-        // has exactly insertOracleRequirements metrics. For adopted ones, the prior
-        // element still exists. In the simplest model, each requirements run creates a
-        // SINGLE partDef. Therefore we render all (toInsert + adopted) together.
-        const adoptedOracle = requirementEntriesToOracleRequirements(
-          enrichmentPlan.adopted,
+        priorRequirementsElementId = await this.#findElementByLabelOrUndefined(
+          editingContextId,
+          architecturePackageId,
+          proposal.partDefName,
         );
-        renderRequirements.push(...adoptedOracle);
+        // If already absent (e.g. manual deletion), enrichment continues with
+        // pure insert of all metrics — the verification step will confirm.
       }
 
       // Compute planDigest for the WAL (covers the requirements to render + target).
@@ -505,7 +519,28 @@ export class ModelWriteRequirementsRunExecutor {
             proposal.partDefName,
           );
         } else {
-          // Step 17: render SysML and insert.
+          // Step 17: (enrichment) delete prior element, then insert full set;
+          //           (initial) insert directly.
+          //
+          // For enrichment with adopted metrics: delete the prior partDef element
+          // first (irreversible via syson_element_delete) so that re-insertion of
+          // the complete set (toInsert + adopted) does not create a duplicate label.
+          // The WAL entry is "dispatched" until step 19 (complete); if delete
+          // succeeds but insert fails, the dispatched WAL causes quarantine on
+          // retry rather than a silent second deletion.
+          if (priorRequirementsElementId !== undefined) {
+            try {
+              await this.#syson.callTool({
+                name: "syson_element_delete",
+                arguments: { element_id: priorRequirementsElementId },
+              });
+            } catch (error) {
+              if (!(error instanceof EngineeringProjectCommandError)) {
+                throw new RequirementsWriteOutcomeUnknownError();
+              }
+              throw error;
+            }
+          }
           const sysmlText = renderOracleRequirementsSysml(
             proposal.partDefName,
             renderRequirements,
@@ -913,10 +948,133 @@ export class ModelWriteRequirementsRunExecutor {
         "The prior requirements capture does not match the expected schema or target component.",
       );
     }
-    return (record as Record<string, unknown>).requirements as OracleRequirement[];
+    // F4 — fail-closed validation of each prior requirement. An unsafe cast here
+    // would allow a malformed capture to produce a silent enrichment plan error
+    // (wrong metric compared, wrong unit bypassed). Every element is validated
+    // against the same invariants that the proposal parser enforces on new input.
+    const raw = (record as Record<string, unknown>).requirements as unknown[];
+    const validated: OracleRequirement[] = [];
+    const allowedOperators: ReadonlySet<string> = new Set(["<=", ">=", "<", ">", "=="]);
+    for (let index = 0; index < raw.length; index++) {
+      const req = raw[index];
+      if (!req || typeof req !== "object" || Array.isArray(req)) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `Prior requirements capture requirements[${index}] is not an object.`,
+        );
+      }
+      const r = req as Record<string, unknown>;
+      if (
+        typeof r.id !== "string" || !r.id.trim() ||
+        typeof r.name !== "string" || !r.name.trim() ||
+        typeof r.metric !== "string" || !r.metric.trim()
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `Prior requirements capture requirements[${index}] missing required string fields (id, name, metric).`,
+        );
+      }
+      if (typeof r.operator !== "string" || !allowedOperators.has(r.operator)) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `Prior requirements capture requirements[${index}].operator "${
+            String(r.operator)
+          }" is not a valid comparison operator.`,
+        );
+      }
+      const limit = r.limit;
+      if (
+        !limit || typeof limit !== "object" || Array.isArray(limit) ||
+        typeof (limit as Record<string, unknown>).value !== "number" ||
+        typeof (limit as Record<string, unknown>).unit !== "string"
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `Prior requirements capture requirements[${index}].limit is missing or has wrong types.`,
+        );
+      }
+      const unit = (limit as Record<string, unknown>).unit as string;
+      if (!SUPPORTED_ORACLE_UNITS.includes(unit)) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `Prior requirements capture requirements[${index}].limit.unit "${unit}" is not in the supported vocabulary.`,
+        );
+      }
+      validated.push({
+        id: r.id as string,
+        name: r.name as string,
+        metric: r.metric as string,
+        operator: r.operator as OracleRequirement["operator"],
+        limit: {
+          value: (limit as Record<string, unknown>).value as number,
+          unit,
+        },
+      });
+    }
+    return validated;
   }
 
   // ── Private: D5 identification by label ──────────────────────────────────
+
+  /**
+   * Return the element id of the first child whose label matches partDefName,
+   * or undefined if no match exists.
+   *
+   * Used in the pre-WAL enrichment lookup: we need the prior element id before
+   * entering the WAL dispatch, so that the delete + reinsert pair can be
+   * journaled under the same WAL entry. Returns undefined when the element does
+   * not yet exist (initial write) or has already been manually removed.
+   *
+   * Throws RequirementsWriteOutcomeUnknownError when the children call fails
+   * (transport error) — the executor cannot safely proceed without knowing
+   * whether the prior element exists.
+   */
+  async #findElementByLabelOrUndefined(
+    editingContextId: string,
+    packageId: string,
+    partDefName: string,
+  ): Promise<string | undefined> {
+    let children: unknown[];
+    try {
+      const result = await this.#syson.callTool({
+        name: "syson_element_children",
+        arguments: {
+          editing_context_id: editingContextId,
+          element_id: packageId,
+        },
+      });
+      const c = result.structuredContent.children;
+      if (!Array.isArray(c)) {
+        throw new Error(
+          "syson_element_children: structuredContent.children must be an array.",
+        );
+      }
+      children = c;
+    } catch (error) {
+      if (!(error instanceof EngineeringProjectCommandError)) {
+        throw new RequirementsWriteOutcomeUnknownError();
+      }
+      throw error;
+    }
+    const matches = children.filter(
+      (child) =>
+        typeof child === "object" && child !== null &&
+        (child as Record<string, unknown>).label === partDefName,
+    );
+    if (matches.length === 0) return undefined;
+    if (matches.length > 1) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `D5 ambiguity before enrichment: ${matches.length} elements with label "${partDefName}" ` +
+          `in package "${packageId}". Manual inspection required before enrichment.`,
+      );
+    }
+    const match = matches[0] as Record<string, unknown>;
+    if (typeof match.id !== "string" || !match.id.trim()) {
+      throw new RequirementsWriteOutcomeUnknownError();
+    }
+    return match.id;
+  }
 
   async #identifyByLabelOrFail(
     editingContextId: string,
@@ -1426,14 +1584,31 @@ function buildExtension(options: {
         "The executor read the exact architecture capture to resolve the target element.",
     },
     ...(priorRequirementsArtifact
-      ? [{
-        id: `derived-from-requirements-${captureFp.digest}`,
-        relation: "derived_from" as const,
-        from: { kind: "artifact" as const, id: artifactId },
-        to: { kind: "artifact" as const, id: priorRequirementsArtifact.id },
-        rationale:
-          "The prior requirements capture was read as the predecessor of this enrichment.",
-      }]
+      ? [
+        {
+          id: `derived-from-requirements-${captureFp.digest}`,
+          relation: "derived_from" as const,
+          from: { kind: "artifact" as const, id: artifactId },
+          to: { kind: "artifact" as const, id: priorRequirementsArtifact.id },
+          rationale:
+            "The prior requirements capture was read as the predecessor of this enrichment.",
+        },
+        {
+          // validateThreadSnapshot requires a "uses" provenance link for every
+          // verified consumption. The prior-requirements consumption is verified
+          // and must therefore carry its own link — the architecture link alone
+          // does not satisfy the per-consumption invariant.
+          id: `uses-consume-prior-requirements-${captureFp.digest}`,
+          relation: "uses" as const,
+          from: {
+            kind: "consumption" as const,
+            id: `consume-${priorRequirementsArtifact.id}-by-${artifactId}`,
+          },
+          to: { kind: "artifact" as const, id: priorRequirementsArtifact.id },
+          rationale:
+            "The executor read the exact prior requirements capture to plan the enrichment.",
+        },
+      ]
       : []),
   ];
 
@@ -1707,7 +1882,12 @@ function requirementsUriFor(
 
 // ── Private: tip selector ─────────────────────────────────────────────────────
 
-function selectRequirementsTip(
+/**
+ * Exported for unit-testing. Callers outside this module that need a boolean
+ * should use findRequirementsArtifact / assertRequirementsArtifactNotRemoved
+ * instead — those express clearer intent. This function is the testable core.
+ */
+export function selectRequirementsTip(
   snapshot: ThreadSnapshot,
   containerComponent: string,
 ):
