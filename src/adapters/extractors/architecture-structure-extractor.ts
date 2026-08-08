@@ -142,15 +142,22 @@ export async function extractArchitectureStructure(
     const usages: ExistingPartUsage[] = [];
     for (const usage of partDefChildren) {
       if (!semanticKind(usage.kind, "PartUsage")) continue;
-      const targetLabel = await resolveFeatureTypingTarget(
+      const target = await resolveFeatureTypingTarget(
         syson,
         editingContextId,
         usage,
         child.label,
       );
-      usages.push({ label: usage.label, targetLabel });
+      usages.push({
+        id: usage.id,
+        kind: usage.kind,
+        label: usage.label,
+        targetId: target.id,
+        targetKind: target.kind,
+        targetLabel: target.label,
+      });
     }
-    partDefs.push({ id: child.id, label: child.label, usages });
+    partDefs.push({ id: child.id, kind: child.kind, label: child.label, usages });
   }
 
   return {
@@ -245,7 +252,7 @@ async function resolveFeatureTypingTarget(
   editingContextId: string,
   usage: SysonChild,
   parentLabel: string,
-): Promise<string> {
+): Promise<{ readonly id: string; readonly kind: string; readonly label: string }> {
   let content: Record<string, unknown>;
   try {
     const result = await syson.callTool({
@@ -310,6 +317,13 @@ async function resolveFeatureTypingTarget(
   const typed = (content.results as unknown[])[0];
   if (
     !typed || typeof typed !== "object" || Array.isArray(typed) ||
+    typeof (typed as Record<string, unknown>).id !== "string" ||
+    !(typed as Record<string, unknown>).id ||
+    typeof (typed as Record<string, unknown>).kind !== "string" ||
+    !semanticKind(
+      (typed as Record<string, unknown>).kind as string,
+      "PartDefinition",
+    ) ||
     typeof (typed as Record<string, unknown>).label !== "string" ||
     !(typed as Record<string, unknown>).label
   ) {
@@ -322,7 +336,12 @@ async function resolveFeatureTypingTarget(
     );
   }
 
-  return (typed as Record<string, unknown>).label as string;
+  const record = typed as Record<string, unknown>;
+  return {
+    id: record.id as string,
+    kind: record.kind as string,
+    label: record.label as string,
+  };
 }
 
 function semanticKind(value: string, expected: string): boolean {

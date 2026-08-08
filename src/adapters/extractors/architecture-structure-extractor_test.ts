@@ -177,7 +177,14 @@ Deno.test(
     assertEquals(result!.partDefs.length, 2);
 
     const sys = result!.partDefs.find((pd) => pd.label === "DroneSystem");
-    assertEquals(sys?.usages, [{ label: "wing", targetLabel: "Wing" }]);
+    assertEquals(sys?.usages, [{
+      id: "usage-1",
+      kind: PART_USAGE_KIND,
+      label: "wing",
+      targetId: "def-Wing",
+      targetKind: "sysml::PartDefinition",
+      targetLabel: "Wing",
+    }]);
 
     const wing = result!.partDefs.find((pd) => pd.label === "Wing");
     assertEquals(wing?.usages, []);

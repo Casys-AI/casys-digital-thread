@@ -342,15 +342,25 @@ export function renderArchitectureSysml(proposal: ArchitectureProposal): string 
  * would silently accept the wrong type.
  */
 export interface ExistingPartUsage {
+  /** Provider-owned PartUsage identity, captured rather than reconstructed. */
+  readonly id?: string;
+  /** Exact provider semantic kind, e.g. sysml::PartUsage. */
+  readonly kind?: string;
   /** SysML usage identifier, e.g. "wing" (lower-camelCase). */
   readonly label: string;
   /** Label of the PartDef this usage types, e.g. "Wing". */
   readonly targetLabel: string;
+  /** Provider-owned typed PartDefinition identity returned by the closed AQL. */
+  readonly targetId?: string;
+  /** Exact semantic kind returned by the closed AQL. */
+  readonly targetKind?: string;
 }
 
 /** A PartDef element extracted from the live SysON model. */
 export interface ExistingPartDef {
   readonly id: string;
+  /** Exact provider semantic kind, e.g. sysml::PartDefinition. */
+  readonly kind?: string;
   readonly label: string;
   /** Child usages with their type targets. */
   readonly usages: readonly ExistingPartUsage[];

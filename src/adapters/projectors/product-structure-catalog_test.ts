@@ -19,20 +19,56 @@ const SUBJECT_ID = "project:drone-v4-test";
 function makeCaptureRecord(
   overrides?: Partial<{
     systemName: string;
-    declarations: { id: string; label: string }[];
+    declarations: {
+      id: string;
+      label: string;
+      usages?: { id: string; label: string; targetId: string; targetLabel: string }[];
+    }[];
   }>,
 ): Record<string, unknown> {
   return {
-    schemaVersion: "architecture-capture/1.0",
+    schemaVersion: "architecture-capture/2.0",
+    operation: { id: "model.write-architecture", version: "1" },
+    trustedRunId: "run:arch",
     packageName: "SystemV1",
     systemName: overrides?.systemName ?? "SystemUnit",
-    packageId: "pkg-001",
-    seedFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-    declarations: overrides?.declarations ?? [
-      { id: "sys-def-001", label: "SystemUnit" },
+    package: { id: "pkg-001", label: "SystemV1" },
+    seed: {
+      artifactId: "seed-artifact",
+      fingerprint: fingerprint("1"),
+      producerRunId: "run:seed",
+    },
+    partDefinitions: (overrides?.declarations ?? [
+      {
+        id: "sys-def-001",
+        label: "SystemUnit",
+        usages: [
+          {
+            id: "alpha-use-001",
+            label: "alpha",
+            targetId: "alpha-def-001",
+            targetLabel: "AlphaModule",
+          },
+          {
+            id: "beta-use-001",
+            label: "beta",
+            targetId: "beta-def-001",
+            targetLabel: "BetaModule",
+          },
+        ],
+      },
       { id: "alpha-def-001", label: "AlphaModule" },
       { id: "beta-def-001", label: "BetaModule" },
-    ],
+    ]).map((declaration) => ({
+      id: declaration.id,
+      kind: "PartDefinition",
+      label: declaration.label,
+      usages: (declaration.usages ?? []).map((usage) => ({
+        ...usage,
+        kind: "PartUsage",
+        targetKind: "PartDefinition",
+      })),
+    })),
     insertedAt: AT,
   };
 }
@@ -54,7 +90,7 @@ function fresh() {
  * identified by the generic URI prefix, with the given content fingerprint.
  */
 function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
-  const archId = `generic-arch-${captureFp.digest}`;
+  const archId = `architecture-${captureFp.digest}`;
   const uri = `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${captureFp.digest}`;
   return validateThreadSnapshot({
     schemaVersion: "1.0",
@@ -66,7 +102,7 @@ function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
       name: "Generic project for projector test",
       kind: "system",
       version: captureFp.digest,
-      modelArtifactId: archId,
+      modelArtifactId: "seed-artifact",
     },
     freshness: fresh(),
     changeSet: {
@@ -84,21 +120,43 @@ function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
       }],
     },
     artifacts: [{
+      id: "seed-artifact",
+      name: "Seed",
+      kind: "sysml-model",
+      version: "1".repeat(64),
+      fingerprint: fingerprint("1"),
+      uri: "casys://syson-model-seed-capture/sha256/" + "1".repeat(64),
+      producer: { serverId: "syson", tool: "syson_model_create", runId: "run:seed" },
+      inputArtifactIds: [],
+      freshness: fresh(),
+    }, {
       id: archId,
       name: "SystemV1 architecture",
       kind: "sysml-model",
       version: captureFp.digest,
       fingerprint: captureFp,
       uri,
+      mediaType: "application/json",
       producer: {
         serverId: "syson",
         tool: "syson_element_insert_sysml",
         runId: "run:arch",
       },
-      inputArtifactIds: [],
+      inputArtifactIds: ["seed-artifact"],
       freshness: fresh(),
     }],
-    consumptions: [],
+    consumptions: [{
+      id: "consume-seed",
+      artifactId: "seed-artifact",
+      consumer: {
+        serverId: "syson",
+        tool: "syson_element_insert_sysml",
+        runId: "run:arch",
+      },
+      observedFingerprint: fingerprint("1"),
+      verifiedAt: AT,
+      status: "verified",
+    }],
     observations: [],
     requirements: [],
     evaluations: [],
@@ -109,6 +167,18 @@ function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
       from: { kind: "change", id: "change-r1" },
       to: { kind: "artifact", id: archId },
       rationale: "The architecture fixture change records the initial evidence.",
+    }, {
+      id: "uses-seed",
+      relation: "uses",
+      from: { kind: "consumption", id: "consume-seed" },
+      to: { kind: "artifact", id: "seed-artifact" },
+      rationale: "The architecture fixture verifies its exact seed.",
+    }, {
+      id: "derived-from-seed",
+      relation: "derived_from",
+      from: { kind: "artifact", id: archId },
+      to: { kind: "artifact", id: "seed-artifact" },
+      rationale: "The architecture fixture derives from its exact seed.",
     }],
     proposedActions: [],
   });
@@ -221,7 +291,7 @@ Deno.test(
 
     const catalog = await resolveGenericProductStructureCatalog(snapshot, reader);
 
-    const archId = `generic-arch-${captureFp.digest}`;
+    const archId = `architecture-${captureFp.digest}`;
     assertEquals(catalog?.subjectId, SUBJECT_ID);
     assertEquals(catalog?.components.length, 3);
 
@@ -238,16 +308,16 @@ Deno.test(
       evidenceArtifactId: archId,
     }]);
 
-    // Part components — IDs are kebab-case from labels
+    // Part components are explicit PartUsage occurrences.
     const parts = catalog?.components.filter((c) => c.kind === "part");
     assertEquals(parts?.length, 2);
     const alpha = parts?.find((c) => c.label === "AlphaModule");
-    assertEquals(alpha?.id, `${SUBJECT_ID}:alpha-module`);
+    assertEquals(alpha?.id, `${SUBJECT_ID}:usage:alpha-use-001`);
     assertEquals(alpha?.parentId, `${SUBJECT_ID}:system`);
     assertEquals(alpha?.bindings[0]?.id, "alpha-def-001");
 
     const beta = parts?.find((c) => c.label === "BetaModule");
-    assertEquals(beta?.id, `${SUBJECT_ID}:beta-module`);
+    assertEquals(beta?.id, `${SUBJECT_ID}:usage:beta-use-001`);
     assertEquals(beta?.parentId, `${SUBJECT_ID}:system`);
     assertEquals(beta?.bindings[0]?.id, "beta-def-001");
   },
@@ -320,7 +390,7 @@ Deno.test(
     assertEquals(catalog?.components, []);
     assertStringIncludes(
       catalog?.rationale ?? "",
-      "no declaration with that label",
+      "exactly one system PartDefinition",
     );
   },
 );
@@ -346,7 +416,7 @@ Deno.test(
     );
 
     assertEquals(catalog?.components, []);
-    assertStringIncludes(catalog?.rationale ?? "", "duplicate component labels");
+    assertStringIncludes(catalog?.rationale ?? "", "no component declarations");
   },
 );
 
@@ -383,9 +453,9 @@ Deno.test(
     });
     const reader = makeReader(captureFp, captureRecord);
 
-    assertEquals(
-      await resolveGenericProductStructureCatalog(snapshot, reader),
-      undefined,
+    assertStringIncludes(
+      (await resolveGenericProductStructureCatalog(snapshot, reader))?.rationale ?? "",
+      "multiple current tips",
     );
   },
 );

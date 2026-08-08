@@ -39,8 +39,10 @@ import type {
 } from "../../domain/project/engineering-project.ts";
 import {
   deterministicJson,
+  fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
+import { parseSysonModelSeedCapture } from "../../domain/platform/syson-model-seed.ts";
 import {
   type ArchitectureProposal,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
@@ -92,7 +94,7 @@ import {
 export { MODEL_WRITE_ARCHITECTURE_OPERATION };
 
 /** Stable schema version written into every architecture capture. */
-export const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/1.0" as const;
+export const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/2.0" as const;
 
 // ── Error: architecture artifact removed from a successor snapshot ────────────
 
@@ -159,6 +161,24 @@ export function findArchitectureArtifact(
       typeof a.uri === "string" &&
       a.uri.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX),
   );
+}
+
+/** Return the sole generic architecture lineage tip, never an arbitrary first match. */
+function requireArchitectureTip(snapshot: ThreadSnapshot): ThreadArtifact | undefined {
+  const all = snapshot.artifacts.filter((artifact) =>
+    artifact.kind === "sysml-model" &&
+    artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
+  );
+  if (all.length === 0) return undefined;
+  const consumed = new Set(all.flatMap((artifact) => artifact.inputArtifactIds));
+  const tips = all.filter((artifact) => !consumed.has(artifact.id));
+  if (tips.length !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "Generic architecture lineage has multiple current tips; an enrichment cannot choose a predecessor.",
+    );
+  }
+  return tips[0]!;
 }
 
 // ── Exported: cliquet check (called by follow-up executors too) ───────────────
@@ -271,7 +291,7 @@ export class ModelWriteArchitectureRunExecutor {
     requireShape(project, run);
 
     // MRTR gate — proposal is consumed here so it is verified before leasing.
-    const { proposal } = requireMrtrApproval(project, run);
+    const { proposal } = await requireMrtrApproval(project, run);
     const architectureProposal = parseProposal(proposal);
 
     return await this.#lease.withLease(
@@ -319,6 +339,7 @@ export class ModelWriteArchitectureRunExecutor {
 
       if (run.status === "completed") {
         assertCompleted(project, command);
+        await this.#assertCompletedEvidenceExact(project, command);
         await this.#reconcileLive(project.project.subjectId, run.id);
         return project;
       }
@@ -330,14 +351,16 @@ export class ModelWriteArchitectureRunExecutor {
       const basis = requireBasis(run);
 
       // Step 6: load basis snapshot + seed capture (with byte-level fingerprint verification).
-      const { base, seed, seedVerifiedFingerprint } = await this.#loadSeedInputs(basis);
+      const { base, seed, seedArtifact, seedVerifiedFingerprint } = await this
+        .#loadSeedInputs(basis);
 
       // Step 7: cliquet.
       await assertArchitectureArtifactNotRemoved(base, this.#snapshots);
 
       const editingContextId = seed.editingContextId;
       const rootPackageId = seed.rootPackageId;
-      const seedArtifact = requireSeedArtifact(base);
+      const previousArchitectureArtifact = requireArchitectureTip(base);
+      await this.#assertPredecessorCaptureExact(previousArchitectureArtifact);
 
       // The immutable run-level WAL is consulted before any live preflight. A
       // completed record means SysON already acknowledged a mutation: the
@@ -350,6 +373,11 @@ export class ModelWriteArchitectureRunExecutor {
         command.runId,
       );
       if (existingAttempt?.status === "completed") {
+        // A completed run-scoped WAL is an irreversible provider acknowledgement
+        // before any readback can fail.  The outer catch must quarantine every
+        // subsequent extraction/capture failure instead of leaving a retryable
+        // running run that might redispatch.
+        providerAcknowledged = true;
         const existingForResume = await extractArchitectureStructure(
           this.#syson,
           editingContextId,
@@ -364,7 +392,6 @@ export class ModelWriteArchitectureRunExecutor {
           );
         }
         architecturePackageId = existingForResume.packageId;
-        providerAcknowledged = true;
       } else {
         // Step 8: preflight re-extraction → insertion plan.
         const existing = await extractArchitectureStructure(
@@ -401,6 +428,7 @@ export class ModelWriteArchitectureRunExecutor {
         if (walResult.action === "completed") {
           // A legacy or concurrently recovered record won the race. This branch
           // is still strictly readback-only.
+          providerAcknowledged = true;
           const existingForResume = await extractArchitectureStructure(
             this.#syson,
             editingContextId,
@@ -415,7 +443,6 @@ export class ModelWriteArchitectureRunExecutor {
             );
           }
           architecturePackageId = existingForResume.packageId;
-          providerAcknowledged = true;
         } else {
           // Dispatch: perform all insertions.
           try {
@@ -499,17 +526,46 @@ export class ModelWriteArchitectureRunExecutor {
         );
       }
       verifyAllComponentsPresent(verified, architectureProposal, adopted);
+      await this.#assertNoUnattestedLiveArchitecture(
+        verified,
+        architectureProposal,
+        previousArchitectureArtifact,
+      );
 
       // Step 13: build + save capture.
       const captureRecord = {
         schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
+        operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+        trustedRunId: run.id,
         packageName: architectureProposal.packageName,
         systemName: architectureProposal.system.name,
-        packageId: architecturePackageId,
-        seedFingerprint: seedArtifact.fingerprint,
-        declarations: verified.partDefs.map((pd) => ({
+        package: { id: architecturePackageId, label: verified.packageLabel },
+        seed: {
+          artifactId: seedArtifact.id,
+          fingerprint: seedVerifiedFingerprint,
+          producerRunId: seedArtifact.producer.runId,
+        },
+        ...(previousArchitectureArtifact
+          ? {
+            predecessor: {
+              artifactId: previousArchitectureArtifact.id,
+              fingerprint: previousArchitectureArtifact.fingerprint,
+              producerRunId: previousArchitectureArtifact.producer.runId,
+            },
+          }
+          : {}),
+        partDefinitions: verified.partDefs.map((pd) => ({
           id: pd.id,
+          kind: "PartDefinition",
           label: pd.label,
+          usages: pd.usages.map((usage) => ({
+            id: usage.id,
+            kind: "PartUsage",
+            label: usage.label,
+            targetId: usage.targetId,
+            targetKind: "PartDefinition",
+            targetLabel: usage.targetLabel,
+          })),
         })),
         insertedAt: capturedAt,
       };
@@ -533,6 +589,7 @@ export class ModelWriteArchitectureRunExecutor {
       const extension = buildExtension({
         base,
         seedArtifact,
+        previousArchitectureArtifact,
         seedVerifiedFingerprint,
         runId: run.id,
         capturedAt,
@@ -837,6 +894,7 @@ export class ModelWriteArchitectureRunExecutor {
   ): Promise<{
     base: ThreadSnapshot;
     seed: { editingContextId: string; rootPackageId: string };
+    seedArtifact: ThreadArtifact;
     seedVerifiedFingerprint: ContentFingerprint;
   }> {
     const base = await exactSnapshot(this.#snapshots, basis);
@@ -851,10 +909,17 @@ export class ModelWriteArchitectureRunExecutor {
       }
       throw error;
     }
-    const seedArtifact = base.artifacts.find(
-      (a) => a.kind === "sysml-model" && a.producer.tool === "syson_model_create",
+    const seedCandidates = base.artifacts.filter(
+      (artifact) =>
+        artifact.kind === "sysml-model" && artifact.producer.serverId === "syson" &&
+        artifact.producer.tool === "syson_model_create" &&
+        artifact.inputArtifactIds.length === 0 &&
+        artifact.uri?.startsWith("casys://syson-model-seed-capture/sha256/"),
     );
-    if (!seedArtifact) {
+    const seedArtifact = seedCandidates.length === 1 ? seedCandidates[0] : undefined;
+    if (
+      !seedArtifact
+    ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
         "The basis ThreadSnapshot has no SysON model-seed artifact " +
@@ -894,18 +959,244 @@ export class ModelWriteArchitectureRunExecutor {
      * This equivalence holds ONLY because the capture text was produced by
      * `deterministicJson`. Do not generalise to arbitrary JSON sources.
      */
-    const seedVerifiedFingerprint = await sha256Fingerprint(
-      JSON.parse(captureText) as Record<string, unknown>,
-    );
-    if (seedVerifiedFingerprint.digest !== seedArtifact.fingerprint.digest) {
+    let seedCapture: ReturnType<typeof parseSysonModelSeedCapture>;
+    let seedCaptureRecord: unknown;
+    try {
+      seedCaptureRecord = JSON.parse(captureText);
+      seedCapture = parseSysonModelSeedCapture(seedCaptureRecord);
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `The SysON model-seed capture is not an exact canonical seed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    // Hash the complete stored canonical capture, not the parser's convenient
+    // projection: the projection deliberately omits fields and cannot attest
+    // the evidence bytes.
+    const seedVerifiedFingerprint = await sha256Fingerprint(seedCaptureRecord);
+    if (
+      !fingerprintsEqual(seedVerifiedFingerprint, seedArtifact.fingerprint) ||
+      seedCapture.trustedRunId !== seedArtifact.producer.runId ||
+      seedArtifact.id !== `syson-model-seed-${seedArtifact.fingerprint.digest}`
+    ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
         "Seed capture fingerprint mismatch: the bytes read from the store do not hash " +
           "to the fingerprint recorded in the snapshot.",
       );
     }
-    const seed = parseSeedCaptureMiniFields(captureText);
-    return { base, seed, seedVerifiedFingerprint };
+    const seed = {
+      editingContextId: seedCapture.normalizedResults.project.editingContextId,
+      rootPackageId: seedCapture.normalizedResults.rootPackage.id,
+    };
+    return { base, seed, seedArtifact, seedVerifiedFingerprint };
+  }
+
+  /**
+   * The capture is evidence of the reviewed graph, not a convenient dump of
+   * whatever happened to be live in SysON.  For an enrichment, the previous
+   * capture is the only admitted inherited graph; for an initial write, only
+   * the reviewed proposal is admitted.  A separate reviewed removal operation
+   * is required to make an old edge disappear.
+   */
+  async #assertNoUnattestedLiveArchitecture(
+    verified: NonNullable<Awaited<ReturnType<typeof extractArchitectureStructure>>>,
+    proposal: ArchitectureProposal,
+    predecessor: ThreadArtifact | undefined,
+  ): Promise<void> {
+    const definitionLabels = new Set<string>([
+      proposal.system.name,
+      ...proposal.components.map((component) => component.name),
+    ]);
+    const edges = new Set(
+      proposal.components.map((component) =>
+        `${component.parentName}\u0000${component.usageName}\u0000${component.name}`
+      ),
+    );
+    const predecessorDefinitions: Array<{
+      id: string;
+      label: string;
+      usages: Array<
+        { id: string; label: string; targetId: string; targetLabel: string }
+      >;
+    }> = [];
+    if (predecessor) {
+      const text = await this.#captures.read(predecessor.fingerprint);
+      if (!text) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "The predecessor architecture capture is not durably readable.",
+        );
+      }
+      let record: Record<string, unknown>;
+      try {
+        record = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "The predecessor architecture capture is invalid JSON.",
+        );
+      }
+      const fingerprint = await sha256Fingerprint(record);
+      const operation = record.operation as Record<string, unknown> | undefined;
+      if (
+        !fingerprintsEqual(fingerprint, predecessor.fingerprint) ||
+        predecessor.id !== `architecture-${predecessor.fingerprint.digest}` ||
+        record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
+        operation?.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
+        operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
+        record.trustedRunId !== predecessor.producer.runId ||
+        !Array.isArray(record.partDefinitions)
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "The predecessor architecture capture is not schema v2 evidence.",
+        );
+      }
+      for (const raw of record.partDefinitions) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          throw new EngineeringProjectCommandError(
+            "invalid_input",
+            "The predecessor architecture graph is malformed.",
+          );
+        }
+        const part = raw as Record<string, unknown>;
+        if (
+          typeof part.id !== "string" || typeof part.label !== "string" ||
+          part.kind !== "PartDefinition" || !Array.isArray(part.usages)
+        ) {
+          throw new EngineeringProjectCommandError(
+            "invalid_input",
+            "The predecessor architecture graph is malformed.",
+          );
+        }
+        definitionLabels.add(part.label);
+        const priorUsages: Array<
+          { id: string; label: string; targetId: string; targetLabel: string }
+        > = [];
+        for (const rawUsage of part.usages) {
+          if (!rawUsage || typeof rawUsage !== "object" || Array.isArray(rawUsage)) {
+            throw new EngineeringProjectCommandError(
+              "invalid_input",
+              "The predecessor architecture graph is malformed.",
+            );
+          }
+          const usage = rawUsage as Record<string, unknown>;
+          if (
+            typeof usage.id !== "string" || typeof usage.label !== "string" ||
+            typeof usage.targetId !== "string" ||
+            typeof usage.targetLabel !== "string" || usage.kind !== "PartUsage" ||
+            usage.targetKind !== "PartDefinition"
+          ) {
+            throw new EngineeringProjectCommandError(
+              "invalid_input",
+              "The predecessor architecture graph is malformed.",
+            );
+          }
+          edges.add(`${part.label}\u0000${usage.label}\u0000${usage.targetLabel}`);
+          priorUsages.push({
+            id: usage.id,
+            label: usage.label,
+            targetId: usage.targetId,
+            targetLabel: usage.targetLabel,
+          });
+        }
+        predecessorDefinitions.push({
+          id: part.id,
+          label: part.label,
+          usages: priorUsages,
+        });
+      }
+    }
+    const actualLabels = new Set(verified.partDefs.map((part) => part.label));
+    const actualEdges = new Set(
+      verified.partDefs.flatMap((part) =>
+        part.usages.map((usage) =>
+          `${part.label}\u0000${usage.label}\u0000${usage.targetLabel}`
+        )
+      ),
+    );
+    if (
+      actualLabels.size !== definitionLabels.size ||
+      [...actualLabels].some((label) => !definitionLabels.has(label)) ||
+      actualEdges.size !== edges.size ||
+      [...actualEdges].some((edge) => !edges.has(edge))
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Verification failed: live architecture contains an unreviewed addition, removal, or edge outside the attested predecessor plus proposal graph.",
+      );
+    }
+    // Labels only establish the reviewed addition set.  Inherited evidence is
+    // stronger: its provider IDs and every occurrence edge must survive byte
+    // for byte so an identically named live replacement cannot be captured.
+    for (const prior of predecessorDefinitions) {
+      const livePart = verified.partDefs.find((part) => part.label === prior.label);
+      if (
+        !livePart || livePart.id !== prior.id ||
+        !isPartDefinitionKind(livePart.kind ?? "") ||
+        prior.usages.some((priorUsage) =>
+          !livePart.usages.some((usage) =>
+            usage.id === priorUsage.id && isPartUsageKind(usage.kind ?? "") &&
+            usage.label === priorUsage.label &&
+            usage.targetId === priorUsage.targetId &&
+            isPartDefinitionKind(usage.targetKind ?? "") &&
+            usage.targetLabel === priorUsage.targetLabel
+          )
+        )
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "Verification failed: the attested predecessor architecture was not preserved exactly.",
+        );
+      }
+    }
+  }
+
+  async #assertPredecessorCaptureExact(
+    predecessor: ThreadArtifact | undefined,
+  ): Promise<void> {
+    if (!predecessor) return;
+    const text = await this.#captures.read(predecessor.fingerprint);
+    if (!text) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The predecessor architecture capture is not durably readable.",
+      );
+    }
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The predecessor architecture capture is invalid JSON.",
+      );
+    }
+    const fingerprint = await sha256Fingerprint(record);
+    const operation = record.operation as Record<string, unknown> | undefined;
+    if (
+      !fingerprintsEqual(fingerprint, predecessor.fingerprint) ||
+      predecessor.id !== `architecture-${predecessor.fingerprint.digest}` ||
+      predecessor.kind !== "sysml-model" ||
+      predecessor.uri !==
+        `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${predecessor.fingerprint.digest}` ||
+      predecessor.mediaType !== "application/json" ||
+      predecessor.producer.serverId !== "syson" ||
+      predecessor.producer.tool !== "syson_element_insert_sysml" ||
+      record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
+      operation?.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
+      operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
+      record.trustedRunId !== predecessor.producer.runId ||
+      !Array.isArray(record.partDefinitions)
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The predecessor architecture capture is not exact schema-v2 evidence.",
+      );
+    }
   }
 
   async #recordFailure(
@@ -921,7 +1212,8 @@ export class ModelWriteArchitectureRunExecutor {
       const project = await this.#requiredProject(command.projectId);
       const run = requireRun(project, command.runId);
       if (
-        run.status !== "running" || run.claimedBy?.origin !== origin.kind ||
+        (run.status !== "running" && run.status !== "publishing") ||
+        run.claimedBy?.origin !== origin.kind ||
         run.claimedBy.id !== origin.actorId
       ) return;
       await this.#commands.failRun(origin, {
@@ -944,12 +1236,85 @@ export class ModelWriteArchitectureRunExecutor {
   async #completedFor(
     command: ModelWriteArchitectureRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot | undefined> {
+    const project = await this.#requiredProject(command.projectId);
+    if (requireRun(project, command.runId).status !== "completed") return undefined;
+    // A completed run is terminal: invalid evidence is a hard integrity error,
+    // never a reason to fall through to claim/publish logic.
+    assertCompleted(project, command);
+    await this.#assertCompletedEvidenceExact(project, command);
+    return project;
+  }
+
+  async #assertCompletedEvidenceExact(
+    project: EngineeringProjectSnapshot,
+    command: ModelWriteArchitectureRunExecutorCommand,
+  ): Promise<void> {
+    const run = requireRun(project, command.runId);
+    const result = run.resultSnapshot;
+    if (!result) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Completed architecture run has no result snapshot.",
+      );
+    }
+    const snapshot = await this.#snapshots.get(result.snapshotId);
+    if (
+      !snapshot || snapshot.id !== result.snapshotId ||
+      snapshot.revision !== result.revision
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Completed architecture result snapshot is not durably readable.",
+      );
+    }
+    const artifacts = snapshot.artifacts.filter((artifact) =>
+      artifact.kind === "sysml-model" &&
+      artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX) &&
+      artifact.producer.runId === run.id
+    );
+    if (artifacts.length !== 1 || run.evidenceRefs.length !== 1) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Completed architecture run does not have exactly one result evidence artifact.",
+      );
+    }
+    const artifact = artifacts[0]!;
+    const evidence = run.evidenceRefs[0]!;
+    if (
+      evidence.kind !== "artifact" || evidence.id !== artifact.id ||
+      evidence.snapshotId !== snapshot.id ||
+      evidence.snapshotRevision !== snapshot.revision ||
+      artifact.id !== `architecture-${artifact.fingerprint.digest}` ||
+      artifact.version !== artifact.fingerprint.digest ||
+      artifact.mediaType !== "application/json"
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Completed architecture evidence reference is not exactly bound to its result snapshot.",
+      );
+    }
+    const text = await this.#captures.read(artifact.fingerprint);
+    if (!text) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Completed architecture capture is not durably readable.",
+      );
+    }
+    let record: unknown;
     try {
-      const project = await this.#requiredProject(command.projectId);
-      assertCompleted(project, command);
-      return project;
+      record = JSON.parse(text);
     } catch {
-      return undefined;
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Completed architecture capture is invalid JSON.",
+      );
+    }
+    const actual = await sha256Fingerprint(record);
+    if (!fingerprintsEqual(actual, artifact.fingerprint)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Completed architecture capture fingerprint no longer matches its exact evidence bytes.",
+      );
     }
   }
 
@@ -1022,13 +1387,13 @@ function requireClaimedShape(
 
 // ── Private: MRTR approval ───────────────────────────────────────────────────
 
-function requireMrtrApproval(
+async function requireMrtrApproval(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): {
+): Promise<{
   decision: EngineeringDecision;
   proposal: NonNullable<EngineeringDecision["proposal"]>;
-} {
+}> {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (!workItem) {
     throw new EngineeringProjectCommandError(
@@ -1037,29 +1402,101 @@ function requireMrtrApproval(
     );
   }
 
+  const basis = requireBasis(run);
+  const candidates: Array<{
+    decision: EngineeringDecision;
+    proposal: NonNullable<EngineeringDecision["proposal"]>;
+  }> = [];
   for (const decisionId of workItem.decisionIds) {
     const decision = project.decisions.find(
       (d) => d.id === decisionId && d.status === "approved",
     );
     if (!decision?.proposal || decision.proposal.parameters.length === 0) continue;
 
-    const hasHumanApproval = project.approvals.some(
+    const exactHumanApprovals = project.approvals.filter(
       (a: EngineeringApproval) =>
         a.decisionId === decision.id &&
         a.status === "approved" &&
-        a.decidedByOrigin === "human",
+        a.decidedByOrigin === "human" &&
+        sameSnapshotBasis(a.baseSnapshot, basis) &&
+        sameEvidenceRefs(a.inputEvidenceRefs, decision.inputEvidenceRefs) &&
+        fingerprintsEqual(a.inputFingerprint, decision.inputFingerprint),
     );
-    if (hasHumanApproval) {
-      return { decision, proposal: decision.proposal };
+    if (
+      exactHumanApprovals.length === 1 &&
+      sameSnapshotBasis(decision.baseSnapshot, basis) &&
+      decision.inputFingerprint
+    ) {
+      candidates.push({ decision, proposal: decision.proposal });
     }
   }
 
-  throw new EngineeringProjectCommandError(
-    "invalid_transition",
-    'No human-approved MRTR decision (decidedByOrigin === "human") found for ' +
-      "this architecture run. An operator must approve the architecture proposal " +
-      "before execution can proceed.",
-  );
+  if (candidates.length !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      candidates.length === 0
+        ? "No exact human-approved architecture MRTR decision is bound to this run basis."
+        : "Ambiguous architecture MRTR: exactly one human-approved architecture decision must be bound to this run basis.",
+    );
+  }
+
+  const approvedDecisions = workItem.decisionIds.map((id) => {
+    const decision = project.decisions.find((candidate) => candidate.id === id);
+    if (!decision?.inputFingerprint) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Architecture work-item decision ${id} is not exactly approved.`,
+      );
+    }
+    return { id, inputFingerprint: decision.inputFingerprint };
+  });
+  const expectedRunFingerprint = await sha256Fingerprint({
+    workItemId: workItem.id,
+    basis,
+    operation: {
+      id: workItem.operation!.id,
+      version: workItem.operation!.version,
+      bindings: workItem.operation!.bindings,
+    },
+    // This spelling and order intentionally mirror queueV3Run.  The run
+    // fingerprint is a queue-time seal, not a locally similar digest.
+    approvedDecisions,
+  });
+  if (!fingerprintsEqual(run.inputFingerprint, expectedRunFingerprint)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "Architecture run input fingerprint no longer seals its exact MRTR decision and basis.",
+    );
+  }
+  return candidates[0]!;
+}
+
+function sameSnapshotBasis(
+  value: EngineeringDecision["baseSnapshot"] | EngineeringApproval["baseSnapshot"],
+  basis: EngineeringThreadSnapshotBasis,
+): boolean {
+  return value?.snapshotId === basis.snapshotId && value.revision === basis.revision &&
+    value.subjectId === basis.subjectId;
+}
+
+function sameEvidenceRefs(
+  left: readonly {
+    snapshotId: string;
+    snapshotRevision: number;
+    kind: string;
+    id: string;
+  }[],
+  right: readonly {
+    snapshotId: string;
+    snapshotRevision: number;
+    kind: string;
+    id: string;
+  }[],
+): boolean {
+  const key = (ref: typeof left[number]) =>
+    `${ref.snapshotId}\u0000${ref.snapshotRevision}\u0000${ref.kind}\u0000${ref.id}`;
+  return left.length === right.length &&
+    left.map(key).sort().every((item, index) => item === right.map(key).sort()[index]);
 }
 
 // ── Private: proposal parsing ────────────────────────────────────────────────
@@ -1077,95 +1514,6 @@ function parseProposal(
       }`,
     );
   }
-}
-
-// ── Private: seed-capture minimal parser ────────────────────────────────────
-
-/**
- * Parse only the two fields needed from the seed capture: editingContextId
- * and rootPackage.id.
- *
- * WHY NARROW — `parseSysonModelSeedCapture` validates the whole schema and
- * checks CM-01-specific revision counts.  The generic executor needs only
- * the two SysON addressing fields; a narrow parse avoids coupling to CM-01
- * schema details.
- */
-function parseSeedCaptureMiniFields(
-  text: string,
-): { editingContextId: string; rootPackageId: string } {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "The SysON model-seed capture is not valid JSON.",
-    );
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "The SysON model-seed capture is not a JSON object.",
-    );
-  }
-  const record = value as Record<string, unknown>;
-  const results = record.normalizedResults;
-  if (!results || typeof results !== "object" || Array.isArray(results)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      'The seed capture has no "normalizedResults" object.',
-    );
-  }
-  const resultsRecord = results as Record<string, unknown>;
-  const project = resultsRecord.project;
-  if (!project || typeof project !== "object" || Array.isArray(project)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      'The seed capture has no "normalizedResults.project" object.',
-    );
-  }
-  const projectRecord = project as Record<string, unknown>;
-  const editingContextId = projectRecord.editingContextId;
-  if (typeof editingContextId !== "string" || !editingContextId.trim()) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      'The seed capture has no valid "normalizedResults.project.editingContextId".',
-    );
-  }
-  const rootPkg = resultsRecord.rootPackage;
-  if (!rootPkg || typeof rootPkg !== "object" || Array.isArray(rootPkg)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      'The seed capture has no "normalizedResults.rootPackage" object.',
-    );
-  }
-  const rootPkgRecord = rootPkg as Record<string, unknown>;
-  const rootPackageId = rootPkgRecord.id;
-  if (typeof rootPackageId !== "string" || !rootPackageId.trim()) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      'The seed capture has no valid "normalizedResults.rootPackage.id".',
-    );
-  }
-  return {
-    editingContextId: editingContextId.trim(),
-    rootPackageId: rootPackageId.trim(),
-  };
-}
-
-// ── Private: seed artifact requirement ──────────────────────────────────────
-
-function requireSeedArtifact(base: ThreadSnapshot): ThreadArtifact {
-  const seed = base.artifacts.find(
-    (a) => a.kind === "sysml-model" && a.producer.tool === "syson_model_create",
-  );
-  if (!seed) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "The basis snapshot has no sysml-model seed artifact (syson_model_create).",
-    );
-  }
-  return seed;
 }
 
 // ── Private: plan content digest ─────────────────────────────────────────────
@@ -1237,7 +1585,7 @@ function parseChildrenResponse(
 }
 
 function isPartDefinitionKind(kind: string): boolean {
-  return kind === "sysml::PartDefinition" ||
+  return kind === "PartDefinition" || kind === "sysml::PartDefinition" ||
     kind.endsWith("entity=PartDefinition");
 }
 
@@ -1283,6 +1631,21 @@ function verifyAllComponentsPresent(
   // existence. A wrong type (e.g. `wing : Motor` instead of `wing : Wing`) or
   // a usage under the wrong parent must be rejected as a structural divergence.
   for (const component of proposal.components) {
+    const globalOccurrences = verified.partDefs.flatMap((partDef) =>
+      partDef.usages.filter((usage) => usage.label === component.usageName).map(
+        (usage) => ({ parent: partDef.label, usage }),
+      )
+    );
+    if (
+      globalOccurrences.length !== 1 ||
+      globalOccurrences[0]?.parent !== component.parentName
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Verification failed: usage "${component.usageName}" appears ${globalOccurrences.length} times ` +
+          `globally; it must occur exactly once under "${component.parentName}".`,
+      );
+    }
     const componentDef = presentByLabel.get(component.name);
     if (!componentDef) {
       throw new EngineeringProjectCommandError(
@@ -1338,11 +1701,17 @@ function verifyAllComponentsPresent(
   }
 }
 
+function isPartUsageKind(kind: string): boolean {
+  return kind === "PartUsage" || kind === "sysml::PartUsage" ||
+    kind.endsWith("entity=PartUsage");
+}
+
 // ── Private: thread extension builder ────────────────────────────────────────
 
 function buildExtension(options: {
   base: ThreadSnapshot;
   seedArtifact: ThreadArtifact;
+  previousArchitectureArtifact: ThreadArtifact | undefined;
   /** Finding 6 — fingerprint recomputed from the bytes actually read, not copied
    * from the snapshot record. Proves a real byte-level verification occurred. */
   seedVerifiedFingerprint: ContentFingerprint;
@@ -1356,6 +1725,7 @@ function buildExtension(options: {
   const {
     base,
     seedArtifact,
+    previousArchitectureArtifact,
     seedVerifiedFingerprint,
     runId,
     capturedAt,
@@ -1386,7 +1756,10 @@ function buildExtension(options: {
     uri: captureUri,
     mediaType: "application/json",
     producer,
-    inputArtifactIds: [seedArtifact.id],
+    inputArtifactIds: [
+      seedArtifact.id,
+      ...(previousArchitectureArtifact ? [previousArchitectureArtifact.id] : []),
+    ],
     freshness,
   };
 
@@ -1401,6 +1774,16 @@ function buildExtension(options: {
     verifiedAt: capturedAt,
     status: "verified",
   };
+  const predecessorConsumption = previousArchitectureArtifact
+    ? {
+      id: `consume-${previousArchitectureArtifact.id}-by-${artifactId}`,
+      artifactId: previousArchitectureArtifact.id,
+      consumer: producer,
+      observedFingerprint: previousArchitectureArtifact.fingerprint,
+      verifiedAt: capturedAt,
+      status: "verified" as const,
+    }
+    : undefined;
 
   const provenance = [
     {
@@ -1412,6 +1795,16 @@ function buildExtension(options: {
         "The architecture package was inserted into the SysON model container " +
         "created by the seed run.",
     },
+    ...(previousArchitectureArtifact
+      ? [{
+        id: `derived-from-architecture-${captureFp.digest}`,
+        relation: "derived_from" as const,
+        from: { kind: "artifact" as const, id: artifactId },
+        to: { kind: "artifact" as const, id: previousArchitectureArtifact.id },
+        rationale:
+          "The exact previous generic architecture capture was re-read as the predecessor of this enrichment.",
+      }]
+      : []),
     {
       id: `uses-${consumptionId}`,
       relation: "uses" as const,
@@ -1428,7 +1821,10 @@ function buildExtension(options: {
     subjectId: base.subject.id,
     capturedAt,
     artifacts: [artifact],
-    consumptions: [consumption],
+    consumptions: [
+      consumption,
+      ...(predecessorConsumption ? [predecessorConsumption] : []),
+    ],
     observations: [],
     requirements: [],
     evaluations: [],

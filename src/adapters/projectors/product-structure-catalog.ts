@@ -18,7 +18,10 @@
  * advances a revision.
  */
 
-import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -28,11 +31,12 @@ import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../../domain/thread/thread-component-catalog.ts";
+import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
 
 // ── Capture schema ────────────────────────────────────────────────────────────
 
-const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/1.0" as const;
+const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/2.0" as const;
 
 // ── Narrow reader interface ───────────────────────────────────────────────────
 
@@ -44,10 +48,35 @@ export interface GenericArchitectureCaptureReader {
 // ── Internal capture shape ────────────────────────────────────────────────────
 
 interface GenericArchitectureCapture {
+  readonly operation: { readonly id: string; readonly version: string };
+  readonly trustedRunId: string;
+  readonly insertedAt: string;
   readonly packageName: string;
   readonly systemName: string;
-  readonly packageId: string;
-  readonly declarations: readonly { readonly id: string; readonly label: string }[];
+  readonly package: { readonly id: string; readonly label: string };
+  readonly seed: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly producerRunId: string;
+  };
+  readonly predecessor?: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly producerRunId: string;
+  };
+  readonly partDefinitions: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly label: string;
+    readonly usages: readonly {
+      readonly id: string;
+      readonly kind: string;
+      readonly label: string;
+      readonly targetId: string;
+      readonly targetKind: string;
+      readonly targetLabel: string;
+    }[];
+  }[];
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -68,8 +97,15 @@ export async function resolveGenericProductStructureCatalog(
   snapshot: ThreadSnapshot,
   captures: GenericArchitectureCaptureReader,
 ): Promise<ThreadComponentCatalog | undefined> {
-  const architecture = findFreshArchitectureArtifact(snapshot.artifacts);
-  if (!architecture) return undefined;
+  const selected = findArchitectureTip(snapshot);
+  if (selected.kind === "absent") return undefined;
+  if (selected.kind === "ambiguous") {
+    return unavailable(
+      snapshot.subject.id,
+      "Generic architecture evidence has multiple current tips; manual lineage review is required.",
+    );
+  }
+  const architecture = selected.artifact;
 
   let capture: GenericArchitectureCapture;
   try {
@@ -81,6 +117,33 @@ export async function resolveGenericProductStructureCatalog(
       );
     }
     capture = await parseAndVerifyCapture(text, architecture.fingerprint);
+    if (
+      architecture.id !== `architecture-${architecture.fingerprint.digest}` ||
+      architecture.version !== architecture.fingerprint.digest ||
+      architecture.uri !==
+        `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${architecture.fingerprint.digest}` ||
+      architecture.mediaType !== "application/json" ||
+      architecture.producer.serverId !== "syson" ||
+      architecture.producer.tool !== "syson_element_insert_sysml" ||
+      architecture.producer.runId !== capture.trustedRunId ||
+      architecture.freshness.changedAt !== capture.insertedAt ||
+      !sameInputs(
+        architecture.inputArtifactIds,
+        capture.predecessor === undefined
+          ? [capture.seed.artifactId]
+          : [capture.seed.artifactId, capture.predecessor.artifactId],
+      ) ||
+      (capture.predecessor !== undefined &&
+        (!architecture.inputArtifactIds.includes(capture.predecessor.artifactId) ||
+          !artifactMatches(snapshot, capture.predecessor!) ||
+          !hasExactConsumption(snapshot, capture.predecessor!, capture))) ||
+      !artifactMatches(snapshot, capture.seed) ||
+      !hasExactConsumption(snapshot, capture.seed, capture)
+    ) {
+      throw new Error(
+        "Architecture artifact metadata is not exactly bound to its capture and seed input.",
+      );
+    }
   } catch {
     return unavailable(
       snapshot.subject.id,
@@ -93,18 +156,61 @@ export async function resolveGenericProductStructureCatalog(
 
 // ── Private: artifact finder ──────────────────────────────────────────────────
 
-function findFreshArchitectureArtifact(
-  artifacts: readonly ThreadArtifact[],
-): ThreadArtifact | undefined {
-  const matches = artifacts.filter(
+function findArchitectureTip(snapshot: ThreadSnapshot):
+  | { readonly kind: "absent" }
+  | { readonly kind: "ambiguous" }
+  | { readonly kind: "one"; readonly artifact: ThreadArtifact } {
+  const archived = archivedRefKeys(snapshot);
+  const matches = snapshot.artifacts.filter(
     (a) =>
       a.kind === "sysml-model" &&
       typeof a.uri === "string" &&
       a.uri.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX) &&
-      a.freshness.status === "fresh",
+      !archived.has(`artifact:${a.id}`),
   );
-  // Only one fresh architecture artifact is valid; two is ambiguous.
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length === 0) return { kind: "absent" };
+  const consumed = new Set(matches.flatMap((artifact) => artifact.inputArtifactIds));
+  const tips = matches.filter((artifact) => !consumed.has(artifact.id));
+  return tips.length === 1
+    ? { kind: "one", artifact: tips[0]! }
+    : { kind: "ambiguous" };
+}
+
+function sameInputs(actual: readonly string[], expected: readonly string[]): boolean {
+  return actual.length === expected.length &&
+    actual.every((id, index) => id === expected[index]);
+}
+
+function artifactMatches(
+  snapshot: ThreadSnapshot,
+  evidence: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly producerRunId: string;
+  },
+): boolean {
+  const artifact = snapshot.artifacts.find((candidate) =>
+    candidate.id === evidence.artifactId
+  );
+  return artifact !== undefined &&
+    fingerprintsEqual(artifact.fingerprint, evidence.fingerprint) &&
+    artifact.producer.runId === evidence.producerRunId;
+}
+
+function hasExactConsumption(
+  snapshot: ThreadSnapshot,
+  evidence: { readonly artifactId: string; readonly fingerprint: ContentFingerprint },
+  capture: GenericArchitectureCapture,
+): boolean {
+  return snapshot.consumptions.some((consumption) =>
+    consumption.artifactId === evidence.artifactId &&
+    fingerprintsEqual(consumption.observedFingerprint, evidence.fingerprint) &&
+    consumption.status === "verified" &&
+    consumption.verifiedAt === capture.insertedAt &&
+    consumption.consumer.serverId === "syson" &&
+    consumption.consumer.tool === "syson_element_insert_sysml" &&
+    consumption.consumer.runId === capture.trustedRunId
+  );
 }
 
 // ── Private: catalog builder ──────────────────────────────────────────────────
@@ -114,39 +220,87 @@ function buildCatalog(
   evidenceArtifactId: string,
   capture: GenericArchitectureCapture,
 ): ThreadComponentCatalog | undefined {
-  // Find the system declaration.
-  const systemDecl = capture.declarations.find(
-    (d) => d.label === capture.systemName,
+  const systemDeclarations = capture.partDefinitions.filter((d) =>
+    d.label === capture.systemName
   );
-  if (!systemDecl) {
+  if (systemDeclarations.length !== 1) {
     return unavailable(
       subjectId,
-      `The architecture capture declares system "${capture.systemName}" but no declaration with that label was found.`,
+      `The architecture capture must have exactly one system PartDefinition named "${capture.systemName}".`,
     );
   }
-
-  // All other declarations are components.
-  const componentDecls = capture.declarations.filter(
-    (d) => d.id !== systemDecl.id,
-  );
-  if (componentDecls.length === 0) {
+  const systemDecl = systemDeclarations[0]!;
+  if (systemDecl.usages.length === 0) {
     return unavailable(
       subjectId,
       "The architecture capture has no component declarations beyond the system itself.",
     );
   }
 
-  // Compute semantic keys — must be unique.
-  const keys = componentDecls.map((d) => kebabLabel(d.label));
-  if (new Set(keys).size !== keys.length) {
-    return unavailable(
-      subjectId,
-      "The architecture capture has duplicate component labels (after kebab normalization).",
-    );
-  }
-
+  const byId = new Map(
+    capture.partDefinitions.map((
+      partDefinition,
+    ) => [partDefinition.id, partDefinition]),
+  );
+  const components: Array<Record<string, unknown>> = [];
+  const reachableDefinitions = new Set<string>([systemDecl.id]);
   const systemId = `${subjectId}:system`;
+  const visit = (
+    parent: typeof systemDecl,
+    parentId: string,
+    path: readonly string[],
+    ancestors: ReadonlySet<string>,
+  ): void => {
+    if (ancestors.has(parent.id)) {
+      throw new Error("Architecture capture has a PartDefinition cycle.");
+    }
+    const nextAncestors = new Set(ancestors).add(parent.id);
+    for (const usage of parent.usages) {
+      const target = byId.get(usage.targetId);
+      if (!target || target.label !== usage.targetLabel) {
+        throw new Error("Architecture capture usage target is not exact.");
+      }
+      if (nextAncestors.has(target.id)) {
+        throw new Error("Architecture capture has a PartDefinition cycle.");
+      }
+      reachableDefinitions.add(target.id);
+      // A component models a PartUsage occurrence.  The path keeps repeated use
+      // of the same PartDefinition distinct (and parents it by that occurrence).
+      const occurrencePath = [...path, usage.id];
+      const id = `${subjectId}:usage:${occurrencePath.join("/")}`;
+      components.push({
+        id,
+        label: target.label,
+        kind: "part",
+        quantity: 1,
+        parentId,
+        bindings: [
+          {
+            provider: "syson",
+            kind: "part-definition",
+            id: target.id,
+            label: target.label,
+            evidenceArtifactId,
+          },
+          {
+            provider: "syson",
+            kind: "part-usage",
+            id: usage.id,
+            label: usage.label,
+            evidenceArtifactId,
+          },
+        ],
+      });
+      visit(target, id, occurrencePath, nextAncestors);
+    }
+  };
   try {
+    visit(systemDecl, systemId, [], new Set());
+    if (reachableDefinitions.size !== capture.partDefinitions.length) {
+      throw new Error(
+        "Architecture capture contains a PartDefinition outside the attested system graph.",
+      );
+    }
     return validateThreadComponentCatalog({
       schemaVersion: "thread-components/1.0",
       authority: "workspace-declared",
@@ -173,22 +327,7 @@ function buildCatalog(
             },
           ],
         },
-        ...componentDecls.map((decl, index) => ({
-          id: `${subjectId}:${keys[index]}`,
-          label: decl.label,
-          kind: "part" as const,
-          quantity: 1,
-          parentId: systemId,
-          bindings: [
-            {
-              provider: "syson" as const,
-              kind: "part-definition" as const,
-              id: decl.id,
-              label: decl.label,
-              evidenceArtifactId,
-            },
-          ],
-        })),
+        ...components,
       ],
     });
   } catch {
@@ -256,52 +395,191 @@ async function parseAndVerifyCapture(
     );
   }
 
+  const operation = record.operation as Record<string, unknown>;
+  if (operation?.id !== "model.write-architecture" || operation.version !== "1") {
+    throw new Error(
+      "Architecture capture operation is not model.write-architecture@1.",
+    );
+  }
+  const trustedRunId = nonEmptyString(record.trustedRunId, "trustedRunId");
+  const insertedAt = canonicalInstant(record.insertedAt, "insertedAt");
   const packageName = nonEmptyString(record.packageName, "packageName");
   const systemName = nonEmptyString(record.systemName, "systemName");
-  const packageId = nonEmptyString(record.packageId, "packageId");
-
-  if (!Array.isArray(record.declarations)) {
-    throw new Error("Architecture capture has no 'declarations' array.");
+  assertOnlyKeys(record, [
+    "schemaVersion",
+    "operation",
+    "trustedRunId",
+    "packageName",
+    "systemName",
+    "package",
+    "seed",
+    "predecessor",
+    "partDefinitions",
+    "insertedAt",
+  ]);
+  const packageRecord = objectRecord(record.package, "package");
+  const seedRecord = objectRecord(record.seed, "seed");
+  if (!packageRecord || !seedRecord || !Array.isArray(record.partDefinitions)) {
+    throw new Error(
+      "Architecture capture does not contain its exact package, seed, and PartDefinition graph.",
+    );
   }
-
-  const declarations = record.declarations.map((raw, i) => {
+  assertOnlyKeys(packageRecord, ["id", "label"]);
+  assertOnlyKeys(seedRecord, ["artifactId", "fingerprint", "producerRunId"]);
+  const packageValue = {
+    id: nonEmptyString(packageRecord.id, "package.id"),
+    label: nonEmptyString(packageRecord.label, "package.label"),
+  };
+  const seed = {
+    artifactId: nonEmptyString(seedRecord.artifactId, "seed.artifactId"),
+    fingerprint: fingerprintRecord(seedRecord.fingerprint, "seed.fingerprint"),
+    producerRunId: nonEmptyString(seedRecord.producerRunId, "seed.producerRunId"),
+  };
+  const predecessor = record.predecessor === undefined ? undefined : (() => {
+    const predecessorRecord = objectRecord(record.predecessor, "predecessor");
+    assertOnlyKeys(predecessorRecord, ["artifactId", "fingerprint", "producerRunId"]);
+    return {
+      artifactId: nonEmptyString(
+        predecessorRecord.artifactId,
+        "predecessor.artifactId",
+      ),
+      fingerprint: fingerprintRecord(
+        predecessorRecord.fingerprint,
+        "predecessor.fingerprint",
+      ),
+      producerRunId: nonEmptyString(
+        predecessorRecord.producerRunId,
+        "predecessor.producerRunId",
+      ),
+    };
+  })();
+  const partDefinitions = record.partDefinitions.map((raw, i) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
       throw new Error(`Architecture capture declaration[${i}] is not an object.`);
     }
     const decl = raw as Record<string, unknown>;
+    assertOnlyKeys(decl, ["id", "kind", "label", "usages"]);
+    if (decl.kind !== "PartDefinition") {
+      throw new Error(
+        `Architecture capture declaration[${i}] is not a PartDefinition.`,
+      );
+    }
     return {
       id: nonEmptyString(decl.id, `declaration[${i}].id`),
+      kind: nonEmptyString(decl.kind, `declaration[${i}].kind`),
       label: nonEmptyString(decl.label, `declaration[${i}].label`),
+      usages: Array.isArray(decl.usages)
+        ? decl.usages.map((rawUsage, usageIndex) => {
+          const usage = rawUsage as Record<string, unknown>;
+          assertOnlyKeys(usage, [
+            "id",
+            "kind",
+            "label",
+            "targetId",
+            "targetKind",
+            "targetLabel",
+          ]);
+          if (usage.kind !== "PartUsage" || usage.targetKind !== "PartDefinition") {
+            throw new Error(
+              `Architecture capture usage ${i}/${usageIndex} has an invalid SysON kind.`,
+            );
+          }
+          return {
+            id: nonEmptyString(
+              usage?.id,
+              `partDefinitions[${i}].usages[${usageIndex}].id`,
+            ),
+            kind: nonEmptyString(
+              usage?.kind,
+              `partDefinitions[${i}].usages[${usageIndex}].kind`,
+            ),
+            label: nonEmptyString(
+              usage?.label,
+              `partDefinitions[${i}].usages[${usageIndex}].label`,
+            ),
+            targetId: nonEmptyString(
+              usage?.targetId,
+              `partDefinitions[${i}].usages[${usageIndex}].targetId`,
+            ),
+            targetKind: nonEmptyString(
+              usage?.targetKind,
+              `partDefinitions[${i}].usages[${usageIndex}].targetKind`,
+            ),
+            targetLabel: nonEmptyString(
+              usage?.targetLabel,
+              `partDefinitions[${i}].usages[${usageIndex}].targetLabel`,
+            ),
+          };
+        })
+        : (() => {
+          throw new Error(
+            `Architecture capture declaration[${i}] has no usages array.`,
+          );
+        })(),
     };
   });
 
   // Duplicate IDs are a tamper/corruption indicator.
-  const ids = new Set(declarations.map((d) => d.id));
-  if (ids.size !== declarations.length) {
+  const ids = new Set(partDefinitions.map((d) => d.id));
+  const usageIds = partDefinitions.flatMap((def) =>
+    def.usages.map((usage) => usage.id)
+  );
+  if (
+    ids.size !== partDefinitions.length || new Set(usageIds).size !== usageIds.length ||
+    partDefinitions.some((def) => def.usages.some((usage) => !ids.has(usage.targetId)))
+  ) {
     throw new Error("Architecture capture has duplicate declaration IDs.");
   }
 
-  return { packageName, systemName, packageId, declarations };
+  return {
+    operation: { id: "model.write-architecture", version: "1" },
+    trustedRunId,
+    insertedAt,
+    packageName,
+    systemName,
+    package: packageValue,
+    seed,
+    ...(predecessor ? { predecessor } : {}),
+    partDefinitions,
+  };
 }
 
-// ── Private: label normalization ──────────────────────────────────────────────
+function objectRecord(value: unknown, name: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Architecture capture ${name} is not an object.`);
+  }
+  return value as Record<string, unknown>;
+}
 
-/**
- * Convert a PascalCase or mixed SysML label to a kebab-case semantic key.
- *
- * Examples: "Wing" → "wing", "DripTray" → "drip-tray",
- * "BodyFrame" → "body-frame", "ACMotor" → "ac-motor".
- *
- * Mirrors the same normalization used in the CM-01 bounded projector.
- */
-function kebabLabel(label: string): string {
-  return label
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+function assertOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): void {
+  if (Object.keys(value).some((key) => !allowed.includes(key))) {
+    throw new Error("Architecture capture contains unsupported fields.");
+  }
+}
+
+function fingerprintRecord(value: unknown, name: string): ContentFingerprint {
+  const record = objectRecord(value, name);
+  assertOnlyKeys(record, ["algorithm", "digest"]);
+  if (
+    record.algorithm !== "sha256" || typeof record.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(record.digest)
+  ) {
+    throw new Error(`Architecture capture ${name} is not a SHA-256 fingerprint.`);
+  }
+  return { algorithm: "sha256", digest: record.digest };
+}
+
+function canonicalInstant(value: unknown, name: string): string {
+  if (
+    typeof value !== "string" || Number.isNaN(Date.parse(value)) ||
+    new Date(value).toISOString() !== value
+  ) {
+    throw new Error(`Architecture capture ${name} is not a canonical ISO instant.`);
+  }
+  return value;
 }
 
 function nonEmptyString(value: unknown, field: string): string {
