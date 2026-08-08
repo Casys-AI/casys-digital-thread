@@ -250,8 +250,14 @@ export interface EngineeringWorkItemSuccessorReconciliation {
   /**
    * Provider-free successor snapshot that records the closeout relation. It
    * descends from successorRunSnapshot and is the current project thread head.
+   *
+   * Absent for a direct reconciliation where the successor run result is already
+   * the project thread head and no separate closeout snapshot is needed (e.g.,
+   * a seed work item whose executor rejects it and whose successor completes
+   * with the same result as the project head). Both forms satisfy the phase
+   * completion invariant through `successorEvidenceRefs`.
    */
-  readonly successorSnapshot: EngineeringThreadSnapshotRef;
+  readonly successorSnapshot?: EngineeringThreadSnapshotRef;
   readonly successorEvidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly rationale: string;
 }

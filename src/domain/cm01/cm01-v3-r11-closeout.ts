@@ -173,6 +173,9 @@ export function inspectCoffeeMachineCm01V3R11Closeout(
       reconciliation.failedRunId !== failedRun.id ||
       reconciliation.successorRunId !== successorRun.id ||
       !sameSnapshot(reconciliation.successorRunSnapshot, r11) ||
+      // CM-01 V3 R11 always uses the full closeout path (successorSnapshot is
+      // required here — the closeout snapshot is a durable CM-01 invariant).
+      !reconciliation.successorSnapshot ||
       reconciliation.successorSnapshot.revision !== 12 ||
       reconciliation.successorSnapshot.subjectId !== CM01_V3_SUBJECT_ID ||
       !reconciliation.successorSnapshot.snapshotId.includes(":r12:") ||
@@ -187,7 +190,7 @@ export function inspectCoffeeMachineCm01V3R11Closeout(
       failedWorkItemId: CM01_V3_FAILED_R2_WORK_ITEM_ID,
       successorRunId: CM01_V3_R3_RECOVERY_RUN_ID,
       successorRunSnapshot: r11,
-      successorSnapshot: reconciliation.successorSnapshot,
+      successorSnapshot: reconciliation.successorSnapshot!,
       successorEvidenceRefs: evidence,
     };
   }

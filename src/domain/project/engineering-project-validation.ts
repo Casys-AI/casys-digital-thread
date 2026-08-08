@@ -892,11 +892,12 @@ function validateWorkItemReconciliation(
       "failedRunId",
       "successorRunId",
       "successorRunSnapshot",
-      "successorSnapshot",
       "successorEvidenceRefs",
       "rationale",
     ],
-    [],
+    // successorSnapshot is absent for a direct reconciliation where the
+    // successor run result is already the project thread head.
+    ["successorSnapshot"],
     issues,
   );
   if (!input) return;
@@ -915,7 +916,13 @@ function validateWorkItemReconciliation(
     `${path}.successorRunSnapshot`,
     issues,
   );
-  validateSnapshotRef(input.successorSnapshot, `${path}.successorSnapshot`, issues);
+  if (input.successorSnapshot !== undefined) {
+    validateSnapshotRef(
+      input.successorSnapshot,
+      `${path}.successorSnapshot`,
+      issues,
+    );
+  }
   validateArray(
     input.successorEvidenceRefs,
     `${path}.successorEvidenceRefs`,
@@ -1862,12 +1869,15 @@ function validateInvariants(
   project.workItems.forEach((item, index) => {
     const reconciliation = item.reconciliation;
     if (!reconciliation) return;
-    for (
-      const [name, reference] of [
-        ["successorRunSnapshot", reconciliation.successorRunSnapshot],
-        ["successorSnapshot", reconciliation.successorSnapshot],
-      ] as const
-    ) {
+    // successorSnapshot is absent for a direct reconciliation — skip the
+    // cross-reference check for it when the field is undefined.
+    const snapshotRefs: Array<
+      [string, { snapshotId: string; revision: number }]
+    > = [["successorRunSnapshot", reconciliation.successorRunSnapshot]];
+    if (reconciliation.successorSnapshot !== undefined) {
+      snapshotRefs.push(["successorSnapshot", reconciliation.successorSnapshot]);
+    }
+    for (const [name, reference] of snapshotRefs) {
       if (
         !declaredSnapshots.has(
           snapshotKey(reference.snapshotId, reference.revision),
@@ -2131,27 +2141,32 @@ function validateWorkItemReconciliationInvariant(
       "must exactly match the completed successor result snapshot",
     );
   }
-  if (
-    reconciliation.successorSnapshot.subjectId !== project.project.subjectId ||
-    reconciliation.successorSnapshot.revision !==
-      reconciliation.successorRunSnapshot.revision + 1 ||
-    // The closeout snapshot must belong to the project's recorded lineage. It
-    // was the newest snapshot when the closeout happened, but this validation
-    // replays on every later revision — requiring it to still be the *last*
-    // snapshot would freeze the whole project the moment any post-closeout
-    // run publishes. The direct-successor position is already pinned by the
-    // revision equality above; lineage membership is the durable property.
-    !project.threadSnapshots.some((snapshot) =>
-      sameSnapshotRef(snapshot, reconciliation.successorSnapshot)
-    )
-  ) {
-    issue(
-      issues,
-      "invalid_transition",
-      `${path}.reconciliation.successorSnapshot`,
-      "must be the direct closeout snapshot after the successor result, " +
-        "recorded in the project lineage",
-    );
+  // For a direct reconciliation the successor run result is already the project
+  // thread head and no separate closeout snapshot is produced. When present,
+  // the full closeout path is validated as before.
+  if (reconciliation.successorSnapshot !== undefined) {
+    if (
+      reconciliation.successorSnapshot.subjectId !== project.project.subjectId ||
+      reconciliation.successorSnapshot.revision !==
+        reconciliation.successorRunSnapshot.revision + 1 ||
+      // The closeout snapshot must belong to the project's recorded lineage. It
+      // was the newest snapshot when the closeout happened, but this validation
+      // replays on every later revision — requiring it to still be the *last*
+      // snapshot would freeze the whole project the moment any post-closeout
+      // run publishes. The direct-successor position is already pinned by the
+      // revision equality above; lineage membership is the durable property.
+      !project.threadSnapshots.some((snapshot) =>
+        sameSnapshotRef(snapshot, reconciliation.successorSnapshot!)
+      )
+    ) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.reconciliation.successorSnapshot`,
+        "must be the direct closeout snapshot after the successor result, " +
+          "recorded in the project lineage",
+      );
+    }
   }
   if (
     !sameEvidenceSet(successor.evidenceRefs, reconciliation.successorEvidenceRefs)

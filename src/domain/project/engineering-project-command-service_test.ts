@@ -105,6 +105,76 @@ Deno.test("a failed work item closes only through exact successor reconciliation
   );
 });
 
+Deno.test(
+  "direct reconciliation closes a failed work item when successor run is already the project thread head",
+  async () => {
+    const project = await reconciliableProject();
+    const store = new MemoryRevisionStore(project);
+    // Service with the snapshot validator still wired — it is not called for
+    // direct reconciliation (no successorSnapshot in the command).
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+    const successorRunSnapshot = project.threadSnapshots.at(-1)!;
+
+    // Direct reconciliation: no successorSnapshot field.
+    const command = {
+      ...context("direct-reconcile-r2-through-r3", project.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2-failed",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot,
+      successorEvidenceRefs: evidence,
+      rationale:
+        "R2 stopped before durable evidence. The separately completed R3 is already the project thread head.",
+    };
+
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, command);
+    const failedWork = findWorkItem(reconciled, "verify-current-mechanical-design");
+
+    assertEquals(failedWork.status, "cancelled");
+    assertEquals(failedWork.evidenceRefs, []);
+    assertEquals(failedWork.reconciliation?.kind, "superseded-by-successor");
+    assertEquals(failedWork.reconciliation?.successorRunId, command.successorRunId);
+    // Direct reconciliation leaves successorSnapshot absent.
+    assertEquals(failedWork.reconciliation?.successorSnapshot, undefined);
+    // No new threadSnapshot was added — the project lineage grows only via
+    // published evidence, not through the reconciliation closeout itself.
+    assertEquals(reconciled.threadSnapshots.length, project.threadSnapshots.length);
+    assertEquals(
+      reconciled.agentRuns.find((run) => run.id === command.failedRunId)?.status,
+      "failed",
+    );
+    assertEquals(
+      reconciled.agentRuns.find((run) => run.id === command.successorRunId)?.status,
+      "completed",
+    );
+    assertEquals(deriveEngineeringPhaseStatus(reconciled, "verification"), "completed");
+    assertEquals(deriveEngineeringProjectStatus(reconciled), "completed");
+
+    // Idempotent replay.
+    const replay = await service.reconcileWorkItemWithSuccessor(AGENT, command);
+    assertEquals(replay.id, reconciled.id);
+
+    // Guard: mismatched successorRunSnapshot (not the project thread head) is rejected.
+    // Use the reconciled revision so the CAS check passes and the domain guard fires.
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...command,
+          commandId: "not-the-head",
+          expectedRevision: reconciled.revision,
+          successorRunSnapshot: {
+            snapshotId: "other:r9",
+            revision: 9,
+            subjectId: "other-subject",
+          },
+        }),
+      "invalid_input",
+    );
+  },
+);
+
 Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);
