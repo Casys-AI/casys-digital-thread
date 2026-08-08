@@ -93,7 +93,10 @@ export class FileCaptureStore<Kind extends string> {
           `${this.descriptor.label} capture ${d} already exists with different content.`,
         );
       }
-      // Idempotent: content matches — fall through to return below.
+      // A concurrent writer may have linked the identical final just before
+      // its own directory fsync. The idempotent loser owns the same success
+      // guarantee and therefore closes that durability window before return.
+      await syncDirectoryChain(this.descriptor.directory);
     }
     return { uri: this.uriFor(fingerprint), path };
   }

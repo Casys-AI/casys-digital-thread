@@ -89,6 +89,23 @@ Deno.test("concurrent store instances idempotently save the same snapshot", asyn
   assertEquals(await secondStore.get(snapshot.id), snapshot);
 });
 
+Deno.test("production snapshot stores confirm an identical concurrent durable final", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-thread-snapshot-" });
+  try {
+    const firstStore = new FileThreadSnapshotStore(directory);
+    const secondStore = new FileThreadSnapshotStore(directory);
+    const snapshot = validSnapshot();
+    const results = await Promise.allSettled([
+      firstStore.save(structuredClone(snapshot)),
+      secondStore.save(structuredClone(snapshot)),
+    ]);
+    assertEquals(results.map((result) => result.status), ["fulfilled", "fulfilled"]);
+    assertEquals(await secondStore.getFresh(snapshot.id), snapshot);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("concurrent store instances reject different content for the same snapshot id", async () => {
   const io = new BarrierMemoryFileIo();
   const firstStore = new FileThreadSnapshotStore("snapshots", io);

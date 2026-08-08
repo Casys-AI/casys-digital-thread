@@ -94,7 +94,10 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
     await this.io.mkdir(this.directory);
     const existing = await this.get(validated.id);
     if (existing) {
-      if (canonicalJson(existing) === canonicalJson(validated)) return;
+      if (canonicalJson(existing) === canonicalJson(validated)) {
+        await this.syncDirectoryIfDurableIo();
+        return;
+      }
       throw new Error(
         `ThreadSnapshot ${validated.id} already exists with different content.`,
       );
@@ -122,7 +125,10 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
       // writers observed the id as absent. Bypass this instance's cache: the
       // file on disk is the authoritative value for the idempotency check.
       const written = await this.readSnapshotFileFresh(fileName);
-      if (canonicalJson(written) === canonicalJson(validated)) return;
+      if (canonicalJson(written) === canonicalJson(validated)) {
+        await this.syncDirectoryIfDurableIo();
+        return;
+      }
       throw new Error(
         `ThreadSnapshot ${validated.id} already exists with different content.`,
       );
@@ -181,7 +187,10 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
       if (!isAlreadyExists(error)) throw error;
     }
     const claimedBy = (await this.io.readTextFile(claimPath)).trim();
-    if (claimedBy === snapshot.id) return;
+    if (claimedBy === snapshot.id) {
+      await this.syncDirectoryIfDurableIo();
+      return;
+    }
     throw new Error(
       `ThreadSnapshot subject ${snapshot.subject.id} revision ${snapshot.revision} is already claimed by ${claimedBy}.`,
     );
@@ -222,6 +231,10 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
         if (!isNotFound(error)) throw error;
       });
     }
+  }
+
+  private async syncDirectoryIfDurableIo(): Promise<void> {
+    if (this.io === DENO_FILE_IO) await syncDirectoryChain(this.directory);
   }
 }
 

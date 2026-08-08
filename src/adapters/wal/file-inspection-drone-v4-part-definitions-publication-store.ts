@@ -63,6 +63,9 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
           "Inspection-drone PartDefinitions publication conflicts with its durable run record.",
         );
       }
+      // A matching concurrent final is not a durable outcome until some
+      // successful caller has fsynced its parent directory.
+      await syncDirectoryChain(this.directory);
     } finally {
       await Deno.remove(temporary).catch((error) => {
         if (!(error instanceof Deno.errors.NotFound)) throw error;
