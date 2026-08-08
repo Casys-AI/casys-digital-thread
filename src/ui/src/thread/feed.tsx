@@ -5,9 +5,12 @@ import { useMemo } from "preact/hooks";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
+  AMBIGUOUS_FEED_SCOPE,
   buildFeedComponentCounts,
   compactLineageCounters,
+  filterFeedNodesByScope,
   isActivityEntryExpanded,
+  ORPHAN_FEED_SCOPE,
   refKey,
   traceThreadLineage,
 } from "./feed-model.ts";
@@ -23,7 +26,8 @@ import type {
   ThreadGraphRef,
   ThreadRef,
 } from "./types.ts";
-import type { PartAnchor } from "./part-anchorage-model.ts";
+import type { FeedScope } from "./feed-model.ts";
+import type { PartAnchorageResolution } from "./part-anchorage-model.ts";
 
 export interface ThreadFeedProps {
   nodes: ThreadGraphNode[];
@@ -41,23 +45,24 @@ export interface ThreadFeedProps {
   evidenceModel?: EvidenceGraphModel;
   /**
    * Component filter for the feed entries. When set, only activity events
-   * anchored to this component are shown. Unanchored events are treated as
-   * "assembly" scope (shown in project-wide and assembly views).
+   * anchored to this component are shown. Conflicting and absent anchors have
+   * explicit, separate filter scopes and are never treated as assembly.
    * undefined = "Tout le projet" (no filter).
    */
-  filterComponentId?: string;
+  filterComponentId?: FeedScope;
   /**
-   * Anchorage map (nodeKey → PartAnchor) used to filter feed entries by
-   * component. Must be provided together with filterComponentId.
+   * Complete anchorage outcome used to filter feed entries. Must be provided
+   * together with filterComponentId so unique, ambiguous and orphan outcomes
+   * retain their distinct meaning.
    */
-  anchorage?: ReadonlyMap<string, PartAnchor>;
+  anchorage?: PartAnchorageResolution;
   /**
    * Component catalog for the filter selector labels. Must be provided when
    * anchorage is present.
    */
   components?: ThreadComponentCatalog;
   /** Fires when the user changes the component filter in the feed toolbar. */
-  onFilterChange?: (componentId: string | undefined) => void;
+  onFilterChange?: (componentId: FeedScope | undefined) => void;
   onFollowLiveChange: (follow: boolean) => void;
   onSelectNode: (node: ThreadGraphNode, origin: "feed" | "lineage") => void;
   onSelectEdge: (edge: ThreadGraphEdge) => void;
@@ -98,22 +103,14 @@ export function ThreadFeed({
 
   // Counts per component target across ALL feed events (before filtering).
   // Used to populate the selector with only meaningful options + true counts.
-  // The anchorage map is keyed as "kind:id" (produced by buildPartAnchorage),
-  // NOT the null-byte format used by the local refKey for lineage traversal.
   const componentCounts = anchorage
     ? buildFeedComponentCounts(allFeedNodes, anchorage)
     : undefined;
 
-  // Apply component filter if requested. Unanchored nodes fall back to
-  // "assembly" scope and are shown in the project-wide and assembly views.
-  // Same key format as componentCounts: kind:id (matches anchorage map keys).
+  // Apply a component or explicit non-anchored scope filter. The complete
+  // resolution prevents ambiguous/orphan facts acquiring assembly scope.
   const feedNodes = filterComponentId !== undefined && anchorage
-    ? allFeedNodes.filter((node) => {
-      const key = `${node.ref.kind}:${node.ref.id}`;
-      const anchor = anchorage.get(key);
-      const target = anchor ? anchor.target : "assembly";
-      return target === filterComponentId;
-    })
+    ? filterFeedNodesByScope(allFeedNodes, anchorage, filterComponentId)
     : allFeedNodes;
 
   // A component filter is authoritative. Keeping an old global focus by
@@ -169,7 +166,7 @@ export function ThreadFeed({
             value={filterComponentId ?? ""}
             onChange={(e) => {
               const val = (e.target as HTMLSelectElement).value;
-              onFilterChange(val === "" ? undefined : val);
+              onFilterChange(val === "" ? undefined : val as FeedScope);
             }}
           >
             <option value="">Tout le projet</option>
@@ -183,7 +180,7 @@ export function ThreadFeed({
       {entries.length === 0 && (
         <div class="thread-feed-empty" role="status">
           {filterComponentId
-            ? "Aucun événement pour cette pièce."
+            ? "Aucun événement pour ce périmètre."
             : "Waiting for the first linked engineering fact."}
         </div>
       )}
@@ -473,17 +470,16 @@ function kindLabel(node: ThreadGraphNode): string {
  * option label so the reviewer knows at a glance how many events exist per part.
  * Parts with zero events are not actionable filter targets and are omitted.
  */
-function buildFilterOptions(
+export function buildFilterOptions(
   components: ThreadComponentCatalog,
-  counts?: ReadonlyMap<string, number>,
-): { id: string; label: string }[] {
-  const result: { id: string; label: string }[] = [];
+  counts?: ReadonlyMap<FeedScope, number>,
+): { id: FeedScope; label: string }[] {
+  const result: { id: FeedScope; label: string }[] = [];
   const assembly = components.components.find((c) => c.kind === "assembly");
   if (assembly) {
     const count = counts?.get("assembly") ?? 0;
-    // Assembly option is always shown when there are counts available (even if
-    // count is 0 — assembly is the scope for all unanchored events, so it
-    // appears once the anchorage is in place). Without counts, always shown.
+    // Assembly means actual unique assembly anchorage only. It must not absorb
+    // missing or conflicting anchors.
     if (!counts || count > 0) {
       const suffix = counts ? ` · ${count}` : "";
       result.push({
@@ -501,6 +497,20 @@ function buildFilterOptions(
     if (counts && count === 0) continue;
     const suffix = counts ? ` · ${count}` : "";
     result.push({ id: part.id, label: `${part.label}${suffix}` });
+  }
+  const ambiguous = counts?.get(AMBIGUOUS_FEED_SCOPE) ?? 0;
+  if (!counts || ambiguous > 0) {
+    result.push({
+      id: AMBIGUOUS_FEED_SCOPE,
+      label: `À rattacher — ambigu${counts ? ` · ${ambiguous}` : ""}`,
+    });
+  }
+  const orphan = counts?.get(ORPHAN_FEED_SCOPE) ?? 0;
+  if (!counts || orphan > 0) {
+    result.push({
+      id: ORPHAN_FEED_SCOPE,
+      label: `Non rattachés${counts ? ` · ${orphan}` : ""}`,
+    });
   }
   return result;
 }

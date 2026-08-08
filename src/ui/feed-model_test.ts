@@ -1,11 +1,15 @@
 import { assertEquals } from "@std/assert";
 import {
   activityFeedNodes,
+  AMBIGUOUS_FEED_SCOPE,
   buildFeedComponentCounts,
   compactLineageCounters,
+  filterFeedNodesByScope,
   isActivityEntryExpanded,
+  ORPHAN_FEED_SCOPE,
   traceThreadLineage,
 } from "./src/thread/feed-model.ts";
+import type { PartAnchorageResolution } from "./src/thread/part-anchorage-model.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 import {
   buildExplorationModel,
@@ -568,26 +572,25 @@ Deno.test(
 Deno.test(
   "buildFeedComponentCounts: empty feed yields empty map",
   () => {
-    const counts = buildFeedComponentCounts([], new Map());
+    const counts = buildFeedComponentCounts([], emptyAnchorage());
     assertEquals(counts.size, 0, "no nodes → no counts");
   },
 );
 
 Deno.test(
-  "buildFeedComponentCounts: unanchored nodes all count as assembly",
+  "buildFeedComponentCounts: unanchored nodes remain explicit orphan facts",
   () => {
     const nodes = [
       artifact("obs-1"),
       artifact("obs-2"),
       artifact("obs-3"),
     ];
-    // Empty anchorage: no node has a known anchor.
-    const counts = buildFeedComponentCounts(nodes, new Map());
-    assertEquals(counts.size, 1, "only one target: assembly");
+    const counts = buildFeedComponentCounts(nodes, emptyAnchorage());
+    assertEquals(counts.size, 1, "only one explicit orphan scope");
     assertEquals(
-      counts.get("assembly"),
+      counts.get(ORPHAN_FEED_SCOPE),
       3,
-      "three unanchored nodes → 3 under assembly",
+      "three unanchored nodes must not inflate assembly",
     );
   },
 );
@@ -599,7 +602,7 @@ Deno.test(
     const obs2 = artifact("obs-2");
     const cad = artifact("cad-artifact");
     // anchorage uses kind:id format (as produced by buildPartAnchorage)
-    const anchorage = new Map([
+    const anchorage = anchoredResolution([
       ["artifact:obs-1", {
         target: "cm01-v3:drip-tray",
         criterion: "prefix" as const,
@@ -621,21 +624,54 @@ Deno.test(
 );
 
 Deno.test(
-  "buildFeedComponentCounts: mix of anchored and unanchored uses assembly fallback",
+  "feed anchorage regression: ambiguous-evidence and unanchored-fact stay outside assembly counters and filters",
   () => {
-    const anchored = artifact("req-1");
-    const unanchored = artifact("unknown-artifact");
-    const anchorage = new Map([
-      ["artifact:req-1", { target: "assembly", criterion: "nature" as const }],
-    ]);
-    const counts = buildFeedComponentCounts([anchored, unanchored], anchorage);
-    // Both resolve to "assembly": one via anchor, one via fallback.
+    const assemblyEvidence = artifact("assembly-evidence");
+    const ambiguousEvidence = artifact("ambiguous-evidence");
+    const unanchoredFact = artifact("unanchored-fact");
+    const anchorage: PartAnchorageResolution = {
+      anchors: new Map([
+        ["artifact:assembly-evidence", {
+          target: "assembly",
+          criterion: "nature",
+        }],
+      ]),
+      ambiguousByRef: new Map([
+        ["artifact:ambiguous-evidence", [
+          "cm01-v3:drip-tray",
+          "cm01-v3:enclosure",
+        ]],
+      ]),
+      orphanRefKeys: new Set(["artifact:unanchored-fact"]),
+    };
+    const nodes = [assemblyEvidence, ambiguousEvidence, unanchoredFact];
+    const counts = buildFeedComponentCounts(nodes, anchorage);
     assertEquals(
       counts.get("assembly"),
-      2,
-      "anchored + unanchored both count as assembly",
+      1,
+      "only a unique assembly anchor counts as assembly",
     );
-    assertEquals(counts.size, 1);
+    assertEquals(counts.get(AMBIGUOUS_FEED_SCOPE), 1);
+    assertEquals(counts.get(ORPHAN_FEED_SCOPE), 1);
+    assertEquals(
+      filterFeedNodesByScope(nodes, anchorage, "assembly").map((node) => node.ref.id),
+      ["assembly-evidence"],
+      "assembly filter must not acquire ambiguous or orphan evidence",
+    );
+    assertEquals(
+      filterFeedNodesByScope(nodes, anchorage, AMBIGUOUS_FEED_SCOPE).map((
+        node,
+      ) => node.ref.id),
+      ["ambiguous-evidence"],
+      "ambiguous-evidence remains visible through its dedicated filter",
+    );
+    assertEquals(
+      filterFeedNodesByScope(nodes, anchorage, ORPHAN_FEED_SCOPE).map((node) =>
+        node.ref.id
+      ),
+      ["unanchored-fact"],
+      "unanchored-fact remains visible through its dedicated filter",
+    );
   },
 );
 
@@ -652,7 +688,7 @@ Deno.test(
       freshness: "fresh",
       summary: "Observed displacement",
     };
-    const anchorage = new Map([
+    const anchorage = anchoredResolution([
       ["observation:obs-drip-1", {
         target: "cm01-v3:drip-tray",
         criterion: "change-consumption" as const,
@@ -666,3 +702,29 @@ Deno.test(
     );
   },
 );
+
+function emptyAnchorage(): PartAnchorageResolution {
+  return {
+    anchors: new Map(),
+    ambiguousByRef: new Map(),
+    orphanRefKeys: new Set(),
+  };
+}
+
+function anchoredResolution(
+  entries: [string, {
+    target: "assembly" | string;
+    criterion:
+      | "catalog"
+      | "prefix"
+      | "nature"
+      | "derived-from"
+      | "change-consumption";
+  }][],
+): PartAnchorageResolution {
+  return {
+    anchors: new Map(entries),
+    ambiguousByRef: new Map(),
+    orphanRefKeys: new Set(),
+  };
+}

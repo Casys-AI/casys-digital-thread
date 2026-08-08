@@ -1,5 +1,8 @@
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
-import type { PartAnchor } from "./part-anchorage-model.ts";
+import type {
+  PartAnchorageResolution,
+  PartTarget,
+} from "./part-anchorage-model.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -310,33 +313,68 @@ export function compactLineageCounters(
 // ---------------------------------------------------------------------------
 
 /**
+ * Filter ids deliberately outside the component catalog. They make a missing
+ * or conflicting anchor reviewable instead of silently assigning it to the
+ * whole assembly.
+ */
+export const AMBIGUOUS_FEED_SCOPE = "__feed-anchorage:ambiguous";
+export const ORPHAN_FEED_SCOPE = "__feed-anchorage:orphan";
+
+export type FeedScope =
+  | PartTarget
+  | typeof AMBIGUOUS_FEED_SCOPE
+  | typeof ORPHAN_FEED_SCOPE;
+
+/** Return the complete anchorage outcome of a primary feed event. */
+export function feedScopeForNode(
+  node: ThreadGraphNode,
+  anchorage: PartAnchorageResolution,
+): FeedScope {
+  // Part anchorage deliberately uses this kind:id key format (rather than the
+  // null-byte lineage key) so it can be shared by every workbench surface.
+  const key = `${node.ref.kind}:${node.ref.id}`;
+  const anchor = anchorage.anchors.get(key);
+  if (anchor) return anchor.target;
+  if (anchorage.ambiguousByRef.has(key)) return AMBIGUOUS_FEED_SCOPE;
+  // Unknown keys, as well as explicit orphan keys, are an orphan outcome. A
+  // partial snapshot must never acquire an invented assembly provenance.
+  return ORPHAN_FEED_SCOPE;
+}
+
+/** Apply an explicit component or non-anchored feed filter. */
+export function filterFeedNodesByScope(
+  feedNodes: readonly ThreadGraphNode[],
+  anchorage: PartAnchorageResolution,
+  scope: FeedScope | undefined,
+): ThreadGraphNode[] {
+  if (scope === undefined) return [...feedNodes];
+  return feedNodes.filter((node) =>
+    feedScopeForNode(node, anchorage) === scope
+  );
+}
+
+/**
  * Computes the number of activity feed events attributed to each component.
  *
- * Attribution mirrors the feed filter in feed.tsx: the primary ref of each
- * event node is looked up in the anchorage map (keyed as `kind:id`, the
- * format produced by buildPartAnchorage). Unanchored events fall back to
- * "assembly" scope — the same fallback used by the filter.
+ * Attribution mirrors the feed filter in feed.tsx: a unique primary ref uses
+ * its component target; conflicting and absent anchors remain distinct,
+ * reviewable scopes. They are never folded into the assembly count.
  *
  * An event with multiple roles always takes the anchor of its own ref (the
  * primary fact ref), not its lineage neighbours.
  *
- * Returns a Map<componentId, count> where only components with at least one
- * attributed event appear. "assembly" is a valid key. An empty map means all
- * events are unanchored (edge case: empty graph or no anchorage).
+ * Returns a Map<FeedScope, count> where only scopes with at least one event
+ * appear. "assembly" is a valid unique target; ambiguous and orphan scopes
+ * use the exported sentinel ids.
  */
 export function buildFeedComponentCounts(
   feedNodes: ThreadGraphNode[],
-  anchorage: ReadonlyMap<string, PartAnchor>,
-): Map<string, number> {
-  const counts = new Map<string, number>();
+  anchorage: PartAnchorageResolution,
+): Map<FeedScope, number> {
+  const counts = new Map<FeedScope, number>();
   for (const node of feedNodes) {
-    // The anchorage map is keyed as "${kind}:${id}" (built by
-    // buildPartAnchorage in part-anchorage-model.ts). Do NOT use the
-    // feed-model refKey which uses the null-byte separator.
-    const key = `${node.ref.kind}:${node.ref.id}`;
-    const anchor = anchorage.get(key);
-    const target = anchor ? anchor.target : "assembly";
-    counts.set(target, (counts.get(target) ?? 0) + 1);
+    const scope = feedScopeForNode(node, anchorage);
+    counts.set(scope, (counts.get(scope) ?? 0) + 1);
   }
   return counts;
 }

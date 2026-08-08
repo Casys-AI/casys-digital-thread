@@ -41,7 +41,7 @@ import {
   type ThreadStreamStatus,
   type ThreadWorkbenchClient,
 } from "./client.ts";
-import { activityFeedNodes } from "./feed-model.ts";
+import { activityFeedNodes, type FeedScope } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
@@ -61,7 +61,10 @@ import {
   type EvidenceGraphModel,
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
-import { buildPartAnchorage } from "./part-anchorage-model.ts";
+import {
+  buildPartAnchorageResolution,
+  type PartAnchorageResolution,
+} from "./part-anchorage-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
 import {
   ToolInspectorPanel,
@@ -86,6 +89,12 @@ import {
   visibleGraphRef,
   visibleGraphSelection,
 } from "./versioned-provenance-model.ts";
+
+const EMPTY_PART_ANCHORAGE: PartAnchorageResolution = {
+  anchors: new Map(),
+  ambiguousByRef: new Map(),
+  orphanRefKeys: new Set(),
+};
 import type {
   EngineeringWorkbenchSnapshot,
   ThreadAction,
@@ -175,9 +184,10 @@ export function ThreadWorkbench({
     "consumption": true,
     "action": true,
   });
-  // Feed component filter: undefined = "Tout le projet", string = part id or "assembly".
+  // Feed component filter: a catalog component, an explicit non-anchored
+  // scope, or undefined ("Tout le projet").
   const [feedFilterComponentId, setFeedFilterComponentId] = useState<
-    string | undefined
+    FeedScope | undefined
   >(undefined);
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
 
@@ -335,9 +345,11 @@ export function ThreadWorkbench({
   // ---------------------------------------------------------------------------
 
   const partAnchorage = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return new Map();
+    if (!workbench || workbench.surface !== "evidence") {
+      return EMPTY_PART_ANCHORAGE;
+    }
     const thread = workbench.thread;
-    return buildPartAnchorage(thread.graph, thread.components);
+    return buildPartAnchorageResolution(thread.graph, thread.components);
   }, [workbench]);
 
   // The projection identity must be stable across non-data renders (depth
@@ -1016,9 +1028,18 @@ export function ThreadWorkbench({
                       components={snapshot.components}
                       onFilterChange={(id) => {
                         setFeedFilterComponentId(id);
-                        // Mirror to the global selectedComponentId so the
-                        // Product workspace and Part-lane legend stay in sync.
-                        if (id !== undefined) setSelectedComponentId(id);
+                        // Only catalog components can be selected by the
+                        // Product workspace. Ambiguous/orphan feed scopes are
+                        // audit buckets, not invented component identities.
+                        if (
+                          id !== undefined &&
+                          (id === "assembly" ||
+                            snapshot.components.components.some((component) =>
+                              component.id === id
+                            ))
+                        ) {
+                          setSelectedComponentId(id);
+                        }
                       }}
                       onFollowLiveChange={changeFollowLive}
                       onSelectNode={(node) =>
