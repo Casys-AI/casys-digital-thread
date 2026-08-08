@@ -364,7 +364,24 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       input.artifact.id,
       this.d.captures.uriFor(publication.fingerprint),
     );
-    if (run.status === "completed") return complete(project, command);
+    if (run.status === "completed") {
+      const expectedResult = snapshotRef(publication.snapshot);
+      const expectedEvidence = [{
+        snapshotId: publication.snapshot.id,
+        snapshotRevision: publication.snapshot.revision,
+        kind: "artifact" as const,
+        id: artifact.id,
+      }];
+      if (
+        deterministicJson(run.resultSnapshot) !== deterministicJson(expectedResult) ||
+        deterministicJson(run.evidenceRefs) !== deterministicJson(expectedEvidence)
+      ) {
+        throw denied(
+          "The completed PartDefinitions run does not attach the exact durable publication evidence.",
+        );
+      }
+      return complete(project, command);
+    }
     if (run.status === "running") {
       await this.d.commands.publishRun(origin, {
         ...command,

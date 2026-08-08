@@ -256,6 +256,32 @@ Deno.test("inspection-drone PartDefinitions restores a completed run's missing r
   assertEquals(fixture.syson.calls.length, 6);
 });
 
+Deno.test("inspection-drone PartDefinitions rejects a completed run with foreign result or evidence refs", async () => {
+  const fixture = await productFixture();
+  const completed = await fixture.executor().execute(AGENT, fixture.command());
+  const run = completed.agentRuns[0]!;
+  fixture.project.agentRuns[0] = {
+    ...run,
+    resultSnapshot: {
+      ...run.resultSnapshot!,
+      snapshotId: "project:inspection-drone-v4:r5:foreign",
+    },
+    evidenceRefs: [{
+      snapshotId: run.resultSnapshot!.snapshotId,
+      snapshotRevision: run.resultSnapshot!.revision,
+      kind: "artifact",
+      id: "foreign-artifact",
+    }],
+  };
+  fixture.syson.failIfCalled = true;
+  await assertRejects(
+    () => fixture.executor().execute(AGENT, fixture.command()),
+    Error,
+    "does not attach the exact durable publication evidence",
+  );
+  assertEquals(fixture.syson.calls.length, 6);
+});
+
 Deno.test("inspection-drone PartDefinitions fails closed for completed evidence without a WAL", async () => {
   const fixture = await productFixture();
   fixture.project.agentRuns[0] = {
