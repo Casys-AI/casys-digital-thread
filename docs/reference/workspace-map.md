@@ -49,7 +49,7 @@
 | [`src/domain/platform/geometry-proposal.ts`](../../src/domain/platform/geometry-proposal.ts)                                                                                             | Generic geometry manifest types, `encodeGeometryDecisionParameters`, and MRTR parameter encoding for `design.write-geometry@1`                                                                                          |
 | [`src/adapters/captures/geometry-draft-capture.ts`](../../src/adapters/captures/geometry-draft-capture.ts)                                                                               | Calls `build123d_export`, attests each binary's SHA-256, and stores draft JSON + binary assets in the draft stores; never writes a `ThreadSnapshot`                                                                     |
 | [`src/adapters/executors/design-write-geometry-run-executor.ts`](../../src/adapters/executors/design-write-geometry-run-executor.ts)                                                     | Trusted executor for `design.write-geometry@1`: seals exact bytes from a human-signed draft into a geometry artifact; no provider call; requires a matching MRTR decision before promoting                              |
-| [`src/ui/src/thread/geometry-decision-model.ts`](../../src/ui/src/thread/geometry-decision-model.ts)                                                                                     | Browser-safe parser for MRTR geometry decision parameters; returns `{ kind: "valid" }` or `{ kind: "invalid", reason }`; no domain imports                                                                             |
+| [`src/ui/src/thread/geometry-decision-model.ts`](../../src/ui/src/thread/geometry-decision-model.ts)                                                                                     | Browser-safe parser for MRTR geometry decision parameters; returns `{ kind: "valid" }` or `{ kind: "invalid", reason }`; no domain imports                                                                              |
 | [`src/adapters/stores/thread-snapshot-lineage.ts`](../../src/adapters/stores/thread-snapshot-lineage.ts)                                                                                 | Exact `previous`-chain ancestry proof                                                                                                                                                                                   |
 | [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                                                                     | Agent MCP planning, elicitation, queueing, and bounded execution                                                                                                                                                        |
 | [`src/adapters/projectors/engineering-workbench-projector.ts`](../../src/adapters/projectors/engineering-workbench-projector.ts)                                                         | Project/thread presentation composition and alignment                                                                                                                                                                   |
@@ -71,29 +71,30 @@
 | `state/local/syson-model-seed-attempts/`                                                                                                                                                 | Recovery control state for uncertain SysON writes; not evidence                                                                                                                                                         |
 | `state/local/architecture-captures/`                                                                                                                                                     | Generic architecture-capture/2.0 CAS captures (model.write-architecture@1): hashed parent-to-usage-to-type graph and causal predecessor chain                                                                           |
 | `state/local/architecture-attempts/`                                                                                                                                                     | Recovery control state for uncertain generic SysON architecture writes                                                                                                                                                  |
-| `state/local/geometry-draft-captures/`                                                                                                                                                   | Content-addressed draft capture JSON files (one per `build123d_export` call); never in `ThreadSnapshot`; keyed by SHA-256 of the serialized draft manifest                                                             |
-| `state/local/geometry-draft-assets/<sha256>`                                                                                                                                             | Raw binary geometry assets (STEP/STL/glTF) produced by `build123d_export`; file name is the SHA-256 digest of the bytes; served read-only by `/api/draft-assets/<digest>`                                              |
-| `state/local/geometry-captures/`                                                                                                                                                         | Content-addressed geometry-artifact/1.0 CAS captures written by `design.write-geometry@1` after human MRTR approval; monotony ratchet prevents silently dropping a sealed geometry artifact                            |
+| `state/local/geometry-draft-captures/`                                                                                                                                                   | Content-addressed draft capture JSON files (one per `build123d_export` call); never in `ThreadSnapshot`; keyed by SHA-256 of the serialized draft manifest                                                              |
+| `state/local/geometry-draft-assets/<sha256>`                                                                                                                                             | Raw binary geometry assets (STEP/STL/glTF) produced by `build123d_export`; file name is the SHA-256 digest of the bytes; served read-only by `/api/draft-assets/<digest>`                                               |
+| `state/local/geometry-captures/`                                                                                                                                                         | Content-addressed geometry-artifact/1.0 CAS captures written by `design.write-geometry@1` after human MRTR approval; monotony ratchet prevents silently dropping a sealed geometry artifact                             |
 
 ## Local endpoints
 
-| Endpoint                    | Owner                       | Purpose                                        |
-| --------------------------- | --------------------------- | ---------------------------------------------- |
-| `http://127.0.0.1:8180`     | SysON                       | SysML web modeler                              |
-| `http://127.0.0.1:3009/mcp` | `mcp-syson`                 | Model, constraints and evaluations             |
-| `http://127.0.0.1:3012/mcp` | `mcp-erpnext`               | Provider-native ERP data                       |
-| `http://127.0.0.1:3014/mcp` | `mcp-build123d`             | CAD execution and exports                      |
-| `http://127.0.0.1:3015/mcp` | `mcp-calculix`              | Meshing and static FEA                         |
-| `http://127.0.0.1:3016/mcp` | `mcp-modelica`              | Approved simulations and run records           |
-| `http://127.0.0.1:3018/mcp` | `mcp-dfm`                   | FDM printability checks on produced STL        |
-| `http://127.0.0.1:3019/mcp` | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                |
-| `http://127.0.0.1:3022/mcp` | `mcp-prusaslicer`           | Print time and material from real G-code       |
-| `http://127.0.0.1:3023/mcp` | `mcp-spice`                 | ngspice operating points and transients        |
-| `http://127.0.0.1:3020/mcp` | `deno task start`           | Fleet reads plus agent project control         |
-| `http://127.0.0.1:3021/`    | `deno task preview:browser` | Console MCP App browser harness                |
-| `http://127.0.0.1:5175/`    | `deno task preview:cockpit` | Canonical project cockpit and live Project tab |
-| `http://127.0.0.1:5173/`    | `deno task preview:thread`  | Direct engineering-view development preview    |
-| `/api/draft-assets/<sha256>` | BFF (native Workbench)     | Read-only geometry draft binary; 404 if not present; Cache-Control: no-store |
+| Endpoint                     | Owner                       | Purpose                                                                      |
+| ---------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
+| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                            |
+| `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                           |
+| `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                     |
+| `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | CAD execution and exports                                                    |
+| `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Agent-proposed geometry, private export volume                               |
+| `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Meshing and static FEA                                                       |
+| `http://127.0.0.1:3016/mcp`  | `mcp-modelica`              | Approved simulations and run records                                         |
+| `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | FDM printability checks on produced STL                                      |
+| `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                              |
+| `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                     |
+| `http://127.0.0.1:3023/mcp`  | `mcp-spice`                 | ngspice operating points and transients                                      |
+| `http://127.0.0.1:3020/mcp`  | `deno task start`           | Fleet reads plus agent project control                                       |
+| `http://127.0.0.1:3021/`     | `deno task preview:browser` | Console MCP App browser harness                                              |
+| `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Canonical project cockpit and live Project tab                               |
+| `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Direct engineering-view development preview                                  |
+| `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft binary; 404 if not present; Cache-Control: no-store |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
@@ -170,20 +171,31 @@ route stops there. The distinct CM-01 V3 catalog owns the current product-specif
 operations and their capture/evidence contracts; it does not make a generic
 architecture, CAD, or verification operation available.
 
-The generic geometry boundary separates preview from seal. `project_geometry_preview`
-(registered only when `build123dMcpUrl` is configured) calls `build123d_export`,
-attests each binary's SHA-256, and stores the draft JSON capture in
-`state/local/geometry-draft-captures/` with the raw binaries under
-`state/local/geometry-draft-assets/<digest>`. It returns a `draftDigest` and the
-flat `decisionParameters` for an MRTR proposal. The Workbench BFF serves these
-binaries at `/api/draft-assets/<digest>` (read-only, `Cache-Control: no-store`).
-Nothing from this path enters a `ThreadSnapshot`. Only `design.write-geometry@1`
-can promote a draft: it requires a matching MRTR decision with
-`decidedByOrigin === "human"`, verifies the SHA-256 of every file, and writes a
-sealed geometry artifact into the evidence thread. The monotony ratchet
-(`geometry_artifact_removed`) then prevents a later snapshot from silently omitting
-that artifact. The write executor makes no provider calls — it seals bytes already
-present in the draft store.
+The generic geometry boundary separates preview from seal, and it separates two _natures
+of execution_ across two instances of the same provider. `mcp-build123d` only ever runs
+server-fixed recipes rendered from reviewed code, and mounts the shared `exports`
+volume. `mcp-build123d-sandbox` runs geometry programs _proposed by an agent_ and owns a
+private `build123d-sandbox-exports` volume, so a proposed program can never write into
+the evidence volume that other providers read. This matters because a SHA-256
+fingerprint proves the identity of bytes after sealing, not their causal provenance: a
+write landing in the shared volume before its producer computes the hash would make the
+wrong hash the expected one, and every downstream consumer would then authenticate the
+wrong bytes perfectly. The server lifts sandbox bytes out with `docker compose cp` plus
+fail-closed SHA-256 verification, exactly as it does for attested assets.
+
+`project_geometry_preview` (registered only when the `build123d-sandbox` fleet entry is
+configured) calls `build123d_export` on the sandbox instance, attests each binary's
+SHA-256, and stores the draft JSON capture in `state/local/geometry-draft-captures/`
+with the raw binaries under `state/local/geometry-draft-assets/<digest>`. It returns a
+`draftDigest` and the flat `decisionParameters` for an MRTR proposal. The Workbench BFF
+serves these binaries at `/api/draft-assets/<digest>` (read-only,
+`Cache-Control: no-store`). Nothing from this path enters a `ThreadSnapshot`. Only
+`design.write-geometry@1` can promote a draft: it requires a matching MRTR decision with
+`decidedByOrigin === "human"`, verifies the SHA-256 of every file, and writes a sealed
+geometry artifact into the evidence thread. The monotony ratchet
+(`geometry_artifact_removed`) then prevents a later snapshot from silently omitting that
+artifact. The write executor makes no provider calls — it seals bytes already present in
+the draft store.
 
 The bounded `inspection-drone-v4` path adds a separate read-only successor after its
 qualitative r3 architecture: `model.capture-inspection-drone-part-definitions@1` reads

@@ -106,6 +106,32 @@ services:
     cap_drop:
       - ALL
 
+  # WHY A SECOND build123d — this instance executes GEOMETRY PROGRAMS PROPOSED BY
+  # AN AGENT (the preview path), while mcp-build123d only ever runs server-fixed
+  # recipes rendered from reviewed code. A SHA-256 fingerprint proves the identity
+  # of bytes AFTER sealing, not their causal provenance: a write landing in the
+  # shared evidence volume before the producer computes its hash would make the
+  # wrong hash the expected one, and every downstream consumer would then
+  # authenticate the wrong bytes perfectly. So the container that runs proposed
+  # programs gets a PRIVATE volume and never touches `exports`. The server lifts
+  # its bytes out with `docker compose cp` + fail-closed SHA-256 verification,
+  # exactly as it already does for attested assets.
+  mcp-build123d-sandbox:
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
+    command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
+    ports:
+      - "127.0.0.1:3024:3014"
+    volumes:
+      - build123d-sandbox-exports:/exports
+    networks: [chain]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
   mcp-calculix:
     image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
     command: ["calculix", "--port=3015", "--hostname=0.0.0.0"]
@@ -258,6 +284,7 @@ networks:
     name: "${ERPNEXT_DOCKER_NETWORK:-erpnext-docker_frappe_network}"
 
 volumes:
+  build123d-sandbox-exports:
   syson-db-data:
   exports:
   # An explicit Docker name preserves immutable Modelica run records across

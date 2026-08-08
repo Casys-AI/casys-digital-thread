@@ -409,6 +409,9 @@ export async function createConsoleServer(
   const syson = manifest.servers.find((server) => server.id === "syson");
   const erpnext = manifest.servers.find((server) => server.id === "erpnext");
   const build123d = manifest.servers.find((server) => server.id === "build123d");
+  const build123dSandbox = manifest.servers.find((server) =>
+    server.id === "build123d-sandbox"
+  );
   const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
@@ -432,6 +435,7 @@ export async function createConsoleServer(
       modelica?.mcpUrl,
       erpnext?.mcpUrl,
       build123d?.mcpUrl,
+      build123dSandbox?.mcpUrl,
       calculix?.mcpUrl,
       dfm?.mcpUrl,
       prusaslicer?.mcpUrl,
@@ -502,6 +506,7 @@ async function createProjectControl(
   modelicaMcpUrl?: string,
   erpnextMcpUrl?: string,
   build123dMcpUrl?: string,
+  build123dSandboxMcpUrl?: string,
   calculixMcpUrl?: string,
   dfmMcpUrl?: string,
   prusaslicerMcpUrl?: string,
@@ -1138,17 +1143,24 @@ async function createProjectControl(
     control: {
       projects: runtime.projects,
       commands: runtime.commands,
-      geometryPreview: build123dMcpUrl
+      // WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — preview executes a
+      // geometry program PROPOSED BY AN AGENT. A fingerprint proves byte identity
+      // after sealing, never causal provenance: a write reaching the shared
+      // evidence volume before its producer hashes it would make the wrong hash
+      // the expected one. The sandbox owns a private export volume, so a proposed
+      // program can never touch evidence bytes. No sandbox entry in the fleet
+      // manifest ⇒ no preview tool at all, never a ghost that fails when called.
+      geometryPreview: build123dSandboxMcpUrl
         ? {
           client: new HttpMcpToolClient({
-            mcpUrl: build123dMcpUrl,
+            mcpUrl: build123dSandboxMcpUrl,
             timeoutMs: 120_000,
           }),
           draftCaptures: new FileCaptureStore({
             ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
             directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
           }),
-          build123dService: "mcp-build123d",
+          build123dService: "mcp-build123d-sandbox",
         }
         : undefined,
       runExecutor: new RegisteredProjectRunExecutor({
