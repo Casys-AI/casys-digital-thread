@@ -329,9 +329,8 @@ export function ThreadFeed({
                           ariaLabel={`Complete recorded lineage for ${node.label}`}
                           onSelectionChange={(next) => {
                             if (next?.kind === "edge") {
-                              const edge = edges.find((item) =>
-                                item.id === next.id
-                              );
+                              const edge = next.occurrence?.edge ??
+                                edges.find((item) => item.id === next.id);
                               if (edge) onSelectEdge(edge);
                             } else if (next?.kind === "node") {
                               const selected = nodes.find((item) =>

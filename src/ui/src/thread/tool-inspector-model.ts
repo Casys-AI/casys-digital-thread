@@ -1,6 +1,8 @@
 import type {
   ThreadAction,
   ThreadArtifact,
+  ThreadGraph,
+  ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadObservation,
@@ -35,7 +37,11 @@ export interface ToolInspectorTarget {
 
 export type ToolInspectorGraphSelection =
   | { kind: "node"; ref: ThreadGraphRef }
-  | { kind: "edge"; id: string };
+  | {
+    kind: "edge";
+    id: string;
+    occurrence?: { readonly key: string; readonly edge: ThreadGraphEdge };
+  };
 
 export interface InspectorContext {
   owner: WorkbenchToolIdentity;
@@ -101,6 +107,20 @@ export function resolveToolInspectorTarget(
   }
   if (graphSelection?.kind === "edge") return {};
   return { record: fallbackRecord };
+}
+
+/**
+ * Resolves the exact selected relation for the drawer. Renderers that support
+ * parallel edges carry the occurrence itself; legacy callers fall back to the
+ * historic id lookup for compatibility.
+ */
+export function resolveSelectedGraphEdge(
+  graph: ThreadGraph,
+  selection: ToolInspectorGraphSelection | undefined,
+): ThreadGraphEdge | undefined {
+  if (selection?.kind !== "edge") return undefined;
+  return selection.occurrence?.edge ??
+    graph.edges.find((edge) => edge.id === selection.id);
 }
 
 /**

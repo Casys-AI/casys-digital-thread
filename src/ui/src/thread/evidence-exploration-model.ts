@@ -107,6 +107,8 @@ export interface SigmaEdgeAttrs {
   graphKey: string;
   /** Recorded relation id used by the domain inspector (not a graph key). */
   edgeId: string;
+  /** Exact occurrence selected by Sigma, retained through the inspector. */
+  edge: ThreadGraphEdge;
   label: string;
   /** "stub" marks synthetic connector edges rendered with a dashed style. */
   edgeType: "regular" | "stub";
@@ -315,6 +317,7 @@ export function buildExplorationModel(
     graph.addEdgeWithKey(graphKey, from, to, {
       graphKey,
       edgeId: edge.id,
+      edge,
       label: edge.relation.replaceAll("_", " "),
       edgeType: "regular",
       color: tokens.lineStrong,
@@ -331,6 +334,7 @@ export function buildExplorationModel(
     graph.addEdgeWithKey(graphKey, from, to, {
       graphKey,
       edgeId: edge.id,
+      edge,
       label: edge.rationale ?? `via ${edge.relation} — replié`,
       edgeType: "stub",
       color: tokens.muted,

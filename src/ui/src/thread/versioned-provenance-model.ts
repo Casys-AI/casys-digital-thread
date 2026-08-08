@@ -11,7 +11,11 @@ import type {
 
 export type VersionedGraphSelection =
   | { kind: "node"; ref: ThreadGraphRef }
-  | { kind: "edge"; id: string };
+  | {
+    kind: "edge";
+    id: string;
+    occurrence?: { readonly key: string; readonly edge: ThreadGraphEdge };
+  };
 
 export interface VersionedEvidenceFamily {
   family: ThreadEvidenceFamily;
@@ -222,10 +226,14 @@ export function visibleGraphSelection(
       ref: visibleGraphRef(projection, selection.ref) ?? selection.ref,
     };
   }
-  return {
+  const visibleSelection: VersionedGraphSelection = {
     kind: "edge",
     id: projection.visibleEdgeIdByMemberId.get(selection.id) ?? selection.id,
   };
+  if (selection.occurrence) {
+    return { ...visibleSelection, occurrence: selection.occurrence };
+  }
+  return visibleSelection;
 }
 
 export function versionLabel(count: number): string {

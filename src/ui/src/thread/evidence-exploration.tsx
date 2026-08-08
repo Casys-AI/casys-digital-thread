@@ -160,7 +160,11 @@ export function EvidenceExploration({
       sigma.on("clickEdge", ({ edge: edgeKey }) => {
         const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
         if (!attrs) return;
-        onSelectionChangeRef.current?.({ kind: "edge", id: attrs.edgeId });
+        onSelectionChangeRef.current?.({
+          kind: "edge",
+          id: attrs.edgeId,
+          occurrence: { key: attrs.graphKey, edge: attrs.edge },
+        });
       });
     }
 
@@ -328,10 +332,20 @@ export function EvidenceExploration({
       visibleNodeKeys.add(key);
       nodes.push({ key, label: attrs.label, ref: attrs.node.ref });
     });
-    const edges: Array<{ key: string; label: string; edgeId: string }> = [];
+    const edges: Array<{
+      key: string;
+      label: string;
+      edgeId: string;
+      edge: SigmaEdgeAttrs["edge"];
+    }> = [];
     explorationModel.graph.forEachEdge((key, attrs, source, target) => {
       if (!visibleNodeKeys.has(source) || !visibleNodeKeys.has(target)) return;
-      edges.push({ key, label: attrs.label, edgeId: attrs.edgeId });
+      edges.push({
+        key,
+        label: attrs.label,
+        edgeId: attrs.edgeId,
+        edge: attrs.edge,
+      });
     });
     return { nodes, edges };
   }, [explorationModel, displayDepth, visibleKinds, projection]);
@@ -432,7 +446,12 @@ function ExplorationKeyboardNavigation({
   onSelectionChange,
 }: {
   nodes: readonly { key: string; label: string; ref: ThreadGraphRef }[];
-  edges: readonly { key: string; label: string; edgeId: string }[];
+  edges: readonly {
+    key: string;
+    label: string;
+    edgeId: string;
+    edge: SigmaEdgeAttrs["edge"];
+  }[];
   onSelectionChange: EvidenceExplorationProps["onSelectionChange"];
 }): JSX.Element {
   return (
@@ -460,7 +479,11 @@ function ExplorationKeyboardNavigation({
             <button
               type="button"
               onClick={() =>
-                onSelectionChange?.({ kind: "edge", id: edge.edgeId })}
+                onSelectionChange?.({
+                  kind: "edge",
+                  id: edge.edgeId,
+                  occurrence: { key: edge.key, edge: edge.edge },
+                })}
             >
               {edge.label}
             </button>

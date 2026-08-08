@@ -69,6 +69,7 @@ import {
 } from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
+  resolveSelectedGraphEdge,
   resolveToolInspectorTarget,
 } from "./tool-inspector-model.ts";
 import { EvidenceVersionHistory } from "./version-history.tsx";
@@ -645,9 +646,7 @@ export function ThreadWorkbench({
     changeView("product");
   };
 
-  const selectedEdge = graphSelection?.kind === "edge"
-    ? snapshot.graph.edges.find((edge) => edge.id === graphSelection.id)
-    : undefined;
+  const selectedEdge = resolveSelectedGraphEdge(snapshot.graph, graphSelection);
   const selectedEdgeGroup = selectedEdge
     ? versionedEdgeGroup(versionedProvenance, selectedEdge.id)
     : undefined;
@@ -956,7 +955,16 @@ export function ThreadWorkbench({
                       onSelectNode={(node) =>
                         selectGraphNode(node, { pauseLive: true })}
                       onSelectEdge={(edge) => {
-                        setGraphSelection({ kind: "edge", id: edge.id });
+                        setGraphSelection({
+                          kind: "edge",
+                          id: edge.id,
+                          occurrence: {
+                            key: `feed:${edge.id}:${
+                              snapshot.graph.edges.indexOf(edge)
+                            }`,
+                            edge,
+                          },
+                        });
                         setDrawerMode("tool");
                         setInspectorOpen(true);
                       }}

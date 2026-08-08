@@ -2,10 +2,14 @@ import { assertEquals } from "@std/assert";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   graphNodeForSelection,
+  resolveSelectedGraphEdge,
   resolveToolInspectorContext,
   resolveToolInspectorTarget,
 } from "./src/thread/tool-inspector-model.ts";
-import type { ThreadGraphNode, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
+import type {
+  ThreadGraphNode,
+  ThreadWorkbenchSnapshot,
+} from "./src/thread/types.ts";
 
 Deno.test("graph action keeps its own provider while exposing its richer record", () => {
   const node = graphNode("action", "ACT-INSPECT");
@@ -97,6 +101,35 @@ Deno.test("edge routing does not leak the previous record into its handoff panel
   );
 
   assertEquals(target, {});
+});
+
+Deno.test("edge occurrence selection opens the second relation with a duplicate domain id", () => {
+  const snapshot: ThreadWorkbenchSnapshot = structuredClone(
+    COFFEE_MACHINE_THREAD_FIXTURE,
+  );
+  const first = {
+    id: "duplicate-handoff",
+    from: { kind: "artifact" as const, id: "ART-CAD-018" },
+    to: { kind: "artifact" as const, id: "ART-STEP-018" },
+    relation: "derived_from" as const,
+    rationale: "first recorded handoff",
+    origin: "provenance" as const,
+  };
+  const second = {
+    ...first,
+    to: { kind: "artifact" as const, id: "ART-FEA-018" },
+    rationale: "second recorded handoff",
+  };
+  snapshot.graph.edges.push(first, second);
+
+  const selected = resolveSelectedGraphEdge(snapshot.graph, {
+    kind: "edge",
+    id: "duplicate-handoff",
+    occurrence: { key: "sigma-edge:duplicate-handoff:1", edge: second },
+  });
+
+  assertEquals(selected, second);
+  assertEquals(selected?.rationale, "second recorded handoff");
 });
 
 Deno.test(

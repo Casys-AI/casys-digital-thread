@@ -29,7 +29,13 @@ const MAX_COMPONENT_ROW_WIDTH = 1320;
 
 export type ThreadGraphSelection =
   | { kind: "node"; ref: ThreadGraphRef }
-  | { kind: "edge"; id: string };
+  | {
+    kind: "edge";
+    /** Domain id retained for version history and human-facing records. */
+    id: string;
+    /** Exact renderer occurrence, distinct even when domain ids collide. */
+    occurrence?: { readonly key: string; readonly edge: ThreadGraphEdge };
+  };
 
 export interface ThreadGraphProps {
   nodes: ThreadGraphNode[];
@@ -403,7 +409,7 @@ export function ThreadGraph({
     : false;
   const selectedEdgeId = selection?.kind === "edge" ? selection.id : undefined;
   const selectedEdgeVisible = selectedEdgeId
-    ? layout.edges.some((item) => item.edge.id === selectedEdgeId)
+    ? layout.edges.some((item) => selectedEdgeMatches(selection, item.edge))
     : false;
   const viewport = useMemo(
     () =>
@@ -470,12 +476,17 @@ export function ThreadGraph({
     if (item.node.selection) onInspect?.(item.node.selection, item.node);
   };
   const selectEdge = (item: PositionedThreadGraphEdge) => {
-    setKeyboardEdge(item.edge.id);
+    const occurrenceKey = edgeOccurrenceKey(item, layout.edges);
+    setKeyboardEdge(occurrenceKey);
     if (presentation === "canvas") {
       setCameraTarget(undefined);
       setCameraCenter(edgeCenter(item));
     }
-    onSelectionChange?.({ kind: "edge", id: item.edge.id });
+    onSelectionChange?.({
+      kind: "edge",
+      id: item.edge.id,
+      occurrence: { key: occurrenceKey, edge: item.edge },
+    });
   };
   const moveNodeFocus = (
     item: PositionedThreadGraphNode,
@@ -495,9 +506,7 @@ export function ThreadGraph({
     item: PositionedThreadGraphEdge,
     direction: "previous" | "next" | "first" | "last",
   ) => {
-    const currentIndex = layout.edges.findIndex((candidate) =>
-      candidate.edge.id === item.edge.id
-    );
+    const currentIndex = layout.edges.indexOf(item);
     const targetIndex = direction === "first"
       ? 0
       : direction === "last"
@@ -507,12 +516,13 @@ export function ThreadGraph({
       : Math.min(layout.edges.length - 1, currentIndex + 1);
     const target = layout.edges[targetIndex];
     if (!target) return;
-    setKeyboardEdge(target.edge.id);
+    const targetKey = edgeOccurrenceKey(target, layout.edges);
+    setKeyboardEdge(targetKey);
     if (presentation === "canvas") {
       setCameraTarget(undefined);
       setCameraCenter(edgeCenter(target));
     }
-    edgeElements.current.get(target.edge.id)?.focus();
+    edgeElements.current.get(targetKey)?.focus();
   };
   const changeZoom = (direction: "in" | "out") => {
     setZoom((current) => {
@@ -742,23 +752,24 @@ export function ThreadGraph({
 
           <g class="thread-graph-edges" aria-label="Explicit relations">
             {layout.edges.map((item, index) => {
+              const occurrenceKey = edgeOccurrenceKey(item, layout.edges);
               const selected = selection?.kind === "edge" &&
-                selection.id === item.edge.id;
+                selectedEdgeMatches(selection, item.edge);
               const state = edgeImpactState(item, impact, focusedRef);
               const isKeyboardEdge = keyboardEdge
-                ? keyboardEdge === item.edge.id
+                ? keyboardEdge === occurrenceKey
                 : selectedEdgeVisible
                 ? selected
                 : index === 0;
               const attestation = item.edge.attestation?.status ?? "none";
               return (
                 <g
-                  key={item.edge.id}
+                  key={occurrenceKey}
                   ref={(element) => {
                     if (element) {
-                      edgeElements.current.set(item.edge.id, element);
+                      edgeElements.current.set(occurrenceKey, element);
                     } else {
-                      edgeElements.current.delete(item.edge.id);
+                      edgeElements.current.delete(occurrenceKey);
                     }
                   }}
                   class="thread-graph-edge"
@@ -779,7 +790,7 @@ export function ThreadGraph({
                     ? { animationDelay: `${Math.min(index * 55, 440)}ms` }
                     : undefined}
                   onClick={() => selectEdge(item)}
-                  onFocus={() => setKeyboardEdge(item.edge.id)}
+                  onFocus={() => setKeyboardEdge(occurrenceKey)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
@@ -999,7 +1010,8 @@ function essentialGraphProjection(
   if (focus) visible.add(refKey(focus));
   if (selection?.kind === "node") visible.add(refKey(selection.ref));
   if (selection?.kind === "edge") {
-    const selectedEdge = edges.find((edge) => edge.id === selection.id);
+    const selectedEdge = selection.occurrence?.edge ??
+      edges.find((edge) => edge.id === selection.id);
     if (selectedEdge) {
       visible.add(refKey(selectedEdge.from));
       visible.add(refKey(selectedEdge.to));
@@ -1027,6 +1039,27 @@ function essentialGraphProjection(
     supportingCount,
     hiddenNodeCount: nodes.length - projectedNodes.length,
   };
+}
+
+function selectedEdgeMatches(
+  selection: ThreadGraphSelection | undefined,
+  edge: ThreadGraphEdge,
+): boolean {
+  if (selection?.kind !== "edge") return false;
+  return selection.occurrence
+    ? selection.occurrence.edge === edge
+    : selection.id === edge.id;
+}
+
+function edgeOccurrenceKey(
+  item: PositionedThreadGraphEdge,
+  edges: readonly PositionedThreadGraphEdge[],
+): string {
+  const sameIdBefore =
+    edges.slice(0, edges.indexOf(item)).filter((candidate) =>
+      candidate.edge.id === item.edge.id
+    ).length;
+  return `svg-edge:${item.edge.id}:${sameIdBefore}`;
 }
 
 function shortestPath(
