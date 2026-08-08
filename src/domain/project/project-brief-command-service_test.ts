@@ -348,10 +348,23 @@ Deno.test("a V3 cancellation seals its legacy unbound queue receipt", async () =
   const queueReceipt = queued.commandReceipts?.at(-1);
   assertEquals(queued.schemaVersion, "3.0");
   assertEquals(queueReceipt?.type, "agent-run.queue");
-  assertEquals(queueReceipt?.cancelledRun, undefined);
+  assertEquals(queueReceipt?.queuedRun, {
+    runId: "run:legacy-v3-queue",
+    workItemId: "record-approved-brief",
+  });
+
+  const legacyQueued = structuredClone(queued);
+  const legacyQueueReceipt = legacyQueued.commandReceipts!.at(-1)! as {
+    commandId: string;
+    queuedRun?: unknown;
+  };
+  delete legacyQueueReceipt.queuedRun;
+  await store.commit(legacyQueued, queued.revision);
+  assertEquals(legacyQueueReceipt.queuedRun, undefined);
+  assertEquals(collectEngineeringProjectIssues(legacyQueued), []);
 
   const cancelled = await commands.cancelQueuedRun(HUMAN, {
-    ...context("cancel-legacy-v3-queue", queued.revision),
+    ...context("cancel-legacy-v3-queue", legacyQueued.revision),
     runId: "run:legacy-v3-queue",
     rationale: "The reviewed baseline was retired before any worker claim.",
   });
@@ -359,7 +372,7 @@ Deno.test("a V3 cancellation seals its legacy unbound queue receipt", async () =
   assertEquals(cancelled.commandReceipts?.at(-1)?.cancelledRun, {
     runId: run.id,
     workItemId: run.workItemId,
-    queuedCommandId: queueReceipt?.commandId,
+    queuedCommandId: legacyQueueReceipt.commandId,
   });
   assertEquals(collectEngineeringProjectIssues(cancelled), []);
 });

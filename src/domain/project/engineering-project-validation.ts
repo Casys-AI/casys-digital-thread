@@ -1364,7 +1364,7 @@ function validateCommandReceipt(
       "requestFingerprint",
       "resultingSnapshot",
     ],
-    ["approvedBriefBasis", "cancelledRun"],
+    ["approvedBriefBasis", "queuedRun", "cancelledRun"],
     issues,
   );
   if (!input) return;
@@ -1411,6 +1411,13 @@ function validateCommandReceipt(
       issues,
     );
   }
+  if (input.queuedRun !== undefined) {
+    validateQueuedRunReceiptBinding(
+      input.queuedRun,
+      `${path}.queuedRun`,
+      issues,
+    );
+  }
   if (input.cancelledRun !== undefined) {
     validateCancelledRunReceiptBinding(
       input.cancelledRun,
@@ -1418,6 +1425,17 @@ function validateCommandReceipt(
       issues,
     );
   }
+}
+
+function validateQueuedRunReceiptBinding(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(value, path, ["runId", "workItemId"], [], issues);
+  if (!input) return;
+  nonEmptyString(input.runId, `${path}.runId`, issues);
+  nonEmptyString(input.workItemId, `${path}.workItemId`, issues);
 }
 
 function validateCancelledRunReceiptBinding(
@@ -2034,6 +2052,7 @@ function validateInvariants(
   (project.commandReceipts ?? []).forEach((receipt, index) =>
     validateCommandReceiptInvariant(receipt, index, project, issues)
   );
+  validateQueuedRunReceiptBindings(project, issues);
   validateCancelledRunReceiptBindings(project, issues);
 }
 
@@ -3094,7 +3113,9 @@ function validateRunInvariant(
       queueReceipt.actor.id !== queuedTransition.actor.id ||
       queueReceipt.actor.origin !== queuedTransition.actor.origin ||
       Date.parse(queueReceipt.appliedAt) !== Date.parse(run.queuedAt) ||
-      Date.parse(queueReceipt.appliedAt) !== Date.parse(queuedTransition.at)
+      Date.parse(queueReceipt.appliedAt) !== Date.parse(queuedTransition.at) ||
+      (queueReceipt.queuedRun !== undefined &&
+        !matchesQueuedRunReceiptBinding(run, queueReceipt))
     ) {
       issue(
         issues,
@@ -3131,7 +3152,11 @@ function validateRunInvariant(
         Date.parse(cancellationReceipt.appliedAt) !==
           Date.parse(run.cancellation.cancelledAt) ||
         Date.parse(cancellationReceipt.appliedAt) !== Date.parse(finalTransition!.at) ||
-        !matchesCancelledRunReceiptBinding(run, cancellationReceipt.cancelledRun))
+        !matchesCancelledRunReceiptBinding(run, cancellationReceipt.cancelledRun) ||
+        !queueAndCancellationReceiptBindingsAgree(
+          queueReceipt,
+          cancellationReceipt,
+        ))
     ) {
       issue(
         issues,
@@ -3245,6 +3270,62 @@ function validateRunTransitionCommandUsage(
       }
       if (!owner) ownerByCommandId.set(transition.commandId, { runId: run.id });
     });
+  });
+}
+
+function matchesQueuedRunReceiptBinding(
+  run: EngineeringAgentRun,
+  receipt: EngineeringProjectCommandReceipt,
+): boolean {
+  const queuedTransition = run.statusHistory?.[0];
+  const binding = receipt.queuedRun;
+  return receipt.type === "agent-run.queue" && !!binding &&
+    queuedTransition?.status === "queued" &&
+    receipt.commandId === queuedTransition.commandId &&
+    binding.runId === run.id &&
+    binding.workItemId === run.workItemId;
+}
+
+function queueAndCancellationReceiptBindingsAgree(
+  queueReceipt: EngineeringProjectCommandReceipt | undefined,
+  cancellationReceipt: EngineeringProjectCommandReceipt,
+): boolean {
+  const queuedRun = queueReceipt?.queuedRun;
+  if (!queuedRun) return true;
+  const cancelledRun = cancellationReceipt.cancelledRun;
+  return queuedRun.runId === cancelledRun?.runId &&
+    queuedRun.workItemId === cancelledRun.workItemId &&
+    queueReceipt.commandId === cancelledRun.queuedCommandId;
+}
+
+/**
+ * New queue receipts seal their queued run, while receipts created before the
+ * binding was introduced remain valid legacy history. When the field exists,
+ * it is a one-to-one target anchor for the initial queued transition.
+ */
+function validateQueuedRunReceiptBindings(
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const queueReceipts = (project.commandReceipts ?? []).map((receipt, index) => ({
+    receipt,
+    index,
+  })).filter(({ receipt }) =>
+    receipt.type === "agent-run.queue" && receipt.queuedRun !== undefined
+  );
+
+  queueReceipts.forEach(({ receipt, index }) => {
+    const matches = project.agentRuns.filter((run) =>
+      matchesQueuedRunReceiptBinding(run, receipt)
+    );
+    if (matches.length !== 1) {
+      issue(
+        issues,
+        "invalid_queued_run_receipt_binding",
+        `$.commandReceipts[${index}].queuedRun`,
+        "must identify exactly one run and its initial queued transition",
+      );
+    }
   });
 }
 
@@ -3537,6 +3618,17 @@ function validateCommandReceiptInvariant(
       "schema_version_mismatch",
       `${path}.cancelledRun`,
       "is permitted only on an agent-run.cancel receipt",
+    );
+  }
+  if (
+    receipt.queuedRun !== undefined &&
+    receipt.type !== "agent-run.queue"
+  ) {
+    issue(
+      issues,
+      "schema_version_mismatch",
+      `${path}.queuedRun`,
+      "is permitted only on an agent-run.queue receipt",
     );
   }
   if (

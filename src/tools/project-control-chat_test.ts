@@ -66,6 +66,7 @@ Deno.test("project_agent_run_queue derives its server-owned run command from one
       "basis",
       "resultSnapshot",
       "evidenceRefs",
+      "queuedRun",
     ]
   ) {
     assertEquals(

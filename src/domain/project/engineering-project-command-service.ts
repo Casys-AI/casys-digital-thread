@@ -17,6 +17,7 @@ import {
   type EngineeringProjectPlan,
   type EngineeringProjectSnapshot,
   type EngineeringProjectStartingPoint,
+  type EngineeringQueuedRunReceiptBinding,
   type EngineeringThreadEntityRef,
   type EngineeringThreadSnapshotRef,
   type EngineeringWorkItem,
@@ -697,6 +698,14 @@ export class EngineeringProjectCommandService {
     origin: EngineeringProjectCommandOrigin,
     command: QueueRunCommand,
   ): Promise<EngineeringProjectSnapshot> {
+    if (hasCallerQueuedRunBinding(command)) {
+      return Promise.reject(
+        new EngineeringProjectCommandError(
+          "invalid_input",
+          "queuedRun is server-stamped and cannot be supplied by a caller.",
+        ),
+      );
+    }
     return this.apply(origin, "agent-run.queue", command, async (draft, appliedAt) => {
       nonEmpty(command.runId, "runId");
       nonEmpty(command.summary, "summary");
@@ -1207,6 +1216,9 @@ export class EngineeringProjectCommandService {
     draft.revision = revision;
     draft.previous = { snapshotId: current.id, revision: current.revision };
     draft.generatedAt = appliedAt;
+    const queuedRun = type === "agent-run.queue"
+      ? queuedRunReceiptBinding(draft, command.commandId)
+      : undefined;
     const cancelledRun = type === "agent-run.cancel"
       ? cancelledRunReceiptBinding(draft, command.commandId)
       : undefined;
@@ -1219,6 +1231,7 @@ export class EngineeringProjectCommandService {
       appliedAt,
       requestFingerprint,
       resultingSnapshot: { snapshotId, revision },
+      ...(queuedRun ? { queuedRun } : {}),
       ...(cancelledRun ? { cancelledRun } : {}),
     });
     const next = validateEngineeringProjectSnapshot(draft);
@@ -1981,6 +1994,11 @@ function uniquePlanIds(values: readonly string[], label: string): void {
   }
 }
 
+/** The queue receipt target is derived from the server draft, never input. */
+function hasCallerQueuedRunBinding(command: QueueRunCommand): boolean {
+  return Object.prototype.hasOwnProperty.call(command, "queuedRun");
+}
+
 /** The cancellation receipt target is derived from the server draft, never input. */
 function hasCallerCancelledRunBinding(command: CancelQueuedRunCommand): boolean {
   return Object.prototype.hasOwnProperty.call(command, "cancelledRun");
@@ -2006,6 +2024,24 @@ function cancellationFingerprintCommand(
     runId: command.runId,
     rationale: command.rationale,
   };
+}
+
+function queuedRunReceiptBinding(
+  draft: EngineeringProjectSnapshot,
+  queueCommandId: string,
+): EngineeringQueuedRunReceiptBinding {
+  const candidates = draft.agentRuns.filter((run) =>
+    run.status === "queued" &&
+    run.statusHistory?.[0]?.status === "queued" &&
+    run.statusHistory?.[0]?.commandId === queueCommandId
+  );
+  if (candidates.length !== 1) {
+    invalidTransition(
+      "A queue receipt must resolve to exactly one server-queued agent run.",
+    );
+  }
+  const run = candidates[0]!;
+  return { runId: run.id, workItemId: run.workItemId };
 }
 
 function cancelledRunReceiptBinding(

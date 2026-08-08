@@ -13,6 +13,7 @@ import {
   type EngineeringProjectCompletionEvidenceValidator,
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
+  type QueueRunCommand,
 } from "./engineering-project-command-service.ts";
 import {
   EngineeringProjectValidationError,
@@ -353,13 +354,34 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
     rationale:
       "This queued run is superseded before any agent claim or provider execution.",
   };
-  const legacyQueueReceipt = queued.commandReceipts?.at(-1);
-  assertEquals(legacyQueueReceipt?.type, "agent-run.queue");
-  assertEquals(legacyQueueReceipt?.cancelledRun, undefined);
+  const queueReceipt = queued.commandReceipts?.at(-1);
+  assertEquals(queueReceipt?.type, "agent-run.queue");
+  assertEquals(queueReceipt?.queuedRun, {
+    runId: "verify-run-cancellable",
+    workItemId: "verify-current-mechanical-design",
+  });
+  assertEquals(queueReceipt?.cancelledRun, undefined);
 
   await assertCommandError(
     () => service.cancelQueuedRun(AGENT, command),
     "permission_denied",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, queued.revision);
+
+  await assertCommandError(
+    () =>
+      service.queueRun(AGENT, {
+        ...context("queue-caller-supplied-binding", queued.revision),
+        runId: "verify-run-caller-supplied-binding",
+        workItemId: "verify-current-mechanical-design",
+        summary: "Queue a forged server-owned target.",
+        baseSnapshot: baseSnapshot(queued),
+        queuedRun: {
+          runId: "forged-run-id",
+          workItemId: "forged-work-item-id",
+        },
+      } as unknown as QueueRunCommand),
+    "invalid_input",
   );
   assertEquals((await store.get(PROJECT_ID))?.revision, queued.revision);
 
@@ -444,6 +466,17 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
     "agent-run.queue receipt",
   );
 
+  const tamperedQueuedReceiptBinding = structuredClone(cancelled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  tamperedQueuedReceiptBinding.commandReceipts!.find((receipt) =>
+    receipt.type === "agent-run.queue"
+  )!.queuedRun!.workItemId = "build-current-cad";
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(tamperedQueuedReceiptBinding),
+    EngineeringProjectValidationError,
+  );
+
   const tamperedCancelledRunId = structuredClone(cancelled) as Mutable<
     EngineeringProjectSnapshot
   >;
@@ -508,6 +541,27 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
         rationale: " ",
       }),
     "invalid_input",
+  );
+
+  const retried = await service.queueRun(AGENT, {
+    ...context("queue-cancellable-retry-for-binding-swap", cancelled.revision),
+    runId: "verify-run-cancellable-retry",
+    workItemId: "verify-current-mechanical-design",
+    summary: "Queue the replacement verified work after cancellation.",
+    baseSnapshot: baseSnapshot(cancelled),
+  });
+  const swappedQueuedReceiptBindings = structuredClone(retried) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const queueReceipts = swappedQueuedReceiptBindings.commandReceipts!.filter(
+    (receipt) => receipt.type === "agent-run.queue",
+  );
+  const originalBinding = structuredClone(queueReceipts[0]!.queuedRun)!;
+  queueReceipts[0]!.queuedRun = structuredClone(queueReceipts[1]!.queuedRun)!;
+  queueReceipts[1]!.queuedRun = originalBinding;
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(swappedQueuedReceiptBindings),
+    EngineeringProjectValidationError,
   );
 });
 

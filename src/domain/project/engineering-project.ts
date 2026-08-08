@@ -406,10 +406,21 @@ export interface EngineeringProjectCommandReceipt {
    */
   readonly approvedBriefBasis?: EngineeringApprovedBriefBasis;
   /**
+   * Server-stamped target of a newly queued agent run. Older queue receipts
+   * intentionally omit this field and remain readable as legacy history.
+   */
+  readonly queuedRun?: EngineeringQueuedRunReceiptBinding;
+  /**
    * Server-stamped target of a human queued-run cancellation. Queue receipts
    * intentionally predate this binding and remain valid without it.
    */
   readonly cancelledRun?: EngineeringCancelledRunReceiptBinding;
+}
+
+/** Exact run identity sealed into a new agent-run.queue receipt by the service. */
+export interface EngineeringQueuedRunReceiptBinding {
+  readonly runId: string;
+  readonly workItemId: string;
 }
 
 /** Exact run identity sealed into an agent-run.cancel receipt by the service. */
