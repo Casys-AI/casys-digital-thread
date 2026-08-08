@@ -332,12 +332,49 @@ export function renderArchitectureSysml(proposal: ArchitectureProposal): string 
 
 // ── Insertion plan ───────────────────────────────────────────────────────────
 
+/**
+ * A PartUsage child extracted from a PartDef element.
+ *
+ * WHY targetLabel IS MANDATORY — the extractor calls syson_element_children on
+ * the usage element itself to find the FeatureTyping child that names the typed
+ * PartDef. Without targetLabel we cannot distinguish `part wing : Wing` from
+ * `part wing : Motor`, which means both adoption and post-insertion verification
+ * would silently accept the wrong type.
+ */
+export interface ExistingPartUsage {
+  /** SysML usage identifier, e.g. "wing" (lower-camelCase). */
+  readonly label: string;
+  /** Label of the PartDef this usage types, e.g. "Wing". */
+  readonly targetLabel: string;
+}
+
 /** A PartDef element extracted from the live SysON model. */
 export interface ExistingPartDef {
   readonly id: string;
   readonly label: string;
-  /** Child usage names (the SysML usage identifier, e.g. "dripTray"). */
-  readonly usageLabels: readonly string[];
+  /** Child usages with their type targets. */
+  readonly usages: readonly ExistingPartUsage[];
+}
+
+/**
+ * Raised by planArchitectureInsertion when the live model contains two
+ * PartDefs with the same label. This is ambiguous — the planner cannot
+ * determine which one corresponds to each proposal component.
+ *
+ * AX #4: code is stable and machine-parseable.
+ */
+export class ArchitectureInsertionAmbiguityError extends Error {
+  readonly code = "ambiguous_part_def_labels" as const;
+  readonly duplicateLabels: readonly string[];
+
+  constructor(duplicateLabels: readonly string[]) {
+    super(
+      `Ambiguous model: duplicate PartDef labels [${duplicateLabels.join(", ")}]. ` +
+        "Stop for review before retrying.",
+    );
+    this.name = "ArchitectureInsertionAmbiguityError";
+    this.duplicateLabels = duplicateLabels;
+  }
 }
 
 /** Full architecture structure present in the SysON model for this package. */
@@ -413,15 +450,24 @@ export function planArchitectureInsertion(
     };
   }
 
+  // Finding 5 — fail-closed on duplicate PartDef labels. Two PartDefs with the
+  // same label are ambiguous: the planner cannot map each proposal component to
+  // the intended element. Stop before any insertion rather than silently adopt
+  // or insert the wrong element.
+  const labelCounts = new Map<string, number>();
+  for (const pd of existing.partDefs) {
+    labelCounts.set(pd.label, (labelCounts.get(pd.label) ?? 0) + 1);
+  }
+  const duplicateLabels = [...labelCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([label]) => label);
+  if (duplicateLabels.length > 0) {
+    throw new ArchitectureInsertionAmbiguityError(duplicateLabels);
+  }
+
   const partDefByLabel = new Map<string, ExistingPartDef>(
     existing.partDefs.map((pd) => [pd.label, pd]),
   );
-
-  // Build a list of all names in the proposal (system + components).
-  const allProposedNames = new Set<string>([
-    proposal.system.name,
-    ...proposal.components.map((c) => c.name),
-  ]);
 
   // Process in topological order: system first, then components (parents first).
   const orderedNames = topologicalOrder(proposal);
@@ -463,18 +509,26 @@ export function planArchitectureInsertion(
     const parentPartDef = partDefByLabel.get(component.parentName);
 
     if (parentPartDef) {
-      if (parentPartDef.usageLabels.includes(component.usageName)) {
-        // Both PartDef and usage under correct parent exist → adopted.
+      // Finding 2 — adoption requires both the correct usage label AND the
+      // correct target PartDef (targetLabel). A usage "wing" that types "Motor"
+      // is NOT a conformant adoption of component Wing.
+      const conformantUsage = parentPartDef.usages.find(
+        (u) => u.label === component.usageName && u.targetLabel === component.name,
+      );
+      if (conformantUsage) {
+        // Both PartDef and usage under correct parent exist, typed correctly → adopted.
         adopted.push({ componentName: name, existingPartDefId: existingPartDef.id });
         continue;
       }
-      // Usage is missing under the correct parent.
+      // Usage is missing (or mis-typed) under the correct parent.
       // Check if usage exists under a DIFFERENT parent → conflict.
+      // Finding 4 — search ALL existing PartDefs, not just those in the proposal.
+      // A usage existing under a real parent outside the proposal is still a
+      // structural conflict that cannot be resolved by insertion alone.
       const conflictingParent = existing.partDefs.find(
         (pd) =>
           pd.label !== component.parentName &&
-          allProposedNames.has(pd.label) &&
-          pd.usageLabels.includes(component.usageName),
+          pd.usages.some((u) => u.label === component.usageName),
       );
       if (conflictingParent) {
         conflicts.push({

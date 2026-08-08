@@ -182,7 +182,11 @@ export async function assertArchitectureArtifactNotRemoved(
     }
     if (
       !ancestor || ancestor.id !== cursor.snapshotId ||
-      ancestor.revision !== cursor.revision
+      ancestor.revision !== cursor.revision ||
+      // Finding 7 — stop traversal when we cross a subject boundary. A lineage
+      // pointer that leads to a different subject's snapshot must not trigger the
+      // ratchet for this subject.
+      ancestor.subject.id !== basis.subject.id
     ) {
       break;
     }
@@ -300,8 +304,8 @@ export class ModelWriteArchitectureRunExecutor {
       const capturedAt = requiredStart(run);
       const basis = requireBasis(run);
 
-      // Step 6: load basis snapshot + seed capture.
-      const { base, seed } = await this.#loadSeedInputs(basis);
+      // Step 6: load basis snapshot + seed capture (with byte-level fingerprint verification).
+      const { base, seed, seedVerifiedFingerprint } = await this.#loadSeedInputs(basis);
 
       // Step 7: cliquet.
       await assertArchitectureArtifactNotRemoved(base, this.#snapshots);
@@ -465,6 +469,7 @@ export class ModelWriteArchitectureRunExecutor {
       const extension = buildExtension({
         base,
         seedArtifact,
+        seedVerifiedFingerprint,
         runId: run.id,
         capturedAt,
         captureFp,
@@ -552,6 +557,11 @@ export class ModelWriteArchitectureRunExecutor {
         );
       }
       if (providerAcknowledged) {
+        // A structural divergence (e.g. wrong FeatureTyping in the verified
+        // re-extraction) is already a well-formed diagnostic error. Re-throw
+        // it directly so the operator sees the real cause, not a generic retry
+        // message — retrying would fail identically.
+        if (error instanceof EngineeringProjectCommandError) throw error;
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "The SysON architecture insertion was acknowledged but evidence was not published. " +
@@ -654,6 +664,7 @@ export class ModelWriteArchitectureRunExecutor {
   ): Promise<{
     base: ThreadSnapshot;
     seed: { editingContextId: string; rootPackageId: string };
+    seedVerifiedFingerprint: ContentFingerprint;
   }> {
     const base = await exactSnapshot(this.#snapshots, basis);
     const seedArtifact = base.artifacts.find(
@@ -674,8 +685,22 @@ export class ModelWriteArchitectureRunExecutor {
         "The SysON model-seed capture is not readable from the content-addressed store.",
       );
     }
+    // Finding 6 — recompute the fingerprint from the bytes we actually read, not
+    // from the snapshot record. This proves that the content-addressed lookup
+    // returned the right bytes, making the consumption's observedFingerprint an
+    // attestation of a real byte-level verification, not a copy of the record.
+    const seedVerifiedFingerprint = await sha256Fingerprint(
+      JSON.parse(captureText) as Record<string, unknown>,
+    );
+    if (seedVerifiedFingerprint.digest !== seedArtifact.fingerprint.digest) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "Seed capture fingerprint mismatch: the bytes read from the store do not hash " +
+          "to the fingerprint recorded in the snapshot.",
+      );
+    }
     const seed = parseSeedCaptureMiniFields(captureText);
-    return { base, seed };
+    return { base, seed, seedVerifiedFingerprint };
   }
 
   async #recordFailure(
@@ -1016,12 +1041,42 @@ function verifyAllComponentsPresent(
     );
   }
 
-  // Each proposed component must be present.
+  // Finding 1 — verify the FULL parent→usage→cible structure, not just PartDef
+  // existence. A wrong type (e.g. `wing : Motor` instead of `wing : Wing`) or
+  // a usage under the wrong parent must be rejected as a structural divergence.
   for (const component of proposal.components) {
-    if (!presentByLabel.has(component.name)) {
+    const componentDef = presentByLabel.get(component.name);
+    if (!componentDef) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `Verification failed: component PartDef "${component.name}" is absent after insertion.`,
+      );
+    }
+    const parentDef = presentByLabel.get(component.parentName);
+    if (!parentDef) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Verification failed: parent PartDef "${component.parentName}" for component ` +
+          `"${component.name}" is absent after insertion.`,
+      );
+    }
+    const matchingUsage = parentDef.usages.find(
+      (u) => u.label === component.usageName && u.targetLabel === component.name,
+    );
+    if (!matchingUsage) {
+      // Diagnose: is the usage present but with the wrong type?
+      const wrongTyped = parentDef.usages.find((u) => u.label === component.usageName);
+      if (wrongTyped) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `Verification failed: usage "${component.usageName}" under "${component.parentName}" ` +
+            `types "${wrongTyped.targetLabel}" instead of the proposed "${component.name}".`,
+        );
+      }
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Verification failed: usage "${component.usageName}" is absent under ` +
+          `"${component.parentName}" after insertion of component "${component.name}".`,
       );
     }
   }
@@ -1043,6 +1098,9 @@ function verifyAllComponentsPresent(
 function buildExtension(options: {
   base: ThreadSnapshot;
   seedArtifact: ThreadArtifact;
+  /** Finding 6 — fingerprint recomputed from the bytes actually read, not copied
+   * from the snapshot record. Proves a real byte-level verification occurred. */
+  seedVerifiedFingerprint: ContentFingerprint;
   runId: string;
   capturedAt: string;
   captureFp: ContentFingerprint;
@@ -1053,6 +1111,7 @@ function buildExtension(options: {
   const {
     base,
     seedArtifact,
+    seedVerifiedFingerprint,
     runId,
     capturedAt,
     captureFp,
@@ -1093,7 +1152,7 @@ function buildExtension(options: {
     id: consumptionId,
     artifactId: seedArtifact.id,
     consumer: producer,
-    observedFingerprint: seedArtifact.fingerprint,
+    observedFingerprint: seedVerifiedFingerprint,
     verifiedAt: capturedAt,
     status: "verified",
   };

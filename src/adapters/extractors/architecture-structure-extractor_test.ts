@@ -35,6 +35,8 @@ function makeChildren(
 const PART_DEF_KIND = "siriusComponents://semantic?domain=sysml&entity=PartDefinition";
 const PART_USAGE_KIND = "siriusComponents://semantic?domain=sysml&entity=PartUsage";
 const PACKAGE_KIND = "siriusComponents://semantic?domain=sysml&entity=Package";
+const FEATURE_TYPING_KIND =
+  "siriusComponents://semantic?domain=sysml&entity=FeatureTyping";
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -74,48 +76,97 @@ Deno.test("extractArchitectureStructure: throws ambiguous_package when two packa
   assertEquals(error.code, "ambiguous_package");
 });
 
-Deno.test("extractArchitectureStructure: returns part defs with usage labels", async () => {
-  const syson = childrenStub(
-    new Map([
-      [
-        "root-1",
-        makeChildren("root-1", [
-          { id: "pkg-1", kind: PACKAGE_KIND, label: "DroneV4" },
-        ]),
-      ],
-      [
-        "pkg-1",
-        makeChildren("pkg-1", [
-          { id: "sys-1", kind: PART_DEF_KIND, label: "DroneSystem" },
-          { id: "wing-1", kind: PART_DEF_KIND, label: "Wing" },
-        ]),
-      ],
-      [
-        "sys-1",
-        makeChildren("sys-1", [
-          { id: "usage-1", kind: PART_USAGE_KIND, label: "wing" },
-        ]),
-      ],
-      ["wing-1", makeChildren("wing-1", [])],
-    ]),
-  );
-  const result = await extractArchitectureStructure(
-    syson,
-    "ctx-1",
-    "root-1",
-    "DroneV4",
-  );
-  assertEquals(result !== undefined, true);
-  assertEquals(result!.packageId, "pkg-1");
-  assertEquals(result!.packageLabel, "DroneV4");
-  assertEquals(result!.partDefs.length, 2);
+Deno.test(
+  "extractArchitectureStructure: returns part defs with usages and target types",
+  async () => {
+    // Phase 3b: `syson_element_children(usage-1)` returns the FeatureTyping child
+    // that names the target PartDef ("Wing").
+    const syson = childrenStub(
+      new Map([
+        [
+          "root-1",
+          makeChildren("root-1", [
+            { id: "pkg-1", kind: PACKAGE_KIND, label: "DroneV4" },
+          ]),
+        ],
+        [
+          "pkg-1",
+          makeChildren("pkg-1", [
+            { id: "sys-1", kind: PART_DEF_KIND, label: "DroneSystem" },
+            { id: "wing-1", kind: PART_DEF_KIND, label: "Wing" },
+          ]),
+        ],
+        [
+          "sys-1",
+          makeChildren("sys-1", [
+            { id: "usage-1", kind: PART_USAGE_KIND, label: "wing" },
+          ]),
+        ],
+        // Phase 3b: FeatureTyping child of "wing" usage → target is "Wing".
+        [
+          "usage-1",
+          makeChildren("usage-1", [
+            { id: "ft-1", kind: FEATURE_TYPING_KIND, label: "Wing" },
+          ]),
+        ],
+        ["wing-1", makeChildren("wing-1", [])],
+      ]),
+    );
+    const result = await extractArchitectureStructure(
+      syson,
+      "ctx-1",
+      "root-1",
+      "DroneV4",
+    );
+    assertEquals(result !== undefined, true);
+    assertEquals(result!.packageId, "pkg-1");
+    assertEquals(result!.packageLabel, "DroneV4");
+    assertEquals(result!.partDefs.length, 2);
 
-  const sys = result!.partDefs.find((pd) => pd.label === "DroneSystem");
-  assertEquals(sys?.usageLabels, ["wing"]);
+    const sys = result!.partDefs.find((pd) => pd.label === "DroneSystem");
+    assertEquals(sys?.usages, [{ label: "wing", targetLabel: "Wing" }]);
 
-  const wing = result!.partDefs.find((pd) => pd.label === "Wing");
-  assertEquals(wing?.usageLabels, []);
-});
+    const wing = result!.partDefs.find((pd) => pd.label === "Wing");
+    assertEquals(wing?.usages, []);
+  },
+);
+
+Deno.test(
+  "extractArchitectureStructure: throws missing_feature_typing when PartUsage has no FeatureTyping child",
+  async () => {
+    // A PartUsage with no FeatureTyping is a malformed model — the executor
+    // cannot determine the target type and must reject it fail-closed.
+    const syson = childrenStub(
+      new Map([
+        [
+          "root-1",
+          makeChildren("root-1", [
+            { id: "pkg-1", kind: PACKAGE_KIND, label: "DroneV4" },
+          ]),
+        ],
+        [
+          "pkg-1",
+          makeChildren("pkg-1", [
+            { id: "sys-1", kind: PART_DEF_KIND, label: "DroneSystem" },
+          ]),
+        ],
+        [
+          "sys-1",
+          makeChildren("sys-1", [
+            { id: "usage-1", kind: PART_USAGE_KIND, label: "wing" },
+          ]),
+        ],
+        // No FeatureTyping child for the usage — malformed model.
+        ["usage-1", makeChildren("usage-1", [])],
+      ]),
+    );
+    const error = await assertRejects(
+      () => extractArchitectureStructure(syson, "ctx-1", "root-1", "DroneV4"),
+      ArchitectureStructureExtractionError,
+    ) as ArchitectureStructureExtractionError;
+    assertEquals(error.code, "missing_feature_typing");
+  },
+);
 
 Deno.test("extractArchitectureStructure: throws extraction_failed when SysON call fails", async () => {
   const syson: McpToolClient = {

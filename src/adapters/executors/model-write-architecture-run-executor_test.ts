@@ -144,17 +144,22 @@ class SeedSyson implements McpToolClient {
 /**
  * SysON mock for the generic architecture executor — initial mode.
  *
- * Call sequence expected:
+ * Phase 3b of the extractor now calls syson_element_children on each PartUsage
+ * element to obtain the FeatureTyping child that names the target PartDef. The
+ * call sequence is therefore extended:
+ *
  *  1. children(root-pkg-drone)         → empty (preflight: package absent)
  *  2. insert_sysml(root-pkg-drone)     → { inserted: true }
  *  3. children(root-pkg-drone)         → has DroneV4 package (post-insert lookup)
  *  4. children(arch-pkg-001)           → DroneSystem + Wing part-defs
  *  5. children(sys-def-001)            → wing usage
- *  6. children(wing-def-001)           → empty
- *  7. children(root-pkg-drone)         → same as 3 (verification re-extraction)
- *  8. children(arch-pkg-001)           → same as 4
- *  9. children(sys-def-001)            → same as 5
- * 10. children(wing-def-001)           → same as 6
+ *  6. children(wing-usage-001)         → FeatureTyping → "Wing"   [Phase 3b]
+ *  7. children(wing-def-001)           → empty
+ *  8. children(root-pkg-drone)         → same as 3 (verification re-extraction)
+ *  9. children(arch-pkg-001)           → same as 4
+ * 10. children(sys-def-001)            → same as 5
+ * 11. children(wing-usage-001)         → same as 6                [Phase 3b]
+ * 12. children(wing-def-001)           → same as 7
  */
 class InitialArchSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
@@ -236,6 +241,22 @@ class InitialArchSyson implements McpToolClient {
               id: "wing-usage-001",
               kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
               label: "wing",
+            }],
+            count: 1,
+          },
+        });
+      }
+
+      // Phase 3b: FeatureTyping child of the "wing" PartUsage → types "Wing".
+      if (elementId === "wing-usage-001") {
+        return Promise.resolve({
+          text: "feature-typing",
+          structuredContent: {
+            parentId: elementId,
+            children: [{
+              id: "ft-wing-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
+              label: "Wing",
             }],
             count: 1,
           },
@@ -999,6 +1020,21 @@ Deno.test(
               },
             });
           }
+          // Phase 3b: wing usage types "Wing" — conformant.
+          if (id === "wing-usage-001") {
+            return Promise.resolve({
+              text: "feature-typing",
+              structuredContent: {
+                parentId: id,
+                children: [{
+                  id: "ft-001",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
+                  label: "Wing",
+                }],
+                count: 1,
+              },
+            });
+          }
           return Promise.resolve({
             text: "empty",
             structuredContent: { parentId: id, children: [], count: 0 },
@@ -1244,6 +1280,306 @@ Deno.test(
       // object produces the exact same bytes that were stored).
       const recomputedFromJson = deterministicJson(JSON.parse(storedText));
       assertEquals(recomputedFromJson, storedText, "capture is round-trip stable");
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Finding 6: consumption observedFingerprint is recomputed from bytes read ──
+
+Deno.test(
+  "model.write-architecture consumption attestation uses the fingerprint computed from bytes read, not the snapshot record",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-consumption-fp-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const executor = makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      });
+      const result = await executor.execute(AGENT, executionCommand(fixture));
+
+      const run = result.agentRuns.find((r) => r.id === "run:architecture")!;
+      assertExists(run.resultSnapshot);
+      const snap = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+      assertExists(snap);
+
+      // The seed artifact's fingerprint (from the snapshot record).
+      const seedArtifact = snap.artifacts.find(
+        (a) => a.producer.tool === "syson_model_create",
+      );
+      assertExists(seedArtifact);
+
+      // The consumption should exist and its observedFingerprint must match
+      // the fingerprint recomputed from the actual seed capture bytes.
+      const consumption = snap.consumptions.find(
+        (c) => c.artifactId === seedArtifact.id,
+      );
+      assertExists(consumption, "consumption for the seed artifact must exist");
+      assertEquals(
+        consumption.status,
+        "verified",
+        "consumption must be marked verified",
+      );
+
+      // Recompute from the bytes actually stored in the seed capture.
+      const seedCaptureText = await fixture.seedCaptures.read(
+        seedArtifact.fingerprint,
+      );
+      assertExists(seedCaptureText, "seed capture must be readable");
+      const recomputedFp = await sha256Fingerprint(JSON.parse(seedCaptureText));
+      assertEquals(
+        consumption.observedFingerprint.digest,
+        recomputedFp.digest,
+        "observedFingerprint must be the fingerprint recomputed from bytes read, " +
+          "not a copy of the snapshot record",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Finding 7: cliquet inert on different-subject lineage ────────────────────
+
+Deno.test(
+  "assertArchitectureArtifactNotRemoved is inert when the lineage crosses a subject boundary",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-ratchet-subject-" });
+    try {
+      const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
+
+      const freshness = {
+        status: "fresh" as const,
+        changedAt: "2026-08-08T12:00:00.000Z",
+        invalidatedByChangeIds: [],
+      };
+      const op = {
+        serverId: "syson",
+        tool: "syson_element_insert_sysml",
+        runId: "run:cross-subject",
+      };
+      const changeSet = {
+        id: "cs-x",
+        name: "cross",
+        status: "applied" as const,
+        createdAt: "2026-08-08T12:00:00.000Z",
+        appliedAt: "2026-08-08T12:00:00.000Z",
+        changes: [],
+      };
+
+      // Snapshot S1: subject "project:A", HAS architecture artifact.
+      const archArtifactA = {
+        id: "arch-a",
+        name: "Architecture A",
+        kind: "sysml-model" as const,
+        version: "v1",
+        fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+        uri: "casys://architecture-capture/sha256/" + "a".repeat(64),
+        producer: op,
+        inputArtifactIds: [],
+        freshness,
+      };
+      const s1: ThreadSnapshot = {
+        schemaVersion: "1.0",
+        id: "snap-x-1",
+        revision: 1,
+        generatedAt: "2026-08-08T12:00:00.000Z",
+        subject: {
+          id: "project:A",
+          name: "Project A",
+          kind: "system",
+          version: "v1",
+          modelArtifactId: "arch-a",
+        },
+        freshness,
+        changeSet,
+        artifacts: [archArtifactA],
+        consumptions: [],
+        observations: [],
+        requirements: [],
+        evaluations: [],
+        violations: [],
+        provenance: [],
+        proposedActions: [],
+      };
+      await snapshots.save(s1);
+
+      // Snapshot S2: subject "project:B" (DIFFERENT), NO architecture artifact,
+      // but its lineage pointer points to S1 (cross-subject reference).
+      const baseB = {
+        id: "base-b",
+        name: "Base B",
+        kind: "sysml-model" as const,
+        version: "v1",
+        fingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+        producer: op,
+        inputArtifactIds: [],
+        freshness,
+      };
+      const s2: ThreadSnapshot = {
+        schemaVersion: "1.0",
+        id: "snap-x-2",
+        revision: 1,
+        generatedAt: "2026-08-08T12:05:00.000Z",
+        subject: {
+          id: "project:B",
+          name: "Project B",
+          kind: "system",
+          version: "v1",
+          modelArtifactId: "base-b",
+        },
+        freshness,
+        changeSet: { ...changeSet, id: "cs-x-b" },
+        // Cross-subject lineage pointer: points to S1 (project A's snapshot).
+        previous: { snapshotId: "snap-x-1", revision: 1 },
+        artifacts: [baseB],
+        consumptions: [],
+        observations: [],
+        requirements: [],
+        evaluations: [],
+        violations: [],
+        provenance: [],
+        proposedActions: [],
+      };
+
+      // The ratchet on S2 must be inert because the lineage crosses a subject
+      // boundary (project:A → project:B). The architecture artifact in S1 belongs
+      // to project:A and must not trigger a ratchet for project:B.
+      await assertArchitectureArtifactNotRemoved(s2, snapshots);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Finding 1: post-insertion verification rejects wrong usage target type ────
+
+Deno.test(
+  "model.write-architecture rejects the published snapshot when the verified extraction shows usage typing the wrong PartDef",
+  async () => {
+    // SysON returns Wing's usage but FeatureTyping says "Motor" — the
+    // verification step must detect the type divergence and throw.
+    class WrongTypeSyson implements McpToolClient {
+      callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+        return Promise.reject(
+          new Error(`callToolTextResult not implemented (${call.name})`),
+        );
+      }
+      #childrenCallCount = 0;
+      callTool(call: McpToolCall): Promise<McpToolResult> {
+        if (call.name === "syson_element_insert_sysml") {
+          return Promise.resolve({
+            text: "inserted",
+            structuredContent: {
+              inserted: true,
+              parentId: call.arguments?.parent_id,
+            },
+          });
+        }
+        if (call.name === "syson_element_children") {
+          this.#childrenCallCount++;
+          const elementId = call.arguments?.element_id as string;
+          if (elementId === "root-pkg-drone") {
+            if (this.#childrenCallCount === 1) {
+              return Promise.resolve({
+                text: "empty",
+                structuredContent: { parentId: elementId, children: [], count: 0 },
+              });
+            }
+            return Promise.resolve({
+              text: "root-with-package",
+              structuredContent: {
+                parentId: elementId,
+                children: [{
+                  id: "arch-pkg-001",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                  label: "DroneV4",
+                }],
+                count: 1,
+              },
+            });
+          }
+          if (elementId === "arch-pkg-001") {
+            return Promise.resolve({
+              text: "package-contents",
+              structuredContent: {
+                parentId: elementId,
+                children: [
+                  {
+                    id: "sys-def-001",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                    label: "DroneSystem",
+                  },
+                  {
+                    id: "wing-def-001",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                    label: "Wing",
+                  },
+                ],
+                count: 2,
+              },
+            });
+          }
+          if (elementId === "sys-def-001") {
+            return Promise.resolve({
+              text: "system-usages",
+              structuredContent: {
+                parentId: elementId,
+                children: [{
+                  id: "wing-usage-001",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                  label: "wing",
+                }],
+                count: 1,
+              },
+            });
+          }
+          // Phase 3b: "wing" usage types "Motor" — wrong type (should be "Wing").
+          if (elementId === "wing-usage-001") {
+            return Promise.resolve({
+              text: "feature-typing-wrong",
+              structuredContent: {
+                parentId: elementId,
+                children: [{
+                  id: "ft-wrong",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
+                  label: "Motor",
+                }],
+                count: 1,
+              },
+            });
+          }
+          // Wing def: no usages
+          return Promise.resolve({
+            text: "no-usages",
+            structuredContent: { parentId: elementId, children: [], count: 0 },
+          });
+        }
+        return Promise.reject(
+          new Error(`Unexpected tool call in WrongTypeSyson: ${call.name}`),
+        );
+      }
+    }
+
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-wrong-type-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const executor = makeExecutor(fixture, {
+        syson: new WrongTypeSyson(),
+        directory,
+      });
+      await assertRejects(
+        () => executor.execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        // Must mention the wrong type in the error message.
+        "Motor",
+      );
     } finally {
       await Deno.remove(directory, { recursive: true });
     }

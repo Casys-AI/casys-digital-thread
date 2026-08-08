@@ -23,6 +23,7 @@ import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type {
   ExistingArchitectureStructure,
   ExistingPartDef,
+  ExistingPartUsage,
 } from "../../domain/platform/architecture-proposal.ts";
 
 // ── Error types ──────────────────────────────────────────────────────────────
@@ -30,7 +31,8 @@ import type {
 export type ArchitectureStructureExtractionCode =
   | "extraction_failed"
   | "ambiguous_package"
-  | "invalid_children_response";
+  | "invalid_children_response"
+  | "missing_feature_typing";
 
 export interface ArchitectureStructureExtractionContext {
   readonly field?: string;
@@ -102,14 +104,45 @@ export async function extractArchitectureStructure(
   );
   const partDefs: ExistingPartDef[] = [];
 
-  // Phase 3: for each PartDef, get its usage children.
+  // Phase 3 + 3b: for each PartDef, get its PartUsage children; then for each
+  // usage, resolve its target PartDef via the FeatureTyping child.
+  //
+  // WHY PHASE 3b — adoption and post-insertion verification must compare the
+  // FULL parent→usage→cible triple, not just the usage label. `part wing : Motor`
+  // and `part wing : Wing` share the same label but are structurally different.
+  // Calling syson_element_children on the PartUsage element returns the
+  // FeatureTyping child whose label names the typed PartDef.
   for (const child of packageChildren) {
     if (!semanticKind(child.kind, "PartDefinition")) continue;
     const partDefChildren = await callChildren(syson, editingContextId, child.id);
-    const usageLabels = partDefChildren
-      .filter((c) => semanticKind(c.kind, "PartUsage"))
-      .map((c) => c.label);
-    partDefs.push({ id: child.id, label: child.label, usageLabels });
+    const usages: ExistingPartUsage[] = [];
+    for (const usage of partDefChildren) {
+      if (!semanticKind(usage.kind, "PartUsage")) continue;
+      const usageChildren = await callChildren(syson, editingContextId, usage.id);
+      const typings = usageChildren.filter((c) =>
+        semanticKind(c.kind, "FeatureTyping")
+      );
+      if (typings.length === 0) {
+        throw new ArchitectureStructureExtractionError(
+          "missing_feature_typing",
+          `PartUsage "${usage.label}" (id: "${usage.id}") under "${child.label}" ` +
+            "has no FeatureTyping child. The usage has no declared type.",
+          { elementId: usage.id, field: "FeatureTyping" },
+          "Inspect the SysON model: every PartUsage must have exactly one FeatureTyping.",
+        );
+      }
+      if (typings.length > 1) {
+        throw new ArchitectureStructureExtractionError(
+          "invalid_children_response",
+          `PartUsage "${usage.label}" (id: "${usage.id}") under "${child.label}" ` +
+            `has ${typings.length} FeatureTyping children; exactly one is required.`,
+          { elementId: usage.id, field: "FeatureTyping", count: typings.length },
+          "Inspect the SysON model: a PartUsage with multiple types is ambiguous.",
+        );
+      }
+      usages.push({ label: usage.label, targetLabel: typings[0]!.label });
+    }
+    partDefs.push({ id: child.id, label: child.label, usages });
   }
 
   return {

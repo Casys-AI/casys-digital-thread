@@ -1,5 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
+  ArchitectureInsertionAmbiguityError,
   ArchitectureProposalParseError,
   type ExistingArchitectureStructure,
   parseArchitectureProposalParameters,
@@ -299,8 +300,12 @@ Deno.test("planArchitectureInsertion: all existing conformant components are ado
     packageId: "pkg-1",
     packageLabel: "DroneV4",
     partDefs: [
-      { id: "sys-1", label: "DroneSystem", usageLabels: ["wing"] },
-      { id: "wing-1", label: "Wing", usageLabels: [] },
+      {
+        id: "sys-1",
+        label: "DroneSystem",
+        usages: [{ label: "wing", targetLabel: "Wing" }],
+      },
+      { id: "wing-1", label: "Wing", usages: [] },
     ],
   };
   const plan = planArchitectureInsertion(existing, proposal);
@@ -324,8 +329,12 @@ Deno.test("planArchitectureInsertion: new component in existing package generate
     packageId: "pkg-1",
     packageLabel: "DroneV4",
     partDefs: [
-      { id: "sys-1", label: "DroneSystem", usageLabels: ["wing"] },
-      { id: "wing-1", label: "Wing", usageLabels: [] },
+      {
+        id: "sys-1",
+        label: "DroneSystem",
+        usages: [{ label: "wing", targetLabel: "Wing" }],
+      },
+      { id: "wing-1", label: "Wing", usages: [] },
     ],
   };
   const plan = planArchitectureInsertion(existing, proposal);
@@ -360,9 +369,16 @@ Deno.test("planArchitectureInsertion: same-name-different-parent is a named conf
     packageId: "pkg-1",
     packageLabel: "DroneV4",
     partDefs: [
-      { id: "sys-1", label: "DroneSystem", usageLabels: ["wing", "motor"] },
-      { id: "wing-1", label: "Wing", usageLabels: [] },
-      { id: "motor-1", label: "Motor", usageLabels: [] },
+      {
+        id: "sys-1",
+        label: "DroneSystem",
+        usages: [
+          { label: "wing", targetLabel: "Wing" },
+          { label: "motor", targetLabel: "Motor" },
+        ],
+      },
+      { id: "wing-1", label: "Wing", usages: [] },
+      { id: "motor-1", label: "Motor", usages: [] },
     ],
   };
   const plan = planArchitectureInsertion(existing, proposal);
@@ -385,10 +401,125 @@ Deno.test("planArchitectureInsertion: pure enrichment has no full-package item",
     packageId: "pkg-1",
     packageLabel: "DroneV4",
     partDefs: [
-      { id: "sys-1", label: "DroneSystem", usageLabels: [] },
+      { id: "sys-1", label: "DroneSystem", usages: [] },
     ],
   };
   const plan = planArchitectureInsertion(existing, proposal);
   assertEquals(plan.mode, "enrichment");
   assertEquals(plan.toInsert.some((i) => i.kind === "full-package"), false);
 });
+
+// ── Finding 2: adoption requires correct target type ─────────────────────────
+
+Deno.test(
+  "planArchitectureInsertion: adoption is refused when usage exists but types the wrong PartDef",
+  () => {
+    // Proposal: Wing under DroneSystem with usage "wing".
+    // Model: usage "wing" exists under DroneSystem but types "Motor" — not Wing.
+    // The usage must NOT be adopted; a "usage" insertion item must be planned
+    // to fix the wrong type.
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DroneV4" },
+      { key: "system.name", label: "System", value: "DroneSystem" },
+      { key: "component.wing.name", label: "Wing", value: "Wing" },
+      { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    ]);
+    const existing: ExistingArchitectureStructure = {
+      packageId: "pkg-1",
+      packageLabel: "DroneV4",
+      partDefs: [
+        {
+          id: "sys-1",
+          label: "DroneSystem",
+          // "wing" usage exists but types "Motor" — semantically wrong.
+          usages: [{ label: "wing", targetLabel: "Motor" }],
+        },
+        { id: "wing-1", label: "Wing", usages: [] },
+        { id: "motor-1", label: "Motor", usages: [] },
+      ],
+    };
+    const plan = planArchitectureInsertion(existing, proposal);
+    assertEquals(
+      plan.adopted.length,
+      0,
+      "Wing must not be adopted — wrong target type",
+    );
+    // The usage under the correct parent exists with the wrong type, but no other
+    // parent has it → insert a usage item (the executor will fix the typing).
+    const usageInsert = plan.toInsert.find(
+      (i) =>
+        i.kind === "usage" && (i as { componentName: string }).componentName === "Wing",
+    );
+    assertEquals(usageInsert !== undefined, true, "usage insert item must be planned");
+  },
+);
+
+// ── Finding 4: conflict named when parent is outside the proposal ─────────────
+
+Deno.test(
+  "planArchitectureInsertion: usage under a parent outside the proposal is a named conflict",
+  () => {
+    // Proposal: Wing under DroneSystem. Wing's usage "wing" exists but under
+    // "OtherSystem" — a PartDef that is NOT in the proposal. Finding 4: this must
+    // be a named conflict, not a silent second insertion.
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DroneV4" },
+      { key: "system.name", label: "System", value: "DroneSystem" },
+      { key: "component.wing.name", label: "Wing", value: "Wing" },
+      { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    ]);
+    const existing: ExistingArchitectureStructure = {
+      packageId: "pkg-1",
+      packageLabel: "DroneV4",
+      partDefs: [
+        { id: "sys-1", label: "DroneSystem", usages: [] },
+        { id: "wing-1", label: "Wing", usages: [] },
+        // "OtherSystem" is NOT in the proposal but has the "wing" usage.
+        {
+          id: "other-1",
+          label: "OtherSystem",
+          usages: [{ label: "wing", targetLabel: "Wing" }],
+        },
+      ],
+    };
+    const plan = planArchitectureInsertion(existing, proposal);
+    assertEquals(plan.conflicts.length, 1, "must report exactly one conflict");
+    assertEquals(plan.conflicts[0]?.code, "same-name-different-parent");
+    assertEquals(plan.conflicts[0]?.componentName, "Wing");
+  },
+);
+
+// ── Finding 5: ambiguity error on duplicate PartDef labels ───────────────────
+
+Deno.test(
+  "planArchitectureInsertion: throws ArchitectureInsertionAmbiguityError on duplicate PartDef labels",
+  () => {
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DroneV4" },
+      { key: "system.name", label: "System", value: "DroneSystem" },
+      { key: "component.wing.name", label: "Wing", value: "Wing" },
+      { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    ]);
+    // Two PartDefs share the label "Wing" — ambiguous.
+    const existing: ExistingArchitectureStructure = {
+      packageId: "pkg-1",
+      packageLabel: "DroneV4",
+      partDefs: [
+        { id: "sys-1", label: "DroneSystem", usages: [] },
+        { id: "wing-1", label: "Wing", usages: [] },
+        { id: "wing-2", label: "Wing", usages: [] }, // duplicate
+      ],
+    };
+    let threw = false;
+    try {
+      planArchitectureInsertion(existing, proposal);
+    } catch (e) {
+      threw = true;
+      assertEquals(e instanceof ArchitectureInsertionAmbiguityError, true);
+      const err = e as ArchitectureInsertionAmbiguityError;
+      assertEquals(err.code, "ambiguous_part_def_labels");
+      assertEquals(err.duplicateLabels.includes("Wing"), true);
+    }
+    assertEquals(threw, true, "must throw ArchitectureInsertionAmbiguityError");
+  },
+);
