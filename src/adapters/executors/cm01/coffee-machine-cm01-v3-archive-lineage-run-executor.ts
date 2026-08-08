@@ -12,12 +12,11 @@
  * observations → evaluations → violations, never traces_to) and records the
  * full closure as a single extension.
  *
- * Idempotence: the executor always writes a new revision, even when the full
- * cascade is already archived in the base. Re-archiving produces new "archived"
- * change entries (unique IDs via the run-specific extension.id), which satisfy
- * the domain invariants: evidenceRefs.length > 0 and result.revision > base.revision.
- * archivedRefKeys remains correct: it collects all "archived" change targets
- * regardless of whether they appear more than once across revisions.
+ * Fail-closed on a fully retired cascade: entities already archived in the
+ * base are filtered out of the cascade, and if nothing new remains the run is
+ * refused (invalid_transition) instead of writing duplicated "archived"
+ * changes. An archived fact is recorded exactly once; a completed run replays
+ * idempotently through the usual completed-status short-circuit.
  */
 
 import {
