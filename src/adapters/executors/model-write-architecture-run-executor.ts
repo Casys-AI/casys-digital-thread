@@ -64,6 +64,7 @@ import {
   type FileCaptureStore,
 } from "../captures/file-capture-store.ts";
 import {
+  ArchitectureRunQuarantinedError,
   ArchitectureWriteOutcomeUnknownError,
   FileArchitectureAttemptStore,
 } from "../wal/file-architecture-attempt-store.ts";
@@ -180,12 +181,30 @@ export async function assertArchitectureArtifactNotRemoved(
     } catch {
       break; // fail-open on resolution error
     }
+    /**
+     * `break` (not `throw`) on any of the four terminal conditions below.
+     *
+     * - Missing or mismatched ancestor: the lineage is broken or the resolved
+     *   snapshot does not match its pointer. The ratchet's responsibility is
+     *   narrow: assert monotonicity within a single subject's intact lineage.
+     *   A broken pointer is structural corruption that the general snapshot
+     *   validator (validateThreadSnapshot) owns — not this predicate.
+     *
+     * - Subject boundary (`ancestor.subject.id !== basis.subject.id`): a
+     *   lineage pointer that crosses to a different subject's snapshot is
+     *   almost certainly corruption, but again belongs to the general
+     *   validator. The architecture-artifact ratchet only asserts that *this*
+     *   subject never silently drops an artifact it once published. An artifact
+     *   held by a *different* subject's snapshot must not trigger a ratchet
+     *   for this one.
+     *
+     * Throwing here would be wrong in both cases: the caller would see an
+     * `ArchitectureArtifactRemovedError`, which is a false positive that
+     * would permanently block legitimate runs for this subject.
+     */
     if (
       !ancestor || ancestor.id !== cursor.snapshotId ||
       ancestor.revision !== cursor.revision ||
-      // Finding 7 — stop traversal when we cross a subject boundary. A lineage
-      // pointer that leads to a different subject's snapshot must not trigger the
-      // ratchet for this subject.
       ancestor.subject.id !== basis.subject.id
     ) {
       break;
@@ -556,12 +575,43 @@ export class ModelWriteArchitectureRunExecutor {
             "SysON before any separately reviewed recovery path.",
         );
       }
+      // BLOQUANT C — quarantine sentinel found: the run was already quarantined
+      // by a prior structural failure post-acknowledgement. Fail the run so its
+      // status is visible, and surface the reason as a diagnostic error.
+      if (error instanceof ArchitectureRunQuarantinedError) {
+        if (claimed) await this.#recordFailure(origin, command);
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
       if (providerAcknowledged) {
-        // A structural divergence (e.g. wrong FeatureTyping in the verified
-        // re-extraction) is already a well-formed diagnostic error. Re-throw
-        // it directly so the operator sees the real cause, not a generic retry
-        // message — retrying would fail identically.
-        if (error instanceof EngineeringProjectCommandError) throw error;
+        if (error instanceof EngineeringProjectCommandError) {
+          /**
+           * A structural verification failure after the SysON insertion was
+           * acknowledged means the model is in an unknown partial state. A naive
+           * retry would re-preflight, produce a different enrichment planDigest
+           * (the model now has more elements), open a new WAL entry, and trigger
+           * a second insertion. We quarantine this runId at the WAL level —
+           * planDigest-agnostic — so any future dispatch is blocked regardless of
+           * what plan the next preflight produces. The run is also marked "failed"
+           * so the operator can queue a new run after correcting SysON manually.
+           */
+          try {
+            await this.#attempts.quarantine({
+              projectId: command.projectId,
+              runId: command.runId,
+              quarantinedAt: this.#now(),
+            });
+          } catch {
+            // If the quarantine write fails (e.g. I/O error), the structural
+            // error is still surfaced. The planDigest-level WAL entry remains
+            // "completed", which will prevent that exact plan from re-inserting;
+            // the operator must still inspect SysON before any corrective run.
+          }
+          if (claimed) await this.#recordFailure(origin, command);
+          throw error;
+        }
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "The SysON architecture insertion was acknowledged but evidence was not published. " +
@@ -579,6 +629,18 @@ export class ModelWriteArchitectureRunExecutor {
     planDigest: string,
     dispatchedAt: string,
   ): Promise<{ readonly action: "dispatch" } | { readonly action: "completed" }> {
+    /**
+     * BLOQUANT C — check for a run-level quarantine BEFORE attempting the
+     * planDigest-level WAL entry. After a structural verification failure
+     * post-acknowledgement, the enrichment preflight produces a *different*
+     * planDigest (the model now has more elements), so the original WAL entry
+     * would not be found, a new entry would be created, and SysON would be
+     * inserted a second time. The quarantine sentinel (keyed by runId) is
+     * planDigest-agnostic and blocks any further dispatch for this run.
+     */
+    if (await this.#attempts.isQuarantined(projectId, runId)) {
+      throw new ArchitectureRunQuarantinedError();
+    }
     try {
       return await this.#attempts.begin({ projectId, runId, planDigest, dispatchedAt });
     } catch (error) {
@@ -685,10 +747,31 @@ export class ModelWriteArchitectureRunExecutor {
         "The SysON model-seed capture is not readable from the content-addressed store.",
       );
     }
-    // Finding 6 — recompute the fingerprint from the bytes we actually read, not
-    // from the snapshot record. This proves that the content-addressed lookup
-    // returned the right bytes, making the consumption's observedFingerprint an
-    // attestation of a real byte-level verification, not a copy of the record.
+    /**
+     * Recompute the fingerprint from the bytes we actually read rather than
+     * copying the digest from the snapshot record. This makes the resulting
+     * `observedFingerprint` an attestation that the byte-level store returned
+     * the correct content, not a tautological copy of what the record claims.
+     *
+     * WHY `sha256Fingerprint(JSON.parse(captureText))` equals the raw-bytes
+     * hash stored by `FileCaptureStore`:
+     *
+     *   (1) The seed executor wrote `captureText = deterministicJson(captureRecord)`.
+     *   (2) `FileCaptureStore.save()` stores that text and fingerprints it as
+     *       `SHA-256(UTF-8(captureText))` — i.e. the raw bytes of the JSON string.
+     *   (3) `sha256Fingerprint(obj)` computes `SHA-256(deterministicJson(obj))`.
+     *   (4) For a value written by `deterministicJson`, the round-trip is stable:
+     *       `deterministicJson(JSON.parse(deterministicJson(x))) === deterministicJson(x)`.
+     *   (5) Therefore:
+     *       `sha256Fingerprint(JSON.parse(captureText))`
+     *         = `SHA-256(deterministicJson(JSON.parse(captureText)))`
+     *         = `SHA-256(deterministicJson(captureRecord))`
+     *         = `SHA-256(captureText bytes)`
+     *         = the digest stored by `FileCaptureStore`.
+     *
+     * This equivalence holds ONLY because the capture text was produced by
+     * `deterministicJson`. Do not generalise to arbitrary JSON sources.
+     */
     const seedVerifiedFingerprint = await sha256Fingerprint(
       JSON.parse(captureText) as Record<string, unknown>,
     );
@@ -1031,6 +1114,26 @@ function verifyAllComponentsPresent(
   adopted: ReturnType<typeof planArchitectureInsertion>["adopted"],
 ): void {
   if (!verified) return;
+
+  // PARTIEL — re-check for ambiguous PartDef labels that could have appeared
+  // after the preflight (e.g. from a concurrent insertion). `new Map(pairs)`
+  // silently picks the last entry for a duplicate key, making every subsequent
+  // parent→usage→cible triple underdetermined. Reject explicitly.
+  const labelCounts = new Map<string, number>();
+  for (const pd of verified.partDefs) {
+    labelCounts.set(pd.label, (labelCounts.get(pd.label) ?? 0) + 1);
+  }
+  const duplicates = [...labelCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([label]) => label);
+  if (duplicates.length > 0) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Verification failed: ambiguous PartDefinition labels after insertion: ` +
+        `${duplicates.join(", ")}. Manual SysON inspection required.`,
+    );
+  }
+
   const presentByLabel = new Map(verified.partDefs.map((pd) => [pd.label, pd]));
 
   // System must be present.

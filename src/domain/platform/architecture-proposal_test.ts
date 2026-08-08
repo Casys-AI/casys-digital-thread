@@ -444,13 +444,17 @@ Deno.test(
       0,
       "Wing must not be adopted — wrong target type",
     );
-    // The usage under the correct parent exists with the wrong type, but no other
-    // parent has it → insert a usage item (the executor will fix the typing).
-    const usageInsert = plan.toInsert.find(
-      (i) =>
-        i.kind === "usage" && (i as { componentName: string }).componentName === "Wing",
+    // BLOQUANT B: the usage exists under the correct parent but types the wrong
+    // PartDef. Insertion would create a second homonymous usage; that is wrong.
+    // The plan must report a mistyped_usage conflict, not schedule an insertion.
+    assertEquals(plan.conflicts.length, 1, "must report exactly one conflict");
+    assertEquals(plan.conflicts[0]?.code, "mistyped_usage");
+    assertEquals(plan.conflicts[0]?.componentName, "Wing");
+    assertEquals(
+      plan.toInsert.some((i) => i.kind === "usage"),
+      false,
+      "no usage insert when the existing usage has the wrong type",
     );
-    assertEquals(usageInsert !== undefined, true, "usage insert item must be planned");
   },
 );
 
