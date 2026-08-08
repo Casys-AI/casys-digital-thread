@@ -26,6 +26,14 @@ import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 export const COFFEE_MACHINE_PART_LABEL = "CoffeeMachine" as const;
 export const DRIP_TRAY_PART_LABEL = "DripTray" as const;
 
+/**
+ * Server-fixed label of the DripTray part USAGE inside the CoffeeMachine
+ * tree. SysML names usages in lower camelCase (`part dripTray : DripTray`);
+ * the definition label above names the PartDefinition element itself.
+ * Probe-confirmed on the live model (2026-08-08).
+ */
+export const DRIP_TRAY_USAGE_LABEL = "dripTray" as const;
+
 // ---------------------------------------------------------------------------
 // Error types
 // ---------------------------------------------------------------------------
@@ -215,14 +223,15 @@ export async function extractPartDefinitions(
     DRIP_TRAY_PART_LABEL,
   );
 
-  // Verify that DripTray appears as a usage in the CoffeeMachine tree.
-  const hasDripTrayUsage = treeContainsLabel(cmStructure.tree, DRIP_TRAY_PART_LABEL);
+  // Verify that the DripTray usage appears in the CoffeeMachine tree. Usage
+  // labels are lower camelCase in SysML, distinct from the definition label.
+  const hasDripTrayUsage = treeContainsLabel(cmStructure.tree, DRIP_TRAY_USAGE_LABEL);
   if (!hasDripTrayUsage) {
     throw new PartStructureExtractionError(
       "drip_tray_usage_absent",
-      `syson_part_structure: the ${COFFEE_MACHINE_PART_LABEL} part tree does not contain a usage of "${DRIP_TRAY_PART_LABEL}".`,
-      { label: DRIP_TRAY_PART_LABEL },
-      `Verify the SysML model declares a ${DRIP_TRAY_PART_LABEL} part usage inside ${COFFEE_MACHINE_PART_LABEL}.`,
+      `syson_part_structure: the ${COFFEE_MACHINE_PART_LABEL} part tree does not contain a usage "${DRIP_TRAY_USAGE_LABEL}".`,
+      { label: DRIP_TRAY_USAGE_LABEL },
+      `Verify the SysML model declares a ${DRIP_TRAY_USAGE_LABEL} part usage inside ${COFFEE_MACHINE_PART_LABEL}.`,
     );
   }
 

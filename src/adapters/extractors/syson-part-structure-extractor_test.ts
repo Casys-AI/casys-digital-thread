@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   COFFEE_MACHINE_PART_LABEL,
   DRIP_TRAY_PART_LABEL,
+  DRIP_TRAY_USAGE_LABEL,
   extractPartDefinitions,
   PartStructureExtractionError,
 } from "./syson-part-structure-extractor.ts";
@@ -31,7 +32,7 @@ function validCmStructurePayload(extraRootKeys?: Record<string, unknown>) {
     tree: [
       {
         id: "usage-dt-001",
-        label: DRIP_TRAY_PART_LABEL,
+        label: DRIP_TRAY_USAGE_LABEL,
         kind: "PartUsage",
         quantity: 1,
         quantitySource: "explicit",

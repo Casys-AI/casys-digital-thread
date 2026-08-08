@@ -715,7 +715,7 @@ class PartDefinitionsSyson implements McpToolClient {
           tree: [
             {
               id: "usage-dt-001",
-              label: "DripTray",
+              label: "dripTray",
               kind: "sysml::PartUsage",
               quantity: 1,
               quantitySource: "explicit",
