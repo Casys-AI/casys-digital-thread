@@ -606,6 +606,151 @@ class AmbiguousD5ReqsSyson implements McpToolClient {
   }
 }
 
+/**
+ * SysON mock for the enrichment foreign-identity test.
+ *
+ * The pre-WAL children call returns an element whose id is DIFFERENT from
+ * "wing-reqs-elem-001" (the id stored in the prior capture).  This exercises
+ * the BLOQUANT identity guard added to the enrichment path.
+ */
+class ForeignElementEnrichmentSyson implements McpToolClient {
+  readonly calls: McpToolCall[] = [];
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult not implemented (${call.name})`),
+    );
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+
+    if (call.name === "syson_element_children") {
+      // Returns a FOREIGN element id — does NOT match "wing-reqs-elem-001".
+      return Promise.resolve({
+        text: "children",
+        structuredContent: {
+          parentId: call.arguments?.element_id,
+          children: [{
+            id: "wing-reqs-elem-FOREIGN",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "WingRequirements",
+          }],
+          count: 1,
+        },
+      });
+    }
+
+    return Promise.reject(
+      new Error(`Unexpected tool in ForeignElementEnrichmentSyson: ${call.name}`),
+    );
+  }
+}
+
+/**
+ * SysON mock for the RÉSERVE 2 delete-fails test.
+ *
+ * Pre-WAL children call returns the correct element id (matches prior capture).
+ * The delete call throws an EngineeringProjectCommandError so the run fails
+ * before providerAcknowledged is set — WAL stays "dispatched".
+ */
+class DeleteFailsEnrichmentSyson implements McpToolClient {
+  readonly calls: McpToolCall[] = [];
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult not implemented (${call.name})`),
+    );
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+
+    if (call.name === "syson_element_children") {
+      return Promise.resolve({
+        text: "children",
+        structuredContent: {
+          parentId: call.arguments?.element_id,
+          children: [{
+            id: "wing-reqs-elem-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "WingRequirements",
+          }],
+          count: 1,
+        },
+      });
+    }
+
+    if (call.name === "syson_element_delete") {
+      return Promise.reject(
+        new EngineeringProjectCommandError(
+          "invalid_input",
+          "syson_element_delete: element not found in editing context.",
+        ),
+      );
+    }
+
+    return Promise.reject(
+      new Error(`Unexpected tool in DeleteFailsEnrichmentSyson: ${call.name}`),
+    );
+  }
+}
+
+/**
+ * SysON mock for the RÉSERVE 2 delete-success-then-insert-fail test.
+ *
+ * Delete succeeds; insert throws.  The WAL entry was written as "dispatched"
+ * before the delete, so a retry on a re-queued run will see the dispatched
+ * entry and raise RequirementsWriteOutcomeUnknownError.
+ */
+class DeleteSuccessInsertFailEnrichmentSyson implements McpToolClient {
+  readonly calls: McpToolCall[] = [];
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(
+      new Error(`callToolTextResult not implemented (${call.name})`),
+    );
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+
+    if (call.name === "syson_element_children") {
+      return Promise.resolve({
+        text: "children",
+        structuredContent: {
+          parentId: call.arguments?.element_id,
+          children: [{
+            id: "wing-reqs-elem-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "WingRequirements",
+          }],
+          count: 1,
+        },
+      });
+    }
+
+    if (call.name === "syson_element_delete") {
+      return Promise.resolve({ text: "deleted", structuredContent: {} });
+    }
+
+    if (call.name === "syson_element_insert_sysml") {
+      return Promise.reject(
+        new EngineeringProjectCommandError(
+          "invalid_input",
+          "syson_element_insert_sysml: editing context is no longer available.",
+        ),
+      );
+    }
+
+    return Promise.reject(
+      new Error(
+        `Unexpected tool in DeleteSuccessInsertFailEnrichmentSyson: ${call.name}`,
+      ),
+    );
+  }
+}
+
 // ── Helper: ctx ───────────────────────────────────────────────────────────────
 
 function ctx(
@@ -2342,6 +2487,307 @@ Deno.test(
         (deleteCalls[0]!.arguments as Record<string, unknown>).element_id,
         "wing-reqs-elem-001",
         "delete must target the prior element id",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── BLOQUANT: foreign element identity check ──────────────────────────────────
+
+Deno.test(
+  "model.write-requirements executor refuses enrichment when found element id does not match prior capture",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-foreign-elem-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+
+      // Execute the initial run (stores "wing-reqs-elem-001" in the capture).
+      const first = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+
+      // Queue an enrichment run.
+      const enrichmentQueued = await queueEnrichmentRun(fixture, first);
+      const foreignFixture = { ...fixture, queued: enrichmentQueued };
+      const foreignCmd = {
+        commandId: "agent-foreign",
+        projectId: PROJECT_ID,
+        expectedRevision: enrichmentQueued.revision,
+        issuedAt: "2026-08-08T12:25:00.000Z",
+        runId: enrichmentQueued.runId,
+      };
+
+      // ForeignElementEnrichmentSyson returns "wing-reqs-elem-FOREIGN" from the
+      // pre-WAL children call.  The prior capture records "wing-reqs-elem-001".
+      // The identity guard must fire before any WAL write.
+      await assertRejects(
+        () =>
+          makeExecutor(foreignFixture, {
+            syson: new ForeignElementEnrichmentSyson(),
+            directory,
+            leaseSubdir: "foreign-leases",
+            attempts: new FileRequirementsAttemptStore(
+              `${directory}/foreign-attempts`,
+            ),
+          }).execute(AGENT, foreignCmd),
+        EngineeringProjectCommandError,
+        "foreign_requirements_element",
+      );
+
+      // No WAL entry must have been written — the guard fires before WAL begin.
+      const attempt = await new FileRequirementsAttemptStore(
+        `${directory}/foreign-attempts`,
+      ).readRun(PROJECT_ID, enrichmentQueued.runId);
+      assertEquals(
+        attempt,
+        undefined,
+        "WAL must not be written when identity guard fires",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── RÉSERVE 1: lineage integrity guard (step 7, before cliquet) ──────────────
+
+Deno.test(
+  "model.write-requirements executor refuses when the basis snapshot lineage is not intact",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-lineage-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+
+      // Find the basis snapshot (archSnap) and its predecessor reference.
+      const project = await fixture.projects.get(PROJECT_ID);
+      const reqRun = project?.agentRuns.find((r) => r.id === "run:requirements")!;
+      assertExists(reqRun, "requirements run must exist");
+      assertExists(reqRun.basis, "requirements run must have a basis");
+      if (reqRun.basis.kind !== "thread-snapshot") {
+        throw new Error("Unexpected basis kind");
+      }
+      const basisSnap = await fixture.snapshots.get(reqRun.basis.snapshotId);
+      assertExists(basisSnap, "basis snapshot must be in the store");
+
+      // Drop the predecessor of basisSnap so the lineage walk finds a missing entry.
+      const droppedId = basisSnap.previous?.snapshotId;
+      assertExists(
+        droppedId,
+        "basis snapshot must have a predecessor to corrupt the lineage",
+      );
+
+      // Wrap the snapshot store to hide the predecessor.
+      const corruptSnapshots = {
+        get(id: string) {
+          if (id === droppedId) return Promise.resolve(undefined);
+          return fixture.snapshots.get(id);
+        },
+        latest(subjectId: string) {
+          return fixture.snapshots.latest(subjectId);
+        },
+        save(snap: ThreadSnapshot) {
+          return fixture.snapshots.save(snap);
+        },
+      } as unknown as FileThreadSnapshotStore;
+
+      const corruptFixture: ReqsFixture = { ...fixture, snapshots: corruptSnapshots };
+
+      // The executor must refuse with a lineage integrity error (step 7),
+      // which fires BEFORE the cliquet check (step 8).
+      await assertRejects(
+        () =>
+          makeExecutor(corruptFixture, {
+            syson: new InitialReqsSyson(),
+            directory,
+            leaseSubdir: "lineage-leases",
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "lineage",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── RÉSERVE 2: enrichment WAL window ─────────────────────────────────────────
+
+Deno.test(
+  "model.write-requirements executor fails before providerAcknowledged when enrichment delete fails",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-delete-fail-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+
+      const first = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+
+      const enrichmentQueued = await queueEnrichmentRun(fixture, first);
+      const deleteFailFixture = { ...fixture, queued: enrichmentQueued };
+      const deleteFailCmd = {
+        commandId: "agent-delete-fail",
+        projectId: PROJECT_ID,
+        expectedRevision: enrichmentQueued.revision,
+        issuedAt: "2026-08-08T12:25:00.000Z",
+        runId: enrichmentQueued.runId,
+      };
+      const deleteAttempts = new FileRequirementsAttemptStore(
+        `${directory}/delete-fail-attempts`,
+      );
+
+      // The delete call throws.  The run fails; providerAcknowledged stays false.
+      await assertRejects(
+        () =>
+          makeExecutor(deleteFailFixture, {
+            syson: new DeleteFailsEnrichmentSyson(),
+            directory,
+            leaseSubdir: "delete-fail-leases",
+            attempts: deleteAttempts,
+          }).execute(AGENT, deleteFailCmd),
+        EngineeringProjectCommandError,
+        "not found",
+      );
+
+      // The run must be "failed" (recordFailure was called).
+      const afterFail = await fixture.projects.get(PROJECT_ID);
+      const failedEnrichRun = afterFail?.agentRuns.find(
+        (r) => r.id === enrichmentQueued.runId,
+      );
+      assertEquals(failedEnrichRun?.status, "failed");
+
+      // The WAL entry was created ("dispatched") but never completed.
+      // This puts the next executor call (on a re-queued run) into quarantine.
+      const attempt = await deleteAttempts.readRun(
+        PROJECT_ID,
+        enrichmentQueued.runId,
+      );
+      assertEquals(
+        attempt?.status,
+        "dispatched",
+        "WAL must stay dispatched when delete fails after WAL begin",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements executor fails when enrichment delete succeeds but insert fails (WAL stays dispatched)",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-insert-fail-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+
+      const first = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+
+      const enrichmentQueued = await queueEnrichmentRun(fixture, first);
+      const insertFailFixture = { ...fixture, queued: enrichmentQueued };
+      const insertFailCmd = {
+        commandId: "agent-insert-fail",
+        projectId: PROJECT_ID,
+        expectedRevision: enrichmentQueued.revision,
+        issuedAt: "2026-08-08T12:25:00.000Z",
+        runId: enrichmentQueued.runId,
+      };
+      const insertAttempts = new FileRequirementsAttemptStore(
+        `${directory}/insert-fail-attempts`,
+      );
+
+      // Delete succeeds; insert fails.  providerAcknowledged stays false.
+      await assertRejects(
+        () =>
+          makeExecutor(insertFailFixture, {
+            syson: new DeleteSuccessInsertFailEnrichmentSyson(),
+            directory,
+            leaseSubdir: "insert-fail-leases",
+            attempts: insertAttempts,
+          }).execute(AGENT, insertFailCmd),
+        EngineeringProjectCommandError,
+        "no longer available",
+      );
+
+      // The run must be "failed".
+      const afterFail = await fixture.projects.get(PROJECT_ID);
+      const failedEnrichRun = afterFail?.agentRuns.find(
+        (r) => r.id === enrichmentQueued.runId,
+      );
+      assertEquals(failedEnrichRun?.status, "failed");
+
+      // WAL is still "dispatched" — a safe retry is not possible without
+      // operator review (delete happened, insert did not).
+      const attempt = await insertAttempts.readRun(
+        PROJECT_ID,
+        enrichmentQueued.runId,
+      );
+      assertEquals(
+        attempt?.status,
+        "dispatched",
+        "WAL must stay dispatched when delete succeeded but insert failed",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements executor raises unknown-outcome error when WAL is in dispatched state on entry",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-wal-dispatched-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const dispatchedAttempts = new FileRequirementsAttemptStore(
+        `${directory}/dispatched-attempts`,
+      );
+
+      // Pre-seed the WAL with "dispatched" status.  The executor will see
+      // this on entry (after claimRun) and raise RequirementsWriteOutcomeUnknownError,
+      // which is surfaced as EngineeringProjectCommandError("invalid_transition").
+      await dispatchedAttempts.begin({
+        projectId: PROJECT_ID,
+        runId: "run:requirements",
+        planDigest: "pre-seeded-plan-digest",
+        dispatchedAt: "2026-08-08T12:10:00.000Z",
+      });
+
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson: new InitialReqsSyson(),
+            directory,
+            leaseSubdir: "dispatched-leases",
+            attempts: dispatchedAttempts,
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "outcome is unknown",
+      );
+
+      // The run must be "failed" with the unknown-outcome code.
+      const afterFail = await fixture.projects.get(PROJECT_ID);
+      const failedRun = afterFail?.agentRuns.find((r) => r.id === "run:requirements");
+      assertEquals(
+        failedRun?.failure?.code,
+        "model-write-requirements-provider-outcome-unknown",
+        "run must be failed with the unknown-outcome failure code",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });

@@ -63,6 +63,7 @@ import {
   type RequirementsProposal,
 } from "../../domain/platform/requirements-proposal.ts";
 import {
+  ORACLE_REQUIREMENT_OPERATORS,
   type OracleRequirement,
   renderOracleRequirementsSysml,
   SUPPORTED_ORACLE_UNITS,
@@ -401,7 +402,7 @@ export class ModelWriteRequirementsRunExecutor {
 
       // Step 12: find the prior requirements artifact (enrichment path).
       const priorArtifact = findRequirementsArtifact(base, proposal.containerComponent);
-      const priorRequirements = priorArtifact
+      const priorCapture = priorArtifact
         ? await this.#readPriorRequirements(priorArtifact, proposal)
         : undefined;
 
@@ -409,7 +410,10 @@ export class ModelWriteRequirementsRunExecutor {
       const oracleRequirements = requirementEntriesToOracleRequirements(
         proposal.requirements,
       );
-      const enrichmentPlan = planRequirementsEnrichment(proposal, priorRequirements);
+      const enrichmentPlan = planRequirementsEnrichment(
+        proposal,
+        priorCapture?.requirements,
+      );
 
       // Step 14: conflict + cliquet + empty-plan guards.
       if (enrichmentPlan.disappeared.length > 0) {
@@ -477,6 +481,22 @@ export class ModelWriteRequirementsRunExecutor {
           architecturePackageId,
           proposal.partDefName,
         );
+        // Identity guard (BLOQUANT — delete+reinsert makes it structurally necessary):
+        // the element found by label MUST be the exact element the prior capture
+        // recorded. A homonyme inserted by a foreign path would be silently deleted
+        // without provenance proof. Refuse before WAL begin — no state is written.
+        // Error key: "foreign_requirements_element".
+        if (priorRequirementsElementId !== undefined && priorCapture !== undefined) {
+          if (priorRequirementsElementId !== priorCapture.requirementsElementId) {
+            throw new EngineeringProjectCommandError(
+              "invalid_transition",
+              `foreign_requirements_element: element found by label "${proposal.partDefName}" ` +
+                `is "${priorRequirementsElementId}" but the prior capture recorded ` +
+                `"${priorCapture.requirementsElementId}". A foreign element with the ` +
+                "same name must not be deleted without provenance. Manual inspection required.",
+            );
+          }
+        }
         // If already absent (e.g. manual deletion), enrichment continues with
         // pure insert of all metrics — the verification step will confirm.
       }
@@ -918,7 +938,10 @@ export class ModelWriteRequirementsRunExecutor {
   async #readPriorRequirements(
     priorArtifact: ThreadArtifact,
     proposal: RequirementsProposal,
-  ): Promise<readonly OracleRequirement[] | undefined> {
+  ): Promise<{
+    readonly requirements: readonly OracleRequirement[];
+    readonly requirementsElementId: string;
+  }> {
     const text = await this.#captures.read(priorArtifact.fingerprint);
     if (!text) {
       throw new EngineeringProjectCommandError(
@@ -948,13 +971,27 @@ export class ModelWriteRequirementsRunExecutor {
         "The prior requirements capture does not match the expected schema or target component.",
       );
     }
+    // BLOQUANT identity anchor: the capture records which SysON element was
+    // inserted. The enrichment path uses this to verify the element found by
+    // label is the same one — a homonyme must be refused, not silently deleted.
+    const rawReqsElementId = (record as Record<string, unknown>).requirementsElementId;
+    if (typeof rawReqsElementId !== "string" || !rawReqsElementId.trim()) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The prior requirements capture is missing a valid requirementsElementId.",
+      );
+    }
     // F4 — fail-closed validation of each prior requirement. An unsafe cast here
     // would allow a malformed capture to produce a silent enrichment plan error
     // (wrong metric compared, wrong unit bypassed). Every element is validated
     // against the same invariants that the proposal parser enforces on new input.
+    // RÉSERVE 3: derive operator set from the domain constant so that adding an
+    // operator to ORACLE_REQUIREMENT_OPERATORS automatically extends this check.
     const raw = (record as Record<string, unknown>).requirements as unknown[];
     const validated: OracleRequirement[] = [];
-    const allowedOperators: ReadonlySet<string> = new Set(["<=", ">=", "<", ">", "=="]);
+    const allowedOperators: ReadonlySet<string> = new Set<string>(
+      ORACLE_REQUIREMENT_OPERATORS,
+    );
     for (let index = 0; index < raw.length; index++) {
       const req = raw[index];
       if (!req || typeof req !== "object" || Array.isArray(req)) {
@@ -1011,7 +1048,7 @@ export class ModelWriteRequirementsRunExecutor {
         },
       });
     }
-    return validated;
+    return { requirements: validated, requirementsElementId: rawReqsElementId };
   }
 
   // ── Private: D5 identification by label ──────────────────────────────────
