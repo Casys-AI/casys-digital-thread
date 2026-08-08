@@ -118,6 +118,11 @@ export function EvidenceExploration({
         defaultEdgeColor: explorationModel.tokens.lineStrong,
         // Reduce edge arrow to keep the atelier aesthetic compact.
         defaultEdgeType: "arrow",
+        // Sigma disables edge hit-testing by default. The full Exploration
+        // canvas exposes recorded handoffs in the inspector, so enable the
+        // events there. The compact Activity preview deliberately remains a
+        // node-only preview (its callback cannot inspect edges).
+        enableEdgeEvents: !compact,
         minCameraRatio: 0.3,
         maxCameraRatio: 6,
         // compact=true (feed vignette): always show labels.
@@ -151,11 +156,13 @@ export function EvidenceExploration({
     // Relations are first-class evidence. MultiDirectedGraph keeps parallel
     // handoffs distinct, and selecting one opens the same edge inspector as
     // the Carte renderer.
-    sigma.on("clickEdge", ({ edge: edgeKey }) => {
-      const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
-      if (!attrs) return;
-      onSelectionChangeRef.current?.({ kind: "edge", id: attrs.edgeId });
-    });
+    if (!compact) {
+      sigma.on("clickEdge", ({ edge: edgeKey }) => {
+        const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
+        if (!attrs) return;
+        onSelectionChangeRef.current?.({ kind: "edge", id: attrs.edgeId });
+      });
+    }
 
     // clickStage (background) → reset selection
     sigma.on("clickStage", () => {
@@ -299,18 +306,52 @@ export function EvidenceExploration({
     };
   }, [explorationModel, displayDepth, visibleKinds, projection]);
 
+  // Sigma's canvas itself is pointer-oriented. The full Exploration view has
+  // an equivalent, keyboard-reachable record list below: every visible node
+  // and relation can be selected with a native button. Do not expose this in
+  // compact Activity previews because they intentionally cannot inspect edges.
+  const navigation = useMemo(() => {
+    const visibleNodeKeys = new Set<string>();
+    const nodes: Array<{ key: string; label: string; ref: ThreadGraphRef }> =
+      [];
+    const depths = projection.isFiltered
+      ? projection.localDepthByRefKey
+      : undefined;
+    explorationModel.graph.forEachNode((key, attrs) => {
+      if (
+        depths && displayDepth !== undefined &&
+        (depths.get(key) ?? 0) > displayDepth
+      ) return;
+      if (
+        visibleKinds !== undefined && !visibleKinds[displayKindOf(attrs.node)]
+      ) return;
+      visibleNodeKeys.add(key);
+      nodes.push({ key, label: attrs.label, ref: attrs.node.ref });
+    });
+    const edges: Array<{ key: string; label: string; edgeId: string }> = [];
+    explorationModel.graph.forEachEdge((key, attrs, source, target) => {
+      if (!visibleNodeKeys.has(source) || !visibleNodeKeys.has(target)) return;
+      edges.push({ key, label: attrs.label, edgeId: attrs.edgeId });
+    });
+    return { nodes, edges };
+  }, [explorationModel, displayDepth, visibleKinds, projection]);
+
   return (
     <div class="evidence-exploration">
       <div
         class="evidence-exploration-stage"
         ref={containerRef}
-        aria-label="Evidence exploration graph — sigma renderer"
-        role="application"
-        tabIndex={0}
+        aria-label={compact
+          ? "Evidence preview graph — select a node with the pointer; inspect relations in Evidence"
+          : "Evidence exploration graph — sigma renderer"}
+        role={compact ? undefined : "application"}
+        tabIndex={compact ? undefined : 0}
         onKeyDown={(event) => {
           // Sigma owns its canvas; provide a predictable keyboard escape
           // route back to the surrounding inspection controls.
-          if (event.key === "Escape") onSelectionChange?.(undefined);
+          if (!compact && event.key === "Escape") {
+            onSelectionChange?.(undefined);
+          }
         }}
       />
       {!compact && (
@@ -374,28 +415,59 @@ export function EvidenceExploration({
               ))}
             </>
           )}
-          {explorationModel.graph.size > 0 && (
-            <details class="evidence-exploration-relations">
-              <summary>RELATIONS ({explorationModel.graph.size})</summary>
-              <ul>
-                {explorationModel.graph.mapEdges((edgeKey, attrs) => (
-                  <li key={edgeKey}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onSelectionChange?.({ kind: "edge", id: attrs.edgeId })}
-                    >
-                      {attrs.label}
-                      {attrs.edgeType === "stub" ? " · replié" : ""}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+          <ExplorationKeyboardNavigation
+            nodes={navigation.nodes}
+            edges={navigation.edges}
+            onSelectionChange={onSelectionChange}
+          />
         </aside>
       )}
     </div>
+  );
+}
+
+function ExplorationKeyboardNavigation({
+  nodes,
+  edges,
+  onSelectionChange,
+}: {
+  nodes: readonly { key: string; label: string; ref: ThreadGraphRef }[];
+  edges: readonly { key: string; label: string; edgeId: string }[];
+  onSelectionChange: EvidenceExplorationProps["onSelectionChange"];
+}): JSX.Element {
+  return (
+    <details class="evidence-exploration-relations">
+      <summary>
+        NAVIGATION CLAVIER ({nodes.length} faits · {edges.length} relations)
+      </summary>
+      <p>Tabulez vers un fait ou une relation, puis Entrée pour l’inspecter.</p>
+      <ul aria-label="Faits du graphe">
+        {nodes.map((node) => (
+          <li key={node.key}>
+            <button
+              type="button"
+              onClick={() =>
+                onSelectionChange?.({ kind: "node", ref: node.ref })}
+            >
+              {node.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <ul aria-label="Relations du graphe">
+        {edges.map((edge) => (
+          <li key={edge.key}>
+            <button
+              type="button"
+              onClick={() =>
+                onSelectionChange?.({ kind: "edge", id: edge.edgeId })}
+            >
+              {edge.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

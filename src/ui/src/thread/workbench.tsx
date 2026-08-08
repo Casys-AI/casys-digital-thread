@@ -343,8 +343,12 @@ export function ThreadWorkbench({
   const explorationKindProjectionMemo = useMemo(() => {
     if (!workbench || workbench.surface !== "evidence") return undefined;
     if (!evidenceModel) return undefined;
-    return buildExplorationKindProjection(evidenceModel, explorationMapKinds);
-  }, [evidenceModel, explorationMapKinds]);
+    return buildExplorationKindProjection(
+      evidenceModel,
+      explorationMapKinds,
+      versionedProvenanceMemo?.collapsedVersionCount ?? 0,
+    );
+  }, [evidenceModel, explorationMapKinds, versionedProvenanceMemo]);
 
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);

@@ -220,19 +220,22 @@ export interface EvidenceCanvasProjection {
  *    representative via `visibleRefByMemberRef`; falls back to full graph.
  *
  * @param model                 EvidenceGraphModel (built with the structural predicate).
- * @param collapsedVersionCount From VersionedProvenanceProjection.
+ * @param collapsedVersionCount From VersionedProvenanceProjection. The
+ *                              evidence model has already folded these nodes,
+ *                              so they must be excluded from the instrument
+ *                              subtotal reported here.
  * @param focusRef              Inspector selection (lineageFocus state).
  * @param visibleRefByMemberRef Map from historical ref key to visible ref.
  */
 export function buildEvidenceCanvasProjection(
   model: EvidenceGraphModel,
-  _collapsedVersionCount: number,
+  collapsedVersionCount: number,
   focusRef: ThreadGraphRef | undefined,
   visibleRefByMemberRef: ReadonlyMap<string, ThreadGraphRef>,
 ): EvidenceCanvasProjection {
   const foldedInstrumentCount = Math.max(
     0,
-    model.rawNodeCount - model.nodes.length,
+    model.rawNodeCount - model.nodes.length - collapsedVersionCount,
   );
 
   // Full graph (no focus): apply the essential display mask once, here.
@@ -425,6 +428,7 @@ function localProjection(
 export function buildExplorationKindProjection(
   model: EvidenceGraphModel,
   visibleKinds: Record<DisplayKind, boolean>,
+  collapsedVersionCount = 0,
 ): EvidenceCanvasProjection {
   const allEdges: ThreadGraphEdge[] = [
     ...(model.edges as ThreadGraphEdge[]),
@@ -500,14 +504,13 @@ export function buildExplorationKindProjection(
   );
   const hiddenByKind = essential.nodes.length - visibleNodes.length;
 
-  // foldedInstrumentCount: how many nodes were folded by the model pipeline
-  // (analyze.* instruments). This is a model-level count, independent of which
-  // kinds are now visible. Computed as rawNodeCount minus the already-folded
-  // visible set, without a collapsedVersionCount term (versions are represented
-  // as stubs in model.stubs and already accounted for in model.nodes).
+  // foldedInstrumentCount: how many analyze.* instruments were folded by the
+  // model pipeline. The model's raw count also includes historical versions
+  // already collapsed by VersionedProvenanceProjection, so subtract those
+  // first. The banner adds these two independent counts exactly once.
   const foldedInstrumentCount = Math.max(
     0,
-    model.rawNodeCount - model.nodes.length,
+    model.rawNodeCount - model.nodes.length - collapsedVersionCount,
   );
 
   return {

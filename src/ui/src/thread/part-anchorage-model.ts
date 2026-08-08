@@ -46,6 +46,26 @@ export interface AnchorageCoverage {
   readonly orphan: number;
 }
 
+/**
+ * Complete anchorage outcome. `anchors` preserves the historical API for UI
+ * consumers that only need a unique part target; `ambiguousByRef` retains the
+ * conflicting candidate set instead of silently treating it as an orphan.
+ */
+export interface PartAnchorageResolution {
+  readonly anchors: Map<string, PartAnchor>;
+  readonly ambiguousByRef: ReadonlyMap<string, readonly PartTarget[]>;
+  readonly orphanRefKeys: ReadonlySet<string>;
+}
+
+type AnchorState =
+  | { readonly kind: "unique"; readonly anchor: PartAnchor }
+  | { readonly kind: "ambiguous"; readonly targets: readonly PartTarget[] };
+
+const resolutionByAnchors = new WeakMap<
+  ReadonlyMap<string, PartAnchor>,
+  PartAnchorageResolution
+>();
+
 // ---------------------------------------------------------------------------
 // Server-fixed prefix table (criterion b)
 //
@@ -278,11 +298,10 @@ function edgeToKey(edge: ThreadGraphEdge): string {
  * yield their catalog component id.
  *
  * Duplicate evidenceArtifactId values across DIFFERENT components are resolved
- * with assembly-wins merge semantics (same as mergeTargets): if both an assembly
+ * with assembly-wins merge semantics: if both an assembly
  * component and a part component bind the same evidenceArtifactId, "assembly"
- * wins.  Two different parts that bind the same id produce an ambiguous result;
- * the entry is removed from the map so that the artifact falls through to the
- * prefix and nature criteria.
+ * wins. Two different parts that bind the same id remain an explicit
+ * ambiguity; lower-priority criteria must not erase it.
  *
  * Note: the catalog validator rejects duplicate provider:kind:id combinations
  * within a single component's bindings, but it does NOT reject the same
@@ -290,9 +309,9 @@ function edgeToKey(edge: ThreadGraphEdge): string {
  * example, the architecture artifact is bound by every component (assembly and
  * all parts) because each SysML element definition was read from that artifact.
  */
-function buildCatalogMap(
+function buildCatalogCandidates(
   components: ThreadComponentCatalog,
-): ReadonlyMap<string, PartTarget> {
+): ReadonlyMap<string, readonly PartTarget[]> {
   const candidates = new Map<string, Set<PartTarget>>();
   for (const component of components.components) {
     const target: PartTarget = component.kind === "assembly"
@@ -304,13 +323,9 @@ function buildCatalogMap(
       candidates.set(binding.evidenceArtifactId, values);
     }
   }
-  const map = new Map<string, PartTarget>();
+  const map = new Map<string, readonly PartTarget[]>();
   for (const [artifactId, values] of candidates) {
-    let target: PartTarget | null = null;
-    for (const candidate of values) {
-      target = target === null ? candidate : mergeTargets(target, candidate);
-    }
-    if (target !== null) map.set(artifactId, target);
+    map.set(artifactId, sortTargets(values));
   }
   return map;
 }
@@ -376,16 +391,34 @@ function anchorByNature(node: ThreadGraphNode): PartTarget | null {
   return null;
 }
 
-/**
- * Merge two resolved targets with the tie-break rule:
- *   - Both agree → return the common target.
- *   - One is "assembly" and the other is a part → "assembly" wins.
- *   - Two different parts → ambiguous (return null).
- */
-function mergeTargets(a: PartTarget, b: PartTarget): PartTarget | null {
-  if (a === b) return a;
-  if (a === "assembly" || b === "assembly") return "assembly";
-  return null; // two different parts — ambiguous
+function sortTargets(targets: Iterable<PartTarget>): readonly PartTarget[] {
+  return [...new Set(targets)].sort((left, right) => {
+    if (left === "assembly") return -1;
+    if (right === "assembly") return 1;
+    return left.localeCompare(right);
+  });
+}
+
+function stateFromTargets(
+  targets: Iterable<PartTarget>,
+  criterion: PartAnchor["criterion"],
+): AnchorState | undefined {
+  const sorted = sortTargets(targets);
+  if (sorted.length === 0) return undefined;
+  // Whole-assembly evidence is the explicit broad-scope tie-break. It wins
+  // over individual parts; only competing part targets remain ambiguous.
+  if (sorted.includes("assembly")) {
+    return { kind: "unique", anchor: { target: "assembly", criterion } };
+  }
+  if (sorted.length === 1) {
+    return { kind: "unique", anchor: { target: sorted[0]!, criterion } };
+  }
+  return { kind: "ambiguous", targets: sorted };
+}
+
+function stateTargets(state: AnchorState | undefined): readonly PartTarget[] {
+  if (!state) return [];
+  return state.kind === "unique" ? [state.anchor.target] : state.targets;
 }
 
 /**
@@ -403,7 +436,7 @@ function mergeTargets(a: PartTarget, b: PartTarget): PartTarget | null {
  */
 function propagateDerivedFrom(
   graph: ThreadGraph,
-  resolved: Map<string, PartAnchor>,
+  states: Map<string, AnchorState>,
 ): void {
   // Index: for each node key, which keys point to it via derived_from?
   const sources = new Map<string, string[]>();
@@ -421,23 +454,17 @@ function propagateDerivedFrom(
   let changed = true;
   while (changed) {
     changed = false;
-    for (const node of graph.nodes) {
+    for (const node of [...graph.nodes].sort(compareNodes)) {
       const key = refKey(node);
-      if (resolved.has(key)) continue;
-      const srcs = sources.get(key) ?? [];
+      if (states.has(key)) continue;
+      const srcs = [...(sources.get(key) ?? [])].sort();
       if (srcs.length === 0) continue;
-      // Collect anchors of all resolved sources.
-      const srcTargets = srcs
-        .map((s) => resolved.get(s)?.target)
-        .filter((t): t is PartTarget => t !== undefined);
-      if (srcTargets.length === 0) continue;
-      // Merge all source targets.
-      let merged: PartTarget | null = srcTargets[0]!;
-      for (let i = 1; i < srcTargets.length; i++) {
-        merged = merged !== null ? mergeTargets(merged, srcTargets[i]!) : null;
-      }
-      if (merged !== null) {
-        resolved.set(key, { target: merged, criterion: "derived-from" });
+      const state = stateFromTargets(
+        srcs.flatMap((source) => stateTargets(states.get(source))),
+        "derived-from",
+      );
+      if (state) {
+        states.set(key, state);
         changed = true;
       }
     }
@@ -463,7 +490,7 @@ function propagateDerivedFrom(
  */
 function propagateChangeConsumption(
   graph: ThreadGraph,
-  resolved: Map<string, PartAnchor>,
+  states: Map<string, AnchorState>,
 ): void {
   // Index: outgoing and incoming neighbours by edge type.
   type Adj = { key: string; relation: string }[];
@@ -483,11 +510,11 @@ function propagateChangeConsumption(
   let changed = true;
   while (changed) {
     changed = false;
-    for (const node of graph.nodes) {
+    for (const node of [...graph.nodes].sort(compareNodes)) {
       const key = refKey(node);
-      if (resolved.has(key)) continue;
+      if (states.has(key)) continue;
 
-      let target: PartTarget | null = null;
+      let candidates: readonly PartTarget[] = [];
 
       if (node.entityKind === "change") {
         // A change node inherits from the artifact it "changes".
@@ -495,40 +522,32 @@ function propagateChangeConsumption(
         const artifacts = outgoing.get(key)?.filter((e) =>
           e.relation === "changes"
         ) ?? [];
-        for (const a of artifacts) {
-          const t = resolved.get(a.key)?.target;
-          if (t === undefined) continue;
-          target = target === null ? t : mergeTargets(target, t);
-        }
+        candidates = artifacts.flatMap((artifact) =>
+          stateTargets(states.get(artifact.key))
+        );
       } else if (node.entityKind === "consumption") {
         // A consumption node inherits from the artifact it attests.
         // Edge direction: artifact → consumption (uses, reverse).
         const artifacts = incoming.get(key)?.filter((e) =>
           e.relation === "uses"
         ) ?? [];
-        for (const a of artifacts) {
-          const t = resolved.get(a.key)?.target;
-          if (t === undefined) continue;
-          target = target === null ? t : mergeTargets(target, t);
-        }
+        candidates = artifacts.flatMap((artifact) =>
+          stateTargets(states.get(artifact.key))
+        );
       } else {
         // General: inherit from any adjacent resolved node via any edge.
         const neighbours = [
           ...(outgoing.get(key) ?? []),
           ...(incoming.get(key) ?? []),
         ];
-        for (const n of neighbours) {
-          const t = resolved.get(n.key)?.target;
-          if (t === undefined) continue;
-          target = target === null ? t : mergeTargets(target, t);
-        }
+        candidates = neighbours.flatMap((neighbour) =>
+          stateTargets(states.get(neighbour.key))
+        );
       }
 
-      if (target !== null) {
-        resolved.set(key, {
-          target,
-          criterion: "change-consumption",
-        });
+      const state = stateFromTargets(candidates, "change-consumption");
+      if (state) {
+        states.set(key, state);
         changed = true;
       }
     }
@@ -563,72 +582,109 @@ function propagateChangeConsumption(
  *     nodes inherit from their directly connected artifact; other non-artifact
  *     nodes inherit from any adjacent resolved node.  Iterates until stable.
  *
- * Only uniquely-resolved nodes appear in the returned map; ambiguous nodes
- * (criteria fired but targets conflicted) are absent.
+ * Only uniquely-resolved nodes appear in the returned map; use
+ * `buildPartAnchorageResolution` when the caller must also inspect conflicts.
  */
 export function buildPartAnchorage(
   graph: ThreadGraph,
   components: ThreadComponentCatalog,
 ): Map<string, PartAnchor> {
-  const resolved = new Map<string, PartAnchor>();
+  const resolution = buildPartAnchorageResolution(graph, components);
+  resolutionByAnchors.set(resolution.anchors, resolution);
+  return resolution.anchors;
+}
+
+/** Build the complete, deterministic unique / ambiguous / orphan outcome. */
+export function buildPartAnchorageResolution(
+  graph: ThreadGraph,
+  components: ThreadComponentCatalog,
+): PartAnchorageResolution {
+  const states = new Map<string, AnchorState>();
 
   // (a) Catalog evidenceArtifactId binding.
-  const catalogMap = buildCatalogMap(components);
-  for (const node of graph.nodes) {
+  const catalogCandidates = buildCatalogCandidates(components);
+  for (const node of [...graph.nodes].sort(compareNodes)) {
     if (node.entityKind !== "artifact") continue;
-    const target = catalogMap.get(node.ref.id);
-    if (target !== undefined) {
-      resolved.set(refKey(node), { target, criterion: "catalog" });
-    }
+    const state = stateFromTargets(
+      catalogCandidates.get(node.ref.id) ?? [],
+      "catalog",
+    );
+    if (state) states.set(refKey(node), state);
   }
 
   // (b) Server-fixed prefix table — all node kinds.
-  for (const node of graph.nodes) {
-    if (resolved.has(refKey(node))) continue;
+  for (const node of [...graph.nodes].sort(compareNodes)) {
+    if (states.has(refKey(node))) continue;
     const target = anchorByPrefix(node.ref.id);
     if (target !== null) {
-      resolved.set(refKey(node), { target, criterion: "prefix" });
+      states.set(refKey(node), {
+        kind: "unique",
+        anchor: { target, criterion: "prefix" },
+      });
     }
   }
 
   // (c) Machine-level nature — artifact nodes only.
-  for (const node of graph.nodes) {
-    if (resolved.has(refKey(node))) continue;
+  for (const node of [...graph.nodes].sort(compareNodes)) {
+    if (states.has(refKey(node))) continue;
     const target = anchorByNature(node);
     if (target !== null) {
-      resolved.set(refKey(node), { target, criterion: "nature" });
+      states.set(refKey(node), {
+        kind: "unique",
+        anchor: { target, criterion: "nature" },
+      });
     }
   }
 
   // (d) Transitive derived_from propagation.
-  propagateDerivedFrom(graph, resolved);
+  propagateDerivedFrom(graph, states);
 
   // (e) Change / consumption / adjacent inheritance.
-  propagateChangeConsumption(graph, resolved);
+  propagateChangeConsumption(graph, states);
 
-  return resolved;
+  const anchors = new Map<string, PartAnchor>();
+  const ambiguousByRef = new Map<string, readonly PartTarget[]>();
+  for (const [key, state] of states) {
+    if (state.kind === "unique") anchors.set(key, state.anchor);
+    else ambiguousByRef.set(key, state.targets);
+  }
+  const orphanRefKeys = new Set(
+    graph.nodes.map(refKey).filter((key) => !states.has(key)),
+  );
+  const resolution: PartAnchorageResolution = {
+    anchors,
+    ambiguousByRef,
+    orphanRefKeys,
+  };
+  resolutionByAnchors.set(anchors, resolution);
+  return resolution;
 }
 
 /**
  * Compute anchorage coverage from the anchored map and the full graph.
  *
- *   unique    = map.size (uniquely resolved).
- *   ambiguous = graph.nodes.length − map.size (unresolved; conflicting or
- *               unreachable).
- *   orphan    = 0 by convention (the implementation is designed to cover all
- *               node kinds; true orphans appear as ambiguous in this report).
+ * The metadata is attached when the map comes from `buildPartAnchorage`.
+ * Manually constructed maps remain conservative: any unknown graph node is an
+ * orphan, never an invented ambiguity.
  */
 export function anchorageCoverage(
   map: ReadonlyMap<string, PartAnchor>,
   graph: ThreadGraph,
 ): AnchorageCoverage {
+  const metadata = resolutionByAnchors.get(map);
+  const graphKeys = new Set(graph.nodes.map(refKey));
+  const unique = [...graphKeys].filter((key) => map.has(key)).length;
+  const ambiguous = metadata
+    ? [...metadata.ambiguousByRef.keys()].filter((key) => graphKeys.has(key))
+      .length
+    : 0;
   return {
-    unique: map.size,
-    // A node absent from the unique map is not automatically ambiguous: it
-    // may simply have no recorded binding, prefix, nature or adjacent fact.
-    // Keep that distinction truthful until a resolver exposes a conflicting
-    // candidate explicitly.
-    ambiguous: 0,
-    orphan: graph.nodes.length - map.size,
+    unique,
+    ambiguous,
+    orphan: graph.nodes.length - unique - ambiguous,
   };
+}
+
+function compareNodes(left: ThreadGraphNode, right: ThreadGraphNode): number {
+  return refKey(left).localeCompare(refKey(right));
 }

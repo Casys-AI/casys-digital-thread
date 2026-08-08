@@ -103,6 +103,9 @@ export interface SigmaNodeAttrs {
 
 /** Edge attributes stored on the graphology graph for sigma. */
 export interface SigmaEdgeAttrs {
+  /** Stable graphology key, unique even when recorded edge ids collide. */
+  graphKey: string;
+  /** Recorded relation id used by the domain inspector (not a graph key). */
   edgeId: string;
   label: string;
   /** "stub" marks synthetic connector edges rendered with a dashed style. */
@@ -297,12 +300,20 @@ export function buildExplorationModel(
     e.id.startsWith("stub:")
   );
 
+  // Graphology edge keys are graph-local occurrence keys, not domain ids:
+  // historic imports may contain duplicate edge.id values. Keep edgeId on the
+  // attrs for the inspector while assigning every rendered occurrence a
+  // deterministic, collision-free key.
+  const edgeKeyFor = makeSigmaEdgeKeyFactory();
+
   // Add regular edges to the graphology graph.
   for (const edge of regularEdges) {
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
     if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
-    graph.addEdgeWithKey(edge.id, from, to, {
+    const graphKey = edgeKeyFor(edge);
+    graph.addEdgeWithKey(graphKey, from, to, {
+      graphKey,
       edgeId: edge.id,
       label: edge.relation.replaceAll("_", " "),
       edgeType: "regular",
@@ -316,7 +327,9 @@ export function buildExplorationModel(
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
     if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
-    graph.addEdgeWithKey(edge.id, from, to, {
+    const graphKey = edgeKeyFor(edge);
+    graph.addEdgeWithKey(graphKey, from, to, {
+      graphKey,
       edgeId: edge.id,
       label: edge.rationale ?? `via ${edge.relation} — replié`,
       edgeType: "stub",
@@ -538,6 +551,32 @@ export const FALLBACK_TOKENS: CssTokens = {
 
 function nodeKey(ref: ThreadGraphRef): string {
   return `${ref.kind}:${ref.id}`;
+}
+
+/**
+ * Makes graph-local edge keys. A domain edge id is only unique by convention,
+ * so it must never be handed directly to MultiDirectedGraph. The signature
+ * makes different duplicated ids deterministic; the ordinal preserves each
+ * genuinely identical recorded occurrence too.
+ */
+function makeSigmaEdgeKeyFactory(): (edge: ThreadGraphEdge) => string {
+  const occurrenceBySignature = new Map<string, number>();
+  return (edge) => {
+    const signature = [
+      edge.id,
+      nodeKey(edge.from),
+      nodeKey(edge.to),
+      edge.relation,
+      edge.origin,
+      edge.rationale,
+      edge.attestation?.status ?? "",
+      edge.attestation?.producerFingerprint ?? "",
+      edge.attestation?.consumedFingerprint ?? "",
+    ].join("\u0000");
+    const occurrence = occurrenceBySignature.get(signature) ?? 0;
+    occurrenceBySignature.set(signature, occurrence + 1);
+    return `sigma-edge:${signature}\u0000${occurrence}`;
+  };
 }
 
 /**

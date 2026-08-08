@@ -28,6 +28,7 @@ import { assertEquals, assertGreaterOrEqual } from "@std/assert";
 import {
   anchorageCoverage,
   buildPartAnchorage,
+  buildPartAnchorageResolution,
 } from "./src/thread/part-anchorage-model.ts";
 import type {
   ThreadComponentCatalog,
@@ -456,6 +457,51 @@ Deno.test("buildPartAnchorage is invariant to graph and catalog permutations", (
     [...buildPartAnchorage(permutedGraph, permutedCatalog)].sort(),
     baseline,
   );
+});
+
+Deno.test("anchorage retains conflict targets and distinguishes ambiguous from orphan", () => {
+  const graph: ThreadGraph = {
+    nodes: [
+      node("ambiguous-evidence", "artifact", { artifactKind: "document" }),
+      node("unanchored-fact", "observation", { system: "calculix" }),
+    ],
+    edges: [],
+  };
+  const catalog: ThreadComponentCatalog = {
+    ...FIXTURE_CATALOG,
+    components: FIXTURE_CATALOG.components.map((component) => ({
+      ...component,
+      bindings: component.kind === "part"
+        ? [catalogBinding("ambiguous-evidence")]
+        : [],
+    })),
+  };
+  const resolution = buildPartAnchorageResolution(graph, catalog);
+  const coverage = anchorageCoverage(resolution.anchors, graph);
+  assertEquals(resolution.anchors.size, 0);
+  assertEquals(
+    resolution.ambiguousByRef.get("artifact:ambiguous-evidence"),
+    ["cm01-v3:drip-tray", "cm01-v3:enclosure"],
+  );
+  assertEquals(
+    resolution.orphanRefKeys.has("observation:unanchored-fact"),
+    true,
+  );
+  assertEquals(coverage, { unique: 0, ambiguous: 1, orphan: 1 });
+
+  const permuted = buildPartAnchorageResolution(
+    {
+      ...graph,
+      nodes: [...graph.nodes].reverse(),
+      edges: [...graph.edges].reverse(),
+    },
+    { ...catalog, components: [...catalog.components].reverse() },
+  );
+  assertEquals(
+    [...permuted.ambiguousByRef.entries()],
+    [...resolution.ambiguousByRef.entries()],
+  );
+  assertEquals([...permuted.orphanRefKeys], [...resolution.orphanRefKeys]);
 });
 
 Deno.test(

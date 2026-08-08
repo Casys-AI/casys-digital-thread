@@ -866,3 +866,49 @@ Deno.test("Sigma preserves parallel recorded relations for inspection", () => {
     2,
   );
 });
+
+Deno.test("Sigma assigns distinct graph keys when recorded edge ids collide", () => {
+  const evidenceModel = buildEvidenceGraphModel(
+    {
+      nodes: [
+        node("source", "artifact", "build123d", "artifact"),
+        node("left", "observation", "calculix", "observation"),
+        node("right", "observation", "calculix", "observation"),
+      ],
+      edges: [
+        edge(
+          "duplicated-id",
+          ref("source", "artifact"),
+          ref("left", "observation"),
+          "source_of",
+        ),
+        edge(
+          "duplicated-id",
+          ref("source", "artifact"),
+          ref("right", "observation"),
+          "source_of",
+        ),
+      ],
+    },
+    EMPTY_FAMILY,
+    {},
+  );
+  const projection = buildEvidenceCanvasProjection(
+    evidenceModel,
+    0,
+    undefined,
+    new Map(),
+  );
+  const model = buildExplorationModel(
+    evidenceModel,
+    projection,
+    FALLBACK_TOKENS,
+  );
+  const graphKeys = model.graph.edges();
+  assertEquals(graphKeys.length, 2);
+  assertEquals(new Set(graphKeys).size, 2);
+  assertEquals(
+    model.graph.mapEdges((_key, attrs) => attrs.edgeId),
+    ["duplicated-id", "duplicated-id"],
+  );
+});

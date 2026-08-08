@@ -369,17 +369,67 @@ Deno.test("buildEvidenceCanvasProjection — foldedInstrumentCount is non-negati
   assertEquals(projection.foldedInstrumentCount, 1);
 });
 
-Deno.test("buildEvidenceCanvasProjection — collapsedVersionCount does not double-count", () => {
-  const { model } = instrumentBridgeFixture();
-  // Version folding is reported separately; it must not erase the instrument
-  // that was actually folded by the evidence model.
-  const projection = buildEvidenceCanvasProjection(
-    model,
-    1,
-    undefined,
-    new Map(),
+Deno.test("instrument and version folds are counted once in Carte and Exploration", () => {
+  const historical = node("proof-r1", "artifact", "build123d");
+  const current = node("proof-r2", "artifact", "build123d");
+  const instrument = node(
+    "drip-tray-sensitivity-h-base-step",
+    "artifact",
+    "build123d",
   );
-  assertEquals(projection.foldedInstrumentCount, 1);
+  const result = node("result", "observation", "calculix");
+  const familyGraph: ThreadEvidenceFamilyGraph = {
+    ...emptyFamilyGraph,
+    families: [{
+      id: "proof-family",
+      entityKind: "artifact",
+      historicalRefs: [historical.ref],
+      currentRefs: [current.ref],
+      revisionCount: 1,
+      status: "current",
+      relationship: {
+        relation: "supersedes",
+        classification: "not-recorded",
+        equivalence: "not-recorded",
+      },
+      transitions: [{
+        edgeRef: {
+          id: "old-to-current",
+          relation: "supersedes",
+          origin: "provenance",
+        },
+        historical: historical.ref,
+        successor: current.ref,
+      }],
+    }],
+    omittedSelfLoops: [],
+  };
+  const model = buildEvidenceGraphModel(
+    {
+      nodes: [historical, current, instrument, result],
+      edges: [
+        {
+          ...edge("old-to-current", historical.ref, current.ref),
+          relation: "supersedes",
+        },
+        edge("current-to-instrument", current.ref, instrument.ref),
+        edge("instrument-to-result", instrument.ref, result.ref),
+      ],
+    },
+    familyGraph,
+    { isAnalyzeInstrumentNode },
+  );
+  const carte = buildEvidenceCanvasProjection(model, 1, undefined, new Map());
+  const exploration = buildExplorationKindProjection(
+    model,
+    ALL_KINDS_VISIBLE,
+    1,
+  );
+  assertEquals(carte.foldedInstrumentCount, 1);
+  assertEquals(exploration.foldedInstrumentCount, 1);
+  // The banner adds the two disjoint folds: one instrument + one old version.
+  assertEquals(carte.foldedInstrumentCount + 1, 2);
+  assertEquals(exploration.foldedInstrumentCount + 1, 2);
 });
 
 // ---------------------------------------------------------------------------
