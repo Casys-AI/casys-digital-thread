@@ -46,31 +46,30 @@
  *  • `result` assigned more than once at module level
  *  • raw/bytes/f-string prefixes (rb, br, b, f, rf, fr literals, case-insensitive)
  *  • walrus operator `:=`
- *  • `while` and `for` loops (v1 resource policy — geometry scripts unroll all
- *    iteration server-side; see RESOURCE POLICY below)
- *  • any literal exponent > MAX_LITERAL_EXPONENT in `a**b` expressions
- *  • chained exponentiation `a**b**c` (right-associative; inner result is
- *    unbounded even when the literals individually satisfy the exponent bound)
  *  • wildcard imports `from X import *` for any source
  *  • `from build123d import N` when N is not in ALLOWED_BUILD123D_NAMES
  *  • any byte sequence not matched by the tokenizer
  *
- * RESOURCE POLICY (v1)
- *  • `while` — forbidden entirely.  No geometry script needs an open-ended loop.
- *    The server-side renderers (CM-01, sensitivity, printability) unroll all
- *    iteration before dispatch; the agent never authors the loop.
- *  • `for` — forbidden entirely in v1.  A future v2 may allow `for x in
- *    [literal-list]` and `for i in range(N)` with N ≤ MAX_FOR_RANGE_BOUND, but
- *    implementing that check at token level without a real AST is complex and
- *    out-of-scope here.  Currently no server-rendered script uses `for`.
- *  • exponents — literal exponent bound of MAX_LITERAL_EXPONENT = 32, plus
- *    explicit rejection of chained `**`.  This prevents arithmetic bombs like
- *    `2**31**31` (right-associative evaluation produces a number with ~10^46
- *    digits before the outer exponentiation).
- *  Container-level quotas (mem_limit, cpus, pids_limit in docker-compose.yml)
- *  are recommended but out of scope for this module.  Suggested values:
- *    mem_limit: 512m, cpus: 1.0, pids_limit: 64
- *  Those limits are the deployment operator's decision and not enforced here.
+ * LAYER BOUNDARY — WHAT THIS VALIDATOR DOES AND DOES NOT DO
+ *
+ *  This validator bounds what a script can REACH: imports, filesystem, I/O,
+ *  arbitrary code execution.  These are semantic properties expressible as
+ *  name and import constraints — a boundary the container cannot express.
+ *
+ *  The BUILD123D CONTAINER bounds what a script can CONSUME: memory, CPU,
+ *  processes, wall-clock time.  These are quantitative limits the container
+ *  enforces correctly and that code cannot enforce reliably.
+ *  Active container limits on mcp-build123d (set in docker-compose.yml):
+ *    mem_limit: 2g, cpus: 2.0, pids_limit: 128, no-new-privileges, cap_drop ALL
+ *    + 120 s dispatch timeout in the executor.
+ *
+ *  WHY LANGUAGE CONSTRUCTS ARE NOT RESTRICTED — banning `for`, `while`, or
+ *  large exponents does not protect against resource exhaustion: a single
+ *  statement without any loop (`Box(1e9, 1e9, 1e9)`, a giant literal list,
+ *  deep nesting) can exhaust memory.  Conversely, banning loops discards
+ *  legitimate idioms such as list comprehensions for algebraic placement
+ *  patterns (`[Pos(i*10, 0, 0) * Box(5, 5, 5) for i in [0, 1, 2]]`).
+ *  Resource bounding belongs exclusively at the container layer.
  *
  * WALRUS POLICY (v2)
  *  The walrus operator `:=` is rejected in v1.  Python tokenises it as a single
@@ -113,16 +112,6 @@ export class GeometryScriptValidationError extends Error {
 /** Absolute hard limits; any script exceeding them is rejected without detail. */
 const MAX_SCRIPT_BYTES = 64 * 1024; // 64 KiB
 const MAX_TOKENS = 8_000;
-
-/**
- * Maximum allowed literal exponent in `a**b` expressions.
- *
- * WHY 32 — allows `x**2` (squaring), `x**3` (cubing), and up to `2**32` for
- * bit-manipulation constants while blocking the arithmetic-bomb pattern
- * `2**1000000`.  Together with the chained-exponentiation check, this prevents
- * `2**31**31` even though 31 ≤ 32: the chained check fires first.
- */
-const MAX_LITERAL_EXPONENT = 32;
 
 // ── String prefix helpers (B1) ────────────────────────────────────────────────
 //
@@ -238,11 +227,6 @@ const FORBIDDEN_NAMES = new Set([
   "import_stl",
   "import_brep",
   "import_svg",
-  // ── 5. Resource keywords (v1 resource policy) ─────────────────────────────
-  // Looping constructs are not needed in server-rendered geometry scripts.
-  // Both Python keywords tokenise as NAME tokens in this tokenizer.
-  "while",
-  "for",
 ]);
 
 /** Only these top-level import sources are allowed. */
@@ -1259,71 +1243,6 @@ function checkResultAssignment(tokens: Token[]): void {
   }
 }
 
-/**
- * Reject over-large literal exponents and chained exponentiation.
- *
- * WHY — `2**1000000` is a valid Python expression but allocates astronomical
- * memory.  `2**31**31` (right-associative) evaluates `31**31 ≈ 2.86 × 10^46`
- * first, producing a number with tens of billions of digits.
- *
- * POLICY:
- *  (a) Any NUMBER literal appearing as the right operand of `**` must satisfy
- *      value ≤ MAX_LITERAL_EXPONENT (= 32).
- *  (b) Chained `**` in the form `… ** NUMBER ** …` is rejected regardless of
- *      the individual values, because right-to-left evaluation makes the inner
- *      result unbounded even when both literals are within the bound.
- */
-function checkExponents(tokens: Token[]): void {
-  for (let i = 0; i < tokens.length; i++) {
-    const tok = tokens[i]!;
-    if (tok.kind !== "OP" || tok.value !== "**") continue;
-
-    // Find the right operand (next significant token).
-    let j = i + 1;
-    while (
-      j < tokens.length &&
-      (tokens[j]!.kind === "WHITESPACE" || tokens[j]!.kind === "CONTINUATION")
-    ) {
-      j++;
-    }
-    if (j >= tokens.length) continue;
-
-    const rightTok = tokens[j]!;
-    if (rightTok.kind !== "NUMBER") continue;
-
-    const exponent = parseFloat(rightTok.value.replace(/_/g, ""));
-    if (!Number.isFinite(exponent) || exponent > MAX_LITERAL_EXPONENT) {
-      throw new GeometryScriptValidationError(
-        "unrecognized_token",
-        `Literal exponent ${rightTok.value} exceeds the maximum allowed value of ` +
-          `${MAX_LITERAL_EXPONENT} at line ${rightTok.line}. ` +
-          `Use a pre-computed constant instead.`,
-        rightTok.line,
-      );
-    }
-
-    // Reject chained exponentiation: A**B**C evaluates as A**(B**C).
-    // Even when B ≤ MAX_LITERAL_EXPONENT and C ≤ MAX_LITERAL_EXPONENT,
-    // the intermediate B**C can be enormous (31**31 ≈ 2.86×10^46).
-    let k = j + 1;
-    while (
-      k < tokens.length &&
-      (tokens[k]!.kind === "WHITESPACE" || tokens[k]!.kind === "CONTINUATION")
-    ) {
-      k++;
-    }
-    if (k < tokens.length && tokens[k]!.kind === "OP" && tokens[k]!.value === "**") {
-      throw new GeometryScriptValidationError(
-        "unrecognized_token",
-        `Chained exponentiation '**…**' is not allowed at line ${rightTok.line}. ` +
-          `The right-associative evaluation produces an unbounded intermediate. ` +
-          `Use explicit parentheses with a pre-computed value if needed.`,
-        rightTok.line,
-      );
-    }
-  }
-}
-
 function nextSignificantToken(
   tokens: Token[],
   start: number,
@@ -1359,6 +1278,5 @@ export function validateGeometryScript(script: string): void {
 
   const tokens = tokenize(script);
   checkImports(tokens);
-  checkExponents(tokens);
   checkResultAssignment(tokens);
 }

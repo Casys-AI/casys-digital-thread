@@ -602,115 +602,86 @@ result = Box(1, 1, 1)
   });
 }
 
-// ── P1: resource policy — while and for forbidden ─────────────────────────────
+// ── Resource policy: language constructs are NOT restricted ──────────────────
 //
-// Geometry scripts are fully unrolled server-side; no looping construct is
-// needed.  Both Python keywords tokenise as NAME tokens here and are caught
-// by FORBIDDEN_NAMES before the import check runs.
+// `for`, `while`, large exponents, etc. are bounding CONSUMPTION (memory, CPU)
+// which is the container's job, not the validator's.  The validator bounds what
+// the script can REACH (imports, filesystem, I/O, arbitrary execution).
+//
+// Proof that language restrictions are the wrong layer: a single statement
+// without any loop (`Box(1e9, 1e9, 1e9)`) can also exhaust resources.
+// Container limits on mcp-build123d: mem_limit 2g, cpus 2.0, pids_limit 128,
+// no-new-privileges, cap_drop ALL, 120 s dispatch timeout.
+//
+// These tests pin that build123d algebraic idioms (list comprehensions for
+// placement patterns, while loops, for loops, large exponents) all pass.
 
 Deno.test(
-  "validateGeometryScript rejects while loop (resource policy v1)",
+  "validateGeometryScript accepts a for loop (resource bounding is the container's job)",
   () => {
-    const err = (() => {
-      try {
-        validateGeometryScript(`from build123d import Box
-x = 1
-while x < 10:
-    x = x + 1
-result = Box(x, 1, 1)
-`);
-      } catch (e) {
-        return e as GeometryScriptValidationError;
-      }
-    })();
-    assertEquals(err?.code, "forbidden_name");
-  },
-);
-
-Deno.test(
-  "validateGeometryScript rejects for loop (resource policy v1)",
-  () => {
-    const err = (() => {
-      try {
-        validateGeometryScript(`from build123d import Box
+    validateGeometryScript(`from build123d import Box
 shapes = []
 for i in [1, 2, 3]:
     shapes.append(Box(i, 1, 1))
 result = shapes[0]
 `);
-      } catch (e) {
-        return e as GeometryScriptValidationError;
-      }
-    })();
-    assertEquals(err?.code, "forbidden_name");
-  },
-);
-
-// ── P1: exponent bounds ───────────────────────────────────────────────────────
-
-Deno.test(
-  "validateGeometryScript rejects a literal exponent greater than MAX_LITERAL_EXPONENT",
-  () => {
-    const err = (() => {
-      try {
-        validateGeometryScript(`from build123d import Box
-x = 2**33
-result = Box(x, 1, 1)
-`);
-      } catch (e) {
-        return e as GeometryScriptValidationError;
-      }
-    })();
-    assertEquals(err?.code, "unrecognized_token");
   },
 );
 
 Deno.test(
-  "validateGeometryScript accepts a literal exponent within the bound (a**2)",
+  "validateGeometryScript accepts a while loop (resource bounding is the container's job)",
   () => {
     validateGeometryScript(`from build123d import Box
-x = 3**2
+x = 1
+n = 10
+while x < n:
+    x = x + 1
 result = Box(x, 1, 1)
 `);
   },
 );
 
 Deno.test(
-  "validateGeometryScript rejects chained exponentiation 2**31**31",
+  "validateGeometryScript accepts large exponents (resource bounding is the container's job)",
   () => {
-    // Right-associative: 2**(31**31) — the inner result has ~10^46 digits.
-    const err = (() => {
-      try {
-        validateGeometryScript(`from build123d import Box
-x = 2**31**31
+    validateGeometryScript(`from build123d import Box
+x = 2**31
 result = Box(x, 1, 1)
 `);
-      } catch (e) {
-        return e as GeometryScriptValidationError;
-      }
-    })();
-    assertEquals(err?.code, "unrecognized_token");
   },
 );
 
 Deno.test(
-  "validateGeometryScript rejects a large range exponent (10**9) even when individual exponent ≤ 32",
+  "validateGeometryScript accepts a list comprehension for algebraic placement — build123d idiom",
   () => {
-    // 10**9 = 1 000 000 000; the exponent 9 ≤ 32, but the result is a huge integer.
-    // `range(10**9)` would also be caught by the `for` ban; here we test bare arithmetic.
-    const err = (() => {
-      try {
-        validateGeometryScript(`from build123d import Box
-x = 10**9
-result = Box(x, 1, 1)
+    // `[Pos(i*10, 0, 0) * Box(5, 5, 5) for i in [0, 1, 2]]` is the natural
+    // way to express a repeated placement pattern in build123d algebra.
+    // Banning `for` would kill this idiom.
+    validateGeometryScript(`from build123d import Box, Compound, Pos
+result = Compound(children=[Pos(i * 10, 0, 0) * Box(5, 5, 5) for i in [0, 1, 2]])
 `);
-      } catch (e) {
-        return e as GeometryScriptValidationError;
-      }
-    })();
-    // 9 ≤ 32 so this passes the exponent bound — only chained check or FORBIDDEN_NAMES apply.
-    // `for` ban covers range(10**9) in a loop. Bare arithmetic: 9 ≤ 32 → PASSES (accepted).
-    assertEquals(err, undefined); // no error expected for bare 10**9
+  },
+);
+
+Deno.test(
+  "validateGeometryScript accepts a realistic CAD script with comprehension, fillet, and placements",
+  () => {
+    // Non-regression: a build123d script using the algebraic idioms that
+    // agent-authored scripts are most likely to produce.
+    validateGeometryScript(`from build123d import Box, Compound, Pos, Rot, fillet
+from math import pi
+
+# Base plate
+base = Box(200, 150, 10)
+base = fillet(base.edges(), radius=2)
+
+# Mounting bosses via list comprehension and algebraic placement
+positions = [(50, 40, 0), (50, -40, 0), (-50, 40, 0), (-50, -40, 0)]
+bosses = [Pos(x, y, 5) * Box(12, 12, 10) for x, y, _ in positions]
+
+# Assembly
+result = Compound(label="base-plate", children=[base] + bosses)
+`);
   },
 );
 
