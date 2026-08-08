@@ -9,12 +9,11 @@
  * BOUNDED: one attempt per invocation, no retry loop.
  *
  * SANDBOX: the probe creates a dedicated SysON project named
- * `probe-requirement-units-<uuid>`. There is no syson_project_delete tool;
- * the output includes the editingContextId for the operator to delete
- * manually from the SysON UI. Do NOT run this probe against a production
- * project.
+ * `probe-requirement-units-<uuid>` and deletes it with syson_project_delete
+ * after the probe completes (success or failure). The output records whether
+ * cleanup succeeded. Do NOT run this probe against a production project.
  *
- * ALREADY PROVEN UNITS:
+ * ALREADY PROVEN UNITS (verified against SysON on 127.0.0.1:3009):
  *   mm → LengthValue   (probe-requirements-2026-08-04, element d6793ccf)
  *   Pa → PressureValue (probe-requirements-2026-08-04, element d6793ccf)
  *
@@ -71,11 +70,13 @@ export interface ProbeRequirementUnitsResult {
   readonly endpoint: string;
   readonly sandboxProjectName: string;
   /**
-   * editingContextId of the sandbox project, returned for manual cleanup.
-   * There is no syson_project_delete tool; the operator must delete this
-   * project from the SysON UI after reviewing the result.
+   * editingContextId of the sandbox project, retained for audit.
+   * The probe calls syson_project_delete after completing; sandboxProjectDeleted
+   * records whether the cleanup succeeded.
    */
   readonly sandboxEditingContextId?: string;
+  /** True if syson_project_delete confirmed the sandbox was deleted. */
+  readonly sandboxProjectDeleted?: boolean;
   readonly units: readonly ProbeUnitResult[];
   readonly cleanupNote: string;
 }
@@ -94,7 +95,17 @@ export async function probeRequirementUnits(
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
   const unit = options.unit ?? "mm";
   const sysmlType = options.sysmlType ??
-    (unit === "mm" ? "LengthValue" : unit === "Pa" ? "PressureValue" : unit); // fallback — may fail if the type does not exist in SI
+    (unit === "mm"
+      ? "LengthValue"
+      : unit === "Pa"
+      ? "PressureValue"
+      : unit === "kg"
+      ? "MassValue"
+      : unit === "W"
+      ? "PowerValue"
+      : unit === "V"
+      ? "VoltageValue"
+      : unit); // fallback — may fail if the type does not exist in SI
 
   const sandboxProjectName = `probe-requirement-units-${crypto.randomUUID()}`;
   const client = options.client ?? new HttpMcpToolClient({
@@ -102,19 +113,24 @@ export async function probeRequirementUnits(
     timeoutMs: 60_000,
   });
 
-  const cleanupNote =
-    "The sandbox project cannot be deleted programmatically (no syson_project_delete tool). " +
-    "Delete it from the SysON UI using the editingContextId returned in this result.";
+  const cleanupNote = "The probe calls syson_project_delete after completing. " +
+    "sandboxProjectDeleted reports whether the delete succeeded.";
 
   // Step 1 — create the sandbox project.
   let editingContextId: string;
+  let projectId: string;
   try {
     const projectResult = await client.callTool({
       name: "syson_project_create",
       arguments: { name: sandboxProjectName },
     });
     const sc = projectResult.structuredContent;
-    if (typeof sc.editingContextId !== "string" || !sc.editingContextId.trim()) {
+    // syson_project_create returns { id, name, editingContextId }.
+    // "id" is the project UUID used by syson_project_delete.
+    if (
+      typeof sc.editingContextId !== "string" || !sc.editingContextId.trim() ||
+      typeof sc.id !== "string" || !sc.id.trim()
+    ) {
       return {
         probe: "requirement-units",
         endpoint,
@@ -124,13 +140,14 @@ export async function probeRequirementUnits(
             unit,
             sysmlType,
             "probe_error",
-            "syson_project_create did not return editingContextId.",
+            "syson_project_create did not return editingContextId or id.",
           ),
         ],
         cleanupNote,
       };
     }
-    editingContextId = sc.editingContextId;
+    editingContextId = sc.editingContextId as string;
+    projectId = sc.id as string;
   } catch (error) {
     return {
       probe: "requirement-units",
@@ -163,26 +180,32 @@ export async function probeRequirementUnits(
     });
     const sc = modelResult.structuredContent;
     if (typeof sc.rootPackageId !== "string" || !sc.rootPackageId.trim()) {
-      return sandboxCreated(
-        endpoint,
-        sandboxProjectName,
-        editingContextId,
-        [unitResult(
-          unit,
-          sysmlType,
-          "probe_error",
-          "syson_model_create did not return rootPackageId.",
-        )],
-        cleanupNote,
+      return await withCleanup(
+        client,
+        projectId,
+        {
+          probe: "requirement-units",
+          endpoint,
+          sandboxProjectName,
+          sandboxEditingContextId: editingContextId,
+          units: [unitResult(
+            unit,
+            sysmlType,
+            "probe_error",
+            "syson_model_create did not return rootPackageId.",
+          )],
+          cleanupNote,
+        },
       );
     }
     rootPackageId = sc.rootPackageId;
   } catch (error) {
-    return sandboxCreated(
+    return await withCleanup(client, projectId, {
+      probe: "requirement-units",
       endpoint,
       sandboxProjectName,
-      editingContextId,
-      [
+      sandboxEditingContextId: editingContextId,
+      units: [
         unitResult(
           unit,
           sysmlType,
@@ -193,7 +216,7 @@ export async function probeRequirementUnits(
         ),
       ],
       cleanupNote,
-    );
+    });
   }
 
   // Step 3 — render the test requirement and insert it.
@@ -212,11 +235,12 @@ export async function probeRequirementUnits(
     // SysML text, since this probe is testing whether a NEW unit type works.
     sysmlText = renderProbePartDef(testPartDefName, testRequirement, sysmlType);
   } catch (error) {
-    return sandboxCreated(
+    return await withCleanup(client, projectId, {
+      probe: "requirement-units",
       endpoint,
       sandboxProjectName,
-      editingContextId,
-      [
+      sandboxEditingContextId: editingContextId,
+      units: [
         unitResult(
           unit,
           sysmlType,
@@ -227,7 +251,7 @@ export async function probeRequirementUnits(
         ),
       ],
       cleanupNote,
-    );
+    });
   }
 
   let insertedElementId: string;
@@ -250,13 +274,16 @@ export async function probeRequirementUnits(
     });
     const children = childrenResult.structuredContent.children;
     if (!Array.isArray(children) || children.length === 0) {
-      return sandboxCreated(
+      return await withCleanup(client, projectId, {
+        probe: "requirement-units",
         endpoint,
         sandboxProjectName,
-        editingContextId,
-        [unitResult(unit, sysmlType, "probe_error", "No children after insertion.")],
+        sandboxEditingContextId: editingContextId,
+        units: [
+          unitResult(unit, sysmlType, "probe_error", "No children after insertion."),
+        ],
         cleanupNote,
-      );
+      });
     }
     // Find the part def by label.
     const match = children.find(
@@ -266,11 +293,12 @@ export async function probeRequirementUnits(
         (child as Record<string, unknown>).label === testPartDefName,
     ) as Record<string, unknown> | undefined;
     if (!match || typeof match.id !== "string") {
-      return sandboxCreated(
+      return await withCleanup(client, projectId, {
+        probe: "requirement-units",
         endpoint,
         sandboxProjectName,
-        editingContextId,
-        [
+        sandboxEditingContextId: editingContextId,
+        units: [
           unitResult(
             unit,
             sysmlType,
@@ -279,16 +307,17 @@ export async function probeRequirementUnits(
           ),
         ],
         cleanupNote,
-      );
+      });
     }
     insertedElementId = match.id;
     void insertResult; // acknowledged, element identified by name
   } catch (error) {
-    return sandboxCreated(
+    return await withCleanup(client, projectId, {
+      probe: "requirement-units",
       endpoint,
       sandboxProjectName,
-      editingContextId,
-      [
+      sandboxEditingContextId: editingContextId,
+      units: [
         unitResult(
           unit,
           sysmlType,
@@ -297,7 +326,7 @@ export async function probeRequirementUnits(
         ),
       ],
       cleanupNote,
-    );
+    });
   }
 
   // Step 4 — extract and verify the constraint round-trip.
@@ -311,11 +340,12 @@ export async function probeRequirementUnits(
     });
     const constraints = extractResult.structuredContent.constraints;
     if (!Array.isArray(constraints) || constraints.length === 0) {
-      return sandboxCreated(
+      return await withCleanup(client, projectId, {
+        probe: "requirement-units",
         endpoint,
         sandboxProjectName,
-        editingContextId,
-        [
+        sandboxEditingContextId: editingContextId,
+        units: [
           unitResult(
             unit,
             sysmlType,
@@ -324,43 +354,60 @@ export async function probeRequirementUnits(
           ),
         ],
         cleanupNote,
-      );
+      });
     }
-    // Find the probe constraint (metric = "probeValue").
+
+    // The extracted constraint has structure { expression: { right: { unit } } }.
+    // We look for a constraint whose threshold literal carries the unit.
     const probeConstraint = constraints.find(
       (c: unknown) =>
-        Array.isArray((c as Record<string, unknown>).featurePath) &&
-        ((c as Record<string, unknown>).featurePath as string[])[0] === "probeValue",
+        typeof c === "object" && c !== null &&
+        typeof (c as Record<string, unknown>).name === "string" &&
+        ((c as Record<string, unknown>).name as string).includes("probe_limit"),
     ) as Record<string, unknown> | undefined;
 
+    // Extract unit from the right-hand side literal.
+    let extractedUnit: string | undefined;
+    if (probeConstraint) {
+      const expr = probeConstraint.expression as Record<string, unknown> | undefined;
+      const right = expr?.right as Record<string, unknown> | undefined;
+      if (right?.kind === "literal" && typeof right.unit === "string") {
+        extractedUnit = right.unit;
+      }
+    }
+
     if (!probeConstraint) {
-      return sandboxCreated(
+      return await withCleanup(client, projectId, {
+        probe: "requirement-units",
         endpoint,
         sandboxProjectName,
-        editingContextId,
-        [
+        sandboxEditingContextId: editingContextId,
+        units: [
           unitResult(
             unit,
             sysmlType,
             "extraction_failed",
-            `Constraint "probeValue" not found in extracted constraints.`,
+            `Constraint "probe_limit" not found in extracted constraints. ` +
+              `Got: ${
+                JSON.stringify(constraints.map((c: unknown) =>
+                  (c as Record<string, unknown>).name
+                ))
+              }`,
           ),
         ],
         cleanupNote,
-      );
+      });
     }
 
-    const extractedUnit = typeof probeConstraint.unit === "string"
-      ? probeConstraint.unit
-      : undefined;
     const status: ProbeRequirementUnitsStatus = extractedUnit === unit
       ? "ok"
       : "type_mismatch";
-    return sandboxCreated(
+    return await withCleanup(client, projectId, {
+      probe: "requirement-units",
       endpoint,
       sandboxProjectName,
-      editingContextId,
-      [
+      sandboxEditingContextId: editingContextId,
+      units: [
         {
           unit,
           sysmlType,
@@ -368,18 +415,21 @@ export async function probeRequirementUnits(
           extractedUnit,
           message: status === "ok"
             ? `Unit "${unit}" round-trips correctly through SysON with type "${sysmlType}".`
-            : `Expected unit "${unit}" but SysON returned "${extractedUnit}". ` +
+            : `Expected unit "${unit}" but SysON returned "${
+              String(extractedUnit)
+            }". ` +
               `The mapping "${unit}" → "${sysmlType}" may be incorrect.`,
         },
       ],
       cleanupNote,
-    );
+    });
   } catch (error) {
-    return sandboxCreated(
+    return await withCleanup(client, projectId, {
+      probe: "requirement-units",
       endpoint,
       sandboxProjectName,
-      editingContextId,
-      [
+      sandboxEditingContextId: editingContextId,
+      units: [
         unitResult(
           unit,
           sysmlType,
@@ -390,7 +440,7 @@ export async function probeRequirementUnits(
         ),
       ],
       cleanupNote,
-    );
+    });
   }
 }
 
@@ -426,21 +476,21 @@ function unitResult(
   return { unit, sysmlType, status, message };
 }
 
-function sandboxCreated(
-  endpoint: string,
-  sandboxProjectName: string,
-  sandboxEditingContextId: string,
-  units: readonly ProbeUnitResult[],
-  cleanupNote: string,
-): ProbeRequirementUnitsResult {
-  return {
-    probe: "requirement-units",
-    endpoint,
-    sandboxProjectName,
-    sandboxEditingContextId,
-    units,
-    cleanupNote,
-  };
+async function withCleanup(
+  client: McpToolClient,
+  projectId: string,
+  result: ProbeRequirementUnitsResult,
+): Promise<ProbeRequirementUnitsResult> {
+  try {
+    await client.callTool({
+      name: "syson_project_delete",
+      arguments: { project_id: projectId },
+    });
+    return { ...result, sandboxProjectDeleted: true };
+  } catch {
+    // Cleanup failure is not fatal — the probe result stands.
+    return { ...result, sandboxProjectDeleted: false };
+  }
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────

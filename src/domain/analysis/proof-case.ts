@@ -176,10 +176,17 @@ const SYSML_ID = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * `private import SI::*`. Only units confirmed in a live probe are included;
  * all others are rejected fail-closed.
  *
- * Live-probe evidence (2026-08-04, project probe-requirements-2026-08-04,
- * element d6793ccf):
- *   mm → LengthValue   (syson_constraint_extract returned unit: "mm")
- *   Pa → PressureValue (syson_constraint_extract returned unit: "Pa")
+ * Live-probe evidence:
+ *
+ *   2026-08-04, probe-requirements-2026-08-04, element d6793ccf:
+ *     mm → LengthValue   (syson_constraint_extract returned unit: "mm")
+ *     Pa → PressureValue (syson_constraint_extract returned unit: "Pa")
+ *
+ *   2026-08-08, probe-requirement-units (scripts/probes/probe-requirement-units.ts),
+ *   sandbox deleted after each run via syson_project_delete:
+ *     kg → MassValue    (status: ok, extractedUnit: "kg")
+ *     W  → PowerValue   (status: ok, extractedUnit: "W")
+ *     V  → VoltageValue (status: ok, extractedUnit: "V")
  *
  * To add a unit, run a probe that confirms insertion → extraction round-trip
  * and document the evidence here before merging.
@@ -187,6 +194,11 @@ const SYSML_ID = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const UNIT_TO_SYSML_TYPE: ReadonlyMap<string, string> = new Map([
   ["mm", "LengthValue"],
   ["Pa", "PressureValue"],
+  // Confirmed 2026-08-08 via scripts/probes/probe-requirement-units.ts against
+  // SysON 0.5.1 on 127.0.0.1:3009 — all sandboxes deleted by syson_project_delete.
+  ["kg", "MassValue"],
+  ["W", "PowerValue"],
+  ["V", "VoltageValue"],
 ]);
 
 // ---------------------------------------------------------------------------
@@ -208,7 +220,7 @@ const UNIT_TO_SYSML_TYPE: ReadonlyMap<string, string> = new Map([
  * GUARD — partDefName, every requirement.id, and every requirement.metric
  * must be valid SysML identifiers (letters, digits, underscores; no hyphens
  * or dots). Each requirement.limit.unit must have a confirmed SysML attribute
- * type mapping (currently: mm → LengthValue, Pa → PressureValue). All
+ * type mapping (currently: mm, Pa, kg, W, V). All
  * constraints are validated fail-closed before the first character is written.
  *
  * The caller is always a server-fixed executor that hard-codes partDefName.
@@ -268,6 +280,9 @@ export function renderOracleRequirementsSysml(
  * Live-probe evidence:
  *   mm — 2026-08-04, project probe-requirements-2026-08-04, element d6793ccf
  *   Pa — 2026-08-04, project probe-requirements-2026-08-04, element d6793ccf
+ *   kg — 2026-08-08, scripts/probes/probe-requirement-units.ts, status ok
+ *   W  — 2026-08-08, scripts/probes/probe-requirement-units.ts, status ok
+ *   V  — 2026-08-08, scripts/probes/probe-requirement-units.ts, status ok
  */
 export const SUPPORTED_ORACLE_UNITS: readonly string[] = [
   ...UNIT_TO_SYSML_TYPE.keys(),

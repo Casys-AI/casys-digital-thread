@@ -195,8 +195,9 @@ Deno.test("parseRequirementsProposalParameters rejects an invalid operator with 
 });
 
 Deno.test("parseRequirementsProposalParameters rejects an unsupported unit with unsupported_unit", () => {
+  // "lb" (pounds) is a non-SI unit that is deliberately not in UNIT_TO_SYSML_TYPE.
   const error = assertThrows(
-    () => parseRequirementsProposalParameters(minimalParams({ unit: "kg" })),
+    () => parseRequirementsProposalParameters(minimalParams({ unit: "lb" })),
     RequirementsProposalParseError,
   );
   assertEquals((error as RequirementsProposalParseError).code, "unsupported_unit");
