@@ -262,15 +262,7 @@ export function buildEvidenceCanvasProjection(
     LOCAL_VIEW_MAX_DEPTH,
   );
   if (neighborhood.nodes.length > 0) {
-    return {
-      nodes: neighborhood.nodes,
-      edges: neighborhood.edges,
-      displayedCount: neighborhood.nodes.length,
-      foldedInstrumentCount,
-      isFiltered: true,
-      localDepthByRefKey: bfsDepths(focusRef, neighborhood),
-      supportingNodeCount: 0, // local view: essential filter not applied.
-    };
+    return localProjection(focusRef, neighborhood, foldedInstrumentCount);
   }
 
   // Historical node: map to visible representative.
@@ -282,15 +274,11 @@ export function buildEvidenceCanvasProjection(
       LOCAL_VIEW_MAX_DEPTH,
     );
     if (repNeighborhood.nodes.length > 0) {
-      return {
-        nodes: repNeighborhood.nodes,
-        edges: repNeighborhood.edges,
-        displayedCount: repNeighborhood.nodes.length,
+      return localProjection(
+        visibleRef,
+        repNeighborhood,
         foldedInstrumentCount,
-        isFiltered: true,
-        localDepthByRefKey: bfsDepths(visibleRef, repNeighborhood),
-        supportingNodeCount: 0, // local view: essential filter not applied.
-      };
+      );
     }
   }
 
@@ -360,4 +348,58 @@ function bfsDepths(
     }
   }
   return depths;
+}
+
+/**
+ * Builds the local-view projection: the SAME essential display mask as the
+ * full map (operator decision 2026-08-08 — one reading everywhere; the folded
+ * plumbing stays exhaustively listed in the inspector), plus two local rules:
+ *
+ *   1. Depths are measured BEFORE masking, over the raw neighbourhood, so the
+ *      1/2/3 display filter counts real causal hops — a neighbour reached
+ *      through a folded change stays a depth-2 neighbour, not a depth-1 one.
+ *   2. The focused node is ALWAYS visible, even when it is itself a
+ *      supporting record (e.g. opened from an inspector list): a local view
+ *      without its own focus would read as a broken page.
+ */
+function localProjection(
+  focusRef: ThreadGraphRef,
+  neighborhood: {
+    readonly nodes: readonly ThreadGraphNode[];
+    readonly edges: readonly ThreadGraphEdge[];
+  },
+  foldedInstrumentCount: number,
+): EvidenceCanvasProjection {
+  const key = (ref: ThreadGraphRef) => `${ref.kind}:${ref.id}`;
+  const depths = bfsDepths(focusRef, neighborhood);
+  const filtered = applyEssentialFilter(
+    neighborhood.nodes as ThreadGraphNode[],
+    neighborhood.edges as ThreadGraphEdge[],
+  );
+
+  const focusKey = key(focusRef);
+  let nodes = filtered.nodes;
+  let edges = filtered.edges;
+  if (!nodes.some((node) => key(node.ref) === focusKey)) {
+    const focusNode = neighborhood.nodes.find(
+      (node) => key(node.ref) === focusKey,
+    );
+    if (focusNode) {
+      nodes = [...nodes, focusNode];
+      const visible = new Set(nodes.map((node) => key(node.ref)));
+      edges = neighborhood.edges.filter(
+        (edge) => visible.has(key(edge.from)) && visible.has(key(edge.to)),
+      );
+    }
+  }
+
+  return {
+    nodes,
+    edges,
+    displayedCount: nodes.length,
+    foldedInstrumentCount,
+    isFiltered: true,
+    localDepthByRefKey: depths,
+    supportingNodeCount: filtered.hiddenCount,
+  };
 }
