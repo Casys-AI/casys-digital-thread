@@ -1,8 +1,9 @@
 # Reference: `EngineeringProjectSnapshot` contract
 
 > **Diátaxis category: reference.** This page describes the project contract in
-> [`src/domain/project/engineering-project.ts`](../../src/domain/project/engineering-project.ts), its
-> strict validator, and its relationship to canonical thread evidence and live activity.
+> [`src/domain/project/engineering-project.ts`](../../src/domain/project/engineering-project.ts),
+> its strict validator, and its relationship to canonical thread evidence and live
+> activity.
 
 `EngineeringProjectSnapshot` is the immutable, versioned state of what an engineering
 project is trying to accomplish and how the human-agent team intends to advance it. It
@@ -513,9 +514,9 @@ links, dependency cycles, inconsistent lifecycle timestamps, contradictory
 decision/approval states, undeclared snapshot revisions, and mismatched execution
 inputs.
 
-[`FileEngineeringProjectStore`](../../src/adapters/stores/engineering-project-store.ts) remains
-the validated tracked-manifest loader. At runtime it seeds revision 1 only when no
-active project exists.
+[`FileEngineeringProjectStore`](../../src/adapters/stores/engineering-project-store.ts)
+remains the validated tracked-manifest loader. At runtime it seeds revision 1 only when
+no active project exists.
 [`FileEngineeringProjectRevisionStore`](../../src/adapters/stores/engineering-project-store.ts)
 then owns append-only active state under `state/local/engineering-projects/<project>/`.
 Each numbered revision is deterministic JSON; an exclusive claim file is the

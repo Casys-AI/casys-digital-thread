@@ -8,8 +8,8 @@ operations; the cockpit itself remains a passive projection.
 
 ## Surfaces
 
-- **Fleet** compares [`config/mcp-fleet.json`](../config/mcp-fleet.json) with live MCP
-  discovery and read-only Docker observations.
+- **Fleet** compares [`config/mcp-fleet.json`](../../config/mcp-fleet.json) with live
+  MCP discovery and read-only Docker observations.
 - **Runs** keeps execution, evidence, and requirement-verdict states separate.
 - **Workbench** renders the native linked-thread projection. It does not mount provider
   Apps or call provider MCPs from the browser.
@@ -39,8 +39,8 @@ path starts CAD, meshing, FEA, Modelica, or a SysON mutation on page load.
 | `console_refresh`       | MCP App only   | Explicitly refresh the read-only probes                        |
 
 `console_snapshot` no longer carries dashboard-panel declarations. Product state lives
-in the canonical [`ThreadSnapshot`](reference/thread-snapshot.md) and its native
-Workbench projection.
+in the canonical [`ThreadSnapshot`](thread-snapshot.md) and its native Workbench
+projection.
 
 ### Engineering project tools
 
@@ -84,7 +84,7 @@ and `issuedAt`.
 Focus is durable UI-routing state only. It cannot create a project, record an answer,
 approve a brief or decision, queue or execute a run, call a provider, or produce
 evidence. The cockpit remains GET/SSE-only and has no human selector yet. See
-[the native Workbench preview how-to](how-to/preview-native-workbench.md#follow-the-agent-selected-workspace).
+[the native Workbench preview how-to](../how-to/preview-native-workbench.md#follow-the-agent-selected-workspace).
 
 ## Truth boundary
 
@@ -129,7 +129,7 @@ observation, and isolated DripTray proof. They do not turn the historical CM-01 
 record into a fallback. Its five case-specific correction/recovery operations then lead
 to provider-free R10 → R11 identity recovery; local R11 → R12 closeout reconciles the
 retained failed R2 work without relabelling its run. See the
-[local CM-01 V3 guide](how-to/run-cm01-v3-golden-local.md) for exact scope, provider
+[local CM-01 V3 guide](../how-to/run-cm01-v3-golden-local.md) for exact scope, provider
 topology, evidence locations, and comparison boundary.
 
 Neither caller can choose a provider, tool, argument, file, SysML text, or result.

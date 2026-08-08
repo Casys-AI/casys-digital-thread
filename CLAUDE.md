@@ -90,18 +90,18 @@ commiter le bundle régénéré, sinon le preview et la ressource MCP servent l'
 
 Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 
-| Couche                          | Rôle                                                                                                                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Couche                          | Rôle                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*`. Sous-familles : `kernel/` (types, hashing, validation), `thread/` (snapshot, catalogues), `project/` (brief, commandes projet), `analysis/` (proof-case, sensibilité, correction), `platform/` (focus, SysON seed, dérive), `cm01/` (preuves et plans spécifiques CoffeeMachine) |
-| `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/` |
-| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning                                                                                                   |
-| `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                                                                                                           |
-| `src/workflow/`                 | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                                                                                                        |
-| `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                                                                                                                 |
-| `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)                                                                                        |
-| `src/testing/`                  | Fixtures partagées entre suites                                                                                                                                                |
-| `scripts/`                      | Entry points par rôle : `runners/` (écritures immuables), `gates/` (vérification read-only), `probes/` (sondes diagnostiques), `serve/` (preview). `lib/` : modules partagés, pas des entry points. |
-| `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine                                                                                              |
+| `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/`                                                                                                                                                                                               |
+| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning                                                                                                                                                                                                                                                                                                 |
+| `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                                                                                                                                                                                                                                                                                                         |
+| `src/workflow/`                 | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                                                                                                                                                                                                                                                                                                      |
+| `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                                                                                                                                                                                                                                                                                                               |
+| `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)                                                                                                                                                                                                                                                                                      |
+| `src/testing/`                  | Fixtures partagées entre suites                                                                                                                                                                                                                                                                                                                                              |
+| `scripts/`                      | Entry points par rôle : `runners/` (écritures immuables), `gates/` (vérification read-only), `probes/` (sondes diagnostiques), `serve/` (preview). `lib/` : modules partagés, pas des entry points.                                                                                                                                                                          |
+| `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine                                                                                                                                                                                                                                                                                            |
 
 Les invariants suivants sont structurels — les casser casse le produit, pas seulement un
 test :
@@ -110,8 +110,9 @@ test :
    jamais mutés. Toute commande nomme la révision attendue et écrit une nouvelle
    révision. Une révision publiée est relue avant d'être considérée comme vraie.
 2. **Hash déterministe** — toute empreinte passe par `deterministicJson` /
-   `sha256Fingerprint` (`src/domain/kernel/deterministic-json.ts`) : clés triées, `undefined`
-   omis, nombres non finis rejetés. Ne jamais hasher un `JSON.stringify` brut.
+   `sha256Fingerprint` (`src/domain/kernel/deterministic-json.ts`) : clés triées,
+   `undefined` omis, nombres non finis rejetés. Ne jamais hasher un `JSON.stringify`
+   brut.
 3. **Validation fail-closed** — le pattern dominant est
    `exactRecord(value, [clés], path)` : une clé en trop _ou_ en moins est un rejet. Voir
    `src/orchestration/operations/registry.ts` pour la forme canonique (codes d'erreur
@@ -295,9 +296,10 @@ Deux marches ont été franchies depuis. Les sept capture stores content-address
 maintenant un seul `FileCaptureStore<Kind>` : un nouveau type de preuve coûte un
 descripteur, pas une classe, et le paramètre de type continue d'interdire qu'un executor
 reçoive le store d'une autre famille. Et le verdict mécanique appartient à l'oracle, à
-travers `src/domain/analysis/proof-case.ts` — un contrat d'exigence sans rien de CalculiX ni de
-CM-01, où l'unité est obligatoire et où le critère ignore d'où vient la mesure. C'est
-cette indifférence à la source qui le rend réutilisable par un second projet.
+travers `src/domain/analysis/proof-case.ts` — un contrat d'exigence sans rien de
+CalculiX ni de CM-01, où l'unité est obligatoire et où le critère ignore d'où vient la
+mesure. C'est cette indifférence à la source qui le rend réutilisable par un second
+projet.
 
 Les trois marches suivantes ont été franchies le 2026-08-05, chacune par le chemin agent
 complet (append → queue → execute) avec consentement explicite : la sensibilité
@@ -321,8 +323,8 @@ découverte : le solve inline n'accepte que la forme `ref op littéral`, la réd
 analytique des bornes précède donc l'appel ; z3 répond en unités SI de base (mètres).
 Ensuite la généralisation : `src/domain/analysis/sensitivity-edge.ts` (arête = driver +
 voisinage + réponse + dérivée + provenance, tout unité, indifférent à la source),
-`proposeVectorCorrection` (`src/domain/analysis/propose-vector-correction.ts` — proposition
-bornée au voisinage déclaré ou `unresolved` motivé : `no-applicable-edge`,
+`proposeVectorCorrection` (`src/domain/analysis/propose-vector-correction.ts` —
+proposition bornée au voisinage déclaré ou `unresolved` motivé : `no-applicable-edge`,
 `out-of-neighborhood`, `zero-derivative`, unités incompatibles ; jamais de clamp ni
 d'epsilon), et `buildCorrectionMrtrProposal` qui produit le DTO de décision humaine. La
 reproduction du 28→30 depuis les arêtes R16 réelles est un test. L'opération
@@ -361,8 +363,8 @@ Le chemin ne s'arrête plus au seed générique r2 : le projet `inspection-drone
 exécuté jusqu'à r3. Son r1 est le baseline documentaire du brief approuvé, r2 la capture
 d'identité du conteneur SysON, et r3 une architecture qualitative relue : cinq usages
 typés et quatre exigences avec leurs inconnues explicites. Ce n'est ni de la CAO, ni de
-la physique, ni un coût, ni une certification ; le produit r4 reste en correction et en
-revue, donc n'est pas un résultat documenté.
+la physique, ni un coût, ni une certification ; aucun r4 n'est publié ni documenté à cet
+instant.
 
 CM-01 a aussi gagné un r19 de `PartDefinition` : les captures content-addressed de
 `CoffeeMachine` et `DripTray` sont liées à l'architecture et à la preuve existante. Le
