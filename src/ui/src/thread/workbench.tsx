@@ -17,9 +17,10 @@ import {
 } from "../mcp-view-primitives.ts";
 import { ReviewNotifications } from "../project/control-center.tsx";
 import {
+  agentRunRecordedAt,
   agentRunSummary,
+  buildAgentNowPresentation,
   buildCurrentProjectWork,
-  buildProjectBrief,
   buildProjectPath,
   projectPathStatusLabel,
   projectStatusTone,
@@ -496,7 +497,7 @@ export function ThreadWorkbench({
 
   const snapshot = workbench.thread;
   const project = workbench.project;
-  const projectBrief = buildProjectBrief(project);
+  const agentNow = buildAgentNowPresentation(project);
   const projectPath = buildProjectPath(project, snapshot);
   // versionedProvenance and evidenceCanvas are memoized above (guarded
   // useMemo, same pattern as evidenceModel): a stable projection identity is
@@ -859,13 +860,7 @@ export function ThreadWorkbench({
             </div>
           </div>
           <div class="thread-session-change">
-            <small>AGENT NOW</small>
-            <strong>
-              {projectBrief.activeRuns[0]
-                ? agentRunSummary(project, projectBrief.activeRuns[0])
-                : projectBrief.currentWork[0]?.title ??
-                  "No active work recorded"}
-            </strong>
+            <AgentNowSession project={project} presentation={agentNow} />
           </div>
           <dl class="thread-session-facts">
             <div>
@@ -1330,6 +1325,49 @@ export function ThreadWorkbench({
           </section>
         )}
     </div>
+  );
+}
+
+function AgentNowSession({
+  project,
+  presentation,
+}: {
+  project: EngineeringWorkbenchSnapshot["project"];
+  presentation: ReturnType<typeof buildAgentNowPresentation>;
+}): JSX.Element {
+  if (presentation.kind === "active-run") {
+    return (
+      <>
+        <small>AGENT NOW</small>
+        <strong>{agentRunSummary(project, presentation.run)}</strong>
+      </>
+    );
+  }
+  if (presentation.kind === "current-work") {
+    return (
+      <>
+        <small>AGENT NOW</small>
+        <strong>{presentation.work.title}</strong>
+      </>
+    );
+  }
+  if (presentation.kind === "last-settled-run") {
+    return (
+      <>
+        <small>LAST AGENT RUN</small>
+        <strong>
+          {presentation.run.status.replaceAll("-", " ")} · {formatTime(
+            agentRunRecordedAt(presentation.run),
+          )}
+        </strong>
+      </>
+    );
+  }
+  return (
+    <>
+      <small>AGENT NOW</small>
+      <strong>No active work recorded</strong>
+    </>
   );
 }
 

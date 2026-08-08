@@ -8,7 +8,9 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import {
+  agentRunRecordedAt,
   agentRunSummary,
+  buildAgentNowPresentation,
   buildProjectBrief,
   workOwnerLabel,
   workStatusLabel,
@@ -18,7 +20,7 @@ export function ProjectWorkRibbon({ project }: {
   project: EngineeringProjectSnapshot;
 }): JSX.Element {
   const brief = buildProjectBrief(project);
-  const activeRun = brief.activeRuns[0];
+  const agentNow = buildAgentNowPresentation(project);
   const decisionToReview = project.decisions.find((decision) =>
     decision.status === "proposed"
   );
@@ -29,15 +31,7 @@ export function ProjectWorkRibbon({ project }: {
   return (
     <section class="project-work-ribbon" aria-label="Shared work plan">
       <div class="project-work-ribbon-cell is-agent">
-        <span>AGENT NOW</span>
-        <strong>
-          {activeRun ? workTitle(project, activeRun) : "No active run"}
-        </strong>
-        <small>
-          {activeRun
-            ? agentRunSummary(project, activeRun)
-            : "The project records no current agent execution."}
-        </small>
+        <AgentNowRibbon project={project} presentation={agentNow} />
       </div>
       <div class="project-work-ribbon-cell is-human">
         <span>{decisionToReview ? "AGENT QUESTION" : "DECISION STATUS"}</span>
@@ -60,6 +54,55 @@ export function ProjectWorkRibbon({ project }: {
         <small>{blocker?.description ?? "No open blocker is recorded."}</small>
       </div>
     </section>
+  );
+}
+
+function AgentNowRibbon({
+  project,
+  presentation,
+}: {
+  project: EngineeringProjectSnapshot;
+  presentation: ReturnType<typeof buildAgentNowPresentation>;
+}): JSX.Element {
+  if (presentation.kind === "active-run") {
+    return (
+      <>
+        <span>AGENT NOW</span>
+        <strong>{workTitle(project, presentation.run)}</strong>
+        <small>{agentRunSummary(project, presentation.run)}</small>
+      </>
+    );
+  }
+  if (presentation.kind === "current-work") {
+    return (
+      <>
+        <span>AGENT NOW</span>
+        <strong>{presentation.work.title}</strong>
+        <small>
+          Current work · {workOwnerLabel(presentation.work.owner)}
+        </small>
+      </>
+    );
+  }
+  if (presentation.kind === "last-settled-run") {
+    return (
+      <>
+        <span>LAST AGENT RUN</span>
+        <strong>{workTitle(project, presentation.run)}</strong>
+        <small>
+          {presentation.run.status.replaceAll("-", " ")} · {formatDateTime(
+            agentRunRecordedAt(presentation.run),
+          )}
+        </small>
+      </>
+    );
+  }
+  return (
+    <>
+      <span>AGENT NOW</span>
+      <strong>No active run</strong>
+      <small>The project records no current agent execution.</small>
+    </>
   );
 }
 

@@ -4,6 +4,7 @@ import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   agentRunRecordedAt,
   agentRunSummary,
+  buildAgentNowPresentation,
   buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
@@ -1087,6 +1088,76 @@ Deno.test("the agent panel dates a queued cancellation by its terminal human rec
 
   assertEquals(brief.lastSettledRun?.id, "run-cancelled-later");
   assertEquals(agentRunRecordedAt(cancelled), "2026-08-02T10:00:00.000Z");
+});
+
+Deno.test("agent-now presentation prioritises active work, then current work, then settled history", () => {
+  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const active = {
+    ...base.agentRuns[0]!,
+    id: "run-active",
+    status: "running" as const,
+  };
+  const settled = {
+    ...base.agentRuns[0]!,
+    id: "run-settled",
+    status: "completed" as const,
+    completedAt: "2026-08-02T09:00:00.000Z",
+  };
+  const current = {
+    ...base.workItems[0]!,
+    id: "work-current",
+    status: "in-progress" as const,
+  };
+
+  assertEquals(
+    buildAgentNowPresentation({
+      ...base,
+      agentRuns: [settled, active],
+      workItems: [current],
+    }),
+    { kind: "active-run", run: active },
+  );
+  assertEquals(
+    buildAgentNowPresentation({
+      ...base,
+      agentRuns: [settled],
+      workItems: [current],
+    }),
+    { kind: "current-work", work: current },
+  );
+  assertEquals(
+    buildAgentNowPresentation({ ...base, agentRuns: [settled], workItems: [] }),
+    { kind: "last-settled-run", run: settled },
+  );
+});
+
+Deno.test("agent-now presentation retains a cancelled run as dated history", () => {
+  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const cancelled = {
+    ...base.agentRuns[0]!,
+    id: "run-cancelled",
+    status: "cancelled" as const,
+    completedAt: undefined,
+    cancellation: {
+      rationale: "The reviewed queue entry was retired before agent claim.",
+      cancelledAt: "2026-08-02T10:00:00.000Z",
+      cancelledBy: { id: "human:owner", origin: "human" as const },
+    },
+  };
+
+  const presentation = buildAgentNowPresentation({
+    ...base,
+    agentRuns: [cancelled],
+    workItems: [],
+  });
+
+  assertEquals(presentation.kind, "last-settled-run");
+  if (presentation.kind === "last-settled-run") {
+    assertEquals(
+      agentRunRecordedAt(presentation.run),
+      "2026-08-02T10:00:00.000Z",
+    );
+  }
 });
 
 Deno.test("an in-flight run never counts as the last settled run", () => {

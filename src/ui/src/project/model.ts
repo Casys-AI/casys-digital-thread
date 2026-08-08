@@ -44,6 +44,17 @@ export interface ProjectBrief {
 }
 
 /**
+ * The single, factual priority for compact "agent now" surfaces. A settled
+ * run is explicitly history: it is useful context between executions, never
+ * a claim that an agent is still active.
+ */
+export type AgentNowPresentation =
+  | { readonly kind: "active-run"; readonly run: EngineeringAgentRun }
+  | { readonly kind: "current-work"; readonly work: EngineeringWorkItem }
+  | { readonly kind: "last-settled-run"; readonly run: EngineeringAgentRun }
+  | { readonly kind: "empty" };
+
+/**
  * The operational subset of a project brief for a linked, current evidence
  * snapshot. It never removes immutable work or run history: it prevents only
  * a cancelled attempt with an explicit immutable reconciliation from being
@@ -209,6 +220,22 @@ export function buildProjectBrief(
       blocker.status === "open"
     ),
   };
+}
+
+export function buildAgentNowPresentation(
+  snapshot: EngineeringProjectSnapshot,
+): AgentNowPresentation {
+  const brief = buildProjectBrief(snapshot);
+  const activeRun = brief.activeRuns[0];
+  if (activeRun) return { kind: "active-run", run: activeRun };
+
+  const currentWork = brief.currentWork[0];
+  if (currentWork) return { kind: "current-work", work: currentWork };
+
+  if (brief.lastSettledRun) {
+    return { kind: "last-settled-run", run: brief.lastSettledRun };
+  }
+  return { kind: "empty" };
 }
 
 export function buildCurrentProjectWork(
