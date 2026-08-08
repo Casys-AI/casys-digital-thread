@@ -8,6 +8,10 @@ import type {
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import {
+  DESIGN_PREVIEW_GEOMETRY_OPERATION,
+  DESIGN_WRITE_GEOMETRY_OPERATION,
+} from "../../domain/platform/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
@@ -271,6 +275,54 @@ const OPERATIONS = [
         allowedSourceKinds: ["thread-entity"],
       },
     ],
+  },
+  /**
+   * Geometry preview — planning-only until `project_geometry_preview` MCP tool
+   * is wired as its executor.  The tool is a pure draft builder; it must NOT
+   * publish to the ThreadSnapshot (D2 decision).
+   */
+  {
+    id: DESIGN_PREVIEW_GEOMETRY_OPERATION.id,
+    version: DESIGN_PREVIEW_GEOMETRY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Preview the reviewed geometry script",
+    description:
+      "Execute the human-approved build123d script against the current architecture basis, " +
+      "materialize a draft with binary assets, and propose a geometry MRTR for human review. " +
+      "Does not publish to the ThreadSnapshot — the draft is a workspace artefact only.",
+    workItemKind: "design",
+    riskClass: "low",
+    execution: "planning-only",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Geometry seal — trusted executor `design.write-geometry@1`.
+   *
+   * Promotes exact draft bytes (verified against operator-signed SHA-256 hashes)
+   * into the canonical ThreadSnapshot.  No provider re-execution; idempotent CAS
+   * writes only.  Requires a human-approved MRTR decision (D1 gate).
+   */
+  {
+    id: DESIGN_WRITE_GEOMETRY_OPERATION.id,
+    version: DESIGN_WRITE_GEOMETRY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the human-approved geometry into the evidence thread",
+    description:
+      "Verify the draft binary assets against the operator-signed hashes, promote them to " +
+      "the canonical geometry capture, and extend the ThreadSnapshot with a new CAD artifact. " +
+      "The exact bytes are sealed by SHA-256; no provider re-execution occurs (D1).",
+    workItemKind: "design",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
   },
   // CM-01 is the static golden-path reference for future oracle onboarding.
   // These descriptors are reviewed planning data only until a server-owned

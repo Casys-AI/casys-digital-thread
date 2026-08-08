@@ -123,6 +123,7 @@ if (manifest.schemaVersion !== "1.0" || manifest.version !== 1) {
 const expectedServerIds = [
   "syson",
   "build123d",
+  "build123d-sandbox",
   "calculix",
   "modelica",
   "erpnext",

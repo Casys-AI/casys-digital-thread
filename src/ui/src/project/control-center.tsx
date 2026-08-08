@@ -1,10 +1,19 @@
 /** @jsxImportSource preact */
 
 import type { JSX } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import type {
   EngineeringDecision,
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";
+import {
+  type GeometryDecisionValid,
+  parseGeometryDecisionView,
+} from "../thread/geometry-decision-model.ts";
 
 export interface ProjectReviewProps {
   readonly project: EngineeringProjectSnapshot;
@@ -227,6 +236,17 @@ function DecisionRecord({
   );
   const proposal = decision.proposal;
 
+  /**
+   * WHY TRY TO PARSE — every proposal's parameter list is flat key-value pairs.
+   * `parseGeometryDecisionView` returns `{ kind: "invalid" }` for any proposal
+   * that doesn't carry geometry keys, so non-geometry decisions are unaffected.
+   * Only a `{ kind: "valid" }` result triggers the draft viewer.
+   */
+  const geoView = proposal?.parameters.length
+    ? parseGeometryDecisionView(proposal.parameters)
+    : null;
+  const geoValid = geoView?.kind === "valid" ? geoView : null;
+
   return (
     <article
       class="decision-review-notification"
@@ -245,6 +265,7 @@ function DecisionRecord({
         {proposal?.summary ??
           "The recorded recommendation is available in the project activity."}
       </p>
+      {geoValid && <GeometryDraftPreview view={geoValid} />}
       <dl class="decision-notification-scope">
         <div>
           <dt>Evidence</dt>
@@ -279,6 +300,261 @@ function DecisionRecord({
         The cockpit will update when the shared project record changes.
       </small>
     </article>
+  );
+}
+
+// ── Geometry draft viewer ─────────────────────────────────────────────────────
+
+/**
+ * WHY THIS COMPONENT EXISTS — the human must see the draft geometry before
+ * signing the MRTR that authorises `design.write-geometry@1` to seal it.
+ * "Signing what you have seen" is the contract.  The viewer is deliberately
+ * labelled DRAFT to enforce contractual vocabulary: this is not a canonical
+ * evidence artifact.
+ */
+function GeometryDraftPreview(
+  { view }: { view: GeometryDecisionValid },
+): JSX.Element {
+  const format = view.primaryAssetFormat;
+  const path = view.primaryAssetPreviewPath;
+
+  if (!path || !format) {
+    return (
+      <p class="geometry-draft-no-preview">
+        No previewable geometry asset in this draft (
+        {view.assemblyFiles.length} file
+        {view.assemblyFiles.length === 1 ? "" : "s"} present).
+      </p>
+    );
+  }
+
+  if (format === "step") {
+    return (
+      <div class="geometry-draft-viewer geometry-draft-viewer--text">
+        <p class="geometry-draft-label">DRAFT · GEOMETRY PROPOSAL</p>
+        <p>
+          STEP format — no in-browser preview. Discuss with the agent before
+          approving.
+        </p>
+        <code class="geometry-draft-digest">{view.draftDigest}</code>
+      </div>
+    );
+  }
+
+  return (
+    <div class="geometry-draft-viewer">
+      <p class="geometry-draft-label">
+        DRAFT · GEOMETRY PROPOSAL · {format.toUpperCase()} · NOT CANONICAL
+      </p>
+      {format === "gltf"
+        ? <GltfDraftCanvas url={path} />
+        : <StlDraftCanvas url={path} />}
+      <footer class="geometry-draft-footer">
+        <small>
+          Assembly files: {view.assemblyFiles.length} · Components:{" "}
+          {view.components.length} · Unit: {view.unitSystem}
+        </small>
+        <code class="geometry-draft-digest">{view.draftDigest}</code>
+      </footer>
+    </div>
+  );
+}
+
+function StlDraftCanvas({ url }: { url: string }): JSX.Element {
+  const host = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    const container = host.current;
+    if (!container) return;
+    let disposed = false;
+    let frame = 0;
+    let geometry: THREE.BufferGeometry | undefined;
+    let material: THREE.MeshStandardMaterial | undefined;
+    setState("loading");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1c1e);
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.replaceChildren(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.0));
+    const key = new THREE.DirectionalLight(0xffe8cc, 3.2);
+    key.position.set(180, 220, 260);
+    scene.add(key);
+
+    const resize = () => {
+      const w = Math.max(container.clientWidth, 1);
+      const h = Math.max(container.clientHeight, 1);
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+    resize();
+
+    new STLLoader().load(
+      url,
+      (loaded) => {
+        if (disposed) {
+          loaded.dispose();
+          return;
+        }
+        geometry = loaded;
+        geometry.computeVertexNormals();
+        geometry.center();
+        geometry.computeBoundingSphere();
+        material = new THREE.MeshStandardMaterial({
+          color: 0x4a9eff,
+          metalness: 0.2,
+          roughness: 0.65,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = -Math.PI / 2;
+        scene.add(mesh);
+        const radius = Math.max(geometry.boundingSphere?.radius ?? 50, 1);
+        camera.near = Math.max(radius / 100, 0.1);
+        camera.far = radius * 30;
+        camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
+        camera.updateProjectionMatrix();
+        controls.target.set(0, 0, 0);
+        controls.update();
+        setState("ready");
+      },
+      undefined,
+      () => !disposed && setState("error"),
+    );
+
+    const render = () => {
+      controls.update();
+      renderer.render(scene, camera);
+      frame = requestAnimationFrame(render);
+    };
+    render();
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      controls.dispose();
+      geometry?.dispose();
+      material?.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, [url]);
+
+  return (
+    <div class="geometry-draft-canvas-shell">
+      <div class="geometry-draft-canvas" ref={host} />
+      <div class="geometry-draft-canvas-state" data-state={state}>
+        {state === "loading"
+          ? "Loading draft mesh…"
+          : state === "error"
+          ? "Draft mesh unavailable"
+          : "Drag to orbit · scroll to zoom"}
+      </div>
+    </div>
+  );
+}
+
+function GltfDraftCanvas({ url }: { url: string }): JSX.Element {
+  const host = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    const container = host.current;
+    if (!container) return;
+    let disposed = false;
+    let frame = 0;
+    setState("loading");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1c1e);
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.replaceChildren(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.0));
+    const key = new THREE.DirectionalLight(0xffe8cc, 3.2);
+    key.position.set(180, 220, 260);
+    scene.add(key);
+
+    const resize = () => {
+      const w = Math.max(container.clientWidth, 1);
+      const h = Math.max(container.clientHeight, 1);
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+    resize();
+
+    new GLTFLoader().load(
+      url,
+      (gltf) => {
+        if (disposed) return;
+        scene.add(gltf.scene);
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const radius = Math.max(size.length() / 2, 1);
+        gltf.scene.position.sub(center);
+        camera.near = Math.max(radius / 100, 0.1);
+        camera.far = radius * 30;
+        camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
+        camera.updateProjectionMatrix();
+        controls.target.set(0, 0, 0);
+        controls.update();
+        setState("ready");
+      },
+      undefined,
+      () => !disposed && setState("error"),
+    );
+
+    const render = () => {
+      controls.update();
+      renderer.render(scene, camera);
+      frame = requestAnimationFrame(render);
+    };
+    render();
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      controls.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, [url]);
+
+  return (
+    <div class="geometry-draft-canvas-shell">
+      <div class="geometry-draft-canvas" ref={host} />
+      <div class="geometry-draft-canvas-state" data-state={state}>
+        {state === "loading"
+          ? "Loading draft model…"
+          : state === "error"
+          ? "Draft model unavailable"
+          : "Drag to orbit · scroll to zoom"}
+      </div>
+    </div>
   );
 }
 

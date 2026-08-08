@@ -164,6 +164,24 @@ Deno.test("native Workbench keeps its BFF read-only and frame-protected", async 
   );
 });
 
+Deno.test("native Workbench refuses mutated canonical content-addressed bytes", async () => {
+  const digest = "a".repeat(64);
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    assetReader: () => Promise.resolve(new TextEncoder().encode("mutated")),
+  });
+
+  const response = await handler(
+    new Request(`http://localhost/api/thread/assets/${digest}.gltf`),
+  );
+  assertEquals(response.status, 404);
+});
+
 Deno.test("native Workbench reports an unknown selected project without substituting another one", async () => {
   const handler = createNativeWorkbenchHandler({
     store: new EmptyThreadStore(),

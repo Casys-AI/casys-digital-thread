@@ -24,6 +24,8 @@ import {
   CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  GEOMETRY_CAPTURE_DESCRIPTOR,
+  GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
@@ -84,6 +86,10 @@ import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   ModelWriteArchitectureRunExecutor,
 } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
+import {
+  DESIGN_WRITE_GEOMETRY_OPERATION,
+  DesignWriteGeometryRunExecutor,
+} from "./src/adapters/executors/design-write-geometry-run-executor.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
@@ -235,6 +241,8 @@ const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
   "state/local/inspection-drone-v4-part-definitions-publications";
 const DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY = "state/local/architecture-captures";
 const DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY = "state/local/architecture-attempts";
+const DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY = "state/local/geometry-draft-captures";
+const DEFAULT_GEOMETRY_CAPTURE_DIRECTORY = "state/local/geometry-captures";
 const DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY = "state/local/requirements-captures";
 const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempts";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
@@ -413,6 +421,9 @@ export async function createConsoleServer(
   const syson = manifest.servers.find((server) => server.id === "syson");
   const erpnext = manifest.servers.find((server) => server.id === "erpnext");
   const build123d = manifest.servers.find((server) => server.id === "build123d");
+  const build123dSandbox = manifest.servers.find((server) =>
+    server.id === "build123d-sandbox"
+  );
   const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
@@ -436,6 +447,7 @@ export async function createConsoleServer(
       modelica?.mcpUrl,
       erpnext?.mcpUrl,
       build123d?.mcpUrl,
+      build123dSandbox?.mcpUrl,
       calculix?.mcpUrl,
       dfm?.mcpUrl,
       prusaslicer?.mcpUrl,
@@ -506,6 +518,7 @@ async function createProjectControl(
   modelicaMcpUrl?: string,
   erpnextMcpUrl?: string,
   build123dMcpUrl?: string,
+  build123dSandboxMcpUrl?: string,
   calculixMcpUrl?: string,
   dfmMcpUrl?: string,
   prusaslicerMcpUrl?: string,
@@ -596,6 +609,31 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  /**
+   * The write-geometry executor promotes exact bytes from a human-signed draft
+   * into the evidence thread.  It makes no provider calls — the draft and its
+   * binary assets must already be present in the draft stores before the run.
+   */
+  const genericDesignWriteGeometry = new DesignWriteGeometryRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    architectureCaptures: new FileCaptureStore({
+      ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+      directory: options.architectureCaptureDirectory ??
+        DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
+    }),
+    geometryDraftCaptures: new FileCaptureStore({
+      ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+      directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+    }),
+    geometryCaptures: new FileCaptureStore({
+      ...GEOMETRY_CAPTURE_DESCRIPTOR,
+      directory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+    }),
+    lease,
+    now: () => new Date().toISOString(),
+  });
   const genericModelWriteRequirements = sysonMcpUrl
     ? new ModelWriteRequirementsRunExecutor({
       projects: runtime.projects,
@@ -1141,6 +1179,26 @@ async function createProjectControl(
     control: {
       projects: runtime.projects,
       commands: runtime.commands,
+      // WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — preview executes a
+      // geometry program PROPOSED BY AN AGENT. A fingerprint proves byte identity
+      // after sealing, never causal provenance: a write reaching the shared
+      // evidence volume before its producer hashes it would make the wrong hash
+      // the expected one. The sandbox owns a private export volume, so a proposed
+      // program can never touch evidence bytes. No sandbox entry in the fleet
+      // manifest ⇒ no preview tool at all, never a ghost that fails when called.
+      geometryPreview: build123dSandboxMcpUrl
+        ? {
+          client: new HttpMcpToolClient({
+            mcpUrl: build123dSandboxMcpUrl,
+            timeoutMs: 120_000,
+          }),
+          draftCaptures: new FileCaptureStore({
+            ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+            directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+          }),
+          build123dService: "mcp-build123d-sandbox",
+        }
+        : undefined,
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
         baseline,
@@ -1164,6 +1222,10 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted generic model.write-architecture@1 executor " +
               "configured for this run (SysON provider is required).",
+          },
+          {
+            operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+            executor: genericDesignWriteGeometry,
           },
           {
             operation: MODEL_WRITE_REQUIREMENTS_OPERATION,

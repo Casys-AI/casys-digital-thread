@@ -14,6 +14,7 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
   assertEquals(manifest.servers.map((server) => server.id), [
     "syson",
     "build123d",
+    "build123d-sandbox",
     "calculix",
     "modelica",
     "erpnext",

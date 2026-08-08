@@ -111,6 +111,42 @@
       }
     },
     {
+      "id": "build123d-sandbox",
+      "displayName": "build123d (sandbox)",
+      "role": "Sandboxed CAD execution for agent-proposed geometry programs (preview only)",
+      "serviceName": "mcp-build123d-sandbox",
+      "transport": "streamable-http",
+      "mcpUrl": "http://127.0.0.1:3024/mcp",
+      "healthUrl": "http://127.0.0.1:3024/health",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01",
+      "required": false,
+      "expectedTools": [
+        "build123d_execute",
+        "build123d_export"
+      ],
+      "expectedViews": [
+        "ui://mcp-build123d/results-viewer",
+        "ui://mcp-build123d/artifact-helper-viewer"
+      ],
+      "network": {
+        "exposure": "loopback-only",
+        "composeNetwork": "chain",
+        "sharedVolumes": [
+          "build123d-sandbox-exports:/exports"
+        ],
+        "upstreams": []
+      },
+      "trust": {
+        "level": "first-party-local-privileged",
+        "executesArbitraryCode": true,
+        "notes": [
+          "Runs geometry programs proposed by an agent and signed by a human after visual review.",
+          "Private export volume: its output never reaches the shared evidence volume.",
+          "The server lifts bytes out with docker compose cp and fail-closed SHA-256 verification."
+        ]
+      }
+    },
+    {
       "id": "calculix",
       "displayName": "CalculiX",
       "role": "STEP meshing and linear static finite-element solve",

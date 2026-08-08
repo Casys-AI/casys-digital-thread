@@ -374,3 +374,104 @@
     width: 100%;
   }
 }
+
+/* Geometry draft viewer — inside a proposed decision notification.
+   WHY DISTINCT STYLE — the DRAFT label and dark canvas are contractual:
+   this is not a canonical evidence artifact.  A viewer that looks identical
+   to the Product surface would create ambiguity about what was reviewed. */
+
+.geometry-draft-viewer {
+  margin: var(--space-12) 0;
+  border: 1px dashed rgba(250, 180, 60, 0.55);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #10131a;
+}
+
+.geometry-draft-viewer--text {
+  padding: var(--space-12) var(--space-14);
+  background: #1a1c1e;
+}
+
+.geometry-draft-label {
+  padding: var(--space-6) var(--space-12);
+  color: #fab43c;
+  font-size: var(--text-3xs, 0.62rem);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  background: rgba(250, 180, 60, 0.1);
+}
+
+.geometry-draft-no-preview {
+  margin: var(--space-12) 0;
+  padding: var(--space-10) var(--space-12);
+  border: 1px dashed rgba(250, 180, 60, 0.3);
+  border-radius: 6px;
+  color: var(--thread-muted, #888);
+  font-size: var(--text-2xs, 0.72rem);
+}
+
+.geometry-draft-canvas-shell {
+  position: relative;
+  height: 240px;
+}
+
+.geometry-draft-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.geometry-draft-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.geometry-draft-canvas-state {
+  position: absolute;
+  right: var(--space-10);
+  bottom: var(--space-8);
+  color: rgba(255, 255, 255, 0.45);
+  font-size: var(--text-3xs, 0.62rem);
+  pointer-events: none;
+}
+
+.geometry-draft-canvas-state[data-state="loading"],
+.geometry-draft-canvas-state[data-state="error"] {
+  top: 50%;
+  right: unset;
+  bottom: unset;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.geometry-draft-canvas-state[data-state="error"] {
+  color: rgba(255, 100, 80, 0.75);
+}
+
+.geometry-draft-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-12);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.geometry-draft-footer small {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: var(--text-3xs, 0.62rem);
+}
+
+.geometry-draft-digest {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+  color: rgba(255, 255, 255, 0.3);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+}

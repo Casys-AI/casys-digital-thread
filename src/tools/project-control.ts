@@ -1,6 +1,16 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
+import type { McpToolClient } from "../adapters/mcp/http-mcp-tool-client.ts";
+import type { FileCaptureStore } from "../adapters/captures/file-capture-store.ts";
+import { captureGeometryDraft } from "../adapters/captures/geometry-draft-capture.ts";
+import {
+  encodeGeometryDecisionParameters,
+  GEOMETRY_MANIFEST_SCHEMA,
+  type GeometryComponentBinding,
+  type GeometryExportFormat,
+  type GeometryManifest,
+} from "../domain/platform/geometry-proposal.ts";
 import type {
   EngineeringBasisRef,
   EngineeringOperationInputBinding,
@@ -178,6 +188,20 @@ export interface ProjectControlToolDependencies {
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
   runExecutor?: Pick<RegisteredProjectRunExecutor, "execute">;
+  /**
+   * build123d-backed geometry preview context.  Absent when the build123d
+   * provider is not configured; the preview tool returns "unavailable" in
+   * that case (D2 — drafts never appear in ThreadSnapshot).
+   */
+  geometryPreview?: {
+    readonly client: McpToolClient;
+    readonly draftCaptures: FileCaptureStore<"geometry-draft">;
+    /**
+     * Docker Compose service name that owns the /exports volume.
+     * Server-fixed: never supplied by an agent.  Defaults to "mcp-build123d".
+     */
+    readonly build123dService?: string;
+  };
 }
 
 export function registerProjectControlTools(
@@ -359,6 +383,176 @@ export function registerProjectControlTools(
       );
     },
   );
+
+  /**
+   * WHY CONDITIONAL — `project_geometry_preview` depends on the build123d MCP
+   * provider.  When the provider is not configured (no `build123dMcpUrl` in
+   * the server options), advertising the tool would create a "ghost" that
+   * always fails: confusing for discovery and inconsistent with AX Principle 1
+   * (No Verb Overlap) and 7 (Explicit Over Implicit).  Not registering it at
+   * all is the honest contract — agents learn the capability is absent by
+   * inspecting `tools/list`, not by calling and receiving an error.
+   */
+
+  // Hard bound on components list length.
+  // WHY 32 — each component is metadata stored in the draft record and manifest.
+  // Unbounded lists bloat the capture JSON and, once per-part exports are added
+  // in v2, would multiply the provider dispatch time proportionally.  32 covers
+  // any foreseeable sub-system decomposition at concept-design stage.
+  const MAX_GEOMETRY_COMPONENTS_V1 = 32;
+
+  // Regex for a valid component usageName slug.
+  // WHY STRICT — usageName is stored in the manifest and the draft capture, and
+  // will be used as part of server-fixed export names in v2.  Restricting to
+  // [a-zA-Z][a-zA-Z0-9_-]* now prevents accumulation of names that would be
+  // impossible to use safely later, and defends against injection if the
+  // restriction is ever relaxed without a review.
+  const USAGE_NAME_SLUG = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+
+  if (dependencies.geometryPreview) {
+    const geo = dependencies.geometryPreview;
+    app.registerTool(projectGeometryPreviewTool, async (args) => {
+      const script = requiredString(args.script, "script");
+      const architectureSnapshotId = requiredString(
+        args.architectureSnapshotId,
+        "architectureSnapshotId",
+      );
+      const architectureSnapshotRevision = positiveInteger(
+        args.architectureSnapshotRevision,
+        "architectureSnapshotRevision",
+      );
+      const architectureArtifactDigest = hex64(
+        args.architectureArtifactDigest,
+        "architectureArtifactDigest",
+      );
+
+      const rawFormats = Array.isArray(args.exportFormats)
+        ? args.exportFormats
+        : ["gltf"];
+      const exportFormats = rawFormats.map((f: unknown) => {
+        if (f !== "step" && f !== "gltf" && f !== "stl") {
+          throw new TypeError(`exportFormats: unknown format ${JSON.stringify(f)}`);
+        }
+        return f as GeometryExportFormat;
+      });
+
+      const rawComponents: unknown[] = Array.isArray(args.components)
+        ? args.components
+        : [];
+      if (rawComponents.length > MAX_GEOMETRY_COMPONENTS_V1) {
+        throw new TypeError(
+          `components must not exceed ${MAX_GEOMETRY_COMPONENTS_V1} entries ` +
+            `(got ${rawComponents.length}).`,
+        );
+      }
+      const components: GeometryComponentBinding[] = rawComponents.map(
+        (c: unknown, i: number) => {
+          if (!c || typeof c !== "object" || Array.isArray(c)) {
+            throw new TypeError(`components[${i}] must be an object`);
+          }
+          const obj = c as Record<string, unknown>;
+          const usageName = requiredString(obj.usageName, `components[${i}].usageName`);
+          if (!USAGE_NAME_SLUG.test(usageName)) {
+            throw new TypeError(
+              `components[${i}].usageName '${usageName}' does not match the ` +
+                `required slug pattern [a-zA-Z][a-zA-Z0-9_-]{0,63}.`,
+            );
+          }
+          return {
+            elementId: requiredString(obj.elementId, `components[${i}].elementId`),
+            usageName,
+            label: requiredString(obj.label, `components[${i}].label`),
+          };
+        },
+      );
+      // Uniqueness check: usageName must be distinct within the list.
+      const seenUsageNames = new Set<string>();
+      for (let i = 0; i < components.length; i++) {
+        const name = components[i]!.usageName;
+        if (seenUsageNames.has(name)) {
+          throw new TypeError(
+            `components contains duplicate usageName '${name}' at index ${i}.`,
+          );
+        }
+        seenUsageNames.add(name);
+      }
+
+      // Build a manifest without scriptHash/artifactHashes — the draft-capture
+      // layer computes those after the build123d_export call.
+      const manifest: GeometryManifest = {
+        schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+        architectureBasis: {
+          snapshotId: architectureSnapshotId,
+          revision: architectureSnapshotRevision,
+          artifactFingerprint: {
+            algorithm: "sha256",
+            digest: architectureArtifactDigest,
+          },
+        },
+        components,
+        unitSystem: "mm",
+        exportFormats,
+      };
+
+      const draft = await captureGeometryDraft(
+        geo.client,
+        { script, manifest },
+        geo.draftCaptures,
+        { build123dService: geo.build123dService ?? "mcp-build123d" },
+      );
+
+      // Build the completed manifest for the MRTR proposal.
+      const completedManifest: GeometryManifest = {
+        ...manifest,
+        scriptHash: draft.scriptHash,
+        artifactHashes: {
+          assemblyFiles: draft.assemblyFiles.map((f) => ({
+            format: f.format,
+            name: f.name,
+            fingerprint: f.fingerprint,
+          })),
+          partMeshes: draft.partMeshes.map((m) => ({
+            semanticKey: m.usageName,
+            name: m.name,
+            fingerprint: m.fingerprint,
+          })),
+        },
+      };
+
+      const decisionParams = encodeGeometryDecisionParameters(
+        draft.fingerprint.digest,
+        completedManifest,
+      );
+
+      return {
+        content: [{
+          type: "text" as const,
+          text:
+            `Geometry preview completed. Draft digest: ${draft.fingerprint.digest}.\n` +
+            `Assembly files: ${draft.assemblyFiles.length}, ` +
+            `part meshes: ${draft.partMeshes.length}.\n` +
+            `The human must approve the MRTR decision before the geometry can be sealed ` +
+            `into the evidence thread (design.write-geometry@1).`,
+        }],
+        structuredContent: {
+          draftDigest: draft.fingerprint.digest,
+          assemblyFiles: draft.assemblyFiles.map((f) => ({
+            format: f.format,
+            name: f.name,
+            bytes: f.bytes,
+            digest: f.fingerprint.digest,
+          })),
+          partMeshes: draft.partMeshes.map((m) => ({
+            usageName: m.usageName,
+            name: m.name,
+            bytes: m.bytes,
+            digest: m.fingerprint.digest,
+          })),
+          decisionParameters: decisionParams,
+        },
+      };
+    });
+  }
 }
 
 const projectSnapshotTool: MCPTool = {
@@ -702,6 +896,101 @@ const projectWorkItemReconcileSuccessorTool: MCPTool = {
   ]),
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: PROJECT_MUTATION_ANNOTATIONS,
+};
+
+/**
+ * Planning-only tool (D2 decision).
+ *
+ * WHY PLANNING-ONLY — the preview run calls build123d_export before any
+ * human MRTR decision.  The result is saved as a draft (never in
+ * ThreadSnapshot) so the human can review the exact bytes they are about to
+ * approve.  The `design.write-geometry@1` executor later promotes only the
+ * bytes that match the human-signed draftDigest.
+ */
+const projectGeometryPreviewTool: MCPTool = {
+  name: "project_geometry_preview",
+  description:
+    "Execute a build123d geometry script and save the result as a draft for human review. " +
+    "Returns a draftDigest and the MRTR decision parameters that the agent should present " +
+    "for human approval before calling design.write-geometry@1. " +
+    "Drafts are NEVER written to the evidence ThreadSnapshot (D2).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      script: {
+        type: "string",
+        minLength: 1,
+        description:
+          "Python build123d script. The variable `result` must assign the assembly shape. " +
+          "The script is validated (D4) before dispatch.",
+      },
+      architectureSnapshotId: {
+        type: "string",
+        minLength: 1,
+        description:
+          "ThreadSnapshot ID that carries the SysML architecture artifact (D5).",
+      },
+      architectureSnapshotRevision: {
+        type: "integer",
+        minimum: 1,
+        description: "Revision of the architecture ThreadSnapshot.",
+      },
+      architectureArtifactDigest: {
+        type: "string",
+        pattern: "^[a-f0-9]{64}$",
+        description:
+          "SHA-256 digest of the architecture artifact in the basis snapshot.",
+      },
+      exportFormats: {
+        type: "array",
+        items: { type: "string", enum: ["step", "gltf", "stl"] },
+        minItems: 1,
+        description: 'Export formats for the assembly call (e.g. ["gltf"]).',
+      },
+      components: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            elementId: {
+              type: "string",
+              minLength: 1,
+              description: "SysON element UUID.",
+            },
+            usageName: {
+              type: "string",
+              minLength: 1,
+              description: "SysML part-usage label (e.g. dripTray).",
+            },
+            label: {
+              type: "string",
+              minLength: 1,
+              description: "Human-readable display label.",
+            },
+          },
+          required: ["elementId", "usageName", "label"],
+          additionalProperties: false,
+        },
+        description:
+          "Optional part-usage bindings. Each entry triggers a per-component STL export.",
+      },
+    },
+    required: [
+      "script",
+      "architectureSnapshotId",
+      "architectureSnapshotRevision",
+      "architectureArtifactDigest",
+      "exportFormats",
+    ],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
 };
 
 async function handleDecisionElicitation(
@@ -1465,6 +1754,14 @@ function positiveInteger(value: unknown, name: string): number {
     throw new TypeError(`${name} must be a positive safe integer`);
   }
   return value as number;
+}
+
+function hex64(value: unknown, name: string): string {
+  const s = requiredString(value, name);
+  if (!/^[a-f0-9]{64}$/.test(s)) {
+    throw new TypeError(`${name} must be a 64-char lowercase hex SHA-256`);
+  }
+  return s;
 }
 
 function isoDateTime(value: unknown, name: string): string {

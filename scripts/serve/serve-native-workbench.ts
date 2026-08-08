@@ -18,6 +18,7 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/captures/file-capture-store.ts";
+import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/captures/geometry-draft-capture.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
 import {
@@ -201,6 +202,10 @@ export function createNativeWorkbenchHandler(
     if (url.pathname.startsWith("/api/thread/assets/")) {
       if (request.method !== "GET") return methodNotAllowed();
       return serveThreadAsset(url.pathname, options.assetReader);
+    }
+    if (url.pathname.startsWith("/api/draft-assets/")) {
+      if (request.method !== "GET") return methodNotAllowed();
+      return serveDraftAsset(url.pathname);
     }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -585,14 +590,65 @@ async function serveThreadAsset(
   } catch {
     return new Response("Invalid asset path", { status: 400 });
   }
-  if (!/^[A-Za-z0-9._-]+$/.test(filename) || !filename.endsWith(".stl")) {
+  if (!/^[A-Za-z0-9._-]+$/.test(filename)) {
     return new Response("Invalid asset path", { status: 400 });
   }
   const bytes = await reader(filename);
   if (!bytes) return new Response("Not found", { status: 404 });
+  const addressed = /^([a-f0-9]{64})\.(step|gltf|stl)$/.exec(filename);
+  if (addressed && await sha256Hex(bytes) !== addressed[1]) {
+    return new Response("Not found", { status: 404 });
+  }
   return new Response(Uint8Array.from(bytes).buffer, {
     headers: {
-      "Content-Type": "model/stl",
+      "Content-Type": filename.endsWith(".step")
+        ? "model/step"
+        : filename.endsWith(".gltf")
+        ? "model/gltf+json"
+        : "model/stl",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Serve a geometry draft binary asset by its SHA-256 digest.
+ *
+ * WHY SEPARATE FROM /api/thread/assets — draft assets are keyed by digest
+ * (content-addressed) and may be any format (GLB, STEP, STL).  They are
+ * never promoted into the ThreadSnapshot until the write executor seals them.
+ * This endpoint allows the Workbench preview to render a draft without
+ * treating it as evidence.
+ *
+ * The path segment after the prefix is the bare hex digest.  Only
+ * well-formed 64-char hex digests are accepted; any other path returns 400.
+ */
+async function serveDraftAsset(pathname: string): Promise<Response> {
+  const digest = pathname.slice("/api/draft-assets/".length);
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    return new Response("Invalid draft asset digest", { status: 400 });
+  }
+  const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${digest}`;
+  let bytes: Uint8Array;
+  try {
+    bytes = await Deno.readFile(localPath);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return new Response("Draft asset not found", { status: 404 });
+    }
+    throw error;
+  }
+  return new Response(Uint8Array.from(bytes).buffer, {
+    headers: {
+      "Content-Type": "application/octet-stream",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     },
