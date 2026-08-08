@@ -14,6 +14,7 @@ import type {
   EngineeringWorkItem,
 } from "./engineering-project.ts";
 import { queuedRunCancellationSummary } from "./engineering-project.ts";
+import { deterministicJson } from "../kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,
   type EngineeringProjectFraming,
@@ -2196,6 +2197,43 @@ function validateWorkItemReconciliationInvariant(
       `${path}.reconciliation.successorRunId`,
       "must retain the same exact evidence on its completed work item",
     );
+  }
+  // Mirror the command-service equivalence guard: when the failed work item
+  // declared a registered operation, the successor must carry the same operation
+  // (id, version, and canonicalised bindings). Checked on every replay.
+  if (item.operation !== undefined && successorWork !== undefined) {
+    if (
+      successorWork.operation?.id !== item.operation.id ||
+      successorWork.operation?.version !== item.operation.version ||
+      deterministicJson(successorWork.operation?.bindings ?? []) !==
+        deterministicJson(item.operation.bindings)
+    ) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.reconciliation.successorRunId`,
+        "successor work item must carry the identical registered operation (id, version, bindings)",
+      );
+    }
+  }
+  // Mirror the command-service lineage guard: the successor run must have been
+  // executed against a snapshot declared in this project's thread lineage.
+  {
+    const lineageIds = new Set(project.threadSnapshots.map((s) => s.snapshotId));
+    const successorBaseId = successor.baseSnapshot?.snapshotId ??
+      (successor.basis?.kind === "thread-snapshot"
+        ? successor.basis.snapshotId
+        : successor.basis?.kind === "approved-brief"
+        ? successor.basis.projectSnapshotId
+        : undefined);
+    if (!successorBaseId || !lineageIds.has(successorBaseId)) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.reconciliation.successorRunId`,
+        "successor run base snapshot must descend from this project's declared thread lineage",
+      );
+    }
   }
   if (Date.parse(reconciliation.reconciledAt) < Date.parse(successor.completedAt!)) {
     issue(

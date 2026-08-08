@@ -25,7 +25,11 @@ import {
   queuedRunCancellationSummary,
 } from "./engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
-import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 import { currentProjectAnswer } from "./project-brief.ts";
 
@@ -1100,6 +1104,42 @@ export class EngineeringProjectCommandService {
           invalidTransition(
             `Completed successor run ${successor.id} has inconsistent work-item evidence.`,
           );
+        }
+        // Equivalence guard: when the failed work item declares a registered
+        // operation, the successor must carry the identical operation (id, version
+        // and canonicalised bindings). This prevents closing a seed work item with
+        // the evidence of a structurally different operation.
+        if (failedWork.operation !== undefined) {
+          if (
+            successorWork.operation?.id !== failedWork.operation.id ||
+            successorWork.operation?.version !== failedWork.operation.version ||
+            deterministicJson(successorWork.operation.bindings) !==
+              deterministicJson(failedWork.operation.bindings)
+          ) {
+            invalidInput(
+              `Successor work item ${successorWork.id} does not carry the same operation ` +
+                `(id, version, bindings) as the failed work item ${failedWork.id}. ` +
+                `Use the exact registered operation the failed work was supposed to execute.`,
+            );
+          }
+        }
+        // Lineage guard: the successor run must have been executed against a snapshot
+        // that belongs to this project's declared thread lineage. This prevents
+        // cross-project runs from being used as reconciliation successors.
+        {
+          const lineageIds = new Set(draft.threadSnapshots.map((s) => s.snapshotId));
+          const successorBaseId = successor.baseSnapshot?.snapshotId ??
+            (successor.basis?.kind === "thread-snapshot"
+              ? successor.basis.snapshotId
+              : successor.basis?.kind === "approved-brief"
+              ? successor.basis.projectSnapshotId
+              : undefined);
+          if (!successorBaseId || !lineageIds.has(successorBaseId)) {
+            invalidInput(
+              `Successor run ${successor.id} was not executed against this project's ` +
+                "declared thread lineage.",
+            );
+          }
         }
         if (command.successorSnapshot !== undefined) {
           addThreadSnapshot(draft, command.successorSnapshot);
