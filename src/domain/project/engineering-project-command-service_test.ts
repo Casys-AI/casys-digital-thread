@@ -175,6 +175,115 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "direct reconciliation rejects a declared but non-head successor run snapshot",
+  async () => {
+    // Push a second snapshot onto the project so the original r5 is no longer
+    // the head. assertDeclaredSnapshot must pass (r5 is declared), but the
+    // head-position guard must fire (r6 is at(-1), not r5).
+    const base = await reconciliableProject();
+    const mutable = structuredClone(base) as Mutable<EngineeringProjectSnapshot>;
+    (mutable.threadSnapshots as EngineeringThreadSnapshotRef[]).push({
+      snapshotId: "coffee-machine-cm01:r6:guard-test-head",
+      revision: 6,
+      subjectId: "coffee-machine-cm01",
+    });
+    const project = validateEngineeringProjectSnapshot(mutable);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    // r5 is at index [0]; r6 is at index [1] = at(-1). The guard checks at(-1).
+    const declaredButNotHead = project.threadSnapshots[0]!;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("head-guard-declared-stale", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: declaredButNotHead,
+          successorEvidenceRefs: evidence,
+          rationale: "Explicitly exercises the head-position guard.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "direct reconciliation closes a work item whose run was cancelled before any agent claim",
+  async () => {
+    // The DL-01 case: a work item's run was cancelled (human, before any claim)
+    // because the executor rejected the planning lineage. A new successor run
+    // independently completed. The cancelled run is a valid "failed" anchor because
+    // no provider was ever contacted (no claimedAt, no startedAt).
+    const base = await reconciliableProject();
+    const store = new MemoryRevisionStore(base);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(base, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    // Queue a new run for the work item and immediately cancel it before any claim.
+    const queued = await service.queueRun(AGENT, {
+      ...context("queue-r2b-pre-claim-cancel", base.revision),
+      runId: "run:mechanical-r2b-pre-claim",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Second attempt that will be cancelled before any claim.",
+      baseSnapshot: base.threadSnapshots[0]!,
+    });
+    const withCancelled = await service.cancelQueuedRun(HUMAN, {
+      ...context("cancel-r2b-pre-claim", queued.revision),
+      runId: "run:mechanical-r2b-pre-claim",
+      rationale:
+        "Executor rejects non-append lineage; cancelling before claim avoids any provider contact.",
+    });
+
+    const cancelledRun = withCancelled.agentRuns.find((run) =>
+      run.id === "run:mechanical-r2b-pre-claim"
+    )!;
+    assertEquals(cancelledRun.status, "cancelled");
+    assertEquals(cancelledRun.claimedAt, undefined);
+    assertEquals(cancelledRun.startedAt, undefined);
+
+    // Reconcile using the cancelled run as the "failed" anchor.
+    const successorRunSnapshot = withCancelled.threadSnapshots.at(-1)!;
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, {
+      ...context("reconcile-cancelled-r2b-through-r3", withCancelled.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2b-pre-claim",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot,
+      successorEvidenceRefs: evidence,
+      rationale:
+        "The pre-claim cancelled run never touched a provider; the completed R3 successor already delivered the result.",
+    });
+
+    const failedWork = findWorkItem(reconciled, "verify-current-mechanical-design");
+    assertEquals(failedWork.status, "cancelled");
+    assertEquals(
+      failedWork.reconciliation?.failedRunId,
+      "run:mechanical-r2b-pre-claim",
+    );
+    assertEquals(
+      failedWork.reconciliation?.successorRunId,
+      "run:mechanical-r3-completed",
+    );
+    assertEquals(failedWork.reconciliation?.successorSnapshot, undefined);
+    assertEquals(
+      reconciled.agentRuns.find((run) => run.id === "run:mechanical-r2b-pre-claim")
+        ?.status,
+      "cancelled",
+    );
+    assertEquals(deriveEngineeringPhaseStatus(reconciled, "verification"), "completed");
+    assertEquals(deriveEngineeringProjectStatus(reconciled), "completed");
+    // The snapshot was NOT validated so no validator call needed.
+    validateEngineeringProjectSnapshot(reconciled);
+  },
+);
+
 Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);

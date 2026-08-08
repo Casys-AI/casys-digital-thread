@@ -172,6 +172,8 @@ export function registerProjectBriefTools(
         current,
       );
     }
+    // Blank-only rationale (e.g. "   ") is explicitly treated as absent:
+    // both cases fall back to the generic host-confirmation message.
     const rationale = typeof args.rationale === "string" && args.rationale.trim()
       ? args.rationale.trim()
       : "The paired MCP host returned an accepted confirmation response.";
@@ -357,7 +359,7 @@ const projectBriefConfirmTool: MCPTool = {
       type: "string",
       minLength: 1,
       description:
-        "Optional verbatim record of why this brief reflects the paired conversation. Shown in the approval record. Defaults to a generic host-confirmation message when absent.",
+        "Optional verbatim record of why this brief reflects the paired conversation. Shown in the approval record. Absent or blank-only values (all whitespace) are treated identically and fall back to a generic host-confirmation message.",
     },
   }, ["briefSnapshotId", "briefRevision", "inputFingerprint"]),
   outputSchema: OBJECT_OUTPUT,

@@ -2101,15 +2101,23 @@ function validateWorkItemReconciliationInvariant(
     );
   }
   const failed = project.agentRuns.find((run) => run.id === reconciliation.failedRunId);
+  // Mirror the command-service guard: a pre-claim cancelled run (no claimedAt,
+  // no startedAt — never touched a provider) is valid alongside a failed run.
+  const isEvidenceFreeFailure = !!failed && failed.status === "failed" &&
+    !!failed.failure &&
+    failed.evidenceRefs.length === 0;
+  const isPreClaimCancellation = !!failed && failed.status === "cancelled" &&
+    !failed.claimedAt &&
+    !failed.startedAt && failed.evidenceRefs.length === 0;
   if (
-    !failed || failed.workItemId !== item.id || failed.status !== "failed" ||
-    !failed.failure || failed.evidenceRefs.length !== 0
+    !failed || failed.workItemId !== item.id ||
+    (!isEvidenceFreeFailure && !isPreClaimCancellation)
   ) {
     issue(
       issues,
       "invalid_transition",
       `${path}.reconciliation.failedRunId`,
-      "must identify this work item's evidence-free failed run",
+      "must identify this work item's evidence-free failed or pre-claim cancelled run",
     );
   }
   const successor = project.agentRuns.find((run) =>

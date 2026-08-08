@@ -1046,12 +1046,23 @@ export class EngineeringProjectCommandService {
         }
         const failedRun = findRun(draft, command.failedRunId);
         if (!failedRun) notFound("agent run", command.failedRunId);
+        // Accept either an evidence-free failed run (explicit failure record) or
+        // a run that was cancelled by a human before any agent claim — meaning no
+        // provider was ever touched (no claimedAt, no startedAt). A queued run
+        // must be cancelled first via human elicitation before reconciliation is
+        // valid; reconciliation is not a substitute for cancellation.
+        const isEvidenceFreeFailure = failedRun.status === "failed" &&
+          !!failedRun.failure &&
+          failedRun.evidenceRefs.length === 0;
+        const isPreClaimCancellation = failedRun.status === "cancelled" &&
+          !failedRun.claimedAt &&
+          !failedRun.startedAt && failedRun.evidenceRefs.length === 0;
         if (
-          failedRun.workItemId !== failedWork.id || failedRun.status !== "failed" ||
-          !failedRun.failure || failedRun.evidenceRefs.length !== 0
+          failedRun.workItemId !== failedWork.id ||
+          (!isEvidenceFreeFailure && !isPreClaimCancellation)
         ) {
           invalidTransition(
-            `Run ${command.failedRunId} is not an evidence-free failed attempt for ${failedWork.id}.`,
+            `Run ${command.failedRunId} must be an evidence-free failed attempt or a pre-claim cancelled run for ${failedWork.id}.`,
           );
         }
         const successor = findRun(draft, command.successorRunId);
