@@ -24,6 +24,8 @@ import {
   CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  GEOMETRY_CAPTURE_DESCRIPTOR,
+  GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
@@ -84,6 +86,10 @@ import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   ModelWriteArchitectureRunExecutor,
 } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
+import {
+  DESIGN_WRITE_GEOMETRY_OPERATION,
+  DesignWriteGeometryRunExecutor,
+} from "./src/adapters/executors/design-write-geometry-run-executor.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
@@ -229,6 +235,8 @@ const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
   "state/local/inspection-drone-v4-part-definitions-publications";
 const DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY = "state/local/architecture-captures";
 const DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY = "state/local/architecture-attempts";
+const DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY = "state/local/geometry-draft-captures";
+const DEFAULT_GEOMETRY_CAPTURE_DIRECTORY = "state/local/geometry-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -584,6 +592,31 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  /**
+   * The write-geometry executor promotes exact bytes from a human-signed draft
+   * into the evidence thread.  It makes no provider calls — the draft and its
+   * binary assets must already be present in the draft stores before the run.
+   */
+  const genericDesignWriteGeometry = new DesignWriteGeometryRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    architectureCaptures: new FileCaptureStore({
+      ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+      directory: options.architectureCaptureDirectory ??
+        DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
+    }),
+    geometryDraftCaptures: new FileCaptureStore({
+      ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+      directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+    }),
+    geometryCaptures: new FileCaptureStore({
+      ...GEOMETRY_CAPTURE_DESCRIPTOR,
+      directory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+    }),
+    lease,
+    now: () => new Date().toISOString(),
+  });
   const cm01Architecture = sysonMcpUrl
     ? new CoffeeMachineCm01V3ArchitectureRunExecutor({
       projects: runtime.projects,
@@ -1105,6 +1138,19 @@ async function createProjectControl(
     control: {
       projects: runtime.projects,
       commands: runtime.commands,
+      geometryPreview: build123dMcpUrl
+        ? {
+          client: new HttpMcpToolClient({
+            mcpUrl: build123dMcpUrl,
+            timeoutMs: 120_000,
+          }),
+          draftCaptures: new FileCaptureStore({
+            ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+            directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+          }),
+          build123dService: "mcp-build123d",
+        }
+        : undefined,
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
         baseline,
@@ -1128,6 +1174,10 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted generic model.write-architecture@1 executor " +
               "configured for this run (SysON provider is required).",
+          },
+          {
+            operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+            executor: genericDesignWriteGeometry,
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,

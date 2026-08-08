@@ -327,6 +327,51 @@ export const CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "CM-01 part definitions",
 };
 
+/**
+ * Canonical geometry captures (JSON) sealed by `design.write-geometry@1`.
+ *
+ * URI prefix `casys://geometry-capture/sha256/<digest>` is the discriminant
+ * used by the monotony ratchet (`geometry_artifact_removed`).  It must remain
+ * stable — changing it would invalidate URIs already written in immutable
+ * proof files.
+ */
+export const GEOMETRY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<"geometry-capture"> = {
+  kind: "geometry-capture",
+  directory: "state/local/geometry-captures",
+  uriNamespace: "geometry-capture",
+  label: "Geometry capture",
+};
+
+/**
+ * Shared prefix for all canonical geometry capture URIs.
+ *
+ * Used by the executor (to build the artifact URI) and the monotony ratchet
+ * (to identify geometry artifacts in previous revisions).  Must be consistent
+ * with GEOMETRY_CAPTURE_DESCRIPTOR.uriNamespace.
+ */
+export const GEOMETRY_CAPTURE_URI_PREFIX = "casys://geometry-capture/" as const;
+
+/**
+ * Draft geometry captures (JSON) produced by the `design.preview-geometry@1`
+ * MCP tool before a human MRTR decision.
+ *
+ * These captures are NEVER addressable from a ThreadSnapshot (D2 decision).
+ * The write executor (design.write-geometry@1) reads from this store only to
+ * verify the draft digest before promoting bytes into the canonical thread.
+ *
+ * `uriNamespace` is `geometry-draft-capture` — distinct from the future
+ * canonical geometry capture namespace so that the executor cannot confuse the
+ * two at a URI-matching level.
+ */
+export const GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "geometry-draft"
+> = {
+  kind: "geometry-draft",
+  directory: "state/local/geometry-drafts",
+  uriNamespace: "geometry-draft-capture",
+  label: "Geometry draft",
+};
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

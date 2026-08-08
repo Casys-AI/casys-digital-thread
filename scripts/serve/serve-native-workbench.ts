@@ -202,6 +202,10 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return serveThreadAsset(url.pathname, options.assetReader);
     }
+    if (url.pathname.startsWith("/api/draft-assets/")) {
+      if (request.method !== "GET") return methodNotAllowed();
+      return serveDraftAsset(url.pathname);
+    }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, options);
@@ -593,6 +597,42 @@ async function serveThreadAsset(
   return new Response(Uint8Array.from(bytes).buffer, {
     headers: {
       "Content-Type": "model/stl",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+/**
+ * Serve a geometry draft binary asset by its SHA-256 digest.
+ *
+ * WHY SEPARATE FROM /api/thread/assets — draft assets are keyed by digest
+ * (content-addressed) and may be any format (GLB, STEP, STL).  They are
+ * never promoted into the ThreadSnapshot until the write executor seals them.
+ * This endpoint allows the Workbench preview to render a draft without
+ * treating it as evidence.
+ *
+ * The path segment after the prefix is the bare hex digest.  Only
+ * well-formed 64-char hex digests are accepted; any other path returns 400.
+ */
+async function serveDraftAsset(pathname: string): Promise<Response> {
+  const digest = pathname.slice("/api/draft-assets/".length);
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    return new Response("Invalid draft asset digest", { status: 400 });
+  }
+  const localPath = `state/local/geometry-draft-assets/${digest}`;
+  let bytes: Uint8Array;
+  try {
+    bytes = await Deno.readFile(localPath);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return new Response("Draft asset not found", { status: 404 });
+    }
+    throw error;
+  }
+  return new Response(Uint8Array.from(bytes).buffer, {
+    headers: {
+      "Content-Type": "application/octet-stream",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     },
