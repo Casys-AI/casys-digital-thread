@@ -396,14 +396,22 @@ Deno.test(
 );
 
 Deno.test(
-  "resolveGenericProductStructureCatalog returns unavailable when declarations have duplicate kebab labels",
+  "resolveGenericProductStructureCatalog rejects duplicate PartDefinition labels before catalog projection",
   async () => {
-    // "AlphaModule" and "Alpha Module" both kebab to "alpha-module".
     const captureRecord = makeCaptureRecord({
       declarations: [
-        { id: "sys-def-001", label: "SystemUnit" },
+        {
+          id: "sys-def-001",
+          label: "SystemUnit",
+          usages: [{
+            id: "alpha-use-001",
+            label: "alpha",
+            targetId: "alpha-def-001",
+            targetLabel: "AlphaModule",
+          }],
+        },
         { id: "alpha-def-001", label: "AlphaModule" },
-        { id: "alpha-def-002", label: "Alpha Module" }, // same kebab: "alpha-module"
+        { id: "alpha-def-002", label: "AlphaModule" },
       ],
     });
     const captureFp = await sha256Fingerprint(captureRecord);
@@ -416,7 +424,41 @@ Deno.test(
     );
 
     assertEquals(catalog?.components, []);
-    assertStringIncludes(catalog?.rationale ?? "", "no component declarations");
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects ambiguous duplicate PartUsage occurrences",
+  async () => {
+    const captureRecord = makeCaptureRecord({
+      declarations: [
+        {
+          id: "sys-def-001",
+          label: "SystemUnit",
+          usages: [{
+            id: "alpha-use-001",
+            label: "alpha",
+            targetId: "alpha-def-001",
+            targetLabel: "AlphaModule",
+          }, {
+            id: "alpha-use-002",
+            label: "alpha",
+            targetId: "alpha-def-001",
+            targetLabel: "AlphaModule",
+          }],
+        },
+        { id: "alpha-def-001", label: "AlphaModule" },
+      ],
+    });
+    const captureFp = await sha256Fingerprint(captureRecord);
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshotWithArchArtifact(captureFp),
+      makeReader(captureFp, captureRecord),
+    );
+
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
   },
 );
 
@@ -457,6 +499,68 @@ Deno.test(
       (await resolveGenericProductStructureCatalog(snapshot, reader))?.rationale ?? "",
       "multiple current tips",
     );
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog keeps an archived predecessor historical and reports an archived latest tip unavailable",
+  async () => {
+    const firstCapture = makeCaptureRecord();
+    const firstFp = await sha256Fingerprint(firstCapture);
+    const base = snapshotWithArchArtifact(firstFp);
+    const firstId = `architecture-${firstFp.digest}`;
+    const secondCapture = {
+      ...firstCapture,
+      trustedRunId: "run:arch-2",
+      predecessor: {
+        artifactId: firstId,
+        fingerprint: firstFp,
+        producerRunId: "run:arch",
+      },
+      insertedAt: "2026-08-08T00:01:00.000Z",
+    };
+    const secondFp = await sha256Fingerprint(secondCapture);
+    const secondId = `architecture-${secondFp.digest}`;
+    const snapshot = {
+      ...base,
+      artifacts: [...base.artifacts, {
+        id: secondId,
+        name: "Current architecture",
+        kind: "sysml-model" as const,
+        version: secondFp.digest,
+        fingerprint: secondFp,
+        uri: `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${secondFp.digest}`,
+        mediaType: "application/json",
+        producer: {
+          serverId: "syson" as const,
+          tool: "syson_element_insert_sysml",
+          runId: "run:arch-2",
+        },
+        inputArtifactIds: ["seed-artifact", firstId],
+        freshness: { ...fresh(), changedAt: "2026-08-08T00:01:00.000Z" },
+      }],
+      changeSet: {
+        ...base.changeSet,
+        changes: [...base.changeSet.changes, {
+          id: "archive-current-tip",
+          kind: "archived" as const,
+          target: { kind: "artifact" as const, id: secondId },
+          summary: "Explicitly retired current architecture.",
+        }],
+      },
+    };
+    const reader: GenericArchitectureCaptureReader = {
+      read: (fingerprint) =>
+        fingerprint.digest === firstFp.digest
+          ? Promise.resolve(deterministicJson(firstCapture))
+          : fingerprint.digest === secondFp.digest
+          ? Promise.resolve(deterministicJson(secondCapture))
+          : Promise.resolve(undefined),
+    };
+
+    const catalog = await resolveGenericProductStructureCatalog(snapshot, reader);
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "explicitly archived");
   },
 );
 

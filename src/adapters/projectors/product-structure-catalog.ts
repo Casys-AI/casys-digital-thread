@@ -10,8 +10,11 @@
  *
  * Output contract:
  *  - System PartDef → one `assembly` component (id = `<subjectId>:system`).
- *  - Every other PartDef → one `part` component (id = `<subjectId>:<kebab-label>`).
- *  - Duplicate kebab labels in a valid capture are rejected → `unavailable`.
+ *  - Every PartUsage occurrence → one `part` component (id =
+ *    `<subjectId>:usage:<usage-id path>`). Repeated use of one PartDefinition
+ *    is therefore preserved rather than collapsed into a label-derived id.
+ *  - Duplicate PartDefinition labels or ambiguous PartUsage occurrences are
+ *    rejected → `unavailable`.
  *  - Unreadable / tampered captures → `unavailable`, never throws.
  *
  * The projector is read-only: it never writes, never calls MCP, and never
@@ -99,6 +102,12 @@ export async function resolveGenericProductStructureCatalog(
 ): Promise<ThreadComponentCatalog | undefined> {
   const selected = findArchitectureTip(snapshot);
   if (selected.kind === "absent") return undefined;
+  if (selected.kind === "retired") {
+    return unavailable(
+      snapshot.subject.id,
+      "The generic architecture current tip was explicitly archived; no current product structure is available.",
+    );
+  }
   if (selected.kind === "ambiguous") {
     return unavailable(
       snapshot.subject.id,
@@ -158,21 +167,26 @@ export async function resolveGenericProductStructureCatalog(
 
 function findArchitectureTip(snapshot: ThreadSnapshot):
   | { readonly kind: "absent" }
+  | { readonly kind: "retired" }
   | { readonly kind: "ambiguous" }
   | { readonly kind: "one"; readonly artifact: ThreadArtifact } {
-  const archived = archivedRefKeys(snapshot);
   const matches = snapshot.artifacts.filter(
     (a) =>
       a.kind === "sysml-model" &&
       typeof a.uri === "string" &&
-      a.uri.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX) &&
-      !archived.has(`artifact:${a.id}`),
+      a.uri.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX),
   );
   if (matches.length === 0) return { kind: "absent" };
   const consumed = new Set(matches.flatMap((artifact) => artifact.inputArtifactIds));
   const tips = matches.filter((artifact) => !consumed.has(artifact.id));
-  return tips.length === 1
-    ? { kind: "one", artifact: tips[0]! }
+  if (tips.length === 0) return { kind: "ambiguous" };
+  const archived = archivedRefKeys(snapshot);
+  const activeTips = tips.filter((artifact) =>
+    !archived.has(`artifact:${artifact.id}`)
+  );
+  if (activeTips.length === 0) return { kind: "retired" };
+  return activeTips.length === 1
+    ? { kind: "one", artifact: activeTips[0]! }
     : { kind: "ambiguous" };
 }
 
@@ -521,14 +535,26 @@ async function parseAndVerifyCapture(
 
   // Duplicate IDs are a tamper/corruption indicator.
   const ids = new Set(partDefinitions.map((d) => d.id));
+  const labels = new Set(partDefinitions.map((d) => d.label));
   const usageIds = partDefinitions.flatMap((def) =>
     def.usages.map((usage) => usage.id)
   );
   if (
-    ids.size !== partDefinitions.length || new Set(usageIds).size !== usageIds.length ||
-    partDefinitions.some((def) => def.usages.some((usage) => !ids.has(usage.targetId)))
+    ids.size !== partDefinitions.length || labels.size !== partDefinitions.length ||
+    new Set(usageIds).size !== usageIds.length ||
+    partDefinitions.some((def) => {
+      const occurrences = new Set<string>();
+      return def.usages.some((usage) => {
+        const occurrence = `${usage.label}\u0000${usage.targetId}`;
+        if (occurrences.has(occurrence)) return true;
+        occurrences.add(occurrence);
+        return !ids.has(usage.targetId);
+      });
+    })
   ) {
-    throw new Error("Architecture capture has duplicate declaration IDs.");
+    throw new Error(
+      "Architecture capture has duplicate or ambiguous declaration identities.",
+    );
   }
 
   return {

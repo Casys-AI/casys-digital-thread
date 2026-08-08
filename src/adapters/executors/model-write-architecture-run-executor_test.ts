@@ -58,6 +58,7 @@ import {
 } from "../extractors/architecture-structure-extractor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
+import { resolveGenericProductStructureCatalog } from "../projectors/product-structure-catalog.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
@@ -75,6 +76,14 @@ const DRONE_PROPOSAL_PARAMS = [
   { key: "component.wing.name", label: "Wing name", value: "Wing" },
   { key: "component.wing.usage", label: "Wing usage", value: "wing" },
   { key: "component.wing.parent", label: "Wing parent", value: "DroneSystem" },
+];
+
+const DRONE_ENRICHMENT_PARAMS = [
+  { key: "architecture.package", label: "Package name", value: "DroneV4" },
+  { key: "system.name", label: "System name", value: "DroneSystem" },
+  { key: "component.motor.name", label: "Motor name", value: "Motor" },
+  { key: "component.motor.usage", label: "Motor usage", value: "motor" },
+  { key: "component.motor.parent", label: "Motor parent", value: "DroneSystem" },
 ];
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -290,6 +299,175 @@ class InitialArchSyson implements McpToolClient {
     return Promise.reject(
       new Error(`Unexpected tool call in InitialArchSyson: ${call.name}`),
     );
+  }
+}
+
+/** Stateful readback for a second generic run that enriches the first package. */
+class EnrichmentArchSyson implements McpToolClient {
+  readonly calls: McpToolCall[] = [];
+  #motorDefinitionInserted = false;
+  #motorUsageInserted = false;
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(new Error(`Unexpected text tool: ${call.name}`));
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+    if (call.name === "syson_element_insert_sysml") {
+      const parentId = call.arguments?.parent_id as string;
+      const text = call.arguments?.sysml_text as string;
+      if (text.startsWith("part def Motor")) this.#motorDefinitionInserted = true;
+      if (text.startsWith("part motor")) this.#motorUsageInserted = true;
+      return Promise.resolve({
+        text: "inserted",
+        structuredContent: { inserted: true, parentId },
+      });
+    }
+    if (call.name === "syson_element_children") {
+      const elementId = call.arguments?.element_id as string;
+      if (elementId === "root-pkg-drone") {
+        return Promise.resolve({
+          text: "root",
+          structuredContent: {
+            parentId: elementId,
+            children: [{
+              id: "arch-pkg-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+              label: "DroneV4",
+            }],
+            count: 1,
+          },
+        });
+      }
+      if (elementId === "arch-pkg-001") {
+        const children = [
+          {
+            id: "sys-def-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "DroneSystem",
+          },
+          {
+            id: "wing-def-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "Wing",
+          },
+          ...(this.#motorDefinitionInserted
+            ? [{
+              id: "motor-def-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              label: "Motor",
+            }]
+            : []),
+        ];
+        return Promise.resolve({
+          text: "parts",
+          structuredContent: { parentId: elementId, children, count: children.length },
+        });
+      }
+      if (elementId === "sys-def-001") {
+        const children = [
+          {
+            id: "wing-usage-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+            label: "wing",
+          },
+          ...(this.#motorUsageInserted
+            ? [{
+              id: "motor-usage-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+              label: "motor",
+            }]
+            : []),
+        ];
+        return Promise.resolve({
+          text: "system-usages",
+          structuredContent: { parentId: elementId, children, count: children.length },
+        });
+      }
+      return Promise.resolve({
+        text: "no-usages",
+        structuredContent: { parentId: elementId, children: [], count: 0 },
+      });
+    }
+    if (call.name === "syson_query_aql") {
+      const usageId = call.arguments?.object_id as string;
+      const motor = usageId === "motor-usage-001";
+      const label = motor ? "Motor" : "Wing";
+      return Promise.resolve({
+        text: "feature-typing",
+        structuredContent: {
+          objectId: usageId,
+          expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+          type: "objects",
+          results: [{
+            id: motor ? "motor-def-001" : "wing-def-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label,
+          }],
+          count: 1,
+        },
+      });
+    }
+    return Promise.reject(new Error(`Unexpected tool: ${call.name}`));
+  }
+}
+
+class DuplicateInheritedPartDefinitionEnrichmentSyson extends EnrichmentArchSyson {
+  #architecturePackageReads = 0;
+
+  override async callTool(call: McpToolCall): Promise<McpToolResult> {
+    const result = await super.callTool(call);
+    if (
+      call.name !== "syson_element_children" ||
+      call.arguments?.element_id !== "arch-pkg-001"
+    ) return result;
+    this.#architecturePackageReads++;
+    // Preflight (1) and Phase-B (2) remain coherent.  The post-ack verification
+    // readback (3) concurrently duplicates an inherited PartDefinition.
+    if (this.#architecturePackageReads < 3) return result;
+    const content = result.structuredContent as {
+      parentId: string;
+      children: Record<string, unknown>[];
+    };
+    const children = [...content.children, {
+      id: "wing-def-duplicate",
+      kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+      label: "Wing",
+    }];
+    return {
+      ...result,
+      structuredContent: { ...content, children, count: children.length },
+    };
+  }
+}
+
+class DuplicateInheritedUsageEnrichmentSyson extends EnrichmentArchSyson {
+  #systemReads = 0;
+
+  override async callTool(call: McpToolCall): Promise<McpToolResult> {
+    const result = await super.callTool(call);
+    if (
+      call.name !== "syson_element_children" ||
+      call.arguments?.element_id !== "sys-def-001"
+    ) return result;
+    this.#systemReads++;
+    // The initial preflight is coherent.  Only the post-ack verification adds
+    // a second, homonymous inherited occurrence with a distinct provider id.
+    if (this.#systemReads < 2) return result;
+    const content = result.structuredContent as {
+      parentId: string;
+      children: Record<string, unknown>[];
+    };
+    const children = [...content.children, {
+      id: "wing-usage-duplicate",
+      kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+      label: "wing",
+    }];
+    return {
+      ...result,
+      structuredContent: { ...content, children, count: children.length },
+    };
   }
 }
 
@@ -617,6 +795,82 @@ async function queuedArchitectureBasisSnapshot(
   return snapshot;
 }
 
+async function queueArchitectureEnrichment(
+  fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
+  completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
+): Promise<{ readonly revision: number; readonly runId: string }> {
+  const firstRun = completed.agentRuns.find((run) => run.id === "run:architecture");
+  assertExists(firstRun?.resultSnapshot);
+  const base = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
+  assertExists(base);
+  let project = await fixture.commands.appendChange(AGENT, {
+    ...ctx("append-architecture-enrichment", completed.revision),
+    baseSnapshot: {
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+    phases: [{
+      id: "arch-enrichment",
+      name: "Architecture enrichment",
+      description: "Add a reviewed component to the generic architecture.",
+    }],
+    workItems: [{
+      id: "wi:architecture-enrichment",
+      phaseId: "arch-enrichment",
+      owner: "agent",
+      dependsOnWorkItemIds: ["wi:architecture"],
+      decisionIds: ["decision:arch-enrichment"],
+      operation: {
+        ...MODEL_WRITE_ARCHITECTURE_OPERATION,
+        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+      },
+    }],
+    requiredDecisions: [{
+      id: "decision:arch-enrichment",
+      phaseId: "arch-enrichment",
+      title: "Architecture enrichment declaration",
+      question: "Which reviewed component is added to the existing system?",
+    }],
+  });
+  project = await fixture.commands.proposeDecision(AGENT, {
+    ...ctx("propose-architecture-enrichment", project.revision),
+    decisionId: "decision:arch-enrichment",
+    baseSnapshot: {
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+    proposal: {
+      summary: "Add Motor to DroneV4",
+      parameters: DRONE_ENRICHMENT_PARAMS,
+    },
+  });
+  const approval = project.approvals.find((candidate) =>
+    candidate.decisionId === "decision:arch-enrichment"
+  );
+  assertExists(approval);
+  project = await fixture.commands.approveDecision(HUMAN, {
+    ...ctx("approve-architecture-enrichment", project.revision),
+    decisionId: "decision:arch-enrichment",
+    rationale: "Approved enrichment.",
+    inputFingerprint: approval.inputFingerprint!,
+  });
+  const queued = await fixture.commands.queueRun(AGENT, {
+    ...ctx("queue-architecture-enrichment", project.revision),
+    runId: "run:architecture-enrichment",
+    workItemId: "wi:architecture-enrichment",
+    summary: "Add Motor to DroneV4.",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+  });
+  return { revision: queued.revision, runId: "run:architecture-enrichment" };
+}
+
 // ── Happy path — initial mode ─────────────────────────────────────────────────
 
 Deno.test(
@@ -694,6 +948,292 @@ Deno.test(
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture binds the second enrichment completion to its own current tip and replays it exactly",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-enrichment-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const initial = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const queued = await queueArchitectureEnrichment(fixture, initial);
+      const syson = new EnrichmentArchSyson();
+      const command = {
+        commandId: "agent-author-architecture-enrichment",
+        projectId: PROJECT_ID,
+        expectedRevision: queued.revision,
+        issuedAt: "2026-08-08T12:20:00.000Z",
+        runId: queued.runId,
+      };
+      const executor = makeExecutor(fixture, { syson, directory });
+      const completed = await executor.execute(AGENT, command);
+      const secondRun = completed.agentRuns.find((run) => run.id === queued.runId);
+      assertExists(secondRun?.resultSnapshot);
+      assertEquals(secondRun.evidenceRefs.length, 1);
+      const resultSnapshot = await fixture.snapshots.get(
+        secondRun.resultSnapshot.snapshotId,
+      );
+      assertExists(resultSnapshot);
+      const current = resultSnapshot.artifacts.filter((artifact) =>
+        artifact.kind === "sysml-model" &&
+        artifact.uri?.startsWith("casys://architecture-capture/") &&
+        artifact.producer.runId === queued.runId
+      );
+      assertEquals(current.length, 1);
+      assertEquals(secondRun.evidenceRefs[0]?.id, current[0]?.id);
+      assertEquals(current[0]?.inputArtifactIds.length, 2);
+
+      const insertsBeforeReplay = syson.calls.filter((call) =>
+        call.name === "syson_element_insert_sysml"
+      ).length;
+      const replay = await executor.execute(AGENT, {
+        ...command,
+        expectedRevision: completed.revision,
+      });
+      assertEquals(replay.revision, completed.revision);
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        insertsBeforeReplay,
+      );
+
+      const catalog = await resolveGenericProductStructureCatalog(
+        resultSnapshot,
+        fixture.archCaptures,
+      );
+      assertEquals(
+        catalog?.components.some((component) => component.label === "Motor"),
+        true,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture rejects a transplanted valid seed capture before SysON dispatch",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-seed-subject-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const base = await queuedArchitectureBasisSnapshot(fixture);
+      const seed = base.artifacts.find((artifact) =>
+        artifact.producer.tool === "syson_model_create"
+      );
+      assertExists(seed);
+      const text = await fixture.seedCaptures.read(seed.fingerprint);
+      assertExists(text);
+      const capture = JSON.parse(text) as {
+        lineage: { baseSnapshot: { subjectId: string } };
+      };
+      capture.lineage.baseSnapshot.subjectId = "project:foreign";
+      const changedFingerprint = await sha256Fingerprint(capture);
+      await fixture.seedCaptures.save(changedFingerprint, deterministicJson(capture));
+      const changedSeedId = `syson-model-seed-${changedFingerprint.digest}`;
+      const transplanted = {
+        ...base,
+        artifacts: base.artifacts.map((artifact) =>
+          artifact.id === seed.id
+            ? {
+              ...artifact,
+              id: changedSeedId,
+              version: changedFingerprint.digest,
+              fingerprint: changedFingerprint,
+              uri:
+                `casys://syson-model-seed-capture/sha256/${changedFingerprint.digest}`,
+            }
+            : artifact
+        ),
+        changeSet: {
+          ...base.changeSet,
+          changes: base.changeSet.changes.map((change) =>
+            change.target.kind === "artifact" && change.target.id === seed.id
+              ? {
+                ...change,
+                target: { ...change.target, id: changedSeedId },
+                afterFingerprint: changedFingerprint,
+              }
+              : change
+          ),
+        },
+        provenance: base.provenance.map((link) => ({
+          ...link,
+          from: link.from.kind === "artifact" && link.from.id === seed.id
+            ? { ...link.from, id: changedSeedId }
+            : link.from,
+          to: link.to.kind === "artifact" && link.to.id === seed.id
+            ? { ...link.to, id: changedSeedId }
+            : link.to,
+        })),
+      };
+      const snapshots: ThreadSnapshotStore = {
+        get: (snapshotId) =>
+          snapshotId === base.id
+            ? Promise.resolve(transplanted)
+            : fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        save: (snapshot) => fixture.snapshots.save(snapshot),
+      };
+      const syson = new InitialArchSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory, snapshots }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "exact r1 documentary baseline",
+      );
+      assertEquals(syson.calls, []);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture quarantines a post-ack duplicate inherited PartUsage without attaching evidence",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-duplicate-usage-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const initial = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const queued = await queueArchitectureEnrichment(fixture, initial);
+      const syson = new DuplicateInheritedUsageEnrichmentSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(AGENT, {
+            commandId: "agent-duplicate-inherited-usage",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:20:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "unreviewed PartUsage occurrence",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, queued.runId),
+        true,
+      );
+      const failed = await fixture.projects.get(PROJECT_ID);
+      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
+      assertEquals(failedRun?.status, "failed");
+      assertEquals(failedRun?.resultSnapshot, undefined);
+      assertEquals(failedRun?.evidenceRefs, []);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture quarantines a post-ack duplicate inherited PartDefinition without attaching evidence",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-duplicate-inherited-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const initial = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const queued = await queueArchitectureEnrichment(fixture, initial);
+      const syson = new DuplicateInheritedPartDefinitionEnrichmentSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(AGENT, {
+            commandId: "agent-duplicate-inherited",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:20:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "ambiguous PartDefinition",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, queued.runId),
+        true,
+      );
+      const failed = await fixture.projects.get(PROJECT_ID);
+      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
+      assertEquals(failedRun?.status, "failed");
+      assertEquals(failedRun?.resultSnapshot, undefined);
+      assertEquals(failedRun?.evidenceRefs, []);
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        2,
+        "only the reviewed enrichment writes occur before the concurrent duplicate is detected",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture blocks same-basis requeues after terminal provider uncertainty",
+  async () => {
+    const terminalCodes = [
+      "model-write-architecture-provider-outcome-unknown",
+      "model-write-architecture-post-acknowledgement-quarantined",
+      "model-write-architecture-quarantine-write-failed",
+    ] as const;
+    for (const code of terminalCodes) {
+      const directory = await Deno.makeTempDir({ prefix: "casys-arch-sibling-" });
+      try {
+        const fixture = await queuedArchitectureFixture(directory);
+        let project = await fixture.commands.claimRun(AGENT, {
+          ...executionCommand(fixture),
+          commandId: `claim-${code}`,
+          summary: "Claim blocked predecessor.",
+        });
+        project = await fixture.commands.failRun(AGENT, {
+          ...ctx(`fail-${code}`, project.revision),
+          runId: fixture.queued.runId,
+          summary: "Record terminal provider uncertainty.",
+          code,
+          message: "No automatic retry is permitted.",
+        });
+        const failedRun = project.agentRuns.find((run) =>
+          run.id === fixture.queued.runId
+        );
+        assertExists(failedRun?.basis);
+        const retry = await fixture.commands.queueRun(AGENT, {
+          ...ctx(`queue-retry-${code}`, project.revision),
+          runId: `run:retry:${code}`,
+          workItemId: "wi:architecture",
+          summary: "Attempt same-basis retry.",
+          basis: failedRun.basis!,
+        });
+        const syson = new InitialArchSyson();
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, { syson, directory }).execute(AGENT, {
+              commandId: `execute-retry-${code}`,
+              projectId: PROJECT_ID,
+              expectedRevision: retry.revision,
+              issuedAt: "2026-08-08T12:20:00.000Z",
+              runId: `run:retry:${code}`,
+            }),
+          EngineeringProjectCommandError,
+          "separately reviewed recovery",
+        );
+        assertEquals(syson.calls, [], `${code} must stop before SysON`);
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
     }
   },
 );
