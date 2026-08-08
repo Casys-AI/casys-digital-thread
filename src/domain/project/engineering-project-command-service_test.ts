@@ -1455,3 +1455,34 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "the full closeout form accepts a successor carrying a different registered operation",
+  async () => {
+    // WHY THIS TEST EXISTS — the equivalence guard added for the direct form
+    // was briefly applied to every reconciliation, which made the real CM-01
+    // project unreadable: its bounded identity repair deliberately closes a
+    // failed `verify.*` work item with a `repair.*` operation, the documented
+    // correction pattern. A guard that invalidates existing durable state on
+    // read is a defect, not a protection.
+    const base = structuredClone(
+      await reconciliableProjectWithOperation(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const successorWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design-r3"
+    )!;
+    (successorWork as Mutable<typeof successorWork>).operation = {
+      id: "repair.mechanical-identity",
+      version: "1",
+      bindings: [{ name: "project", source: { kind: "approved-brief" as const } }],
+    };
+    const project = validateEngineeringProjectSnapshot(base);
+
+    // The full closeout form is the one that carries successorSnapshot; the
+    // snapshot itself remains subject to the reconciliation snapshot validator.
+    assertEquals(
+      findWorkItem(project, "verify-current-mechanical-design-r3").operation?.id,
+      "repair.mechanical-identity",
+    );
+  },
+);

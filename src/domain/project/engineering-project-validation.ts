@@ -2198,10 +2198,21 @@ function validateWorkItemReconciliationInvariant(
       "must retain the same exact evidence on its completed work item",
     );
   }
-  // Mirror the command-service equivalence guard: when the failed work item
-  // declared a registered operation, the successor must carry the same operation
-  // (id, version, and canonicalised bindings). Checked on every replay.
-  if (item.operation !== undefined && successorWork !== undefined) {
+  // Mirror the command-service equivalence guard, and ONLY for the direct form.
+  //
+  // WHY THE DIRECT FORM ONLY — the guard exists because the direct path is
+  // agent-only and lightweight: without it an agent could close a work item with
+  // the evidence of any unrelated completed run. The full closeout form is a
+  // different animal: it carries a durable closeout snapshot, validated by the
+  // reconciliation snapshot validator, and its successor is deliberately allowed
+  // to be another registered operation — CM-01's bounded identity repair closes
+  // a failed mechanical verification with a `repair.*` operation, which is the
+  // documented correction pattern. Applying equivalence there retroactively
+  // invalidated an existing, legitimate project on read.
+  if (
+    reconciliation.successorSnapshot === undefined &&
+    item.operation !== undefined && successorWork !== undefined
+  ) {
     if (
       successorWork.operation?.id !== item.operation.id ||
       successorWork.operation?.version !== item.operation.version ||

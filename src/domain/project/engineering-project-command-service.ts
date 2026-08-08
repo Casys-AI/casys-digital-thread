@@ -1105,11 +1105,21 @@ export class EngineeringProjectCommandService {
             `Completed successor run ${successor.id} has inconsistent work-item evidence.`,
           );
         }
-        // Equivalence guard: when the failed work item declares a registered
-        // operation, the successor must carry the identical operation (id, version
-        // and canonicalised bindings). This prevents closing a seed work item with
-        // the evidence of a structurally different operation.
-        if (failedWork.operation !== undefined) {
+        // Equivalence guard — DIRECT FORM ONLY.
+        //
+        // The direct path is agent-only and lightweight: without this guard an
+        // agent could close a work item with the evidence of any unrelated
+        // completed run. The full closeout form is different — it carries a
+        // durable closeout snapshot checked by the reconciliation snapshot
+        // validator, and its successor is deliberately allowed to be another
+        // registered operation: CM-01's bounded identity repair closes a failed
+        // mechanical verification with a `repair.*` operation, the documented
+        // correction pattern. Enforcing equivalence there made an existing,
+        // legitimate project unreadable.
+        if (
+          command.successorSnapshot === undefined &&
+          failedWork.operation !== undefined
+        ) {
           if (
             successorWork.operation?.id !== failedWork.operation.id ||
             successorWork.operation?.version !== failedWork.operation.version ||
