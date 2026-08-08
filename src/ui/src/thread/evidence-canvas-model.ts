@@ -21,6 +21,8 @@ import type {
 } from "./evidence-graph-model.ts";
 import {
   applyEssentialFilter,
+  type DisplayKind,
+  displayKindOf,
   isSupportingNode,
 } from "./essential-graph-filter.ts";
 import type {
@@ -396,5 +398,72 @@ function localProjection(
     localDepthByRefKey: depths,
     localSupportingRefKeys: supportingRefKeys,
     supportingNodeCount: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Kind-based projection for the Exploration full-map view
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a canvas projection filtered by DisplayKind for the Exploration
+ * full-map view. Unlike the essential-filter projection, this applies the
+ * operator's type toggles instead of the structural essential mask — each
+ * DisplayKind can be individually shown or hidden.
+ *
+ * This projection triggers a dagre re-layout when the visible set changes
+ * (the caller memoises it on visibleKinds). No in-place sigma reducer is
+ * applied: the remount is intentional so the layout never shows gaps from
+ * hidden-in-place nodes.
+ *
+ * @param model         EvidenceGraphModel (post-fold: instruments already
+ *                      folded, versions collapsed into stubs).
+ * @param visibleKinds  Record mapping each DisplayKind to its visibility flag.
+ */
+export function buildExplorationKindProjection(
+  model: EvidenceGraphModel,
+  visibleKinds: Record<DisplayKind, boolean>,
+): EvidenceCanvasProjection {
+  const visibleNodes = (model.nodes as ThreadGraphNode[]).filter(
+    (n) => visibleKinds[displayKindOf(n)],
+  );
+  const hiddenByKind = model.nodes.length - visibleNodes.length;
+
+  const visibleKeys = new Set(
+    visibleNodes.map((n) => `${n.ref.kind}:${n.ref.id}`),
+  );
+
+  // Include both canonical edges and stubs; drop any edge where at least one
+  // endpoint is hidden by the type filter. This keeps the layout coherent
+  // (no dangling edges pointing at absent nodes).
+  const allEdges: ThreadGraphEdge[] = [
+    ...(model.edges as ThreadGraphEdge[]),
+    ...model.stubs.map(stubToEdge),
+  ];
+  const visibleEdges = allEdges.filter(
+    (e) =>
+      visibleKeys.has(`${e.from.kind}:${e.from.id}`) &&
+      visibleKeys.has(`${e.to.kind}:${e.to.id}`),
+  );
+
+  // foldedInstrumentCount: how many nodes were folded by the model pipeline
+  // (analyze.* instruments). This is a model-level count, independent of which
+  // kinds are now visible. Computed as rawNodeCount minus the already-folded
+  // visible set, without a collapsedVersionCount term (versions are represented
+  // as stubs in model.stubs and already accounted for in model.nodes).
+  const foldedInstrumentCount = Math.max(
+    0,
+    model.rawNodeCount - model.nodes.length,
+  );
+
+  return {
+    nodes: visibleNodes,
+    edges: visibleEdges,
+    displayedCount: visibleNodes.length,
+    foldedInstrumentCount,
+    isFiltered: false,
+    // supportingNodeCount carries the count of nodes hidden by type filter.
+    // In full-map mode the banner reads this as "M masqués par type".
+    supportingNodeCount: hiddenByKind,
   };
 }

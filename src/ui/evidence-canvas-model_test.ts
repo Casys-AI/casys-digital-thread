@@ -11,10 +11,12 @@
 import { assertEquals } from "@std/assert";
 import {
   buildEvidenceCanvasProjection,
+  buildExplorationKindProjection,
   isAnalyzeInstrumentNode,
   makeEvidenceComponentLabeler,
   stubToEdge,
 } from "./src/thread/evidence-canvas-model.ts";
+import type { DisplayKind } from "./src/thread/essential-graph-filter.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 import type {
   EvidenceGraphModel,
@@ -555,5 +557,163 @@ Deno.test(
       false,
     );
     assertEquals(visibleIds.includes("drip-tray-r3-displacement"), true);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// 6 — buildExplorationKindProjection
+// ---------------------------------------------------------------------------
+
+/** All kinds visible — every entry true. */
+const ALL_KINDS_VISIBLE: Record<DisplayKind, boolean> = {
+  "artifact": true,
+  "supporting-artifact": true,
+  "observation": true,
+  "requirement": true,
+  "evaluation": true,
+  "violation": true,
+  "change": true,
+  "consumption": true,
+  "action": true,
+};
+
+/** Default map-mode kinds (matching workbench defaults). */
+const DEFAULT_MAP_KINDS: Record<DisplayKind, boolean> = {
+  "artifact": true,
+  "supporting-artifact": false,
+  "observation": true,
+  "requirement": true,
+  "evaluation": true,
+  "violation": true,
+  "change": false,
+  "consumption": false,
+  "action": true,
+};
+
+Deno.test(
+  "buildExplorationKindProjection — all kinds visible returns all model nodes",
+  () => {
+    const { model } = instrumentBridgeFixture();
+    const projection = buildExplorationKindProjection(model, ALL_KINDS_VISIBLE);
+    // The instrument is folded in the model; only A and C are in model.nodes.
+    assertEquals(projection.isFiltered, false);
+    assertEquals(projection.nodes.length, model.nodes.length);
+    assertEquals(projection.displayedCount, model.nodes.length);
+    assertEquals(projection.supportingNodeCount, 0);
+  },
+);
+
+Deno.test(
+  "buildExplorationKindProjection — default map kinds hide changes and consumptions",
+  () => {
+    // Build a graph with: artifact (essential), observation, requirement,
+    // change, consumption.
+    const nodeA: ThreadGraphNode = {
+      id: "A-artifact",
+      ref: ref("A-artifact", "artifact"),
+      entityKind: "artifact",
+      label: "A artifact",
+      system: "build123d",
+      freshness: "fresh",
+      summary: "artifact",
+    };
+    const nodeObs: ThreadGraphNode = {
+      id: "obs-1",
+      ref: ref("obs-1", "observation"),
+      entityKind: "observation",
+      label: "Obs 1",
+      system: "calculix",
+      freshness: "fresh",
+      summary: "obs",
+    };
+    const nodeChg: ThreadGraphNode = {
+      id: "chg-1",
+      ref: ref("chg-1", "change"),
+      entityKind: "change",
+      label: "Change 1",
+      system: "digital-thread",
+      freshness: "fresh",
+      summary: "change",
+    };
+    const nodeMesh: ThreadGraphNode = {
+      id: "mesh-1",
+      ref: ref("mesh-1", "artifact"),
+      entityKind: "artifact",
+      artifactKind: "mesh",
+      label: "Mesh 1",
+      system: "build123d",
+      freshness: "fresh",
+      summary: "mesh",
+    };
+    const model = buildEvidenceGraphModel(
+      {
+        nodes: [nodeA, nodeObs, nodeChg, nodeMesh],
+        edges: [
+          edge("e1", ref("A-artifact", "artifact"), ref("obs-1", "observation")),
+        ],
+      },
+      emptyFamilyGraph,
+      {},
+    );
+    const projection = buildExplorationKindProjection(model, DEFAULT_MAP_KINDS);
+
+    const visibleIds = projection.nodes.map((n) => n.ref.id);
+    // artifact (essential): visible
+    assertEquals(visibleIds.includes("A-artifact"), true);
+    // observation: visible
+    assertEquals(visibleIds.includes("obs-1"), true);
+    // change: hidden (DEFAULT_MAP_KINDS.change = false)
+    assertEquals(visibleIds.includes("chg-1"), false);
+    // supporting-artifact (mesh): hidden (DEFAULT_MAP_KINDS["supporting-artifact"] = false)
+    assertEquals(visibleIds.includes("mesh-1"), false);
+    // supportingNodeCount = 2 (change + mesh)
+    assertEquals(projection.supportingNodeCount, 2);
+    assertEquals(projection.displayedCount, 2);
+  },
+);
+
+Deno.test(
+  "buildExplorationKindProjection — stubs are included only when both endpoints are visible",
+  () => {
+    // Graph: A(artifact) → B(instrument) → C(artifact). B is folded → stub A→C.
+    const { model } = instrumentBridgeFixture();
+    // With all kinds visible the stub should be present (both A and C visible).
+    const projAll = buildExplorationKindProjection(model, ALL_KINDS_VISIBLE);
+    const stubAll = projAll.edges.find((e) => e.id.startsWith("stub:"));
+    assertEquals(
+      stubAll !== undefined,
+      true,
+      "Stub must be present when both endpoints are visible",
+    );
+
+    // Hide artifacts: A and C are both hidden → stub must be dropped.
+    const noArtifacts: Record<DisplayKind, boolean> = {
+      ...ALL_KINDS_VISIBLE,
+      "artifact": false,
+      "supporting-artifact": false,
+    };
+    const projNoArt = buildExplorationKindProjection(model, noArtifacts);
+    assertEquals(projNoArt.nodes.length, 0, "No nodes when artifacts hidden");
+    const stubNoArt = projNoArt.edges.find((e) => e.id.startsWith("stub:"));
+    assertEquals(
+      stubNoArt,
+      undefined,
+      "Stub must be absent when both endpoints are hidden",
+    );
+  },
+);
+
+Deno.test(
+  "buildExplorationKindProjection — displayedCount and supportingNodeCount sum to model.nodes.length",
+  () => {
+    const { model } = essentialPlusSupportingFixture();
+    // essentialPlusSupportingFixture: one essential (requirement), one mesh (supporting).
+    // With DEFAULT_MAP_KINDS, requirement is visible, supporting-artifact is hidden.
+    const projection = buildExplorationKindProjection(model, DEFAULT_MAP_KINDS);
+    assertEquals(
+      projection.displayedCount + projection.supportingNodeCount,
+      model.nodes.length,
+      "displayedCount + supportingNodeCount must equal model.nodes.length",
+    );
   },
 );

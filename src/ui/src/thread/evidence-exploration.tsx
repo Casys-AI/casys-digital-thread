@@ -17,6 +17,9 @@ import { useEffect, useMemo, useRef } from "preact/hooks";
 import Sigma from "sigma";
 import {
   buildExplorationModel,
+  DISPLAY_KIND_LABELS,
+  type DisplayKind,
+  displayKindOf,
   type ExplorationLegendItem,
   readCssTokens,
   type SigmaEdgeAttrs,
@@ -44,12 +47,15 @@ export interface EvidenceExplorationProps {
    */
   displayDepth?: number;
   /**
-   * LOCAL view: show the supporting (digital-thread plumbing) nodes. Pure
-   * display filter over projection.localSupportingRefKeys — toggling shows or
-   * hides them in place, no re-layout. Defaults to true (operator decision
-   * 2026-08-08: inspector-list clicks should land on a visible node).
+   * Type visibility filter for the LOCAL view. A node is hidden when its
+   * DisplayKind maps to false in this record. Pure in-place sigma reducer:
+   * toggling shows or hides nodes without re-layout or camera reset.
+   *
+   * In full-map (exploration kind-projection) mode, the filtering is already
+   * done at the projection level — this prop is not needed there and should
+   * be omitted.
    */
-  showSupporting?: boolean;
+  visibleKinds?: Record<DisplayKind, boolean>;
   /**
    * Compact mode — intended for the feed card vignette (FeedLineageGraph).
    *
@@ -70,7 +76,7 @@ export function EvidenceExploration({
   evidenceModel,
   projection,
   displayDepth,
-  showSupporting = true,
+  visibleKinds,
   selection,
   focus: _focus,
   onSelectionChange,
@@ -164,9 +170,9 @@ export function EvidenceExploration({
     };
   }, [explorationModel, compact]);
 
-  // Highlight selected node + apply the visible-depth display filter.
-  // Both are pure sigma reducers on the SAME mounted instance: selection and
-  // depth changes repaint in place, never re-layout or reset the camera.
+  // Highlight selected node + apply the visible-depth and type display filters.
+  // Both are pure sigma reducers on the SAME mounted instance: selection,
+  // depth, and type changes repaint in place — no re-layout, no camera reset.
   useEffect(() => {
     const sigma = sigmaRef.current;
     if (!sigma) return;
@@ -176,19 +182,20 @@ export function EvidenceExploration({
     const depths = projection.isFiltered
       ? projection.localDepthByRefKey
       : undefined;
-    const supporting = projection.isFiltered
-      ? projection.localSupportingRefKeys
-      : undefined;
-    const hiddenAtDepth = (key: string): boolean => {
+    const hiddenAtDepth = (key: string, attrs: SigmaNodeAttrs): boolean => {
       if (depths && displayDepth !== undefined) {
         if ((depths.get(key) ?? 0) > displayDepth) return true;
       }
-      if (!showSupporting && supporting?.has(key)) return true;
+      if (visibleKinds !== undefined) {
+        if (!visibleKinds[displayKindOf(attrs.node)]) return true;
+      }
       return false;
     };
 
     sigma.setSetting("nodeReducer", (node, data) => {
-      if (hiddenAtDepth(node)) return { ...data, hidden: true };
+      if (hiddenAtDepth(node, data as SigmaNodeAttrs)) {
+        return { ...data, hidden: true };
+      }
       if (!selectedKey) return data;
       if (node === selectedKey) {
         return {
@@ -203,33 +210,51 @@ export function EvidenceExploration({
       return { ...data, highlighted: false };
     });
     sigma.refresh();
-  }, [selection, explorationModel, displayDepth, showSupporting, projection]);
+  }, [selection, explorationModel, displayDepth, visibleKinds, projection]);
 
-  // Truthful legend counters: when the visible-depth filter hides nodes, the
-  // OUTILS and COMPOSANTES counts must reflect what is actually on screen,
+  // Truthful legend counters: when the visible-depth or type filter hides nodes,
+  // the TYPES, OUTILS and COMPOSANTES counts must reflect what is on screen,
   // not the computed max-depth neighbourhood.
-  const { legend, systemLegend } = useMemo(() => {
+  const { legend, systemLegend, kindLegend } = useMemo(() => {
     const depths = projection.isFiltered
       ? projection.localDepthByRefKey
       : undefined;
-    const supporting = projection.isFiltered
-      ? projection.localSupportingRefKeys
-      : undefined;
     const filtersActive = (depths && displayDepth !== undefined) ||
-      (!showSupporting && supporting);
+      visibleKinds !== undefined;
+    const isVisible = (key: string, attrs: SigmaNodeAttrs): boolean => {
+      if (depths && displayDepth !== undefined) {
+        if ((depths.get(key) ?? 0) > displayDepth) return false;
+      }
+      if (visibleKinds !== undefined) {
+        if (!visibleKinds[displayKindOf(attrs.node)]) return false;
+      }
+      return true;
+    };
     if (!filtersActive) {
+      // Compute kindLegend from all visible nodes in the full projection.
+      const kindCounts = new Map<DisplayKind, number>();
+      explorationModel.graph.forEachNode((_key, attrs) => {
+        const dk = displayKindOf(attrs.node);
+        kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
+      });
+      const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
+        .filter(([, count]) => count > 0)
+        .map(([kind, count]) => ({
+          kind,
+          label: DISPLAY_KIND_LABELS[kind],
+          count,
+        }));
       return {
         legend: explorationModel.legend,
         systemLegend: explorationModel.systemLegend,
+        kindLegend: kl,
       };
     }
     const systemCounts = new Map<string, number>();
     const componentCounts = new Map<number, number>();
+    const kindCounts = new Map<DisplayKind, number>();
     explorationModel.graph.forEachNode((key, attrs) => {
-      if (depths && displayDepth !== undefined) {
-        if ((depths.get(key) ?? 0) > displayDepth) return;
-      }
-      if (!showSupporting && supporting?.has(key)) return;
+      if (!isVisible(key, attrs)) return;
       const system = attrs.node.system;
       systemCounts.set(system, (systemCounts.get(system) ?? 0) + 1);
       if (attrs.componentId !== undefined) {
@@ -238,7 +263,16 @@ export function EvidenceExploration({
           (componentCounts.get(attrs.componentId) ?? 0) + 1,
         );
       }
+      const dk = displayKindOf(attrs.node);
+      kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
     });
+    const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
+      .filter(([, count]) => count > 0)
+      .map(([kind, count]) => ({
+        kind,
+        label: DISPLAY_KIND_LABELS[kind],
+        count,
+      }));
     return {
       systemLegend: explorationModel.systemLegend
         .map((item) => ({ ...item, count: systemCounts.get(item.system) ?? 0 }))
@@ -252,8 +286,9 @@ export function EvidenceExploration({
           ),
         }))
         .filter((item) => item.visibleNodeCount > 0),
+      kindLegend: kl,
     };
-  }, [explorationModel, displayDepth, showSupporting, projection]);
+  }, [explorationModel, displayDepth, visibleKinds, projection]);
 
   return (
     <div class="evidence-exploration">
@@ -281,6 +316,25 @@ export function EvidenceExploration({
                     style={{ background: item.color }}
                     aria-hidden="true"
                   />
+                  <span class="evidence-exploration-legend-chip-name">
+                    {item.label}
+                  </span>
+                  <span class="evidence-exploration-legend-chip-count">
+                    {item.count}
+                  </span>
+                </span>
+              ))}
+            </>
+          )}
+          {kindLegend.length > 0 && (
+            <>
+              <p class="evidence-exploration-legend-title">TYPES</p>
+              {kindLegend.map((item) => (
+                <span
+                  key={item.kind}
+                  class="evidence-exploration-legend-chip"
+                  aria-label={`${item.label} — ${item.count} faits`}
+                >
                   <span class="evidence-exploration-legend-chip-name">
                     {item.label}
                   </span>

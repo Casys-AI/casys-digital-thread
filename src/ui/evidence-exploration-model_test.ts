@@ -19,6 +19,8 @@ import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   buildExplorationModel,
   type CssTokens,
+  DISPLAY_KIND_LABELS,
+  displayKindOf,
   FALLBACK_TOKENS,
   normalizeEdgeDirection,
   type SigmaEdgeAttrs,
@@ -669,7 +671,10 @@ Deno.test(
         node("m1", "artifact", "modelica", "artifact"),
         node("s1", "artifact", "syson", "artifact"),
       ],
-      [edge("e1", { kind: "artifact", id: "m1" }, { kind: "artifact", id: "s1" })],
+      [edge("e1", { kind: "artifact", id: "m1" }, {
+        kind: "artifact",
+        id: "s1",
+      })],
     );
     const attrs = model.graph.getNodeAttributes("artifact:m1");
     assertEquals(attrs.color, FALLBACK_TOKENS.violet);
@@ -687,8 +692,14 @@ Deno.test(
         node("c1", "artifact", "calculix", "artifact"),
       ],
       [
-        edge("e1", { kind: "artifact", id: "m1" }, { kind: "artifact", id: "s1" }),
-        edge("e2", { kind: "artifact", id: "s1" }, { kind: "artifact", id: "c1" }),
+        edge("e1", { kind: "artifact", id: "m1" }, {
+          kind: "artifact",
+          id: "s1",
+        }),
+        edge("e2", { kind: "artifact", id: "s1" }, {
+          kind: "artifact",
+          id: "c1",
+        }),
       ],
     );
     const bySystem = new Map(
@@ -705,5 +716,109 @@ Deno.test(
       model.graph.getNodeAttributes("artifact:c1").color,
     );
     assertEquals(bySystem.get("modelica")?.count, 1);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// displayKindOf — classification per node type
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "displayKindOf: an essential artifact (non-supporting artifactKind) returns 'artifact'",
+  () => {
+    const n: ThreadGraphNode = {
+      ...node("a1", "artifact", "build123d", "artifact"),
+      artifactKind: "SysML v2 model",
+    };
+    assertEquals(displayKindOf(n), "artifact");
+  },
+);
+
+Deno.test(
+  "displayKindOf: an artifact whose artifactKind is in SUPPORTING_ARTIFACT_KINDS returns 'supporting-artifact'",
+  () => {
+    for (
+      const kind of [
+        "script",
+        "mesh",
+        "solver-input",
+        "evidence",
+        "document",
+        "other",
+      ]
+    ) {
+      const n: ThreadGraphNode = {
+        ...node(`a-${kind}`, "artifact", "build123d", "artifact"),
+        artifactKind: kind,
+      };
+      assertEquals(
+        displayKindOf(n),
+        "supporting-artifact",
+        `artifactKind '${kind}' should produce 'supporting-artifact'`,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "displayKindOf: an artifact with undefined artifactKind returns 'artifact' (not supporting)",
+  () => {
+    const n: ThreadGraphNode = node("a2", "artifact", "syson", "artifact");
+    // No artifactKind set — essential by default.
+    assertEquals(displayKindOf(n), "artifact");
+  },
+);
+
+Deno.test(
+  "displayKindOf: non-artifact kinds map directly to their entityKind",
+  () => {
+    const cases: Array<[ThreadGraphNode["entityKind"], string]> = [
+      ["observation", "observation"],
+      ["requirement", "requirement"],
+      ["evaluation", "evaluation"],
+      ["violation", "violation"],
+      ["change", "change"],
+      ["consumption", "consumption"],
+      ["action", "action"],
+    ];
+    for (const [entityKind, expected] of cases) {
+      const n = node(
+        `n-${entityKind}`,
+        entityKind as ThreadGraphRef["kind"],
+        "syson",
+        entityKind,
+      );
+      assertEquals(
+        displayKindOf(n),
+        expected,
+        `entityKind '${entityKind}' should return '${expected}'`,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "DISPLAY_KIND_LABELS has a French label for every DisplayKind",
+  () => {
+    const expectedKinds = [
+      "artifact",
+      "supporting-artifact",
+      "observation",
+      "requirement",
+      "evaluation",
+      "violation",
+      "change",
+      "consumption",
+      "action",
+    ];
+    for (const kind of expectedKinds) {
+      const label = DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
+      assertEquals(
+        typeof label,
+        "string",
+        `Missing label for kind '${kind}'`,
+      );
+      assertNotEquals(label, "", `Empty label for kind '${kind}'`);
+    }
   },
 );

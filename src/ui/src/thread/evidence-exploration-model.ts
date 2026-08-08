@@ -29,9 +29,14 @@ import { DirectedGraph } from "graphology";
 import dagreLib from "@dagrejs/dagre";
 // deno-lint-ignore no-explicit-any
 const dagre = dagreLib as any;
-// essential-graph-filter is no longer imported here: the mask is applied once,
-// upstream, by buildEvidenceCanvasProjection. Both renderers (Carte and
-// Exploration) consume the same pre-filtered EvidenceCanvasProjection.
+// essential-graph-filter: re-export the display-kind helpers so callers that
+// import from this module get the full exploration API without knowing where
+// each function lives internally.
+export {
+  DISPLAY_KIND_LABELS,
+  type DisplayKind,
+  displayKindOf,
+} from "./essential-graph-filter.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type {

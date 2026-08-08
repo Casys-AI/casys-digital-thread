@@ -47,9 +47,15 @@ import { ThreadFeed } from "./feed.tsx";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
 import {
   buildEvidenceCanvasProjection,
+  buildExplorationKindProjection,
   isAnalyzeInstrumentNode,
   makeEvidenceComponentLabeler,
 } from "./evidence-canvas-model.ts";
+import {
+  DISPLAY_KIND_LABELS,
+  type DisplayKind,
+  displayKindOf,
+} from "./evidence-exploration-model.ts";
 import {
   buildEvidenceGraphModel,
   type EvidenceGraphModel,
@@ -132,12 +138,39 @@ export function ThreadWorkbench({
   // Profondeur du voisinage en vue locale (façon Obsidian). Décision
   // opérateur 2026-08-08 : défaut 1 — les voisins immédiats seulement.
   const [localDepth, setLocalDepth] = useState<1 | 2 | 3>(1);
-  // Panneau burger des réglages du graphe local (fermé par défaut).
+  // Panneau burger des réglages du graphe (fermé par défaut).
   const [graphMenuOpen, setGraphMenuOpen] = useState(false);
-  // Affichage des éléments digital thread (plomberie) en vue locale.
-  // Décision opérateur 2026-08-08 : coché par défaut — un clic depuis les
-  // listes de l'inspecteur atterrit ainsi sur un nœud visible.
-  const [showSupportingLocal, setShowSupportingLocal] = useState(true);
+  // Type visibility for the full-map Exploration view (kind-projection, dagre
+  // remounts on change). Defaults: artifact/observation/requirement/evaluation/
+  // violation/action visible; change/consumption/supporting-artifact hidden.
+  const [explorationMapKinds, setExplorationMapKinds] = useState<
+    Record<DisplayKind, boolean>
+  >({
+    "artifact": true,
+    "supporting-artifact": false,
+    "observation": true,
+    "requirement": true,
+    "evaluation": true,
+    "violation": true,
+    "change": false,
+    "consumption": false,
+    "action": true,
+  });
+  // Type visibility for the local Exploration view (in-place sigma reducer,
+  // no re-layout). Defaults: all kinds visible.
+  const [explorationLocalKinds, setExplorationLocalKinds] = useState<
+    Record<DisplayKind, boolean>
+  >({
+    "artifact": true,
+    "supporting-artifact": true,
+    "observation": true,
+    "requirement": true,
+    "evaluation": true,
+    "violation": true,
+    "change": true,
+    "consumption": true,
+    "action": true,
+  });
   // Feed component filter: undefined = "Tout le projet", string = part id or "assembly".
   const [feedFilterComponentId, setFeedFilterComponentId] = useState<
     string | undefined
@@ -303,6 +336,16 @@ export function ThreadWorkbench({
     );
   }, [workbench, versionedProvenanceMemo, evidenceModel, lineageFocus]);
 
+  // Kind-filtered projection for the full-map Exploration view. This projection
+  // replaces the essential-filter projection when evidenceMode==="exploration"
+  // and there is no focus. Changing explorationMapKinds triggers a dagre
+  // remount — the re-layout on the visible set is intentional (no gaps).
+  const explorationKindProjectionMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!evidenceModel) return undefined;
+    return buildExplorationKindProjection(evidenceModel, explorationMapKinds);
+  }, [evidenceModel, explorationMapKinds]);
+
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);
     // A selected record can belong to another tool surface. Keep the main
@@ -391,18 +434,29 @@ export function ThreadWorkbench({
 
   // Visible-depth display filter (local view only). The neighbourhood is
   // computed at max depth; here we derive what the chosen depth actually
-  // shows — the truthful banner count and the Carte's filtered node set.
+  // shows — used for the Carte SVG filtered node set. Type filters from
+  // explorationLocalKinds are NOT applied here (Carte is type-agnostic).
   const depthKey = (ref: ThreadGraphRef) => `${ref.kind}:${ref.id}`;
   const withinLocalDepth = (ref: ThreadGraphRef): boolean => {
     if (!evidenceCanvas.isFiltered) return true;
     const depths = evidenceCanvas.localDepthByRefKey;
     if (depths && (depths.get(depthKey(ref)) ?? 0) > localDepth) return false;
-    const supporting = evidenceCanvas.localSupportingRefKeys;
-    if (!showSupportingLocal && supporting?.has(depthKey(ref))) return false;
     return true;
   };
-  const localVisibleCount = evidenceCanvas.nodes
-    .filter((n) => withinLocalDepth(n.ref)).length;
+  // Banner count for the local view in Exploration mode: accounts for depth
+  // AND type visibility (explorationLocalKinds). Not used for Carte.
+  const explorationLocalVisibleCount = evidenceCanvas.isFiltered
+    ? evidenceCanvas.nodes.filter((n) => {
+      if (!withinLocalDepth(n.ref)) return false;
+      if (evidenceMode === "exploration") {
+        return explorationLocalKinds[displayKindOf(n)];
+      }
+      return true;
+    }).length
+    : 0;
+  // Banner count for the local view in Carte mode (depth only, no types).
+  const carteLocalVisibleCount =
+    evidenceCanvas.nodes.filter((n) => withinLocalDepth(n.ref)).length;
   const carteNodes = evidenceCanvas.nodes.filter((n) =>
     withinLocalDepth(n.ref)
   );
@@ -412,6 +466,12 @@ export function ThreadWorkbench({
   const evidenceComponentLabeler = makeEvidenceComponentLabeler(
     evidenceModel,
     evidenceModel.components.length <= 1,
+  );
+
+  // Compute which DisplayKinds are present in the model (post-fold) so the
+  // burger menu only shows toggles for types that actually exist in the data.
+  const presentKinds = new Set<DisplayKind>(
+    evidenceModel.nodes.map((n) => displayKindOf(n)),
   );
 
   const currentDecisionEvidence = (decisionId?: string) => {
@@ -932,12 +992,33 @@ export function ThreadWorkbench({
                         >
                           <span>
                             {evidenceCanvas.isFiltered
-                              ? `${localVisibleCount} faits affichés · vue locale · profondeur ${localDepth}`
+                              ? `${
+                                evidenceMode === "exploration"
+                                  ? explorationLocalVisibleCount
+                                  : carteLocalVisibleCount
+                              } faits affichés · vue locale · profondeur ${localDepth}`
+                              : evidenceMode === "exploration"
+                              ? (() => {
+                                const kp = explorationKindProjectionMemo ??
+                                  evidenceCanvas;
+                                const parts: string[] = [
+                                  `${kp.displayedCount} faits affichés`,
+                                ];
+                                const totalFolded = kp.foldedInstrumentCount +
+                                  versionedProvenance.collapsedVersionCount;
+                                if (totalFolded > 0) {
+                                  parts.push(`${totalFolded} pliés`);
+                                }
+                                if (kp.supportingNodeCount > 0) {
+                                  parts.push(
+                                    `${kp.supportingNodeCount} masqués par type`,
+                                  );
+                                }
+                                return parts.join(" · ");
+                              })()
                               : (() => {
-                                // displayedCount is already the post-filter
-                                // essential count: the mask is applied once
-                                // upstream by buildEvidenceCanvasProjection.
-                                // supportingNodeCount is the hidden count.
+                                // Carte mode full map — essential-filter
+                                // projection, unchanged.
                                 const essentialCount =
                                   evidenceCanvas.displayedCount;
                                 const totalFolded =
@@ -979,55 +1060,80 @@ export function ThreadWorkbench({
                           </div>
                         </div>
                       </header>
-                      {evidenceCanvas.isFiltered && (
+                      {evidenceMode === "exploration" && (
                         <div class="evidence-graph-menu">
                           <button
                             type="button"
                             class="evidence-graph-menu-toggle"
                             aria-expanded={graphMenuOpen}
-                            aria-label="Réglages du graphe local"
-                            title="Réglages du graphe local"
+                            aria-label="Réglages du graphe"
+                            title="Réglages du graphe"
                             onClick={() => setGraphMenuOpen(!graphMenuOpen)}
                           >
                             ☰
                           </button>
                           {graphMenuOpen && (
                             <div class="evidence-graph-menu-panel">
-                              <p class="evidence-graph-menu-label">
-                                PROFONDEUR DES VOISINS
-                              </p>
-                              <div
-                                class="evidence-graph-mode-toggle"
-                                role="group"
-                                aria-label="Profondeur du voisinage local"
-                              >
-                                {([1, 2, 3] as const).map((depth) => (
-                                  <button
-                                    key={depth}
-                                    type="button"
-                                    aria-pressed={localDepth === depth}
-                                    title={`Afficher les voisins jusqu'à la profondeur ${depth}`}
-                                    onClick={() => setLocalDepth(depth)}
+                              {evidenceCanvas.isFiltered && (
+                                <>
+                                  <p class="evidence-graph-menu-label">
+                                    PROFONDEUR DES VOISINS
+                                  </p>
+                                  <div
+                                    class="evidence-graph-mode-toggle"
+                                    role="group"
+                                    aria-label="Profondeur du voisinage local"
                                   >
-                                    {depth}
-                                  </button>
-                                ))}
-                              </div>
+                                    {([1, 2, 3] as const).map((depth) => (
+                                      <button
+                                        key={depth}
+                                        type="button"
+                                        aria-pressed={localDepth === depth}
+                                        title={`Afficher les voisins jusqu'à la profondeur ${depth}`}
+                                        onClick={() => setLocalDepth(depth)}
+                                      >
+                                        {depth}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
                               <p class="evidence-graph-menu-label">
                                 AFFICHER
                               </p>
-                              <label class="evidence-graph-menu-check">
-                                <input
-                                  type="checkbox"
-                                  checked={showSupportingLocal}
-                                  onChange={(event) =>
-                                    setShowSupportingLocal(
-                                      (event.target as HTMLInputElement)
-                                        .checked,
-                                    )}
-                                />
-                                Éléments digital thread
-                              </label>
+                              {(Object.keys(
+                                DISPLAY_KIND_LABELS,
+                              ) as DisplayKind[]).map(
+                                (kind) => {
+                                  if (!presentKinds.has(kind)) return null;
+                                  const currentKinds = evidenceCanvas.isFiltered
+                                    ? explorationLocalKinds
+                                    : explorationMapKinds;
+                                  const setCurrentKinds = evidenceCanvas
+                                      .isFiltered
+                                    ? setExplorationLocalKinds
+                                    : setExplorationMapKinds;
+                                  return (
+                                    <label
+                                      key={kind}
+                                      class="evidence-graph-menu-check"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={currentKinds[kind]}
+                                        onChange={(event) =>
+                                          setCurrentKinds((prev) => ({
+                                            ...prev,
+                                            [kind]:
+                                              (event.target as HTMLInputElement)
+                                                .checked,
+                                          }))}
+                                      />
+                                      {DISPLAY_KIND_LABELS[kind]}
+                                    </label>
+                                  );
+                                },
+                              )}
                             </div>
                           )}
                         </div>
@@ -1072,9 +1178,15 @@ export function ThreadWorkbench({
                       {evidenceMode === "exploration" && (
                         <EvidenceExploration
                           evidenceModel={evidenceModel}
-                          projection={evidenceCanvas}
-                          displayDepth={localDepth}
-                          showSupporting={showSupportingLocal}
+                          projection={evidenceCanvas.isFiltered
+                            ? evidenceCanvas
+                            : (explorationKindProjectionMemo ?? evidenceCanvas)}
+                          displayDepth={evidenceCanvas.isFiltered
+                            ? localDepth
+                            : undefined}
+                          visibleKinds={evidenceCanvas.isFiltered
+                            ? explorationLocalKinds
+                            : undefined}
                           selection={visibleGraphSelection(
                             versionedProvenance,
                             graphSelection,

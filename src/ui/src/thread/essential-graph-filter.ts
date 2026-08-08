@@ -40,6 +40,66 @@ export const SUPPORTING_ARTIFACT_KINDS: ReadonlySet<string> = new Set([
   "other",
 ]);
 
+// ---------------------------------------------------------------------------
+// Display-kind classification
+// ---------------------------------------------------------------------------
+
+/**
+ * Display-level classification of a graph node for the Exploration type filter.
+ *
+ * "supporting-artifact" identifies artifact nodes whose artifactKind belongs to
+ * SUPPORTING_ARTIFACT_KINDS (digital-thread plumbing: scripts, meshes, …).
+ * All other kinds map 1-to-1 onto the node's entityKind.
+ */
+export type DisplayKind =
+  | "artifact"
+  | "supporting-artifact"
+  | "observation"
+  | "requirement"
+  | "evaluation"
+  | "violation"
+  | "change"
+  | "consumption"
+  | "action";
+
+/**
+ * Human-readable French labels for each DisplayKind.
+ * Used in the burger menu and the legend TYPES section.
+ */
+export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
+  "artifact": "Artefacts",
+  "supporting-artifact": "Artefacts techniques",
+  "observation": "Observations",
+  "requirement": "Exigences",
+  "evaluation": "Évaluations",
+  "violation": "Violations",
+  "change": "Changes",
+  "consumption": "Consommations",
+  "action": "Actions",
+};
+
+/**
+ * Returns the display classification of a graph node.
+ *
+ * A node whose entityKind is "artifact" AND whose artifactKind belongs to
+ * SUPPORTING_ARTIFACT_KINDS is classified as "supporting-artifact".
+ * All other nodes take their entityKind as their DisplayKind.
+ *
+ * This function is exported here (pure, no I/O) and re-exported from
+ * evidence-exploration-model.ts so callers that import from the exploration
+ * model continue to work without a circular dependency.
+ */
+export function displayKindOf(node: ThreadGraphNode): DisplayKind {
+  if (
+    node.entityKind === "artifact" &&
+    node.artifactKind !== undefined &&
+    SUPPORTING_ARTIFACT_KINDS.has(node.artifactKind)
+  ) {
+    return "supporting-artifact";
+  }
+  return node.entityKind as DisplayKind;
+}
+
 /**
  * Returns true when `node` plays a supporting (non-essential) role in the
  * current-design view. Supporting nodes are hidden by default; they are kept
