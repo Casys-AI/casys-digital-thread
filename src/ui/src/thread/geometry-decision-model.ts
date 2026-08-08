@@ -50,6 +50,11 @@ export interface GeometryDecisionValid {
    * `/api/draft-assets/<digest>` endpoint.
    */
   readonly primaryAssetPreviewPath: string | undefined;
+  /**
+   * Format of the primary asset — determines which renderer the view layer
+   * should use.  `undefined` when there are no assembly files.
+   */
+  readonly primaryAssetFormat: "step" | "gltf" | "stl" | undefined;
 }
 
 /** The parameter list is present but could not be fully parsed. */
@@ -179,6 +184,7 @@ function parseOrThrow(
     assemblyFiles,
     components,
     primaryAssetPreviewPath,
+    primaryAssetFormat: primaryFile?.format,
   };
 }
 

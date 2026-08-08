@@ -78,6 +78,7 @@ Deno.test("a well-formed geometry decision parameter list parses into a valid vi
   assertEquals(result.assemblyFiles[0]!.name, "geometry-preview-assembly");
   assertEquals(result.assemblyFiles[0]!.digest, HEX64_A);
   assertEquals(result.components.length, 0);
+  assertEquals(result.primaryAssetFormat, "gltf");
 });
 
 Deno.test("a missing required parameter produces an invalid view, not a thrown error", () => {
@@ -110,6 +111,7 @@ Deno.test("zero assembly files and zero components are accepted as a valid view"
   if (result.kind !== "valid") return;
   assertEquals(result.assemblyFiles.length, 0);
   assertEquals(result.components.length, 0);
+  assertEquals(result.primaryAssetFormat, undefined);
 });
 
 Deno.test("primaryAssetPreviewPath prefers the gltf file over other assembly formats", () => {
@@ -128,6 +130,7 @@ Deno.test("primaryAssetPreviewPath prefers the gltf file over other assembly for
   assertEquals(result.kind, "valid");
   if (result.kind !== "valid") return;
   assertEquals(result.primaryAssetPreviewPath, `/api/draft-assets/${HEX64_B}`);
+  assertEquals(result.primaryAssetFormat, "gltf");
 });
 
 Deno.test("primaryAssetPreviewPath is undefined when there are no assembly files", () => {
@@ -141,6 +144,22 @@ Deno.test("primaryAssetPreviewPath is undefined when there are no assembly files
   assertEquals(result.kind, "valid");
   if (result.kind !== "valid") return;
   assertEquals(result.primaryAssetPreviewPath, undefined);
+  assertEquals(result.primaryAssetFormat, undefined);
+});
+
+Deno.test("primaryAssetFormat is stl when the only assembly file is stl", () => {
+  const params = minimalParams({
+    "geometry.manifest.assemblyFiles.0.format": "stl",
+    "geometry.manifest.assemblyFiles.0.fingerprint": HEX64_A,
+  });
+  const result = parseGeometryDecisionView(params);
+  assertEquals(result.kind, "valid");
+  if (result.kind !== "valid") return;
+  assertEquals(result.primaryAssetFormat, "stl");
+  assertEquals(
+    result.primaryAssetPreviewPath,
+    `/api/draft-assets/${HEX64_A}`,
+  );
 });
 
 Deno.test("a parameter list with one component is parsed with correct bindings", () => {
