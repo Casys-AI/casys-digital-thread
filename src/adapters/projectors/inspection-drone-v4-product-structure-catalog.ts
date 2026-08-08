@@ -399,6 +399,11 @@ function parseBundle(
       (usage.quantity !== 1 && usage.quantity !== "1") || !usage.quantitySource
     ) || new Set(root.tree.map((usage) => usage.id)).size !== 5 ||
     root.tree.some((usage, index) => usage.label !== USAGE_LABELS[index]) ||
+    root.tree.some((usage, index) => {
+      const expected = parsedArchitecture.rootUsages[index]?.usage;
+      return !expected || usage.id !== expected.id || usage.label !== expected.label ||
+        usage.kind !== expected.kind;
+    }) ||
     definitions.slice(1).some((definition) => definition.tree.length !== 0)
   ) {
     throw new Error(

@@ -295,6 +295,22 @@ Deno.test("inspection-drone product catalog accepts only the exact r3 identities
   );
   assertEquals(substituted?.components, []);
 
+  const usageIdPermutation = await resolveInspectionDroneV4ProductStructureCatalog(
+    fixture.snapshot,
+    {
+      ...fixture.readers,
+      partDefinitions: {
+        read: async () => {
+          const record = JSON.parse(fixture.productCapture());
+          const tree = record.definitions[0].structure.tree;
+          [tree[0].id, tree[1].id] = [tree[1].id, tree[0].id];
+          return deterministicJson(record);
+        },
+      },
+    },
+  );
+  assertEquals(usageIdPermutation?.components, []);
+
   for (const field of ["operation", "statement"] as const) {
     const tampered = await resolveInspectionDroneV4ProductStructureCatalog(
       fixture.snapshot,
