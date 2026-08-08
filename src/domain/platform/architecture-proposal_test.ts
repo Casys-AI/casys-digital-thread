@@ -458,6 +458,139 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "planArchitectureInsertion: duplicate same-parent usages are an ambiguity even when one is conformant",
+  () => {
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DroneV4" },
+      { key: "system.name", label: "System", value: "DroneSystem" },
+      { key: "component.wing.name", label: "Wing", value: "Wing" },
+      { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    ]);
+    const existing: ExistingArchitectureStructure = {
+      packageId: "pkg-1",
+      packageLabel: "DroneV4",
+      partDefs: [
+        {
+          id: "sys-1",
+          label: "DroneSystem",
+          usages: [
+            { label: "wing", targetLabel: "Wing" },
+            { label: "wing", targetLabel: "Motor" },
+          ],
+        },
+        { id: "wing-1", label: "Wing", usages: [] },
+        { id: "motor-1", label: "Motor", usages: [] },
+      ],
+    };
+
+    const plan = planArchitectureInsertion(existing, proposal);
+
+    assertEquals(plan.adopted.length, 0);
+    assertEquals(plan.toInsert.length, 0);
+    assertEquals(plan.conflicts.length, 1);
+    assertEquals(plan.conflicts[0]?.code, "ambiguous_usage");
+    assertEquals(plan.conflicts[0]?.componentName, "Wing");
+  },
+);
+
+Deno.test(
+  "planArchitectureInsertion: exact duplicate same-parent usage rows are an ambiguity",
+  () => {
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DroneV4" },
+      { key: "system.name", label: "System", value: "DroneSystem" },
+      { key: "component.wing.name", label: "Wing", value: "Wing" },
+      { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    ]);
+    const existing: ExistingArchitectureStructure = {
+      packageId: "pkg-1",
+      packageLabel: "DroneV4",
+      partDefs: [
+        {
+          id: "sys-1",
+          label: "DroneSystem",
+          usages: [
+            { label: "wing", targetLabel: "Wing" },
+            { label: "wing", targetLabel: "Wing" },
+          ],
+        },
+        { id: "wing-1", label: "Wing", usages: [] },
+      ],
+    };
+
+    const plan = planArchitectureInsertion(existing, proposal);
+
+    assertEquals(plan.conflicts.length, 1);
+    assertEquals(plan.conflicts[0]?.code, "ambiguous_usage");
+  },
+);
+
+Deno.test(
+  "planArchitectureInsertion: absent PartDef still refuses a usage homonym under another parent",
+  () => {
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DroneV4" },
+      { key: "system.name", label: "System", value: "DroneSystem" },
+      { key: "component.wing.name", label: "Wing", value: "Wing" },
+      { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    ]);
+    const existing: ExistingArchitectureStructure = {
+      packageId: "pkg-1",
+      packageLabel: "DroneV4",
+      partDefs: [
+        { id: "sys-1", label: "DroneSystem", usages: [] },
+        {
+          id: "other-1",
+          label: "OtherSystem",
+          usages: [{ label: "wing", targetLabel: "LegacyWing" }],
+        },
+      ],
+    };
+
+    const plan = planArchitectureInsertion(existing, proposal);
+
+    assertEquals(plan.conflicts.length, 1);
+    assertEquals(plan.conflicts[0]?.code, "same-name-different-parent");
+    assertEquals(plan.toInsert.length, 0, "must not add PartDef or usage");
+  },
+);
+
+Deno.test(
+  "planArchitectureInsertion: conformant usage does not hide a homonym under another parent",
+  () => {
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DroneV4" },
+      { key: "system.name", label: "System", value: "DroneSystem" },
+      { key: "component.wing.name", label: "Wing", value: "Wing" },
+      { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    ]);
+    const existing: ExistingArchitectureStructure = {
+      packageId: "pkg-1",
+      packageLabel: "DroneV4",
+      partDefs: [
+        {
+          id: "sys-1",
+          label: "DroneSystem",
+          usages: [{ label: "wing", targetLabel: "Wing" }],
+        },
+        { id: "wing-1", label: "Wing", usages: [] },
+        {
+          id: "other-1",
+          label: "OtherSystem",
+          usages: [{ label: "wing", targetLabel: "Wing" }],
+        },
+      ],
+    };
+
+    const plan = planArchitectureInsertion(existing, proposal);
+
+    assertEquals(plan.adopted.length, 0);
+    assertEquals(plan.conflicts.length, 1);
+    assertEquals(plan.conflicts[0]?.code, "same-name-different-parent");
+  },
+);
+
 // ── Finding 4: conflict named when parent is outside the proposal ─────────────
 
 Deno.test(

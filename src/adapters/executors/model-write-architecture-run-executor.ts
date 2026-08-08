@@ -407,7 +407,6 @@ export class ModelWriteArchitectureRunExecutor {
             await this.#insertEnrichmentItems(
               editingContextId,
               packageId,
-              existing!,
               plan.toInsert,
             );
           }
@@ -652,7 +651,6 @@ export class ModelWriteArchitectureRunExecutor {
   async #insertEnrichmentItems(
     editingContextId: string,
     architecturePackageId: string,
-    preflight: Awaited<ReturnType<typeof extractArchitectureStructure>>,
     items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
   ): Promise<void> {
     // Phase A: insert all new part-defs under the architecture package.
@@ -683,18 +681,35 @@ export class ModelWriteArchitectureRunExecutor {
       architecturePackageId,
     );
 
-    // Build a map from label to id for all current part-defs.
-    const partDefIdByLabel = new Map<string, string>();
-    for (const child of packageChildren) {
-      partDefIdByLabel.set(child.label, child.id);
+    // The package may have changed while Phase A was writing. Rebuild the
+    // parent map only from CURRENT PartDefinitions and fail before Phase C if
+    // any label is ambiguous. A final readback would notice the duplicate too,
+    // but only after a PartUsage could have been inserted under an arbitrary
+    // homonymous parent.
+    const currentPartDefs = packageChildren.filter((child) =>
+      isPartDefinitionKind(child.kind)
+    );
+    const labelCounts = new Map<string, number>();
+    for (const partDef of currentPartDefs) {
+      labelCounts.set(partDef.label, (labelCounts.get(partDef.label) ?? 0) + 1);
     }
-    // Also include existing part-defs from preflight.
-    if (preflight) {
-      for (const pd of preflight.partDefs) {
-        if (!partDefIdByLabel.has(pd.label)) {
-          partDefIdByLabel.set(pd.label, pd.id);
-        }
-      }
+    const duplicateLabels = [...labelCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([label]) => label);
+    if (duplicateLabels.length > 0) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Cannot insert architecture usages: ambiguous PartDefinition labels after " +
+          `part-definition insertion: ${duplicateLabels.join(", ")}. ` +
+          "Manual SysON inspection required before any usage is written.",
+      );
+    }
+
+    // Build a map from label to id for all current part-defs. Do not fall back
+    // to preflight IDs: they are stale after a concurrent model change.
+    const partDefIdByLabel = new Map<string, string>();
+    for (const partDef of currentPartDefs) {
+      partDefIdByLabel.set(partDef.label, partDef.id);
     }
 
     // Phase C: insert usages.
@@ -1106,6 +1121,11 @@ function parseChildrenResponse(
   });
 }
 
+function isPartDefinitionKind(kind: string): boolean {
+  return kind === "sysml::PartDefinition" ||
+    kind.endsWith("entity=PartDefinition");
+}
+
 // ── Private: post-insertion verification ─────────────────────────────────────
 
 function verifyAllComponentsPresent(
@@ -1163,23 +1183,30 @@ function verifyAllComponentsPresent(
           `"${component.name}" is absent after insertion.`,
       );
     }
-    const matchingUsage = parentDef.usages.find(
-      (u) => u.label === component.usageName && u.targetLabel === component.name,
+    const usagesWithProposedName = parentDef.usages.filter(
+      (u) => u.label === component.usageName,
     );
+    if (usagesWithProposedName.length > 1) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Verification failed: usage "${component.usageName}" appears ` +
+          `${usagesWithProposedName.length} times under "${component.parentName}". ` +
+          "A unique parent→usage→target relationship is required.",
+      );
+    }
+    const matchingUsage = usagesWithProposedName[0];
     if (!matchingUsage) {
-      // Diagnose: is the usage present but with the wrong type?
-      const wrongTyped = parentDef.usages.find((u) => u.label === component.usageName);
-      if (wrongTyped) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `Verification failed: usage "${component.usageName}" under "${component.parentName}" ` +
-            `types "${wrongTyped.targetLabel}" instead of the proposed "${component.name}".`,
-        );
-      }
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `Verification failed: usage "${component.usageName}" is absent under ` +
           `"${component.parentName}" after insertion of component "${component.name}".`,
+      );
+    }
+    if (matchingUsage.targetLabel !== component.name) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Verification failed: usage "${component.usageName}" under "${component.parentName}" ` +
+          `types "${matchingUsage.targetLabel}" instead of the proposed "${component.name}".`,
       );
     }
   }

@@ -400,6 +400,10 @@ export interface AdoptedItem {
  *   FeatureTyping points to the wrong PartDef. Insertion cannot fix a typing;
  *   that requires a separate model operation (rewrite of the FeatureTyping
  *   relationship). Stop the plan and surface this for human review.
+ *
+ * "ambiguous_usage" — multiple usages with the proposed name already exist
+ *   under the same parent. Even if one happens to have the expected type, the
+ *   model no longer has a unique parent→usage→target relationship to adopt.
  */
 export type ArchitectureInsertionConflict =
   | {
@@ -409,6 +413,11 @@ export type ArchitectureInsertionConflict =
   }
   | {
     readonly code: "mistyped_usage";
+    readonly componentName: string;
+    readonly message: string;
+  }
+  | {
+    readonly code: "ambiguous_usage";
     readonly componentName: string;
     readonly message: string;
   };
@@ -496,42 +505,89 @@ export function planArchitectureInsertion(
     const isSystem = name === proposal.system.name;
     const existingPartDef = partDefByLabel.get(name);
 
+    if (isSystem) {
+      if (!existingPartDef) {
+        toInsert.push({ kind: "part-def", componentName: name });
+      }
+      continue;
+    }
+
+    // A usage name belongs to exactly one parent in this operation's model
+    // contract. Check every existing parent BEFORE deciding whether to adopt a
+    // PartDef or to create one: otherwise an absent component PartDef can add a
+    // second usage, and an already-conformant local usage can hide a homonym
+    // under another parent.
+    const component = proposal.components.find(
+      (candidate) => candidate.name === name,
+    )!;
+    const parentPartDef = partDefByLabel.get(component.parentName);
+    const conflictingParents = existing.partDefs.filter(
+      (pd) =>
+        pd.label !== component.parentName &&
+        pd.usages.some((usage) => usage.label === component.usageName),
+    );
+    if (conflictingParents.length > 0) {
+      conflicts.push({
+        code: "same-name-different-parent",
+        componentName: name,
+        message: `Component "${name}" usage "${component.usageName}" exists under ` +
+          `${conflictingParents.map((parent) => `"${parent.label}"`).join(", ")} ` +
+          `instead of the proposed "${component.parentName}".`,
+      });
+      continue;
+    }
+
+    const usagesWithProposedName = parentPartDef
+      ? parentPartDef.usages.filter((usage) => usage.label === component.usageName)
+      : [];
+    if (usagesWithProposedName.length > 1) {
+      conflicts.push({
+        code: "ambiguous_usage",
+        componentName: name,
+        message:
+          `Usage "${component.usageName}" appears ${usagesWithProposedName.length} times ` +
+          `under "${component.parentName}". A unique parent→usage→target relationship ` +
+          "is required before this architecture run can proceed.",
+      });
+      continue;
+    }
+
     if (!existingPartDef) {
       // PartDef doesn't exist → insert it.
       toInsert.push({ kind: "part-def", componentName: name });
 
-      // Also insert the usage under its parent (which might be newly inserted or existing).
-      if (!isSystem) {
-        const component = proposal.components.find((c) => c.name === name)!;
-        toInsert.push({
-          kind: "usage",
+      // A matching usage is already occupied under the intended parent. Even
+      // though the PartDef is absent, inserting a new usage would create a
+      // homonym rather than repair the existing FeatureTyping.
+      const existingUsage = usagesWithProposedName[0];
+      if (existingUsage) {
+        toInsert.pop();
+        conflicts.push({
+          code: "mistyped_usage",
           componentName: name,
-          usageName: component.usageName,
-          parentName: component.parentName,
+          message: `Usage "${component.usageName}" under "${component.parentName}" ` +
+            `already types "${existingUsage.targetLabel}" while proposed PartDef ` +
+            `"${name}" is absent. A FeatureTyping correction requires a separate ` +
+            "model operation before this architecture run can proceed.",
         });
+        continue;
       }
-      // System has no parent usage.
+      toInsert.push({
+        kind: "usage",
+        componentName: name,
+        usageName: component.usageName,
+        parentName: component.parentName,
+      });
       continue;
     }
 
     // PartDef exists. Adopt or detect conflicts for non-system components.
-    if (isSystem) {
-      // System PartDef exists — check its usages.
-      // Nothing to adopt for system itself; usages are checked per-component.
-      continue;
-    }
-
-    const component = proposal.components.find((c) => c.name === name)!;
-    const parentPartDef = partDefByLabel.get(component.parentName);
-
     if (parentPartDef) {
       // Finding 2 — adoption requires both the correct usage label AND the
       // correct target PartDef (targetLabel). A usage "wing" that types "Motor"
       // is NOT a conformant adoption of component Wing.
-      const conformantUsage = parentPartDef.usages.find(
-        (u) => u.label === component.usageName && u.targetLabel === component.name,
-      );
-      if (conformantUsage) {
+      const existingUsage = usagesWithProposedName[0];
+      if (existingUsage?.targetLabel === component.name) {
         // Both PartDef and usage under correct parent exist, typed correctly → adopted.
         adopted.push({ componentName: name, existingPartDefId: existingPartDef.id });
         continue;
@@ -546,45 +602,24 @@ export function planArchitectureInsertion(
       // homonymous usage under the same parent. Surface this as a named
       // conflict so the operator knows a separate model-correction step is
       // required before this architecture run can proceed.
-      const mistypedUsage = parentPartDef.usages.find(
-        (u) => u.label === component.usageName,
-      );
-      if (mistypedUsage) {
+      if (existingUsage) {
         conflicts.push({
           code: "mistyped_usage",
           componentName: name,
           message: `Usage "${component.usageName}" under "${component.parentName}" ` +
-            `types "${mistypedUsage.targetLabel}" instead of proposed "${name}". ` +
+            `types "${existingUsage.targetLabel}" instead of proposed "${name}". ` +
             `A FeatureTyping correction requires a separate model operation before ` +
             `this architecture run can proceed.`,
         });
         continue;
       }
-
-      // Finding 4 — search ALL existing PartDefs, not just those in the proposal.
-      // A usage existing under a real parent outside the proposal is still a
-      // structural conflict that cannot be resolved by insertion alone.
-      const conflictingParent = existing.partDefs.find(
-        (pd) =>
-          pd.label !== component.parentName &&
-          pd.usages.some((u) => u.label === component.usageName),
-      );
-      if (conflictingParent) {
-        conflicts.push({
-          code: "same-name-different-parent",
-          componentName: name,
-          message: `Component "${name}" usage "${component.usageName}" exists under ` +
-            `"${conflictingParent.label}" instead of the proposed "${component.parentName}".`,
-        });
-      } else {
-        // Usage is simply absent → insert it.
-        toInsert.push({
-          kind: "usage",
-          componentName: name,
-          usageName: component.usageName,
-          parentName: component.parentName,
-        });
-      }
+      // Usage is simply absent → insert it.
+      toInsert.push({
+        kind: "usage",
+        componentName: name,
+        usageName: component.usageName,
+        parentName: component.parentName,
+      });
     } else {
       // Parent PartDef doesn't exist in the model yet (it's a new component).
       // We'll insert the parent first (it appears before this in topological order).
