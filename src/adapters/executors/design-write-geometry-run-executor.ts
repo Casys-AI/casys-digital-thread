@@ -66,6 +66,7 @@ import {
   type FileCaptureStore,
   GEOMETRY_CAPTURE_URI_PREFIX,
 } from "../captures/file-capture-store.ts";
+import { GEOMETRY_DRAFT_ASSETS_DIR } from "../captures/geometry-draft-capture.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   requireBasis,
@@ -129,6 +130,65 @@ export class GeometryAssetVerificationError extends Error {
   ) {
     super(message);
     this.name = "GeometryAssetVerificationError";
+  }
+}
+
+// ── I2: MRTR ↔ draft artifact hash cross-check ───────────────────────────────
+
+/**
+ * Verify that the artifact hashes the human signed in the MRTR match the
+ * hashes stored in the draft record.
+ *
+ * WHY EXPORTED — this guard is pure (no I/O) and is called inside the execute
+ * hot-path.  Exporting it lets the unit tests directly verify the D1/D2 attack
+ * scenario (human signs hashes for D2 while the viewer shows D1) without
+ * bootstrapping a full project fixture.
+ */
+export function assertMrtrArtifactHashesMatchDraft(
+  mrtrAssemblyFiles: ReadonlyArray<{ fingerprint: { digest: string } }>,
+  mrtrPartMeshes: ReadonlyArray<{ fingerprint: { digest: string } }>,
+  draftAssemblyFiles: ReadonlyArray<{ fingerprint: { digest: string } }>,
+  draftPartMeshes: ReadonlyArray<{ fingerprint: { digest: string } }>,
+): void {
+  if (mrtrAssemblyFiles.length !== draftAssemblyFiles.length) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `MRTR has ${mrtrAssemblyFiles.length} assembly file(s) but draft record ` +
+        `has ${draftAssemblyFiles.length}. Hashes may belong to a different draft.`,
+    );
+  }
+  for (let k = 0; k < mrtrAssemblyFiles.length; k++) {
+    const mrtrDigest = mrtrAssemblyFiles[k]!.fingerprint.digest;
+    const draftDigestK = draftAssemblyFiles[k]!.fingerprint.digest;
+    if (mrtrDigest !== draftDigestK) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Assembly file ${k} fingerprint mismatch: MRTR carries '` +
+          `${mrtrDigest.slice(0, 16)}…', draft record has '` +
+          `${draftDigestK.slice(0, 16)}…'. The MRTR was signed for a ` +
+          "different draft. Operator inspection required.",
+      );
+    }
+  }
+  if (mrtrPartMeshes.length !== draftPartMeshes.length) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `MRTR has ${mrtrPartMeshes.length} part mesh(es) but draft record has ` +
+        `${draftPartMeshes.length}. Hashes may belong to a different draft.`,
+    );
+  }
+  for (let k = 0; k < mrtrPartMeshes.length; k++) {
+    const mrtrDigest = mrtrPartMeshes[k]!.fingerprint.digest;
+    const draftDigestK = draftPartMeshes[k]!.fingerprint.digest;
+    if (mrtrDigest !== draftDigestK) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Part mesh ${k} fingerprint mismatch: MRTR carries '` +
+          `${mrtrDigest.slice(0, 16)}…', draft record has '` +
+          `${draftDigestK.slice(0, 16)}…'. The MRTR was signed for a ` +
+          "different draft. Operator inspection required.",
+      );
+    }
   }
 }
 
@@ -304,6 +364,15 @@ export class DesignWriteGeometryRunExecutor {
             "store do not hash to the signed draft digest. Operator inspection required.",
         );
       }
+
+      // I2: cross-check MRTR artifact hashes against the draft record.
+      // See assertMrtrArtifactHashesMatchDraft for the attack scenario this guards.
+      assertMrtrArtifactHashesMatchDraft(
+        params.manifest.artifactHashes?.assemblyFiles ?? [],
+        params.manifest.artifactHashes?.partMeshes ?? [],
+        draftRecord.assemblyFiles ?? [],
+        draftRecord.partMeshes ?? [],
+      );
 
       // Step 10 (D5 part 2): architecture capture load + per-component binding check.
       await assertComponentBindingsMatchArchitecture(
@@ -614,8 +683,6 @@ function hasGeometryArtifact(snapshot: ThreadSnapshot): boolean {
 
 // ── Binary asset verification ─────────────────────────────────────────────────
 
-const DRAFT_ASSETS_DIR = "state/local/geometry-draft-assets" as const;
-
 /**
  * Verify that a binary asset exists in the draft-assets directory and that its
  * SHA-256 matches the expected digest.
@@ -625,7 +692,7 @@ const DRAFT_ASSETS_DIR = "state/local/geometry-draft-assets" as const;
  * seal would attest bytes the operator never reviewed.
  */
 async function verifyDraftAsset(expectedDigest: string, name: string): Promise<void> {
-  const path = `${DRAFT_ASSETS_DIR}/${expectedDigest}`;
+  const path = `${GEOMETRY_DRAFT_ASSETS_DIR}/${expectedDigest}`;
   let bytes: Uint8Array;
   try {
     bytes = await Deno.readFile(path);

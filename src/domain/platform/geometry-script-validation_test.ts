@@ -207,6 +207,13 @@ for (
     "getattr",
     "setattr",
     "delattr",
+    // B2 additions: reflection and introspection built-ins
+    "vars",
+    "dir",
+    "type",
+    "callable",
+    "hasattr",
+    "id",
   ]
 ) {
   Deno.test(`validateGeometryScript rejects the forbidden identifier '${name}'`, () => {
@@ -385,6 +392,118 @@ result = Box(\\1, 1, 1)
     GeometryScriptValidationError,
   );
 });
+
+// ── B1: uppercase and two-character string prefix attacks ────────────────────
+
+Deno.test(
+  'validateGeometryScript rejects uppercase F-string prefix (F"...")',
+  () => {
+    // Attack: F"..." is an f-string; the `F` would be silently lexed as a NAME
+    // token if the tokenizer only checks lowercase prefixes, letting the
+    // interpolation payload slip through undetected.
+    assertThrows(
+      () =>
+        validateGeometryScript(
+          `from build123d import *\nresult = F"{1 + 1}"\n`,
+        ),
+      GeometryScriptValidationError,
+    );
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `from build123d import *\nresult = F"{1 + 1}"\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "invalid_string_prefix");
+  },
+);
+
+Deno.test(
+  'validateGeometryScript rejects two-character string prefix FR"..."',
+  () => {
+    // Attack: FR"..." is a raw f-string; the two-char case is not caught by a
+    // single-char prefix check and would be tokenised as NAME `FR` + STRING.
+    assertThrows(
+      () =>
+        validateGeometryScript(
+          `from build123d import *\nresult = FR"raw f-string"\n`,
+        ),
+      GeometryScriptValidationError,
+    );
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `from build123d import *\nresult = FR"raw f-string"\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "invalid_string_prefix");
+  },
+);
+
+// ── B2: vars() bypass attack ──────────────────────────────────────────────────
+
+Deno.test(
+  "validateGeometryScript rejects the vars() introspection bypass",
+  () => {
+    // Attack: `vars()["__builtins__"]["exec"]("...")` accesses exec through
+    // the built-in namespace without spelling the forbidden name `exec` or
+    // `__builtins__` directly — `vars` is the foothold.  Rejecting `vars`
+    // closes this route.
+    assertThrows(
+      () =>
+        validateGeometryScript(
+          `from build123d import *\nvars()["x"]\nresult = Box(1, 1, 1)\n`,
+        ),
+      GeometryScriptValidationError,
+    );
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `from build123d import *\nvars()["x"]\nresult = Box(1, 1, 1)\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "forbidden_name");
+  },
+);
+
+// ── I1: from math import * ────────────────────────────────────────────────────
+
+Deno.test(
+  "validateGeometryScript rejects wildcard math import (from math import *)",
+  () => {
+    // Attack: `from math import *` binds every math symbol into the local
+    // namespace including `e`, `tau`, etc., but also exposes `frexp`, `ldexp`,
+    // and other names that were never individually approved.  The `*` OP token
+    // must be caught explicitly — otherwise it falls through to the loop-exit
+    // `break` and the wildcard import is silently accepted.
+    assertThrows(
+      () =>
+        validateGeometryScript(
+          `from math import *\nfrom build123d import *\nresult = Box(1, 1, 1)\n`,
+        ),
+      GeometryScriptValidationError,
+    );
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `from math import *\nfrom build123d import *\nresult = Box(1, 1, 1)\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "forbidden_import");
+  },
+);
 
 // ── Size limits ───────────────────────────────────────────────────────────────
 

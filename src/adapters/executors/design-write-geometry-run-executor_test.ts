@@ -53,6 +53,7 @@ import type {
 import type { EngineeringThreadSnapshotRef } from "../../domain/project/engineering-project.ts";
 import {
   assertGeometryArtifactNotRemoved,
+  assertMrtrArtifactHashesMatchDraft,
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
   GeometryArtifactRemovedError,
@@ -152,6 +153,67 @@ Deno.test("GeometryArtifactRemovedError carries the subject ID in its message", 
   assertEquals(error.message.includes("subject:drone-v4"), true);
   assertEquals(error.message.includes("geometry_artifact_removed"), true);
 });
+
+// ── Unit: assertMrtrArtifactHashesMatchDraft ─────────────────────────────────
+
+Deno.test(
+  "assertMrtrArtifactHashesMatchDraft accepts matching assembly hashes (D1 == D1 scenario)",
+  () => {
+    // Happy path: the MRTR was built from the same draft the viewer showed.
+    const fp = { fingerprint: { digest: HEX64 } };
+    assertMrtrArtifactHashesMatchDraft([fp], [], [fp], []);
+  },
+);
+
+Deno.test(
+  "assertMrtrArtifactHashesMatchDraft throws invalid_transition when the MRTR assembly hash differs from the draft (D1/D2 attack)",
+  () => {
+    // Attack: human reviews draft D1 (assembly hash HEX64) but the MRTR was
+    // signed with D2's hash (HEX64_B).  The executor would seal D2 — bytes
+    // the operator never saw.  The cross-check must catch this.
+    const mrtrFile = { fingerprint: { digest: HEX64 } };
+    const draftFile = { fingerprint: { digest: HEX64_B } };
+    let caught: unknown;
+    try {
+      assertMrtrArtifactHashesMatchDraft([mrtrFile], [], [draftFile], []);
+    } catch (e) {
+      caught = e;
+    }
+    assertExists(caught);
+    assertEquals((caught as EngineeringProjectCommandError).code, "invalid_transition");
+  },
+);
+
+Deno.test(
+  "assertMrtrArtifactHashesMatchDraft throws invalid_transition when the MRTR part mesh hash differs from the draft",
+  () => {
+    const mrtrMesh = { fingerprint: { digest: HEX64 } };
+    const draftMesh = { fingerprint: { digest: HEX64_B } };
+    let caught: unknown;
+    try {
+      assertMrtrArtifactHashesMatchDraft([], [mrtrMesh], [], [draftMesh]);
+    } catch (e) {
+      caught = e;
+    }
+    assertExists(caught);
+    assertEquals((caught as EngineeringProjectCommandError).code, "invalid_transition");
+  },
+);
+
+Deno.test(
+  "assertMrtrArtifactHashesMatchDraft throws invalid_transition when MRTR has more assembly files than the draft",
+  () => {
+    const fp = { fingerprint: { digest: HEX64 } };
+    let caught: unknown;
+    try {
+      assertMrtrArtifactHashesMatchDraft([fp, fp], [], [fp], []);
+    } catch (e) {
+      caught = e;
+    }
+    assertExists(caught);
+    assertEquals((caught as EngineeringProjectCommandError).code, "invalid_transition");
+  },
+);
 
 // ── Integration fixture ───────────────────────────────────────────────────────
 

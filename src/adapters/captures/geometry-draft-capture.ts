@@ -439,7 +439,15 @@ function requireFileShape(
 
 // ── Binary asset materialisation ─────────────────────────────────────────────
 
-const DRAFT_ASSETS_DIR = "state/local/geometry-draft-assets" as const;
+/**
+ * Canonical local directory for binary draft assets, keyed by SHA-256 digest.
+ *
+ * WHY EXPORTED — three modules read or write this path:
+ * `geometry-draft-capture.ts` (write), `design-write-geometry-run-executor.ts`
+ * (verify), and `serve-native-workbench.ts` (serve).  A single export prevents
+ * the three copies from silently diverging.
+ */
+export const GEOMETRY_DRAFT_ASSETS_DIR = "state/local/geometry-draft-assets" as const;
 
 /**
  * Copy a provider-side binary from the Docker exports volume to the
@@ -449,7 +457,7 @@ const DRAFT_ASSETS_DIR = "state/local/geometry-draft-assets" as const;
  * serve these files by content address.  Storing them by original filename
  * would require a separate name→digest index that could drift.
  *
- * Idempotent: if `DRAFT_ASSETS_DIR/{digest}` already exists and verifies,
+ * Idempotent: if `GEOMETRY_DRAFT_ASSETS_DIR/{digest}` already exists and verifies,
  * no Docker copy is performed.
  */
 async function materializeToDraftAssets(
@@ -458,7 +466,7 @@ async function materializeToDraftAssets(
   service: string,
   composeProjectDirectory: string,
 ): Promise<void> {
-  const localPath = `${DRAFT_ASSETS_DIR}/${sha256}`;
+  const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${sha256}`;
 
   // Idempotent: verify existing file before touching Docker.
   const existing = await readFileSafe(localPath);
@@ -469,9 +477,9 @@ async function materializeToDraftAssets(
     await removeFileSafe(localPath);
   }
 
-  await Deno.mkdir(DRAFT_ASSETS_DIR, { recursive: true });
+  await Deno.mkdir(GEOMETRY_DRAFT_ASSETS_DIR, { recursive: true });
 
-  const tmpPath = `${DRAFT_ASSETS_DIR}/.${crypto.randomUUID()}.tmp`;
+  const tmpPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/.${crypto.randomUUID()}.tmp`;
   const command = new Deno.Command("docker", {
     args: [
       "compose",

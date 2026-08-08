@@ -69,6 +69,43 @@ export class GeometryScriptValidationError extends Error {
 const MAX_SCRIPT_BYTES = 64 * 1024; // 64 KiB
 const MAX_TOKENS = 8_000;
 
+// ── String prefix helpers (B1) ────────────────────────────────────────────────
+//
+// WHY SEPARATE HELPERS — Python allows string prefixes in any case combination
+// (r, R, b, B, f, F, u, U, rb, rB, Rb, RB, br, bR, Br, BR, rf, rF, Rf, RF,
+// fr, fR, Fr, FR).  The tokenizer must intercept ALL of them before the NAME
+// detection path absorbs uppercase letters like `F`, `R`, `B`, `U` silently.
+// Top-level pure functions cost nothing and keep the inner switch readable.
+
+/** True for the first character of ANY valid Python single-char string prefix. */
+function isStringPrefix1Char(c: string): boolean {
+  return (
+    c === "r" || c === "R" ||
+    c === "b" || c === "B" ||
+    c === "f" || c === "F" ||
+    c === "u" || c === "U"
+  );
+}
+
+/**
+ * True for a character that can appear as either the first or second character
+ * of a valid Python two-character string prefix.
+ * Python two-char prefixes: rb, rB, Rb, RB, br, bR, Br, BR, rf, rF, Rf, RF,
+ * fr, fR, Fr, FR.  `u` has no two-char form.
+ */
+function isStringPrefix2Char(c: string): boolean {
+  return (
+    c === "r" || c === "R" ||
+    c === "b" || c === "B" ||
+    c === "f" || c === "F"
+  );
+}
+
+/** True for a Python string delimiter character. */
+function isStringQuoteChar(c: string): boolean {
+  return c === '"' || c === "'";
+}
+
 /**
  * Identifiers that are never allowed, regardless of import status.
  * This list corresponds to the D4 spec enumeration.
@@ -98,6 +135,16 @@ const FORBIDDEN_NAMES = new Set([
   "setattr",
   "delattr",
   "__import__",
+  // Reflection and introspection built-ins that allow bypassing the name
+  // allowlist at runtime: `vars()["__builtins__"]` and `dir(obj)` can expose
+  // every name in scope; `type(x)` can construct new classes; `callable`,
+  // `hasattr`, and `id` enable probing the object graph.
+  "vars",
+  "dir",
+  "type",
+  "callable",
+  "hasattr",
+  "id",
 ]);
 
 /** Only these top-level import sources are whitelisted. */
@@ -276,15 +323,41 @@ function tokenize(source: string): Token[] {
       continue;
     }
 
-    // String literals: detect and reject illegal prefixes
+    // String literals: detect and reject ALL illegal prefix forms (B1).
+    //
+    // WHY TWO CHECKS — Python string prefixes come in one- and two-character
+    // forms, both case-insensitive.  The one-char check catches r/R/b/B/f/F/u/U
+    // immediately before a quote.  The two-char check runs first so that `FR"`
+    // is caught before `F` is silently absorbed by the NAME path.
+    //
+    // Without the two-char check, `FR"..."` is tokenised as NAME `FR` followed
+    // by STRING `"..."` — both individually valid — which lets f-strings slip
+    // through.  Without expanding to uppercase, `F"..."` falls through to NAME
+    // `F` (not in FORBIDDEN_NAMES) and then STRING `"..."`.
+
+    // Two-character prefix + quote: FR"…", rb"…", Br'…', etc.
     if (
-      ch === '"' || ch === "'" ||
-      ((ch === "r" || ch === "b" || ch === "f" || ch === "u") &&
-        (peek(1) === '"' || peek(1) === "'"))
+      isStringPrefix2Char(ch) &&
+      isStringPrefix2Char(peek(1)) &&
+      isStringQuoteChar(peek(2))
     ) {
-      // Reject b, f, rb, br, rf, fr prefixes (b and f variants are not safe
-      // for our narrow vocabulary; r strings are also disallowed)
-      if (ch !== '"' && ch !== "'") {
+      const prefix = ch + peek(1);
+      throw new GeometryScriptValidationError(
+        "invalid_string_prefix",
+        `String prefix '${prefix}' is not allowed at line ${startLine}.`,
+        startLine,
+      );
+    }
+
+    // Single-character prefix + quote: r"…", B"…", f'…', U"…", etc.
+    // Also handles bare quotes (ch is '"' or '\'') — the prefix condition is
+    // false for those so they fall through to the string consumer.
+    if (
+      isStringQuoteChar(ch) ||
+      (isStringPrefix1Char(ch) && isStringQuoteChar(peek(1)))
+    ) {
+      // Any non-quote char here is a string prefix — reject it.
+      if (!isStringQuoteChar(ch)) {
         throw new GeometryScriptValidationError(
           "invalid_string_prefix",
           `String prefix '${ch}' is not allowed at line ${startLine}.`,
@@ -603,6 +676,17 @@ function checkMathImportNames(
         );
       }
       continue;
+    }
+    // I1: wildcard import must be rejected explicitly.  Without this check,
+    // `from math import *` produces an OP token with value `*` that falls
+    // through to the final `break` — silently accepted — because `*` is not
+    // a COMMENT or any of the cases above.
+    if (t.kind === "OP" && t.value === "*") {
+      throw new GeometryScriptValidationError(
+        "forbidden_import",
+        `Wildcard 'from math import *' is not allowed at line ${importLine}.`,
+        importLine,
+      );
     }
     if (t.kind === "COMMENT") break;
     break;

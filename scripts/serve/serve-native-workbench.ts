@@ -18,6 +18,7 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/captures/file-capture-store.ts";
+import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/captures/geometry-draft-capture.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
 import {
@@ -620,7 +621,7 @@ async function serveDraftAsset(pathname: string): Promise<Response> {
   if (!/^[a-f0-9]{64}$/.test(digest)) {
     return new Response("Invalid draft asset digest", { status: 400 });
   }
-  const localPath = `state/local/geometry-draft-assets/${digest}`;
+  const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${digest}`;
   let bytes: Uint8Array;
   try {
     bytes = await Deno.readFile(localPath);
