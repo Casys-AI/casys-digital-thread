@@ -180,7 +180,11 @@ export function assertMrtrManifestMatchesDraft(
     exportFormats: draft.exportFormats,
     scriptHash: draft.scriptHash,
     artifactHashes: {
-      assemblyFiles: draft.assemblyFiles,
+      assemblyFiles: draft.assemblyFiles.map((file) => ({
+        format: file.format,
+        name: file.name,
+        fingerprint: file.fingerprint,
+      })),
       partMeshes: draft.partMeshes.map((mesh) => ({
         semanticKey: mesh.usageName,
         name: mesh.name,
@@ -945,6 +949,17 @@ function buildExtension(options: {
     verifiedAt: capturedAt,
     status: "verified",
   };
+  const binaryArtifacts = [...assemblyFileArtifacts, ...partMeshArtifacts];
+  const binaryConsumptions: ThreadArtifactConsumption[] = binaryArtifacts.map(
+    (artifact) => ({
+      id: `consume-${artifactId}-by-${artifact.id}`,
+      artifactId,
+      consumer: artifact.producer,
+      observedFingerprint: captureFp,
+      verifiedAt: capturedAt,
+      status: "verified" as const,
+    }),
+  );
 
   const extensionId = `design-write-geometry-${captureFp.digest}`;
 
@@ -954,7 +969,7 @@ function buildExtension(options: {
     subjectId: base.subject.id,
     capturedAt,
     artifacts: [primaryArtifact, ...assemblyFileArtifacts, ...partMeshArtifacts],
-    consumptions: [consumption],
+    consumptions: [consumption, ...binaryConsumptions],
     observations: [],
     requirements: [],
     evaluations: [],
@@ -977,6 +992,24 @@ function buildExtension(options: {
         rationale:
           "The executor loaded the exact architecture capture to verify per-component bindings.",
       },
+      ...binaryArtifacts.flatMap((artifact, index) => {
+        const binaryConsumption = binaryConsumptions[index]!;
+        return [{
+          id: `derived-${artifact.id}-from-${artifactId}`,
+          relation: "derived_from" as const,
+          from: { kind: "artifact" as const, id: artifact.id },
+          to: { kind: "artifact" as const, id: artifactId },
+          rationale:
+            "The published binary is an exact content-addressed export carried by the sealed geometry capture.",
+        }, {
+          id: `uses-${binaryConsumption.id}`,
+          relation: "uses" as const,
+          from: { kind: "consumption" as const, id: binaryConsumption.id },
+          to: { kind: "artifact" as const, id: artifactId },
+          rationale:
+            "The binary publication verified the exact sealed geometry capture fingerprint.",
+        }];
+      }),
     ],
     proposedActions: [],
   };

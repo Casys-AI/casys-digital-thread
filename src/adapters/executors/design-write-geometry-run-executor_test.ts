@@ -62,6 +62,16 @@ import {
   requireArchitectureArtifact,
 } from "./design-write-geometry-run-executor.ts";
 import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
+import {
+  applyThreadSnapshotExtensionIfNew,
+} from "../../domain/thread/thread-snapshot-extension.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
+import { captureGeometryDraft } from "../captures/geometry-draft-capture.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import {
   encodeGeometryDecisionParameters,
   GEOMETRY_MANIFEST_SCHEMA,
   type GeometryManifest,
@@ -355,6 +365,8 @@ interface GeoFixture {
   readonly draftCaptures: FileCaptureStore<"geometry-draft">;
   readonly geoCaptures: FileCaptureStore<"geometry-capture">;
   readonly baselineRef: EngineeringThreadSnapshotRef;
+  readonly draftAssetDirectory: string;
+  readonly canonicalAssetDirectory: string;
   readonly queued: { revision: number; runId: string };
 }
 
@@ -377,7 +389,7 @@ interface GeoFixture {
  */
 async function buildGeoFixture(
   directory: string,
-  opts: { mode: "no-mrtr" | "with-mrtr" },
+  opts: { mode: "no-mrtr" | "with-mrtr" | "happy" },
 ): Promise<GeoFixture> {
   let tick = 0;
   const now = () =>
@@ -401,6 +413,8 @@ async function buildGeoFixture(
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: `${directory}/geo-captures`,
   });
+  const draftAssetDirectory = `${directory}/draft-assets`;
+  const canonicalAssetDirectory = `${directory}/canonical-assets`;
 
   // ── Step 1: brief lifecycle ────────────────────────────────────────────────
 
@@ -515,8 +529,211 @@ async function buildGeoFixture(
   });
 
   const r1 = afterBaseline.threadSnapshots[0]!;
+  project = afterBaseline;
 
   // ── Step 4: append geometry work item (with or without a required decision) ─
+
+  let geometryBasis = r1;
+  let signedDraftDigest = HEX64;
+  let signedManifest: GeometryManifest | undefined;
+
+  if (opts.mode === "happy") {
+    project = await commands.appendChange(AGENT, {
+      commandId: "append-architecture-change",
+      projectId: PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2026-08-08T12:01:10.000Z",
+      baseSnapshot: r1,
+      phases: [{
+        id: "architecture",
+        name: "Architecture",
+        description: "Record the reviewed architecture basis.",
+      }],
+      workItems: [{
+        id: "wi:architecture",
+        phaseId: "architecture",
+        owner: "agent",
+        dependsOnWorkItemIds: ["wi:baseline"],
+        decisionIds: [],
+        operation: {
+          ...MODEL_WRITE_ARCHITECTURE_OPERATION,
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        },
+      }],
+      requiredDecisions: [],
+    });
+    project = await commands.queueRun(AGENT, {
+      commandId: "queue-architecture",
+      projectId: PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2026-08-08T12:01:20.000Z",
+      runId: "run:architecture",
+      workItemId: "wi:architecture",
+      summary: "Record the reviewed architecture basis.",
+      basis: { kind: "thread-snapshot", ...r1 },
+    });
+    const architectureCapture = {
+      schemaVersion: "architecture-capture/1.0",
+      partDefinitions: [{
+        id: "part-definition:frame",
+        label: "FrameDefinition",
+        usages: [{ id: "usage:frame", label: "frame" }],
+      }],
+    };
+    const architectureFingerprint = await sha256Fingerprint(architectureCapture);
+    await archCaptures.save(
+      architectureFingerprint,
+      deterministicJson(architectureCapture),
+    );
+    const architectureArtifactId = `architecture-${architectureFingerprint.digest}`;
+    const architectureExtension = {
+      id: "architecture-test-basis",
+      name: "Reviewed architecture basis",
+      subjectId: r1.subjectId,
+      capturedAt: "2026-08-08T12:01:30.000Z",
+      artifacts: [{
+        id: architectureArtifactId,
+        name: "Reviewed architecture",
+        kind: "sysml-model" as const,
+        version: architectureFingerprint.digest,
+        fingerprint: architectureFingerprint,
+        uri: archCaptures.uriFor(architectureFingerprint),
+        producer: {
+          serverId: "syson",
+          tool: "syson_element_insert_sysml",
+          runId: "run:architecture",
+        },
+        inputArtifactIds: [],
+        freshness: {
+          status: "fresh" as const,
+          changedAt: "2026-08-08T12:01:30.000Z",
+          invalidatedByChangeIds: [],
+        },
+      }],
+      consumptions: [],
+      observations: [],
+      requirements: [],
+      evaluations: [],
+      violations: [],
+      provenance: [],
+      proposedActions: [],
+    };
+    const baselineSnapshot = await snapshots.get(r1.snapshotId);
+    assertExists(baselineSnapshot);
+    const architectureSnapshot = applyThreadSnapshotExtensionIfNew(
+      baselineSnapshot,
+      architectureExtension,
+      { appliedAt: architectureExtension.capturedAt },
+    ).snapshot;
+    validateThreadSnapshot(architectureSnapshot);
+    await snapshots.save(architectureSnapshot);
+    project = await commands.claimRun(AGENT, {
+      commandId: "claim-architecture",
+      projectId: PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2026-08-08T12:01:31.000Z",
+      runId: "run:architecture",
+      summary: "Claim the reviewed architecture record.",
+    });
+    project = await commands.publishRun(AGENT, {
+      commandId: "publish-architecture",
+      projectId: PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2026-08-08T12:01:32.000Z",
+      runId: "run:architecture",
+      summary: "Publish the reviewed architecture record.",
+    });
+    project = await commands.completeRun(AGENT, {
+      commandId: "complete-architecture",
+      projectId: PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2026-08-08T12:01:33.000Z",
+      runId: "run:architecture",
+      summary: "Attach the reviewed architecture record.",
+      resultSnapshot: {
+        snapshotId: architectureSnapshot.id,
+        revision: architectureSnapshot.revision,
+        subjectId: architectureSnapshot.subject.id,
+      },
+      evidenceRefs: [{
+        snapshotId: architectureSnapshot.id,
+        snapshotRevision: architectureSnapshot.revision,
+        kind: "artifact",
+        id: architectureArtifactId,
+      }],
+    });
+    geometryBasis = {
+      snapshotId: architectureSnapshot.id,
+      revision: architectureSnapshot.revision,
+      subjectId: architectureSnapshot.subject.id,
+    };
+
+    const assetBytes = new TextEncoder().encode("reviewed geometry bytes\n");
+    const assetDigest = await sha256Bytes(assetBytes);
+    const draftManifest: GeometryManifest = {
+      schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+      architectureBasis: {
+        snapshotId: architectureSnapshot.id,
+        revision: architectureSnapshot.revision,
+        artifactFingerprint: architectureFingerprint,
+      },
+      components: [{
+        usageName: "frame",
+        elementId: "usage:frame",
+        label: "Frame",
+      }],
+      unitSystem: "mm",
+      exportFormats: ["gltf"],
+    };
+    const draft = await captureGeometryDraft(
+      {
+        callTool: () =>
+          Promise.resolve({
+            structuredContent: {
+              schemaVersion: "1.0",
+              kind: "export",
+              metrics: {},
+              files: [{
+                format: "gltf",
+                path: "/exports/geometry-preview-assembly.glb",
+                bytes: assetBytes.length,
+                sha256: assetDigest,
+                viewer: "model-viewer",
+              }],
+            },
+            text: "",
+          }),
+        callToolTextResult: () => Promise.reject(new Error("unexpected")),
+      },
+      {
+        script: "from build123d import Box\nresult = Box(10, 10, 10)\n",
+        manifest: draftManifest,
+      },
+      draftCaptures,
+      {
+        build123dService: "mcp-build123d",
+        materializeAsset: async (digest) => {
+          assertEquals(digest, assetDigest);
+          await Deno.mkdir(draftAssetDirectory, { recursive: true });
+          await Deno.writeFile(`${draftAssetDirectory}/${digest}`, assetBytes);
+        },
+      },
+      () => "2026-08-08T12:01:45.000Z",
+    );
+    signedDraftDigest = draft.fingerprint.digest;
+    signedManifest = {
+      ...draftManifest,
+      scriptHash: draft.scriptHash,
+      artifactHashes: {
+        assemblyFiles: draft.assemblyFiles.map((file) => ({
+          format: file.format,
+          name: file.name,
+          fingerprint: file.fingerprint,
+        })),
+        partMeshes: [],
+      },
+    };
+  }
 
   if (opts.mode === "no-mrtr") {
     // Work item with NO decision bindings: queues immediately (no decisions to
@@ -526,7 +743,7 @@ async function buildGeoFixture(
     project = await commands.appendChange(AGENT, {
       commandId: "append-geo-change",
       projectId: PROJECT_ID,
-      expectedRevision: afterBaseline.revision,
+      expectedRevision: project.revision,
       issuedAt: "2026-08-08T12:02:00.000Z",
       baseSnapshot: r1,
       phases: [{
@@ -550,7 +767,7 @@ async function buildGeoFixture(
   } else {
     // Work item WITH a human-approved decision.  The basis r1 has NO architecture
     // artifact, so D5 will fail — which is what the "no arch artifact" test checks.
-    const geoManifest: GeometryManifest = {
+    const geoManifest: GeometryManifest = signedManifest ?? {
       schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
       architectureBasis: {
         snapshotId: r1.snapshotId,
@@ -571,14 +788,17 @@ async function buildGeoFixture(
         partMeshes: [],
       },
     };
-    const geoDecisionParams = encodeGeometryDecisionParameters(HEX64, geoManifest);
+    const geoDecisionParams = encodeGeometryDecisionParameters(
+      signedDraftDigest,
+      geoManifest,
+    );
 
     project = await commands.appendChange(AGENT, {
       commandId: "append-geo-change",
       projectId: PROJECT_ID,
-      expectedRevision: afterBaseline.revision,
+      expectedRevision: project.revision,
       issuedAt: "2026-08-08T12:02:00.000Z",
-      baseSnapshot: r1,
+      baseSnapshot: geometryBasis,
       phases: [{
         id: "geometry",
         name: "Geometry",
@@ -609,7 +829,7 @@ async function buildGeoFixture(
       expectedRevision: project.revision,
       issuedAt: "2026-08-08T12:03:00.000Z",
       decisionId: "decision:geo-params",
-      baseSnapshot: r1,
+      baseSnapshot: geometryBasis,
       proposal: {
         summary: "Seal the geometry preview assembly.",
         parameters: geoDecisionParams as Array<{
@@ -644,7 +864,7 @@ async function buildGeoFixture(
     runId: "run:geometry",
     workItemId: "wi:geometry",
     summary: "Seal the reviewed geometry draft into the thread.",
-    basis: { kind: "thread-snapshot", ...r1 },
+    basis: { kind: "thread-snapshot", ...geometryBasis },
   });
 
   return {
@@ -654,7 +874,9 @@ async function buildGeoFixture(
     archCaptures,
     draftCaptures,
     geoCaptures,
-    baselineRef: r1,
+    baselineRef: geometryBasis,
+    draftAssetDirectory,
+    canonicalAssetDirectory,
     queued: { revision: project.revision, runId: "run:geometry" },
   };
 }
@@ -671,8 +893,17 @@ function makeExecutor(
     geometryDraftCaptures: fixture.draftCaptures,
     geometryCaptures: fixture.geoCaptures,
     lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
+    draftAssetDirectory: fixture.draftAssetDirectory,
+    canonicalAssetDirectory: fixture.canonicalAssetDirectory,
     now: () => "2026-08-08T12:10:00.000Z",
   });
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function executionCommand(
@@ -694,6 +925,74 @@ function executionCommand(
 }
 
 // ── Integration: executor refusal paths ──────────────────────────────────────
+
+Deno.test("a reviewed geometry draft becomes valid canonical thread evidence bound to its architecture", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-happy-path-" });
+  try {
+    const fixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const completed = await makeExecutor(fixture, tmpDir).execute(
+      AGENT,
+      executionCommand(fixture),
+    );
+
+    const run = completed.agentRuns.find((candidate) =>
+      candidate.id === fixture.queued.runId
+    );
+    assertExists(run);
+    assertEquals(run.status, "completed");
+    assertExists(run.resultSnapshot);
+
+    const published = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+    assertExists(published);
+    validateThreadSnapshot(published);
+
+    const geometry = published.artifacts.find((artifact) =>
+      artifact.producer.runId === fixture.queued.runId &&
+      artifact.kind === "cad-model" &&
+      artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
+    );
+    assertExists(geometry);
+    assertEquals(geometry.uri?.startsWith("casys://geometry-draft-capture/"), false);
+    assertEquals(geometry.inputArtifactIds.length, 1);
+
+    const architecture = published.artifacts.find((artifact) =>
+      artifact.id === geometry.inputArtifactIds[0]
+    );
+    assertExists(architecture);
+    assertEquals(architecture.kind, "sysml-model");
+    assertEquals(
+      published.previous,
+      {
+        snapshotId: fixture.baselineRef.snapshotId,
+        revision: fixture.baselineRef.revision,
+      },
+    );
+
+    const captureText = await fixture.geoCaptures.read(geometry.fingerprint);
+    assertExists(captureText);
+    const capture = JSON.parse(captureText);
+    assertEquals(capture.architectureBasis.artifactId, architecture.id);
+    assertEquals(capture.architectureBasis.fingerprint, architecture.fingerprint);
+
+    const asset = published.artifacts.find((artifact) =>
+      artifact.id.startsWith("cad-asset-")
+    );
+    assertExists(asset);
+    assertEquals(
+      asset.fingerprint.digest,
+      capture.manifest.artifactHashes.assemblyFiles[0].fingerprint.digest,
+    );
+    assertEquals(asset.uri, `/api/thread/assets/${asset.fingerprint.digest}.gltf`);
+    assertEquals(
+      await Deno.readFile(
+        `${fixture.canonicalAssetDirectory}/${asset.fingerprint.digest}.gltf`,
+      ),
+      await Deno.readFile(`${fixture.draftAssetDirectory}/${asset.fingerprint.digest}`),
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
 
 Deno.test("design-write-geometry executor refuses when the run has no human MRTR approval", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-no-human-" });
