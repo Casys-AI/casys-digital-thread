@@ -52,6 +52,7 @@ import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   ModelWriteArchitectureRunExecutor,
 } from "./model-write-architecture-run-executor.ts";
+import { ARCHITECTURE_FEATURE_TYPING_AQL } from "../extractors/architecture-structure-extractor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
@@ -144,21 +145,24 @@ class SeedSyson implements McpToolClient {
 /**
  * SysON mock for the generic architecture executor — initial mode.
  *
- * Phase 3b of the extractor now calls syson_element_children on each PartUsage
- * element to obtain the FeatureTyping child that names the target PartDef. The
- * call sequence is therefore extended:
+ * Phase 3b uses syson_query_aql (not syson_element_children) to resolve the
+ * FeatureTyping target. syson_element_children on a PartUsage returns a
+ * FeatureTyping node with label "FeatureTyping" (the relation's own display name
+ * in SysON), not the name of the typed PartDef. The AQL expression projects
+ * through .type to return the actual typed PartDefinition element.
  *
+ * Call sequence:
  *  1. children(root-pkg-drone)         → empty (preflight: package absent)
  *  2. insert_sysml(root-pkg-drone)     → { inserted: true }
  *  3. children(root-pkg-drone)         → has DroneV4 package (post-insert lookup)
  *  4. children(arch-pkg-001)           → DroneSystem + Wing part-defs
  *  5. children(sys-def-001)            → wing usage
- *  6. children(wing-usage-001)         → FeatureTyping → "Wing"   [Phase 3b]
+ *  6. syson_query_aql(wing-usage-001)  → Wing               [Phase 3b AQL]
  *  7. children(wing-def-001)           → empty
  *  8. children(root-pkg-drone)         → same as 3 (verification re-extraction)
  *  9. children(arch-pkg-001)           → same as 4
  * 10. children(sys-def-001)            → same as 5
- * 11. children(wing-usage-001)         → same as 6                [Phase 3b]
+ * 11. syson_query_aql(wing-usage-001)  → Wing               [Phase 3b AQL]
  * 12. children(wing-def-001)           → same as 7
  */
 class InitialArchSyson implements McpToolClient {
@@ -247,27 +251,36 @@ class InitialArchSyson implements McpToolClient {
         });
       }
 
-      // Phase 3b: FeatureTyping child of the "wing" PartUsage → types "Wing".
-      if (elementId === "wing-usage-001") {
+      // Wing def: no usages
+      return Promise.resolve({
+        text: "no-usages",
+        structuredContent: { parentId: elementId, children: [], count: 0 },
+      });
+    }
+
+    // Phase 3b: AQL resolves the FeatureTyping target for "wing" usage → "Wing".
+    if (call.name === "syson_query_aql") {
+      const objectId = call.arguments?.object_id as string;
+      const expression = call.arguments?.expression;
+      if (
+        objectId === "wing-usage-001" &&
+        expression === ARCHITECTURE_FEATURE_TYPING_AQL
+      ) {
         return Promise.resolve({
-          text: "feature-typing",
+          text: "feature-typing-aql",
           structuredContent: {
-            parentId: elementId,
-            children: [{
-              id: "ft-wing-001",
-              kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
+            objectId,
+            expression,
+            type: "objects",
+            results: [{
+              id: "wing-def-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
               label: "Wing",
             }],
             count: 1,
           },
         });
       }
-
-      // Wing def: no usages
-      return Promise.resolve({
-        text: "no-usages",
-        structuredContent: { parentId: elementId, children: [], count: 0 },
-      });
     }
 
     return Promise.reject(
@@ -963,82 +976,95 @@ Deno.test(
       const fixture = await queuedArchitectureFixture(directory);
 
       // SysON mock returns the package and all components as already present.
+      // Phase 3b uses syson_query_aql for FeatureTyping resolution.
       const allAdoptedSyson: McpToolClient = {
         callTool: (call: McpToolCall): Promise<McpToolResult> => {
-          if (call.name !== "syson_element_children") {
-            return Promise.reject(new Error(`unexpected: ${call.name}`));
-          }
-          const id = call.arguments?.element_id as string;
-          if (id === "root-pkg-drone") {
+          if (call.name === "syson_element_children") {
+            const id = call.arguments?.element_id as string;
+            if (id === "root-pkg-drone") {
+              return Promise.resolve({
+                text: "root",
+                structuredContent: {
+                  parentId: id,
+                  children: [{
+                    id: "arch-pkg-001",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                    label: "DroneV4",
+                  }],
+                  count: 1,
+                },
+              });
+            }
+            if (id === "arch-pkg-001") {
+              return Promise.resolve({
+                text: "package",
+                structuredContent: {
+                  parentId: id,
+                  children: [
+                    {
+                      id: "sys-def-001",
+                      kind:
+                        "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                      label: "DroneSystem",
+                    },
+                    {
+                      id: "wing-def-001",
+                      kind:
+                        "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                      label: "Wing",
+                    },
+                  ],
+                  count: 2,
+                },
+              });
+            }
+            if (id === "sys-def-001") {
+              return Promise.resolve({
+                text: "sys-usages",
+                structuredContent: {
+                  parentId: id,
+                  children: [{
+                    id: "wing-usage-001",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    label: "wing",
+                  }],
+                  count: 1,
+                },
+              });
+            }
             return Promise.resolve({
-              text: "root",
-              structuredContent: {
-                parentId: id,
-                children: [{
-                  id: "arch-pkg-001",
-                  kind: "siriusComponents://semantic?domain=sysml&entity=Package",
-                  label: "DroneV4",
-                }],
-                count: 1,
-              },
+              text: "empty",
+              structuredContent: { parentId: id, children: [], count: 0 },
             });
           }
-          if (id === "arch-pkg-001") {
-            return Promise.resolve({
-              text: "package",
-              structuredContent: {
-                parentId: id,
-                children: [
-                  {
-                    id: "sys-def-001",
-                    kind:
-                      "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
-                    label: "DroneSystem",
-                  },
-                  {
+          // Phase 3b: AQL resolves the FeatureTyping target for "wing" → "Wing".
+          if (call.name === "syson_query_aql") {
+            const objectId = call.arguments?.object_id as string;
+            const expression = call.arguments?.expression;
+            if (
+              objectId === "wing-usage-001" &&
+              expression === ARCHITECTURE_FEATURE_TYPING_AQL
+            ) {
+              return Promise.resolve({
+                text: "feature-typing-aql",
+                structuredContent: {
+                  objectId,
+                  expression,
+                  type: "objects",
+                  results: [{
                     id: "wing-def-001",
                     kind:
                       "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                     label: "Wing",
-                  },
-                ],
-                count: 2,
-              },
-            });
+                  }],
+                  count: 1,
+                },
+              });
+            }
           }
-          if (id === "sys-def-001") {
-            return Promise.resolve({
-              text: "sys-usages",
-              structuredContent: {
-                parentId: id,
-                children: [{
-                  id: "wing-usage-001",
-                  kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
-                  label: "wing",
-                }],
-                count: 1,
-              },
-            });
-          }
-          // Phase 3b: wing usage types "Wing" — conformant.
-          if (id === "wing-usage-001") {
-            return Promise.resolve({
-              text: "feature-typing",
-              structuredContent: {
-                parentId: id,
-                children: [{
-                  id: "ft-001",
-                  kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
-                  label: "Wing",
-                }],
-                count: 1,
-              },
-            });
-          }
-          return Promise.resolve({
-            text: "empty",
-            structuredContent: { parentId: id, children: [], count: 0 },
-          });
+          return Promise.reject(
+            new Error(`Unexpected tool call in allAdoptedSyson: ${call.name}`),
+          );
         },
       } as unknown as McpToolClient;
 
@@ -1538,26 +1564,36 @@ Deno.test(
               },
             });
           }
-          // Phase 3b: "wing" usage types "Motor" — wrong type (should be "Wing").
-          if (elementId === "wing-usage-001") {
+          // Wing def: no usages
+          return Promise.resolve({
+            text: "no-usages",
+            structuredContent: { parentId: elementId, children: [], count: 0 },
+          });
+        }
+        // Phase 3b: AQL resolves "wing" usage type — returns "Motor" (wrong type).
+        if (call.name === "syson_query_aql") {
+          const objectId = call.arguments?.object_id as string;
+          const expression = call.arguments?.expression;
+          if (
+            objectId === "wing-usage-001" &&
+            expression === ARCHITECTURE_FEATURE_TYPING_AQL
+          ) {
             return Promise.resolve({
-              text: "feature-typing-wrong",
+              text: "feature-typing-wrong-aql",
               structuredContent: {
-                parentId: elementId,
-                children: [{
-                  id: "ft-wrong",
-                  kind: "siriusComponents://semantic?domain=sysml&entity=FeatureTyping",
+                objectId,
+                expression,
+                type: "objects",
+                results: [{
+                  id: "motor-def-001",
+                  kind:
+                    "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
                   label: "Motor",
                 }],
                 count: 1,
               },
             });
           }
-          // Wing def: no usages
-          return Promise.resolve({
-            text: "no-usages",
-            structuredContent: { parentId: elementId, children: [], count: 0 },
-          });
         }
         return Promise.reject(
           new Error(`Unexpected tool call in WrongTypeSyson: ${call.name}`),

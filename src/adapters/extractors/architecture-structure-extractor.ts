@@ -11,7 +11,16 @@
  *     Collect all PartDefinition children.
  *
  *   Phase 3 — syson_element_children on each PartDef
- *     Collect usage labels (PartUsage children).
+ *     Collect PartUsage children (label only at this stage).
+ *
+ *   Phase 3b — syson_query_aql (AQL) on each PartUsage
+ *     Resolve the target PartDef via FeatureTyping.
+ *     AQL: `aql:self.ownedRelationship->select(r | r.oclIsKindOf(sysml::FeatureTyping)).type`
+ *     Returns the typed PartDefinition element (id + label) — NOT a FeatureTyping
+ *     node. This is the only reliable way to recover the target PartDef: the
+ *     syson_element_children response for a PartUsage labels every FeatureTyping
+ *     child "FeatureTyping" (the relationship's own display name), not the name of
+ *     the referenced PartDefinition. The AQL `.type` projection bypasses that.
  *
  * FAIL-CLOSED — unexpected shapes, ambiguous labels, or SysON failures are
  * hard errors. "Zero packages found" is the only case that returns undefined.
@@ -26,12 +35,26 @@ import type {
   ExistingPartUsage,
 } from "../../domain/platform/architecture-proposal.ts";
 
+// ── AQL expression (pinned contract) ─────────────────────────────────────────
+
+/**
+ * AQL expression that resolves the target PartDefinition for a PartUsage.
+ *
+ * WHY NOT syson_element_children — syson_element_children on a PartUsage
+ * returns FeatureTyping nodes with label "FeatureTyping" (the relationship's
+ * own display name in the SysON tree), not the name of the typed PartDef.
+ * The AQL `.type` projection returns the actual typed element.
+ */
+export const ARCHITECTURE_FEATURE_TYPING_AQL =
+  "aql:self.ownedRelationship->select(r | r.oclIsKindOf(sysml::FeatureTyping)).type" as const;
+
 // ── Error types ──────────────────────────────────────────────────────────────
 
 export type ArchitectureStructureExtractionCode =
   | "extraction_failed"
   | "ambiguous_package"
   | "invalid_children_response"
+  | "invalid_aql_response"
   | "missing_feature_typing";
 
 export interface ArchitectureStructureExtractionContext {
@@ -105,42 +128,27 @@ export async function extractArchitectureStructure(
   const partDefs: ExistingPartDef[] = [];
 
   // Phase 3 + 3b: for each PartDef, get its PartUsage children; then for each
-  // usage, resolve its target PartDef via the FeatureTyping child.
+  // usage, resolve its target PartDef via an AQL query (not syson_element_children).
   //
-  // WHY PHASE 3b — adoption and post-insertion verification must compare the
-  // FULL parent→usage→cible triple, not just the usage label. `part wing : Motor`
-  // and `part wing : Wing` share the same label but are structurally different.
-  // Calling syson_element_children on the PartUsage element returns the
-  // FeatureTyping child whose label names the typed PartDef.
+  // WHY AQL — adoption and post-insertion verification must compare the FULL
+  // parent→usage→cible triple. syson_element_children on a PartUsage returns
+  // FeatureTyping children with label "FeatureTyping" (the relation's display
+  // name), not the name of the typed PartDef. The AQL expression
+  // ARCHITECTURE_FEATURE_TYPING_AQL projects through .type to return the actual
+  // typed PartDefinition element with its real label.
   for (const child of packageChildren) {
     if (!semanticKind(child.kind, "PartDefinition")) continue;
     const partDefChildren = await callChildren(syson, editingContextId, child.id);
     const usages: ExistingPartUsage[] = [];
     for (const usage of partDefChildren) {
       if (!semanticKind(usage.kind, "PartUsage")) continue;
-      const usageChildren = await callChildren(syson, editingContextId, usage.id);
-      const typings = usageChildren.filter((c) =>
-        semanticKind(c.kind, "FeatureTyping")
+      const targetLabel = await resolveFeatureTypingTarget(
+        syson,
+        editingContextId,
+        usage,
+        child.label,
       );
-      if (typings.length === 0) {
-        throw new ArchitectureStructureExtractionError(
-          "missing_feature_typing",
-          `PartUsage "${usage.label}" (id: "${usage.id}") under "${child.label}" ` +
-            "has no FeatureTyping child. The usage has no declared type.",
-          { elementId: usage.id, field: "FeatureTyping" },
-          "Inspect the SysON model: every PartUsage must have exactly one FeatureTyping.",
-        );
-      }
-      if (typings.length > 1) {
-        throw new ArchitectureStructureExtractionError(
-          "invalid_children_response",
-          `PartUsage "${usage.label}" (id: "${usage.id}") under "${child.label}" ` +
-            `has ${typings.length} FeatureTyping children; exactly one is required.`,
-          { elementId: usage.id, field: "FeatureTyping", count: typings.length },
-          "Inspect the SysON model: a PartUsage with multiple types is ambiguous.",
-        );
-      }
-      usages.push({ label: usage.label, targetLabel: typings[0]!.label });
+      usages.push({ label: usage.label, targetLabel });
     }
     partDefs.push({ id: child.id, label: child.label, usages });
   }
@@ -222,6 +230,99 @@ async function callChildren(
     }
     return { id: record.id, kind: record.kind, label: record.label };
   });
+}
+
+/**
+ * Resolve the target PartDefinition label for a PartUsage via AQL.
+ *
+ * Uses ARCHITECTURE_FEATURE_TYPING_AQL to obtain the typed element directly,
+ * bypassing the syson_element_children label limitation (always "FeatureTyping").
+ * Throws missing_feature_typing if the usage has no FeatureTyping, and
+ * invalid_aql_response if the response shape is unexpected or ambiguous.
+ */
+async function resolveFeatureTypingTarget(
+  syson: McpToolClient,
+  editingContextId: string,
+  usage: SysonChild,
+  parentLabel: string,
+): Promise<string> {
+  let content: Record<string, unknown>;
+  try {
+    const result = await syson.callTool({
+      name: "syson_query_aql",
+      arguments: {
+        editing_context_id: editingContextId,
+        object_id: usage.id,
+        expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+      },
+    });
+    content = result.structuredContent as Record<string, unknown>;
+  } catch (error) {
+    throw new ArchitectureStructureExtractionError(
+      "extraction_failed",
+      `syson_query_aql (FeatureTyping) failed for PartUsage "${usage.label}" ` +
+        `(id: "${usage.id}") under "${parentLabel}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      { elementId: usage.id },
+      "Inspect SysON availability and the element id before retrying.",
+    );
+  }
+
+  if (
+    !content ||
+    typeof content !== "object" ||
+    content.expression !== ARCHITECTURE_FEATURE_TYPING_AQL ||
+    content.type !== "objects" ||
+    !Array.isArray(content.results) ||
+    typeof content.count !== "number" ||
+    content.count !== content.results.length
+  ) {
+    throw new ArchitectureStructureExtractionError(
+      "invalid_aql_response",
+      `syson_query_aql FeatureTyping response for PartUsage "${usage.label}" ` +
+        `(id: "${usage.id}") has an unexpected shape.`,
+      { elementId: usage.id, field: "structuredContent" },
+      "The SysON AQL response shape has changed. Stop for review before retrying.",
+    );
+  }
+
+  if (content.count === 0) {
+    throw new ArchitectureStructureExtractionError(
+      "missing_feature_typing",
+      `PartUsage "${usage.label}" (id: "${usage.id}") under "${parentLabel}" ` +
+        "has no FeatureTyping. The usage has no declared type.",
+      { elementId: usage.id, field: "FeatureTyping" },
+      "Inspect the SysON model: every PartUsage must have exactly one FeatureTyping.",
+    );
+  }
+
+  if (content.count > 1) {
+    throw new ArchitectureStructureExtractionError(
+      "invalid_aql_response",
+      `PartUsage "${usage.label}" (id: "${usage.id}") under "${parentLabel}" ` +
+        `has ${content.count} FeatureTyping targets; exactly one is required.`,
+      { elementId: usage.id, field: "FeatureTyping", count: content.count },
+      "Inspect the SysON model: a PartUsage with multiple types is ambiguous.",
+    );
+  }
+
+  const typed = (content.results as unknown[])[0];
+  if (
+    !typed || typeof typed !== "object" || Array.isArray(typed) ||
+    typeof (typed as Record<string, unknown>).label !== "string" ||
+    !(typed as Record<string, unknown>).label
+  ) {
+    throw new ArchitectureStructureExtractionError(
+      "invalid_aql_response",
+      `syson_query_aql FeatureTyping result for PartUsage "${usage.label}" ` +
+        `(id: "${usage.id}") is missing a label field.`,
+      { elementId: usage.id, field: "results[0].label" },
+      "The SysON AQL response shape has changed. Stop for review before retrying.",
+    );
+  }
+
+  return (typed as Record<string, unknown>).label as string;
 }
 
 function semanticKind(value: string, expected: string): boolean {
