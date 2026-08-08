@@ -496,6 +496,11 @@ export class ModelWriteArchitectureRunExecutor {
                 },
               });
               verifyInsertionAck(result.structuredContent, rootPackageId);
+              // Only a structurally valid acknowledgement establishes that a
+              // remote mutation happened. From this point every later error —
+              // including a Phase-B enrichment re-read — must take the
+              // post-acknowledgement quarantine path.
+              providerAcknowledged = true;
             } else {
               // Enrichment: insert per-item using the architecture package as root.
               const packageId = existing!.packageId;
@@ -503,6 +508,9 @@ export class ModelWriteArchitectureRunExecutor {
                 editingContextId,
                 packageId,
                 plan.toInsert,
+                () => {
+                  providerAcknowledged = true;
+                },
               );
             }
           } catch (error) {
@@ -852,6 +860,7 @@ export class ModelWriteArchitectureRunExecutor {
     editingContextId: string,
     architecturePackageId: string,
     items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
+    onAcknowledged: () => void,
   ): Promise<void> {
     // Phase A: insert all new part-defs under the architecture package.
     for (const item of items) {
@@ -866,6 +875,9 @@ export class ModelWriteArchitectureRunExecutor {
         },
       });
       verifyInsertionAck(result.structuredContent, architecturePackageId);
+      // Do not mark acknowledgement before its parent/id shape is verified.
+      // Once valid, Phase B and Phase C are post-acknowledgement territory.
+      onAcknowledged();
     }
 
     // Phase B: re-extract package to get IDs for newly inserted part-defs.
@@ -933,6 +945,7 @@ export class ModelWriteArchitectureRunExecutor {
         },
       });
       verifyInsertionAck(result.structuredContent, parentId);
+      onAcknowledged();
     }
   }
 

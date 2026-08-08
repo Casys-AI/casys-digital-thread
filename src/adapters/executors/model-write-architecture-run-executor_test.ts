@@ -442,6 +442,41 @@ class DuplicateInheritedPartDefinitionEnrichmentSyson extends EnrichmentArchSyso
   }
 }
 
+/**
+ * Simulates a concurrent duplicate appearing exactly between the Phase-A
+ * PartDefinition ACK and the Phase-B parent-ID readback.  This is the narrow
+ * partial-write boundary: no PartUsage has been attempted yet, but SysON has
+ * already accepted one non-idempotent mutation.
+ */
+class PhaseBAmbiguousEnrichmentSyson extends EnrichmentArchSyson {
+  #architecturePackageReads = 0;
+
+  override async callTool(call: McpToolCall): Promise<McpToolResult> {
+    const result = await super.callTool(call);
+    if (
+      call.name !== "syson_element_children" ||
+      call.arguments?.element_id !== "arch-pkg-001"
+    ) return result;
+    this.#architecturePackageReads++;
+    // Read 1 is the preflight. Read 2 is Phase B, after the Motor part-def
+    // insertion was acknowledged and before the Motor usage can be authored.
+    if (this.#architecturePackageReads !== 2) return result;
+    const content = result.structuredContent as {
+      parentId: string;
+      children: Record<string, unknown>[];
+    };
+    const children = [...content.children, {
+      id: "motor-def-concurrent-duplicate",
+      kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+      label: "Motor",
+    }];
+    return {
+      ...result,
+      structuredContent: { ...content, children, count: children.length },
+    };
+  }
+}
+
 class DuplicateInheritedUsageEnrichmentSyson extends EnrichmentArchSyson {
   #systemReads = 0;
 
@@ -918,6 +953,56 @@ Deno.test(
   },
 );
 
+// ── Validated acknowledgement boundary ──────────────────────────────────────
+
+Deno.test(
+  "model.write-architecture keeps an invalid initial ACK in outcome-unknown, not post-ACK quarantine",
+  async () => {
+    class InvalidInitialAckSyson extends InitialArchSyson {
+      override callTool(call: McpToolCall): Promise<McpToolResult> {
+        if (call.name === "syson_element_insert_sysml") {
+          this.calls.push(structuredClone(call));
+          return Promise.resolve({
+            text: "mismatched parent",
+            structuredContent: {
+              inserted: true,
+              parentId: "not-the-requested-parent",
+            },
+          });
+        }
+        return super.callTool(call);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-invalid-ack-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const syson = new InvalidInitialAckSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "outcome is unknown",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        false,
+        "a malformed acknowledgement must not be treated as a validated ACK",
+      );
+      const failed = await fixture.projects.get(PROJECT_ID);
+      assertEquals(
+        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)?.failure?.code,
+        "model-write-architecture-provider-outcome-unknown",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── Happy path — idempotency / WAL completed path ────────────────────────────
 
 Deno.test(
@@ -1175,6 +1260,88 @@ Deno.test(
         syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
         2,
         "only the reviewed enrichment writes occur before the concurrent duplicate is detected",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture quarantines a Phase-B ambiguity after the Phase-A ACK and blocks a same-basis sibling",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-phase-b-post-ack-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const initial = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const queued = await queueArchitectureEnrichment(fixture, initial);
+      const partiallyAcknowledged = new PhaseBAmbiguousEnrichmentSyson();
+
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson: partiallyAcknowledged,
+            directory,
+          }).execute(AGENT, {
+            commandId: "agent-phase-b-ambiguous",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:20:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "ambiguous PartDefinition labels",
+      );
+
+      assertEquals(
+        partiallyAcknowledged.calls.filter((call) =>
+          call.name === "syson_element_insert_sysml"
+        ).length,
+        1,
+        "Phase A acknowledged the PartDefinition before Phase B refused",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, queued.runId),
+        true,
+      );
+      const failed = await fixture.projects.get(PROJECT_ID);
+      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
+      assertEquals(failedRun?.status, "failed");
+      assertEquals(
+        failedRun?.failure?.code,
+        "model-write-architecture-post-acknowledgement-quarantined",
+      );
+      assertExists(failedRun?.basis);
+
+      const sibling = await fixture.commands.queueRun(AGENT, {
+        ...ctx("queue-phase-b-sibling", failed!.revision),
+        runId: "run:architecture-enrichment-sibling",
+        workItemId: "wi:architecture-enrichment",
+        summary: "Attempt a forbidden same-basis retry after partial ACK.",
+        basis: failedRun.basis,
+      });
+      const blockedSyson = new EnrichmentArchSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson: blockedSyson, directory }).execute(AGENT, {
+            commandId: "agent-phase-b-sibling",
+            projectId: PROJECT_ID,
+            expectedRevision: sibling.revision,
+            issuedAt: "2026-08-08T12:21:00.000Z",
+            runId: "run:architecture-enrichment-sibling",
+          }),
+        EngineeringProjectCommandError,
+        "separately reviewed recovery",
+      );
+      assertEquals(
+        blockedSyson.calls,
+        [],
+        "the same-basis sibling must stop before any provider call",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
