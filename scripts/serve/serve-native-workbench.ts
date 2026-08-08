@@ -11,6 +11,7 @@ import {
 } from "../../src/adapters/stores/file-cockpit-focus-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  ARCHITECTURE_CAPTURE_DESCRIPTOR,
   CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
@@ -47,7 +48,39 @@ import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../../src/domain/thread/thread-component-catalog.ts";
+import type {
+  Cm01V3ProductStructureCaptureReaders,
+} from "../../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
 import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
+import type {
+  GenericArchitectureCaptureReader,
+} from "../../src/adapters/projectors/product-structure-catalog.ts";
+import { resolveGenericProductStructureCatalog } from "../../src/adapters/projectors/product-structure-catalog.ts";
+
+// ── Catalog resolution: CM-01 first, then generic fallback ───────────────────
+
+/**
+ * Resolve a snapshot-bound component catalog using the known product projectors.
+ *
+ * CM-01 is tried first (subject-ID guard makes it a no-op for other projects).
+ * When it returns `undefined`, the generic architecture projector runs as a
+ * fallback: it resolves any subject whose thread carries an artifact written by
+ * `model.write-architecture@1`.
+ *
+ * Exported so it can be unit-tested without an HTTP layer.
+ */
+export async function resolveSnapshotComponentCatalog(
+  snapshot: ThreadSnapshot,
+  cm01Captures: Cm01V3ProductStructureCaptureReaders,
+  archCaptures: GenericArchitectureCaptureReader,
+): Promise<ThreadComponentCatalog | undefined> {
+  return (
+    await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+      snapshot,
+      cm01Captures,
+    ) ?? await resolveGenericProductStructureCatalog(snapshot, archCaptures)
+  );
+}
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
@@ -590,6 +623,8 @@ if (import.meta.main) {
   const cm01PartDefinitionsCaptureDirectory =
     cliArgs["cm01-part-definitions-capture-dir"] ??
       "state/local/cm01-part-definitions-captures";
+  const architectureCaptureDirectory = cliArgs["architecture-capture-dir"] ??
+    ARCHITECTURE_CAPTURE_DESCRIPTOR.directory;
   const html = await Deno.readTextFile(htmlPath);
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
@@ -610,6 +645,10 @@ if (import.meta.main) {
   const cm01PartDefinitionsCaptures = new FileCaptureStore({
     ...CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
     directory: cm01PartDefinitionsCaptureDirectory,
+  });
+  const archCaptures = new FileCaptureStore({
+    ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+    directory: architectureCaptureDirectory,
   });
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
@@ -653,13 +692,14 @@ if (import.meta.main) {
       await readOptionalComponentCatalog(
         `config/thread-subjects/${resolvedSubjectId}.components.json`,
       ),
-    componentCatalogForSnapshot: async (snapshot) =>
-      await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+    componentCatalogForSnapshot: (snapshot) =>
+      resolveSnapshotComponentCatalog(
         snapshot,
         {
           architecture: cm01ArchitectureCaptures,
           partDefinitions: cm01PartDefinitionsCaptures,
         },
+        archCaptures,
       ),
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),
