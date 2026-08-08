@@ -79,17 +79,6 @@ export class FileArchitectureAttemptStore {
       throw new ArchitectureWriteOutcomeUnknownError();
     }
     if (current) return actionFor(current);
-    let legacy: ArchitectureWriteAttempt | undefined;
-    try {
-      legacy = await this.readLegacy(
-        fresh.projectId,
-        fresh.runId,
-        fresh.planDigest,
-      );
-    } catch {
-      throw new ArchitectureWriteOutcomeUnknownError();
-    }
-    if (legacy) return actionFor(legacy);
 
     const path = await this.pathFor(fresh.projectId, fresh.runId);
     try {
@@ -144,12 +133,22 @@ export class FileArchitectureAttemptStore {
   ): Promise<ArchitectureWriteAttempt | undefined> {
     nonEmpty(projectId, "projectId");
     nonEmpty(runId, "runId");
-    return await this.readPath(
+    const current = await this.readPath(
       await this.pathFor(projectId, runId),
       projectId,
       runId,
       undefined,
     );
+    if (current) return current;
+
+    // Before run-scoped filenames were introduced, the plan digest was part
+    // of the filename. A retry after an upgrade cannot safely know that old
+    // digest from its current live preflight: inspecting only the new digest
+    // would let an already acknowledged legacy run open a second dispatch.
+    // Scan only filenames that decode to the legacy identity tuple, and make
+    // every matching record part of the decision. A current hash record above
+    // remains authoritative during a mixed-format deployment.
+    return await this.readLegacyRun(projectId, runId);
   }
 
   /** Compatibility for callers that still need to inspect an exact legacy plan. */
@@ -160,8 +159,7 @@ export class FileArchitectureAttemptStore {
   ): Promise<ArchitectureWriteAttempt | undefined> {
     nonEmpty(planDigest, "planDigest");
     const current = await this.readRun(projectId, runId);
-    if (current) return current.planDigest === planDigest ? current : undefined;
-    return await this.readLegacy(projectId, runId, planDigest);
+    return current?.planDigest === planDigest ? current : undefined;
   }
 
   async quarantine(input: {
@@ -253,14 +251,53 @@ export class FileArchitectureAttemptStore {
     }
   }
 
-  private async readLegacy(
+  private async readLegacyRun(
     projectId: string,
     runId: string,
-    planDigest: string,
   ): Promise<ArchitectureWriteAttempt | undefined> {
-    const path = legacyAttemptPath(this.directory, projectId, runId, planDigest);
-    if (!fitsNameMax(path)) return undefined;
-    return await this.readPath(path, projectId, runId, planDigest);
+    let entries: Deno.DirEntry[];
+    try {
+      entries = [];
+      for await (const entry of Deno.readDir(this.directory)) entries.push(entry);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
+      throw error;
+    }
+
+    const matches: ArchitectureWriteAttempt[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile) continue;
+      const identity = legacyAttemptIdentity(entry.name);
+      if (!identity || identity.projectId !== projectId || identity.runId !== runId) {
+        continue;
+      }
+      const record = await this.readPath(
+        `${root(this.directory)}/${entry.name}`,
+        projectId,
+        runId,
+        identity.planDigest,
+      );
+      if (!record) {
+        throw new ArchitectureWriteOutcomeUnknownError();
+      }
+      matches.push(record);
+    }
+    if (matches.length === 0) return undefined;
+
+    // A legacy journal could contain more than one digest because the old
+    // implementation keyed attempts by plan. They are safe to resume only
+    // when they are duplicate encodings of the exact same completed record.
+    // Any dispatched marker or divergent completed marker proves that the
+    // remotely-mutating history is ambiguous and must never be redispatched.
+    const canonical = deterministicJson(matches[0]!);
+    if (
+      matches.some((record) =>
+        record.status !== "completed" || deterministicJson(record) !== canonical
+      )
+    ) {
+      throw new ArchitectureWriteOutcomeUnknownError();
+    }
+    return matches[0]!;
   }
 
   private async readQuarantinePath(
@@ -489,15 +526,25 @@ function parseObject(text: string, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function legacyAttemptPath(
-  directory: string,
-  projectId: string,
-  runId: string,
-  planDigest: string,
-): string {
-  return `${root(directory)}/${
-    encodeURIComponent(JSON.stringify([projectId, runId, planDigest]))
-  }.json`;
+function legacyAttemptIdentity(
+  fileName: string,
+):
+  | { readonly projectId: string; readonly runId: string; readonly planDigest: string }
+  | undefined {
+  if (!fileName.endsWith(".json")) return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(decodeURIComponent(fileName.slice(0, -".json".length)));
+  } catch {
+    // Modern hash names and unrelated files are not legacy markers.
+    return undefined;
+  }
+  if (
+    !Array.isArray(value) || value.length !== 3 ||
+    value.some((part) => typeof part !== "string" || !part.trim())
+  ) return undefined;
+  const [projectId, runId, planDigest] = value as [string, string, string];
+  return { projectId, runId, planDigest };
 }
 
 function legacyQuarantinePath(

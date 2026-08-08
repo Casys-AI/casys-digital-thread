@@ -92,6 +92,10 @@ Deno.test("architecture WAL keeps final filenames bounded for long run identitie
     assertEquals(names.length, 1);
     assertEquals(names[0]!.startsWith("run-"), true);
     assertEquals(new TextEncoder().encode(names[0]!).length <= 255, true);
+    assertEquals(
+      (await store.readRun(`project:${long}`, `run:${long}`))?.status,
+      "dispatched",
+    );
   });
 });
 
@@ -124,29 +128,110 @@ Deno.test("architecture quarantine validates an EEXIST sentinel before trusting 
   });
 });
 
-Deno.test("architecture WAL reads an exact valid legacy record without creating a new dispatch", async () => {
+Deno.test("architecture WAL resumes a completed legacy run after its plan digest changed", async () => {
   await withStore(async (directory, store) => {
-    const legacyName = `${
-      encodeURIComponent(JSON.stringify([
-        ID.projectId,
-        ID.runId,
-        "a".repeat(64),
-      ]))
-    }.json`;
-    await Deno.writeTextFile(
-      `${directory}/${legacyName}`,
-      `${
-        deterministicJson({
-          schemaVersion: "architecture-write-attempt/1.0",
-          ...ID,
-          planDigest: "a".repeat(64),
-          status: "completed",
-          dispatchedAt: AT,
-          result: { inserted: "true" },
-        })
-      }\n`,
-    );
-    assertEquals(await store.begin(input()), { action: "completed" });
+    await writeLegacy(directory, completedLegacy("a".repeat(64)));
+    assertEquals(await store.begin(input("b".repeat(64))), { action: "completed" });
     assertEquals((await Array.fromAsync(Deno.readDir(directory))).length, 1);
   });
 });
+
+Deno.test("architecture WAL fails closed for a dispatched legacy marker under another digest", async () => {
+  await withStore(async (directory, store) => {
+    await writeLegacy(directory, dispatchedLegacy("a".repeat(64)));
+    await assertRejects(
+      () => store.begin(input("b".repeat(64))),
+      ArchitectureWriteOutcomeUnknownError,
+    );
+  });
+});
+
+Deno.test("architecture WAL fails closed for a malformed matching legacy marker", async () => {
+  await withStore(async (directory, store) => {
+    await Deno.writeTextFile(
+      `${directory}/${legacyName("a".repeat(64))}`,
+      "{",
+    );
+    await assertRejects(
+      () => store.begin(input("b".repeat(64))),
+      ArchitectureWriteOutcomeUnknownError,
+    );
+  });
+});
+
+Deno.test("architecture WAL resumes only duplicate encodings of one completed legacy marker", async () => {
+  await withStore(async (directory, store) => {
+    const record = completedLegacy("a".repeat(64));
+    await writeLegacy(directory, record);
+    // `encodeURIComponent` has one canonical form, but old deployments can
+    // still leave an equivalent percent-encoding spelling after a migration.
+    await Deno.writeTextFile(
+      `${directory}/${legacyName(record.planDigest).replace(/%3A/g, ":")}`,
+      `${deterministicJson(record)}\n`,
+    );
+    assertEquals(await store.begin(input("b".repeat(64))), { action: "completed" });
+  });
+});
+
+Deno.test("architecture WAL fails closed for contradictory completed legacy markers", async () => {
+  await withStore(async (directory, store) => {
+    await writeLegacy(directory, completedLegacy("a".repeat(64)));
+    await writeLegacy(directory, completedLegacy("b".repeat(64)));
+    await assertRejects(
+      () => store.begin(input("c".repeat(64))),
+      ArchitectureWriteOutcomeUnknownError,
+    );
+  });
+});
+
+Deno.test("architecture WAL gives a hash-format record priority over legacy debris", async () => {
+  await withStore(async (directory, store) => {
+    await store.begin(input("c".repeat(64)));
+    await store.complete(input("c".repeat(64)));
+    await writeLegacy(directory, dispatchedLegacy("a".repeat(64)));
+    await Deno.writeTextFile(`${directory}/${legacyName("b".repeat(64))}`, "{");
+
+    assertEquals(await store.begin(input("d".repeat(64))), { action: "completed" });
+  });
+});
+
+function legacyName(planDigest: string): string {
+  return `${
+    encodeURIComponent(JSON.stringify([
+      ID.projectId,
+      ID.runId,
+      planDigest,
+    ]))
+  }.json`;
+}
+
+function completedLegacy(planDigest: string) {
+  return {
+    schemaVersion: "architecture-write-attempt/1.0" as const,
+    ...ID,
+    planDigest,
+    status: "completed" as const,
+    dispatchedAt: AT,
+    result: { inserted: "true" as const },
+  };
+}
+
+function dispatchedLegacy(planDigest: string) {
+  return {
+    schemaVersion: "architecture-write-attempt/1.0" as const,
+    ...ID,
+    planDigest,
+    status: "dispatched" as const,
+    dispatchedAt: AT,
+  };
+}
+
+async function writeLegacy(
+  directory: string,
+  record: ReturnType<typeof completedLegacy> | ReturnType<typeof dispatchedLegacy>,
+): Promise<void> {
+  await Deno.writeTextFile(
+    `${directory}/${legacyName(record.planDigest)}`,
+    `${deterministicJson(record)}\n`,
+  );
+}
