@@ -84,6 +84,12 @@ import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   ModelWriteArchitectureRunExecutor,
 } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
+import {
+  MODEL_WRITE_REQUIREMENTS_OPERATION,
+  ModelWriteRequirementsRunExecutor,
+} from "./src/adapters/executors/model-write-requirements-run-executor.ts";
+import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
+import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/captures/file-capture-store.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
@@ -229,6 +235,8 @@ const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
   "state/local/inspection-drone-v4-part-definitions-publications";
 const DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY = "state/local/architecture-captures";
 const DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY = "state/local/architecture-attempts";
+const DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY = "state/local/requirements-captures";
+const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempts";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -343,6 +351,10 @@ export interface CreateConsoleServerOptions {
   architectureCaptureDirectory?: string;
   /** Generic model.write-architecture@1 WAL attempt directory. */
   architectureAttemptDirectory?: string;
+  /** Generic model.write-requirements@1 capture store directory. */
+  requirementsCaptureDirectory?: string;
+  /** Generic model.write-requirements@1 WAL attempt directory. */
+  requirementsAttemptDirectory?: string;
   cm01ArchitectureCaptureDirectory?: string;
   cm01ArchitectureAttemptDirectory?: string;
   inspectionDroneV4ArchitectureCaptureDirectory?: string;
@@ -578,6 +590,30 @@ async function createProjectControl(
       }),
       attempts: new FileArchitectureAttemptStore(
         options.architectureAttemptDirectory ?? DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const genericModelWriteRequirements = sysonMcpUrl
+    ? new ModelWriteRequirementsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      seedCaptures: sysonModelSeedCaptures,
+      architectureCaptures: new FileCaptureStore({
+        ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.architectureCaptureDirectory ??
+          DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      captures: new FileCaptureStore({
+        ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
+        directory: options.requirementsCaptureDirectory ??
+          DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
+      }),
+      attempts: new FileRequirementsAttemptStore(
+        options.requirementsAttemptDirectory ?? DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY,
       ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
@@ -1127,6 +1163,13 @@ async function createProjectControl(
             executor: genericModelWriteArchitecture,
             unavailableMessage:
               "The server has no trusted generic model.write-architecture@1 executor " +
+              "configured for this run (SysON provider is required).",
+          },
+          {
+            operation: MODEL_WRITE_REQUIREMENTS_OPERATION,
+            executor: genericModelWriteRequirements,
+            unavailableMessage:
+              "The server has no trusted generic model.write-requirements@1 executor " +
               "configured for this run (SysON provider is required).",
           },
           {
