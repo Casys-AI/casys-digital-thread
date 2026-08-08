@@ -29,7 +29,10 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
     await Deno.mkdir(this.directory, { recursive: true });
     const path = this.pathFor(value.projectId, value.runId);
     const text = `${deterministicJson(value)}\n`;
-    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+    // The run key can itself be close to NAME_MAX.  Keep the disposable
+    // temporary basename short while retaining the same directory for link(2).
+    const parent = path.slice(0, path.lastIndexOf("/"));
+    const temporary = `${parent}/.${crypto.randomUUID()}.tmp`;
     try {
       const file = await Deno.open(temporary, { createNew: true, write: true });
       try {

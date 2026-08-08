@@ -196,7 +196,11 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
 
   private async writeNewDurably(path: string, text: string): Promise<void> {
     if (this.io !== DENO_FILE_IO) return await this.io.writeTextFile(path, text);
-    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+    // Keep the temporary basename independent from a potentially long,
+    // content-addressed snapshot id: appending a UUID to `path` can exceed
+    // NAME_MAX before the atomic link is attempted.
+    const parent = path.slice(0, path.lastIndexOf("/"));
+    const temporary = `${parent}/.${crypto.randomUUID()}.tmp`;
     try {
       const file = await Deno.open(temporary, { createNew: true, write: true });
       try {
