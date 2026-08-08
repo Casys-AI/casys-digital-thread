@@ -307,7 +307,7 @@
   padding: 0.65rem clamp(0.8rem, 1.7vw, 1.25rem);
   border-right: 1px solid var(--line);
   border-radius: 0;
-  background: rgba(17, 21, 21, 0.82);
+  background: var(--thread-panel);
 }
 
 .thread-metrics .mcp-view-metric:last-child {
@@ -436,8 +436,8 @@
   align-items: center;
   gap: var(--space-6);
   padding: 0 var(--space-10);
-  border: 1px solid #303735;
-  background: #101413;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
 }
 
 .thread-operator-contract i {

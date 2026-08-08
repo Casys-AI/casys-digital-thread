@@ -2,8 +2,8 @@
 
 .component-workspace {
   min-width: 0;
-  border: 1px solid #303836;
-  background: rgba(12, 15, 15, 0.97);
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
 }
 
 .component-workspace-header,
@@ -66,10 +66,10 @@
   gap: var(--space-12);
   padding: var(--space-10) var(--space-16);
   border: 0;
-  border-bottom: 1px solid #303836;
-  color: #c9cdc7;
+  border-bottom: 1px solid var(--thread-border);
+  color: var(--thread-ink);
   text-align: left;
-  background: #111716;
+  background: var(--thread-panel-muted);
   cursor: pointer;
 }
 
@@ -92,7 +92,7 @@
 .component-provider-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-bottom: 1px solid #303836;
+  border-bottom: 1px solid var(--thread-border);
 }
 
 .component-provider-tabs button {
@@ -103,10 +103,10 @@
   gap: var(--space-4);
   padding: var(--space-10) var(--space-14);
   border: 0;
-  border-right: 1px solid #303836;
+  border-right: 1px solid var(--thread-border);
   color: var(--muted);
   text-align: left;
-  background: #101413;
+  background: var(--thread-panel);
   cursor: pointer;
 }
 
@@ -130,8 +130,8 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-24);
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid #303836;
-  background: #0b0e0e;
+  border-bottom: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
 }
 
 .part-trace-step {
@@ -145,7 +145,7 @@
   height: 1px;
   top: 50%;
   left: -1.4rem;
-  background: #46514c;
+  background: var(--thread-border-strong);
 }
 
 .part-trace-step button {
@@ -157,10 +157,10 @@
   align-items: center;
   gap: var(--space-8);
   padding: var(--space-8) var(--space-10);
-  border: 1px solid #343c39;
+  border: 1px solid var(--thread-border);
   color: var(--text-soft);
   text-align: left;
-  background: #121615;
+  background: var(--thread-panel);
   cursor: pointer;
 }
 
@@ -218,7 +218,7 @@
   min-height: 58px;
   margin-bottom: var(--space-14);
   padding-bottom: var(--space-12);
-  border-bottom: 1px solid #2e3633;
+  border-bottom: 1px solid var(--thread-border);
 }
 
 .provider-surface-header h5 {
@@ -237,7 +237,7 @@
 
 .provider-surface-header > button {
   padding: var(--space-8) var(--space-10);
-  border: 1px solid #3e4944;
+  border: 1px solid var(--thread-border-strong);
   font: 700 var(--text-3xs)/1 var(--mono);
   cursor: pointer;
 }
@@ -248,9 +248,9 @@
   gap: var(--space-4);
   margin: 0 auto var(--space-28);
   padding: var(--space-12) var(--space-16);
-  border: 1px solid #70806e;
+  border: 1px solid rgba(54, 117, 83, 0.42);
   border-left: 3px solid var(--green);
-  background: #18201b;
+  background: var(--green-dim);
 }
 
 .syson-root-node::after {
@@ -277,7 +277,7 @@
   height: 1.3rem;
   top: -1.3rem;
   left: 50%;
-  border-left: 1px solid #46514c;
+  border-left: 1px solid var(--thread-border-strong);
 }
 
 .syson-part-grid button {
@@ -287,10 +287,10 @@
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-4) var(--space-8);
   padding: var(--space-10);
-  border: 1px solid #35403c;
+  border: 1px solid var(--thread-border);
   color: var(--text-soft);
   text-align: left;
-  background: #121716;
+  background: var(--thread-panel);
   cursor: pointer;
 }
 
@@ -325,7 +325,7 @@
 }
 
 .erp-bom-table {
-  border: 1px solid #303936;
+  border: 1px solid var(--thread-border);
 }
 
 .erp-bom-row {
@@ -339,10 +339,10 @@
   min-height: 42px;
   padding: var(--space-8) var(--space-10);
   border: 0;
-  border-bottom: 1px solid #29322f;
+  border-bottom: 1px solid var(--thread-border);
   color: var(--text-soft);
   text-align: left;
-  background: #111514;
+  background: var(--thread-panel);
 }
 
 button.erp-bom-row {
@@ -356,7 +356,7 @@ button.erp-bom-row {
 .erp-bom-head {
   min-height: 32px;
   color: var(--muted);
-  background: #191e1c;
+  background: var(--thread-panel-muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -364,7 +364,7 @@ button.erp-bom-row {
 
 .erp-bom-row code {
   overflow: hidden;
-  color: #c5cdc7;
+  color: var(--thread-ink);
   font-size: var(--text-3xs);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -385,7 +385,7 @@ button.erp-bom-row {
 }
 
 .cad-viewer-shell {
-  border: 1px solid #303936;
+  border: 1px solid var(--thread-border);
 }
 
 .cad-scope-notice {
@@ -460,14 +460,14 @@ button.erp-bom-row {
   height: 21px;
   display: grid;
   place-items: center;
-  border: 1px solid #3d4944;
+  border: 1px solid var(--thread-border-strong);
   font: normal 700 0.49rem/1 var(--mono);
 }
 
 .cad-viewer-evidence {
   align-items: stretch;
-  border-top: 1px solid #303936;
-  background: #111514;
+  border-top: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
 }
 
 .cad-viewer-evidence > div {
@@ -479,7 +479,7 @@ button.erp-bom-row {
 }
 
 .cad-viewer-evidence > div + div {
-  border-left: 1px solid #303936;
+  border-left: 1px solid var(--thread-border);
 }
 
 .cad-viewer-evidence small {

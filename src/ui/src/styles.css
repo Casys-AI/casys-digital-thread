@@ -2,8 +2,9 @@
    Feuille unique des deux surfaces : Console MCP et cockpit natif.
 
    L'ORDRE DE CES IMPORTS EST LA CASCADE. Le fichier n'est pas range par
-   surface mais par sedimentation : `10-light-atelier` repeint des surfaces que
-   `03` a `08` ont posees sombres, et `12-calm-cockpit` reajuste par-dessus.
+   surface mais par familles : `03` a `08` portent maintenant les jetons clairs
+   a leur source, `10-light-atelier` affine la palette, et
+   `12-calm-cockpit` reajuste par-dessus.
    Deplacer un import change le rendu. Les numeros ne sont donc pas decoratifs :
    ils disent qui gagne.
 

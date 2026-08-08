@@ -556,8 +556,8 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
     setState("loading");
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0f10);
-    scene.fog = new THREE.Fog(0x0b0f10, 350, 900);
+    scene.background = new THREE.Color(0xf8f6f0);
+    scene.fog = new THREE.Fog(0xf8f6f0, 350, 900);
     const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
@@ -569,14 +569,14 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
     controls.dampingFactor = 0.07;
     controls.enablePan = true;
 
-    scene.add(new THREE.HemisphereLight(0xdce9dd, 0x202828, 2.3));
-    const key = new THREE.DirectionalLight(0xf4f0dc, 3.6);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xd5ddd8, 2.3));
+    const key = new THREE.DirectionalLight(0xfff4e8, 3.6);
     key.position.set(180, 220, 260);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x80adb0, 2.2);
+    const rim = new THREE.DirectionalLight(0x9cc5c7, 2.2);
     rim.position.set(-180, 100, -120);
     scene.add(rim);
-    const grid = new THREE.GridHelper(500, 20, 0x52605a, 0x26302e);
+    const grid = new THREE.GridHelper(500, 20, 0x7c8b83, 0xd5dad4);
     scene.add(grid);
 
     const resize = () => {

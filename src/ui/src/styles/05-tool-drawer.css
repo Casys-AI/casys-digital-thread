@@ -3,8 +3,8 @@
 .thread-tool-drawer {
   min-width: 0;
   border-left: 1px solid var(--line);
-  background: #101312;
-  box-shadow: -16px 0 36px rgba(0, 0, 0, 0.12);
+  background: var(--thread-panel);
+  box-shadow: -16px 0 36px rgba(44, 51, 45, 0.08);
 }
 
 .thread-drawer-tabs {
@@ -12,13 +12,13 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   border-bottom: 1px solid var(--line);
-  background: #0d100f;
+  background: var(--thread-panel-muted);
 }
 
 .thread-drawer-tabs button {
   border: 0;
   border-right: 1px solid var(--line);
-  color: #727b76;
+  color: var(--thread-muted);
   background: transparent;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -31,13 +31,13 @@
 
 .thread-drawer-tabs button[aria-selected="true"] {
   color: var(--thread-orange);
-  background: rgba(217, 155, 80, 0.055);
+  background: var(--amber-dim);
   box-shadow: inset 0 -2px var(--thread-orange);
 }
 
 .thread-drawer-tabs button:disabled {
-  color: #454b48;
-  background: #0b0e0d;
+  color: var(--thread-muted);
+  background: var(--surface-3);
   cursor: not-allowed;
 }
 
@@ -56,8 +56,8 @@
   align-items: center;
   margin: 0 0 var(--space-14);
   padding: var(--space-12);
-  border: 1px solid #303735;
-  background: #151918;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel-muted);
 }
 
 .tool-inspector-mark {
@@ -67,7 +67,7 @@
   place-items: center;
   border: 1px solid var(--thread-orange);
   color: var(--thread-orange);
-  background: #191813;
+  background: #fff4ea;
   font: 800 var(--text-2xs)/1 var(--mono);
 }
 
@@ -80,21 +80,21 @@
 .tool-inspector-identity small,
 .tool-inspector-identity code {
   overflow: hidden;
-  color: #747d78;
+  color: var(--thread-muted);
   font: var(--text-3xs)/1.2 var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .tool-inspector-identity strong {
-  color: #cbc9c1;
+  color: var(--thread-ink);
   font-size: var(--text-2xs);
   line-height: 1.4;
 }
 
 .tool-inspector-identity div > span {
   overflow: hidden;
-  color: #929a95;
+  color: var(--text-soft);
   font-size: var(--text-3xs);
   line-height: 1.4;
   text-overflow: ellipsis;
@@ -105,7 +105,7 @@
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: var(--space-14);
-  border: 1px solid #303735;
+  border: 1px solid var(--thread-border);
 }
 
 .tool-facet-rail button {
@@ -117,9 +117,9 @@
   gap: var(--space-4);
   padding: var(--space-6) var(--space-4);
   border: 0;
-  border-right: 1px solid #303735;
-  color: #7f8883;
-  background: #121615;
+  border-right: 1px solid var(--thread-border);
+  color: var(--thread-muted);
+  background: var(--thread-panel);
   cursor: pointer;
 }
 
@@ -129,7 +129,7 @@
 
 .tool-facet-rail button[data-active="true"] {
   color: var(--thread-orange);
-  background: #1b1a15;
+  background: var(--amber-dim);
   box-shadow: inset 0 -2px var(--thread-orange);
 }
 
@@ -165,7 +165,7 @@
 }
 
 .tool-inspector-lead {
-  color: #a4aaa5;
+  color: var(--text-soft);
   font-size: var(--text-xs);
   line-height: 1.55;
 }
@@ -177,7 +177,7 @@
 }
 
 .tool-inspector-section {
-  border-top: 1px solid #2a302e;
+  border-top: 1px solid var(--thread-border);
 }
 
 .tool-inspector-section > header,
@@ -321,7 +321,7 @@ button.tool-inspector-row:hover strong {
 
 .tool-inspector-attestation small {
   overflow: hidden;
-  color: #747c77;
+  color: var(--thread-muted);
   font: var(--text-3xs)/1 var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -380,10 +380,10 @@ button.tool-inspector-row:hover strong {
   align-content: center;
   gap: var(--space-6);
   padding: var(--space-10);
-  border: 1px solid #343c38;
+  border: 1px solid var(--thread-border);
   color: inherit;
   text-align: left;
-  background: #151918;
+  background: var(--thread-panel-muted);
   cursor: pointer;
 }
 
@@ -392,7 +392,7 @@ button.tool-inspector-row:hover strong {
 }
 
 .thread-edge-endpoint small {
-  color: #727b76;
+  color: var(--thread-muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.07em;
 }
@@ -408,7 +408,7 @@ button.tool-inspector-row:hover strong {
 }
 
 .thread-edge-endpoint span {
-  color: #858e89;
+  color: var(--text-soft);
   font: var(--text-3xs)/1.3 var(--mono);
 }
 
@@ -419,7 +419,7 @@ button.tool-inspector-row:hover strong {
   padding: clamp(1rem, 2.5vw, 1.7rem);
   border: 0;
   border-radius: 0;
-  background: rgba(14, 17, 17, 0.96);
+  background: var(--thread-panel);
   box-shadow: none;
 }
 
@@ -704,7 +704,7 @@ button.tool-inspector-row:hover strong {
 }
 
 .thread-actions > button small {
-  color: #818984;
+  color: var(--thread-muted);
   font-size: var(--text-3xs);
   line-height: 1.4;
 }
@@ -722,7 +722,7 @@ button.tool-inspector-row:hover strong {
 .native-preview-shell {
   width: min(100%, 1560px);
   margin: 0 auto;
-  border: 1px solid #242a29;
+  border: 1px solid var(--line);
 }
 
 .native-preview-header {
@@ -733,7 +733,7 @@ button.tool-inspector-row:hover strong {
   gap: var(--space-14);
   padding: var(--space-12) var(--space-16);
   border-bottom: 1px solid var(--line);
-  background: #111515;
+  background: var(--surface-1);
 }
 
 .native-preview-brand {

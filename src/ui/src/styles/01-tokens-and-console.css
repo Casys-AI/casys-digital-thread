@@ -11,7 +11,11 @@
    attenues.
    -------------------------------------------------------------------------- */
 
-:root {
+/* `@casys/mcp-view` installs its theme after the application stylesheet and
+   declares `:root { color-scheme: light dark; }`. The element qualifier gives
+   the cockpit contract higher specificity without relying on `!important`, so
+   native controls stay light even when the operating system prefers dark. */
+html:root {
   color-scheme: light;
   --bg: #ebe8df;
   --surface-0: #f8f6f0;
@@ -33,6 +37,15 @@
   --cyan-dim: #ddecf0;
   --blue: #416f8a;
   --violet: #69577c;
+  --mcp-view-text: var(--text);
+  --mcp-view-muted: var(--muted);
+  --mcp-view-border: var(--line);
+  --mcp-view-panel: var(--surface-1);
+  --mcp-view-subtle: var(--surface-2);
+  --mcp-view-accent: var(--amber);
+  --mcp-view-success: var(--green);
+  --mcp-view-warning: var(--amber);
+  --mcp-view-danger: var(--red);
   --sans: "Avenir Next", Avenir, "Segoe UI", Helvetica, sans-serif;
   --serif: "Iowan Old Style", Baskerville, Georgia, serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Roboto Mono",

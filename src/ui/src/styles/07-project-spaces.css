@@ -439,18 +439,18 @@
   grid-template-columns: 28px minmax(0, 1fr);
   gap: var(--space-8);
   padding: var(--space-16) var(--space-12) var(--space-16) 0;
-  border-top: 1px solid #353b38;
-  border-bottom: 1px solid #353b38;
-  background: #101413;
+  border-top: 1px solid var(--thread-border);
+  border-bottom: 1px solid var(--thread-border);
+  background: var(--thread-panel);
 }
 
 .project-phase-rail li:first-child {
   padding-left: var(--space-12);
-  border-left: 1px solid #353b38;
+  border-left: 1px solid var(--thread-border);
 }
 
 .project-phase-rail li:last-child {
-  border-right: 1px solid #353b38;
+  border-right: 1px solid var(--thread-border);
 }
 
 .project-phase-node {
@@ -470,7 +470,7 @@
 }
 
 .project-phase-node span {
-  color: #626a66;
+  color: var(--thread-muted);
   font: 700 var(--text-3xs)/1 var(--mono);
 }
 
@@ -478,9 +478,9 @@
   z-index: 1;
   width: 8px;
   aspect-ratio: 1;
-  border: 1px solid #66706b;
+  border: 1px solid var(--thread-border-strong);
   border-radius: 50%;
-  background: #101413;
+  background: var(--thread-panel);
 }
 
 .project-phase-rail li[data-state="completed"] .project-phase-node i {
@@ -541,13 +541,13 @@
 .project-phase-copy dl > div {
   display: flex;
   gap: var(--space-4);
-  color: #626a66;
+  color: var(--thread-muted);
   font: var(--text-3xs)/1 var(--mono);
 }
 
 .project-phase-copy dd {
   margin: 0;
-  color: #a4aaa5;
+  color: var(--thread-ink);
 }
 
 /* A compact lifecycle signal belongs to its macro evidence stage. The detailed
@@ -558,11 +558,11 @@
   flex-basis: 100%;
   margin-top: var(--space-2);
   padding-top: var(--space-8);
-  border-top: 1px solid #303633;
+  border-top: 1px solid var(--thread-border);
 }
 
 .project-phase-lifecycle dt {
-  color: #7c857f;
+  color: var(--thread-muted);
 }
 
 .project-phase-lifecycle[data-state="current"] dd {
@@ -570,7 +570,7 @@
 }
 
 .project-phase-lifecycle[data-state="retained"] dd {
-  color: #7c857f;
+  color: var(--thread-muted);
 }
 
 .project-phase-lifecycle[data-state="attention"] dd {
@@ -580,7 +580,7 @@
 .project-control-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border: 1px solid #373d3a;
+  border: 1px solid var(--thread-border);
 }
 
 /* La grille parente egalise deja la hauteur des trois panneaux, donc ce
@@ -592,8 +592,8 @@
   min-height: 140px;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  border-right: 1px solid #373d3a;
-  background: #111514;
+  border-right: 1px solid var(--thread-border);
+  background: var(--thread-panel);
 }
 
 .project-control-panel:last-child {
@@ -605,7 +605,7 @@
   align-items: baseline;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid #303633;
+  border-bottom: 1px solid var(--thread-border);
 }
 
 .project-control-panel > header span {
@@ -627,7 +627,7 @@
   display: inline-block;
   margin-bottom: var(--space-10);
   padding: var(--space-4) var(--space-6);
-  border: 1px solid #4b514e;
+  border: 1px solid var(--thread-border-strong);
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -643,7 +643,7 @@
 .project-control-record > p,
 .project-control-empty {
   margin: var(--space-8) 0 0;
-  color: #8d9590;
+  color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.55;
 }
@@ -651,7 +651,7 @@
 .project-control-record > small {
   display: block;
   margin-top: var(--space-12);
-  color: #626a66;
+  color: var(--thread-muted);
   font: var(--text-3xs)/1.3 var(--mono);
   text-transform: uppercase;
 }
@@ -662,7 +662,7 @@
   justify-content: space-between;
   padding: 0 var(--space-16);
   border: 0;
-  border-top: 1px solid #303633;
+  border-top: 1px solid var(--thread-border);
   font: 700 var(--text-3xs)/1 var(--mono);
   cursor: pointer;
 }
@@ -674,7 +674,7 @@
 .project-evidence-routes {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border: 1px solid #353b38;
+  border: 1px solid var(--thread-border);
 }
 
 .project-evidence-route {
@@ -685,10 +685,10 @@
   gap: var(--space-12);
   padding: var(--space-18);
   border: 0;
-  border-right: 1px solid #353b38;
+  border-right: 1px solid var(--thread-border);
   color: inherit;
   text-align: left;
-  background: #101413;
+  background: var(--thread-panel);
   cursor: pointer;
 }
 
@@ -700,7 +700,7 @@
   place-items: center;
   width: 30px;
   aspect-ratio: 1;
-  border: 1px solid #4b5652;
+  border: 1px solid var(--thread-border-strong);
   font: 700 var(--text-3xs)/1 var(--mono);
 }
 
@@ -711,13 +711,13 @@
 .project-evidence-route p {
   min-height: 3.4em;
   margin: var(--space-8) 0 var(--space-12);
-  color: #7e8782;
+  color: var(--thread-muted);
   font-size: var(--text-3xs);
   line-height: 1.55;
 }
 
 .project-evidence-route small {
-  color: #9ea59f;
+  color: var(--thread-muted);
   font: 700 var(--text-3xs)/1 var(--mono);
   text-transform: uppercase;
 }
@@ -727,9 +727,9 @@
 }
 
 .project-technical-record {
-  border: 1px solid #303633;
-  color: #7c8580;
-  background: #0d1010;
+  border: 1px solid var(--thread-border);
+  color: var(--thread-muted);
+  background: var(--thread-panel-muted);
 }
 
 .project-technical-record summary {
@@ -743,13 +743,13 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
-  border-top: 1px solid #303633;
+  border-top: 1px solid var(--thread-border);
 }
 
 .project-technical-record dl > div {
   min-width: 0;
   padding: var(--space-12) var(--space-12);
-  border-right: 1px solid #303633;
+  border-right: 1px solid var(--thread-border);
 }
 
 .project-technical-record dl > div:last-child {
@@ -758,21 +758,21 @@
 
 .project-technical-record dt {
   margin-bottom: var(--space-6);
-  color: #626a66;
+  color: var(--thread-muted);
   font: var(--text-3xs)/1 var(--mono);
 }
 
 .project-technical-record dd {
   overflow: hidden;
   margin: 0;
-  color: #a3aaa5;
+  color: var(--thread-ink);
   font-size: var(--text-3xs);
   text-overflow: ellipsis;
 }
 
 .project-workspace-page .thread-workspace-meta {
   padding-bottom: var(--space-12);
-  border-bottom: 1px solid #292f2d;
+  border-bottom: 1px solid var(--thread-border);
 }
 
 .project-verification-metrics.mcp-view-metrics {
@@ -784,8 +784,8 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 0 var(--space-14);
-  border: 1px solid #353b38;
-  background: #101413;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
 }
 
 .project-work-ribbon-cell {
@@ -795,7 +795,7 @@
   align-content: center;
   gap: var(--space-4);
   padding: var(--space-12) var(--space-16);
-  border-right: 1px solid #353b38;
+  border-right: 1px solid var(--thread-border);
 }
 
 .project-work-ribbon-cell:last-child {
@@ -831,15 +831,15 @@
 
 .project-operations-panel,
 .project-work-plan {
-  border: 1px solid #343a37;
-  background: #101413;
+  border: 1px solid var(--thread-border);
+  background: var(--thread-panel);
 }
 
 .project-operations-panel > header,
 .project-work-plan > header {
   min-height: 68px;
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid #303633;
+  border-bottom: 1px solid var(--thread-border);
 }
 
 .project-run-list {
@@ -853,7 +853,7 @@
   grid-template-columns: 9px minmax(0, 1fr);
   gap: var(--space-12);
   padding: var(--space-14) var(--space-16);
-  border-bottom: 1px solid #292f2d;
+  border-bottom: 1px solid var(--thread-border);
 }
 
 .project-run-list li:last-child {
