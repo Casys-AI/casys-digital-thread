@@ -100,7 +100,6 @@ export async function resolveInspectionDroneV4ProductStructureCatalog(
       artifact,
       architecture[0]!,
       architectureText,
-      snapshot,
     );
     return catalog(snapshot.subject.id, artifact.id, bundle);
   } catch {
@@ -226,7 +225,6 @@ function parseBundle(
   artifact: ThreadSnapshot["artifacts"][number],
   architectureArtifact: ThreadSnapshot["artifacts"][number],
   architectureText: string,
-  snapshot: ThreadSnapshot,
 ): Bundle {
   const raw = JSON.parse(text) as unknown;
   const record = closed(raw, [
