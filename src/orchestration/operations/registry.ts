@@ -8,6 +8,7 @@ import type {
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
+import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -208,6 +209,7 @@ const OPERATIONS = [
   // These descriptors are reviewed planning data only until a server-owned
   // executor is explicitly registered for each one.
   ...listCoffeeMachineCm01V3OperationDescriptors(),
+  ...listInspectionDroneV4OperationDescriptors(),
 ] as const satisfies readonly RegisteredEngineeringOperation[];
 
 const OPERATION_BY_KEY = new Map(

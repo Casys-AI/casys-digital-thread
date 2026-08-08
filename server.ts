@@ -23,6 +23,7 @@ import {
   CM01_SEMANTIC_CAD_R3_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_EDGES_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
@@ -35,6 +36,7 @@ import { FileCm01DripTrayPrintEstimateAttemptStore } from "./src/adapters/wal/fi
 import { FileSysonModelSeedAttemptStore } from "./src/adapters/wal/file-syson-model-seed-attempt-store.ts";
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
+import { FileInspectionDroneV4ArchitectureAttemptStore } from "./src/adapters/wal/file-inspection-drone-v4-architecture-attempt-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/captures/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "./src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
@@ -68,6 +70,8 @@ import {
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/executors/approved-brief-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/executors/syson-model-seed-run-executor.ts";
+import { InspectionDroneV4ArchitectureRunExecutor } from "./src/adapters/executors/inspection-drone-v4-architecture-run-executor.ts";
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "./src/orchestration/operations/inspection-drone-v4.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
@@ -203,6 +207,10 @@ const DEFAULT_CM01_ARCHITECTURE_CAPTURE_DIRECTORY =
   "state/local/coffee-machine-cm01-v3-architecture-captures";
 const DEFAULT_CM01_ARCHITECTURE_ATTEMPT_DIRECTORY =
   "state/local/coffee-machine-cm01-v3-architecture-attempts";
+const DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DIRECTORY =
+  "state/local/inspection-drone-v4-architecture-captures";
+const DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_ATTEMPT_DIRECTORY =
+  "state/local/inspection-drone-v4-architecture-attempts";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -315,6 +323,8 @@ export interface CreateConsoleServerOptions {
   cm01NominalModelicaAttemptDirectory?: string;
   cm01ArchitectureCaptureDirectory?: string;
   cm01ArchitectureAttemptDirectory?: string;
+  inspectionDroneV4ArchitectureCaptureDirectory?: string;
+  inspectionDroneV4ArchitectureAttemptDirectory?: string;
   cm01ErpNextBomCaptureDirectory?: string;
   cm01ErpNextBomRunCaptureDirectory?: string;
   cm01SemanticCadAttemptDirectory?: string;
@@ -550,6 +560,25 @@ async function createProjectControl(
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
       liveUpdates,
+    })
+    : undefined;
+  const inspectionDroneV4Architecture = sysonMcpUrl
+    ? new InspectionDroneV4ArchitectureRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      seedCaptures: sysonModelSeedCaptures,
+      captures: new FileCaptureStore({
+        ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.inspectionDroneV4ArchitectureCaptureDirectory ??
+          DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      attempts: new FileInspectionDroneV4ArchitectureAttemptStore(
+        options.inspectionDroneV4ArchitectureAttemptDirectory ??
+          DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_ATTEMPT_DIRECTORY,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
     })
     : undefined;
   const cm01OracleRequirementsCaptures = new FileCaptureStore({
@@ -1015,6 +1044,12 @@ async function createProjectControl(
         baseline,
         sysonModelSeed,
         additional: [
+          {
+            operation: INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+            executor: inspectionDroneV4Architecture,
+            unavailableMessage:
+              "The server has no trusted inspection-drone V4 SysON architecture executor configured for this run.",
+          },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
             executor: cm01Architecture,

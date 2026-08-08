@@ -205,6 +205,17 @@ export const SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "SysON model-seed",
 };
 
+/** Capture of the bounded qualitative inspection-drone architecture only. */
+export const INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR:
+  CaptureStoreDescriptor<
+    "inspection-drone-v4-architecture"
+  > = {
+    kind: "inspection-drone-v4-architecture",
+    directory: "state/local/inspection-drone-v4-architecture-captures",
+    uriNamespace: "inspection-drone-v4-architecture-capture",
+    label: "Inspection-drone V4 architecture",
+  };
+
 export const ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "oracle-requirements-seed"
 > = {
