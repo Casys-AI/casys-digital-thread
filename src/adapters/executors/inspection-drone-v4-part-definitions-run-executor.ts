@@ -145,6 +145,7 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       // durability boundary: leave the run active for exact recovery rather
       // than falsely recording a failed run beside an unattached r4.
       let persisted = false;
+      let publicationPersisted = false;
       try {
         let project = await this.project(command.projectId);
         let run = requireRun(project, command.runId);
@@ -231,6 +232,7 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
           fingerprint,
           snapshot,
         });
+        publicationPersisted = true;
         // The WAL must exist before r4 can become durable: a crash after the
         // snapshot write is then recoverable without re-reading SysON.
         await this.d.snapshots.save(snapshot);
@@ -267,7 +269,9 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
         }
         return complete(await this.project(command.projectId), command);
       } catch (error) {
-        if (claimed && !persisted) await this.fail(origin, command);
+        if (claimed && !persisted && !publicationPersisted) {
+          await this.fail(origin, command);
+        }
         throw error;
       }
     });
