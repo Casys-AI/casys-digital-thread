@@ -1,13 +1,10 @@
 /**
- * Write-ahead journal for the generic `model.write-architecture@1` operation.
+ * Immutable, run-scoped write-ahead journal for `model.write-architecture@1`.
  *
- * Key: (projectId, runId, planDigest) — the planDigest ensures that a changed
- * proposal creates a new WAL entry, while the same plan cannot be re-inserted
- * once dispatched (fail-closed against double-write).
- *
- * A `dispatched` marker that has not been `completed` means the SysON insertion
- * outcome is unknown. No automatic retry must proceed from this state — the
- * operator must inspect SysON before any recovery path.
+ * A run is allowed to dispatch exactly one provider mutation.  Its plan digest
+ * is evidence of what was dispatched, never a secondary idempotency key: after
+ * a crash the live model can produce a different plan and must not open another
+ * mutation attempt for the same run.
  */
 
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
@@ -22,7 +19,6 @@ export type ArchitectureWriteAttempt = {
   readonly result?: { readonly inserted: "true" };
 };
 
-/** Raised when a dispatched WAL entry has not been completed. */
 export class ArchitectureWriteOutcomeUnknownError extends Error {
   constructor() {
     super(
@@ -32,15 +28,6 @@ export class ArchitectureWriteOutcomeUnknownError extends Error {
   }
 }
 
-/**
- * Persisted record of a run-level quarantine.
- *
- * Written when a structural verification failure occurs after the SysON
- * insertion was acknowledged. Keyed by (projectId, runId) — coarser than the
- * planDigest-level attempt, and consulted before any preflight dispatch so that
- * a changed enrichment plan (different planDigest) cannot slip past the WAL
- * guard and trigger a second insertion.
- */
 export type ArchitectureRunQuarantine = {
   readonly schemaVersion: "architecture-run-quarantine/1.0";
   readonly projectId: string;
@@ -49,12 +36,6 @@ export type ArchitectureRunQuarantine = {
   readonly quarantinedAt: string;
 };
 
-/**
- * Raised when the executor discovers a quarantine sentinel for this runId.
- *
- * A quarantined run cannot be retried — the operator must inspect SysON
- * manually and queue a new run after any corrective steps.
- */
 export class ArchitectureRunQuarantinedError extends Error {
   constructor() {
     super(
@@ -72,54 +53,69 @@ export class FileArchitectureAttemptStore {
     private readonly directory = "state/local/architecture-write-attempts",
   ) {}
 
+  /**
+   * Atomically reserve the sole provider dispatch allowed for this run.
+   *
+   * The returned completed action intentionally ignores the caller's current
+   * planDigest: it is a recovery signal, so the executor must read back and
+   * publish without inserting again.
+   */
   async begin(input: {
     readonly projectId: string;
     readonly runId: string;
     readonly planDigest: string;
     readonly dispatchedAt: string;
-  }): Promise<
-    | { readonly action: "dispatch" }
-    | { readonly action: "completed" }
-  > {
-    const fresh: ArchitectureWriteAttempt = {
-      schemaVersion: "architecture-write-attempt/1.0",
-      projectId: nonEmpty(input.projectId, "projectId"),
-      runId: nonEmpty(input.runId, "runId"),
-      planDigest: nonEmpty(input.planDigest, "planDigest"),
-      status: "dispatched",
-      dispatchedAt: timestamp(input.dispatchedAt),
-    };
+  }): Promise<{ readonly action: "dispatch" } | { readonly action: "completed" }> {
+    const fresh = attempt(input);
     await Deno.mkdir(this.directory, { recursive: true });
+
+    // The new run-scoped record is authoritative if a deployment briefly has
+    // both formats. A stale legacy per-plan marker must not hide a completed
+    // immutable recovery record.
+    let current: ArchitectureWriteAttempt | undefined;
     try {
-      await writeNewDurably(
-        this.pathFor(fresh.projectId, fresh.runId, fresh.planDigest),
-        `${deterministicJson(fresh)}\n`,
+      current = await this.readRun(fresh.projectId, fresh.runId);
+    } catch {
+      throw new ArchitectureWriteOutcomeUnknownError();
+    }
+    if (current) return actionFor(current);
+    let legacy: ArchitectureWriteAttempt | undefined;
+    try {
+      legacy = await this.readLegacy(
+        fresh.projectId,
+        fresh.runId,
+        fresh.planDigest,
       );
+    } catch {
+      throw new ArchitectureWriteOutcomeUnknownError();
+    }
+    if (legacy) return actionFor(legacy);
+
+    const path = await this.pathFor(fresh.projectId, fresh.runId);
+    try {
+      await writeNewDurably(path, `${deterministicJson(fresh)}\n`, this.directory);
       return { action: "dispatch" };
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
     }
-    const existing = await this.required(
-      input.projectId,
-      input.runId,
-      input.planDigest,
-    );
-    if (existing.status !== "completed" || !existing.result) {
-      throw new ArchitectureWriteOutcomeUnknownError();
-    }
-    return { action: "completed" };
+    const existing = await this.requiredRun(fresh.projectId, fresh.runId);
+    await syncDirectoryChain(this.directory);
+    return actionFor(existing);
   }
 
+  /** Mark the immutable run record completed after SysON acknowledged it. */
   async complete(input: {
     readonly projectId: string;
     readonly runId: string;
     readonly planDigest: string;
   }): Promise<void> {
-    const existing = await this.required(
-      input.projectId,
-      input.runId,
-      input.planDigest,
-    );
+    nonEmpty(input.projectId, "projectId");
+    nonEmpty(input.runId, "runId");
+    nonEmpty(input.planDigest, "planDigest");
+    const existing = await this.requiredRun(input.projectId, input.runId);
+    if (existing.planDigest !== input.planDigest) {
+      throw new ArchitectureWriteOutcomeUnknownError();
+    }
     const completed: ArchitectureWriteAttempt = {
       ...existing,
       status: "completed",
@@ -131,21 +127,43 @@ export class FileArchitectureAttemptStore {
           "Architecture insertion acknowledgement conflicts with the existing attempt.",
         );
       }
+      await syncDirectoryChain(this.directory);
       return;
     }
     await replaceDurably(
-      this.pathFor(existing.projectId, existing.runId, existing.planDigest),
+      await this.pathFor(existing.projectId, existing.runId),
       `${deterministicJson(completed)}\n`,
+      this.directory,
     );
   }
 
-  /**
-   * Write a run-level quarantine sentinel for (projectId, runId).
-   *
-   * Idempotent: if the sentinel already exists the call succeeds silently.
-   * Called after a structural verification failure post-acknowledgement so that
-   * any later dispatch attempt — even under a different planDigest — is blocked.
-   */
+  /** Return the immutable run record, independent of a newly computed plan. */
+  async readRun(
+    projectId: string,
+    runId: string,
+  ): Promise<ArchitectureWriteAttempt | undefined> {
+    nonEmpty(projectId, "projectId");
+    nonEmpty(runId, "runId");
+    return await this.readPath(
+      await this.pathFor(projectId, runId),
+      projectId,
+      runId,
+      undefined,
+    );
+  }
+
+  /** Compatibility for callers that still need to inspect an exact legacy plan. */
+  async read(
+    projectId: string,
+    runId: string,
+    planDigest: string,
+  ): Promise<ArchitectureWriteAttempt | undefined> {
+    nonEmpty(planDigest, "planDigest");
+    const current = await this.readRun(projectId, runId);
+    if (current) return current.planDigest === planDigest ? current : undefined;
+    return await this.readLegacy(projectId, runId, planDigest);
+  }
+
   async quarantine(input: {
     readonly projectId: string;
     readonly runId: string;
@@ -156,63 +174,46 @@ export class FileArchitectureAttemptStore {
       projectId: nonEmpty(input.projectId, "projectId"),
       runId: nonEmpty(input.runId, "runId"),
       reason: "structural_failure_post_acknowledgement",
-      quarantinedAt: timestamp(input.quarantinedAt),
+      quarantinedAt: timestamp(input.quarantinedAt, "quarantinedAt"),
     };
     await Deno.mkdir(this.directory, { recursive: true });
+    const legacy = await this.readLegacyQuarantine(record.projectId, record.runId);
+    if (legacy) {
+      await syncDirectoryChain(this.directory);
+      return;
+    }
+    const path = await this.quarantinePath(record.projectId, record.runId);
     try {
       await writeNewDurably(
-        this.quarantinePath(record.projectId, record.runId),
+        path,
         `${deterministicJson(record)}\n`,
+        this.directory,
       );
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
-      // Already quarantined — idempotent.
+      // An EEXIST sentinel is safe only after its identity and shape have been
+      // read back.  A torn/corrupt sentinel is an unknown outcome, not "true".
+      await this.requiredQuarantine(record.projectId, record.runId);
+      await syncDirectoryChain(this.directory);
     }
   }
 
-  /**
-   * Return true when a quarantine sentinel exists for (projectId, runId).
-   *
-   * Throws on unexpected I/O errors so that a broken filesystem is not
-   * silently treated as "not quarantined".
-   */
   async isQuarantined(projectId: string, runId: string): Promise<boolean> {
-    try {
-      await Deno.stat(this.quarantinePath(projectId, runId));
-      return true;
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return false;
-      throw error;
-    }
+    const current = await this.readQuarantinePath(
+      await this.quarantinePath(projectId, runId),
+      projectId,
+      runId,
+    );
+    if (current) return true;
+    return Boolean(await this.readLegacyQuarantine(projectId, runId));
   }
 
-  async read(
+  private async requiredRun(
     projectId: string,
     runId: string,
-    planDigest: string,
-  ): Promise<ArchitectureWriteAttempt | undefined> {
-    try {
-      return await parse(
-        await Deno.readTextFile(
-          this.pathFor(projectId, runId, planDigest),
-        ),
-        projectId,
-        runId,
-        planDigest,
-      );
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
-      throw error;
-    }
-  }
-
-  private async required(
-    projectId: string,
-    runId: string,
-    planDigest: string,
   ): Promise<ArchitectureWriteAttempt> {
     try {
-      const existing = await this.read(projectId, runId, planDigest);
+      const existing = await this.readRun(projectId, runId);
       if (!existing) throw new Error("Architecture insertion marker is missing.");
       return existing;
     } catch {
@@ -220,80 +221,201 @@ export class FileArchitectureAttemptStore {
     }
   }
 
-  private pathFor(projectId: string, runId: string, planDigest: string): string {
-    return `${this.directory.replace(/\/$/, "")}/${
-      encodeURIComponent(
-        JSON.stringify([
-          nonEmpty(projectId, "projectId"),
-          nonEmpty(runId, "runId"),
-          nonEmpty(planDigest, "planDigest"),
-        ]),
-      )
-    }.json`;
+  private async requiredQuarantine(
+    projectId: string,
+    runId: string,
+  ): Promise<ArchitectureRunQuarantine> {
+    const value = await this.readQuarantinePath(
+      await this.quarantinePath(projectId, runId),
+      projectId,
+      runId,
+    );
+    if (!value) throw new ArchitectureWriteOutcomeUnknownError();
+    return value;
   }
 
-  /**
-   * Path for the run-level quarantine sentinel.
-   *
-   * Uses a distinct filename prefix ("quarantine-") to avoid any collision with
-   * the planDigest-level attempt paths, and is keyed only by (projectId, runId)
-   * so it is found regardless of which planDigest the new preflight would produce.
-   */
-  private quarantinePath(projectId: string, runId: string): string {
-    return `${this.directory.replace(/\/$/, "")}/quarantine-${
-      encodeURIComponent(
-        JSON.stringify([
-          nonEmpty(projectId, "projectId"),
-          nonEmpty(runId, "runId"),
-        ]),
-      )
-    }.json`;
+  private async readPath(
+    path: string,
+    projectId: string,
+    runId: string,
+    expectedPlanDigest: string | undefined,
+  ): Promise<ArchitectureWriteAttempt | undefined> {
+    try {
+      return parseAttempt(
+        await Deno.readTextFile(path),
+        projectId,
+        runId,
+        expectedPlanDigest,
+      );
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
+      throw error;
+    }
+  }
+
+  private async readLegacy(
+    projectId: string,
+    runId: string,
+    planDigest: string,
+  ): Promise<ArchitectureWriteAttempt | undefined> {
+    const path = legacyAttemptPath(this.directory, projectId, runId, planDigest);
+    if (!fitsNameMax(path)) return undefined;
+    return await this.readPath(path, projectId, runId, planDigest);
+  }
+
+  private async readQuarantinePath(
+    path: string,
+    projectId: string,
+    runId: string,
+  ): Promise<ArchitectureRunQuarantine | undefined> {
+    try {
+      return parseQuarantine(await Deno.readTextFile(path), projectId, runId);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
+      throw error;
+    }
+  }
+
+  private async readLegacyQuarantine(
+    projectId: string,
+    runId: string,
+  ): Promise<ArchitectureRunQuarantine | undefined> {
+    const path = legacyQuarantinePath(this.directory, projectId, runId);
+    if (!fitsNameMax(path)) return undefined;
+    return await this.readQuarantinePath(path, projectId, runId);
+  }
+
+  private async pathFor(projectId: string, runId: string): Promise<string> {
+    return `${root(this.directory)}/run-${await sha256Hex(
+      JSON.stringify([projectId, runId]),
+    )}.json`;
+  }
+
+  private async quarantinePath(projectId: string, runId: string): Promise<string> {
+    return `${root(this.directory)}/quarantine-${await sha256Hex(
+      JSON.stringify([projectId, runId]),
+    )}.json`;
   }
 }
 
-async function writeNewDurably(path: string, text: string): Promise<void> {
+function attempt(input: {
+  readonly projectId: string;
+  readonly runId: string;
+  readonly planDigest: string;
+  readonly dispatchedAt: string;
+}): ArchitectureWriteAttempt {
+  return {
+    schemaVersion: "architecture-write-attempt/1.0",
+    projectId: nonEmpty(input.projectId, "projectId"),
+    runId: nonEmpty(input.runId, "runId"),
+    planDigest: nonEmpty(input.planDigest, "planDigest"),
+    status: "dispatched",
+    dispatchedAt: timestamp(input.dispatchedAt, "dispatchedAt"),
+  };
+}
+
+function actionFor(
+  attempt: ArchitectureWriteAttempt,
+): { readonly action: "completed" } {
+  if (attempt.status !== "completed" || !attempt.result) {
+    throw new ArchitectureWriteOutcomeUnknownError();
+  }
+  return { action: "completed" };
+}
+
+async function writeNewDurably(
+  path: string,
+  text: string,
+  directory: string,
+): Promise<void> {
+  // Write a fully synced inode under a short, private name, then publish it
+  // with link(2). Unlike createNew on the final name, readers can never see a
+  // zero-byte/partial record while the producer is still writing it.
+  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
+  try {
+    await writeTemporaryDurably(temporary, text);
+    await Deno.link(temporary, path);
+    await syncDirectoryChain(directory);
+  } finally {
+    await Deno.remove(temporary).catch((error) => {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    });
+  }
+}
+
+async function writeTemporaryDurably(path: string, text: string): Promise<void> {
   const file = await Deno.open(path, { createNew: true, write: true });
   try {
-    await file.write(new TextEncoder().encode(text));
+    await writeAll(file, text);
     await file.syncData();
   } finally {
     file.close();
   }
 }
 
-async function replaceDurably(path: string, text: string): Promise<void> {
-  const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-  await writeNewDurably(temporary, text);
-  await Deno.rename(temporary, path);
+async function replaceDurably(
+  path: string,
+  text: string,
+  directory: string,
+): Promise<void> {
+  // Keep the temporary basename short: appending to an identity-derived name
+  // can exceed NAME_MAX even though the final hash name is safe.
+  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
+  try {
+    await writeTemporaryDurably(temporary, text);
+    await Deno.rename(temporary, path);
+    await syncDirectoryChain(directory);
+  } finally {
+    await Deno.remove(temporary).catch((error) => {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    });
+  }
 }
 
-function parse(
+async function writeAll(file: Deno.FsFile, text: string): Promise<void> {
+  const bytes = new TextEncoder().encode(text);
+  let written = 0;
+  while (written < bytes.length) {
+    const count = await file.write(bytes.subarray(written));
+    if (count <= 0) {
+      throw new Error("Architecture write-attempt journal made no write progress.");
+    }
+    written += count;
+  }
+}
+
+async function syncDirectoryChain(path: string): Promise<void> {
+  let current = root(path) || ".";
+  while (current !== "/") {
+    const directory = await Deno.open(current, { read: true });
+    try {
+      await directory.sync();
+    } finally {
+      directory.close();
+    }
+    if (current === "state" || current.endsWith("/state") || current === ".") return;
+    const slash = current.lastIndexOf("/");
+    current = slash < 0 ? "." : slash === 0 ? "/" : current.slice(0, slash);
+  }
+}
+
+function parseAttempt(
   text: string,
   projectId: string,
   runId: string,
-  planDigest: string,
+  expectedPlanDigest: string | undefined,
 ): ArchitectureWriteAttempt {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new Error("Architecture insertion marker is not JSON.");
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Architecture insertion marker is not an object.");
-  }
-  const record = value as Record<string, unknown>;
+  const record = parseObject(text, "Architecture insertion marker");
   const keys = Object.keys(record).sort();
   if (
     record.schemaVersion !== "architecture-write-attempt/1.0" ||
     record.projectId !== projectId || record.runId !== runId ||
-    record.planDigest !== planDigest ||
+    (typeof record.planDigest !== "string" || !record.planDigest.trim()) ||
+    (expectedPlanDigest !== undefined && record.planDigest !== expectedPlanDigest) ||
     (record.status !== "dispatched" && record.status !== "completed") ||
-    typeof record.dispatchedAt !== "string" ||
-    Number.isNaN(Date.parse(record.dispatchedAt))
-  ) {
-    throw new Error("Architecture insertion marker does not match its identity.");
-  }
+    typeof record.dispatchedAt !== "string"
+  ) throw new Error("Architecture insertion marker does not match its identity.");
+  timestamp(record.dispatchedAt, "dispatchedAt");
   const expectedKeys = record.status === "completed"
     ? [
       "dispatchedAt",
@@ -315,29 +437,103 @@ function parse(
     record.status === "completed" &&
     (!record.result || typeof record.result !== "object" ||
       Array.isArray(record.result) ||
-      (record.result as Record<string, unknown>).inserted !== "true")
-  ) {
-    throw new Error("Completed architecture insertion marker has an invalid result.");
-  }
+      (record.result as Record<string, unknown>).inserted !== "true" ||
+      Object.keys(record.result as Record<string, unknown>).length !== 1)
+  ) throw new Error("Completed architecture insertion marker has an invalid result.");
   return {
     schemaVersion: "architecture-write-attempt/1.0",
     projectId,
     runId,
-    planDigest,
+    planDigest: record.planDigest,
     status: record.status,
     dispatchedAt: record.dispatchedAt,
     ...(record.status === "completed" ? { result: { inserted: "true" } } : {}),
   };
 }
 
+function parseQuarantine(
+  text: string,
+  projectId: string,
+  runId: string,
+): ArchitectureRunQuarantine {
+  const record = parseObject(text, "Architecture quarantine marker");
+  const keys = Object.keys(record).sort();
+  const expected = ["projectId", "quarantinedAt", "reason", "runId", "schemaVersion"];
+  if (
+    record.schemaVersion !== "architecture-run-quarantine/1.0" ||
+    record.projectId !== projectId || record.runId !== runId ||
+    record.reason !== "structural_failure_post_acknowledgement" ||
+    typeof record.quarantinedAt !== "string" || keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index])
+  ) throw new Error("Architecture quarantine marker does not match its identity.");
+  timestamp(record.quarantinedAt, "quarantinedAt");
+  return {
+    schemaVersion: "architecture-run-quarantine/1.0",
+    projectId,
+    runId,
+    reason: "structural_failure_post_acknowledgement",
+    quarantinedAt: record.quarantinedAt,
+  };
+}
+
+function parseObject(text: string, label: string): Record<string, unknown> {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error(`${label} is not JSON.`);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} is not an object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function legacyAttemptPath(
+  directory: string,
+  projectId: string,
+  runId: string,
+  planDigest: string,
+): string {
+  return `${root(directory)}/${
+    encodeURIComponent(JSON.stringify([projectId, runId, planDigest]))
+  }.json`;
+}
+
+function legacyQuarantinePath(
+  directory: string,
+  projectId: string,
+  runId: string,
+): string {
+  return `${root(directory)}/quarantine-${
+    encodeURIComponent(JSON.stringify([projectId, runId]))
+  }.json`;
+}
+
+function fitsNameMax(path: string): boolean {
+  return new TextEncoder().encode(path.slice(path.lastIndexOf("/") + 1)).length <= 255;
+}
+
+function root(directory: string): string {
+  return directory.replace(/\/$/, "");
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function nonEmpty(value: string, label: string): string {
-  if (!value.trim()) throw new TypeError(`${label} must be non-empty.`);
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new TypeError(`${label} must be non-empty.`);
+  }
   return value;
 }
 
-function timestamp(value: string): string {
+function timestamp(value: string, label: string): string {
   if (Number.isNaN(Date.parse(value))) {
-    throw new TypeError("dispatchedAt must be an ISO timestamp.");
+    throw new TypeError(`${label} must be an ISO timestamp.`);
   }
   return value;
 }

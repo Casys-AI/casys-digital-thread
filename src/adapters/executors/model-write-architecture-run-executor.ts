@@ -75,7 +75,10 @@ import {
 } from "../stores/thread-snapshot-lineage.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
-import { extractArchitectureStructure } from "../extractors/architecture-structure-extractor.ts";
+import {
+  ArchitectureStructureExtractionError,
+  extractArchitectureStructure,
+} from "../extractors/architecture-structure-extractor.ts";
 import {
   requireBasis,
   requiredStart,
@@ -336,45 +339,17 @@ export class ModelWriteArchitectureRunExecutor {
       const rootPackageId = seed.rootPackageId;
       const seedArtifact = requireSeedArtifact(base);
 
-      // Step 8: preflight re-extraction → insertion plan.
-      const existing = await extractArchitectureStructure(
-        this.#syson,
-        editingContextId,
-        rootPackageId,
-        architectureProposal.packageName,
-      );
-      const plan = planArchitectureInsertion(existing, architectureProposal);
-
-      // Step 9: conflict + empty-plan guard.
-      if (plan.conflicts.length > 0) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `Architecture insertion plan has ${plan.conflicts.length} conflict(s). ` +
-            `First: ${plan.conflicts[0]!.message}`,
-        );
-      }
-      if (plan.toInsert.length === 0) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "All proposed architecture components are already present and adopted. " +
-            "No insertion is needed; this transition would produce no new evidence.",
-        );
-      }
-
-      // Step 10: WAL (one entry per plan, keyed by content digest).
-      const planDigest = await planContentDigest(plan.toInsert, architectureProposal);
-      const walResult = await this.#walBeginOrFail(
+      // The immutable run-level WAL is consulted before any live preflight. A
+      // completed record means SysON already acknowledged a mutation: the
+      // current model may naturally yield an empty or different plan, but this
+      // retry must perform readback/publication only and never insert again.
+      let architecturePackageId: string;
+      let adopted: ReturnType<typeof planArchitectureInsertion>["adopted"] = [];
+      const existingAttempt = await this.#runAttemptOrFail(
         project.project.id,
         command.runId,
-        planDigest,
-        capturedAt,
       );
-
-      // Step 11: SysON insertions.
-      let architecturePackageId: string;
-      if (walResult.action === "completed") {
-        // Idempotent resume: no new insertions needed.
-        // Re-extract to learn the package ID.
+      if (existingAttempt?.status === "completed") {
         const existingForResume = await extractArchitectureStructure(
           this.#syson,
           editingContextId,
@@ -391,55 +366,123 @@ export class ModelWriteArchitectureRunExecutor {
         architecturePackageId = existingForResume.packageId;
         providerAcknowledged = true;
       } else {
-        // Dispatch: perform all insertions.
-        try {
-          if (plan.mode === "initial") {
-            const sysml = renderArchitectureSysml(architectureProposal);
-            const result = await this.#syson.callTool({
-              name: "syson_element_insert_sysml",
-              arguments: {
-                editing_context_id: editingContextId,
-                parent_id: rootPackageId,
-                sysml_text: sysml,
-              },
-            });
-            verifyInsertionAck(result.structuredContent, rootPackageId);
-          } else {
-            // Enrichment: insert per-item using the architecture package as root.
-            const packageId = existing!.packageId;
-            await this.#insertEnrichmentItems(
-              editingContextId,
-              packageId,
-              plan.toInsert,
-            );
-          }
-        } catch (error) {
-          if (!(error instanceof EngineeringProjectCommandError)) {
-            throw new ArchitectureWriteOutcomeUnknownError();
-          }
-          throw error;
-        }
-        await this.#attempts.complete({
-          projectId: project.project.id,
-          runId: command.runId,
-          planDigest,
-        });
-        providerAcknowledged = true;
-
-        // Resolve the package ID after insertion.
-        const postInsert = await extractArchitectureStructure(
+        // Step 8: preflight re-extraction → insertion plan.
+        const existing = await extractArchitectureStructure(
           this.#syson,
           editingContextId,
           rootPackageId,
           architectureProposal.packageName,
         );
-        if (!postInsert) {
+        const plan = planArchitectureInsertion(existing, architectureProposal);
+
+        // Step 9: conflict + empty-plan guard.
+        if (plan.conflicts.length > 0) {
           throw new EngineeringProjectCommandError(
             "invalid_transition",
-            "The architecture package is absent from SysON immediately after insertion.",
+            `Architecture insertion plan has ${plan.conflicts.length} conflict(s). ` +
+              `First: ${plan.conflicts[0]!.message}`,
           );
         }
-        architecturePackageId = postInsert.packageId;
+        if (plan.toInsert.length === 0) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            "All proposed architecture components are already present and adopted. " +
+              "No insertion is needed; this transition would produce no new evidence.",
+          );
+        }
+
+        const planDigest = await planContentDigest(plan.toInsert, architectureProposal);
+        const walResult = await this.#walBeginOrFail(
+          project.project.id,
+          command.runId,
+          planDigest,
+          capturedAt,
+        );
+        if (walResult.action === "completed") {
+          // A legacy or concurrently recovered record won the race. This branch
+          // is still strictly readback-only.
+          const existingForResume = await extractArchitectureStructure(
+            this.#syson,
+            editingContextId,
+            rootPackageId,
+            architectureProposal.packageName,
+          );
+          if (!existingForResume) {
+            throw new EngineeringProjectCommandError(
+              "invalid_transition",
+              "WAL is completed but the architecture package is absent from SysON. " +
+                "Operator inspection required.",
+            );
+          }
+          architecturePackageId = existingForResume.packageId;
+          providerAcknowledged = true;
+        } else {
+          // Dispatch: perform all insertions.
+          try {
+            if (plan.mode === "initial") {
+              const sysml = renderArchitectureSysml(architectureProposal);
+              const result = await this.#syson.callTool({
+                name: "syson_element_insert_sysml",
+                arguments: {
+                  editing_context_id: editingContextId,
+                  parent_id: rootPackageId,
+                  sysml_text: sysml,
+                },
+              });
+              verifyInsertionAck(result.structuredContent, rootPackageId);
+            } else {
+              // Enrichment: insert per-item using the architecture package as root.
+              const packageId = existing!.packageId;
+              await this.#insertEnrichmentItems(
+                editingContextId,
+                packageId,
+                plan.toInsert,
+              );
+            }
+          } catch (error) {
+            if (!(error instanceof EngineeringProjectCommandError)) {
+              throw new ArchitectureWriteOutcomeUnknownError();
+            }
+            throw error;
+          }
+          try {
+            await this.#attempts.complete({
+              projectId: project.project.id,
+              runId: command.runId,
+              planDigest,
+            });
+            providerAcknowledged = true;
+          } catch {
+            // A rename can be visible before the caller observes a later fsync
+            // error. Re-read the immutable run record: completed resumes safely;
+            // dispatched or unreadable is deliberately terminal, never failed as
+            // if SysON had not acknowledged the mutation.
+            const durable = await this.#runAttemptOrFail(
+              project.project.id,
+              command.runId,
+            );
+            if (durable?.status !== "completed" || durable.planDigest !== planDigest) {
+              throw new ArchitectureWriteOutcomeUnknownError();
+            }
+            providerAcknowledged = true;
+          }
+
+          // Resolve the package ID after insertion.
+          const postInsert = await extractArchitectureStructure(
+            this.#syson,
+            editingContextId,
+            rootPackageId,
+            architectureProposal.packageName,
+          );
+          if (!postInsert) {
+            throw new EngineeringProjectCommandError(
+              "invalid_transition",
+              "The architecture package is absent from SysON immediately after insertion.",
+            );
+          }
+          architecturePackageId = postInsert.packageId;
+          adopted = plan.adopted;
+        }
       }
 
       // Step 12: verification re-extraction.
@@ -455,7 +498,7 @@ export class ModelWriteArchitectureRunExecutor {
           "Verification re-extraction: the architecture package is absent after insertion.",
         );
       }
-      verifyAllComponentsPresent(verified, architectureProposal, plan.adopted);
+      verifyAllComponentsPresent(verified, architectureProposal, adopted);
 
       // Step 13: build + save capture.
       const captureRecord = {
@@ -581,14 +624,23 @@ export class ModelWriteArchitectureRunExecutor {
       // by a prior structural failure post-acknowledgement. Fail the run so its
       // status is visible, and surface the reason as a diagnostic error.
       if (error instanceof ArchitectureRunQuarantinedError) {
-        if (claimed) await this.#recordFailure(origin, command);
+        if (claimed) {
+          await this.#recordFailure(origin, command, {
+            code: "model-write-architecture-post-acknowledgement-quarantined",
+            message:
+              "SysON acknowledged an architecture insertion, then structural verification failed; the run is quarantined.",
+          });
+        }
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           error.message,
         );
       }
       if (providerAcknowledged) {
-        if (error instanceof EngineeringProjectCommandError) {
+        if (
+          error instanceof EngineeringProjectCommandError ||
+          error instanceof ArchitectureStructureExtractionError
+        ) {
           /**
            * A structural verification failure after the SysON insertion was
            * acknowledged means the model is in an unknown partial state. A naive
@@ -606,12 +658,29 @@ export class ModelWriteArchitectureRunExecutor {
               quarantinedAt: this.#now(),
             });
           } catch {
-            // If the quarantine write fails (e.g. I/O error), the structural
-            // error is still surfaced. The planDigest-level WAL entry remains
-            // "completed", which will prevent that exact plan from re-inserting;
-            // the operator must still inspect SysON before any corrective run.
+            // If the sentinel itself cannot be persisted, the only remaining
+            // durable stop is the project lifecycle. Do not swallow that
+            // transition: a run which still looks running could be retried.
+            if (claimed) {
+              await this.#recordFailure(origin, command, {
+                code: "model-write-architecture-quarantine-write-failed",
+                message:
+                  "SysON acknowledged an architecture insertion, but the durable quarantine could not be recorded. Automatic retry is forbidden.",
+              }, true);
+            }
+            throw new EngineeringProjectCommandError(
+              "invalid_transition",
+              "The acknowledged SysON insertion could not be durably quarantined. " +
+                "The run was failed; an operator must inspect SysON before any new run.",
+            );
           }
-          if (claimed) await this.#recordFailure(origin, command);
+          if (claimed) {
+            await this.#recordFailure(origin, command, {
+              code: "model-write-architecture-post-acknowledgement-quarantined",
+              message:
+                "SysON acknowledged an architecture insertion, then structural verification failed; the run is quarantined.",
+            });
+          }
           throw error;
         }
         throw new EngineeringProjectCommandError(
@@ -647,6 +716,30 @@ export class ModelWriteArchitectureRunExecutor {
       return await this.#attempts.begin({ projectId, runId, planDigest, dispatchedAt });
     } catch (error) {
       if (error instanceof ArchitectureWriteOutcomeUnknownError) throw error;
+      throw new ArchitectureWriteOutcomeUnknownError();
+    }
+  }
+
+  async #runAttemptOrFail(
+    projectId: string,
+    runId: string,
+  ): Promise<Awaited<ReturnType<FileArchitectureAttemptStore["readRun"]>>> {
+    try {
+      if (await this.#attempts.isQuarantined(projectId, runId)) {
+        throw new ArchitectureRunQuarantinedError();
+      }
+      const attempt = await this.#attempts.readRun(projectId, runId);
+      if (attempt?.status === "dispatched") {
+        throw new ArchitectureWriteOutcomeUnknownError();
+      }
+      return attempt;
+    } catch (error) {
+      if (
+        error instanceof ArchitectureRunQuarantinedError ||
+        error instanceof ArchitectureWriteOutcomeUnknownError
+      ) throw error;
+      // A torn/corrupt/unreadable run record is evidence of a possible remote
+      // mutation. Never turn it into a fresh preflight.
       throw new ArchitectureWriteOutcomeUnknownError();
     }
   }
@@ -818,6 +911,11 @@ export class ModelWriteArchitectureRunExecutor {
   async #recordFailure(
     origin: EngineeringProjectCommandOrigin,
     command: ModelWriteArchitectureRunExecutorCommand,
+    failure = {
+      code: "model-write-architecture-not-published",
+      message: "The generic architecture run stopped before evidence was published.",
+    },
+    required = false,
   ): Promise<void> {
     try {
       const project = await this.#requiredProject(command.projectId);
@@ -831,12 +929,15 @@ export class ModelWriteArchitectureRunExecutor {
         commandId: commandStep(command.commandId, "fail"),
         expectedRevision: project.revision,
         summary:
-          "Generic architecture run stopped before a SysON insertion was acknowledged.",
-        code: "model-write-architecture-not-published",
-        message: "The generic architecture run stopped before evidence was published.",
+          failure.code === "model-write-architecture-post-acknowledgement-quarantined"
+            ? "Generic architecture run quarantined after an acknowledged SysON insertion."
+            : "Generic architecture run stopped before evidence was published.",
+        code: failure.code,
+        message: failure.message,
       });
     } catch {
-      // Preserve the original cause.
+      if (required) throw new ArchitectureWriteOutcomeUnknownError();
+      // Preserve the original cause on ordinary pre-acknowledgement failures.
     }
   }
 

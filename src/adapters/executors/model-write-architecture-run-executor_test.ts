@@ -52,11 +52,15 @@ import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   ModelWriteArchitectureRunExecutor,
 } from "./model-write-architecture-run-executor.ts";
-import { ARCHITECTURE_FEATURE_TYPING_AQL } from "../extractors/architecture-structure-extractor.ts";
+import {
+  ARCHITECTURE_FEATURE_TYPING_AQL,
+  ArchitectureStructureExtractionError,
+} from "../extractors/architecture-structure-extractor.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -559,15 +563,17 @@ function makeExecutor(
     directory: string;
     nowStr?: string;
     leaseSubdir?: string;
+    snapshots?: ThreadSnapshotStore;
+    attempts?: FileArchitectureAttemptStore;
   },
 ): ModelWriteArchitectureRunExecutor {
   return new ModelWriteArchitectureRunExecutor({
     projects: fixture.projects,
     commands: fixture.commands,
-    snapshots: fixture.snapshots,
+    snapshots: options.snapshots ?? fixture.snapshots,
     seedCaptures: fixture.seedCaptures,
     captures: fixture.archCaptures,
-    attempts: fixture.archAttempts,
+    attempts: options.attempts ?? fixture.archAttempts,
     syson: options.syson,
     lease: new FileEngineeringProjectRunLease(
       `${options.directory}/${options.leaseSubdir ?? "arch-leases"}`,
@@ -593,6 +599,22 @@ function executionCommand(
     issuedAt: "2026-08-08T12:15:00.000Z",
     runId: fixture.queued.runId,
   };
+}
+
+async function queuedArchitectureBasisSnapshot(
+  fixture: Pick<ArchFixture, "projects" | "snapshots">,
+): Promise<ThreadSnapshot> {
+  const project = await fixture.projects.get(PROJECT_ID);
+  if (!project) throw new Error("Architecture fixture project is missing.");
+  const run = project.agentRuns.find((candidate) =>
+    candidate.id === "run:architecture"
+  );
+  if (!run?.basis || run.basis.kind !== "thread-snapshot") {
+    throw new Error("Architecture fixture run has no thread-snapshot basis.");
+  }
+  const snapshot = await fixture.snapshots.get(run.basis.snapshotId);
+  if (!snapshot) throw new Error("Architecture fixture basis snapshot is missing.");
+  return snapshot;
 }
 
 // ── Happy path — initial mode ─────────────────────────────────────────────────
@@ -670,6 +692,118 @@ Deno.test(
         second.agentRuns.find((r) => r.id === "run:architecture")?.status,
         "completed",
       );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture resumes when complete persisted before its caller observed an error",
+  async () => {
+    class CompleteThenThrowStore extends FileArchitectureAttemptStore {
+      override async complete(
+        input: Parameters<FileArchitectureAttemptStore["complete"]>[0],
+      ): Promise<void> {
+        await super.complete(input);
+        throw new Error("simulated fsync acknowledgement error after durable rename");
+      }
+    }
+
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-complete-readback-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const syson = new InitialArchSyson();
+      const executor = makeExecutor(fixture, {
+        syson,
+        directory,
+        attempts: new CompleteThenThrowStore(`${directory}/arch-attempts`),
+      });
+      const result = await executor.execute(AGENT, executionCommand(fixture));
+      assertEquals(
+        result.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+        "completed",
+      );
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        1,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture resumes a completed run WAL before live preflight with zero inserts",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-resume-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const persisted = {
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest: "c".repeat(64),
+        dispatchedAt: "2026-08-08T12:15:00.000Z",
+      };
+      await fixture.archAttempts.begin(persisted);
+      await fixture.archAttempts.complete(persisted);
+
+      const syson = new InitialArchSyson();
+      // Consume only the mock's artificial preflight response. The executor
+      // itself must begin directly with the completed WAL readback.
+      await syson.callTool({
+        name: "syson_element_children",
+        arguments: {
+          editing_context_id: "editing-context-drone",
+          element_id: "root-pkg-drone",
+        },
+      });
+      syson.calls.length = 0;
+
+      const result = await makeExecutor(fixture, { syson, directory }).execute(
+        AGENT,
+        executionCommand(fixture),
+      );
+      assertEquals(
+        result.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+        "completed",
+      );
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        0,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture never preflights or inserts after a dispatched WAL under another plan digest",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-unknown-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      await fixture.archAttempts.begin({
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest: "d".repeat(64),
+        dispatchedAt: "2026-08-08T12:15:00.000Z",
+      });
+      const syson = new InitialArchSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "outcome is unknown",
+      );
+      assertEquals(syson.calls.length, 0);
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -1480,6 +1614,86 @@ Deno.test(
   },
 );
 
+// ── Basis lineage integrity before provider dispatch ──────────────────────────
+
+Deno.test(
+  "model.write-architecture rejects a cross-subject predecessor before any SysON call",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-lineage-subject-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const base = await queuedArchitectureBasisSnapshot(fixture);
+      assertExists(base.previous);
+      const predecessor = await fixture.snapshots.get(base.previous.snapshotId);
+      assertExists(predecessor);
+
+      const foreignPredecessor: ThreadSnapshot = {
+        ...predecessor,
+        subject: { ...predecessor.subject, id: "project:foreign" },
+      };
+      const corruptSnapshots: ThreadSnapshotStore = {
+        get: (snapshotId) =>
+          snapshotId === predecessor.id
+            ? Promise.resolve(foreignPredecessor)
+            : fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        save: (snapshot) => fixture.snapshots.save(snapshot),
+      };
+      const syson = new InitialArchSyson();
+      const executor = makeExecutor(fixture, {
+        syson,
+        directory,
+        snapshots: corruptSnapshots,
+      });
+
+      await assertRejects(
+        () => executor.execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "invalid predecessor lineage",
+      );
+      assertEquals(syson.calls, [], "invalid lineage must stop before SysON");
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture rejects a missing predecessor before any SysON call",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-lineage-missing-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const base = await queuedArchitectureBasisSnapshot(fixture);
+      assertExists(base.previous);
+
+      const corruptSnapshots: ThreadSnapshotStore = {
+        get: (snapshotId) =>
+          snapshotId === base.previous!.snapshotId
+            ? Promise.resolve(undefined)
+            : fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        save: (snapshot) => fixture.snapshots.save(snapshot),
+      };
+      const syson = new InitialArchSyson();
+      const executor = makeExecutor(fixture, {
+        syson,
+        directory,
+        snapshots: corruptSnapshots,
+      });
+
+      await assertRejects(
+        () => executor.execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "invalid predecessor lineage",
+      );
+      assertEquals(syson.calls, [], "missing predecessor must stop before SysON");
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── Finding 1: post-insertion verification rejects wrong usage target type ────
 
 Deno.test(
@@ -1615,6 +1829,324 @@ Deno.test(
         EngineeringProjectCommandError,
         // Must mention the wrong type in the error message.
         "Motor",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(
+          PROJECT_ID,
+          fixture.queued.runId,
+        ),
+        true,
+        "an acknowledged structural divergence must create a durable run quarantine",
+      );
+      const failed = await fixture.projects.get(PROJECT_ID);
+      assertEquals(
+        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+        "failed",
+      );
+      assertEquals(
+        failed?.agentRuns.find((run) => run.id === fixture.queued.runId)?.failure?.code,
+        "model-write-architecture-post-acknowledgement-quarantined",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Readback ambiguity: duplicate same-parent usage labels ──────────────────
+
+Deno.test(
+  "model.write-architecture quarantines a post-acknowledgement extraction failure",
+  async () => {
+    class BrokenPostAckReadbackSyson extends InitialArchSyson {
+      #rootReads = 0;
+
+      override callTool(call: McpToolCall): Promise<McpToolResult> {
+        if (
+          call.name === "syson_element_children" &&
+          call.arguments?.element_id === "root-pkg-drone"
+        ) {
+          this.#rootReads++;
+          if (this.#rootReads === 2) {
+            // The provider already acknowledged the package insertion. Its
+            // immediate readback is malformed, so this is an extractor error,
+            // not an EngineeringProjectCommandError.
+            return Promise.resolve({ text: "broken", structuredContent: {} });
+          }
+        }
+        return super.callTool(call);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-post-ack-readback-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const syson = new BrokenPostAckReadbackSyson();
+      const executor = makeExecutor(fixture, { syson, directory });
+      await assertRejects(
+        () => executor.execute(AGENT, executionCommand(fixture)),
+        ArchitectureStructureExtractionError,
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        true,
+      );
+      assertEquals(
+        (await fixture.projects.get(PROJECT_ID))?.agentRuns.find((run) =>
+          run.id === fixture.queued.runId
+        )?.status,
+        "failed",
+      );
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        1,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture rejects the readback when a parent has duplicate usage labels",
+  async () => {
+    const calls: McpToolCall[] = [];
+    let rootChildrenCalls = 0;
+    const syson: McpToolClient = {
+      callToolTextResult: (call: McpToolCall): Promise<Record<string, unknown>> =>
+        Promise.reject(new Error(`Unexpected text call: ${call.name}`)),
+      callTool: (call: McpToolCall): Promise<McpToolResult> => {
+        calls.push(structuredClone(call));
+        if (call.name === "syson_element_insert_sysml") {
+          return Promise.resolve({
+            text: "inserted",
+            structuredContent: {
+              inserted: true,
+              parentId: call.arguments?.parent_id,
+            },
+          });
+        }
+        if (call.name === "syson_element_children") {
+          const elementId = call.arguments?.element_id as string;
+          if (elementId === "root-pkg-drone") {
+            rootChildrenCalls++;
+            if (rootChildrenCalls === 1) {
+              return Promise.resolve({
+                text: "empty",
+                structuredContent: { parentId: elementId, children: [], count: 0 },
+              });
+            }
+            return Promise.resolve({
+              text: "root-with-package",
+              structuredContent: {
+                parentId: elementId,
+                children: [{
+                  id: "arch-pkg-001",
+                  kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                  label: "DroneV4",
+                }],
+                count: 1,
+              },
+            });
+          }
+          if (elementId === "arch-pkg-001") {
+            return Promise.resolve({
+              text: "part-defs",
+              structuredContent: {
+                parentId: elementId,
+                children: [
+                  {
+                    id: "sys-def-001",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                    label: "DroneSystem",
+                  },
+                  {
+                    id: "wing-def-001",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                    label: "Wing",
+                  },
+                ],
+                count: 2,
+              },
+            });
+          }
+          if (elementId === "sys-def-001") {
+            return Promise.resolve({
+              text: "duplicate-wing-usages",
+              structuredContent: {
+                parentId: elementId,
+                children: [
+                  {
+                    id: "wing-usage-conformant",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    label: "wing",
+                  },
+                  {
+                    id: "wing-usage-mistyped",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    label: "wing",
+                  },
+                ],
+                count: 2,
+              },
+            });
+          }
+          return Promise.resolve({
+            text: "empty",
+            structuredContent: { parentId: elementId, children: [], count: 0 },
+          });
+        }
+        if (call.name === "syson_query_aql") {
+          const objectId = call.arguments?.object_id as string;
+          const target = objectId === "wing-usage-conformant" ? "Wing" : "Motor";
+          return Promise.resolve({
+            text: "feature-typing",
+            structuredContent: {
+              objectId,
+              expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+              type: "objects",
+              results: [{
+                id: `${target.toLowerCase()}-def-001`,
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                label: target,
+              }],
+              count: 1,
+            },
+          });
+        }
+        return Promise.reject(new Error(`Unexpected tool call: ${call.name}`));
+      },
+    };
+
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-readback-duplicate-usage-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const executor = makeExecutor(fixture, { syson, directory });
+
+      await assertRejects(
+        () => executor.execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "appears 2 times",
+      );
+      assertEquals(
+        calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        1,
+        "initial package insertion is acknowledged once, then readback rejects the ambiguity",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Phase B ambiguity: concurrent duplicate PartDefinition ──────────────────
+
+Deno.test(
+  "model.write-architecture stops before Phase C when PartDefinition labels become ambiguous",
+  async () => {
+    const calls: McpToolCall[] = [];
+    let packageChildrenCalls = 0;
+    const syson: McpToolClient = {
+      callToolTextResult: (call: McpToolCall): Promise<Record<string, unknown>> =>
+        Promise.reject(new Error(`Unexpected text call: ${call.name}`)),
+      callTool: (call: McpToolCall): Promise<McpToolResult> => {
+        calls.push(structuredClone(call));
+        if (call.name === "syson_element_insert_sysml") {
+          return Promise.resolve({
+            text: "inserted",
+            structuredContent: {
+              inserted: true,
+              parentId: call.arguments?.parent_id,
+            },
+          });
+        }
+        if (call.name !== "syson_element_children") {
+          return Promise.reject(new Error(`Unexpected tool call: ${call.name}`));
+        }
+        const elementId = call.arguments?.element_id as string;
+        if (elementId === "root-pkg-drone") {
+          return Promise.resolve({
+            text: "root-with-package",
+            structuredContent: {
+              parentId: elementId,
+              children: [{
+                id: "arch-pkg-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                label: "DroneV4",
+              }],
+              count: 1,
+            },
+          });
+        }
+        if (elementId === "arch-pkg-001") {
+          packageChildrenCalls++;
+          const children = packageChildrenCalls === 1
+            ? [{
+              id: "sys-def-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+              label: "DroneSystem",
+            }]
+            : [
+              {
+                id: "sys-def-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                label: "DroneSystem",
+              },
+              {
+                id: "concurrent-sys-def-002",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                label: "DroneSystem",
+              },
+              {
+                id: "wing-def-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                label: "Wing",
+              },
+            ];
+          return Promise.resolve({
+            text: "package-contents",
+            structuredContent: {
+              parentId: elementId,
+              children,
+              count: children.length,
+            },
+          });
+        }
+        return Promise.resolve({
+          text: "no-usages",
+          structuredContent: { parentId: elementId, children: [], count: 0 },
+        });
+      },
+    };
+
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-phase-b-duplicate-partdef-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const executor = makeExecutor(fixture, { syson, directory });
+
+      await assertRejects(
+        () => executor.execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "ambiguous PartDefinition labels",
+      );
+      const insertions = calls.filter((call) =>
+        call.name === "syson_element_insert_sysml"
+      );
+      assertEquals(insertions.length, 1, "only the Phase A PartDefinition was written");
+      assertEquals(
+        insertions.some((call) =>
+          String(call.arguments?.sysml_text).startsWith("part wing")
+        ),
+        false,
+        "Phase C must not insert a usage under either homonymous parent",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
