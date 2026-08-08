@@ -139,14 +139,14 @@ retried. The r2 result records only an editable container identity, not a system
 architecture, requirement, CAD artifact, simulation, measurement, verification result,
 or compliance claim.
 
-The first reviewed continuation beyond r2 is
-`architecture.author-inspection-drone@3`, bound to `inspection-drone-v4`. It has already
-published r3 from its r1 documentary baseline and r2 SysON seed: a qualitative
-architecture with five typed usages and four requirements whose unresolved points remain
-explicit. It establishes neither CAD, physical analysis, cost, compliance, certification,
-nor a requirement verdict. Other architecture, CAD, physics, cost, compliance, or
-verified-requirement capabilities still need their own reviewed executor and output
-contract. CM-01 remains the sole current CAD/physics proof case.
+The first reviewed continuation beyond r2 is `architecture.author-inspection-drone@3`,
+bound to `inspection-drone-v4`. It has already published r3 from its r1 documentary
+baseline and r2 SysON seed: a qualitative architecture with five typed usages and four
+requirements whose unresolved points remain explicit. It establishes neither CAD,
+physical analysis, cost, compliance, certification, nor a requirement verdict. Other
+architecture, CAD, physics, cost, compliance, or verified-requirement capabilities still
+need their own reviewed executor and output contract. CM-01 remains the sole current
+CAD/physics proof case.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
 SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its
@@ -180,13 +180,12 @@ uses fresh identities and distinct registered executors instead.
 ## Signed human elicitation
 
 `project_brief_confirm`, `project_decision_approve`, `project_decision_reject`, and
-`project_agent_run_cancel` use
-MCP `2026-07-28` multi-round-trip requests. Their first call returns `input_required`
-with an `elicitation/create` request. The MCP host asks the person in the current
-conversation and retries the original tool call. The mutation is allowed only when the
-framework verifies the signed `requestState` and the response is explicitly accepted.
-This makes chat the human command surface without giving the agent self-approval
-authority.
+`project_agent_run_cancel` use MCP `2026-07-28` multi-round-trip requests. Their first
+call returns `input_required` with an `elicitation/create` request. The MCP host asks
+the person in the current conversation and retries the original tool call. The mutation
+is allowed only when the framework verifies the signed `requestState` and the response
+is explicitly accepted. This makes chat the human command surface without giving the
+agent self-approval authority.
 
 Set `MCP_MRTR_SIGNING_KEY` to a stable, high-entropy server secret outside source
 control. If it is absent, the loopback server creates an ephemeral key for that process;
@@ -204,6 +203,6 @@ deno task verify:evidence
 This checks the Console fixture, cross-file values, byte counts and SHA-256 identities
 without rewriting evidence.
 
-The repository quality workflow runs on pull requests and pushes to `main`: UI dependency
-installation, `deno task fmt`, `deno task lint`, backend and UI type checks, tests,
-evidence verification, and native Workbench presentation verification.
+The repository quality workflow runs on pull requests and pushes to `main`: UI
+dependency installation, `deno task fmt`, `deno task lint`, backend and UI type checks,
+tests, evidence verification, and native Workbench presentation verification.

@@ -336,11 +336,11 @@ lifecycle facts and summaries, not chain-of-thought.
 `project_agent_run_cancel` is the narrow inverse available before that claim only. Its
 first call asks the paired MCP host to obtain a signed human confirmation for the exact
 queued run and rationale; only the accepted, framework-verified retry mutates durable
-state. The final cancellation transition and its receipt bind the exact run ID, work-item
-ID, and original queue command ID. A cancelled unclaimed run has no provider activity;
-its work item returns to the state derived from its dependencies and may be queued again.
-Historical queue receipts without the newer `queuedRun` binding remain valid, while new
-queue and every cancellation receipt are sealed to their exact targets.
+state. The final cancellation transition and its receipt bind the exact run ID,
+work-item ID, and original queue command ID. A cancelled unclaimed run has no provider
+activity; its work item returns to the state derived from its dependencies and may be
+queued again. Historical queue receipts without the newer `queuedRun` binding remain
+valid, while new queue and every cancellation receipt are sealed to their exact targets.
 
 For the first run, the dedicated validator requires root revision 1 and the exact
 documentary artifact produced by the reviewed operation; it does not pretend the result
