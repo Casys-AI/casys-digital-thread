@@ -24,6 +24,7 @@ import {
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_EDGES_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
@@ -71,7 +72,11 @@ import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/validators
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/executors/approved-brief-baseline-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./src/adapters/executors/syson-model-seed-run-executor.ts";
 import { InspectionDroneV4ArchitectureRunExecutor } from "./src/adapters/executors/inspection-drone-v4-architecture-run-executor.ts";
-import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "./src/orchestration/operations/inspection-drone-v4.ts";
+import { InspectionDroneV4PartDefinitionsRunExecutor } from "./src/adapters/executors/inspection-drone-v4-part-definitions-run-executor.ts";
+import {
+  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+} from "./src/orchestration/operations/inspection-drone-v4.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
@@ -211,6 +216,8 @@ const DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DIRECTORY =
   "state/local/inspection-drone-v4-architecture-captures";
 const DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_ATTEMPT_DIRECTORY =
   "state/local/inspection-drone-v4-architecture-attempts";
+const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DIRECTORY =
+  "state/local/inspection-drone-v4-part-definitions-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -325,6 +332,7 @@ export interface CreateConsoleServerOptions {
   cm01ArchitectureAttemptDirectory?: string;
   inspectionDroneV4ArchitectureCaptureDirectory?: string;
   inspectionDroneV4ArchitectureAttemptDirectory?: string;
+  inspectionDroneV4PartDefinitionsCaptureDirectory?: string;
   cm01ErpNextBomCaptureDirectory?: string;
   cm01ErpNextBomRunCaptureDirectory?: string;
   cm01SemanticCadAttemptDirectory?: string;
@@ -577,6 +585,25 @@ async function createProjectControl(
         options.inspectionDroneV4ArchitectureAttemptDirectory ??
           DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_ATTEMPT_DIRECTORY,
       ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+    })
+    : undefined;
+  const inspectionDroneV4PartDefinitions = sysonMcpUrl
+    ? new InspectionDroneV4PartDefinitionsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      architectureCaptures: new FileCaptureStore({
+        ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.inspectionDroneV4ArchitectureCaptureDirectory ??
+          DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      captures: new FileCaptureStore({
+        ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+        directory: options.inspectionDroneV4PartDefinitionsCaptureDirectory ??
+          DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DIRECTORY,
+      }),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
     })
@@ -1049,6 +1076,12 @@ async function createProjectControl(
             executor: inspectionDroneV4Architecture,
             unavailableMessage:
               "The server has no trusted inspection-drone V4 SysON architecture executor configured for this run.",
+          },
+          {
+            operation: INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+            executor: inspectionDroneV4PartDefinitions,
+            unavailableMessage:
+              "The server has no trusted inspection-drone V4 PartDefinitions executor configured for this run.",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,

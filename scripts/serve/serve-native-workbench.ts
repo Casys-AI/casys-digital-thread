@@ -14,6 +14,7 @@ import {
   CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/captures/file-capture-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
@@ -29,7 +30,10 @@ import {
 } from "../../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../../src/adapters/stores/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../src/orchestration/operations/registry.ts";
-import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
+import {
+  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+} from "../../src/orchestration/operations/inspection-drone-v4.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/platform/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
@@ -48,6 +52,7 @@ import {
   validateThreadComponentCatalog,
 } from "../../src/domain/thread/thread-component-catalog.ts";
 import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
+import { resolveInspectionDroneV4ProductStructureCatalog } from "../../src/adapters/projectors/inspection-drone-v4-product-structure-catalog.ts";
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
@@ -469,6 +474,7 @@ async function resolveCurrentThreadSnapshot(
 const PROVIDER_DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   SYSON_MODEL_SEED_OPERATION,
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
 ] as const;
 
 function hasUnattachedProviderDurableProjectOperation(
@@ -590,6 +596,9 @@ if (import.meta.main) {
   const cm01PartDefinitionsCaptureDirectory =
     cliArgs["cm01-part-definitions-capture-dir"] ??
       "state/local/cm01-part-definitions-captures";
+  const inspectionDroneV4PartDefinitionsCaptureDirectory =
+    cliArgs["inspection-drone-v4-part-definitions-capture-dir"] ??
+      "state/local/inspection-drone-v4-part-definitions-captures";
   const html = await Deno.readTextFile(htmlPath);
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
@@ -610,6 +619,10 @@ if (import.meta.main) {
   const cm01PartDefinitionsCaptures = new FileCaptureStore({
     ...CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
     directory: cm01PartDefinitionsCaptureDirectory,
+  });
+  const inspectionDroneV4PartDefinitionsCaptures = new FileCaptureStore({
+    ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+    directory: inspectionDroneV4PartDefinitionsCaptureDirectory,
   });
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
@@ -654,13 +667,13 @@ if (import.meta.main) {
         `config/thread-subjects/${resolvedSubjectId}.components.json`,
       ),
     componentCatalogForSnapshot: async (snapshot) =>
-      await resolveCoffeeMachineCm01V3ProductStructureCatalog(
+      await resolveInspectionDroneV4ProductStructureCatalog(
         snapshot,
-        {
-          architecture: cm01ArchitectureCaptures,
-          partDefinitions: cm01PartDefinitionsCaptures,
-        },
-      ),
+        inspectionDroneV4PartDefinitionsCaptures,
+      ) ?? await resolveCoffeeMachineCm01V3ProductStructureCatalog(snapshot, {
+        architecture: cm01ArchitectureCaptures,
+        partDefinitions: cm01PartDefinitionsCaptures,
+      }),
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),
   });

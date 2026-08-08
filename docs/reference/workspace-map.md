@@ -155,6 +155,14 @@ route stops there. The distinct CM-01 V3 catalog owns the current product-specif
 operations and their capture/evidence contracts; it does not make a generic
 architecture, CAD, or verification operation available.
 
+The bounded `inspection-drone-v4` path adds a separate read-only successor after its
+qualitative r3 architecture: `model.capture-inspection-drone-part-definitions@1` reads
+only the six attested SysON PartDefinitions and their five root usages from the exact
+content-addressed architecture artifact. It stores one replay-safe bundle in
+`inspection-drone-v4-part-definitions-captures` and the Workbench derives the root and
+five children only from that bundle. It neither writes SysML nor infers a CAD, physical,
+manufacturing, certification, cost, or un-attested quantity.
+
 ## Runtime ownership
 
 | Data                         | Owner                       | Workspace access                                                                         |

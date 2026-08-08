@@ -216,6 +216,15 @@ export const INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR:
     label: "Inspection-drone V4 architecture",
   };
 
+/** Read-only documentary capture of the six reviewed drone PartDefinitions. */
+export const INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR:
+  CaptureStoreDescriptor<"inspection-drone-v4-part-definitions"> = {
+    kind: "inspection-drone-v4-part-definitions",
+    directory: "state/local/inspection-drone-v4-part-definitions-captures",
+    uriNamespace: "inspection-drone-v4-part-definitions-capture",
+    label: "Inspection-drone V4 part definitions",
+  };
+
 export const ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "oracle-requirements-seed"
 > = {
