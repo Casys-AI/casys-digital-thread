@@ -6,6 +6,7 @@ import type { CockpitFocusSnapshot } from "../../src/domain/platform/cockpit-foc
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/platform/cockpit-focus.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
 import {
   createNativeWorkbenchHandler,
   NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
@@ -61,6 +62,29 @@ Deno.test("native Workbench serves a planning-only project without borrowing a t
   assertEquals(body.project.threadSnapshots, []);
   assertEquals(body.planning.technicalBaseline.status, "not-created");
   assertEquals(store.latestCalls, 0);
+});
+
+Deno.test("native Workbench keeps a durable unattached drone architecture snapshot out of preview until completion attaches it", async () => {
+  const r2 = droneThreadSnapshot(2);
+  const r3 = droneThreadSnapshot(3, r2);
+  const projects = new ProjectStore([
+    droneArchitectureProject("queued", r2, r3),
+  ]);
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: projects,
+    projectId: "inspection-drone-v4",
+    subjectId: r2.subject.id,
+    html: "unused",
+  });
+
+  for (const status of ["queued", "running", "publishing"] as const) {
+    projects.replace(droneArchitectureProject(status, r2, r3));
+    assertEquals(await previewThreadId(handler), r2.id);
+  }
+
+  projects.replace(droneArchitectureProject("completed", r2, r3));
+  assertEquals(await previewThreadId(handler), r3.id);
 });
 
 Deno.test("native Workbench follows the durable focus selected by the agent", async () => {
@@ -155,6 +179,174 @@ function projectFixture(
   };
 }
 
+function droneArchitectureProject(
+  status: "queued" | "running" | "publishing" | "completed",
+  r2: ThreadSnapshot,
+  r3: ThreadSnapshot,
+): EngineeringProjectSnapshot {
+  const completed = status === "completed";
+  const evidence = {
+    snapshotId: r3.id,
+    snapshotRevision: r3.revision,
+    kind: "artifact" as const,
+    id: r3.artifacts[0]!.id,
+  };
+  const reference = (snapshot: ThreadSnapshot) => ({
+    snapshotId: snapshot.id,
+    revision: snapshot.revision,
+    subjectId: snapshot.subject.id,
+  });
+  return {
+    schemaVersion: "1.0",
+    id: "inspection-drone-v4:project:r1",
+    revision: 1,
+    generatedAt: "2026-08-08T05:00:00.000Z",
+    project: {
+      id: "inspection-drone-v4",
+      name: "Inspection drone v4",
+      subjectId: r2.subject.id,
+      objective: {
+        title: "Inspection drone architecture",
+        statement: "Keep the reviewed qualitative architecture traceable.",
+      },
+    },
+    threadSnapshots: completed ? [reference(r2), reference(r3)] : [reference(r2)],
+    phases: [{
+      id: "architecture",
+      name: "Architecture",
+      order: 1,
+      description: "Publish the bounded qualitative SysON architecture.",
+      workItemIds: ["author-inspection-drone-architecture"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "author-inspection-drone-architecture",
+      phaseId: "architecture",
+      title: "Author drone architecture",
+      description: "Run the registered qualitative architecture operation.",
+      kind: "architect",
+      operation: {
+        ...INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+        bindings: [],
+      },
+      status: completed ? "completed" : "in-progress",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: completed ? [evidence] : [],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+    agentRuns: [{
+      id: "run:inspection-drone-architecture",
+      workItemId: "author-inspection-drone-architecture",
+      status,
+      summary: "Author the reviewed qualitative inspection-drone architecture.",
+      queuedAt: "2026-08-08T04:45:00.000Z",
+      ...(status === "queued" ? {} : {
+        startedAt: "2026-08-08T04:46:00.000Z",
+        claimedAt: "2026-08-08T04:46:00.000Z",
+        claimedBy: { origin: "agent" as const, id: "agent:engineering" },
+      }),
+      ...(completed
+        ? {
+          completedAt: "2026-08-08T04:47:00.000Z",
+          resultSnapshot: reference(r3),
+          evidenceRefs: [evidence],
+        }
+        : { evidenceRefs: [] }),
+    }],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  };
+}
+
+function droneThreadSnapshot(
+  revision: number,
+  previous?: ThreadSnapshot,
+): ThreadSnapshot {
+  const at = "2026-08-08T05:00:00.000Z";
+  const artifactId = `inspection-drone-architecture-r${revision}`;
+  const changeId = `inspection-drone-architecture-change-r${revision}`;
+  return {
+    schemaVersion: "1.0",
+    id: `inspection-drone-v4-thread-r${revision}`,
+    revision,
+    ...(previous
+      ? { previous: { snapshotId: previous.id, revision: previous.revision } }
+      : {}),
+    generatedAt: at,
+    subject: {
+      id: "project:inspection-drone-v4",
+      name: "Inspection drone v4",
+      kind: "system",
+      version: String(revision),
+      modelArtifactId: artifactId,
+    },
+    freshness: { status: "fresh", changedAt: at, invalidatedByChangeIds: [] },
+    changeSet: {
+      id: changeId,
+      name: "Record inspection-drone architecture",
+      status: "applied",
+      createdAt: at,
+      appliedAt: at,
+      changes: [{
+        id: `inspection-drone-architecture-artifact-r${revision}`,
+        kind: "created",
+        target: { kind: "artifact", id: artifactId },
+        summary: "Recorded one exact qualitative architecture artifact.",
+        afterFingerprint: { algorithm: "sha256", digest: String(revision).repeat(64) },
+      }],
+    },
+    artifacts: [{
+      id: artifactId,
+      name: "Inspection-drone qualitative architecture",
+      kind: "sysml-model",
+      version: String(revision),
+      fingerprint: { algorithm: "sha256", digest: String(revision).repeat(64) },
+      producer: {
+        serverId: "mcp-syson",
+        tool: "syson_element_insert_sysml",
+        runId: `run:inspection-drone-architecture-r${revision}`,
+      },
+      inputArtifactIds: [],
+      freshness: { status: "fresh", changedAt: at, invalidatedByChangeIds: [] },
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [{
+      id: `inspection-drone-architecture-provenance-r${revision}`,
+      relation: "changes",
+      from: { kind: "change", id: changeId },
+      to: { kind: "artifact", id: artifactId },
+      rationale: "The exact snapshot records this qualitative architecture artifact.",
+    }],
+    proposedActions: [],
+  };
+}
+
+async function previewThreadId(
+  handler: (request: Request) => Promise<Response>,
+): Promise<string> {
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  assertEquals(response.status, 200);
+  const body = await response.json() as {
+    surface?: unknown;
+    thread?: { id?: unknown };
+  };
+  assertEquals(body.surface, "evidence");
+  if (typeof body.thread?.id !== "string") {
+    throw new Error("expected an evidence Workbench thread id");
+  }
+  return body.thread.id;
+}
+
 function focusSnapshot(projectId: string, revision = 1): CockpitFocusSnapshot {
   return {
     schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,
@@ -185,11 +377,39 @@ class EmptyThreadStore implements ThreadSnapshotStore {
   }
 }
 
+class ThreadStore implements ThreadSnapshotStore {
+  readonly #snapshots = new Map<string, ThreadSnapshot>();
+
+  constructor(snapshots: readonly ThreadSnapshot[]) {
+    for (const snapshot of snapshots) this.#snapshots.set(snapshot.id, snapshot);
+  }
+
+  get(snapshotId: string): Promise<ThreadSnapshot | undefined> {
+    return Promise.resolve(this.#snapshots.get(snapshotId));
+  }
+
+  latest(subjectId: string): Promise<ThreadSnapshot | undefined> {
+    const latest = [...this.#snapshots.values()]
+      .filter((snapshot) => snapshot.subject.id === subjectId)
+      .sort((left, right) => right.revision - left.revision)[0];
+    return Promise.resolve(latest);
+  }
+
+  save(snapshot: ThreadSnapshot): Promise<void> {
+    this.#snapshots.set(snapshot.id, snapshot);
+    return Promise.resolve();
+  }
+}
+
 class ProjectStore implements EngineeringProjectRevisionStore {
   readonly #projects = new Map<string, EngineeringProjectSnapshot>();
 
   constructor(projects: readonly EngineeringProjectSnapshot[]) {
     for (const project of projects) this.#projects.set(project.project.id, project);
+  }
+
+  replace(project: EngineeringProjectSnapshot): void {
+    this.#projects.set(project.project.id, project);
   }
 
   get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {

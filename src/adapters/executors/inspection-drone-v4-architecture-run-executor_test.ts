@@ -2,6 +2,7 @@ import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
+import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
@@ -18,7 +19,10 @@ import { FileEngineeringProjectRevisionStore } from "../stores/engineering-proje
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { FileInspectionDroneV4ArchitectureAttemptStore } from "../wal/file-inspection-drone-v4-architecture-attempt-store.ts";
+import {
+  FileInspectionDroneV4ArchitectureAttemptStore,
+  InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+} from "../wal/file-inspection-drone-v4-architecture-attempt-store.ts";
 import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-attempt-store.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../orchestration/operations/inspection-drone-v4.ts";
@@ -214,6 +218,139 @@ Deno.test("inspection-drone architecture rejects a non-empty seeded root before 
       "seed root must be empty",
     );
     assertEquals(syson.insertCount, 0);
+    await assertNoR3Published(fixture);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("inspection-drone architecture replays one acknowledged insert only after its contractual readback becomes conformant", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "inspection-drone-post-ack-readback-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const provider = { partStructureShapeDrift: true };
+    const syson = new ArchitectureSyson(provider);
+    const executor = architectureExecutor(fixture, syson, directory);
+    const command = executionCommand(fixture.queued);
+
+    await assertRejects(
+      () => executor.execute(AGENT, command),
+      Error,
+      "unsupported shape",
+    );
+    await assertNoR3Published(fixture);
+    assertEquals(syson.insertCount, 1);
+    assertEquals(
+      (await fixture.attempts.read(PROJECT_ID, command.runId))?.status,
+      "completed",
+    );
+    const afterFailedReadback = await fixture.projects.get(PROJECT_ID);
+    assertExists(afterFailedReadback);
+    assertEquals(afterFailedReadback.agentRuns.at(-1)?.status, "running");
+    assertEquals(
+      architectureClaimReceiptCount(afterFailedReadback, command.commandId),
+      1,
+    );
+
+    provider.partStructureShapeDrift = false;
+    const completed = await executor.execute(AGENT, command);
+    assertEquals(completed.threadSnapshots.at(-1)?.revision, 3);
+    assertEquals(completed.agentRuns.at(-1)?.resultSnapshot?.revision, 3);
+    assertEquals(syson.insertCount, 1, "replay must reuse the completed WAL");
+    assertEquals(
+      architectureClaimReceiptCount(completed, command.commandId),
+      1,
+      "the repeated command must replay the original claim",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("inspection-drone architecture replays one acknowledged insert after a transient capture persistence readback failure", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "inspection-drone-post-ack-persistence-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const syson = new ArchitectureSyson();
+    let persistedCaptureReadback = false;
+    const executor = new InspectionDroneV4ArchitectureRunExecutor({
+      projects: fixture.projects,
+      commands: fixture.commands,
+      snapshots: fixture.snapshots,
+      seedCaptures: fixture.seedCaptures,
+      captures: {
+        save: fixture.captures.save.bind(fixture.captures),
+        read: async (fingerprint: ContentFingerprint) =>
+          persistedCaptureReadback
+            ? await fixture.captures.read(fingerprint)
+            : '{"tampered":true}',
+      } as never,
+      attempts: fixture.attempts,
+      syson,
+      lease: new FileEngineeringProjectRunLease(`${directory}/architecture-leases`),
+      now: () => "2026-08-08T05:00:00.000Z",
+    });
+    const command = executionCommand(fixture.queued);
+
+    await assertRejects(
+      () => executor.execute(AGENT, command),
+      Error,
+      "capture did not read back exactly",
+    );
+    await assertNoR3Published(fixture);
+    assertEquals(syson.insertCount, 1);
+    assertEquals(
+      (await fixture.attempts.read(PROJECT_ID, command.runId))?.status,
+      "completed",
+    );
+    const afterFailedPersistence = await fixture.projects.get(PROJECT_ID);
+    assertExists(afterFailedPersistence);
+    assertEquals(
+      architectureClaimReceiptCount(afterFailedPersistence, command.commandId),
+      1,
+    );
+
+    persistedCaptureReadback = true;
+    const completed = await executor.execute(AGENT, command);
+    assertEquals(completed.threadSnapshots.at(-1)?.revision, 3);
+    assertEquals(completed.agentRuns.at(-1)?.resultSnapshot?.revision, 3);
+    assertEquals(syson.insertCount, 1, "replay must not insert a second time");
+    assertEquals(
+      architectureClaimReceiptCount(completed, command.commandId),
+      1,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("inspection-drone architecture never reinserts an unknown dispatched WAL outcome", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "inspection-drone-dispatched-unknown-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const command = executionCommand(fixture.queued);
+    assertEquals(
+      await fixture.attempts.begin({
+        projectId: PROJECT_ID,
+        runId: command.runId,
+        dispatchedAt: command.issuedAt,
+      }),
+      { action: "dispatch" },
+    );
+    const syson = new ArchitectureSyson();
+
+    await assertRejects(
+      () => architectureExecutor(fixture, syson, directory).execute(AGENT, command),
+      InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+    );
+    assertEquals(syson.insertCount, 0);
+    assertEquals(syson.calls, []);
     await assertNoR3Published(fixture);
   } finally {
     await Deno.remove(directory, { recursive: true });
@@ -492,6 +629,15 @@ async function assertNoR3Published(
   assertExists(current);
   assertEquals(current.threadSnapshots.length, 2);
   assertEquals(current.agentRuns.at(-1)?.resultSnapshot, undefined);
+}
+
+function architectureClaimReceiptCount(
+  project: { commandReceipts?: readonly { commandId: string }[] },
+  commandId: string,
+): number {
+  return project.commandReceipts?.filter((receipt) =>
+    receipt.commandId === `${commandId}:inspection-drone-v4-architecture:claim`
+  ).length ?? 0;
 }
 
 function executionCommand(

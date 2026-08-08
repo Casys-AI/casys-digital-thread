@@ -29,6 +29,7 @@ import {
 } from "../../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../../src/adapters/stores/thread-snapshot-lineage.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../src/orchestration/operations/registry.ts";
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/platform/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
@@ -437,14 +438,14 @@ async function resolveCurrentThreadSnapshot(
     );
   }
   if (active.revision <= declared.revision) return declared;
-  // A guarded operation can make a next ThreadSnapshot durable before
+  // A known provider-durable operation can make a next ThreadSnapshot durable before
   // completeRun attaches that exact reference to the project. A crash in that
   // narrow interval must not let an undeclared descendant become canonical in
   // the browser. Keep the declared head on screen; projectWorkbenchSnapshot
   // still overlays the bounded live journal onto it. The durable result
   // becomes eligible only after completeRun records its exact reference in
   // immutable project state.
-  if (hasUnattachedDurableProjectOperation(project)) return declared;
+  if (hasUnattachedProviderDurableProjectOperation(project)) return declared;
   const lineageSnapshots = new OrderedExactThreadSnapshotReader([
     options.store,
     ...(options.projectSnapshots ? [options.projectSnapshots] : []),
@@ -458,29 +459,38 @@ async function resolveCurrentThreadSnapshot(
     : declared;
 }
 
-const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
+/**
+ * These exact server-owned operations persist a provider-derived snapshot
+ * before completeRun attaches its reference to immutable project state. A
+ * forward head is therefore not browser-canonical while one is still active.
+ * Additions are intentionally explicit: a registered operation alone does
+ * not establish this persistence ordering.
+ */
+const PROVIDER_DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   SYSON_MODEL_SEED_OPERATION,
+  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
 ] as const;
 
-function hasUnattachedDurableProjectOperation(
+function hasUnattachedProviderDurableProjectOperation(
   project: EngineeringProjectSnapshot,
 ): boolean {
   const workItems = new Map(project.workItems.map((item) => [item.id, item]));
   return project.agentRuns.some((run) => {
-    if (
-      ![
-        "running",
-        "waiting-for-decision",
-        "publishing",
-      ].includes(run.status)
-    ) {
+    if (!isAwaitingProviderDurableProjectAttachment(run.status)) {
       return false;
     }
     const operation = workItems.get(run.workItemId)?.operation;
-    return DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS.some((candidate) =>
+    return PROVIDER_DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS.some((candidate) =>
       operation?.id === candidate.id && operation.version === candidate.version
     );
   });
+}
+
+function isAwaitingProviderDurableProjectAttachment(
+  status: EngineeringProjectSnapshot["agentRuns"][number]["status"],
+): boolean {
+  return status === "queued" || status === "running" ||
+    status === "waiting-for-decision" || status === "publishing";
 }
 
 function workbenchDataSource(projection: EngineeringWorkbenchSnapshot): string {
