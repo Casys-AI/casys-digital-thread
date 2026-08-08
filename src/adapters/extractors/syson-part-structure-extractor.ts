@@ -252,7 +252,8 @@ async function readPartStructure(
       name: "syson_part_structure",
       arguments: {
         editing_context_id: editingContextId,
-        element_id: elementId,
+        root_element_id: elementId,
+        max_depth: 4,
       },
     });
     raw = parsed;

@@ -103,7 +103,7 @@ function buildMock(responses: {
       calls.push(call as MockCall);
       if (call.name === "syson_part_structure") {
         const args = call.arguments as Record<string, unknown>;
-        if (args.element_id === CM_ID) {
+        if (args.root_element_id === CM_ID) {
           return Promise.resolve(
             (responses.cmStructure ?? validCmStructurePayload()) as Record<
               string,
@@ -111,7 +111,7 @@ function buildMock(responses: {
             >,
           );
         }
-        if (args.element_id === DT_ID) {
+        if (args.root_element_id === DT_ID) {
           return Promise.resolve(
             (responses.dtStructure ?? validDtStructurePayload()) as Record<
               string,
@@ -122,8 +122,8 @@ function buildMock(responses: {
       }
       return Promise.reject(
         new Error(
-          `Unexpected callToolTextResult: ${call.name} element_id=${
-            String((call.arguments as Record<string, unknown>).element_id)
+          `Unexpected callToolTextResult: ${call.name} root_element_id=${
+            String((call.arguments as Record<string, unknown>).root_element_id)
           }`,
         ),
       );

@@ -702,7 +702,7 @@ class PartDefinitionsSyson implements McpToolClient {
     this.calls.push(structuredClone(call));
 
     if (call.name === "syson_part_structure") {
-      const elementId = call.arguments?.element_id as string;
+      const elementId = call.arguments?.root_element_id as string;
 
       if (elementId === this.#opts.cmId) {
         // CoffeeMachine structure: 1 child = DripTray usage.
@@ -744,8 +744,8 @@ class PartDefinitionsSyson implements McpToolClient {
 
     return Promise.reject(
       new Error(
-        `Unexpected callToolTextResult in PartDefinitionsSyson: ${call.name} element_id=${
-          String(call.arguments?.element_id)
+        `Unexpected callToolTextResult in PartDefinitionsSyson: ${call.name} root_element_id=${
+          String(call.arguments?.root_element_id)
         }`,
       ),
     );
