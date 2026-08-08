@@ -46,8 +46,7 @@ import type {
 // thread snapshot. Changing them would break the catalog binding contract.
 // ---------------------------------------------------------------------------
 
-const R3_DIGEST =
-  "8484b759a788c018477f062863aff5f5a3ebaf06d28c5045534fb716c19d58f3";
+const R3_DIGEST = "8484b759a788c018477f062863aff5f5a3ebaf06d28c5045534fb716c19d58f3";
 const R3 = `coffee-machine-cm01-v3-cad-r3-${R3_DIGEST}`;
 
 const ARCH_ID =
@@ -82,9 +81,7 @@ function node(
     id: `graph:${kind}:${id}`,
     ref: { kind, id },
     entityKind: kind,
-    ...(opts.artifactKind !== undefined
-      ? { artifactKind: opts.artifactKind }
-      : {}),
+    ...(opts.artifactKind !== undefined ? { artifactKind: opts.artifactKind } : {}),
     label: id.slice(-24),
     system: opts.system ?? "digital-thread",
     freshness: opts.freshness ?? "fresh",
@@ -471,9 +468,7 @@ Deno.test("anchorage retains conflict targets and distinguishes ambiguous from o
     ...FIXTURE_CATALOG,
     components: FIXTURE_CATALOG.components.map((component) => ({
       ...component,
-      bindings: component.kind === "part"
-        ? [catalogBinding("ambiguous-evidence")]
-        : [],
+      bindings: component.kind === "part" ? [catalogBinding("ambiguous-evidence")] : [],
     })),
   };
   const resolution = buildPartAnchorageResolution(graph, catalog);

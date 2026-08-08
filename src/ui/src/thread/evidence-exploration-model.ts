@@ -39,6 +39,7 @@ export {
 } from "./essential-graph-filter.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
+import { versionedEdgeOccurrenceKey } from "./versioned-provenance-model.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -105,6 +106,8 @@ export interface SigmaNodeAttrs {
 export interface SigmaEdgeAttrs {
   /** Stable graphology key, unique even when recorded edge ids collide. */
   graphKey: string;
+  /** Domain occurrence key used by the versioned projection and inspector. */
+  occurrenceKey: string;
   /** Recorded relation id used by the domain inspector (not a graph key). */
   edgeId: string;
   /** Exact occurrence selected by Sigma, retained through the inspector. */
@@ -316,6 +319,7 @@ export function buildExplorationModel(
     const graphKey = edgeKeyFor(edge);
     graph.addEdgeWithKey(graphKey, from, to, {
       graphKey,
+      occurrenceKey: versionedEdgeOccurrenceKey(edge),
       edgeId: edge.id,
       edge,
       label: edge.relation.replaceAll("_", " "),
@@ -333,6 +337,7 @@ export function buildExplorationModel(
     const graphKey = edgeKeyFor(edge);
     graph.addEdgeWithKey(graphKey, from, to, {
       graphKey,
+      occurrenceKey: `stub-occurrence:${edge.id}`,
       edgeId: edge.id,
       edge,
       label: edge.rationale ?? `via ${edge.relation} — replié`,

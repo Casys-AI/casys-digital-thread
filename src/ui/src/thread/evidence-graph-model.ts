@@ -26,7 +26,10 @@ import type {
   ThreadGraphRef,
   ThreadGraphRelation,
 } from "./types.ts";
-import { buildVersionedProvenanceProjection } from "./versioned-provenance-model.ts";
+import {
+  buildVersionedProvenanceProjection,
+  type VersionedProvenanceProjection,
+} from "./versioned-provenance-model.ts";
 
 // ---------------------------------------------------------------------------
 // Public API types
@@ -121,6 +124,13 @@ export interface EvidenceGraphConfig {
    * Matched against node.system with exact equality.
    */
   intentionallyIsolatedSystems?: readonly string[];
+  /**
+   * Canonical versioned projection owned by the Workbench. Sharing it with
+   * the render model preserves the exact visible edge objects used by
+   * selection/highlight state; callers without a Workbench keep the local
+   * projection fallback.
+   */
+  versionedProjection?: VersionedProvenanceProjection;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,10 +187,8 @@ export function buildEvidenceGraphModel(
   }
 
   // Step 3 — apply version folding (supersedes families from familyGraph).
-  const versionedProjection = buildVersionedProvenanceProjection(
-    raw,
-    familyGraph,
-  );
+  const versionedProjection = config.versionedProjection ??
+    buildVersionedProvenanceProjection(raw, familyGraph);
   const afterVersioning = versionedProjection.graph;
 
   // Step 4 — identify analyze.* instrument nodes in the versioned projection.

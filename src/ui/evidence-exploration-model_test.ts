@@ -812,8 +812,7 @@ Deno.test(
       "action",
     ];
     for (const kind of expectedKinds) {
-      const label =
-        DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
+      const label = DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
       assertEquals(
         typeof label,
         "string",

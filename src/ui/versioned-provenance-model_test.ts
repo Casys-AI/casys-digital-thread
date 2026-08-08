@@ -3,6 +3,8 @@ import {
   buildVersionedProvenanceProjection,
   currentArtifacts,
   currentRequirements,
+  edgeForVersionedGraphSelection,
+  versionedEdgeGroupForSelection,
   visibleGraphRef,
   visibleGraphSelection,
 } from "./src/thread/versioned-provenance-model.ts";
@@ -35,9 +37,16 @@ Deno.test("versioned provenance folds one explicit successor chain into its curr
     projection.graph.edges.map((edge) => edge.id),
     ["proof-r3-to-requirement"],
   );
+  const selected = visibleGraphSelection(projection, {
+    kind: "edge",
+    id: "proof-r2-to-requirement",
+  });
   assertEquals(
-    projection.edgeGroupByVisibleId.get("proof-r3-to-requirement")?.members
-      .map((edge) => edge.id),
+    selected?.kind === "edge"
+      ? versionedEdgeGroupForSelection(projection, selected)?.members.map((
+        edge,
+      ) => edge.id)
+      : undefined,
     ["proof-r3-to-requirement", "proof-r2-to-requirement"],
   );
   assertEquals(
@@ -68,12 +77,144 @@ Deno.test("historic selections resolve to the visible node without changing the 
   );
 
   assertEquals(visibleGraphRef(projection, ref("proof-r2")), ref("proof-r3"));
+  const selected = visibleGraphSelection(projection, {
+    kind: "edge",
+    id: "proof-r2-to-requirement",
+  });
+  assertEquals(selected?.kind, "edge");
   assertEquals(
-    visibleGraphSelection(projection, {
-      kind: "edge",
-      id: "proof-r2-to-requirement",
-    }),
-    { kind: "edge", id: "proof-r3-to-requirement" },
+    selected?.kind === "edge" ? selected.id : undefined,
+    "proof-r3-to-requirement",
+  );
+  assertEquals(
+    selected?.kind === "edge" ? selected.occurrence?.edge.id : undefined,
+    "proof-r3-to-requirement",
+  );
+});
+
+Deno.test("synthetic stubs retain their exact renderer occurrence", () => {
+  const projection = buildVersionedProvenanceProjection(
+    rawGraph(),
+    familyGraph("current"),
+  );
+  const stub = {
+    ...edge("stub:proof-to-requirement", "proof-r3", "requirement", "evidences"),
+    rationale: "via folded instrument — replié",
+  };
+
+  const selected = visibleGraphSelection(projection, {
+    kind: "edge",
+    id: stub.id,
+    occurrence: { key: "stub-occurrence:proof-to-requirement", edge: stub },
+  });
+
+  assertEquals(
+    selected?.kind === "edge" ? selected.occurrence?.edge : undefined,
+    stub,
+  );
+});
+
+Deno.test("duplicate edge ids retain separate versioned histories and reproject exact occurrences", () => {
+  const graph = duplicateIdGraph();
+  const projection = buildVersionedProvenanceProjection(
+    graph,
+    duplicateIdFamilyGraph(),
+  );
+  const firstMember = graph.edges.find((edge) =>
+    edge.rationale === "first-family historical handoff"
+  )!;
+  const secondMember = graph.edges.find((edge) =>
+    edge.rationale === "second-family historical handoff"
+  )!;
+  const selectionFor = (edge: ThreadGraphEdge) => ({
+    kind: "edge" as const,
+    id: edge.id,
+    occurrence: {
+      key: projection.memberOccurrenceKeyByEdge.get(edge)!,
+      edge,
+    },
+  });
+  const firstSelection = selectionFor(firstMember);
+  const secondSelection = selectionFor(secondMember);
+  const firstHistory = versionedEdgeGroupForSelection(
+    projection,
+    firstSelection,
+  );
+  const secondHistory = versionedEdgeGroupForSelection(
+    projection,
+    secondSelection,
+  );
+  assertEquals(
+    firstHistory?.members.map((edge) => edge.rationale).sort(),
+    ["first-family current handoff", "first-family historical handoff"],
+  );
+  assertEquals(
+    secondHistory?.members.map((edge) => edge.rationale).sort(),
+    ["second-family current handoff", "second-family historical handoff"],
+  );
+
+  const firstVisible = visibleGraphSelection(projection, firstSelection);
+  const secondVisible = visibleGraphSelection(projection, secondSelection);
+  assertEquals(firstVisible?.kind, "edge");
+  assertEquals(secondVisible?.kind, "edge");
+  assertEquals(
+    firstVisible?.kind === "edge" ? firstVisible.occurrence?.edge.to.id : undefined,
+    "requirement-one",
+  );
+  assertEquals(
+    secondVisible?.kind === "edge" ? secondVisible.occurrence?.edge.to.id : undefined,
+    "requirement-two",
+  );
+  assertEquals(
+    firstVisible?.kind === "edge" && secondVisible?.kind === "edge"
+      ? firstVisible.occurrence?.key === secondVisible.occurrence?.key
+      : undefined,
+    false,
+  );
+
+  // A live snapshot is a new object graph. The old selection must reproject
+  // to the new visible edge, rather than retaining the stale member object.
+  const refreshed = buildVersionedProvenanceProjection(
+    structuredClone(graph),
+    duplicateIdFamilyGraph(),
+  );
+  const refreshedVisible = visibleGraphSelection(refreshed, firstSelection);
+  const refreshedFirstVisibleEdge = refreshed.graph.edges.find((edge) =>
+    edge.to.id === "requirement-one"
+  );
+  assertEquals(refreshedVisible?.kind, "edge");
+  assertEquals(
+    refreshedVisible?.kind === "edge"
+      ? refreshedVisible.occurrence?.edge === firstMember
+      : undefined,
+    false,
+  );
+  assertEquals(
+    refreshedVisible?.kind === "edge"
+      ? refreshedVisible.occurrence?.edge.to.id
+      : undefined,
+    "requirement-one",
+  );
+  assertEquals(
+    refreshedVisible?.kind === "edge" ? refreshedVisible.occurrence?.edge : undefined,
+    refreshedFirstVisibleEdge,
+  );
+  const refreshedFromFoldedSelection = firstVisible?.kind === "edge"
+    ? visibleGraphSelection(refreshed, firstVisible)
+    : undefined;
+  assertEquals(
+    refreshedFromFoldedSelection?.kind === "edge"
+      ? refreshedFromFoldedSelection.occurrence?.edge
+      : undefined,
+    refreshedFirstVisibleEdge,
+  );
+  assertEquals(
+    edgeForVersionedGraphSelection(refreshed, firstSelection)?.rationale,
+    "first-family historical handoff",
+  );
+  assertEquals(
+    edgeForVersionedGraphSelection(refreshed, secondSelection)?.rationale,
+    "second-family historical handoff",
   );
 });
 
@@ -232,6 +373,101 @@ function rawGraph(): ThreadGraph {
         "evidences",
       ),
     ],
+  };
+}
+
+function duplicateIdGraph(): ThreadGraph {
+  return {
+    nodes: [
+      node("first-old", "First old"),
+      node("first-current", "First current"),
+      node("requirement-one", "Requirement one"),
+      node("second-old", "Second old"),
+      node("second-current", "Second current"),
+      node("requirement-two", "Requirement two"),
+    ],
+    edges: [
+      edge("first-supersedes", "first-old", "first-current", "supersedes"),
+      {
+        ...edge("duplicate-id", "first-old", "requirement-one", "evidences"),
+        rationale: "first-family historical handoff",
+      },
+      {
+        ...edge(
+          "duplicate-id",
+          "first-current",
+          "requirement-one",
+          "evidences",
+        ),
+        rationale: "first-family current handoff",
+      },
+      edge(
+        "second-supersedes",
+        "second-old",
+        "second-current",
+        "supersedes",
+      ),
+      {
+        ...edge("duplicate-id", "second-old", "requirement-two", "evidences"),
+        rationale: "second-family historical handoff",
+      },
+      {
+        ...edge(
+          "duplicate-id",
+          "second-current",
+          "requirement-two",
+          "evidences",
+        ),
+        rationale: "second-family current handoff",
+      },
+    ],
+  };
+}
+
+function duplicateIdFamilyGraph(): ThreadEvidenceFamilyGraph {
+  const family = (
+    id: string,
+    historicalId: string,
+    currentId: string,
+    transitionId: string,
+  ) => ({
+    id,
+    entityKind: "artifact" as const,
+    artifactKind: "solver-result",
+    historicalRefs: [ref(historicalId)],
+    currentRefs: [ref(currentId)],
+    revisionCount: 1,
+    status: "current" as const,
+    relationship: {
+      relation: "supersedes" as const,
+      classification: "not-recorded" as const,
+      equivalence: "not-recorded" as const,
+    },
+    transitions: [{
+      edgeRef: {
+        id: transitionId,
+        relation: "supersedes" as const,
+        origin: "provenance" as const,
+      },
+      historical: ref(historicalId),
+      successor: ref(currentId),
+    }],
+  });
+  return {
+    schemaVersion: "thread-evidence-family-graph/1.0",
+    asOf: { snapshotId: "thread-r11", revision: 11 },
+    families: [
+      family("first-family", "first-old", "first-current", "first-supersedes"),
+      family(
+        "second-family",
+        "second-old",
+        "second-current",
+        "second-supersedes",
+      ),
+    ],
+    edges: [],
+    omittedSelfLoops: [],
+    omittedCycleEdges: [],
   };
 }
 

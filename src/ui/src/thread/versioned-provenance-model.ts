@@ -14,7 +14,7 @@ export type VersionedGraphSelection =
   | {
     kind: "edge";
     id: string;
-    occurrence?: { readonly key: string; readonly edge: ThreadGraphEdge };
+    occurrence?: VersionedEdgeOccurrence;
   };
 
 export interface VersionedEvidenceFamily {
@@ -25,6 +25,13 @@ export interface VersionedEvidenceFamily {
   members: ThreadGraphNode[];
   /** Canonical relations hidden only because both endpoints are in this node. */
   internalEdges: ThreadGraphEdge[];
+}
+
+export interface VersionedEdgeOccurrence {
+  /** Stable group identity, never the user/provider-supplied edge id alone. */
+  readonly key: string;
+  /** Exact visible or member relation for this occurrence. */
+  readonly edge: ThreadGraphEdge;
 }
 
 export interface VersionedProvenanceEdgeGroup {
@@ -39,8 +46,18 @@ export interface VersionedProvenanceProjection {
   collapsedVersionCount: number;
   familyByMemberRef: ReadonlyMap<string, VersionedEvidenceFamily>;
   familyByVisibleRef: ReadonlyMap<string, VersionedEvidenceFamily>;
-  edgeGroupByVisibleId: ReadonlyMap<string, VersionedProvenanceEdgeGroup>;
-  visibleEdgeIdByMemberId: ReadonlyMap<string, string>;
+  /** Groups keyed by the unique visible relation occurrence. */
+  edgeGroupByVisibleOccurrenceKey: ReadonlyMap<
+    string,
+    VersionedProvenanceEdgeGroup
+  >;
+  /** Raw member occurrence → visible representative occurrence. */
+  visibleOccurrenceKeyByMemberOccurrenceKey: ReadonlyMap<string, string>;
+  /** Identity indexes used to reproject a selection after folding/live updates. */
+  memberOccurrenceKeyByEdge: ReadonlyMap<ThreadGraphEdge, string>;
+  memberEdgeByOccurrenceKey: ReadonlyMap<string, ThreadGraphEdge>;
+  visibleOccurrenceKeyByEdge: ReadonlyMap<ThreadGraphEdge, string>;
+  visibleEdgeByOccurrenceKey: ReadonlyMap<string, ThreadGraphEdge>;
   visibleRefByMemberRef: ReadonlyMap<string, ThreadGraphRef>;
 }
 
@@ -97,8 +114,16 @@ export function buildVersionedProvenanceProjection(
     }
   }
 
+  const memberOccurrenceKeyByEdge = indexMemberEdgeOccurrences(graph.edges);
+  const memberEdgeByOccurrenceKey = new Map<string, ThreadGraphEdge>();
+  for (const [edge, occurrenceKey] of memberOccurrenceKeyByEdge) {
+    memberEdgeByOccurrenceKey.set(occurrenceKey, edge);
+  }
   const internalEdgesByVisibleRef = new Map<string, ThreadGraphEdge[]>();
-  const groupedEdges = new Map<string, ThreadGraphEdge[]>();
+  const groupedEdges = new Map<
+    string,
+    Array<{ edge: ThreadGraphEdge; memberOccurrenceKey: string }>
+  >();
   for (const edge of graph.edges) {
     const from = visibleRefByMemberRef.get(refKey(edge.from)) ?? edge.from;
     const to = visibleRefByMemberRef.get(refKey(edge.to)) ?? edge.to;
@@ -108,15 +133,12 @@ export function buildVersionedProvenanceProjection(
       internalEdgesByVisibleRef.set(refKey(from), bucket);
       continue;
     }
-    const groupKey = [
-      refKey(from),
-      refKey(to),
-      edge.relation,
-      edge.origin,
-      edge.attestation?.status ?? "none",
-    ].join("|");
+    const groupKey = versionedEdgeOccurrenceKey({ ...edge, from, to });
     const bucket = groupedEdges.get(groupKey) ?? [];
-    bucket.push(edge);
+    bucket.push({
+      edge,
+      memberOccurrenceKey: memberOccurrenceKeyByEdge.get(edge)!,
+    });
     groupedEdges.set(groupKey, bucket);
   }
 
@@ -158,51 +180,65 @@ export function buildVersionedProvenanceProjection(
     });
   }
 
-  const edgeGroupByVisibleId = new Map<
+  const edgeGroupByVisibleOccurrenceKey = new Map<
     string,
     VersionedProvenanceEdgeGroup
   >();
-  const visibleEdgeIdByMemberId = new Map<string, string>();
-  const edges = [...groupedEdges.values()].map((members) => {
-    const ordered = [...members].sort((left, right) =>
-      compareRepresentativeEdges(
-        left,
-        right,
-        visibleRefByMemberRef,
-      )
-    );
-    const canonicalRepresentative = ordered[0]!;
-    const from =
-      visibleRefByMemberRef.get(refKey(canonicalRepresentative.from)) ??
-        canonicalRepresentative.from;
-    const to = visibleRefByMemberRef.get(refKey(canonicalRepresentative.to)) ??
-      canonicalRepresentative.to;
-    const representative: ThreadGraphEdge = {
-      ...canonicalRepresentative,
-      from,
-      to,
-      rationale: members.length === 1
-        ? canonicalRepresentative.rationale
-        : `${members.length} recorded handoffs across versions. ${canonicalRepresentative.rationale}`,
-    };
-    const group: VersionedProvenanceEdgeGroup = {
-      representative,
-      members: ordered,
-    };
-    edgeGroupByVisibleId.set(representative.id, group);
-    for (const member of members) {
-      visibleEdgeIdByMemberId.set(member.id, representative.id);
-    }
-    return representative;
-  }).sort(compareEdges);
+  const visibleOccurrenceKeyByMemberOccurrenceKey = new Map<string, string>();
+  const visibleOccurrenceKeyByEdge = new Map<ThreadGraphEdge, string>();
+  const visibleEdgeByOccurrenceKey = new Map<string, ThreadGraphEdge>();
+  const edges = [...groupedEdges.entries()].map(
+    ([visibleOccurrenceKey, members]) => {
+      const orderedMembers = [...members].sort((left, right) =>
+        compareRepresentativeEdges(
+          left.edge,
+          right.edge,
+          visibleRefByMemberRef,
+        )
+      );
+      const canonicalRepresentative = orderedMembers[0]!.edge;
+      const from =
+        visibleRefByMemberRef.get(refKey(canonicalRepresentative.from)) ??
+          canonicalRepresentative.from;
+      const to =
+        visibleRefByMemberRef.get(refKey(canonicalRepresentative.to)) ??
+          canonicalRepresentative.to;
+      const representative: ThreadGraphEdge = {
+        ...canonicalRepresentative,
+        from,
+        to,
+        rationale: members.length === 1
+          ? canonicalRepresentative.rationale
+          : `${members.length} recorded handoffs across versions. ${canonicalRepresentative.rationale}`,
+      };
+      const group: VersionedProvenanceEdgeGroup = {
+        representative,
+        members: orderedMembers.map((member) => member.edge),
+      };
+      edgeGroupByVisibleOccurrenceKey.set(visibleOccurrenceKey, group);
+      visibleOccurrenceKeyByEdge.set(representative, visibleOccurrenceKey);
+      visibleEdgeByOccurrenceKey.set(visibleOccurrenceKey, representative);
+      for (const member of members) {
+        visibleOccurrenceKeyByMemberOccurrenceKey.set(
+          member.memberOccurrenceKey,
+          visibleOccurrenceKey,
+        );
+      }
+      return representative;
+    },
+  ).sort(compareEdges);
 
   return {
     graph: { nodes, edges },
     collapsedVersionCount: graph.nodes.length - nodes.length,
     familyByMemberRef,
     familyByVisibleRef,
-    edgeGroupByVisibleId,
-    visibleEdgeIdByMemberId,
+    edgeGroupByVisibleOccurrenceKey,
+    visibleOccurrenceKeyByMemberOccurrenceKey,
+    memberOccurrenceKeyByEdge,
+    memberEdgeByOccurrenceKey,
+    visibleOccurrenceKeyByEdge,
+    visibleEdgeByOccurrenceKey,
     visibleRefByMemberRef,
   };
 }
@@ -226,14 +262,96 @@ export function visibleGraphSelection(
       ref: visibleGraphRef(projection, selection.ref) ?? selection.ref,
     };
   }
-  const visibleSelection: VersionedGraphSelection = {
-    kind: "edge",
-    id: projection.visibleEdgeIdByMemberId.get(selection.id) ?? selection.id,
-  };
-  if (selection.occurrence) {
-    return { ...visibleSelection, occurrence: selection.occurrence };
+  const visibleOccurrence = visibleEdgeOccurrenceForSelection(
+    projection,
+    selection,
+  );
+  if (visibleOccurrence) {
+    return {
+      kind: "edge",
+      id: visibleOccurrence.edge.id,
+      occurrence: visibleOccurrence,
+    };
   }
-  return visibleSelection;
+  // Synthetic stubs do not belong to the versioned raw-edge index. Preserve
+  // their renderer occurrence instead of degrading them to an ambiguous id.
+  return selection.occurrence
+    ? { kind: "edge", id: selection.id, occurrence: selection.occurrence }
+    : { kind: "edge", id: selection.id };
+}
+
+/** Resolve a member/visible edge selection to its one visible occurrence. */
+export function visibleEdgeOccurrenceForSelection(
+  projection: VersionedProvenanceProjection,
+  selection: Extract<VersionedGraphSelection, { kind: "edge" }>,
+): VersionedEdgeOccurrence | undefined {
+  const selectedEdge = selection.occurrence?.edge;
+  const directVisibleKey = selectedEdge
+    ? projection.visibleOccurrenceKeyByEdge.get(selectedEdge)
+    : undefined;
+  const memberKey = memberOccurrenceKeyForSelection(projection, selection);
+  const suppliedOccurrenceKey = selection.occurrence?.key;
+  const visibleKey = directVisibleKey ??
+    (memberKey
+      ? projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(memberKey)
+      : undefined) ??
+    (suppliedOccurrenceKey
+      ? projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(
+        suppliedOccurrenceKey,
+      ) ??
+        (projection.visibleEdgeByOccurrenceKey.has(suppliedOccurrenceKey)
+          ? suppliedOccurrenceKey
+          : undefined)
+      : undefined) ??
+    uniqueVisibleOccurrenceKeyForLegacyId(projection, selection.id);
+  if (!visibleKey) return undefined;
+  const edge = projection.visibleEdgeByOccurrenceKey.get(visibleKey);
+  return edge ? { key: visibleKey, edge } : undefined;
+}
+
+/**
+ * Resolves a selection to the current edge object for the inspector. A raw
+ * Feed occurrence stays raw; a folded visible occurrence stays visible. Both
+ * paths replace stale objects after an SSE snapshot with the current graph
+ * object identified by their occurrence key.
+ */
+export function edgeForVersionedGraphSelection(
+  projection: VersionedProvenanceProjection,
+  selection: Extract<VersionedGraphSelection, { kind: "edge" }> | undefined,
+): ThreadGraphEdge | undefined {
+  if (!selection) return undefined;
+  const memberKey = memberOccurrenceKeyForSelection(projection, selection) ??
+    uniqueMemberOccurrenceKeyForLegacyId(projection, selection.id);
+  if (memberKey) return projection.memberEdgeByOccurrenceKey.get(memberKey);
+  return visibleEdgeOccurrenceForSelection(projection, selection)?.edge;
+}
+
+/** Resolve a version-history group without ever indexing by edge.id alone. */
+export function versionedEdgeGroupForSelection(
+  projection: VersionedProvenanceProjection,
+  selection: Extract<VersionedGraphSelection, { kind: "edge" }> | undefined,
+): VersionedProvenanceEdgeGroup | undefined {
+  if (!selection) return undefined;
+  const occurrence = visibleEdgeOccurrenceForSelection(projection, selection);
+  return occurrence
+    ? projection.edgeGroupByVisibleOccurrenceKey.get(occurrence.key)
+    : undefined;
+}
+
+/**
+ * Stable visible-group key. It intentionally excludes edge.id: duplicate ids
+ * are permitted, whereas the transformed endpoints + relation + origin +
+ * attestation status define the versioned grouping contract.
+ */
+export function versionedEdgeOccurrenceKey(edge: ThreadGraphEdge): string {
+  return [
+    "versioned-edge",
+    refKey(edge.from),
+    refKey(edge.to),
+    edge.relation,
+    edge.origin,
+    edge.attestation?.status ?? "none",
+  ].join("|");
 }
 
 export function versionLabel(count: number): string {
@@ -366,6 +484,65 @@ function compareRepresentativeEdges(
 
 function compareEdges(left: ThreadGraphEdge, right: ThreadGraphEdge): number {
   return left.id.localeCompare(right.id);
+}
+
+function uniqueVisibleOccurrenceKeyForLegacyId(
+  projection: VersionedProvenanceProjection,
+  edgeId: string,
+): string | undefined {
+  const keys = [...projection.edgeGroupByVisibleOccurrenceKey.entries()]
+    .filter(([, group]) => group.members.some((member) => member.id === edgeId))
+    .map(([key]) => key);
+  return keys.length === 1 ? keys[0] : undefined;
+}
+
+function uniqueMemberOccurrenceKeyForLegacyId(
+  projection: VersionedProvenanceProjection,
+  edgeId: string,
+): string | undefined {
+  const keys = [...projection.memberEdgeByOccurrenceKey.entries()]
+    .filter(([, edge]) => edge.id === edgeId)
+    .map(([key]) => key);
+  return keys.length === 1 ? keys[0] : undefined;
+}
+
+function memberOccurrenceKeyForSelection(
+  projection: VersionedProvenanceProjection,
+  selection: Extract<VersionedGraphSelection, { kind: "edge" }>,
+): string | undefined {
+  const exactMemberKey = selection.occurrence?.edge
+    ? projection.memberOccurrenceKeyByEdge.get(selection.occurrence.edge)
+    : undefined;
+  if (exactMemberKey) return exactMemberKey;
+  const suppliedKey = selection.occurrence?.key;
+  return suppliedKey && projection.memberEdgeByOccurrenceKey.has(suppliedKey)
+    ? suppliedKey
+    : undefined;
+}
+
+function indexMemberEdgeOccurrences(
+  edges: readonly ThreadGraphEdge[],
+): ReadonlyMap<ThreadGraphEdge, string> {
+  const occurrences = new Map<ThreadGraphEdge, string>();
+  const ordinalBySignature = new Map<string, number>();
+  for (const edge of edges) {
+    const signature = [
+      edge.id,
+      refKey(edge.from),
+      refKey(edge.to),
+      edge.relation,
+      edge.origin,
+      edge.rationale,
+      edge.attestation?.status ?? "none",
+      edge.attestation?.producerFingerprint ?? "",
+      edge.attestation?.consumedFingerprint ?? "",
+      edge.attestation?.checkedAt ?? "",
+    ].join("\u0000");
+    const ordinal = ordinalBySignature.get(signature) ?? 0;
+    ordinalBySignature.set(signature, ordinal + 1);
+    occurrences.set(edge, `member-edge|${signature}|${ordinal}`);
+  }
+  return occurrences;
 }
 
 function refKey(reference: ThreadGraphRef): string {

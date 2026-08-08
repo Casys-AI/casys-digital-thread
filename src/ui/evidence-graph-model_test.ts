@@ -12,6 +12,7 @@
 
 import { assertEquals, assertNotEquals } from "@std/assert";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
+import { buildVersionedProvenanceProjection } from "./src/thread/versioned-provenance-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
@@ -128,6 +129,20 @@ Deno.test("superseded versions are folded before analyze instrument folding", ()
       (s.from.id === "R" && s.to.id === "proof-r2"),
   );
   assertNotEquals(stub, undefined, "stub proof-r2↔R must exist");
+});
+
+Deno.test("a supplied versioned projection preserves the exact rendered edge object", () => {
+  const { graph, familyGraph } = versionedPlusBridgeGraph();
+  const versioned = buildVersionedProvenanceProjection(graph, familyGraph);
+  const model = buildEvidenceGraphModel(graph, familyGraph, {
+    versionedProjection: versioned,
+  });
+  const visible = versioned.graph.edges.find((edge) => edge.id === "r2-I");
+
+  assertEquals(
+    model.edges.find((edge) => edge.id === "r2-I"),
+    visible,
+  );
 });
 
 // ---------------------------------------------------------------------------

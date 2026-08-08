@@ -77,8 +77,10 @@ import {
   buildVersionedProvenanceProjection,
   currentArtifacts,
   currentRequirements,
+  edgeForVersionedGraphSelection,
+  versionedEdgeGroupForSelection,
+  versionedEdgeOccurrenceKey,
   type VersionedProvenanceEdgeGroup,
-  type VersionedProvenanceProjection,
   versionedRefKey,
   visibleGraphRef,
   visibleGraphSelection,
@@ -275,6 +277,28 @@ export function ThreadWorkbench({
     };
   }, [client]);
 
+  // Keep one versioned object graph for the Evidence renderers and their
+  // selection state. The Evidence-only removal of closed actions happens
+  // before version folding, so the graph passed to sigma and the graph that
+  // resolves highlighted edge occurrences are the same objects.
+  const versionedProvenanceMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") {
+      return undefined;
+    }
+    const thread = workbench.thread;
+    const closedIds = new Set(
+      buildCurrentProjectWork(workbench.project).closedActionTargetIds,
+    );
+    return buildVersionedProvenanceProjection(
+      graphWithoutClosedActions(
+        thread.graph,
+        thread.actions,
+        closedIds,
+      ),
+      thread.evidenceFamilyGraph,
+    );
+  }, [workbench]);
+
   // Memoize evidenceModel on the workbench reference so sigma is NOT killed on
   // every non-data state change (followLive, graphSelection, inspectorOpen, …).
   // workbench is stable between SSE events — it changes only when
@@ -285,8 +309,9 @@ export function ThreadWorkbench({
       return null as unknown as EvidenceGraphModel;
     }
     const thread = workbench.thread;
-    const work = buildCurrentProjectWork(workbench.project);
-    const closedIds = new Set(work.closedActionTargetIds);
+    const closedIds = new Set(
+      buildCurrentProjectWork(workbench.project).closedActionTargetIds,
+    );
     const rawGraph = graphWithoutClosedActions(
       thread.graph,
       thread.actions,
@@ -295,8 +320,9 @@ export function ThreadWorkbench({
     return buildEvidenceGraphModel(rawGraph, thread.evidenceFamilyGraph, {
       isAnalyzeInstrumentNode,
       intentionallyIsolatedSystems: ["openmodelica", "mcp-modelica"],
+      versionedProjection: versionedProvenanceMemo!,
     });
-  }, [workbench]);
+  }, [workbench, versionedProvenanceMemo]);
 
   // ---------------------------------------------------------------------------
   // Part anchorage — memoized on snapshot (same cost centre as evidenceModel).
@@ -311,14 +337,6 @@ export function ThreadWorkbench({
     if (!workbench || workbench.surface !== "evidence") return new Map();
     const thread = workbench.thread;
     return buildPartAnchorage(thread.graph, thread.components);
-  }, [workbench]);
-
-  const versionedProvenanceMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return undefined;
-    return buildVersionedProvenanceProjection(
-      workbench.thread.graph,
-      workbench.thread.evidenceFamilyGraph,
-    );
   }, [workbench]);
 
   // The projection identity must be stable across non-data renders (depth
@@ -646,9 +664,12 @@ export function ThreadWorkbench({
     changeView("product");
   };
 
-  const selectedEdge = resolveSelectedGraphEdge(snapshot.graph, graphSelection);
-  const selectedEdgeGroup = selectedEdge
-    ? versionedEdgeGroup(versionedProvenance, selectedEdge.id)
+  const selectedEdge = graphSelection?.kind === "edge"
+    ? edgeForVersionedGraphSelection(versionedProvenance, graphSelection) ??
+      resolveSelectedGraphEdge(snapshot.graph, graphSelection)
+    : undefined;
+  const selectedEdgeGroup = graphSelection?.kind === "edge"
+    ? versionedEdgeGroupForSelection(versionedProvenance, graphSelection)
     : undefined;
   const inspectorTarget = resolveToolInspectorTarget(
     snapshot,
@@ -959,9 +980,8 @@ export function ThreadWorkbench({
                           kind: "edge",
                           id: edge.id,
                           occurrence: {
-                            key: `feed:${edge.id}:${
-                              snapshot.graph.edges.indexOf(edge)
-                            }`,
+                            key: versionedProvenance.memberOccurrenceKeyByEdge
+                              .get(edge) ?? versionedEdgeOccurrenceKey(edge),
                             edge,
                           },
                         });
@@ -1389,14 +1409,6 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       )}
     </Card>
   );
-}
-
-function versionedEdgeGroup(
-  projection: VersionedProvenanceProjection,
-  edgeId: string,
-): VersionedProvenanceEdgeGroup | undefined {
-  const visibleId = projection.visibleEdgeIdByMemberId.get(edgeId) ?? edgeId;
-  return projection.edgeGroupByVisibleId.get(visibleId);
 }
 
 function GraphEndpoint({ label, node, onSelect }: {

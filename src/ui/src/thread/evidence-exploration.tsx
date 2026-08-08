@@ -163,7 +163,7 @@ export function EvidenceExploration({
         onSelectionChangeRef.current?.({
           kind: "edge",
           id: attrs.edgeId,
-          occurrence: { key: attrs.graphKey, edge: attrs.edge },
+          occurrence: { key: attrs.occurrenceKey, edge: attrs.edge },
         });
       });
     }
@@ -334,6 +334,7 @@ export function EvidenceExploration({
     });
     const edges: Array<{
       key: string;
+      occurrenceKey: string;
       label: string;
       edgeId: string;
       edge: SigmaEdgeAttrs["edge"];
@@ -342,6 +343,7 @@ export function EvidenceExploration({
       if (!visibleNodeKeys.has(source) || !visibleNodeKeys.has(target)) return;
       edges.push({
         key,
+        occurrenceKey: attrs.occurrenceKey,
         label: attrs.label,
         edgeId: attrs.edgeId,
         edge: attrs.edge,
@@ -448,6 +450,7 @@ function ExplorationKeyboardNavigation({
   nodes: readonly { key: string; label: string; ref: ThreadGraphRef }[];
   edges: readonly {
     key: string;
+    occurrenceKey: string;
     label: string;
     edgeId: string;
     edge: SigmaEdgeAttrs["edge"];
@@ -482,7 +485,7 @@ function ExplorationKeyboardNavigation({
                 onSelectionChange?.({
                   kind: "edge",
                   id: edge.edgeId,
-                  occurrence: { key: edge.key, edge: edge.edge },
+                  occurrence: { key: edge.occurrenceKey, edge: edge.edge },
                 })}
             >
               {edge.label}

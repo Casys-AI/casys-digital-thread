@@ -119,8 +119,11 @@ export function resolveSelectedGraphEdge(
   selection: ToolInspectorGraphSelection | undefined,
 ): ThreadGraphEdge | undefined {
   if (selection?.kind !== "edge") return undefined;
-  return selection.occurrence?.edge ??
-    graph.edges.find((edge) => edge.id === selection.id);
+  if (selection.occurrence?.edge) return selection.occurrence.edge;
+  const matches = graph.edges.filter((edge) => edge.id === selection.id);
+  // An id-only legacy selection is safe only when it names exactly one
+  // recorded relation. Guessing the first duplicate opens the wrong handoff.
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /**

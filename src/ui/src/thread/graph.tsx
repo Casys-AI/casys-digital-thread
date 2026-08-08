@@ -14,6 +14,7 @@ import type {
   ThreadRef,
 } from "./types.ts";
 import { isSupportingNode } from "./essential-graph-filter.ts";
+import { versionedEdgeOccurrenceKey } from "./versioned-provenance-model.ts";
 
 const NODE_WIDTH = 216;
 const NODE_HEIGHT = 82;
@@ -1055,11 +1056,12 @@ function edgeOccurrenceKey(
   item: PositionedThreadGraphEdge,
   edges: readonly PositionedThreadGraphEdge[],
 ): string {
-  const sameIdBefore =
+  const baseKey = versionedEdgeOccurrenceKey(item.edge);
+  const sameBaseBefore =
     edges.slice(0, edges.indexOf(item)).filter((candidate) =>
-      candidate.edge.id === item.edge.id
+      versionedEdgeOccurrenceKey(candidate.edge) === baseKey
     ).length;
-  return `svg-edge:${item.edge.id}:${sameIdBefore}`;
+  return sameBaseBefore === 0 ? baseKey : `${baseKey}|${sameBaseBefore}`;
 }
 
 function shortestPath(
