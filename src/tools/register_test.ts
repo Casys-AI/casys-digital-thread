@@ -29,6 +29,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_run_list",
     "console_server_detail",
     "console_snapshot",
+    "project_agent_run_cancel",
     "project_agent_run_execute",
     "project_agent_run_queue",
     "project_answer_record",
@@ -85,6 +86,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_run_list",
       "console_server_detail",
       "console_snapshot",
+      "project_agent_run_cancel",
       "project_agent_run_execute",
       "project_agent_run_queue",
       "project_answer_record",
@@ -266,6 +268,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         [
           "project_decision_approve",
           "project_decision_reject",
+          "project_agent_run_cancel",
           "project_agent_run_queue",
         ]
           .includes(String(tool.name))
@@ -288,6 +291,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_answer_record" ||
           tool.name === "project_brief_propose" ||
           tool.name === "project_brief_confirm" ||
+          tool.name === "project_agent_run_cancel" ||
           tool.name === "project_agent_run_execute" ||
           tool.name === "project_agent_run_queue" ||
           tool.name === "project_decision_approve" ||

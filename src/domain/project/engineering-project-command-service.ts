@@ -134,6 +134,15 @@ export interface FailRunCommand extends RunCommand {
 }
 
 /**
+ * Human-only closeout for a queued run. It deliberately carries no synthetic
+ * execution summary, timestamps or failure: the run never started.
+ */
+export interface CancelQueuedRunCommand extends EngineeringProjectCommandInput {
+  readonly runId: string;
+  readonly rationale: string;
+}
+
+/**
  * Close one failed work item only when an independently completed successor
  * already carries the exact replacement evidence. This is project-state
  * reconciliation, never a provider retry or a claim that the failed work
@@ -296,6 +305,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
     "decision.approve",
     "decision.reject",
     "agent-run.queue",
+    "agent-run.cancel",
   ],
   agent: [
     "project.plan-publish",
@@ -880,6 +890,55 @@ export class EngineeringProjectCommandService {
         workItem.status = nextIdleWorkStatus(draft, workItem);
       },
     );
+  }
+
+  /**
+   * Record an explicit human cancellation before a run is claimed. This is a
+   * truthful administrative closeout, not a failed execution and never
+   * manufactures an execution timestamp or agent authority.
+   */
+  cancelQueuedRun(
+    origin: EngineeringProjectCommandOrigin,
+    command: CancelQueuedRunCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    return this.apply(origin, "agent-run.cancel", command, (draft, appliedAt) => {
+      nonEmpty(command.runId, "runId");
+      nonEmpty(command.rationale, "rationale");
+      const run = findRun(draft, command.runId);
+      if (!run) notFound("agent run", command.runId);
+      if (run.status !== "queued") {
+        invalidTransition(
+          `Agent run ${run.id} can be cancelled only while queued; it is ${run.status}.`,
+        );
+      }
+      if (
+        run.startedAt || run.completedAt || run.claimedAt || run.claimedBy ||
+        run.waitingForDecisionIds || run.resultSnapshot || run.failure ||
+        run.evidenceRefs.length !== 0
+      ) {
+        invalidTransition(
+          `Queued agent run ${run.id} has execution state and cannot be cancelled safely.`,
+        );
+      }
+      const summary = `Cancelled before agent claim: ${command.rationale}`;
+      run.status = "cancelled";
+      run.summary = summary;
+      run.cancellation = {
+        rationale: command.rationale,
+        cancelledAt: appliedAt,
+        cancelledBy: actor(origin),
+      };
+      run.statusHistory ??= [];
+      run.statusHistory.push(transition(
+        { commandId: command.commandId, summary },
+        origin,
+        "cancelled",
+        appliedAt,
+      ));
+      const workItem = findWorkItem(draft, run.workItemId)!;
+      workItem.status = nextIdleWorkStatus(draft, workItem);
+      recomputeWorkReadiness(draft);
+    });
   }
 
   /**
@@ -1902,7 +1961,7 @@ function isEngineeringWorkOwner(value: unknown): value is EngineeringWorkOwner {
 }
 
 function transition(
-  command: RunCommand,
+  command: Pick<RunCommand, "commandId" | "summary">,
   origin: EngineeringProjectCommandOrigin,
   status: EngineeringAgentRunStatus,
   at: string,

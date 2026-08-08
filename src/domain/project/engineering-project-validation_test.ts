@@ -108,6 +108,48 @@ Deno.test("phase status cannot be duplicated as blocked work-item state", async 
   );
 });
 
+Deno.test("a cancelled run must retain human cancellation evidence instead of execution state", async () => {
+  const invalid = await projectJson();
+  const workItem = invalid.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design"
+  )!;
+  workItem.status = "ready";
+  workItem.decisionIds = [];
+  workItem.blockerIds = [];
+  invalid.agentRuns = [{
+    id: "run:forged-cancellation",
+    workItemId: workItem.id,
+    status: "cancelled",
+    summary: "Cancelled before agent claim: forged record.",
+    queuedAt: invalid.generatedAt,
+    baseSnapshot: structuredClone(invalid.threadSnapshots[0]),
+    inputFingerprint: fingerprint("a"),
+    evidenceRefs: [],
+    cancellation: {
+      rationale: "forged record",
+      cancelledAt: invalid.generatedAt,
+      cancelledBy: { id: "agent-forger", origin: "agent" },
+    },
+    statusHistory: [{
+      commandId: "forged-cancel-command",
+      status: "cancelled",
+      at: invalid.generatedAt,
+      actor: { id: "agent-forger", origin: "agent" },
+      summary: "Cancelled before agent claim: forged record.",
+    }],
+  }];
+
+  const issues = collectEngineeringProjectIssues(invalid);
+  assertEquals(
+    issues.some((issue) => issue.code === "cancellation_origin_forbidden"),
+    true,
+  );
+  assertEquals(
+    issues.some((issue) => issue.code === "missing_cancellation_receipt"),
+    true,
+  );
+});
+
 Deno.test("execution base and normalized input fingerprint are atomic and exact", async () => {
   const invalid = await projectJson();
   invalid.decisions[0].baseSnapshot = structuredClone(invalid.threadSnapshots[0]);

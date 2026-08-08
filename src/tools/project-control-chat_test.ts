@@ -284,6 +284,110 @@ Deno.test("project decision approval and rejection require a verified human elic
   }]);
 });
 
+Deno.test("project queued-run cancellation requires a verified human elicitation retry", async () => {
+  const snapshot = queuedRunSnapshot();
+  const app = new CapturingApp();
+  const cancellations: Array<{ origin: unknown; command: Record<string, unknown> }> =
+    [];
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    dependencies(snapshot, {
+      cancelQueuedRun: (origin, command) => {
+        cancellations.push({
+          origin,
+          command: command as unknown as Record<string, unknown>,
+        });
+        return Promise.resolve(snapshot);
+      },
+    }),
+  );
+
+  const args = {
+    ...COMMON,
+    runId: "run:queued-before-cancellation",
+    rationale: "The reviewed work was superseded before any agent claim.",
+  };
+  const cancel = app.handler("project_agent_run_cancel");
+  const first = await cancel(args, clientContext()) as Record<string, unknown>;
+  assertEquals(first.resultType, "input_required");
+  const request = (first.inputRequests as Record<string, unknown>)
+    .run_cancellation_confirmation as Record<string, unknown>;
+  assertEquals(request.method, "elicitation/create");
+  assertStringIncludes(
+    (request.params as Record<string, unknown>).message as string,
+    "has not been claimed or executed",
+  );
+  assertEquals(cancellations, []);
+
+  await assertRejects(
+    async () => {
+      await cancel(args, {
+        ...clientContext(),
+        retryVerified: false,
+        inputResponses: {
+          run_cancellation_confirmation: {
+            action: "accept",
+            content: { confirmed: true },
+          },
+        },
+      });
+    },
+    TypeError,
+    "verified signed request state",
+  );
+  assertEquals(cancellations, []);
+
+  const accepted = await cancel(args, {
+    ...clientContext(),
+    retryVerified: true,
+    inputResponses: {
+      run_cancellation_confirmation: {
+        action: "accept",
+        content: { confirmed: true },
+      },
+    },
+  }) as Record<string, unknown>;
+  assertStringIncludes(accepted.content as string, "human cancellation");
+  assertEquals(cancellations, [{
+    origin: { kind: "human", actorId: "mcp-elicitation:paired-chat@1" },
+    command: args,
+  }]);
+
+  const tool = app.tool("project_agent_run_cancel");
+  assertEquals(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  const schema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
+    "commandId",
+    "expectedRevision",
+    "issuedAt",
+    "projectId",
+    "rationale",
+    "runId",
+  ]);
+  const serialized = JSON.stringify(schema);
+  for (
+    const forbidden of [
+      "provider",
+      "toolName",
+      "summary",
+      "basis",
+      "resultSnapshot",
+      "evidenceRefs",
+    ]
+  ) {
+    assertEquals(
+      serialized.includes(forbidden),
+      false,
+      `${forbidden} must be server-owned`,
+    );
+  }
+});
+
 class CapturingApp {
   readonly #tools = new Map<string, MCPTool>();
   readonly #handlers = new Map<string, ToolHandler>();
@@ -413,5 +517,33 @@ function projectSnapshot(
     approvals: [],
     blockers: [],
     commandReceipts: [],
+  };
+}
+
+function queuedRunSnapshot(): EngineeringProjectSnapshot {
+  const snapshot = projectSnapshot();
+  return {
+    ...snapshot,
+    workItems: snapshot.workItems.map((item) => ({
+      ...item,
+      status: item.id === "establish-baseline" ? "in-progress" as const : item.status,
+    })),
+    agentRuns: [{
+      id: "run:queued-before-cancellation",
+      workItemId: "establish-baseline",
+      status: "queued",
+      summary: "Execute the reviewed documentary baseline.",
+      queuedAt: "2026-08-03T12:00:00.000Z",
+      basis: snapshot.plan!.basis,
+      inputFingerprint: FINGERPRINT,
+      evidenceRefs: [],
+      statusHistory: [{
+        commandId: "queue-before-cancellation",
+        status: "queued",
+        at: "2026-08-03T12:00:00.000Z",
+        actor: { id: "mcp:paired-chat@1", origin: "agent" },
+        summary: "Execute the reviewed documentary baseline.",
+      }],
+    }],
   };
 }

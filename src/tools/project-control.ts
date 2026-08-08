@@ -272,6 +272,10 @@ export function registerProjectControlTools(
     );
   });
 
+  app.registerTool(projectAgentRunCancelTool, async (args, context) => {
+    return await handleQueuedRunCancellation(args, context, dependencies);
+  });
+
   app.registerTool(projectDecisionProposeTool, async (args, context) => {
     const common = commonMutation(args);
     const current = await requiredProjectRevision(
@@ -585,6 +589,23 @@ const projectAgentRunQueueTool: MCPTool = {
   annotations: PROJECT_EXECUTION_ANNOTATIONS,
 };
 
+const projectAgentRunCancelTool: MCPTool = {
+  name: "project_agent_run_cancel",
+  description:
+    "Ask the paired MCP host to present cancellation of one exact queued agent run for human confirmation. The first call requests elicitation; only a signed retry whose request state verifies and whose response is accepted records the human cancellation. A cancelled queued run has not been claimed or executed, and returns its work item to its derived idle state.",
+  inputSchema: mutationSchema({
+    runId: { type: "string", minLength: 1 },
+    rationale: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Reason preserved in the human cancellation record and shown before confirmation.",
+    },
+  }, ["runId", "rationale"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_HUMAN_CONFIRMATION_ANNOTATIONS,
+};
+
 const projectAgentRunExecuteTool: MCPTool = {
   name: "project_agent_run_execute",
   description:
@@ -643,6 +664,115 @@ async function handleDecisionElicitation(
       action === "approve" ? "approval" : "rejection"
     } of decision ${decisionId} through elicitation at project revision ${snapshot.revision}.`,
     snapshot,
+  );
+}
+
+async function handleQueuedRunCancellation(
+  args: Record<string, unknown>,
+  context: ToolHandlerContext | undefined,
+  dependencies: ProjectControlToolDependencies,
+) {
+  const common = commonMutation(args);
+  const runId = requiredString(args.runId, "runId");
+  const rationale = requiredString(args.rationale, "rationale");
+  const current = await requiredQueuedRun(
+    dependencies.projects,
+    common.projectId,
+    common.expectedRevision,
+    runId,
+  );
+  const confirmation = runCancellationConfirmationResponse(context);
+  if (confirmation === undefined) {
+    return runCancellationConfirmationRequest(current, runId, rationale);
+  }
+  if (!confirmation) {
+    return projectResult(
+      `Queued agent run ${runId} was not cancelled. No project state changed; continue the paired conversation.`,
+      current,
+    );
+  }
+  const snapshot = await dependencies.commands.cancelQueuedRun(
+    elicitedHumanOrigin(context),
+    { ...common, runId, rationale },
+  );
+  return projectResult(
+    `The paired MCP host reported human cancellation of queued agent run ${runId} through elicitation at project revision ${snapshot.revision}. No agent claim or execution was recorded.`,
+    snapshot,
+  );
+}
+
+function runCancellationConfirmationRequest(
+  snapshot: EngineeringProjectSnapshot,
+  runId: string,
+  rationale: string,
+) {
+  const run = snapshot.agentRuns.find((candidate) => candidate.id === runId)!;
+  return {
+    resultType: "input_required",
+    inputRequests: {
+      run_cancellation_confirmation: {
+        method: "elicitation/create",
+        params: {
+          mode: "form",
+          message:
+            `Cancel queued agent run “${run.id}” for work item “${run.workItemId}”? It has not been claimed or executed. Recorded rationale: ${rationale}. Confirm this exact cancellation, or decline and continue the conversation.`,
+          requestedSchema: {
+            type: "object",
+            properties: {
+              confirmed: {
+                type: "boolean",
+                title: "Confirm queued-run cancellation",
+                description:
+                  "I confirm this queued run should be cancelled before any agent claim or execution.",
+              },
+            },
+            required: ["confirmed"],
+            additionalProperties: false,
+          },
+        },
+      },
+    },
+  };
+}
+
+function runCancellationConfirmationResponse(
+  context?: ToolHandlerContext,
+): boolean | undefined {
+  if (context?.inputResponses === undefined) return undefined;
+  if (context.retryVerified !== true) {
+    throw new TypeError(
+      "Queued-run cancellation requires an MCP retry with verified signed request state.",
+    );
+  }
+  const response = exactRecord(
+    context.inputResponses.run_cancellation_confirmation,
+    "inputResponses.run_cancellation_confirmation",
+  );
+  exactKeys(
+    response,
+    ["action"],
+    ["content"],
+    "inputResponses.run_cancellation_confirmation",
+  );
+  const responseAction = oneOf(
+    response.action,
+    ["accept", "decline", "cancel"] as const,
+    "inputResponses.run_cancellation_confirmation.action",
+  );
+  if (responseAction !== "accept") return false;
+  const content = exactRecord(
+    response.content,
+    "inputResponses.run_cancellation_confirmation.content",
+  );
+  exactKeys(
+    content,
+    ["confirmed"],
+    [],
+    "inputResponses.run_cancellation_confirmation.content",
+  );
+  return requiredBoolean(
+    content.confirmed,
+    "inputResponses.run_cancellation_confirmation.content.confirmed",
   );
 }
 
@@ -750,6 +880,27 @@ async function requiredProposedDecision(
   ) {
     throw new TypeError(
       `Decision ${decisionId} is not the exact proposed decision at project revision ${expectedRevision}.`,
+    );
+  }
+  return snapshot;
+}
+
+async function requiredQueuedRun(
+  store: EngineeringProjectSnapshotReader,
+  projectId: string,
+  expectedRevision: number,
+  runId: string,
+): Promise<EngineeringProjectSnapshot> {
+  const snapshot = await requiredProjectRevision(store, projectId, expectedRevision);
+  const run = snapshot.agentRuns.find((candidate) => candidate.id === runId);
+  if (
+    !run || run.status !== "queued" || run.startedAt || run.completedAt ||
+    run.claimedAt || run.claimedBy || run.waitingForDecisionIds ||
+    run.resultSnapshot || run.failure || run.cancellation ||
+    run.evidenceRefs.length !== 0
+  ) {
+    throw new TypeError(
+      `Agent run ${runId} is not an unclaimed queued run at project revision ${expectedRevision}.`,
     );
   }
   return snapshot;

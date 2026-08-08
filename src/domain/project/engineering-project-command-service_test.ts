@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import {
   deriveEngineeringPhaseStatus,
   deriveEngineeringProjectStatus,
@@ -329,6 +329,86 @@ Deno.test("browser cannot claim and a second agent cannot hijack a claimed run",
   assertEquals(
     progressed.agentRuns[0].statusHistory?.at(-1)?.summary,
     "Assigned worker reports progress.",
+  );
+});
+
+Deno.test("only a human can append-only cancel an unclaimed queued run", async () => {
+  const store = await memoryStore();
+  const service = serviceFor(store);
+  const approved = await approveAll(service, store);
+  const queued = await service.queueRun(AGENT, {
+    ...context("queue-cancellable-verification", approved.revision),
+    runId: "verify-run-cancellable",
+    workItemId: "verify-current-mechanical-design",
+    summary: "Queue reviewed verification inputs.",
+    baseSnapshot: baseSnapshot(approved),
+  });
+  const command = {
+    ...context("human-cancel-queued-verification", queued.revision),
+    runId: "verify-run-cancellable",
+    rationale:
+      "This queued run is superseded before any agent claim or provider execution.",
+  };
+
+  await assertCommandError(
+    () => service.cancelQueuedRun(AGENT, command),
+    "permission_denied",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, queued.revision);
+
+  const cancelled = await service.cancelQueuedRun(HUMAN, command);
+  const run = cancelled.agentRuns.find((item) => item.id === command.runId)!;
+  assertEquals(run.status, "cancelled");
+  assertEquals(run.startedAt, undefined);
+  assertEquals(run.completedAt, undefined);
+  assertEquals(run.claimedAt, undefined);
+  assertEquals(run.claimedBy, undefined);
+  assertEquals(run.failure, undefined);
+  assertEquals(run.evidenceRefs, []);
+  assertEquals(run.cancellation?.rationale, command.rationale);
+  assert(run.cancellation?.cancelledAt);
+  assertEquals(run.cancellation?.cancelledBy, {
+    id: HUMAN.actorId,
+    origin: "human",
+  });
+  assertEquals(run.statusHistory?.map((item) => item.status), [
+    "queued",
+    "cancelled",
+  ]);
+  assertEquals(run.statusHistory?.at(-1), {
+    commandId: command.commandId,
+    status: "cancelled",
+    at: run.cancellation!.cancelledAt,
+    actor: { id: HUMAN.actorId, origin: "human" },
+    summary: `Cancelled before agent claim: ${command.rationale}`,
+  });
+  assertEquals(
+    findWorkItem(cancelled, "verify-current-mechanical-design").status,
+    "ready",
+  );
+  assertEquals(cancelled.commandReceipts?.at(-1)?.type, "agent-run.cancel");
+
+  const replay = await service.cancelQueuedRun(HUMAN, command);
+  assertEquals(replay.id, cancelled.id);
+
+  await assertCommandError(
+    () =>
+      service.cancelQueuedRun(HUMAN, {
+        ...command,
+        commandId: "cancel-terminal-run",
+        expectedRevision: cancelled.revision,
+      }),
+    "invalid_transition",
+  );
+  await assertCommandError(
+    () =>
+      service.cancelQueuedRun(HUMAN, {
+        ...command,
+        commandId: "cancel-without-rationale",
+        expectedRevision: cancelled.revision,
+        rationale: " ",
+      }),
+    "invalid_input",
   );
 });
 

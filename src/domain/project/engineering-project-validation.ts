@@ -1046,6 +1046,7 @@ function validateAgentRun(
       "waitingForDecisionIds",
       "resultSnapshot",
       "failure",
+      "cancellation",
       "statusHistory",
     ],
     issues,
@@ -1103,6 +1104,24 @@ function validateAgentRun(
     if (failure) {
       nonEmptyString(failure.code, `${path}.failure.code`, issues);
       nonEmptyString(failure.message, `${path}.failure.message`, issues);
+    }
+  }
+  if (input.cancellation !== undefined) {
+    const cancellation = exactRecord(
+      input.cancellation,
+      `${path}.cancellation`,
+      ["rationale", "cancelledAt", "cancelledBy"],
+      [],
+      issues,
+    );
+    if (cancellation) {
+      nonEmptyString(cancellation.rationale, `${path}.cancellation.rationale`, issues);
+      isoDateTime(cancellation.cancelledAt, `${path}.cancellation.cancelledAt`, issues);
+      validateCommandActor(
+        cancellation.cancelledBy,
+        `${path}.cancellation.cancelledBy`,
+        issues,
+      );
     }
   }
   if (input.statusHistory !== undefined) {
@@ -1369,6 +1388,7 @@ function validateCommandReceipt(
       "agent-run.publish",
       "agent-run.complete",
       "agent-run.fail",
+      "agent-run.cancel",
     ],
     `${path}.type`,
     issues,
@@ -2898,7 +2918,7 @@ function validateRunInvariant(
     issues,
   );
   const active = ["running", "waiting-for-decision", "publishing"].includes(run.status);
-  const terminal = ["completed", "failed", "cancelled"].includes(run.status);
+  const executionTerminal = ["completed", "failed"].includes(run.status);
   if (run.status === "queued" && (run.startedAt || run.completedAt)) {
     issue(
       issues,
@@ -2935,7 +2955,7 @@ function validateRunInvariant(
       "an active run requires startedAt and no completedAt",
     );
   }
-  if (terminal && (!run.startedAt || !run.completedAt)) {
+  if (executionTerminal && (!run.startedAt || !run.completedAt)) {
     issue(
       issues,
       "invalid_run_lifecycle",
@@ -2989,6 +3009,90 @@ function validateRunInvariant(
       "failure is only valid for a failed run",
     );
   }
+  if (run.status === "cancelled") {
+    if (!run.cancellation) {
+      issue(
+        issues,
+        "missing_cancellation",
+        `${path}.cancellation`,
+        "a cancelled run requires an explicit human queued-run cancellation",
+      );
+    }
+    if (run.cancellation?.cancelledBy.origin !== "human") {
+      issue(
+        issues,
+        "cancellation_origin_forbidden",
+        `${path}.cancellation.cancelledBy.origin`,
+        "only a human origin can cancel an unclaimed queued run",
+      );
+    }
+    if (
+      run.startedAt || run.completedAt || run.claimedAt || run.claimedBy ||
+      run.waitingForDecisionIds || run.resultSnapshot || run.failure ||
+      run.evidenceRefs.length !== 0
+    ) {
+      issue(
+        issues,
+        "invalid_run_lifecycle",
+        path,
+        "a cancelled queued run cannot contain execution, result, failure or evidence fields",
+      );
+    }
+    const finalTransition = run.statusHistory?.at(-1);
+    if (
+      run.cancellation &&
+      (!finalTransition || finalTransition.status !== "cancelled" ||
+        Date.parse(finalTransition.at) !== Date.parse(run.cancellation.cancelledAt) ||
+        finalTransition.actor.id !== run.cancellation.cancelledBy.id ||
+        finalTransition.actor.origin !== run.cancellation.cancelledBy.origin)
+    ) {
+      issue(
+        issues,
+        "invalid_run_history",
+        `${path}.cancellation`,
+        "must exactly match the final cancelled status transition",
+      );
+    }
+    const cancellationReceipt = run.cancellation && finalTransition
+      ? (project.commandReceipts ?? []).find((receipt) =>
+        receipt.type === "agent-run.cancel" &&
+        receipt.commandId === finalTransition.commandId
+      )
+      : undefined;
+    if (
+      run.cancellation &&
+      (!cancellationReceipt || cancellationReceipt.actor.origin !== "human" ||
+        cancellationReceipt.actor.id !== run.cancellation.cancelledBy.id ||
+        cancellationReceipt.actor.origin !== run.cancellation.cancelledBy.origin ||
+        Date.parse(cancellationReceipt.appliedAt) !==
+          Date.parse(run.cancellation.cancelledAt))
+    ) {
+      issue(
+        issues,
+        "missing_cancellation_receipt",
+        `${path}.cancellation`,
+        "must be anchored by its exact human agent-run.cancel receipt",
+      );
+    }
+    const workItem = workById.get(run.workItemId);
+    if (
+      workItem && workItem.status !== idleStatusForCancelledQueuedRun(project, workItem)
+    ) {
+      issue(
+        issues,
+        "invalid_run_lifecycle",
+        `${path}.workItemId`,
+        "a cancelled queued run must return its work item to the derived idle status",
+      );
+    }
+  } else if (run.cancellation) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      `${path}.cancellation`,
+      "cancellation is only valid for a cancelled queued run",
+    );
+  }
   if (
     run.status === "waiting-for-decision" &&
     (run.waitingForDecisionIds?.length ?? 0) === 0
@@ -3036,6 +3140,29 @@ function validateRunInvariant(
   }
   chronological(run.queuedAt, run.startedAt, `${path}.startedAt`, issues);
   chronological(run.startedAt, run.completedAt, `${path}.completedAt`, issues);
+}
+
+function idleStatusForCancelledQueuedRun(
+  project: EngineeringProjectSnapshot,
+  workItem: EngineeringWorkItem,
+): "planned" | "ready" | "waiting-for-decision" {
+  const decisionsApproved = workItem.decisionIds.every((id) =>
+    project.decisions.find((decision) => decision.id === id)?.status === "approved"
+  );
+  const blockersResolved = workItem.blockerIds.every((id) =>
+    project.blockers.find((blocker) => blocker.id === id)?.status === "resolved"
+  );
+  const dependenciesCompleted = workItem.dependsOnWorkItemIds.every((id) =>
+    project.workItems.find((item) => item.id === id)?.status === "completed"
+  );
+  if (decisionsApproved && blockersResolved && dependenciesCompleted) return "ready";
+  if (
+    workItem.decisionIds.some((id) => {
+      const status = project.decisions.find((decision) => decision.id === id)?.status;
+      return status === "required" || status === "proposed" || status === "rejected";
+    })
+  ) return "waiting-for-decision";
+  return "planned";
 }
 
 function validateDecisionInvariant(
@@ -3370,7 +3497,8 @@ function validateCommandReceiptInvariant(
   }
   if (
     (receipt.type === "project.brief-approve" ||
-      receipt.type === "project.brief-reject") &&
+      receipt.type === "project.brief-reject" ||
+      receipt.type === "agent-run.cancel") &&
     receipt.actor.origin !== "human"
   ) {
     issue(

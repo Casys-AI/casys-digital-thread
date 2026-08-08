@@ -55,7 +55,8 @@ export type EngineeringProjectCommandName =
   | "agent-run.progress"
   | "agent-run.publish"
   | "agent-run.complete"
-  | "agent-run.fail";
+  | "agent-run.fail"
+  | "agent-run.cancel";
 
 export interface EngineeringCommandActor {
   readonly id: string;
@@ -311,12 +312,24 @@ export interface EngineeringAgentRun {
   readonly waitingForDecisionIds?: readonly string[];
   readonly resultSnapshot?: EngineeringThreadSnapshotRef;
   readonly failure?: EngineeringAgentRunFailure;
+  /**
+   * Present only when a human cancelled a run before any agent claim or
+   * execution. This is intentionally distinct from a failed execution.
+   */
+  readonly cancellation?: EngineeringAgentRunCancellation;
   readonly statusHistory?: readonly EngineeringAgentRunTransition[];
 }
 
 export interface EngineeringAgentRunFailure {
   readonly code: string;
   readonly message: string;
+}
+
+/** Exact human closeout for a queued run that never started. */
+export interface EngineeringAgentRunCancellation {
+  readonly rationale: string;
+  readonly cancelledAt: IsoDateTime;
+  readonly cancelledBy: EngineeringCommandActor;
 }
 
 export interface EngineeringAgentRunTransition {
