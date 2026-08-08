@@ -58,6 +58,7 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
   GeometryArtifactRemovedError,
+  type GeometryCaptureStore,
   GeometryLineageReviewRequiredError,
   requireArchitectureArtifact,
 } from "./design-write-geometry-run-executor.ts";
@@ -884,6 +885,7 @@ async function buildGeoFixture(
 function makeExecutor(
   fixture: GeoFixture,
   directory: string,
+  geometryCaptures: GeometryCaptureStore = fixture.geoCaptures,
 ): DesignWriteGeometryRunExecutor {
   return new DesignWriteGeometryRunExecutor({
     projects: fixture.projects,
@@ -891,7 +893,7 @@ function makeExecutor(
     snapshots: fixture.snapshots,
     architectureCaptures: fixture.archCaptures,
     geometryDraftCaptures: fixture.draftCaptures,
-    geometryCaptures: fixture.geoCaptures,
+    geometryCaptures,
     lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
     draftAssetDirectory: fixture.draftAssetDirectory,
     canonicalAssetDirectory: fixture.canonicalAssetDirectory,
@@ -930,7 +932,31 @@ Deno.test("a reviewed geometry draft becomes valid canonical thread evidence bou
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-happy-path-" });
   try {
     const fixture = await buildGeoFixture(tmpDir, { mode: "happy" });
-    const completed = await makeExecutor(fixture, tmpDir).execute(
+    const productionOrder: string[] = [];
+    const observedCaptureReads: ContentFingerprint[] = [];
+    const trackingCaptureStore: GeometryCaptureStore = {
+      uriFor: (fingerprint) => fixture.geoCaptures.uriFor(fingerprint),
+      read: async (fingerprint) => {
+        observedCaptureReads.push(fingerprint);
+        productionOrder.push("capture-read");
+        return await fixture.geoCaptures.read(fingerprint);
+      },
+      save: async (fingerprint, text) => {
+        const capture = JSON.parse(text);
+        const assetDigest =
+          capture.manifest.artifactHashes.assemblyFiles[0].fingerprint.digest;
+        await assertRejects(
+          () =>
+            Deno.stat(
+              `${fixture.canonicalAssetDirectory}/${assetDigest}.gltf`,
+            ),
+          Deno.errors.NotFound,
+        );
+        productionOrder.push("capture-save-before-binary");
+        return await fixture.geoCaptures.save(fingerprint, text);
+      },
+    };
+    const completed = await makeExecutor(fixture, tmpDir, trackingCaptureStore).execute(
       AGENT,
       executionCommand(fixture),
     );
@@ -971,6 +997,7 @@ Deno.test("a reviewed geometry draft becomes valid canonical thread evidence bou
     const captureText = await fixture.geoCaptures.read(geometry.fingerprint);
     assertExists(captureText);
     const capture = JSON.parse(captureText);
+    const actualCaptureFingerprint = await sha256Fingerprint(capture);
     assertEquals(capture.architectureBasis.artifactId, architecture.id);
     assertEquals(capture.architectureBasis.fingerprint, architecture.fingerprint);
 
@@ -989,6 +1016,26 @@ Deno.test("a reviewed geometry draft becomes valid canonical thread evidence bou
       ),
       await Deno.readFile(`${fixture.draftAssetDirectory}/${asset.fingerprint.digest}`),
     );
+    productionOrder.push("binary-observed");
+    assertEquals(productionOrder[0], "capture-save-before-binary");
+    assertEquals(
+      productionOrder.indexOf("capture-read") <
+        productionOrder.indexOf("binary-observed"),
+      true,
+    );
+    assertEquals(
+      observedCaptureReads.some((fingerprint) =>
+        fingerprint.digest === actualCaptureFingerprint.digest
+      ),
+      true,
+    );
+    const binaryConsumption = published.consumptions.find((consumption) =>
+      consumption.consumer.runId === fixture.queued.runId &&
+      consumption.artifactId === geometry.id &&
+      consumption.observedFingerprint.digest === actualCaptureFingerprint.digest
+    );
+    assertExists(binaryConsumption);
+    assertEquals(binaryConsumption.status, "verified");
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }

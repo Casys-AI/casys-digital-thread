@@ -19,8 +19,8 @@
  *  8. Cliquet: assertGeometryArtifactNotRemoved.
  *  9. Reload draft JSON by draftDigest; byte-level fingerprint recomputation.
  * 10. Architecture capture load + per-component binding verification (D5 part 2).
- * 11. Verify each binary in state/local/geometry-draft-assets/{digest}.
- * 12. Build geometry capture record + save to FileCaptureStore<"geometry-capture">.
+ * 11. Build geometry capture record + save to FileCaptureStore<"geometry-capture">.
+ * 12. Reload that capture, then verify and promote each binary hash it names.
  * 13. Thread extension → applyThreadSnapshotExtensionIfNew → validateThreadSnapshot.
  * 14. Snapshot save + CAS readback.
  * 15. publishRun + completeRun + assertCompleted.
@@ -245,12 +245,21 @@ export interface DesignWriteGeometryRunExecutorDependencies {
   /** Draft geometry JSON captures produced by the preview tool. */
   readonly geometryDraftCaptures: FileCaptureStore<"geometry-draft">;
   /** Canonical geometry captures sealed by this executor. */
-  readonly geometryCaptures: FileCaptureStore<"geometry-capture">;
+  readonly geometryCaptures: GeometryCaptureStore;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly canonicalAssetDirectory?: string;
   readonly draftAssetDirectory?: string;
   readonly now?: () => string;
+}
+
+export interface GeometryCaptureStore {
+  save(
+    fingerprint: ContentFingerprint,
+    text: string,
+  ): Promise<{ readonly uri: string; readonly path: string }>;
+  read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+  uriFor(fingerprint: ContentFingerprint): string;
 }
 
 /**
@@ -265,7 +274,7 @@ export class DesignWriteGeometryRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #architectureCaptures: FileCaptureStore<"architecture-capture">;
   readonly #geometryDraftCaptures: FileCaptureStore<"geometry-draft">;
-  readonly #geometryCaptures: FileCaptureStore<"geometry-capture">;
+  readonly #geometryCaptures: GeometryCaptureStore;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #canonicalAssetDirectory: string;
@@ -419,41 +428,11 @@ export class DesignWriteGeometryRunExecutor {
         this.#architectureCaptures,
       );
 
-      // Step 11: binary asset verification.
+      // Step 11: build and durably record the canonical geometry capture before
+      // any binary is published. The capture is derived only from the signed
+      // decision, the verified draft record, and the verified architecture.
       const { assemblyFiles = [], partMeshes = [] } = params.manifest.artifactHashes ??
         {};
-      for (const file of assemblyFiles) {
-        await verifyDraftAsset(
-          file.fingerprint.digest,
-          `assembly file ${file.name}`,
-          this.#draftAssetDirectory,
-        );
-      }
-      for (const mesh of partMeshes) {
-        await verifyDraftAsset(
-          mesh.fingerprint.digest,
-          `part mesh ${mesh.name}`,
-          this.#draftAssetDirectory,
-        );
-      }
-      for (const file of assemblyFiles) {
-        await promoteDraftAsset(
-          file.fingerprint.digest,
-          file.format,
-          this.#draftAssetDirectory,
-          this.#canonicalAssetDirectory,
-        );
-      }
-      for (const mesh of partMeshes) {
-        await promoteDraftAsset(
-          mesh.fingerprint.digest,
-          "stl",
-          this.#draftAssetDirectory,
-          this.#canonicalAssetDirectory,
-        );
-      }
-
-      // Step 12: build canonical geometry capture.
       const captureRecord = {
         schemaVersion: GEOMETRY_CAPTURE_SCHEMA,
         operation: DESIGN_WRITE_GEOMETRY_OPERATION,
@@ -476,6 +455,32 @@ export class DesignWriteGeometryRunExecutor {
         throw new Error(
           "Geometry capture was not durably readable after save.",
         );
+      }
+
+      // Step 12: every binary promotion consumes the persisted capture. The
+      // helper re-verifies that exact object's fingerprint and checks that it
+      // names the binary digest before verifying and copying the bytes.
+      for (const file of assemblyFiles) {
+        await promoteAssetNamedByCapture({
+          captureFp,
+          assetFingerprint: file.fingerprint,
+          name: `assembly file ${file.name}`,
+          extension: file.format,
+          geometryCaptures: this.#geometryCaptures,
+          draftDirectory: this.#draftAssetDirectory,
+          canonicalDirectory: this.#canonicalAssetDirectory,
+        });
+      }
+      for (const mesh of partMeshes) {
+        await promoteAssetNamedByCapture({
+          captureFp,
+          assetFingerprint: mesh.fingerprint,
+          name: `part mesh ${mesh.name}`,
+          extension: "stl",
+          geometryCaptures: this.#geometryCaptures,
+          draftDirectory: this.#draftAssetDirectory,
+          canonicalDirectory: this.#canonicalAssetDirectory,
+        });
       }
 
       // Step 13: build thread extension + validate.
@@ -796,6 +801,72 @@ async function verifyDraftAsset(
   }
 }
 
+async function promoteAssetNamedByCapture(options: {
+  captureFp: ContentFingerprint;
+  assetFingerprint: ContentFingerprint;
+  name: string;
+  extension: string;
+  geometryCaptures: GeometryCaptureStore;
+  draftDirectory: string;
+  canonicalDirectory: string;
+}): Promise<void> {
+  const captureText = await options.geometryCaptures.read(options.captureFp);
+  if (!captureText) {
+    throw new GeometryAssetVerificationError(
+      "asset_not_found",
+      { expectedDigest: options.captureFp.digest },
+      "Canonical geometry capture disappeared before binary promotion.",
+    );
+  }
+  const capture = JSON.parse(captureText) as {
+    manifest?: GeometryManifest;
+  };
+  const observedCaptureFp = await sha256Fingerprint(capture);
+  if (!fingerprintsEqual(observedCaptureFp, options.captureFp)) {
+    throw new GeometryAssetVerificationError(
+      "sha256_mismatch",
+      {
+        expected: options.captureFp.digest,
+        actual: observedCaptureFp.digest,
+      },
+      "Canonical geometry capture changed before binary promotion.",
+    );
+  }
+  const namedFingerprints = [
+    ...(capture.manifest?.artifactHashes?.assemblyFiles ?? []).map((file) =>
+      file.fingerprint
+    ),
+    ...(capture.manifest?.artifactHashes?.partMeshes ?? []).map((mesh) =>
+      mesh.fingerprint
+    ),
+  ];
+  if (
+    !namedFingerprints.some((fingerprint) =>
+      fingerprintsEqual(fingerprint, options.assetFingerprint)
+    )
+  ) {
+    throw new GeometryAssetVerificationError(
+      "sha256_mismatch",
+      {
+        captureDigest: options.captureFp.digest,
+        assetDigest: options.assetFingerprint.digest,
+      },
+      `Canonical geometry capture does not name ${options.name}.`,
+    );
+  }
+  await verifyDraftAsset(
+    options.assetFingerprint.digest,
+    options.name,
+    options.draftDirectory,
+  );
+  await promoteDraftAsset(
+    options.assetFingerprint.digest,
+    options.extension,
+    options.draftDirectory,
+    options.canonicalDirectory,
+  );
+}
+
 /**
  * Copy verified draft bytes into the canonical content-addressed store.
  * The destination is written through a temporary file because a crash must
@@ -1007,7 +1078,7 @@ function buildExtension(options: {
           from: { kind: "consumption" as const, id: binaryConsumption.id },
           to: { kind: "artifact" as const, id: artifactId },
           rationale:
-            "The binary publication verified the exact sealed geometry capture fingerprint.",
+            "The binary publication reloaded the sealed geometry capture, verified its exact fingerprint, then verified and promoted the binary hash named by that capture.",
         }];
       }),
     ],
