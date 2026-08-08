@@ -90,6 +90,12 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
 } from "./src/adapters/executors/design-write-geometry-run-executor.ts";
+import {
+  MODEL_WRITE_REQUIREMENTS_OPERATION,
+  ModelWriteRequirementsRunExecutor,
+} from "./src/adapters/executors/model-write-requirements-run-executor.ts";
+import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
+import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/captures/file-capture-store.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
@@ -237,6 +243,8 @@ const DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY = "state/local/architecture-capture
 const DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY = "state/local/architecture-attempts";
 const DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY = "state/local/geometry-draft-captures";
 const DEFAULT_GEOMETRY_CAPTURE_DIRECTORY = "state/local/geometry-captures";
+const DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY = "state/local/requirements-captures";
+const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempts";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -351,6 +359,10 @@ export interface CreateConsoleServerOptions {
   architectureCaptureDirectory?: string;
   /** Generic model.write-architecture@1 WAL attempt directory. */
   architectureAttemptDirectory?: string;
+  /** Generic model.write-requirements@1 capture store directory. */
+  requirementsCaptureDirectory?: string;
+  /** Generic model.write-requirements@1 WAL attempt directory. */
+  requirementsAttemptDirectory?: string;
   cm01ArchitectureCaptureDirectory?: string;
   cm01ArchitectureAttemptDirectory?: string;
   inspectionDroneV4ArchitectureCaptureDirectory?: string;
@@ -622,6 +634,30 @@ async function createProjectControl(
     lease,
     now: () => new Date().toISOString(),
   });
+  const genericModelWriteRequirements = sysonMcpUrl
+    ? new ModelWriteRequirementsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      seedCaptures: sysonModelSeedCaptures,
+      architectureCaptures: new FileCaptureStore({
+        ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.architectureCaptureDirectory ??
+          DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      captures: new FileCaptureStore({
+        ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
+        directory: options.requirementsCaptureDirectory ??
+          DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
+      }),
+      attempts: new FileRequirementsAttemptStore(
+        options.requirementsAttemptDirectory ?? DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   const cm01Architecture = sysonMcpUrl
     ? new CoffeeMachineCm01V3ArchitectureRunExecutor({
       projects: runtime.projects,
@@ -1190,6 +1226,13 @@ async function createProjectControl(
           {
             operation: DESIGN_WRITE_GEOMETRY_OPERATION,
             executor: genericDesignWriteGeometry,
+          },
+          {
+            operation: MODEL_WRITE_REQUIREMENTS_OPERATION,
+            executor: genericModelWriteRequirements,
+            unavailableMessage:
+              "The server has no trusted generic model.write-requirements@1 executor " +
+              "configured for this run (SysON provider is required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,

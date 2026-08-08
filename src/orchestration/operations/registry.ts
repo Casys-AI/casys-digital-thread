@@ -12,6 +12,7 @@ import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
 } from "../../domain/platform/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 
@@ -216,6 +217,43 @@ const OPERATIONS = [
    * presents the resulting CorrectionProposal as an EngineeringDecisionProposal
    * for human MRTR consent.  No provider I/O is dispatched at this stage.
    */
+  /**
+   * Generic requirements authoring — inserts the reviewed SysML PartDef from
+   * an MRTR-approved decision into an existing SysON model container. The
+   * server derives the PartDef name from the containerComponent, renders all
+   * SysML, and verifies by re-extraction. No SysML text or requirement value
+   * is supplied by the agent.
+   *
+   * WHAT THE HUMAN ACTUALLY SIGNS — the canonical decision fingerprint over
+   * {baseSnapshot, inputEvidenceRefs, proposal}, computed by the command
+   * service and by it alone. There is no separate "envelope" fingerprint to
+   * sign, and no tool could produce one: the resolved target (usageName,
+   * elementId), the architecture basis and the server-derived partDefName are
+   * DERIVED deterministically from those signed inputs. The executor proves
+   * both halves before any SysON write — that the decision carries the
+   * service's own fingerprint, and that its derivation matches — so the
+   * signature commits the exact target and architecture without ever asking a
+   * human to sign a value no interface can show them.
+   */
+  {
+    id: MODEL_WRITE_REQUIREMENTS_OPERATION.id,
+    version: MODEL_WRITE_REQUIREMENTS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Author reviewed requirements in the system model",
+    description:
+      "Insert the human-approved SysML requirements PartDef into the existing SysON " +
+      "model container, anchor each metric as a SysML attribute with its unit, and " +
+      "verify the full set by re-extraction. The exact PartDef name is server-derived " +
+      "from the approved containerComponent; no SysML text is supplied by the agent.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
   {
     id: "design.apply-vector-correction",
     version: "1",

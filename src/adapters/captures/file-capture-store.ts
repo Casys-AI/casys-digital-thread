@@ -372,6 +372,26 @@ export const GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Geometry draft",
 };
 
+/**
+ * Generic requirements capture store for `model.write-requirements@1`.
+ *
+ * Distinct from the CM-01 oracle-requirements store: this store serves the
+ * generic operation and uses a plain `requirements-capture` URI namespace.
+ * The CM-01 oracle requirements store uses `oracle-requirements-seed-capture`;
+ * the two are structurally incompatible at compile time through the `Kind`
+ * parameter.
+ */
+export const REQUIREMENTS_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "requirements-capture"
+> = {
+  kind: "requirements-capture",
+  directory: "state/local/requirements-captures",
+  uriNamespace: "requirements-capture",
+  label: "Requirements",
+};
+
+export const REQUIREMENTS_CAPTURE_URI_PREFIX = "casys://requirements-capture/" as const;
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {
