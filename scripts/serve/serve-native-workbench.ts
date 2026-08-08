@@ -497,7 +497,11 @@ function isAwaitingProviderDurableProjectAttachment(
   status: EngineeringProjectSnapshot["agentRuns"][number]["status"],
 ): boolean {
   return status === "queued" || status === "running" ||
-    status === "waiting-for-decision" || status === "publishing";
+    status === "waiting-for-decision" || status === "publishing" ||
+    // Defensive legacy/recovery guard: older executors could mark a run
+    // failed after save(snapshot) succeeded but before readback. A failed
+    // provider-durable operation never authorizes an unattached descendant.
+    status === "failed";
 }
 
 function workbenchDataSource(projection: EngineeringWorkbenchSnapshot): string {

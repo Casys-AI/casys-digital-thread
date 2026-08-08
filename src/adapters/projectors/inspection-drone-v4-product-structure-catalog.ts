@@ -3,6 +3,7 @@ import type {
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
@@ -10,6 +11,7 @@ import {
 import {
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX,
+  parseInspectionDroneV4ArchitectureCapture,
 } from "../executors/inspection-drone-v4-part-definitions-run-executor.ts";
 
 export const INSPECTION_DRONE_V4_SUBJECT_ID = "project:inspection-drone-v4" as const;
@@ -36,7 +38,8 @@ export async function resolveInspectionDroneV4ProductStructureCatalog(
   const matches = snapshot.artifacts.filter((artifact) =>
     !archived.has(`artifact:${artifact.id}`) &&
     artifact.kind === "sysml-model" &&
-    artifact.id.startsWith("inspection-drone-v4-part-definitions-") &&
+    artifact.id ===
+      `inspection-drone-v4-part-definitions-${artifact.fingerprint.digest}` &&
     artifact.uri?.startsWith(INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX) &&
     artifact.uri ===
       `${INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX}${artifact.fingerprint.digest}`
@@ -265,7 +268,8 @@ function parseBundle(
     architecture.uri !== architectureArtifact.uri ||
     !artifact.inputArtifactIds || artifact.inputArtifactIds.length !== 1 ||
     artifact.inputArtifactIds[0] !== architectureArtifact.id ||
-    !artifact.id.endsWith(artifact.fingerprint.digest) ||
+    artifact.id !==
+      `inspection-drone-v4-part-definitions-${artifact.fingerprint.digest}` ||
     artifact.version !== artifact.fingerprint.digest ||
     typeof recipe.textSha256 !== "string" ||
     recipe.textSha256 !==
@@ -276,6 +280,10 @@ function parseBundle(
     );
   }
   const source = JSON.parse(architectureText) as Record<string, unknown>;
+  const parsedArchitecture = parseInspectionDroneV4ArchitectureCapture(
+    architectureText,
+    architectureArtifact,
+  );
   const sourceRecipe = closed(closed(source.recipe, ["textSha256"]).textSha256, [
     "algorithm",
     "digest",
@@ -340,6 +348,24 @@ function parseBundle(
       "The bundle does not expose the six reviewed PartDefinition identities in deterministic order.",
     );
   }
+  const architectureDefinitions = LABELS.map((label) => {
+    const definition = parsedArchitecture.declarationByLabel.get(label);
+    if (!definition) {
+      throw new Error("The r3 architecture lost a reviewed PartDefinition.");
+    }
+    return definition;
+  });
+  if (
+    definitions.some((definition, index) =>
+      definition.id !== architectureDefinitions[index]!.id ||
+      definition.label !== architectureDefinitions[index]!.label ||
+      definition.kind !== architectureDefinitions[index]!.kind
+    )
+  ) {
+    throw new Error(
+      "The PartDefinitions bundle identities diverge from the exact r3 architecture.",
+    );
+  }
   if (!Array.isArray(architecture.rootUsageTypes)) {
     throw new Error("The bundle has no exact PartUsage type bindings.");
   }
@@ -362,6 +388,17 @@ function parseBundle(
   ) {
     throw new Error(
       "The InspectionDrone root no longer has five direct usage anchors.",
+    );
+  }
+  const expectedUsageTypes = parsedArchitecture.rootUsages.map((item) => ({
+    usageId: item.usage.id,
+    typeId: item.type.id,
+  }));
+  if (
+    deterministicJson(rootUsageTypes) !== deterministicJson(expectedUsageTypes)
+  ) {
+    throw new Error(
+      "The PartDefinitions bundle PartUsage type pairs diverge from the exact r3 architecture.",
     );
   }
   if (

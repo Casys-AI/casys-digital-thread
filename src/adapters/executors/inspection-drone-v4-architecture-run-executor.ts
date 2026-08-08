@@ -326,6 +326,10 @@ export class InspectionDroneV4ArchitectureRunExecutor {
         );
       }
       await this.dependencies.snapshots.save(materialized.snapshot);
+      // A successful save is the durability boundary.  If its following
+      // readback is unavailable, preserve the running journal for recovery;
+      // do not manufacture a failed result next to an unattached r3/r4.
+      persisted = true;
       const snapshotReadback = await this.dependencies.snapshots.get(
         materialized.snapshot.id,
       );
@@ -337,7 +341,6 @@ export class InspectionDroneV4ArchitectureRunExecutor {
           "The persisted inspection-drone architecture snapshot did not read back exactly.",
         );
       }
-      persisted = true;
 
       project = await this.requiredProject(command.projectId);
       run = requireRun(project, command.runId);

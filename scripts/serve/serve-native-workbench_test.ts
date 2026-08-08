@@ -78,7 +78,7 @@ Deno.test("native Workbench keeps a durable unattached drone architecture snapsh
     html: "unused",
   });
 
-  for (const status of ["queued", "running", "publishing"] as const) {
+  for (const status of ["queued", "running", "publishing", "failed"] as const) {
     projects.replace(droneArchitectureProject(status, r2, r3));
     assertEquals(await previewThreadId(handler), r2.id);
   }
@@ -180,7 +180,7 @@ function projectFixture(
 }
 
 function droneArchitectureProject(
-  status: "queued" | "running" | "publishing" | "completed",
+  status: "queued" | "running" | "publishing" | "failed" | "completed",
   r2: ThreadSnapshot,
   r3: ThreadSnapshot,
 ): EngineeringProjectSnapshot {
@@ -253,6 +253,15 @@ function droneArchitectureProject(
           completedAt: "2026-08-08T04:47:00.000Z",
           resultSnapshot: reference(r3),
           evidenceRefs: [evidence],
+        }
+        : status === "failed"
+        ? {
+          completedAt: "2026-08-08T04:47:00.000Z",
+          failure: {
+            code: "readback-unavailable",
+            message: "r3 durable but unattached",
+          },
+          evidenceRefs: [],
         }
         : { evidenceRefs: [] }),
     }],

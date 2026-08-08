@@ -33,6 +33,7 @@ import {
 import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
+import type { FileInspectionDroneV4PartDefinitionsPublicationStore } from "../wal/file-inspection-drone-v4-part-definitions-publication-store.ts";
 import {
   requireBasis,
   requiredStart,
@@ -114,6 +115,7 @@ export interface InspectionDroneV4PartDefinitionsRunExecutorDependencies {
   readonly captures: FileCaptureStore<"inspection-drone-v4-part-definitions">;
   readonly syson: McpToolClient;
   readonly lease: EngineeringProjectRunLease;
+  readonly publications: FileInspectionDroneV4PartDefinitionsPublicationStore;
 }
 
 /**
@@ -138,10 +140,23 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
     shape(initial, requireRun(initial, command.runId));
     return await this.d.lease.withLease(command.projectId, command.runId, async () => {
       let claimed = false;
+      // Once save(r4) returned, failure to read it back is an outcome-unknown
+      // durability boundary: leave the run active for exact recovery rather
+      // than falsely recording a failed run beside an unattached r4.
+      let persisted = false;
       try {
         let project = await this.project(command.projectId);
         let run = requireRun(project, command.runId);
         if (run.status === "completed") return complete(project, command);
+        if (run.status === "publishing" || run.status === "running") {
+          const durable = await this.d.publications.read(project.project.id, run.id);
+          if (durable) {
+            return await this.resumePublication(origin, command, project, run);
+          }
+        }
+        if (run.status === "publishing") {
+          return await this.resumePublication(origin, command, project, run);
+        }
         await this.inputs(project, run);
         await this.d.commands.claimRun(origin, {
           ...command,
@@ -209,6 +224,14 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
           input.architecture.package.id,
         );
         await this.d.snapshots.save(snapshot);
+        persisted = true;
+        await this.d.publications.save({
+          schemaVersion: "inspection-drone-v4-part-definitions-publication/1.0",
+          projectId: command.projectId,
+          runId: run.id,
+          fingerprint,
+          snapshot,
+        });
         const readback = await this.d.snapshots.get(snapshot.id);
         if (!readback || deterministicJson(readback) !== deterministicJson(snapshot)) {
           throw new Error(
@@ -241,10 +264,70 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
         }
         return complete(await this.project(command.projectId), command);
       } catch (error) {
-        if (claimed) await this.fail(origin, command);
+        if (claimed && !persisted) await this.fail(origin, command);
         throw error;
       }
     });
+  }
+
+  private async resumePublication(
+    origin: EngineeringProjectCommandOrigin,
+    command: InspectionDroneV4PartDefinitionsRunExecutorCommand,
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<EngineeringProjectSnapshot> {
+    shape(project, run);
+    const publication = await this.d.publications.read(project.project.id, run.id);
+    if (!publication) {
+      throw denied(
+        "The publishing PartDefinitions run has no durable exact publication record; it will not re-query SysON.",
+      );
+    }
+    const capture = await this.d.captures.read(publication.fingerprint);
+    const persisted = await this.d.snapshots.get(publication.snapshot.id);
+    if (
+      !capture || !persisted ||
+      deterministicJson(persisted) !== deterministicJson(publication.snapshot)
+    ) {
+      throw denied(
+        "The publishing PartDefinitions run has no exact durable capture and snapshot pair; it will not re-query SysON.",
+      );
+    }
+    const artifact = one(
+      publication.snapshot.artifacts.filter((candidate) =>
+        candidate.id ===
+          `inspection-drone-v4-part-definitions-${publication.fingerprint.digest}` &&
+        deterministicJson(candidate.fingerprint) ===
+          deterministicJson(publication.fingerprint)
+      ),
+      "durable PartDefinitions artifact",
+    );
+    if (run.status === "running") {
+      await this.d.commands.publishRun(origin, {
+        ...command,
+        commandId: step(command.commandId, "publish"),
+        expectedRevision: project.revision,
+        summary: "Publishing the verified inspection-drone PartDefinitions capture.",
+      });
+      project = await this.project(command.projectId);
+      run = requireRun(project, command.runId);
+    }
+    if (run.status !== "publishing") throw unexpectedStatus(run, "publishing");
+    await this.d.commands.completeRun(origin, {
+      ...command,
+      commandId: step(command.commandId, "complete"),
+      expectedRevision: project.revision,
+      summary:
+        "Recorded the exact inspection-drone PartDefinitions product-structure capture.",
+      resultSnapshot: snapshotRef(publication.snapshot),
+      evidenceRefs: [{
+        snapshotId: publication.snapshot.id,
+        snapshotRevision: publication.snapshot.revision,
+        kind: "artifact",
+        id: artifact.id,
+      }],
+    });
+    return complete(await this.project(command.projectId), command);
   }
 
   private async inputs(

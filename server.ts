@@ -73,6 +73,7 @@ import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/executors/appro
 import { SysonModelSeedRunExecutor } from "./src/adapters/executors/syson-model-seed-run-executor.ts";
 import { InspectionDroneV4ArchitectureRunExecutor } from "./src/adapters/executors/inspection-drone-v4-architecture-run-executor.ts";
 import { InspectionDroneV4PartDefinitionsRunExecutor } from "./src/adapters/executors/inspection-drone-v4-part-definitions-run-executor.ts";
+import { FileInspectionDroneV4PartDefinitionsPublicationStore } from "./src/adapters/wal/file-inspection-drone-v4-part-definitions-publication-store.ts";
 import {
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
@@ -606,6 +607,7 @@ async function createProjectControl(
       }),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
+      publications: new FileInspectionDroneV4PartDefinitionsPublicationStore(),
     })
     : undefined;
   const cm01OracleRequirementsCaptures = new FileCaptureStore({
