@@ -3,6 +3,7 @@ import type {
   ContentFingerprint,
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 
 /**
  * Durable hand-off between evidence persistence and the project `publishing`
@@ -36,6 +37,7 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
       } finally {
         file.close();
       }
+      await syncDirectoryChain(this.directory);
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
       if (await Deno.readTextFile(path) !== text) {
@@ -98,4 +100,31 @@ function validate(
     typeof (record.fingerprint as Record<string, unknown>).digest !== "string" ||
     !record.snapshot || typeof record.snapshot !== "object"
   ) throw new Error("Inspection-drone PartDefinitions publication fields are invalid.");
+  if (
+    !/^[a-f0-9]{64}$/.test(
+      (record.fingerprint as Record<string, unknown>).digest as string,
+    )
+  ) {
+    throw new Error(
+      "Inspection-drone PartDefinitions publication fingerprint is invalid.",
+    );
+  }
+  validateThreadSnapshot(record.snapshot as ThreadSnapshot);
+}
+
+/** Persist the directory entry as well as the publication bytes. */
+async function syncDirectoryChain(path: string): Promise<void> {
+  let current = path.replace(/\/+$/, "") || ".";
+  while (current !== "/") {
+    const directory = await Deno.open(current, { read: true });
+    try {
+      await directory.sync();
+    } finally {
+      directory.close();
+    }
+    if (current === "state" || current.endsWith("/state")) return;
+    const parent = current.lastIndexOf("/");
+    current = parent < 0 ? "." : parent === 0 ? "/" : current.slice(0, parent);
+    if (current === ".") return;
+  }
 }
