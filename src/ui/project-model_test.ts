@@ -493,6 +493,50 @@ Deno.test("browser project contract accepts a V3 run anchored to its declared th
   assertEquals(isEngineeringProjectSnapshot(forged), false);
 });
 
+Deno.test("browser project contract accepts only exact human queued-run cancellations", () => {
+  const valid = v3CancelledQueuedRunEnvelope();
+  assertEquals(isEngineeringProjectSnapshot(valid), true);
+
+  const missingCancellation = structuredClone(valid) as Record<string, unknown>;
+  delete (missingCancellation.agentRuns as Array<Record<string, unknown>>)[0]!
+    .cancellation;
+  assertEquals(isEngineeringProjectSnapshot(missingCancellation), false);
+
+  const agentCancellation = structuredClone(valid) as Record<string, unknown>;
+  (((agentCancellation.agentRuns as Array<Record<string, unknown>>)[0]!
+    .cancellation as Record<string, unknown>).cancelledBy as Record<string, unknown>)
+    .origin = "agent";
+  assertEquals(isEngineeringProjectSnapshot(agentCancellation), false);
+
+  const extraCancellationField = structuredClone(valid) as Record<string, unknown>;
+  (extraCancellationField.agentRuns as Array<Record<string, unknown>>)[0]!
+    .cancellation = {
+      ...((extraCancellationField.agentRuns as Array<Record<string, unknown>>)[0]!
+        .cancellation as Record<string, unknown>),
+      synthetic: true,
+    };
+  assertEquals(isEngineeringProjectSnapshot(extraCancellationField), false);
+
+  const extraTransition = structuredClone(valid) as Record<string, unknown>;
+  (extraTransition.agentRuns as Array<Record<string, unknown>>)[0]!.statusHistory = [
+    ...(extraTransition.agentRuns as Array<Record<string, unknown>>)[0]!
+      .statusHistory as unknown[],
+    {
+      commandId: "forged-running-after-cancellation",
+      status: "running",
+      at: "2026-08-02T12:00:02.000Z",
+      actor: { id: "engineering-agent", origin: "agent" },
+      summary: "Forged execution after cancellation.",
+    },
+  ];
+  assertEquals(isEngineeringProjectSnapshot(extraTransition), false);
+
+  const cancellationOnQueuedRun = structuredClone(valid) as Record<string, unknown>;
+  (cancellationOnQueuedRun.agentRuns as Array<Record<string, unknown>>)[0]!
+    .status = "queued";
+  assertEquals(isEngineeringProjectSnapshot(cancellationOnQueuedRun), false);
+});
+
 Deno.test("project brief keeps a rejected decision actionable", () => {
   const rejected = {
     ...structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE),
@@ -583,6 +627,44 @@ function v3DocumentaryProjectEnvelope(): Record<string, unknown> {
     },
     evidenceRefs: [],
     resultSnapshot: snapshot,
+  }];
+  return project;
+}
+
+function v3CancelledQueuedRunEnvelope(): Record<string, unknown> {
+  const project = v3PlanningProjectEnvelope();
+  const queuedAt = "2026-08-02T12:00:00.000Z";
+  const cancelledAt = "2026-08-02T12:00:01.000Z";
+  project.agentRuns = [{
+    id: "run-approved-brief-cancelled-before-start",
+    workItemId: "work-define",
+    status: "cancelled",
+    summary: "Cancelled before agent claim: the reviewed queue entry was retired.",
+    queuedAt,
+    basis: (project.plan as Record<string, unknown>).basis,
+    inputFingerprint: {
+      algorithm: "sha256",
+      digest: "c".repeat(64),
+    },
+    evidenceRefs: [],
+    cancellation: {
+      rationale: "The reviewed queue entry was retired before any worker claim.",
+      cancelledAt,
+      cancelledBy: { id: "human:owner", origin: "human" },
+    },
+    statusHistory: [{
+      commandId: "queue-approved-brief-before-cancellation",
+      status: "queued",
+      at: queuedAt,
+      actor: { id: "engineering-agent", origin: "agent" },
+      summary: "Queue the approved brief baseline.",
+    }, {
+      commandId: "human-cancel-approved-brief-queue",
+      status: "cancelled",
+      at: cancelledAt,
+      actor: { id: "human:owner", origin: "human" },
+      summary: "Cancelled before agent claim: the reviewed queue entry was retired.",
+    }],
   }];
   return project;
 }

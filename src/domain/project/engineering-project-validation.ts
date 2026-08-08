@@ -3038,7 +3038,22 @@ function validateRunInvariant(
         "a cancelled queued run cannot contain execution, result, failure or evidence fields",
       );
     }
-    const finalTransition = run.statusHistory?.at(-1);
+    const history = run.statusHistory;
+    const queuedTransition = history?.[0];
+    const finalTransition = history?.at(-1);
+    if (
+      !history || history.length !== 2 || queuedTransition?.status !== "queued" ||
+      Date.parse(queuedTransition.at) !== Date.parse(run.queuedAt) ||
+      finalTransition?.status !== "cancelled" ||
+      Date.parse(queuedTransition.at) > Date.parse(finalTransition.at)
+    ) {
+      issue(
+        issues,
+        "invalid_run_history",
+        `${path}.statusHistory`,
+        "a cancelled queued run must contain exactly its initial queued transition at queuedAt and its final cancelled transition",
+      );
+    }
     if (
       run.cancellation &&
       (!finalTransition || finalTransition.status !== "cancelled" ||
@@ -3072,17 +3087,6 @@ function validateRunInvariant(
         "missing_cancellation_receipt",
         `${path}.cancellation`,
         "must be anchored by its exact human agent-run.cancel receipt",
-      );
-    }
-    const workItem = workById.get(run.workItemId);
-    if (
-      workItem && workItem.status !== idleStatusForCancelledQueuedRun(project, workItem)
-    ) {
-      issue(
-        issues,
-        "invalid_run_lifecycle",
-        `${path}.workItemId`,
-        "a cancelled queued run must return its work item to the derived idle status",
       );
     }
   } else if (run.cancellation) {
@@ -3140,29 +3144,6 @@ function validateRunInvariant(
   }
   chronological(run.queuedAt, run.startedAt, `${path}.startedAt`, issues);
   chronological(run.startedAt, run.completedAt, `${path}.completedAt`, issues);
-}
-
-function idleStatusForCancelledQueuedRun(
-  project: EngineeringProjectSnapshot,
-  workItem: EngineeringWorkItem,
-): "planned" | "ready" | "waiting-for-decision" {
-  const decisionsApproved = workItem.decisionIds.every((id) =>
-    project.decisions.find((decision) => decision.id === id)?.status === "approved"
-  );
-  const blockersResolved = workItem.blockerIds.every((id) =>
-    project.blockers.find((blocker) => blocker.id === id)?.status === "resolved"
-  );
-  const dependenciesCompleted = workItem.dependsOnWorkItemIds.every((id) =>
-    project.workItems.find((item) => item.id === id)?.status === "completed"
-  );
-  if (decisionsApproved && blockersResolved && dependenciesCompleted) return "ready";
-  if (
-    workItem.decisionIds.some((id) => {
-      const status = project.decisions.find((decision) => decision.id === id)?.status;
-      return status === "required" || status === "proposed" || status === "rejected";
-    })
-  ) return "waiting-for-decision";
-  return "planned";
 }
 
 function validateDecisionInvariant(

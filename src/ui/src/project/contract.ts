@@ -82,6 +82,7 @@ export function isEngineeringProjectSnapshot(
       (item.resultSnapshot === undefined ||
         isThreadSnapshotRef(item.resultSnapshot)) &&
       (item.failure === undefined || isAgentRunFailure(item.failure)) &&
+      hasValidAgentRunCancellation(item) &&
       (item.statusHistory === undefined ||
         isArrayOf(item.statusHistory, isAgentRunTransition)),
   );
@@ -569,6 +570,101 @@ function isPublicPretechnicalAgentRun(value: Record<string, unknown>): boolean {
 function isAgentRunFailure(value: unknown): boolean {
   return isRecord(value) && hasExactKeys(value, ["code", "message"]) &&
     typeof value.code === "string" && typeof value.message === "string";
+}
+
+/**
+ * A queued-run cancellation is durable human audit state, not a generic
+ * terminal label. Keep this precise at the browser boundary so a projection
+ * cannot make an executed or agent-authored run look cancelled-before-start.
+ */
+function hasValidAgentRunCancellation(value: Record<string, unknown>): boolean {
+  if (value.status !== "cancelled") return value.cancellation === undefined;
+  if (
+    !isQueuedRunCancellation(value.cancellation) ||
+    !isIsoDateTime(value.queuedAt) ||
+    value.startedAt !== undefined || value.completedAt !== undefined ||
+    value.claimedAt !== undefined || value.claimedBy !== undefined ||
+    value.waitingForDecisionIds !== undefined ||
+    value.resultSnapshot !== undefined ||
+    value.failure !== undefined ||
+    !Array.isArray(value.evidenceRefs) || value.evidenceRefs.length !== 0 ||
+    !Array.isArray(value.statusHistory) || value.statusHistory.length !== 2
+  ) {
+    return false;
+  }
+  const queued = value.statusHistory[0];
+  const cancelled = value.statusHistory[1];
+  if (
+    !isExactAgentRunTransition(queued) ||
+    !isExactAgentRunTransition(cancelled) ||
+    queued.status !== "queued" || queued.at !== value.queuedAt ||
+    cancelled.status !== "cancelled" ||
+    cancelled.at !== value.cancellation.cancelledAt ||
+    !sameCommandActor(cancelled.actor, value.cancellation.cancelledBy)
+  ) {
+    return false;
+  }
+  return Date.parse(queued.at) <= Date.parse(cancelled.at);
+}
+
+function isQueuedRunCancellation(
+  value: unknown,
+): value is {
+  rationale: string;
+  cancelledAt: string;
+  cancelledBy: { id: string; origin: "human" };
+} {
+  return isRecord(value) && hasExactKeys(value, [
+    "rationale",
+    "cancelledAt",
+    "cancelledBy",
+  ]) &&
+    isNonEmptyString(value.rationale) &&
+    isIsoDateTime(value.cancelledAt) &&
+    isExactHumanCommandActor(value.cancelledBy);
+}
+
+function isExactHumanCommandActor(
+  value: unknown,
+): value is { id: string; origin: "human" } {
+  return isExactCommandActor(value) && value.origin === "human";
+}
+
+function isExactCommandActor(
+  value: unknown,
+): value is { id: string; origin: "human" | "agent" } {
+  return isRecord(value) && hasExactKeys(value, ["id", "origin"]) &&
+    isNonEmptyString(value.id) &&
+    (value.origin === "human" || value.origin === "agent");
+}
+
+function isExactAgentRunTransition(
+  value: unknown,
+): value is {
+  commandId: string;
+  status: EngineeringAgentRunStatus;
+  at: string;
+  actor: { id: string; origin: "human" | "agent" };
+  summary: string;
+} {
+  return isRecord(value) && hasExactKeys(value, [
+    "commandId",
+    "status",
+    "at",
+    "actor",
+    "summary",
+  ]) &&
+    isNonEmptyString(value.commandId) &&
+    AGENT_RUN_STATUSES.includes(value.status as EngineeringAgentRunStatus) &&
+    isIsoDateTime(value.at) && isExactCommandActor(value.actor) &&
+    isNonEmptyString(value.summary);
+}
+
+function sameCommandActor(
+  left: { id: string; origin: "human" | "agent" },
+  right: { id: string; origin: "human" },
+): boolean {
+  return left.id === right.id && left.origin === right.origin;
 }
 
 function hasAllowedKeys(

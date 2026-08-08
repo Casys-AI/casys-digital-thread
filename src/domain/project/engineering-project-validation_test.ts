@@ -108,44 +108,91 @@ Deno.test("phase status cannot be duplicated as blocked work-item state", async 
   );
 });
 
-Deno.test("a cancelled run must retain human cancellation evidence instead of execution state", async () => {
-  const invalid = await projectJson();
-  const workItem = invalid.workItems.find((item) =>
+Deno.test("a cancelled run has exactly one queued transition and one human cancellation", async () => {
+  const exact = await projectJson();
+  const workItem = exact.workItems.find((item) =>
     item.id === "verify-current-mechanical-design"
   )!;
   workItem.status = "ready";
   workItem.decisionIds = [];
   workItem.blockerIds = [];
-  invalid.agentRuns = [{
-    id: "run:forged-cancellation",
+  const queuedAt = "2026-08-01T10:37:00.000Z";
+  const cancelledAt = "2026-08-01T10:37:01.000Z";
+  exact.agentRuns = [{
+    id: "run:queued-cancellation",
     workItemId: workItem.id,
     status: "cancelled",
-    summary: "Cancelled before agent claim: forged record.",
-    queuedAt: invalid.generatedAt,
-    baseSnapshot: structuredClone(invalid.threadSnapshots[0]),
+    summary: "Cancelled before agent claim: reviewed record.",
+    queuedAt,
+    baseSnapshot: structuredClone(exact.threadSnapshots[0]),
     inputFingerprint: fingerprint("a"),
     evidenceRefs: [],
     cancellation: {
-      rationale: "forged record",
-      cancelledAt: invalid.generatedAt,
-      cancelledBy: { id: "agent-forger", origin: "agent" },
+      rationale: "Reviewed record",
+      cancelledAt,
+      cancelledBy: { id: "human-reviewer", origin: "human" },
     },
     statusHistory: [{
-      commandId: "forged-cancel-command",
+      commandId: "queue-before-cancellation",
+      status: "queued",
+      at: queuedAt,
+      actor: { id: "agent-worker", origin: "agent" },
+      summary: "Queue reviewed work.",
+    }, {
+      commandId: "human-cancel-queued-run",
       status: "cancelled",
-      at: invalid.generatedAt,
-      actor: { id: "agent-forger", origin: "agent" },
-      summary: "Cancelled before agent claim: forged record.",
+      at: cancelledAt,
+      actor: { id: "human-reviewer", origin: "human" },
+      summary: "Cancelled before agent claim: reviewed record.",
     }],
   }];
 
-  const issues = collectEngineeringProjectIssues(invalid);
+  const exactIssues = collectEngineeringProjectIssues(exact);
   assertEquals(
-    issues.some((issue) => issue.code === "cancellation_origin_forbidden"),
+    exactIssues.some((issue) =>
+      issue.code === "invalid_run_history" &&
+      issue.path === "$.agentRuns[0].statusHistory"
+    ),
+    false,
+  );
+
+  const forgedOrigin = structuredClone(exact);
+  const forgedRun = forgedOrigin.agentRuns[0]!;
+  forgedRun.cancellation!.cancelledBy = { id: "agent-forger", origin: "agent" };
+  forgedRun.statusHistory![1]!.actor = { id: "agent-forger", origin: "agent" };
+  const forgedIssues = collectEngineeringProjectIssues(forgedOrigin);
+  assertEquals(
+    forgedIssues.some((issue) => issue.code === "cancellation_origin_forbidden"),
     true,
   );
   assertEquals(
-    issues.some((issue) => issue.code === "missing_cancellation_receipt"),
+    forgedIssues.some((issue) => issue.code === "missing_cancellation_receipt"),
+    true,
+  );
+
+  const queuedAfterCancellation = structuredClone(exact);
+  queuedAfterCancellation.agentRuns[0]!.queuedAt = "2026-08-01T10:37:02.000Z";
+  assertEquals(
+    collectEngineeringProjectIssues(queuedAfterCancellation).some((issue) =>
+      issue.code === "invalid_run_history" &&
+      issue.path === "$.agentRuns[0].statusHistory"
+    ),
+    true,
+  );
+
+  const extraTransition = structuredClone(exact);
+  extraTransition.agentRuns[0]!.statusHistory!.push({
+    commandId: "forged-running-transition",
+    status: "running",
+    at: "2026-08-01T10:37:02.000Z",
+    actor: { id: "agent-worker", origin: "agent" },
+    summary: "Forged execution after cancellation.",
+  });
+  assertEquals(
+    collectEngineeringProjectIssues(extraTransition).some((issue) =>
+      issue.code === "invalid_run_history" &&
+      issue.path === "$.agentRuns[0].statusHistory"
+    ),
     true,
   );
 });

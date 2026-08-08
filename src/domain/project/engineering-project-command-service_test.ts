@@ -412,6 +412,66 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
   );
 });
 
+Deno.test("a cancelled queued run remains valid history after a completed retry", async () => {
+  const store = await memoryStore();
+  const validator = new RecordingEvidenceValidator();
+  const service = serviceFor(store, validator);
+  let project = await approveAll(service, store);
+  project = await service.queueRun(AGENT, {
+    ...context("queue-before-human-cancellation", project.revision),
+    runId: "verify-run-cancelled-before-start",
+    workItemId: "verify-current-mechanical-design",
+    summary: "Queue the reviewed verification inputs.",
+    baseSnapshot: baseSnapshot(project),
+  });
+  project = await service.cancelQueuedRun(HUMAN, {
+    ...context("human-cancel-before-retry", project.revision),
+    runId: "verify-run-cancelled-before-start",
+    rationale: "The queue entry was retired before a worker claimed it.",
+  });
+
+  project = await service.queueRun(AGENT, {
+    ...context("queue-verification-retry", project.revision),
+    runId: "verify-run-retry-after-cancellation",
+    workItemId: "verify-current-mechanical-design",
+    summary: "Queue the replacement reviewed verification inputs.",
+    baseSnapshot: baseSnapshot(project),
+  });
+  project = await service.claimRun(AGENT, {
+    ...context("claim-verification-retry", project.revision),
+    runId: "verify-run-retry-after-cancellation",
+    summary: "Worker claimed the replacement verification.",
+  });
+  project = await service.publishRun(AGENT, {
+    ...context("publish-verification-retry", project.revision),
+    runId: "verify-run-retry-after-cancellation",
+    summary: "Publishing replacement verified outputs.",
+  });
+  project = await service.completeRun(AGENT, {
+    ...completionCommand(project),
+    commandId: "complete-verification-retry",
+    runId: "verify-run-retry-after-cancellation",
+    summary: "Replacement verification evidence published.",
+  });
+
+  assertEquals(
+    project.agentRuns.find((run) => run.id === "verify-run-cancelled-before-start")
+      ?.status,
+    "cancelled",
+  );
+  assertEquals(
+    project.agentRuns.find((run) => run.id === "verify-run-retry-after-cancellation")
+      ?.status,
+    "completed",
+  );
+  assertEquals(
+    findWorkItem(project, "verify-current-mechanical-design").status,
+    "completed",
+  );
+  assertEquals(validator.calls, 1);
+  validateEngineeringProjectSnapshot(project);
+});
+
 Deno.test("agent lifecycle completes only after publishing exact externally validated evidence", async () => {
   const store = await memoryStoreWithVerificationDependent();
   const validator = new RecordingEvidenceValidator();
