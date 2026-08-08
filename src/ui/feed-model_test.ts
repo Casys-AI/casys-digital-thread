@@ -3,6 +3,7 @@ import {
   activityFeedNodes,
   AMBIGUOUS_FEED_SCOPE,
   buildFeedComponentCounts,
+  buildFilterOptions,
   compactLineageCounters,
   filterFeedNodesByScope,
   isActivityEntryExpanded,
@@ -17,6 +18,7 @@ import {
 } from "./src/thread/evidence-exploration-model.ts";
 import type { EvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
 import type {
+  ThreadComponentCatalog,
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -624,11 +626,26 @@ Deno.test(
 );
 
 Deno.test(
-  "feed anchorage regression: ambiguous-evidence and unanchored-fact stay outside assembly counters and filters",
+  "Activity feed partitions assembly, ambiguous-evidence and unanchored-fact without loss or assembly fallback",
   () => {
-    const assemblyEvidence = artifact("assembly-evidence");
-    const ambiguousEvidence = artifact("ambiguous-evidence");
-    const unanchoredFact = artifact("unanchored-fact");
+    const assemblyEvidence = node(
+      "assembly-evidence",
+      "artifact",
+      "2026-08-01T08:00:00.000Z",
+      "solver-result",
+    );
+    const ambiguousEvidence = node(
+      "ambiguous-evidence",
+      "observation",
+      "2026-08-01T08:01:00.000Z",
+    );
+    const unanchoredFact = node(
+      "unanchored-fact",
+      "artifact",
+      "2026-08-01T08:02:00.000Z",
+      "solver-result",
+    );
+    const hiddenSupport = artifact("support-only");
     const anchorage: PartAnchorageResolution = {
       anchors: new Map([
         ["artifact:assembly-evidence", {
@@ -637,15 +654,25 @@ Deno.test(
         }],
       ]),
       ambiguousByRef: new Map([
-        ["artifact:ambiguous-evidence", [
+        ["observation:ambiguous-evidence", [
           "cm01-v3:drip-tray",
           "cm01-v3:enclosure",
         ]],
       ]),
       orphanRefKeys: new Set(["artifact:unanchored-fact"]),
     };
-    const nodes = [assemblyEvidence, ambiguousEvidence, unanchoredFact];
-    const counts = buildFeedComponentCounts(nodes, anchorage);
+    const activity = activityFeedNodes([
+      assemblyEvidence,
+      ambiguousEvidence,
+      unanchoredFact,
+      hiddenSupport,
+    ]);
+    assertEquals(
+      activity.map((node) => node.ref.id),
+      ["unanchored-fact", "ambiguous-evidence", "assembly-evidence"],
+      "the regression must exercise actual Activity cards, not invisible support artifacts",
+    );
+    const counts = buildFeedComponentCounts(activity, anchorage);
     assertEquals(
       counts.get("assembly"),
       1,
@@ -654,23 +681,55 @@ Deno.test(
     assertEquals(counts.get(AMBIGUOUS_FEED_SCOPE), 1);
     assertEquals(counts.get(ORPHAN_FEED_SCOPE), 1);
     assertEquals(
-      filterFeedNodesByScope(nodes, anchorage, "assembly").map((node) => node.ref.id),
+      filterFeedNodesByScope(activity, anchorage, "assembly").map((node) =>
+        node.ref.id
+      ),
       ["assembly-evidence"],
       "assembly filter must not acquire ambiguous or orphan evidence",
     );
     assertEquals(
-      filterFeedNodesByScope(nodes, anchorage, AMBIGUOUS_FEED_SCOPE).map((
+      filterFeedNodesByScope(activity, anchorage, AMBIGUOUS_FEED_SCOPE).map((
         node,
       ) => node.ref.id),
       ["ambiguous-evidence"],
       "ambiguous-evidence remains visible through its dedicated filter",
     );
     assertEquals(
-      filterFeedNodesByScope(nodes, anchorage, ORPHAN_FEED_SCOPE).map((node) =>
-        node.ref.id
-      ),
+      filterFeedNodesByScope(activity, anchorage, ORPHAN_FEED_SCOPE).map((
+        node,
+      ) => node.ref.id),
       ["unanchored-fact"],
       "unanchored-fact remains visible through its dedicated filter",
+    );
+    const scopes = [
+      "assembly",
+      AMBIGUOUS_FEED_SCOPE,
+      ORPHAN_FEED_SCOPE,
+    ] as const;
+    const partition = scopes.flatMap((scope) =>
+      filterFeedNodesByScope(activity, anchorage, scope).map((node) => node.ref.id)
+    );
+    assertEquals(
+      [...new Set(partition)].sort(),
+      activity.map((node) => node.ref.id).sort(),
+      "every Activity card belongs to exactly one scope",
+    );
+    assertEquals(
+      [...counts.values()].reduce((total, count) => total + count, 0),
+      activity.length,
+      "scope counters are an exhaustive Activity partition",
+    );
+    assertEquals(
+      buildFilterOptions(FEED_TEST_COMPONENTS, counts),
+      [
+        { id: "assembly", label: "Machine (assemblage) · 1" },
+        {
+          id: AMBIGUOUS_FEED_SCOPE,
+          label: "À rattacher — ambigu · 1",
+        },
+        { id: ORPHAN_FEED_SCOPE, label: "Non rattachés · 1" },
+      ],
+      "filter labels expose the exact non-anchored counts without inventing a part",
     );
   },
 );
@@ -728,3 +787,34 @@ function anchoredResolution(
     orphanRefKeys: new Set(),
   };
 }
+
+const FEED_TEST_COMPONENTS: ThreadComponentCatalog = {
+  schemaVersion: "thread-components/1.0",
+  authority: "workspace-declared",
+  subjectId: "feed-test",
+  rationale: "Test catalog for Activity feed anchorage scopes.",
+  systemViews: {},
+  components: [
+    {
+      id: "assembly-root",
+      label: "Machine",
+      kind: "assembly",
+      quantity: 1,
+      bindings: [],
+    },
+    {
+      id: "cm01-v3:drip-tray",
+      label: "Drip tray",
+      kind: "part",
+      quantity: 1,
+      bindings: [],
+    },
+    {
+      id: "cm01-v3:enclosure",
+      label: "Enclosure",
+      kind: "part",
+      quantity: 1,
+      bindings: [],
+    },
+  ],
+};

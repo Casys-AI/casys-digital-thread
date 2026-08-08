@@ -5,12 +5,11 @@ import { useMemo } from "preact/hooks";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
-  AMBIGUOUS_FEED_SCOPE,
   buildFeedComponentCounts,
+  buildFilterOptions,
   compactLineageCounters,
   filterFeedNodesByScope,
   isActivityEntryExpanded,
-  ORPHAN_FEED_SCOPE,
   refKey,
   traceThreadLineage,
 } from "./feed-model.ts";
@@ -328,12 +327,16 @@ export function ThreadFeed({
                             if (next?.kind === "edge") {
                               const edge = next.occurrence?.edge ??
                                 edges.find((item) => item.id === next.id);
-                              if (edge) onSelectEdge(edge);
+                              if (edge) {
+                                onSelectEdge(edge);
+                              }
                             } else if (next?.kind === "node") {
                               const selected = nodes.find((item) =>
                                 refKey(item.ref) === refKey(next.ref)
                               );
-                              if (selected) onSelectNode(selected, "lineage");
+                              if (selected) {
+                                onSelectNode(selected, "lineage");
+                              }
                             }
                           }}
                           onInspect={onInspect}
@@ -459,60 +462,6 @@ function kindLabel(node: ThreadGraphNode): string {
   return node.entityKind === "artifact" && node.artifactKind
     ? node.artifactKind
     : node.entityKind;
-}
-
-/**
- * Build the list of options for the component filter selector.
- *
- * Assembly first ("Tout l'assemblage"), then parts sorted by label.
- * When `counts` is provided, options are filtered to only those with at least
- * one attributed activity event (count > 0). The count is displayed in the
- * option label so the reviewer knows at a glance how many events exist per part.
- * Parts with zero events are not actionable filter targets and are omitted.
- */
-export function buildFilterOptions(
-  components: ThreadComponentCatalog,
-  counts?: ReadonlyMap<FeedScope, number>,
-): { id: FeedScope; label: string }[] {
-  const result: { id: FeedScope; label: string }[] = [];
-  const assembly = components.components.find((c) => c.kind === "assembly");
-  if (assembly) {
-    const count = counts?.get("assembly") ?? 0;
-    // Assembly means actual unique assembly anchorage only. It must not absorb
-    // missing or conflicting anchors.
-    if (!counts || count > 0) {
-      const suffix = counts ? ` · ${count}` : "";
-      result.push({
-        id: "assembly",
-        label: `${assembly.label} (assemblage)${suffix}`,
-      });
-    }
-  }
-  const parts = components.components
-    .filter((c) => c.kind !== "assembly")
-    .sort((a, b) => a.label.localeCompare(b.label));
-  for (const part of parts) {
-    const count = counts?.get(part.id) ?? 0;
-    // Only include parts with at least one attributed event in the feed.
-    if (counts && count === 0) continue;
-    const suffix = counts ? ` · ${count}` : "";
-    result.push({ id: part.id, label: `${part.label}${suffix}` });
-  }
-  const ambiguous = counts?.get(AMBIGUOUS_FEED_SCOPE) ?? 0;
-  if (!counts || ambiguous > 0) {
-    result.push({
-      id: AMBIGUOUS_FEED_SCOPE,
-      label: `À rattacher — ambigu${counts ? ` · ${ambiguous}` : ""}`,
-    });
-  }
-  const orphan = counts?.get(ORPHAN_FEED_SCOPE) ?? 0;
-  if (!counts || orphan > 0) {
-    result.push({
-      id: ORPHAN_FEED_SCOPE,
-      label: `Non rattachés${counts ? ` · ${orphan}` : ""}`,
-    });
-  }
-  return result;
 }
 
 function streamLabel(

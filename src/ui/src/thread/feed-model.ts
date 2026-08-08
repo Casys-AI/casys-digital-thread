@@ -4,6 +4,7 @@ import type {
   PartTarget,
 } from "./part-anchorage-model.ts";
 import type {
+  ThreadComponentCatalog,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
@@ -377,4 +378,55 @@ export function buildFeedComponentCounts(
     counts.set(scope, (counts.get(scope) ?? 0) + 1);
   }
   return counts;
+}
+
+/**
+ * Build the list of component and explicit non-anchored filter options.
+ *
+ * Assembly is present only for a real unique assembly anchor. Ambiguous and
+ * orphan evidence remain visible in their own audit scopes.
+ */
+export function buildFilterOptions(
+  components: ThreadComponentCatalog,
+  counts?: ReadonlyMap<FeedScope, number>,
+): { id: FeedScope; label: string }[] {
+  const result: { id: FeedScope; label: string }[] = [];
+  const assembly = components.components.find((component) =>
+    component.kind === "assembly"
+  );
+  if (assembly) {
+    const count = counts?.get("assembly") ?? 0;
+    if (!counts || count > 0) {
+      const suffix = counts ? ` · ${count}` : "";
+      result.push({
+        id: "assembly",
+        label: `${assembly.label} (assemblage)${suffix}`,
+      });
+    }
+  }
+  for (
+    const part of components.components
+      .filter((component) => component.kind !== "assembly")
+      .sort((left, right) => left.label.localeCompare(right.label))
+  ) {
+    const count = counts?.get(part.id) ?? 0;
+    if (counts && count === 0) continue;
+    const suffix = counts ? ` · ${count}` : "";
+    result.push({ id: part.id, label: `${part.label}${suffix}` });
+  }
+  const ambiguous = counts?.get(AMBIGUOUS_FEED_SCOPE) ?? 0;
+  if (!counts || ambiguous > 0) {
+    result.push({
+      id: AMBIGUOUS_FEED_SCOPE,
+      label: `À rattacher — ambigu${counts ? ` · ${ambiguous}` : ""}`,
+    });
+  }
+  const orphan = counts?.get(ORPHAN_FEED_SCOPE) ?? 0;
+  if (!counts || orphan > 0) {
+    result.push({
+      id: ORPHAN_FEED_SCOPE,
+      label: `Non rattachés${counts ? ` · ${orphan}` : ""}`,
+    });
+  }
+  return result;
 }
