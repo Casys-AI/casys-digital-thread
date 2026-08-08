@@ -136,7 +136,7 @@ function snapshotWithArchArtifact(captureFp: ContentFingerprint) {
       freshness: fresh(),
     }, {
       id: archId,
-      name: "SystemV1 architecture",
+      name: "Architecture: SystemV1",
       kind: "sysml-model",
       version: captureFp.digest,
       fingerprint: captureFp,
@@ -217,7 +217,7 @@ function architectureArtifact(
 ): ThreadArtifact {
   return {
     id: `architecture-${fingerprint.digest}`,
-    name: "Generic architecture",
+    name: "Architecture: SystemV1",
     kind: "sysml-model",
     version: fingerprint.digest,
     fingerprint,
@@ -445,6 +445,31 @@ Deno.test(
 );
 
 Deno.test(
+  "resolveGenericProductStructureCatalog returns unavailable when an architecture artifact name is tampered",
+  async () => {
+    const captureRecord = makeCaptureRecord();
+    const captureFp = await sha256Fingerprint(captureRecord);
+    const validSnapshot = snapshotWithArchArtifact(captureFp);
+    const snapshot = {
+      ...validSnapshot,
+      artifacts: validSnapshot.artifacts.map((artifact) =>
+        artifact.id === `architecture-${captureFp.digest}`
+          ? { ...artifact, name: "Architecture: tampered display name" }
+          : artifact
+      ),
+    };
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      makeReader(captureFp, captureRecord),
+    );
+
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+  },
+);
+
+Deno.test(
   "resolveGenericProductStructureCatalog returns unavailable when the capture is not readable",
   async () => {
     const captureRecord = makeCaptureRecord();
@@ -646,7 +671,7 @@ Deno.test(
       ...base,
       artifacts: [...base.artifacts, {
         id: secondId,
-        name: "Current architecture",
+        name: "Architecture: SystemV1",
         kind: "sysml-model" as const,
         version: secondFp.digest,
         fingerprint: secondFp,

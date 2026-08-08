@@ -292,6 +292,7 @@ function isExactArchitectureArtifact(
   capture: GenericArchitectureCapture,
 ): boolean {
   return artifact.id === `architecture-${artifact.fingerprint.digest}` &&
+    artifact.name === `Architecture: ${capture.packageName}` &&
     artifact.kind === "sysml-model" &&
     artifact.version === artifact.fingerprint.digest &&
     artifact.uri ===
