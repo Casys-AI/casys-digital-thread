@@ -148,6 +148,16 @@ architecture, CAD, physics, cost, compliance, or verified-requirement capabiliti
 need their own reviewed executor and output contract. CM-01 remains the sole current
 CAD/physics proof case.
 
+Its separate read-only product-structure successor,
+`model.capture-inspection-drone-part-definitions@1`, completed
+`run:queue-drone-v4-product-structure-20260808`. Project revision 23 now exposes r4,
+`project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`,
+from capture SHA-256 `7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`.
+The Workbench is aligned to this revision and its product catalog displays
+`InspectionDrone` plus five direct children, each with provider-attested quantity `1`.
+It is a recorded SysON product structure only: it establishes no CAD, physical analysis,
+cost, manufacturing, certification, compliance, or verdict.
+
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
 SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its
 captured SysON inventory has no mechanical `ConstraintUsage`, so no mechanical verdict

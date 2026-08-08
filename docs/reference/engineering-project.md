@@ -407,17 +407,25 @@ multi-instance operation. That deployment needs a shared, durable replay store w
 atomic consume semantics.
 
 The source dispatcher materializes two generic V3 operations, the reviewed
-`inspection-drone-v4` qualitative-architecture operation, and the fixed CM-01 catalog.
-`baseline.from-approved-brief@1` has no provider invocation and persists its canonical
-capture before publishing the cited root snapshot. `architecture.seed-syson-model@2`
-owns only the fixed SysON project/document/root-package sequence, closed capture,
-materializer, and result validator before publishing revision 2.
-`architecture.author-inspection-drone@3` is restricted to the exact
-`inspection-drone-v4` r2 basis and has published r3: five typed usages and four
-qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
-or verdict claims. The CM-01 catalog adds its own architecture, CAD, Modelica, ERP,
-correction, governed lineage retirement, PartDefinition, and mechanical
-capture/materializer contracts; see the
+`inspection-drone-v4` qualitative-architecture and product-structure operations, and the
+fixed CM-01 catalog. `baseline.from-approved-brief@1` has no provider invocation and
+persists its canonical capture before publishing the cited root snapshot.
+`architecture.seed-syson-model@2` owns only the fixed SysON
+project/document/root-package sequence, closed capture, materializer, and result
+validator before publishing revision 2. `architecture.author-inspection-drone@3` is
+restricted to the exact `inspection-drone-v4` r2 basis and has published r3: five typed
+usages and four qualitative requirements with explicit TBDs, without CAD, physics, cost,
+certification, or verdict claims. Its read-only successor,
+`model.capture-inspection-drone-part-definitions@1`, has completed
+`run:queue-drone-v4-product-structure-20260808` and published project revision 23's r4
+snapshot,
+`project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`.
+The SHA-256 capture `7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`
+records exactly six SysON `PartDefinition` elements: root `InspectionDrone` and five
+direct usages with provider-attested quantity `1`. This product-structure record remains
+neither CAD, physics, cost, manufacturing, certification, nor a verdict. The CM-01
+catalog adds its own architecture, CAD, Modelica, ERP, correction, governed lineage
+retirement, PartDefinition, and mechanical capture/materializer contracts; see the
 [CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). Neither MCP planning
 nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint, and no
 generic provider execution is available.
