@@ -38,22 +38,44 @@ function freshness() {
 
 /** Minimal snapshot carrying a generic architecture artifact. */
 async function snapshotWithGenericArch(): Promise<
-  { snapshot: ReturnType<typeof validateThreadSnapshot>; captureFp: ContentFingerprint }
+  {
+    snapshot: ReturnType<typeof validateThreadSnapshot>;
+    captureFp: ContentFingerprint;
+    captureRecord: Record<string, unknown>;
+  }
 > {
   const captureRecord = {
-    schemaVersion: "architecture-capture/1.0",
+    schemaVersion: "architecture-capture/2.0",
+    operation: { id: "model.write-architecture", version: "1" },
+    trustedRunId: "run:arch",
     packageName: "DroneV4",
     systemName: "DroneSystem",
-    packageId: "pkg-drone-001",
-    seedFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
-    declarations: [
-      { id: "sys-def-001", label: "DroneSystem" },
-      { id: "wing-def-001", label: "Wing" },
+    package: { id: "pkg-drone-001", label: "DroneV4" },
+    seed: {
+      artifactId: "seed-artifact",
+      fingerprint: fingerprint("a"),
+      producerRunId: "run:seed",
+    },
+    partDefinitions: [
+      {
+        id: "sys-def-001",
+        kind: "PartDefinition",
+        label: "DroneSystem",
+        usages: [{
+          id: "wing-use-001",
+          kind: "PartUsage",
+          label: "wing",
+          targetId: "wing-def-001",
+          targetKind: "PartDefinition",
+          targetLabel: "Wing",
+        }],
+      },
+      { id: "wing-def-001", kind: "PartDefinition", label: "Wing", usages: [] },
     ],
     insertedAt: AT,
   };
   const captureFp = await sha256Fingerprint(captureRecord);
-  const archId = `generic-arch-${captureFp.digest}`;
+  const archId = `architecture-${captureFp.digest}`;
   const uri = `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${captureFp.digest}`;
 
   const snapshot = validateThreadSnapshot({
@@ -66,7 +88,7 @@ async function snapshotWithGenericArch(): Promise<
       name: "Inspection Drone V4",
       kind: "system",
       version: captureFp.digest,
-      modelArtifactId: archId,
+      modelArtifactId: "seed-artifact",
     },
     freshness: freshness(),
     changeSet: {
@@ -84,6 +106,17 @@ async function snapshotWithGenericArch(): Promise<
       }],
     },
     artifacts: [{
+      id: "seed-artifact",
+      name: "Seed",
+      kind: "sysml-model",
+      version: "a".repeat(64),
+      fingerprint: fingerprint("a"),
+      uri: "casys://syson-model-seed-capture/sha256/" + "a".repeat(64),
+      mediaType: "application/json",
+      producer: { serverId: "syson", tool: "syson_model_create", runId: "run:seed" },
+      inputArtifactIds: [],
+      freshness: freshness(),
+    }, {
       id: archId,
       name: "DroneV4 architecture",
       kind: "sysml-model",
@@ -96,10 +129,21 @@ async function snapshotWithGenericArch(): Promise<
         tool: "syson_element_insert_sysml",
         runId: "run:arch",
       },
-      inputArtifactIds: [],
+      inputArtifactIds: ["seed-artifact"],
       freshness: freshness(),
     }],
-    consumptions: [],
+    consumptions: [{
+      id: "consume-seed",
+      artifactId: "seed-artifact",
+      consumer: {
+        serverId: "syson",
+        tool: "syson_element_insert_sysml",
+        runId: "run:arch",
+      },
+      observedFingerprint: fingerprint("a"),
+      verifiedAt: AT,
+      status: "verified",
+    }],
     observations: [],
     requirements: [],
     evaluations: [],
@@ -110,11 +154,23 @@ async function snapshotWithGenericArch(): Promise<
       from: { kind: "change", id: "change-r1" },
       to: { kind: "artifact", id: archId },
       rationale: "Change records the architecture artifact.",
+    }, {
+      id: "uses-seed",
+      relation: "uses",
+      from: { kind: "consumption", id: "consume-seed" },
+      to: { kind: "artifact", id: "seed-artifact" },
+      rationale: "Architecture uses exact seed.",
+    }, {
+      id: "derived-seed",
+      relation: "derived_from",
+      from: { kind: "artifact", id: archId },
+      to: { kind: "artifact", id: "seed-artifact" },
+      rationale: "Architecture derives from exact seed.",
     }],
     proposedActions: [],
   });
 
-  return { snapshot, captureFp };
+  return { snapshot, captureFp, captureRecord };
 }
 
 /** Minimal snapshot with no architecture artifact (seed-only). */
@@ -185,19 +241,8 @@ function snapshotWithoutArch(): ReturnType<typeof validateThreadSnapshot> {
 Deno.test(
   "resolveSnapshotComponentCatalog returns a generic catalog for a non-CM01 subject with architecture artifact",
   async () => {
-    const { snapshot, captureFp } = await snapshotWithGenericArch();
-    const captureText = deterministicJson({
-      schemaVersion: "architecture-capture/1.0",
-      packageName: "DroneV4",
-      systemName: "DroneSystem",
-      packageId: "pkg-drone-001",
-      seedFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
-      declarations: [
-        { id: "sys-def-001", label: "DroneSystem" },
-        { id: "wing-def-001", label: "Wing" },
-      ],
-      insertedAt: AT,
-    });
+    const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
+    const captureText = deterministicJson(captureRecord);
 
     // CM-01 readers are never called for a non-CM01 subject.
     const neverRead = {

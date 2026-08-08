@@ -658,6 +658,7 @@ export class ModelWriteArchitectureRunExecutor {
 
       const complete = await this.#requiredProject(command.projectId);
       assertCompleted(complete, command);
+      await this.#assertCompletedEvidenceExact(complete, command);
       await this.#reconcileLive(complete.project.subjectId, command.runId);
       return complete;
     } catch (error) {
@@ -671,6 +672,13 @@ export class ModelWriteArchitectureRunExecutor {
         );
       }
       if (error instanceof ArchitectureWriteOutcomeUnknownError) {
+        if (claimed) {
+          await this.#recordFailure(origin, command, {
+            code: "model-write-architecture-provider-outcome-unknown",
+            message:
+              "The provider outcome is unknown after a durable dispatch record; automatic redispatch is forbidden pending human reconciliation.",
+          }, true);
+        }
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "The SysON architecture insertion outcome is unknown. An operator must inspect " +
