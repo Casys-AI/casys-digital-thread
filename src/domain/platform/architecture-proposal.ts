@@ -389,13 +389,29 @@ export interface AdoptedItem {
   readonly existingPartDefId: string;
 }
 
-/** A named structural conflict that prevents automatic insertion. */
-export interface ArchitectureInsertionConflict {
-  /** A PartDef with this name exists but its usage is under a different parent. */
-  readonly code: "same-name-different-parent";
-  readonly componentName: string;
-  readonly message: string;
-}
+/**
+ * A named structural conflict that prevents automatic insertion.
+ *
+ * "same-name-different-parent" — the usage already exists under a different
+ *   parent. Insertion would create a duplicate usage name across parents, which
+ *   SysON does not allow without an explicit relocation step.
+ *
+ * "mistyped_usage" — the usage exists under the correct parent but its
+ *   FeatureTyping points to the wrong PartDef. Insertion cannot fix a typing;
+ *   that requires a separate model operation (rewrite of the FeatureTyping
+ *   relationship). Stop the plan and surface this for human review.
+ */
+export type ArchitectureInsertionConflict =
+  | {
+    readonly code: "same-name-different-parent";
+    readonly componentName: string;
+    readonly message: string;
+  }
+  | {
+    readonly code: "mistyped_usage";
+    readonly componentName: string;
+    readonly message: string;
+  };
 
 /**
  * One unit of work the executor must perform.
@@ -520,8 +536,31 @@ export function planArchitectureInsertion(
         adopted.push({ componentName: name, existingPartDefId: existingPartDef.id });
         continue;
       }
-      // Usage is missing (or mis-typed) under the correct parent.
-      // Check if usage exists under a DIFFERENT parent → conflict.
+      // Usage is missing or mis-typed under the correct parent. Diagnose in
+      // order of severity: mistyping beats a conflicting parent, which beats
+      // a simple absence.
+
+      // BLOQUANT B — a usage with the right name already exists under the
+      // correct parent but its FeatureTyping points to the wrong PartDef.
+      // Insertion cannot repair a FeatureTyping; it would create a second
+      // homonymous usage under the same parent. Surface this as a named
+      // conflict so the operator knows a separate model-correction step is
+      // required before this architecture run can proceed.
+      const mistypedUsage = parentPartDef.usages.find(
+        (u) => u.label === component.usageName,
+      );
+      if (mistypedUsage) {
+        conflicts.push({
+          code: "mistyped_usage",
+          componentName: name,
+          message: `Usage "${component.usageName}" under "${component.parentName}" ` +
+            `types "${mistypedUsage.targetLabel}" instead of proposed "${name}". ` +
+            `A FeatureTyping correction requires a separate model operation before ` +
+            `this architecture run can proceed.`,
+        });
+        continue;
+      }
+
       // Finding 4 — search ALL existing PartDefs, not just those in the proposal.
       // A usage existing under a real parent outside the proposal is still a
       // structural conflict that cannot be resolved by insertion alone.

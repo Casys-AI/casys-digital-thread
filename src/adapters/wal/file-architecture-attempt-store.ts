@@ -32,6 +32,41 @@ export class ArchitectureWriteOutcomeUnknownError extends Error {
   }
 }
 
+/**
+ * Persisted record of a run-level quarantine.
+ *
+ * Written when a structural verification failure occurs after the SysON
+ * insertion was acknowledged. Keyed by (projectId, runId) — coarser than the
+ * planDigest-level attempt, and consulted before any preflight dispatch so that
+ * a changed enrichment plan (different planDigest) cannot slip past the WAL
+ * guard and trigger a second insertion.
+ */
+export type ArchitectureRunQuarantine = {
+  readonly schemaVersion: "architecture-run-quarantine/1.0";
+  readonly projectId: string;
+  readonly runId: string;
+  readonly reason: "structural_failure_post_acknowledgement";
+  readonly quarantinedAt: string;
+};
+
+/**
+ * Raised when the executor discovers a quarantine sentinel for this runId.
+ *
+ * A quarantined run cannot be retried — the operator must inspect SysON
+ * manually and queue a new run after any corrective steps.
+ */
+export class ArchitectureRunQuarantinedError extends Error {
+  constructor() {
+    super(
+      "This architecture run is quarantined: a prior attempt acknowledged a SysON " +
+        "insertion but structural verification failed. The SysON model may be partially " +
+        "inserted. An operator must inspect and manually correct SysON before queuing " +
+        "a new architecture run.",
+    );
+    this.name = "ArchitectureRunQuarantinedError";
+  }
+}
+
 export class FileArchitectureAttemptStore {
   constructor(
     private readonly directory = "state/local/architecture-write-attempts",
@@ -104,6 +139,53 @@ export class FileArchitectureAttemptStore {
     );
   }
 
+  /**
+   * Write a run-level quarantine sentinel for (projectId, runId).
+   *
+   * Idempotent: if the sentinel already exists the call succeeds silently.
+   * Called after a structural verification failure post-acknowledgement so that
+   * any later dispatch attempt — even under a different planDigest — is blocked.
+   */
+  async quarantine(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly quarantinedAt: string;
+  }): Promise<void> {
+    const record: ArchitectureRunQuarantine = {
+      schemaVersion: "architecture-run-quarantine/1.0",
+      projectId: nonEmpty(input.projectId, "projectId"),
+      runId: nonEmpty(input.runId, "runId"),
+      reason: "structural_failure_post_acknowledgement",
+      quarantinedAt: timestamp(input.quarantinedAt),
+    };
+    await Deno.mkdir(this.directory, { recursive: true });
+    try {
+      await writeNewDurably(
+        this.quarantinePath(record.projectId, record.runId),
+        `${deterministicJson(record)}\n`,
+      );
+    } catch (error) {
+      if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+      // Already quarantined — idempotent.
+    }
+  }
+
+  /**
+   * Return true when a quarantine sentinel exists for (projectId, runId).
+   *
+   * Throws on unexpected I/O errors so that a broken filesystem is not
+   * silently treated as "not quarantined".
+   */
+  async isQuarantined(projectId: string, runId: string): Promise<boolean> {
+    try {
+      await Deno.stat(this.quarantinePath(projectId, runId));
+      return true;
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return false;
+      throw error;
+    }
+  }
+
   async read(
     projectId: string,
     runId: string,
@@ -145,6 +227,24 @@ export class FileArchitectureAttemptStore {
           nonEmpty(projectId, "projectId"),
           nonEmpty(runId, "runId"),
           nonEmpty(planDigest, "planDigest"),
+        ]),
+      )
+    }.json`;
+  }
+
+  /**
+   * Path for the run-level quarantine sentinel.
+   *
+   * Uses a distinct filename prefix ("quarantine-") to avoid any collision with
+   * the planDigest-level attempt paths, and is keyed only by (projectId, runId)
+   * so it is found regardless of which planDigest the new preflight would produce.
+   */
+  private quarantinePath(projectId: string, runId: string): string {
+    return `${this.directory.replace(/\/$/, "")}/quarantine-${
+      encodeURIComponent(
+        JSON.stringify([
+          nonEmpty(projectId, "projectId"),
+          nonEmpty(runId, "runId"),
         ]),
       )
     }.json`;
