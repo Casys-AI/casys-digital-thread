@@ -62,24 +62,79 @@ export const INSPECTION_DRONE_V4_ARCHITECTURE_SYSML = [
   "  part def PropulsionSystem;",
   "  part def AvionicsAndFlightControl;",
   "  part def InspectionCameraPayload;",
-  "  requirement def ControlledOutdoorInspection;",
-  "  requirement def CameraPayloadIntegration;",
-  "  requirement def ExplicitOperationalTbd;",
-  "  requirement def TraceableEngineeringEvidence;",
+  "  requirement def ControlledOutdoorInspection {",
+  "    doc /* Qualitative scope only: a first visual inspection mission is considered on a controlled outdoor site with a lightweight camera. TBD before any test: site scenario, route, altitude, obstacles, weather limits and separation from people. */",
+  "  }",
+  "  requirement def CameraPayloadIntegration {",
+  "    doc /* The initial payload is a lightweight camera. TBD before any mass budget, energy sizing or structural verification: camera mass, power, dimensions, fixation and integration constraints. */",
+  "  }",
+  "  requirement def ExplicitOperationalTbd {",
+  "    doc /* TBD: autonomy, admissible wind and battery reserve are not fixed; derive and review them from the mission scenario, site, characterised payload and an explicit reserve policy. */",
+  "  }",
+  "  requirement def TraceableEngineeringEvidence {",
+  "    doc /* Maintain traceable links between the approved brief, SysML model, CAD, physical calculations, named requirements and manufacturing dossier through exact artifacts and consumptions, with visible assumptions and gaps. This is not a certification or authorization verdict. */",
+  "  }",
   "}",
 ].join("\n");
 
-const EXPECTED_DECLARATIONS = [
+/**
+ * Server-fixed read-only AQL expressions. They exist solely to attest the
+ * result of the fixed insertion; no caller can provide or change either one.
+ */
+export const INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION =
+  "aql:self.ownedRelationship->select(r | r.oclIsKindOf(sysml::FeatureTyping)).type" as const;
+export const INSPECTION_DRONE_V4_REQUIREMENT_DOCUMENTATION_EXPRESSION =
+  "aql:self.eAllContents()->select(e | e.oclIsKindOf(sysml::Documentation))->first().body" as const;
+
+export const INSPECTION_DRONE_V4_PART_USAGE_CONTRACT = [
+  { label: "airframe", type: "Airframe" },
+  { label: "energySystem", type: "EnergySystem" },
+  { label: "propulsionSystem", type: "PropulsionSystem" },
+  {
+    label: "avionicsAndFlightControl",
+    type: "AvionicsAndFlightControl",
+  },
+  {
+    label: "inspectionCameraPayload",
+    type: "InspectionCameraPayload",
+  },
+] as const;
+
+export const INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT = [
+  {
+    label: "ControlledOutdoorInspection",
+    documentation:
+      "Qualitative scope only: a first visual inspection mission is considered on a controlled outdoor site with a lightweight camera. TBD before any test: site scenario, route, altitude, obstacles, weather limits and separation from people.",
+  },
+  {
+    label: "CameraPayloadIntegration",
+    documentation:
+      "The initial payload is a lightweight camera. TBD before any mass budget, energy sizing or structural verification: camera mass, power, dimensions, fixation and integration constraints.",
+  },
+  {
+    label: "ExplicitOperationalTbd",
+    documentation:
+      "TBD: autonomy, admissible wind and battery reserve are not fixed; derive and review them from the mission scenario, site, characterised payload and an explicit reserve policy.",
+  },
+  {
+    label: "TraceableEngineeringEvidence",
+    documentation:
+      "Maintain traceable links between the approved brief, SysML model, CAD, physical calculations, named requirements and manufacturing dossier through exact artifacts and consumptions, with visible assumptions and gaps. This is not a certification or authorization verdict.",
+  },
+] as const;
+
+const EXPECTED_PART_DEFINITIONS = [
   "InspectionDrone",
   "Airframe",
   "EnergySystem",
   "PropulsionSystem",
   "AvionicsAndFlightControl",
   "InspectionCameraPayload",
-  "ControlledOutdoorInspection",
-  "CameraPayloadIntegration",
-  "ExplicitOperationalTbd",
-  "TraceableEngineeringEvidence",
+] as const;
+
+const EXPECTED_DECLARATIONS = [
+  ...EXPECTED_PART_DEFINITIONS,
+  ...INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT.map((requirement) => requirement.label),
 ] as const;
 
 export interface InspectionDroneV4ArchitectureRunExecutorCommand {
@@ -103,6 +158,22 @@ export interface InspectionDroneV4ArchitectureRunExecutorDependencies {
 }
 
 type Element = Readonly<{ id: string; kind: string; label: string }>;
+type PartUsage = Readonly<{
+  id: string;
+  kind: string;
+  label: string;
+  quantity: number | string;
+  quantitySource: string;
+  children: readonly PartUsage[];
+}>;
+type ArchitectureReadback = Readonly<{
+  inspectionDrone: Element;
+  partUsages: readonly Readonly<{ usage: Element; type: Element }>[];
+  requirements: readonly Readonly<{
+    requirement: Element;
+    documentation: string;
+  }>[];
+}>;
 type Seed = Awaited<ReturnType<typeof requireExactSysonModelSeed>>;
 type Inputs = Readonly<
   { base: ThreadSnapshot; seed: Seed; briefBasis: EngineeringApprovedBriefBasis }
@@ -229,6 +300,10 @@ export class InspectionDroneV4ArchitectureRunExecutor {
         architecturePackage.id,
       );
       requireDeclarations(declarations, architecturePackage.id);
+      const readback = await this.readContractualReadback(
+        inputs.seed.normalizedResults.project.editingContextId,
+        declarations,
+      );
       const capturedAt = requiredStart(run);
       const materialized = await materialize({
         base: inputs.base,
@@ -239,6 +314,7 @@ export class InspectionDroneV4ArchitectureRunExecutor {
         acknowledgement,
         architecturePackage,
         declarations,
+        readback,
       });
       await this.dependencies.captures.save(materialized.sha256, materialized.text);
       const captureReadback = await this.dependencies.captures.read(
@@ -409,6 +485,94 @@ export class InspectionDroneV4ArchitectureRunExecutor {
       arguments: { editing_context_id: editingContextId, element_id: elementId },
     });
     return parseChildren(result.structuredContent, elementId);
+  }
+
+  /**
+   * A top-level declaration list is not evidence of the intended architecture.
+   * Re-read the root part structure, then ask the provider for each usage's
+   * type and each requirement's documentation. Every response is closed and
+   * exact: a SysON release that cannot attest one fact stops before r3 rather
+   * than letting this executor infer it from the SysML text it sent.
+   */
+  private async readContractualReadback(
+    editingContextId: string,
+    declarations: readonly Element[],
+  ): Promise<ArchitectureReadback> {
+    const inspectionDrone = declaration(
+      declarations,
+      "InspectionDrone",
+      "inspection-drone architecture package",
+    );
+    const structure = await this.dependencies.syson.callTool({
+      name: "syson_part_structure",
+      arguments: {
+        editing_context_id: editingContextId,
+        root_element_id: inspectionDrone.id,
+        max_depth: 1,
+        include_attributes: false,
+        flatten: false,
+      },
+    });
+    const usages = requirePartUsages(
+      structure.structuredContent,
+      inspectionDrone,
+    );
+    const partUsages: Array<{ usage: Element; type: Element }> = [];
+    for (const expected of INSPECTION_DRONE_V4_PART_USAGE_CONTRACT) {
+      const usage = usages.get(expected.label);
+      if (!usage) {
+        throw new Error(
+          `SysON part-structure readback is missing the required ${expected.label} PartUsage.`,
+        );
+      }
+      const expectedType = declaration(
+        declarations,
+        expected.type,
+        "inspection-drone architecture package",
+      );
+      const typed = await this.dependencies.syson.callTool({
+        name: "syson_query_aql",
+        arguments: {
+          editing_context_id: editingContextId,
+          object_id: usage.id,
+          expression: INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION,
+        },
+      });
+      partUsages.push({
+        usage: partUsageElement(usage),
+        type: requirePartUsageType(
+          typed.structuredContent,
+          usage,
+          expectedType,
+        ),
+      });
+    }
+
+    const requirements: Array<{ requirement: Element; documentation: string }> = [];
+    for (const expected of INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT) {
+      const requirement = declaration(
+        declarations,
+        expected.label,
+        "inspection-drone architecture package",
+      );
+      const documented = await this.dependencies.syson.callTool({
+        name: "syson_query_aql",
+        arguments: {
+          editing_context_id: editingContextId,
+          object_id: requirement.id,
+          expression: INSPECTION_DRONE_V4_REQUIREMENT_DOCUMENTATION_EXPRESSION,
+        },
+      });
+      requirements.push({
+        requirement,
+        documentation: requireRequirementDocumentation(
+          documented.structuredContent,
+          requirement,
+          expected.documentation,
+        ),
+      });
+    }
+    return { inspectionDrone, partUsages, requirements };
   }
 
   private async recordFailure(
@@ -611,8 +775,9 @@ function requireDeclarations(children: readonly Element[], parentId: string): vo
     ) || children.some((item) =>
       !kind(
         item.kind,
-        item.label.endsWith("Inspection") || item.label.endsWith("Integration") ||
-          item.label.endsWith("Tbd") || item.label.endsWith("Evidence")
+        INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT.some((requirement) =>
+            requirement.label === item.label
+          )
           ? "RequirementDefinition"
           : "PartDefinition",
       )
@@ -622,6 +787,199 @@ function requireDeclarations(children: readonly Element[], parentId: string): vo
       `SysON package ${parentId} does not contain exactly the reviewed drone declarations and named requirements.`,
     );
   }
+}
+
+function declaration(
+  declarations: readonly Element[],
+  label: string,
+  parent: string,
+): Element {
+  const matches = declarations.filter((item) => item.label === label);
+  if (matches.length !== 1) {
+    throw new Error(
+      `SysON ${parent} does not expose exactly one declaration named ${label}.`,
+    );
+  }
+  return matches[0]!;
+}
+
+function requirePartUsages(
+  value: unknown,
+  inspectionDrone: Element,
+): ReadonlyMap<string, PartUsage> {
+  const record = closed(
+    value,
+    ["root", "tree", "partCount", "maxDepthReached"],
+    "SysON inspection-drone part-structure response",
+  );
+  const root = element(record.root, "SysON inspection-drone part-structure.root");
+  if (
+    root.id !== inspectionDrone.id || root.label !== "InspectionDrone" ||
+    !kind(root.kind, "PartDefinition")
+  ) {
+    throw new Error(
+      "SysON part-structure readback does not attest the InspectionDrone PartDefinition root.",
+    );
+  }
+  if (!Array.isArray(record.tree)) {
+    throw new Error("SysON inspection-drone part-structure.tree must be an array.");
+  }
+  const partCount = record.partCount;
+  if (
+    typeof partCount !== "number" || !Number.isSafeInteger(partCount) ||
+    partCount < 0 ||
+    typeof record.maxDepthReached !== "boolean"
+  ) {
+    throw new Error(
+      "SysON inspection-drone part-structure has an unsupported count or truncation flag.",
+    );
+  }
+  const tree = record.tree.map((node, index) =>
+    partUsage(node, `SysON inspection-drone part-structure.tree[${index}]`)
+  );
+  const recursiveCount = countPartUsages(tree);
+  if (
+    partCount !== recursiveCount || record.maxDepthReached ||
+    recursiveCount !== INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.length ||
+    tree.length !== INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.length ||
+    tree.some((usage) => usage.children.length !== 0)
+  ) {
+    throw new Error(
+      "SysON part-structure readback must contain exactly the five direct InspectionDrone PartUsages without truncation.",
+    );
+  }
+  const byLabel = new Map<string, PartUsage>();
+  for (const usage of tree) {
+    if (!kind(usage.kind, "PartUsage") || byLabel.has(usage.label)) {
+      throw new Error(
+        "SysON part-structure readback has a duplicate or non-PartUsage InspectionDrone child.",
+      );
+    }
+    byLabel.set(usage.label, usage);
+  }
+  if (
+    byLabel.size !== INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.length ||
+    INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.some((expected) =>
+      !byLabel.has(expected.label)
+    )
+  ) {
+    throw new Error(
+      "SysON part-structure readback does not contain the exact reviewed InspectionDrone PartUsages.",
+    );
+  }
+  return byLabel;
+}
+
+function partUsage(value: unknown, path: string): PartUsage {
+  const record = closed(
+    value,
+    ["id", "kind", "label", "quantity", "quantitySource", "children"],
+    path,
+  );
+  const quantity = record.quantity;
+  if (
+    (typeof quantity !== "number" && typeof quantity !== "string") ||
+    typeof record.quantitySource !== "string" || !record.quantitySource.trim() ||
+    !Array.isArray(record.children)
+  ) {
+    throw new Error(`${path} has an unsupported quantity or children shape.`);
+  }
+  return {
+    id: string(record.id, `${path}.id`),
+    kind: string(record.kind, `${path}.kind`),
+    label: string(record.label, `${path}.label`),
+    quantity,
+    quantitySource: record.quantitySource,
+    children: record.children.map((child, index) =>
+      partUsage(child, `${path}.children[${index}]`)
+    ),
+  };
+}
+
+function countPartUsages(usages: readonly PartUsage[]): number {
+  return usages.reduce(
+    (total, usage) => total + 1 + countPartUsages(usage.children),
+    0,
+  );
+}
+
+function partUsageElement(usage: PartUsage): Element {
+  return { id: usage.id, kind: usage.kind, label: usage.label };
+}
+
+function requirePartUsageType(
+  value: unknown,
+  usage: PartUsage,
+  expectedType: Element,
+): Element {
+  const record = closed(
+    value,
+    ["objectId", "expression", "type", "results", "count"],
+    `SysON FeatureTyping query for ${usage.label}`,
+  );
+  if (
+    record.objectId !== usage.id ||
+    record.expression !== INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION ||
+    record.type !== "objects" || !Array.isArray(record.results) ||
+    record.count !== 1 || record.results.length !== 1
+  ) {
+    throw new Error(
+      `SysON cannot attest one FeatureTyping PartDefinition for ${usage.label}; refusing to infer it from the inserted SysML text.`,
+    );
+  }
+  const type = element(
+    record.results[0],
+    `SysON FeatureTyping result for ${usage.label}`,
+  );
+  if (
+    type.id !== expectedType.id || type.label !== expectedType.label ||
+    !kind(type.kind, "PartDefinition")
+  ) {
+    throw new Error(
+      `SysON FeatureTyping result for ${usage.label} is not the exact reviewed ${expectedType.label} PartDefinition.`,
+    );
+  }
+  return type;
+}
+
+function requireRequirementDocumentation(
+  value: unknown,
+  requirement: Element,
+  expectedDocumentation: string,
+): string {
+  const record = closed(
+    value,
+    ["objectId", "expression", "type", "result"],
+    `SysON documentation query for ${requirement.label}`,
+  );
+  if (
+    record.objectId !== requirement.id ||
+    record.expression !== INSPECTION_DRONE_V4_REQUIREMENT_DOCUMENTATION_EXPRESSION ||
+    record.type !== "string"
+  ) {
+    throw new Error(
+      `SysON cannot attest the qualitative documentation for ${requirement.label}; refusing to infer it from the inserted SysML text.`,
+    );
+  }
+  const documentation = string(
+    record.result,
+    `SysON documentation result for ${requirement.label}`,
+  );
+  if (documentation !== expectedDocumentation) {
+    throw new Error(
+      `SysON documentation for ${requirement.label} differs from the reviewed qualitative/TBD requirement text.`,
+    );
+  }
+  return documentation;
+}
+
+function element(value: unknown, path: string): Element {
+  const record = closed(value, ["id", "kind", "label"], path);
+  return {
+    id: string(record.id, `${path}.id`),
+    kind: string(record.kind, `${path}.kind`),
+    label: string(record.label, `${path}.label`),
+  };
 }
 
 async function materialize(
@@ -634,6 +992,7 @@ async function materialize(
     acknowledgement: { parentId: string; textSha256: string };
     architecturePackage: Element;
     declarations: readonly Element[];
+    readback: ArchitectureReadback;
   },
 ): Promise<{ text: string; sha256: ContentFingerprint; snapshot: ThreadSnapshot }> {
   const recipe = await sha256Fingerprint(INSPECTION_DRONE_V4_ARCHITECTURE_SYSML);
@@ -665,6 +1024,18 @@ async function materialize(
     insertion: input.acknowledgement,
     architecturePackage: input.architecturePackage,
     declarations: input.declarations,
+    readback: {
+      provider: {
+        partStructureTool: "syson_part_structure",
+        partUsageFeatureTypingQuery:
+          INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION,
+        requirementDocumentationQuery:
+          INSPECTION_DRONE_V4_REQUIREMENT_DOCUMENTATION_EXPRESSION,
+      },
+      inspectionDrone: input.readback.inspectionDrone,
+      partUsages: input.readback.partUsages,
+      requirements: input.readback.requirements,
+    },
     explicitTbd: [
       "site-weather-and-separation",
       "camera-mass-power-dimensions-and-fixation",
@@ -721,6 +1092,13 @@ async function materialize(
       to: { kind: "artifact", id: input.seed.artifactId },
       rationale:
         "The qualitative architecture was authored only in the exact SysON model container captured by r2.",
+    }, {
+      id: `link-${consumption.id}-uses-${input.seed.artifactId}`,
+      relation: "uses",
+      from: { kind: "consumption", id: consumption.id },
+      to: { kind: "artifact", id: input.seed.artifactId },
+      rationale:
+        "The executor re-read the exact r2 model-container capture before authoring the qualitative inspection-drone architecture.",
     }],
     bindingProofs: [{
       provider: "syson",
