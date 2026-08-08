@@ -8,6 +8,7 @@ import type {
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 
@@ -212,6 +213,37 @@ const OPERATIONS = [
    * presents the resulting CorrectionProposal as an EngineeringDecisionProposal
    * for human MRTR consent.  No provider I/O is dispatched at this stage.
    */
+  /**
+   * Generic requirements authoring — inserts the reviewed SysML PartDef from
+   * an MRTR-approved decision into an existing SysON model container. The
+   * server derives the PartDef name from the containerComponent, renders all
+   * SysML, and verifies by re-extraction. No SysML text or requirement value
+   * is supplied by the agent.
+   *
+   * The D1 envelope fingerprint covers the resolved target (usageName,
+   * elementId), the architecture basis, the server-derived partDefName, and
+   * the OracleRequirement list. The human signs this fingerprint in the MRTR
+   * decision before any SysON write takes place.
+   */
+  {
+    id: MODEL_WRITE_REQUIREMENTS_OPERATION.id,
+    version: MODEL_WRITE_REQUIREMENTS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Author reviewed requirements in the system model",
+    description:
+      "Insert the human-approved SysML requirements PartDef into the existing SysON " +
+      "model container, anchor each metric as a SysML attribute with its unit, and " +
+      "verify the full set by re-extraction. The exact PartDef name is server-derived " +
+      "from the approved containerComponent; no SysML text is supplied by the agent.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
   {
     id: "design.apply-vector-correction",
     version: "1",
