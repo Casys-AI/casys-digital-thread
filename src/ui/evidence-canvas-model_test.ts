@@ -308,6 +308,51 @@ Deno.test("buildEvidenceCanvasProjection — focus on historical node uses visib
   assertEquals(projection.nodes.length > 0, true);
 });
 
+Deno.test("buildEvidenceCanvasProjection — local view defaults to depth 1 (immediate neighbours only)", () => {
+  // Chain D0 → D1 → D2 → D3 : focused on D0, depth 1 shows D0+D1 only;
+  // depth 3 (explicit) reaches D3. The default is the operator-chosen 1.
+  const chain = ["D0", "D1", "D2", "D3"].map((id) =>
+    node(id, "artifact", "digital-thread")
+  );
+  const graph = {
+    nodes: chain,
+    edges: [
+      edge("c1", ref("D0", "artifact"), ref("D1", "artifact")),
+      edge("c2", ref("D1", "artifact"), ref("D2", "artifact")),
+      edge("c3", ref("D2", "artifact"), ref("D3", "artifact")),
+    ],
+  };
+  const model = buildEvidenceGraphModel(graph, emptyFamilyGraph, {
+    isAnalyzeInstrumentNode,
+  });
+
+  const shallow = buildEvidenceCanvasProjection(
+    model,
+    0,
+    ref("D0", "artifact"),
+    new Map(),
+  );
+  assertEquals(shallow.isFiltered, true);
+  assertEquals(
+    shallow.nodes.map((n) => n.ref.id).sort(),
+    ["D0", "D1"],
+    "Default local depth must be 1: the focus and its immediate neighbours.",
+  );
+
+  const deep = buildEvidenceCanvasProjection(
+    model,
+    0,
+    ref("D0", "artifact"),
+    new Map(),
+    3,
+  );
+  assertEquals(
+    deep.nodes.map((n) => n.ref.id).sort(),
+    ["D0", "D1", "D2", "D3"],
+    "Explicit depth 3 must reach three hops from the focus.",
+  );
+});
+
 Deno.test("buildEvidenceCanvasProjection — foldedInstrumentCount is non-negative", () => {
   const { model } = instrumentBridgeFixture();
   const projection = buildEvidenceCanvasProjection(

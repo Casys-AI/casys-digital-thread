@@ -107,6 +107,22 @@ export interface SigmaEdgeAttrs {
 }
 
 /** Prepared model consumed directly by the EvidenceExploration component. */
+/**
+ * One entry of the tool color key: exactly the color the canvas paints for
+ * nodes produced by this system. The legend must never show a color mapping
+ * that differs from what `nodeColorFor` actually renders.
+ */
+export interface SystemLegendItem {
+  /** Raw system id as recorded on the nodes (e.g. "calculix"). */
+  readonly system: string;
+  /** Human label (e.g. "FEA · CalculiX"). */
+  readonly label: string;
+  /** The exact node color used on the canvas for this system. */
+  readonly color: string;
+  /** Number of visible nodes produced by this system. */
+  readonly count: number;
+}
+
 export interface ExplorationModel {
   /**
    * A DirectedGraph with all visual attributes already set.
@@ -118,6 +134,11 @@ export interface ExplorationModel {
    * same structural name are merged into a single entry — one chip, all nodes.
    */
   readonly legend: readonly ExplorationLegendItem[];
+  /**
+   * Tool color key derived from the VISIBLE nodes — one entry per producing
+   * system present in the projection, with the exact canvas color.
+   */
+  readonly systemLegend: readonly SystemLegendItem[];
   readonly tokens: CssTokens;
   /**
    * Count of supporting nodes hidden by the essential filter in full-map mode.
@@ -403,8 +424,44 @@ export function buildExplorationModel(
     }),
   );
 
-  return { graph, legend, tokens, hiddenSupportingCount };
+  // Tool color key: one entry per system present among the VISIBLE nodes,
+  // carrying the exact color nodeColorFor paints — the legend can therefore
+  // never drift from the canvas.
+  const systemCounts = new Map<string, number>();
+  for (const node of displayNodes) {
+    systemCounts.set(node.system, (systemCounts.get(node.system) ?? 0) + 1);
+  }
+  const systemLegend: SystemLegendItem[] = [...systemCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([system, count]) => ({
+      system,
+      label: SYSTEM_LEGEND_LABEL[system] ?? system,
+      color: nodeColorFor(
+        { system } as ThreadGraphNode,
+        tokens,
+      ),
+      count,
+    }));
+
+  return { graph, legend, systemLegend, tokens, hiddenSupportingCount };
 }
+
+/**
+ * Human labels of the tool color key. Keys are the raw system ids recorded on
+ * graph nodes; a system absent from this table keeps its raw id as label
+ * (visible fallback, never a silent drop).
+ */
+const SYSTEM_LEGEND_LABEL: Record<string, string> = {
+  "syson": "SysON · modèle",
+  "build123d": "build123d · CAD",
+  "calculix": "CalculiX · FEA",
+  "modelica": "Modelica · simulation",
+  "openmodelica": "Modelica · simulation",
+  "mcp-modelica": "Modelica · simulation",
+  "erpnext": "ERPNext · ERP",
+  "digital-thread": "Digital thread",
+  "casys-digital-thread": "Digital thread · plan",
+};
 
 // ---------------------------------------------------------------------------
 // CSS token reader (call in component mount, not at model-build time)
@@ -507,6 +564,7 @@ function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
       return tokens.amber;
     case "calculix":
       return tokens.red;
+    case "modelica":
     case "openmodelica":
     case "mcp-modelica":
       return tokens.violet;

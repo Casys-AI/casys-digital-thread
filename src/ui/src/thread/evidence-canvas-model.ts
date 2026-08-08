@@ -10,7 +10,7 @@
  * - Folding never severs a link: stubs bridge folded-out segments.
  * - Analyze.* instruments are identified by structural fields only (system +
  *   entityKind + id content), never by label or summary.
- * - Bounded neighbourhood is depth 3 in both directions from the inspector
+ * - Bounded neighbourhood depth is caller-chosen (default 1) in both directions from the inspector
  *   selection when a focus is active.
  */
 
@@ -192,7 +192,7 @@ export interface EvidenceCanvasProjection {
  *
  * Rules (non-negotiable):
  * 1. No focus → full folded visible graph (stubs bridging instruments).
- * 2. Focus on a visible node → bounded neighbourhood at depth 3.
+ * 2. Focus on a visible node → bounded neighbourhood at the chosen depth (default 1).
  * 3. Focus on a historical (folded) node → neighbourhood of the visible
  *    representative via `visibleRefByMemberRef`; falls back to full graph.
  *
@@ -200,12 +200,16 @@ export interface EvidenceCanvasProjection {
  * @param collapsedVersionCount From VersionedProvenanceProjection.
  * @param focusRef              Inspector selection (lineageFocus state).
  * @param visibleRefByMemberRef Map from historical ref key to visible ref.
+ * @param localDepth            Neighbourhood depth of the local view (both
+ *   directions from the focused node). Operator decision 2026-08-08: default
+ *   1 — the immediate neighbours; the workbench exposes a 1/2/3 control.
  */
 export function buildEvidenceCanvasProjection(
   model: EvidenceGraphModel,
   collapsedVersionCount: number,
   focusRef: ThreadGraphRef | undefined,
   visibleRefByMemberRef: ReadonlyMap<string, ThreadGraphRef>,
+  localDepth: 1 | 2 | 3 = 1,
 ): EvidenceCanvasProjection {
   const foldedInstrumentCount = Math.max(
     0,
@@ -246,8 +250,8 @@ export function buildEvidenceCanvasProjection(
     };
   }
 
-  // Focus on a visible node: bounded neighbourhood at depth 3.
-  const neighborhood = model.boundedNeighborhood(focusRef, 3);
+  // Focus on a visible node: bounded neighbourhood at the chosen depth.
+  const neighborhood = model.boundedNeighborhood(focusRef, localDepth);
   if (neighborhood.nodes.length > 0) {
     return {
       nodes: neighborhood.nodes,
@@ -263,7 +267,7 @@ export function buildEvidenceCanvasProjection(
   const focusKey = `${focusRef.kind}:${focusRef.id}`;
   const visibleRef = visibleRefByMemberRef.get(focusKey);
   if (visibleRef) {
-    const repNeighborhood = model.boundedNeighborhood(visibleRef, 3);
+    const repNeighborhood = model.boundedNeighborhood(visibleRef, localDepth);
     if (repNeighborhood.nodes.length > 0) {
       return {
         nodes: repNeighborhood.nodes,

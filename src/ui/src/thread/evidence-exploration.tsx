@@ -163,8 +163,10 @@ export function EvidenceExploration({
         return {
           ...data,
           highlighted: true,
+          // The node KEEPS its tool color: selection is shown by the size
+          // bump and the highlight ring, never by repainting — a red FEA
+          // fact must stay red when selected.
           size: (data.size ?? 8) * 1.4,
-          color: explorationModel.tokens.green,
         };
       }
       return { ...data, highlighted: false };
@@ -181,20 +183,48 @@ export function EvidenceExploration({
         ref={containerRef}
         aria-label="Evidence exploration graph — sigma renderer"
       />
-      {legend.length > 0 && !compact && (
+      {!compact && (
         <aside
           class="evidence-exploration-legend"
-          aria-label="Evidence components"
+          aria-label="Evidence legend"
         >
-          <p class="evidence-exploration-legend-title">COMPOSANTES</p>
-          {legend.map((item) => (
-            <LegendChip
-              key={item.componentIds[0]}
-              item={item}
-              sigma={sigmaRef}
-              graph={explorationModel.graph}
-            />
-          ))}
+          {explorationModel.systemLegend.length > 0 && (
+            <>
+              <p class="evidence-exploration-legend-title">OUTILS</p>
+              {explorationModel.systemLegend.map((item) => (
+                <span
+                  key={item.system}
+                  class="evidence-exploration-legend-chip"
+                  aria-label={`${item.label} — ${item.count} faits`}
+                >
+                  <span
+                    class="evidence-exploration-legend-chip-dot"
+                    style={{ background: item.color }}
+                    aria-hidden="true"
+                  />
+                  <span class="evidence-exploration-legend-chip-name">
+                    {item.label}
+                  </span>
+                  <span class="evidence-exploration-legend-chip-count">
+                    {item.count}
+                  </span>
+                </span>
+              ))}
+            </>
+          )}
+          {legend.length > 0 && (
+            <>
+              <p class="evidence-exploration-legend-title">COMPOSANTES</p>
+              {legend.map((item) => (
+                <LegendChip
+                  key={item.componentIds[0]}
+                  item={item}
+                  sigma={sigmaRef}
+                  graph={explorationModel.graph}
+                />
+              ))}
+            </>
+          )}
         </aside>
       )}
     </div>
@@ -241,11 +271,11 @@ function LegendChip({
       title={`Focaliser la caméra sur la composante "${item.name}"`}
       aria-label={`${item.name} — ${item.visibleNodeCount} faits`}
     >
-      <span
-        class="evidence-exploration-legend-chip-dot"
-        style={{ background: item.color }}
-        aria-hidden="true"
-      />
+      {
+        /* No color dot: node colors encode the producing TOOL (see the OUTILS
+          key above); painting component chips with a second palette made the
+          two mappings contradict each other on screen. */
+      }
       <span class="evidence-exploration-legend-chip-name">{item.name}</span>
       <span class="evidence-exploration-legend-chip-count">
         {item.visibleNodeCount}

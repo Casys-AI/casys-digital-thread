@@ -656,3 +656,54 @@ Deno.test(
     assertEquals(explorationRefs.has("observation:OBS-1"), true);
   },
 );
+
+// ---------------------------------------------------------------------------
+// Tool color key (systemLegend)
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "modelica nodes are painted violet, never the muted fallback",
+  () => {
+    const model = buildMinimalModel(
+      [
+        node("m1", "artifact", "modelica", "artifact"),
+        node("s1", "artifact", "syson", "artifact"),
+      ],
+      [edge("e1", { kind: "artifact", id: "m1" }, { kind: "artifact", id: "s1" })],
+    );
+    const attrs = model.graph.getNodeAttributes("artifact:m1");
+    assertEquals(attrs.color, FALLBACK_TOKENS.violet);
+    assertNotEquals(attrs.color, FALLBACK_TOKENS.muted);
+  },
+);
+
+Deno.test(
+  "the tool color key lists exactly the visible systems with the exact canvas colors",
+  () => {
+    const model = buildMinimalModel(
+      [
+        node("m1", "artifact", "modelica", "artifact"),
+        node("s1", "artifact", "syson", "artifact"),
+        node("c1", "artifact", "calculix", "artifact"),
+      ],
+      [
+        edge("e1", { kind: "artifact", id: "m1" }, { kind: "artifact", id: "s1" }),
+        edge("e2", { kind: "artifact", id: "s1" }, { kind: "artifact", id: "c1" }),
+      ],
+    );
+    const bySystem = new Map(
+      model.systemLegend.map((item) => [item.system, item]),
+    );
+    assertEquals(bySystem.size, 3, "One legend entry per visible system.");
+    // The legend color must equal the color painted on the canvas node.
+    assertEquals(
+      bySystem.get("modelica")?.color,
+      model.graph.getNodeAttributes("artifact:m1").color,
+    );
+    assertEquals(
+      bySystem.get("calculix")?.color,
+      model.graph.getNodeAttributes("artifact:c1").color,
+    );
+    assertEquals(bySystem.get("modelica")?.count, 1);
+  },
+);

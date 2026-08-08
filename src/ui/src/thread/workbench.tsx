@@ -126,6 +126,9 @@ export function ThreadWorkbench({
   const [evidenceMode, setEvidenceMode] = useState<
     "carte" | "exploration"
   >("exploration");
+  // Profondeur du voisinage en vue locale (façon Obsidian). Décision
+  // opérateur 2026-08-08 : défaut 1 — les voisins immédiats seulement.
+  const [localDepth, setLocalDepth] = useState<1 | 2 | 3>(1);
   // Feed component filter: undefined = "Tout le projet", string = part id or "assembly".
   const [feedFilterComponentId, setFeedFilterComponentId] = useState<
     string | undefined
@@ -356,6 +359,7 @@ export function ThreadWorkbench({
     versionedProvenance.collapsedVersionCount,
     lineageFocus,
     versionedProvenance.visibleRefByMemberRef,
+    localDepth,
   );
   const evidenceComponentLabeler = makeEvidenceComponentLabeler(
     evidenceModel,
@@ -880,7 +884,7 @@ export function ThreadWorkbench({
                         >
                           <span>
                             {evidenceCanvas.isFiltered
-                              ? `${evidenceCanvas.displayedCount} faits affichés · vue locale`
+                              ? `${evidenceCanvas.displayedCount} faits affichés · vue locale · profondeur ${localDepth}`
                               : (() => {
                                 // displayedCount is already the post-filter
                                 // essential count: the mask is applied once
@@ -905,6 +909,25 @@ export function ThreadWorkbench({
                                 return parts.join(" · ");
                               })()}
                           </span>
+                          {evidenceCanvas.isFiltered && (
+                            <div
+                              class="evidence-graph-mode-toggle"
+                              role="group"
+                              aria-label="Profondeur du voisinage local"
+                            >
+                              {([1, 2, 3] as const).map((depth) => (
+                                <button
+                                  key={depth}
+                                  type="button"
+                                  aria-pressed={localDepth === depth}
+                                  title={`Afficher les voisins jusqu'à la profondeur ${depth}`}
+                                  onClick={() => setLocalDepth(depth)}
+                                >
+                                  {depth}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <div
                             class="evidence-graph-mode-toggle"
                             role="group"
