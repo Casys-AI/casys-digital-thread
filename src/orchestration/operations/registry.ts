@@ -7,6 +7,7 @@ import type {
 } from "../../domain/project/engineering-project.ts";
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 
@@ -161,6 +162,34 @@ const OPERATIONS = [
     title: "Create the first editable system model",
     description:
       "Create a traceable SysML system-model container after the canonical project brief has been recorded as an exact documentary baseline.",
+    workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Generic architecture authoring — inserts the reviewed SysML package from
+   * an MRTR-approved decision into a SysON model container. The proposal
+   * parameters live in an EngineeringDecisionProposal (flat key/value grammar
+   * reviewed and signed by the operator); the SysML text is server-rendered,
+   * never agent-supplied.
+   *
+   * A required decision whose `decidedByOrigin === "human"` is the MRTR gate.
+   * The work item must declare that decision in its `decisionIds` list.
+   */
+  {
+    id: MODEL_WRITE_ARCHITECTURE_OPERATION.id,
+    version: MODEL_WRITE_ARCHITECTURE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Author the reviewed system architecture",
+    description:
+      "Insert the human-approved SysML architecture package into the existing SysON model container. " +
+      "The exact package structure is derived from the MRTR-approved decision parameters — " +
+      "no SysML text or product name is supplied by the agent.",
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",

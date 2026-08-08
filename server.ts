@@ -13,6 +13,7 @@ import {
 import { FileThreadSnapshotStore } from "./src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  ARCHITECTURE_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR,
@@ -38,6 +39,7 @@ import { FileSysonModelSeedAttemptStore } from "./src/adapters/wal/file-syson-mo
 import { FileCm01NominalModelicaAttemptStore } from "./src/adapters/wal/file-cm01-nominal-modelica-attempt-store.ts";
 import { FileCoffeeMachineCm01V3ArchitectureAttemptStore } from "./src/adapters/wal/file-coffee-machine-cm01-v3-architecture-attempt-store.ts";
 import { FileInspectionDroneV4ArchitectureAttemptStore } from "./src/adapters/wal/file-inspection-drone-v4-architecture-attempt-store.ts";
+import { FileArchitectureAttemptStore } from "./src/adapters/wal/file-architecture-attempt-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "./src/adapters/captures/file-cm01-erpnext-bom-run-capture-store.ts";
 import { FileCm01SemanticCadAttemptStore } from "./src/adapters/wal/file-cm01-semantic-cad-attempt-store.ts";
 import { FileCm01DripTrayMechanicalAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-mechanical-attempt-store.ts";
@@ -78,6 +80,10 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
 } from "./src/orchestration/operations/inspection-drone-v4.ts";
+import {
+  MODEL_WRITE_ARCHITECTURE_OPERATION,
+  ModelWriteArchitectureRunExecutor,
+} from "./src/adapters/executors/model-write-architecture-run-executor.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_THERMAL_OPERATION,
@@ -221,6 +227,8 @@ const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DIRECTORY =
   "state/local/inspection-drone-v4-part-definitions-captures";
 const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
   "state/local/inspection-drone-v4-part-definitions-publications";
+const DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY = "state/local/architecture-captures";
+const DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY = "state/local/architecture-attempts";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -331,6 +339,10 @@ export interface CreateConsoleServerOptions {
   sysonModelSeedAttemptDirectory?: string;
   cm01NominalModelicaCaptureDirectory?: string;
   cm01NominalModelicaAttemptDirectory?: string;
+  /** Generic model.write-architecture@1 capture store directory. */
+  architectureCaptureDirectory?: string;
+  /** Generic model.write-architecture@1 WAL attempt directory. */
+  architectureAttemptDirectory?: string;
   cm01ArchitectureCaptureDirectory?: string;
   cm01ArchitectureAttemptDirectory?: string;
   inspectionDroneV4ArchitectureCaptureDirectory?: string;
@@ -547,6 +559,25 @@ async function createProjectControl(
       attempts: new FileSysonModelSeedAttemptStore(
         options.sysonModelSeedAttemptDirectory ??
           DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  const genericModelWriteArchitecture = sysonMcpUrl
+    ? new ModelWriteArchitectureRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      seedCaptures: sysonModelSeedCaptures,
+      captures: new FileCaptureStore({
+        ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory: options.architectureCaptureDirectory ??
+          DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
+      }),
+      attempts: new FileArchitectureAttemptStore(
+        options.architectureAttemptDirectory ?? DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY,
       ),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
@@ -1090,6 +1121,13 @@ async function createProjectControl(
             executor: inspectionDroneV4PartDefinitions,
             unavailableMessage:
               "The server has no trusted inspection-drone V4 PartDefinitions executor configured for this run.",
+          },
+          {
+            operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+            executor: genericModelWriteArchitecture,
+            unavailableMessage:
+              "The server has no trusted generic model.write-architecture@1 executor " +
+              "configured for this run (SysON provider is required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
