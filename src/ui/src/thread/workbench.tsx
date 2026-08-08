@@ -922,7 +922,7 @@ export function ThreadWorkbench({
                             )}
                             presentation="canvas"
                             initialZoom={2.25}
-                            showSupporting={true}
+                            showSupporting
                             showDensityControl={false}
                             onSelectionChange={selectVerificationGraphItem}
                             onInspect={inspectVerificationGraphItem}

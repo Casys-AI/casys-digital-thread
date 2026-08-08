@@ -251,6 +251,33 @@ export const CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DESCRIPTOR: CaptureStoreDescr
 };
 
 /**
+ * Generic project-agnostic architecture capture store.
+ *
+ * The URI prefix `casys://architecture-capture/sha256/<digest>` is the
+ * discriminant used by the monotony ratchet and the generic product-structure
+ * catalog projector. It must remain stable — changing it would invalidate URIs
+ * already written in immutable proof files.
+ */
+export const ARCHITECTURE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "architecture-capture"
+> = {
+  kind: "architecture-capture",
+  directory: "state/local/architecture-captures",
+  uriNamespace: "architecture-capture",
+  label: "Architecture",
+};
+
+/**
+ * Shared prefix for all generic architecture capture URIs.
+ *
+ * Used by the executor (to build the capture URI), the ratchet check (to
+ * identify architecture artifacts in previous revisions), and the generic
+ * catalog projector (to locate the architecture artifact by URI prefix).
+ * Must be consistent with ARCHITECTURE_CAPTURE_DESCRIPTOR.uriNamespace.
+ */
+export const ARCHITECTURE_CAPTURE_URI_PREFIX = "casys://architecture-capture/" as const;
+
+/**
  * Generic sensitivity-edge seed capture store (@2 operation).
  *
  * Distinct from SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR (@1): the @2

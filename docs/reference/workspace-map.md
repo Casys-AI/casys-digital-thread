@@ -39,6 +39,11 @@
 | [`src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts`](../../src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts) | Fixed CM-01 V3 operation catalog and evidence boundaries             |
 | [`src/domain/cm01/cm01-v3-r11-closeout.ts`](../../src/domain/cm01/cm01-v3-r11-closeout.ts)                                                                 | Code-derived R11 to R12 requirement-family closeout                  |
 | [`src/adapters/executors/syson-model-seed-run-executor.ts`](../../src/adapters/executors/syson-model-seed-run-executor.ts)                                 | Fixed SysON project/document/root-package seed executor              |
+| [`src/domain/platform/architecture-proposal.ts`](../../src/domain/platform/architecture-proposal.ts)                                                       | Generic architecture proposal types, `planArchitectureInsertion`, and server-fixed SysML renderer |
+| [`src/adapters/extractors/architecture-structure-extractor.ts`](../../src/adapters/extractors/architecture-structure-extractor.ts)                         | Reads SysON children to extract the architecture package structure   |
+| [`src/adapters/executors/model-write-architecture-run-executor.ts`](../../src/adapters/executors/model-write-architecture-run-executor.ts)                 | Generic trusted executor for `model.write-architecture@1`            |
+| [`src/adapters/wal/file-architecture-attempt-store.ts`](../../src/adapters/wal/file-architecture-attempt-store.ts)                                         | Write-ahead no-blind-retry store for generic architecture insertions |
+| [`src/adapters/projectors/product-structure-catalog.ts`](../../src/adapters/projectors/product-structure-catalog.ts)                                       | Generic product-structure projector reading `architecture-capture/1.0` captures |
 | [`src/adapters/captures/file-capture-store.ts`](../../src/adapters/captures/file-capture-store.ts)                                                         | One content-addressed capture engine, typed per evidence family      |
 | [`src/adapters/wal/file-syson-model-seed-attempt-store.ts`](../../src/adapters/wal/file-syson-model-seed-attempt-store.ts)                                 | Write-ahead no-blind-retry state for non-idempotent SysON writes     |
 | [`src/adapters/stores/thread-snapshot-lineage.ts`](../../src/adapters/stores/thread-snapshot-lineage.ts)                                                   | Exact `previous`-chain ancestry proof                                |
@@ -66,6 +71,8 @@
 | `state/local/engineering-project-run-leases/`                                                                                                              | Empty local OS lock targets for one trusted run; not evidence        |
 | `state/local/syson-model-seed-captures/`                                                                                                                   | Content-addressed normalized r2 container captures                   |
 | `state/local/syson-model-seed-attempts/`                                                                                                                   | Recovery control state for uncertain SysON writes; not evidence      |
+| `state/local/architecture-captures/`                                                                                                                       | Generic architecture-capture/1.0 CAS captures (model.write-architecture@1) |
+| `state/local/architecture-attempts/`                                                                                                                       | Recovery control state for uncertain generic SysON architecture writes |
 
 ## Local endpoints
 

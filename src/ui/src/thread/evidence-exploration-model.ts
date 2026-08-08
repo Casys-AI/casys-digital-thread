@@ -26,7 +26,6 @@
 import { DirectedGraph } from "graphology";
 // @dagrejs/dagre: layout hiérarchique synchrone, ESM-compatible.
 // deno.json référence "@dagrejs/dagre": "npm:@dagrejs/dagre@^3.1.0".
-// deno-lint-ignore no-explicit-any
 import dagreLib from "@dagrejs/dagre";
 // deno-lint-ignore no-explicit-any
 const dagre = dagreLib as any;
