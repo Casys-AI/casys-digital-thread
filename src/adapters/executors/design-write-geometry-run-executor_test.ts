@@ -1,0 +1,652 @@
+/**
+ * Tests for the generic `design.write-geometry@1` executor.
+ *
+ * Test coverage:
+ *
+ *   Unit-level (exported helpers — no project bootstrap required):
+ *   - assertGeometryArtifactNotRemoved does not throw when basis carries a
+ *     geometry artifact.
+ *   - assertGeometryArtifactNotRemoved fires (cliquet) when an ancestor had a
+ *     geometry artifact but the current basis does not.
+ *   - requireArchitectureArtifact finds the artifact whose fingerprint matches.
+ *   - requireArchitectureArtifact throws invalid_transition when no artifact
+ *     matches the supplied fingerprint.
+ *   - GeometryArtifactRemovedError carries the subject id in its message.
+ *
+ *   Integration-level (full project bootstrap → executor → refusal):
+ *   - Refusal when the run has no human MRTR approval (agent-only proposal is
+ *     not sufficient).
+ *   - Refusal when the basis snapshot has no architecture artifact (D5 part 1)
+ *     even with a valid human MRTR decision in place.
+ *
+ * Every published snapshot is validated through validateThreadSnapshot by the
+ * executor before it is stored.  Unit-level tests use assertRejects to stay
+ * focused on the invariant under test.
+ */
+
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
+import {
+  EngineeringProjectCommandError,
+  EngineeringProjectCommandService,
+} from "../../domain/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import {
+  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  ARCHITECTURE_CAPTURE_URI_PREFIX,
+  FileCaptureStore,
+  GEOMETRY_CAPTURE_DESCRIPTOR,
+  GEOMETRY_CAPTURE_URI_PREFIX,
+  GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+} from "../captures/file-capture-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
+import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
+import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
+import type {
+  ContentFingerprint,
+  ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
+import type { EngineeringThreadSnapshotRef } from "../../domain/project/engineering-project.ts";
+import {
+  assertGeometryArtifactNotRemoved,
+  DESIGN_WRITE_GEOMETRY_OPERATION,
+  DesignWriteGeometryRunExecutor,
+  GeometryArtifactRemovedError,
+  requireArchitectureArtifact,
+} from "./design-write-geometry-run-executor.ts";
+import {
+  encodeGeometryDecisionParameters,
+  GEOMETRY_MANIFEST_SCHEMA,
+  type GeometryManifest,
+} from "../../domain/platform/geometry-proposal.ts";
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const HEX64 = "a".repeat(64);
+const HEX64_B = "b".repeat(64);
+const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
+const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
+const PROJECT_ID = "project:geo-test-01";
+
+// ── Unit: assertGeometryArtifactNotRemoved ────────────────────────────────────
+
+/**
+ * Build an in-memory ThreadSnapshotStore so unit tests do not go through
+ * FileThreadSnapshotStore.save, which calls validateThreadSnapshot and rejects
+ * snapshots whose modelArtifactId does not reference an artifact in the
+ * artifact list. Unit tests care about the cliquet logic, not the store.
+ */
+function memoryStore(snapshots: ThreadSnapshot[]): {
+  get(id: string): Promise<ThreadSnapshot | undefined>;
+  save(_s: ThreadSnapshot): Promise<void>;
+  latest(_subjectId: string): Promise<ThreadSnapshot | undefined>;
+} {
+  const map = new Map(snapshots.map((s) => [s.id, s]));
+  return {
+    get: (id) => Promise.resolve(map.get(id)),
+    save: (_s) => Promise.resolve(),
+    latest: (_subjectId) => Promise.resolve(undefined),
+  };
+}
+
+Deno.test("assertGeometryArtifactNotRemoved does not throw when basis already carries a geometry artifact", async () => {
+  const fp: ContentFingerprint = { algorithm: "sha256", digest: HEX64 };
+  const basis = minimalSnapshotWithGeometry("snap-with-geo", 1, fp);
+  const store = memoryStore([basis]);
+
+  // Must not throw — basis already carries a geometry artifact.
+  await assertGeometryArtifactNotRemoved(basis, store);
+});
+
+Deno.test("assertGeometryArtifactNotRemoved fires the cliquet when an ancestor had a geometry artifact but the current basis does not", async () => {
+  const ancestorFp: ContentFingerprint = { algorithm: "sha256", digest: HEX64 };
+  const ancestor = minimalSnapshotWithGeometry("snap-ancestor", 1, ancestorFp);
+
+  // Successor has NO geometry artifact but links back to the ancestor.
+  const successor = minimalSnapshotWithoutGeometry("snap-successor", 2, {
+    snapshotId: "snap-ancestor",
+    revision: 1,
+  });
+  const store = memoryStore([ancestor, successor]);
+
+  await assertRejects(
+    () => assertGeometryArtifactNotRemoved(successor, store),
+    GeometryArtifactRemovedError,
+  );
+});
+
+// ── Unit: requireArchitectureArtifact ─────────────────────────────────────────
+
+Deno.test("requireArchitectureArtifact returns the artifact when the fingerprint matches", () => {
+  const fp: ContentFingerprint = { algorithm: "sha256", digest: HEX64 };
+  const snapshot = minimalSnapshotWithArchitecture("snap-arch", 1, fp);
+
+  const result = requireArchitectureArtifact(snapshot, fp);
+  assertEquals(result.fingerprint.digest, HEX64);
+  assertEquals(result.kind, "sysml-model");
+});
+
+Deno.test("requireArchitectureArtifact throws invalid_transition when no artifact matches the fingerprint", () => {
+  // Snapshot carries an architecture artifact with digest B; we query for A.
+  const storedFp: ContentFingerprint = { algorithm: "sha256", digest: HEX64_B };
+  const queriedFp: ContentFingerprint = { algorithm: "sha256", digest: HEX64 };
+  const snapshot = minimalSnapshotWithArchitecture("snap-arch", 1, storedFp);
+
+  let caught: unknown;
+  try {
+    requireArchitectureArtifact(snapshot, queriedFp);
+  } catch (error) {
+    caught = error;
+  }
+  assertExists(caught);
+  assertEquals((caught as EngineeringProjectCommandError).code, "invalid_transition");
+});
+
+Deno.test("GeometryArtifactRemovedError carries the subject ID in its message", () => {
+  const error = new GeometryArtifactRemovedError("subject:drone-v4");
+  assertEquals(error.name, "GeometryArtifactRemovedError");
+  assertEquals(error.message.includes("subject:drone-v4"), true);
+  assertEquals(error.message.includes("geometry_artifact_removed"), true);
+});
+
+// ── Integration fixture ───────────────────────────────────────────────────────
+
+interface GeoFixture {
+  readonly projects: FileEngineeringProjectRevisionStore;
+  readonly commands: EngineeringProjectCommandService;
+  readonly snapshots: FileThreadSnapshotStore;
+  readonly archCaptures: FileCaptureStore<"architecture-capture">;
+  readonly draftCaptures: FileCaptureStore<"geometry-draft">;
+  readonly geoCaptures: FileCaptureStore<"geometry-capture">;
+  readonly baselineRef: EngineeringThreadSnapshotRef;
+  readonly queued: { revision: number; runId: string };
+}
+
+/**
+ * Build a minimal fixture that goes through:
+ *  1. startProject → proposeBrief → approveBrief
+ *  2. publishPlan (baseline work item only)
+ *  3. queueRun + ApprovedBriefBaselineRunExecutor → r1 (baseline snapshot)
+ *  4. appendChange with geometry work item
+ *     - mode "no-mrtr": decisionIds: [] — queues immediately, executor refuses with
+ *       "No exact human-approved geometry MRTR decision is bound to this run basis."
+ *     - mode "with-mrtr": decisionIds: ["decision:geo-params"], human-approved decision.
+ *       The basis is r1 (baseline), which has NO architecture artifact — D5 fails.
+ *  5. queueRun for the geometry run
+ *
+ * Using decisionIds: [] for the "no-mrtr" mode is the canonical approach from
+ * model-write-architecture-run-executor_test.ts: the command policy only allows
+ * "human" origin to call decision.approve, so the test cannot force an agent
+ * approval. Instead, a work item with no decisions exercises the same guard path.
+ */
+async function buildGeoFixture(
+  directory: string,
+  opts: { mode: "no-mrtr" | "with-mrtr" },
+): Promise<GeoFixture> {
+  let tick = 0;
+  const now = () =>
+    new Date(Date.parse("2026-08-08T12:00:00.000Z") + ++tick * 1_000).toISOString();
+
+  const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
+  const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
+  const briefCaptures = new FileCaptureStore({
+    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/brief-captures`,
+  });
+  const archCaptures = new FileCaptureStore({
+    ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/arch-captures`,
+  });
+  const draftCaptures = new FileCaptureStore({
+    ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/draft-captures`,
+  });
+  const geoCaptures = new FileCaptureStore({
+    ...GEOMETRY_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/geo-captures`,
+  });
+
+  // ── Step 1: brief lifecycle ────────────────────────────────────────────────
+
+  const briefs = new ProjectBriefCommandService(projects, now);
+  let project = await briefs.startProject(AGENT, {
+    commandId: "start-geo-project",
+    projectId: PROJECT_ID,
+    projectName: "Geometry write test",
+    issuedAt: "2026-08-08T11:59:00.000Z",
+    intent: "Integration test for design.write-geometry@1.",
+    intentSource: { kind: "human", reference: "conversation:test" },
+  });
+  project = await briefs.proposeBrief(AGENT, {
+    commandId: "propose-brief",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T11:59:30.000Z",
+    items: [
+      {
+        id: "objective",
+        kind: "objective",
+        statement: "Validate the geometry seal executor.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:test" }],
+      },
+      {
+        id: "mission",
+        kind: "mission-scenario",
+        statement: "Seal a build123d geometry draft into the evidence thread.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:test" }],
+      },
+      {
+        id: "success",
+        kind: "success-criterion",
+        statement: "Geometry artifact appears in the ThreadSnapshot and validates.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:test" }],
+      },
+    ],
+  });
+  project = await briefs.approveBrief(HUMAN, {
+    commandId: "approve-brief",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T11:59:45.000Z",
+    briefSnapshotId: project.framing!.proposedBrief!.id,
+    briefRevision: project.framing!.proposedBrief!.revision,
+    rationale: "Approved for integration test.",
+    inputFingerprint: project.framing!.proposalReview!.inputFingerprint,
+  });
+
+  // ── Step 2: publish plan with baseline only ────────────────────────────────
+
+  const commands = new EngineeringProjectCommandService(
+    projects,
+    new ExactThreadCompletionEvidenceValidator(snapshots),
+    now,
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    new ExactInitialBaselineEvidenceValidator(snapshots, briefCaptures),
+  );
+
+  project = await commands.publishPlan(AGENT, {
+    commandId: "publish-plan",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:00:00.000Z",
+    startingPoint: "idea-or-spec",
+    phases: [{
+      id: "baseline",
+      name: "Documentary baseline",
+      description: "Record the approved brief.",
+    }],
+    workItems: [{
+      id: "wi:baseline",
+      phaseId: "baseline",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+
+  // ── Step 3: queue + execute baseline run ──────────────────────────────────
+
+  project = await commands.queueRun(AGENT, {
+    commandId: "queue-baseline",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:00:01.000Z",
+    runId: "run:baseline",
+    workItemId: "wi:baseline",
+    summary: "Record the documentary baseline.",
+    basis: project.plan!.basis,
+  });
+
+  const afterBaseline = await new ApprovedBriefBaselineRunExecutor({
+    projects,
+    commands,
+    captures: briefCaptures,
+    snapshots,
+    lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
+    now: () => "2026-08-08T12:01:00.000Z",
+  }).execute(AGENT, {
+    commandId: "exec-baseline",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:01:00.000Z",
+    runId: "run:baseline",
+  });
+
+  const r1 = afterBaseline.threadSnapshots[0]!;
+
+  // ── Step 4: append geometry work item (with or without a required decision) ─
+
+  if (opts.mode === "no-mrtr") {
+    // Work item with NO decision bindings: queues immediately (no decisions to
+    // approve) but the executor throws because requireMrtrApproval finds zero
+    // human-approved decisions. This is the canonical test pattern from
+    // model-write-architecture-run-executor_test.ts.
+    project = await commands.appendChange(AGENT, {
+      commandId: "append-geo-change",
+      projectId: PROJECT_ID,
+      expectedRevision: afterBaseline.revision,
+      issuedAt: "2026-08-08T12:02:00.000Z",
+      baseSnapshot: r1,
+      phases: [{
+        id: "geometry",
+        name: "Geometry",
+        description: "Seal the reviewed geometry.",
+      }],
+      workItems: [{
+        id: "wi:geometry",
+        phaseId: "geometry",
+        owner: "agent",
+        dependsOnWorkItemIds: ["wi:baseline"],
+        decisionIds: [],
+        operation: {
+          ...DESIGN_WRITE_GEOMETRY_OPERATION,
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        },
+      }],
+      requiredDecisions: [],
+    });
+  } else {
+    // Work item WITH a human-approved decision.  The basis r1 has NO architecture
+    // artifact, so D5 will fail — which is what the "no arch artifact" test checks.
+    const geoManifest: GeometryManifest = {
+      schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+      architectureBasis: {
+        snapshotId: r1.snapshotId,
+        revision: r1.revision,
+        // HEX64: fingerprint of an architecture artifact that does NOT exist in r1.
+        artifactFingerprint: { algorithm: "sha256", digest: HEX64 },
+      },
+      components: [],
+      unitSystem: "mm",
+      exportFormats: ["gltf"],
+      scriptHash: { algorithm: "sha256", digest: HEX64 },
+      artifactHashes: {
+        assemblyFiles: [{
+          format: "gltf",
+          name: "geometry-preview-assembly",
+          fingerprint: { algorithm: "sha256", digest: HEX64 },
+        }],
+        partMeshes: [],
+      },
+    };
+    const geoDecisionParams = encodeGeometryDecisionParameters(HEX64, geoManifest);
+
+    project = await commands.appendChange(AGENT, {
+      commandId: "append-geo-change",
+      projectId: PROJECT_ID,
+      expectedRevision: afterBaseline.revision,
+      issuedAt: "2026-08-08T12:02:00.000Z",
+      baseSnapshot: r1,
+      phases: [{
+        id: "geometry",
+        name: "Geometry",
+        description: "Seal the reviewed geometry.",
+      }],
+      workItems: [{
+        id: "wi:geometry",
+        phaseId: "geometry",
+        owner: "agent",
+        dependsOnWorkItemIds: ["wi:baseline"],
+        decisionIds: ["decision:geo-params"],
+        operation: {
+          ...DESIGN_WRITE_GEOMETRY_OPERATION,
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        },
+      }],
+      requiredDecisions: [{
+        id: "decision:geo-params",
+        phaseId: "geometry",
+        title: "Geometry sealing parameters",
+        question: "Which draft and manifest should be sealed into the thread?",
+      }],
+    });
+
+    project = await commands.proposeDecision(AGENT, {
+      commandId: "propose-decision-geo",
+      projectId: PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2026-08-08T12:03:00.000Z",
+      decisionId: "decision:geo-params",
+      baseSnapshot: r1,
+      proposal: {
+        summary: "Seal the geometry preview assembly.",
+        parameters: geoDecisionParams as Array<{
+          key: string;
+          label: string;
+          value: string | number | boolean;
+        }>,
+      },
+    });
+
+    const approval = project.approvals.find(
+      (a) => a.decisionId === "decision:geo-params",
+    )!;
+    project = await commands.approveDecision(HUMAN, {
+      commandId: "approve-decision-geo",
+      projectId: PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: "2026-08-08T12:04:00.000Z",
+      decisionId: "decision:geo-params",
+      rationale: "The geometry manifest is correct.",
+      inputFingerprint: approval.inputFingerprint!,
+    });
+  }
+
+  // ── Step 5: queue the geometry run ─────────────────────────────────────────
+
+  project = await commands.queueRun(AGENT, {
+    commandId: "queue-geo-run",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:05:00.000Z",
+    runId: "run:geometry",
+    workItemId: "wi:geometry",
+    summary: "Seal the reviewed geometry draft into the thread.",
+    basis: { kind: "thread-snapshot", ...r1 },
+  });
+
+  return {
+    projects,
+    commands,
+    snapshots,
+    archCaptures,
+    draftCaptures,
+    geoCaptures,
+    baselineRef: r1,
+    queued: { revision: project.revision, runId: "run:geometry" },
+  };
+}
+
+function makeExecutor(
+  fixture: GeoFixture,
+  directory: string,
+): DesignWriteGeometryRunExecutor {
+  return new DesignWriteGeometryRunExecutor({
+    projects: fixture.projects,
+    commands: fixture.commands,
+    snapshots: fixture.snapshots,
+    architectureCaptures: fixture.archCaptures,
+    geometryDraftCaptures: fixture.draftCaptures,
+    geometryCaptures: fixture.geoCaptures,
+    lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
+    now: () => "2026-08-08T12:10:00.000Z",
+  });
+}
+
+function executionCommand(
+  fixture: Pick<GeoFixture, "queued">,
+): {
+  commandId: string;
+  projectId: string;
+  expectedRevision: number;
+  issuedAt: string;
+  runId: string;
+} {
+  return {
+    commandId: "exec-geometry",
+    projectId: PROJECT_ID,
+    expectedRevision: fixture.queued.revision,
+    issuedAt: "2026-08-08T12:10:00.000Z",
+    runId: fixture.queued.runId,
+  };
+}
+
+// ── Integration: executor refusal paths ──────────────────────────────────────
+
+Deno.test("design-write-geometry executor refuses when the run has no human MRTR approval", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-no-human-" });
+  try {
+    // No decision binding at all — the work item is immediately "ready" but the
+    // executor finds no human-approved MRTR candidate.
+    const fixture = await buildGeoFixture(tmpDir, { mode: "no-mrtr" });
+    const executor = makeExecutor(fixture, tmpDir);
+
+    await assertRejects(
+      () => executor.execute(AGENT, executionCommand(fixture)),
+      EngineeringProjectCommandError,
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("design-write-geometry executor refuses when the basis snapshot carries no architecture artifact (D5 part 1)", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-no-arch-" });
+  try {
+    // Human MRTR approved, but r1 (the basis) has no architecture artifact.
+    const fixture = await buildGeoFixture(tmpDir, { mode: "with-mrtr" });
+    const executor = makeExecutor(fixture, tmpDir);
+
+    await assertRejects(
+      () => executor.execute(AGENT, executionCommand(fixture)),
+      EngineeringProjectCommandError,
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+// ── Snapshot fixtures for unit tests ─────────────────────────────────────────
+
+// ── Minimal snapshot construction helpers ─────────────────────────────────────
+
+const SNAP_AT = "2026-08-08T00:00:00.000Z";
+
+const SNAP_FRESHNESS = {
+  status: "fresh" as const,
+  changedAt: SNAP_AT,
+  invalidatedByChangeIds: [] as string[],
+};
+
+const SNAP_CHANGE_SET = {
+  id: "cs-1",
+  name: "Base",
+  status: "applied" as const,
+  createdAt: SNAP_AT,
+  appliedAt: SNAP_AT,
+  changes: [] as never[],
+};
+
+function minimalSubject() {
+  return {
+    id: "subj-001",
+    name: "TestSubject",
+    kind: "system" as const,
+    version: "1",
+    modelArtifactId: "ma-001",
+  };
+}
+
+function minimalSnapshotBase(
+  id: string,
+  revision: number,
+  previous?: { snapshotId: string; revision: number },
+): Omit<ThreadSnapshot, "artifacts"> {
+  // `previous` must be omitted (not set to undefined) — validateThreadSnapshot
+  // rejects an explicit undefined in this field.
+  const base: Omit<ThreadSnapshot, "artifacts"> = {
+    schemaVersion: "1.0",
+    id,
+    revision,
+    generatedAt: SNAP_AT,
+    subject: minimalSubject(),
+    freshness: SNAP_FRESHNESS,
+    changeSet: SNAP_CHANGE_SET,
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+  };
+  if (previous) {
+    return { ...base, previous };
+  }
+  return base;
+}
+
+function minimalSnapshotWithGeometry(
+  id: string,
+  revision: number,
+  fp: ContentFingerprint,
+  previous?: { snapshotId: string; revision: number },
+): ThreadSnapshot {
+  return {
+    ...minimalSnapshotBase(id, revision, previous),
+    artifacts: [{
+      id: `geometry-${fp.digest}`,
+      name: "Geometry artifact",
+      kind: "cad-model",
+      version: fp.digest,
+      fingerprint: fp,
+      uri: `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${fp.digest}`,
+      producer: { serverId: "build123d", tool: "build123d_export", runId: "run-001" },
+      inputArtifactIds: [],
+      freshness: SNAP_FRESHNESS,
+    }],
+  };
+}
+
+function minimalSnapshotWithoutGeometry(
+  id: string,
+  revision: number,
+  previous?: { snapshotId: string; revision: number },
+): ThreadSnapshot {
+  return { ...minimalSnapshotBase(id, revision, previous), artifacts: [] };
+}
+
+function minimalSnapshotWithArchitecture(
+  id: string,
+  revision: number,
+  fp: ContentFingerprint,
+): ThreadSnapshot {
+  return {
+    ...minimalSnapshotBase(id, revision),
+    artifacts: [{
+      id: `architecture-${fp.digest}`,
+      name: "Architecture",
+      kind: "sysml-model",
+      version: fp.digest,
+      fingerprint: fp,
+      uri: `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${fp.digest}`,
+      producer: {
+        serverId: "syson",
+        tool: "syson_element_insert_sysml",
+        runId: "run-arch",
+      },
+      inputArtifactIds: [],
+      freshness: SNAP_FRESHNESS,
+    }],
+  };
+}
