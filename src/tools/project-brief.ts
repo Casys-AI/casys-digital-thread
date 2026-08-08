@@ -172,6 +172,9 @@ export function registerProjectBriefTools(
         current,
       );
     }
+    const rationale = typeof args.rationale === "string" && args.rationale.trim()
+      ? args.rationale.trim()
+      : "The paired MCP host returned an accepted confirmation response.";
     const snapshot = await dependencies.commands.approveBrief(
       elicitedHumanOrigin(context),
       {
@@ -179,7 +182,7 @@ export function registerProjectBriefTools(
         briefSnapshotId,
         briefRevision,
         inputFingerprint,
-        rationale: "The paired MCP host returned an accepted confirmation response.",
+        rationale,
       },
     );
     return projectResult(
@@ -350,6 +353,12 @@ const projectBriefConfirmTool: MCPTool = {
     briefSnapshotId: STRING,
     briefRevision: { type: "integer", minimum: 1 },
     inputFingerprint: FINGERPRINT,
+    rationale: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Optional verbatim record of why this brief reflects the paired conversation. Shown in the approval record. Defaults to a generic host-confirmation message when absent.",
+    },
   }, ["briefSnapshotId", "briefRevision", "inputFingerprint"]),
   outputSchema: OBJECT_OUTPUT,
   annotations: MUTATION,
