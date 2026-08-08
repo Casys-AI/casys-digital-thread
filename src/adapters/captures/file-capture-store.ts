@@ -375,8 +375,10 @@ async function syncDirectoryChain(path: string): Promise<void> {
       directory.close();
     }
     if (current === "state" || current.endsWith("/state")) return;
+    // A relative custom root is created in `.`. Persist that parent entry too,
+    // then stop after its single sync rather than looping on `.` forever.
+    if (current === ".") return;
     const parent = current.lastIndexOf("/");
     current = parent < 0 ? "." : parent === 0 ? "/" : current.slice(0, parent);
-    if (current === ".") return;
   }
 }

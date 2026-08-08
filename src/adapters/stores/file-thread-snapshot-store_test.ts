@@ -106,6 +106,18 @@ Deno.test("production snapshot stores confirm an identical concurrent durable fi
   }
 });
 
+Deno.test("production snapshot store persists a custom relative root", async () => {
+  const directory = `casys-relative-snapshots-${crypto.randomUUID()}`;
+  try {
+    const store = new FileThreadSnapshotStore(directory);
+    const snapshot = validSnapshot();
+    await store.save(snapshot);
+    assertEquals(await store.getFresh(snapshot.id), snapshot);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("concurrent store instances reject different content for the same snapshot id", async () => {
   const io = new BarrierMemoryFileIo();
   const firstStore = new FileThreadSnapshotStore("snapshots", io);

@@ -58,6 +58,18 @@ Deno.test("PartDefinitions publication WAL reads a safe legacy key without probi
   }
 });
 
+Deno.test("PartDefinitions publication WAL persists a custom relative root", async () => {
+  const directory = `casys-relative-publications-${crypto.randomUUID()}`;
+  try {
+    const store = new FileInspectionDroneV4PartDefinitionsPublicationStore(directory);
+    const value = publication("project:relative", "run:relative");
+    await store.save(value);
+    assertEquals(await store.read(value.projectId, value.runId), value);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 function publication(
   projectId: string,
   runId: string,

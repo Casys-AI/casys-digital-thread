@@ -133,6 +133,22 @@ Deno.test(
   },
 );
 
+Deno.test("A capture store persists a custom relative root", async () => {
+  const directory = `casys-relative-captures-${crypto.randomUUID()}`;
+  try {
+    const store = new FileCaptureStore({
+      ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+      directory,
+    });
+    const text = '{"kind":"relative-root"}';
+    const fingerprint = await sha256Fingerprint({ kind: "relative-root" });
+    await store.save(fingerprint, text);
+    assertEquals(await store.read(fingerprint), text);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 // ── Idempotence ──────────────────────────────────────────────────────────────
 
 Deno.test(

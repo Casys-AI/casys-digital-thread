@@ -188,8 +188,10 @@ async function syncDirectoryChain(path: string): Promise<void> {
       directory.close();
     }
     if (current === "state" || current.endsWith("/state")) return;
+    // Relative runtime directories are children of `.`; fsync that creation
+    // entry once before stopping, without permitting an infinite `.` loop.
+    if (current === ".") return;
     const parent = current.lastIndexOf("/");
     current = parent < 0 ? "." : parent === 0 ? "/" : current.slice(0, parent);
-    if (current === ".") return;
   }
 }
