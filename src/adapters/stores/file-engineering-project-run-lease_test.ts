@@ -33,6 +33,40 @@ Deno.test("file project-run lease blocks a concurrent holder until release", asy
   }
 });
 
+Deno.test("file project-run lease keeps maximum identities in one stable short concurrent lock", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-project-run-lease-" });
+  try {
+    const projectId = "p".repeat(160);
+    const runId = "r".repeat(160);
+    const firstLease = new FileEngineeringProjectRunLease(directory);
+    const secondLease = new FileEngineeringProjectRunLease(directory);
+    const firstEntered = deferred<void>();
+    const releaseFirst = deferred<void>();
+    let secondEntered = false;
+
+    const first = firstLease.withLease(projectId, runId, async () => {
+      firstEntered.resolve();
+      await releaseFirst.promise;
+    });
+    await firstEntered.promise;
+    const second = secondLease.withLease(projectId, runId, async () => {
+      secondEntered = true;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    assertEquals(secondEntered, false);
+    const entries = [...(await Array.fromAsync(Deno.readDir(directory)))];
+    assertEquals(entries.length, 1);
+    assertEquals(entries[0]!.name.length, 69);
+
+    releaseFirst.resolve();
+    await first;
+    await second;
+    assertEquals(secondEntered, true);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolvePromise) => {

@@ -28,7 +28,7 @@ export class FileEngineeringProjectRunLease implements EngineeringProjectRunLeas
     runId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const path = this.#path(projectId, runId);
+    const path = await this.#path(projectId, runId);
     await Deno.mkdir(this.#directory, { recursive: true });
     const file = await Deno.open(path, { create: true, read: true, write: true });
     let locked = false;
@@ -45,12 +45,25 @@ export class FileEngineeringProjectRunLease implements EngineeringProjectRunLeas
     }
   }
 
-  #path(projectId: string, runId: string): string {
+  async #path(projectId: string, runId: string): Promise<string> {
     nonEmpty(projectId, "projectId");
     nonEmpty(runId, "runId");
-    const key = encodeURIComponent(JSON.stringify([projectId, runId]));
+    // The former escaped tuple can exceed NAME_MAX for valid 160-character
+    // project and run ids. There is deliberately no legacy-path fallback:
+    // advisory locks cannot safely span two path schemes. Deployments must
+    // restart coordinated lease holders when moving to this key format.
+    const key = await sha256Hex(JSON.stringify([projectId, runId]));
     return `${this.#directory}/${key}.lock`;
   }
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function nonEmpty(value: string, label: string): void {

@@ -27,7 +27,7 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
   async save(value: InspectionDroneV4PartDefinitionsPublication): Promise<void> {
     validate(value);
     await Deno.mkdir(this.directory, { recursive: true });
-    const path = this.pathFor(value.projectId, value.runId);
+    const path = await this.pathFor(value.projectId, value.runId);
     const text = `${deterministicJson(value)}\n`;
     // The run key can itself be close to NAME_MAX.  Keep the disposable
     // temporary basename short while retaining the same directory for link(2).
@@ -78,7 +78,9 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
     runId: string,
   ): Promise<InspectionDroneV4PartDefinitionsPublication | undefined> {
     try {
-      const value = JSON.parse(await Deno.readTextFile(this.pathFor(projectId, runId)));
+      const value = JSON.parse(
+        await Deno.readTextFile(await this.pathFor(projectId, runId)),
+      );
       validate(value);
       if (value.projectId !== projectId || value.runId !== runId) {
         throw new Error(
@@ -92,11 +94,25 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
     }
   }
 
-  private pathFor(projectId: string, runId: string): string {
-    return `${this.directory.replace(/\/$/, "")}/${
-      encodeURIComponent(JSON.stringify([projectId, runId]))
-    }.json`;
+  /**
+   * A fixed-length canonical tuple digest keeps valid 160-character project
+   * and run identifiers below NAME_MAX. The record itself re-attests both
+   * identities, so a cryptographic collision is still rejected fail-closed.
+   */
+  async pathFor(projectId: string, runId: string): Promise<string> {
+    return `${this.directory.replace(/\/$/, "")}/${await sha256Hex(
+      deterministicJson([projectId, runId]),
+    )}.json`;
   }
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function validate(
