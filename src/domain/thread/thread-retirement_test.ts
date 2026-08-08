@@ -595,6 +595,95 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "computeArchiveCascade propagates from an archived artifact to late active observation evidence",
+  () => {
+    const model = artifact("model", [], "0");
+    const retiredArtifact = artifact("retired-artifact", [], "1");
+    const req = requirement("req", "model", "model");
+    const lateObservation = observation("late-observation", ["retired-artifact"]);
+    const lateEvaluation = evaluation("late-evaluation", "req", ["late-observation"]);
+    const lateViolation = violation("late-violation", "req", "late-evaluation", [
+      "late-observation",
+    ]);
+    const snapshot: ThreadSnapshot = {
+      ...minimalBase(model),
+      artifacts: [model, retiredArtifact],
+      requirements: [req],
+      observations: [lateObservation],
+      evaluations: [lateEvaluation],
+      violations: [lateViolation],
+      changeSet: {
+        ...minimalBase(model).changeSet,
+        changes: [{
+          id: "prior:archived:artifact:retired-artifact",
+          kind: "archived",
+          target: { kind: "artifact", id: "retired-artifact" },
+          summary: "Previously retired.",
+        }],
+      },
+    };
+    const result = computeArchiveCascade(snapshot, [{
+      kind: "artifact",
+      id: "retired-artifact",
+    }]);
+    assertEquals(result.map((entry) => entry.ref), [
+      { kind: "evaluation", id: "late-evaluation" },
+      { kind: "observation", id: "late-observation" },
+      { kind: "violation", id: "late-violation" },
+    ]);
+  },
+);
+
+Deno.test(
+  "computeArchiveCascade propagates an archived requirement through an archived evaluation to a late violation",
+  () => {
+    const model = artifact("model", [], "0");
+    const retiredRequirement = requirement("retired-requirement", "model", "model");
+    const retiredEvaluation = evaluation(
+      "retired-evaluation",
+      "retired-requirement",
+      [],
+    );
+    const lateViolation = violation(
+      "late-violation",
+      "retired-requirement",
+      "retired-evaluation",
+    );
+    const snapshot: ThreadSnapshot = {
+      ...minimalBase(model),
+      requirements: [retiredRequirement],
+      evaluations: [retiredEvaluation],
+      violations: [lateViolation],
+      changeSet: {
+        ...minimalBase(model).changeSet,
+        changes: [
+          {
+            id: "prior:archived:requirement:retired-requirement",
+            kind: "archived",
+            target: { kind: "requirement", id: "retired-requirement" },
+            summary: "Previously retired.",
+          },
+          {
+            id: "prior:archived:evaluation:retired-evaluation",
+            kind: "archived",
+            target: { kind: "evaluation", id: "retired-evaluation" },
+            summary: "Previously retired.",
+          },
+        ],
+      },
+    };
+    const result = computeArchiveCascade(snapshot, [{
+      kind: "requirement",
+      id: "retired-requirement",
+    }]);
+    assertEquals(result.map((entry) => entry.ref), [{
+      kind: "violation",
+      id: "late-violation",
+    }]);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // computeArchiveCascade — result order is stable
 // ---------------------------------------------------------------------------

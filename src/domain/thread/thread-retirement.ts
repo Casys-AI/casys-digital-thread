@@ -117,9 +117,10 @@ export function computeArchiveCascade(
   // Seed from artifact targets; follow inputArtifactIds AND derived_from
   // provenance links (to=cascaded artifact → from=downstream artifact).
 
-  // Map: artifact id → because id
-  const cascadedArtifacts = new Map<string, string>();
-  const traversedArtifacts = new Set<string>();
+  // Trigger maps deliberately retain already-archived ancestors. They carry
+  // causal propagation to later descendants; the final assembly alone filters
+  // entities whose archival fact is already recorded.
+  const triggeredArtifacts = new Map<string, string>();
   const artifactWorklist: Array<{ id: string; because: string }> = [];
 
   for (const ref of targets) {
@@ -160,114 +161,116 @@ export function computeArchiveCascade(
 
   while (artifactWorklist.length > 0) {
     const { id, because } = artifactWorklist.pop()!;
-    if (traversedArtifacts.has(id)) continue;
-    traversedArtifacts.add(id);
-    if (!retired.has(`artifact:${id}`)) cascadedArtifacts.set(id, because);
+    if (triggeredArtifacts.has(id)) continue;
+    triggeredArtifacts.set(id, because);
 
     // Downstream via inputArtifactIds.
     for (const downstreamId of consumers.get(id) ?? []) {
-      if (
-        !traversedArtifacts.has(downstreamId)
-      ) {
+      if (!triggeredArtifacts.has(downstreamId)) {
         artifactWorklist.push({ id: downstreamId, because: id });
       }
     }
     // Downstream via derived_from provenance (may overlap with inputArtifactIds
     // but exclusion by cascadedArtifacts.has prevents duplicates).
     for (const downstreamId of derivedFrom.get(id) ?? []) {
-      if (
-        !traversedArtifacts.has(downstreamId)
-      ) {
+      if (!triggeredArtifacts.has(downstreamId)) {
         artifactWorklist.push({ id: downstreamId, because: id });
       }
     }
   }
 
   // -- Phase 2: observations that cite a cascaded artifact ------------------
-  const cascadedObservations = new Map<string, string>(); // obs id → because
+  const triggeredObservations = new Map<string, string>(); // obs id → because
   for (const ref of targets) {
-    if (ref.kind === "observation" && !retired.has(`observation:${ref.id}`)) {
-      cascadedObservations.set(ref.id, ref.id);
+    if (ref.kind === "observation") {
+      triggeredObservations.set(ref.id, ref.id);
     }
   }
   for (const obs of snapshot.observations) {
-    if (retired.has(`observation:${obs.id}`)) continue;
-    const cause = obs.source.artifactIds.find((aid) => cascadedArtifacts.has(aid));
+    const cause = obs.source.artifactIds.find((aid) => triggeredArtifacts.has(aid));
     if (cause !== undefined) {
-      cascadedObservations.set(obs.id, cause);
+      triggeredObservations.set(obs.id, cause);
     }
   }
 
   // -- Phase 3: requirement targets and their evaluations -------------------
   // A requirement is a direct retirement target, but its verdicts are
   // downstream current-state claims and must retire with it.
-  const cascadedRequirements = new Map<string, string>();
+  const triggeredRequirements = new Map<string, string>();
   for (const ref of targets) {
-    if (ref.kind === "requirement" && !retired.has(`requirement:${ref.id}`)) {
-      cascadedRequirements.set(ref.id, ref.id);
+    if (ref.kind === "requirement") {
+      triggeredRequirements.set(ref.id, ref.id);
     }
   }
 
   // -- Phase 4: evaluations that cite cascaded requirements, observations or artifacts
-  const cascadedEvaluations = new Map<string, string>(); // eval id → because
+  const triggeredEvaluations = new Map<string, string>(); // eval id → because
   for (const ref of targets) {
-    if (ref.kind === "evaluation" && !retired.has(`evaluation:${ref.id}`)) {
-      cascadedEvaluations.set(ref.id, ref.id);
+    if (ref.kind === "evaluation") {
+      triggeredEvaluations.set(ref.id, ref.id);
     }
   }
   for (const ev of snapshot.evaluations) {
-    if (retired.has(`evaluation:${ev.id}`)) continue;
-    if (cascadedRequirements.has(ev.requirementId)) {
-      cascadedEvaluations.set(ev.id, ev.requirementId);
+    if (triggeredRequirements.has(ev.requirementId)) {
+      triggeredEvaluations.set(ev.id, ev.requirementId);
       continue;
     }
-    const obsCause = ev.observationIds.find((oid) => cascadedObservations.has(oid));
+    const obsCause = ev.observationIds.find((oid) => triggeredObservations.has(oid));
     if (obsCause !== undefined) {
-      cascadedEvaluations.set(ev.id, obsCause);
+      triggeredEvaluations.set(ev.id, obsCause);
       continue;
     }
-    const artCause = ev.evidenceArtifactIds.find((aid) => cascadedArtifacts.has(aid));
+    const artCause = ev.evidenceArtifactIds.find((aid) => triggeredArtifacts.has(aid));
     if (artCause !== undefined) {
-      cascadedEvaluations.set(ev.id, artCause);
+      triggeredEvaluations.set(ev.id, artCause);
     }
   }
 
   // -- Phase 5: violations that cite cascaded evaluations or observations ---
-  const cascadedViolations = new Map<string, string>(); // violation id → because
+  const triggeredViolations = new Map<string, string>(); // violation id → because
   for (const ref of targets) {
-    if (ref.kind === "violation" && !retired.has(`violation:${ref.id}`)) {
-      cascadedViolations.set(ref.id, ref.id);
+    if (ref.kind === "violation") {
+      triggeredViolations.set(ref.id, ref.id);
     }
   }
   for (const viol of snapshot.violations) {
-    if (retired.has(`violation:${viol.id}`)) continue;
-    if (cascadedEvaluations.has(viol.evaluationId)) {
-      cascadedViolations.set(viol.id, viol.evaluationId);
+    if (triggeredEvaluations.has(viol.evaluationId)) {
+      triggeredViolations.set(viol.id, viol.evaluationId);
       continue;
     }
-    const obsCause = viol.observationIds.find((oid) => cascadedObservations.has(oid));
+    const obsCause = viol.observationIds.find((oid) => triggeredObservations.has(oid));
     if (obsCause !== undefined) {
-      cascadedViolations.set(viol.id, obsCause);
+      triggeredViolations.set(viol.id, obsCause);
     }
   }
 
   // -- Assemble result, sorted for determinism ------------------------------
   const entries: ArchiveCascadeEntry[] = [];
 
-  for (const [id, because] of cascadedArtifacts) {
-    entries.push({ ref: { kind: "artifact", id }, because });
+  for (const [id, because] of triggeredArtifacts) {
+    if (!retired.has(`artifact:${id}`)) {
+      entries.push({ ref: { kind: "artifact", id }, because });
+    }
   }
-  for (const [id, because] of cascadedRequirements) {
-    entries.push({ ref: { kind: "requirement", id }, because });
+  for (const [id, because] of triggeredRequirements) {
+    if (!retired.has(`requirement:${id}`)) {
+      entries.push({ ref: { kind: "requirement", id }, because });
+    }
   }
-  for (const [id, because] of cascadedObservations) {
-    entries.push({ ref: { kind: "observation", id }, because });
+  for (const [id, because] of triggeredObservations) {
+    if (!retired.has(`observation:${id}`)) {
+      entries.push({ ref: { kind: "observation", id }, because });
+    }
   }
-  for (const [id, because] of cascadedEvaluations) {
-    entries.push({ ref: { kind: "evaluation", id }, because });
+  for (const [id, because] of triggeredEvaluations) {
+    if (!retired.has(`evaluation:${id}`)) {
+      entries.push({ ref: { kind: "evaluation", id }, because });
+    }
   }
-  for (const [id, because] of cascadedViolations) {
-    entries.push({ ref: { kind: "violation", id }, because });
+  for (const [id, because] of triggeredViolations) {
+    if (!retired.has(`violation:${id}`)) {
+      entries.push({ ref: { kind: "violation", id }, because });
+    }
   }
 
   entries.sort((a, b) => {
