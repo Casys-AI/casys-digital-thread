@@ -132,7 +132,12 @@ function validateChange(
   const input = record(value, path, issues);
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
-  oneOf(input.kind, ["created", "modified", "deleted"], `${path}.kind`, issues);
+  oneOf(
+    input.kind,
+    ["created", "modified", "deleted", "archived"],
+    `${path}.kind`,
+    issues,
+  );
   validateEntityRef(input.target, `${path}.target`, issues);
   nonEmptyString(input.summary, `${path}.summary`, issues);
   optionalFingerprint(input.beforeFingerprint, `${path}.beforeFingerprint`, issues);
@@ -1201,19 +1206,19 @@ function checkChange(
   snapshot: ThreadSnapshot,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  if (change.target.kind !== "artifact" && change.target.kind !== "requirement") {
+  if (
+    change.target.kind !== "artifact" && change.target.kind !== "requirement" &&
+    change.target.kind !== "observation" && change.target.kind !== "evaluation" &&
+    change.target.kind !== "violation"
+  ) {
     issue(
       issues,
       "invalid_change_target",
       `${path}.target.kind`,
-      "must be artifact or requirement",
+      "must be artifact, requirement, observation, evaluation or violation",
     );
   }
-  const exists = change.target.kind === "artifact"
-    ? snapshot.artifacts.some((item) => item.id === change.target.id)
-    : change.target.kind === "requirement"
-    ? snapshot.requirements.some((item) => item.id === change.target.id)
-    : false;
+  const exists = entityExists(snapshot, change.target);
   if (change.kind !== "deleted" && !exists) {
     issue(
       issues,
@@ -1303,6 +1308,43 @@ function checkChange(
       );
     }
   }
+  if (change.kind === "archived") {
+    // Archival is an append-only status change: no content is altered,
+    // so neither fingerprint is meaningful or expected.
+    if (change.beforeFingerprint) {
+      issue(
+        issues,
+        "unexpected_fingerprint",
+        `${path}.beforeFingerprint`,
+        "must be absent for an archived entity",
+      );
+    }
+    if (change.afterFingerprint) {
+      issue(
+        issues,
+        "unexpected_fingerprint",
+        `${path}.afterFingerprint`,
+        "must be absent for an archived entity",
+      );
+    }
+  }
+}
+
+function entityExists(snapshot: ThreadSnapshot, reference: ThreadEntityRef): boolean {
+  switch (reference.kind) {
+    case "artifact":
+      return snapshot.artifacts.some((item) => item.id === reference.id);
+    case "requirement":
+      return snapshot.requirements.some((item) => item.id === reference.id);
+    case "observation":
+      return snapshot.observations.some((item) => item.id === reference.id);
+    case "evaluation":
+      return snapshot.evaluations.some((item) => item.id === reference.id);
+    case "violation":
+      return snapshot.violations.some((item) => item.id === reference.id);
+    default:
+      return false;
+  }
 }
 
 function checkFreshness(
@@ -1366,7 +1408,13 @@ function checkLinkShape(
     ThreadProvenanceLink["relation"],
     readonly [ThreadEntityKind[], ThreadEntityKind[]]
   > = {
-    changes: [["change"], ["artifact", "requirement"]],
+    changes: [["change"], [
+      "artifact",
+      "requirement",
+      "observation",
+      "evaluation",
+      "violation",
+    ]],
     derived_from: [["artifact", "observation"], ["artifact", "observation"]],
     // traces_to carries requirement traceability AND evidence-to-design
     // anchoring (an existing proof artifact traces to the part definition it

@@ -17,6 +17,7 @@ import {
   resolveThreadComponentCatalog,
   type ThreadComponentCatalog,
 } from "../../domain/thread/thread-component-catalog.ts";
+import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import {
   CM01_V3_PRODUCT_STRUCTURE_IDENTITIES,
 } from "./cm01-v3-product-structure-catalog.ts";
@@ -52,24 +53,28 @@ export function projectThreadWorkbenchSnapshot(
   snapshot: ThreadSnapshot,
   componentCatalog?: ThreadComponentCatalog,
 ): ThreadWorkbenchSnapshot {
-  const context = projectionContext(snapshot);
-  const artifacts = topologicallySortedArtifacts(snapshot.artifacts).map(
+  // A retirement is current-state truth, not merely feed metadata. The
+  // immutable source still retains every entity and change for audit, while
+  // this read model exposes only the live lineage as current evidence.
+  const current = currentThreadView(snapshot);
+  const context = projectionContext(current);
+  const artifacts = topologicallySortedArtifacts(current.artifacts).map(
     (artifact) => projectArtifact(artifact, context),
   );
-  const observations = snapshot.observations.map((observation) =>
+  const observations = current.observations.map((observation) =>
     projectObservation(observation, context)
   );
-  const requirements = snapshot.requirements.map((requirement) =>
+  const requirements = current.requirements.map((requirement) =>
     projectRequirement(requirement, context)
   );
-  const violations = snapshot.violations.map((violation) =>
+  const violations = current.violations.map((violation) =>
     projectViolation(violation, context)
   );
-  const actions = snapshot.proposedActions.map((action) =>
+  const actions = current.proposedActions.map((action) =>
     projectAction(action, context)
   );
-  const components = projectComponents(snapshot, componentCatalog);
-  const graph = projectGraph(snapshot, context, components);
+  const components = projectComponents(current, componentCatalog);
+  const graph = projectGraph(current, context, components);
 
   return {
     schemaVersion: "thread-workbench/0.1",
@@ -115,6 +120,44 @@ export function projectThreadWorkbenchSnapshot(
     requirements,
     violations,
     actions,
+  };
+}
+
+function currentThreadView(snapshot: ThreadSnapshot): ThreadSnapshot {
+  const archived = archivedRefKeys(snapshot);
+  const active = (kind: ThreadEntityRef["kind"], id: string) =>
+    !archived.has(`${kind}:${id}`);
+  const artifacts = snapshot.artifacts.filter((item) => active("artifact", item.id));
+  const observations = snapshot.observations.filter((item) =>
+    active("observation", item.id)
+  );
+  const requirements = snapshot.requirements.filter((item) =>
+    active("requirement", item.id)
+  );
+  const evaluations = snapshot.evaluations.filter((item) =>
+    active("evaluation", item.id)
+  );
+  const violations = snapshot.violations.filter((item) => active("violation", item.id));
+  const artifactIds = new Set(artifacts.map((item) => item.id));
+  const violationIds = new Set(violations.map((item) => item.id));
+  return {
+    ...snapshot,
+    artifacts,
+    consumptions: snapshot.consumptions.filter((item) =>
+      artifactIds.has(item.artifactId)
+    ),
+    observations,
+    requirements,
+    evaluations,
+    violations,
+    proposedActions: snapshot.proposedActions.filter((item) =>
+      item.addressesViolationIds.every((id) => violationIds.has(id)) &&
+      item.targets.every((target) => active(target.kind, target.id))
+    ),
+    provenance: snapshot.provenance.filter((link) =>
+      (link.from.kind === "change" || active(link.from.kind, link.from.id)) &&
+      (link.to.kind === "change" || active(link.to.kind, link.to.id))
+    ),
   };
 }
 

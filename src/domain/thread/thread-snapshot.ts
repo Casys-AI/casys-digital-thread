@@ -188,7 +188,7 @@ export interface ThreadEntityRef {
   id: string;
 }
 
-export type ThreadChangeKind = "created" | "modified" | "deleted";
+export type ThreadChangeKind = "created" | "modified" | "deleted" | "archived";
 
 export interface ThreadChange {
   id: string;
@@ -246,6 +246,25 @@ export interface ProposedThreadAction {
     inputs: { [key: string]: JsonValue };
   };
   blockedReason?: string;
+}
+
+/**
+ * Return the set of `kind:id` keys for every entity targeted by an "archived"
+ * change in this snapshot's changeSet.
+ *
+ * Changes accumulate across revisions (the changeSet grows monotonically), so
+ * this helper covers the full retirement history without a separate store pass.
+ * The archive-lineage executor uses it to detect already-retired entities and
+ * skip re-applying an idempotent revision.
+ */
+export function archivedRefKeys(snapshot: ThreadSnapshot): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const change of snapshot.changeSet.changes) {
+    if (change.kind === "archived") {
+      keys.add(`${change.target.kind}:${change.target.id}`);
+    }
+  }
+  return keys;
 }
 
 export interface ThreadSnapshot {

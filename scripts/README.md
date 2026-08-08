@@ -39,6 +39,7 @@ running the task writes local state. Scripts that write always write under
 | `probes/capture-syson-model-inventory.ts` | `thread:capture-syson-inventory` | write |
 | `probes/probe-constraint-solver.ts`       | `probe:constraint-solver`        | read  |
 | `probes/probe-coupled-correction.ts`      | `probe:coupled-correction`       | read  |
+| `probes/probe-archive-cascade.ts`         | `probe:archive-cascade`          | read  |
 
 ## serve/ — serve local preview; preview:thread and preview:cockpit seed project on first run
 

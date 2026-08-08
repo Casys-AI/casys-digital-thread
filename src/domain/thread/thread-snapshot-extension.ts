@@ -3,6 +3,7 @@ import type {
   RequirementEvaluation,
   ThreadArtifact,
   ThreadArtifactConsumption,
+  ThreadEntityRef,
   ThreadFreshnessStatus,
   ThreadObservation,
   ThreadProvenanceLink,
@@ -38,6 +39,19 @@ export interface ThreadSnapshotExtension {
   violations: ThreadViolation[];
   provenance: ThreadProvenanceLink[];
   proposedActions: ProposedThreadAction[];
+  /**
+   * Optional retirement entries. Each entry records that the named entity has
+   * been retired (append-only status change); the entity itself remains in every
+   * snapshot array. No content is altered; each entry materializes as an
+   * "archived" ThreadChange with a companion "changes" provenance link.
+   *
+   * WHY THIS IS SEPARATE FROM artifacts — an archived entry carries no bytes
+   * and produces no new entity. The applyThreadSnapshotExtensionIfNew
+   * idempotence branch for length===0 artifacts still applies directly, letting
+   * the executor hold its own coarser guard (archivedRefKeys coverage check)
+   * without fighting the extension machinery.
+   */
+  archived?: Array<{ target: ThreadEntityRef; summary: string }>;
   /**
    * Optional explicit provider identities carried by this evidence branch.
    * The subject-manifest binder still also accepts structural URI/run proofs
@@ -114,6 +128,23 @@ export function applyThreadSnapshotExtension(
     to: change.target,
     rationale: "This snapshot extension introduced the captured artifact.",
   }));
+  const archivedChanges = (extension.archived ?? []).map((entry) => ({
+    // Entity IDs are only unique inside their kind. Keep the kind in the
+    // change identity so one cascade can retire e.g. artifact:x and
+    // observation:x without creating ambiguous evidence.
+    id: `${extension.id}:archived:${entry.target.kind}:${entry.target.id}`,
+    kind: "archived" as const,
+    target: entry.target,
+    summary: entry.summary,
+  }));
+  const archivedChangeLinks: ThreadProvenanceLink[] = archivedChanges.map((change) => ({
+    id: `${extension.id}:changes-archived:${change.target.kind}:${change.target.id}`,
+    relation: "changes" as const,
+    from: { kind: "change" as const, id: change.id },
+    to: change.target,
+    rationale:
+      "This snapshot extension recorded the retirement of the referenced entity.",
+  }));
   const nextRevision = base.revision + 1;
   const status = aggregateFreshness(
     [
@@ -150,7 +181,7 @@ export function applyThreadSnapshotExtension(
       appliedAt,
       // The canonical validator keeps freshness causes and provenance links
       // resolvable inside one snapshot, so the revision carries prior changes.
-      changes: [...base.changeSet.changes, ...artifactChanges],
+      changes: [...base.changeSet.changes, ...artifactChanges, ...archivedChanges],
     },
     artifacts: [...base.artifacts, ...extension.artifacts],
     consumptions: [...base.consumptions, ...extension.consumptions],
@@ -158,7 +189,12 @@ export function applyThreadSnapshotExtension(
     requirements: [...base.requirements, ...extension.requirements],
     evaluations: [...base.evaluations, ...extension.evaluations],
     violations: [...base.violations, ...extension.violations],
-    provenance: [...base.provenance, ...extension.provenance, ...changeLinks],
+    provenance: [
+      ...base.provenance,
+      ...extension.provenance,
+      ...changeLinks,
+      ...archivedChangeLinks,
+    ],
     proposedActions: [...base.proposedActions, ...extension.proposedActions],
   };
   return validateThreadSnapshot(merged);

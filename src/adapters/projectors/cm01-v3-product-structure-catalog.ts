@@ -4,6 +4,7 @@ import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
+import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
@@ -57,7 +58,10 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
     return undefined;
   }
 
-  const architecture = oneFreshArchitecture(snapshot.artifacts);
+  const artifacts = snapshot.artifacts.filter((artifact) =>
+    !archivedRefKeys(snapshot).has(`artifact:${artifact.id}`)
+  );
+  const architecture = oneFreshArchitecture(artifacts);
   if (!architecture) {
     return unavailable(
       snapshot.subject.id,
@@ -112,11 +116,11 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
     );
   }
 
-  const assemblyStep = freshR2AssemblyStep(snapshot.artifacts);
-  const r3Meshes = freshR3MeshArtifactMap(snapshot.artifacts);
+  const assemblyStep = freshR2AssemblyStep(artifacts);
+  const r3Meshes = freshR3MeshArtifactMap(artifacts);
   const assemblyMesh = r3Meshes.get("assembly");
-  const r3WholeAssembly = freshR3WholeAssemblyArtifactMap(snapshot.artifacts);
-  const partDefMap = buildPartDefinitionMap(snapshot.artifacts);
+  const r3WholeAssembly = freshR3WholeAssemblyArtifactMap(artifacts);
+  const partDefMap = buildPartDefinitionMap(artifacts);
   const rootDefinition = root[0]!;
   return validateThreadComponentCatalog({
     schemaVersion: "thread-components/1.0",

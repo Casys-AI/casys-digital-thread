@@ -56,6 +56,10 @@ import {
   COFFEE_MACHINE_CM01_V3_PART_DEFINITIONS_OPERATION,
   CoffeeMachineCm01V3PartDefinitionsRunExecutor,
 } from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-part-definitions-run-executor.ts";
+import {
+  COFFEE_MACHINE_CM01_V3_ARCHIVE_LINEAGE_OPERATION,
+  CoffeeMachineCm01V3ArchiveLineageRunExecutor,
+} from "./src/adapters/executors/cm01/coffee-machine-cm01-v3-archive-lineage-run-executor.ts";
 import { Cm01DripTrayMechanicalR3CaptureRecovery } from "./src/adapters/captures/cm01-drip-tray-mechanical-r3-capture-recovery.ts";
 import {
   COFFEE_MACHINE_CM01_V3_MECHANICAL_R3_IDENTITY_RECOVERY_OPERATION,
@@ -652,6 +656,13 @@ async function createProjectControl(
       lease,
     })
     : undefined;
+  // Archive-lineage requires no provider — always available.
+  const cm01ArchiveLineage = new CoffeeMachineCm01V3ArchiveLineageRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+  });
   const cm01NominalThermal = modelicaMcpUrl
     ? new CoffeeMachineCm01V3ThermalRunExecutor({
       projects: runtime.projects,
@@ -1115,6 +1126,12 @@ async function createProjectControl(
             executor: cm01PartDefinitions,
             unavailableMessage:
               "The server has no trusted CM-01 part-definitions executor configured for this run (SysON provider is required).",
+          },
+          {
+            operation: COFFEE_MACHINE_CM01_V3_ARCHIVE_LINEAGE_OPERATION,
+            executor: cm01ArchiveLineage,
+            unavailableMessage:
+              "The server has no trusted CM-01 archive-lineage executor configured for this run.",
           },
         ],
       }),

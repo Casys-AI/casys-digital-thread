@@ -34,7 +34,8 @@ export type CoffeeMachineCm01V3EngineeringKitId =
   | "cm01.drip-tray-sensitivity-edges"
   | "cm01.drip-tray-printability"
   | "cm01.drip-tray-print-estimate"
-  | "cm01.part-definitions";
+  | "cm01.part-definitions"
+  | "cm01.archive-lineage";
 
 export type CoffeeMachineCm01V3PresentationRole =
   | "architecture"
@@ -299,6 +300,23 @@ export const COFFEE_MACHINE_CM01_V3_OPERATION_REFS = Object.freeze(
         version: "1",
       } as const,
     ),
+    /**
+     * Append-only retirement of a named set of CM-01 thread entities and their
+     * downstream production closure (artifacts → observations → evaluations →
+     * violations). No provider is called; no bytes are altered. The operation
+     * records a new snapshot revision whose changeSet carries the retirement
+     * status — prior revisions remain immutable.
+     *
+     * Targets are named by thread-entity bindings in the work item. At least one
+     * target binding is required; the executor resolves the transitive cascade
+     * server-side from those seeds.
+     */
+    archiveLineage: Object.freeze(
+      {
+        id: "record.archive-coffee-machine-cm01-lineage",
+        version: "1",
+      } as const,
+    ),
   } as const satisfies Record<string, CoffeeMachineCm01V3OperationRef>,
 );
 
@@ -343,6 +361,19 @@ const APPROVED_BRIEF_AND_HISTORICAL_R3_RESULT_BINDINGS = [
   ...APPROVED_BRIEF_BINDING,
   {
     name: "historicalMechanicalR3Result",
+    allowedSourceKinds: ["thread-entity"],
+  },
+] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
+
+const APPROVED_BRIEF_AND_ARCHIVE_TARGETS_BINDINGS = [
+  ...APPROVED_BRIEF_BINDING,
+  // The N thread-entity bindings are open-ended (N ≥ 1): every binding whose
+  // source.kind === "thread-entity" is treated as a retirement target by the
+  // executor. The descriptor lists exactly one representative slot so the
+  // registry can validate the shape; actual work items carry as many target
+  // bindings as the lineage scope requires.
+  {
+    name: "archiveTarget",
     allowedSourceKinds: ["thread-entity"],
   },
 ] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
@@ -1124,6 +1155,60 @@ const KITS = [
       riskClass: "consequential",
       execution: "trusted",
       bindings: APPROVED_BRIEF_BINDING,
+    },
+  },
+  {
+    kitId: "cm01.archive-lineage",
+    kitVersion: "1",
+    qualification: {
+      status: "manually-qualified",
+      sourceRefs: [
+        {
+          kind: "reviewed-configuration",
+          path: "src/domain/thread/thread-retirement.ts",
+          purpose:
+            "Defines the domain-pure cascade computation: downward production closure from " +
+            "the nominated targets through artifacts, observations, evaluations and violations " +
+            "(never traces_to). Returns the sorted retirement list and the because-chain.",
+        },
+        {
+          kind: "reviewed-configuration",
+          path:
+            "src/adapters/executors/cm01/coffee-machine-cm01-v3-archive-lineage-run-executor.ts",
+          purpose:
+            "Holds the provider-free executor: reads thread-entity bindings as targets, " +
+            "computes the cascade server-side, applies an 'archived' extension, and writes " +
+            "a new immutable snapshot revision. No WAL, no provider. Idempotent on re-run.",
+        },
+      ],
+    },
+    /**
+     * Append-only retirement only. This kit performs no SysML insertion, runs no
+     * solver, generates no CAD, makes no cost or supply claim, assesses no
+     * durability or safety, and constitutes no certification. Retired entities
+     * remain in every prior snapshot revision; the operation records a new
+     * revision whose changeSet carries the "archived" status.
+     */
+    evidenceBoundary:
+      "Records the retirement of a named set of CM-01 thread entities and their downstream " +
+      "production closure as an append-only 'archived' change in a new snapshot revision. " +
+      "It performs no model insertion, calls no provider, produces no verdict, and constitutes " +
+      "no certification. Prior revisions are immutable and unaffected.",
+    presentationRole: "architecture",
+    activityCategory: "model",
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage,
+      startingPoint: "idea-or-spec",
+      allowedBasisKinds: ["thread-snapshot"],
+      title: "Archive the CM-01 lineage of a named entity set",
+      description:
+        "Retire the named CM-01 thread entities and their downstream production closure " +
+        "(artifacts → observations → evaluations → violations, never traces_to) as an " +
+        "append-only 'archived' change in a new snapshot revision. No provider is called.",
+      workItemKind: "architect",
+      riskClass: "consequential",
+      execution: "trusted",
+      bindings: APPROVED_BRIEF_AND_ARCHIVE_TARGETS_BINDINGS,
     },
   },
 ] as const satisfies readonly CoffeeMachineCm01V3EngineeringKit[];
