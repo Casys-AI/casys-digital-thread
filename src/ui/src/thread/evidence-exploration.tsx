@@ -29,6 +29,7 @@ import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type { ThreadGraphRef } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
+import { graphRelationAccessibleLabel } from "./graph-selection-model.ts";
 
 export interface EvidenceExplorationProps {
   evidenceModel: EvidenceGraphModel;
@@ -190,14 +191,18 @@ export function EvidenceExploration({
     };
   }, [explorationModel, compact]);
 
-  // Highlight selected node + apply the visible-depth and type display filters.
-  // Both are pure sigma reducers on the SAME mounted instance: selection,
-  // depth, and type changes repaint in place — no re-layout, no camera reset.
+  // Highlight selected node/edge + apply the visible-depth and type display
+  // filters. Both are pure sigma reducers on the SAME mounted instance:
+  // selection, depth, and type changes repaint in place — no re-layout, no
+  // camera reset.
   useEffect(() => {
     const sigma = sigmaRef.current;
     if (!sigma) return;
     const selectedKey = selection?.kind === "node"
       ? `${selection.ref.kind}:${selection.ref.id}`
+      : undefined;
+    const selectedEdgeOccurrenceKey = selection?.kind === "edge"
+      ? selection.occurrence?.key
       : undefined;
     const depths = projection.isFiltered
       ? projection.localDepthByRefKey
@@ -228,6 +233,19 @@ export function EvidenceExploration({
         };
       }
       return { ...data, highlighted: false };
+    });
+    sigma.setSetting("edgeReducer", (_edge, data) => {
+      const attrs = data as SigmaEdgeAttrs;
+      const selected = selectedEdgeOccurrenceKey !== undefined &&
+        attrs.occurrenceKey === selectedEdgeOccurrenceKey;
+      return selected
+        ? {
+          ...data,
+          highlighted: true,
+          color: explorationModel.tokens.blue,
+          size: (data.size ?? 1.5) * 1.8,
+        }
+        : { ...data, highlighted: false };
     });
     sigma.refresh();
   }, [selection, explorationModel, displayDepth, visibleKinds, projection]);
@@ -332,7 +350,8 @@ export function EvidenceExploration({
       visibleNodeKeys.add(key);
       nodes.push({ key, label: attrs.label, ref: attrs.node.ref });
     });
-    const edges: Array<{
+    const nodeLabelByKey = new Map(nodes.map((node) => [node.key, node.label]));
+    const relationRecords: Array<{
       key: string;
       occurrenceKey: string;
       label: string;
@@ -341,7 +360,7 @@ export function EvidenceExploration({
     }> = [];
     explorationModel.graph.forEachEdge((key, attrs, source, target) => {
       if (!visibleNodeKeys.has(source) || !visibleNodeKeys.has(target)) return;
-      edges.push({
+      relationRecords.push({
         key,
         occurrenceKey: attrs.occurrenceKey,
         label: attrs.label,
@@ -349,6 +368,23 @@ export function EvidenceExploration({
         edge: attrs.edge,
       });
     });
+    // Graphology preserves insertion order, but keyboard ordinals should not
+    // depend on a provider/SSE edge array order when the records themselves
+    // have stable occurrence identities.
+    const edges = relationRecords.sort((left, right) =>
+      left.occurrenceKey.localeCompare(right.occurrenceKey) ||
+      left.key.localeCompare(right.key)
+    ).map((edge, ordinal) => ({
+      ...edge,
+      accessibleLabel: graphRelationAccessibleLabel(
+        edge.edge,
+        nodeLabelByKey.get(`${edge.edge.from.kind}:${edge.edge.from.id}`) ??
+          `${edge.edge.from.kind}:${edge.edge.from.id}`,
+        nodeLabelByKey.get(`${edge.edge.to.kind}:${edge.edge.to.id}`) ??
+          `${edge.edge.to.kind}:${edge.edge.to.id}`,
+        ordinal,
+      ),
+    }));
     return { nodes, edges };
   }, [explorationModel, displayDepth, visibleKinds, projection]);
 
@@ -452,6 +488,7 @@ function ExplorationKeyboardNavigation({
     key: string;
     occurrenceKey: string;
     label: string;
+    accessibleLabel: string;
     edgeId: string;
     edge: SigmaEdgeAttrs["edge"];
   }[];
@@ -481,6 +518,7 @@ function ExplorationKeyboardNavigation({
           <li key={edge.key}>
             <button
               type="button"
+              aria-label={edge.accessibleLabel}
               onClick={() =>
                 onSelectionChange?.({
                   kind: "edge",
@@ -488,7 +526,8 @@ function ExplorationKeyboardNavigation({
                   occurrence: { key: edge.occurrenceKey, edge: edge.edge },
                 })}
             >
-              {edge.label}
+              <span aria-hidden="true">{edge.label}</span>
+              <span class="sr-only">{edge.accessibleLabel}</span>
             </button>
           </li>
         ))}

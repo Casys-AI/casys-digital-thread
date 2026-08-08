@@ -1,9 +1,11 @@
 import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
 import {
+  buildVersionedGraphSelectionIndex,
   buildVersionedProvenanceProjection,
   currentArtifacts,
   currentRequirements,
   edgeForVersionedGraphSelection,
+  stubEdgeOccurrenceKey,
   versionedEdgeGroupForSelection,
   visibleGraphRef,
   visibleGraphSelection,
@@ -92,7 +94,7 @@ Deno.test("historic selections resolve to the visible node without changing the 
   );
 });
 
-Deno.test("synthetic stubs retain their exact renderer occurrence", () => {
+Deno.test("synthetic stubs reproject to their exact current renderer occurrence", () => {
   const projection = buildVersionedProvenanceProjection(
     rawGraph(),
     familyGraph("current"),
@@ -107,15 +109,59 @@ Deno.test("synthetic stubs retain their exact renderer occurrence", () => {
     rationale: "via folded instrument — replié",
   };
 
-  const selected = visibleGraphSelection(projection, {
+  const selected = {
     kind: "edge",
     id: stub.id,
-    occurrence: { key: "rendered-stub-occurrence", edge: stub },
-  });
+    occurrence: { key: stubEdgeOccurrenceKey(stub), edge: stub },
+  } as const;
+  const refreshedStub = structuredClone(stub);
+  const refreshedIndex = buildVersionedGraphSelectionIndex(projection, [
+    refreshedStub,
+  ]);
+  const visible = visibleGraphSelection(
+    projection,
+    selected,
+    refreshedIndex,
+  );
+
+  assertStrictEquals(
+    visible?.kind === "edge" ? visible.occurrence?.edge : undefined,
+    refreshedStub,
+  );
+  assertStrictEquals(
+    edgeForVersionedGraphSelection(projection, selected, refreshedIndex),
+    refreshedStub,
+  );
+});
+
+Deno.test("a removed stub clears a keyed renderer and inspector selection", () => {
+  const projection = buildVersionedProvenanceProjection(
+    rawGraph(),
+    familyGraph("current"),
+  );
+  const stub = {
+    ...edge(
+      "stub:proof-to-requirement",
+      "proof-r3",
+      "requirement",
+      "evidences",
+    ),
+    rationale: "via folded instrument — replié",
+  };
+  const selection = {
+    kind: "edge" as const,
+    id: stub.id,
+    occurrence: { key: stubEdgeOccurrenceKey(stub), edge: stub },
+  };
+  const withoutStub = buildVersionedGraphSelectionIndex(projection);
 
   assertEquals(
-    selected?.kind === "edge" ? selected.occurrence?.edge : undefined,
-    stub,
+    visibleGraphSelection(projection, selection, withoutStub),
+    undefined,
+  );
+  assertEquals(
+    edgeForVersionedGraphSelection(projection, selection, withoutStub),
+    undefined,
   );
 });
 
@@ -413,10 +459,69 @@ Deno.test("byte-identical duplicate handoffs refuse a stale ambiguous selection"
     edgeForVersionedGraphSelection(refreshed, staleSelection),
     undefined,
   );
-  assertEquals(visibleGraphSelection(refreshed, staleSelection), {
-    kind: "edge",
+  assertEquals(visibleGraphSelection(refreshed, staleSelection), undefined);
+});
+
+Deno.test("a keyed bit-identical duplicate selection clears when 2 becomes 1", () => {
+  const first = attestedDuplicateHandoff("same-consumption");
+  const initialGraph: ThreadGraph = {
+    nodes: [node("source", "Source"), node("target", "Target")],
+    edges: [first, structuredClone(first)],
+  };
+  const initial = buildVersionedProvenanceProjection(
+    initialGraph,
+    emptyFamilyGraph(),
+  );
+  const selection = {
+    kind: "edge" as const,
     id: first.id,
-  });
+    occurrence: {
+      key: initial.memberOccurrenceKeyByEdge.get(first)!,
+      edge: first,
+    },
+  };
+  const refreshedGraph: ThreadGraph = {
+    nodes: structuredClone(initialGraph.nodes),
+    edges: [structuredClone(first)],
+  };
+  const refreshed = buildVersionedProvenanceProjection(
+    refreshedGraph,
+    emptyFamilyGraph(),
+  );
+
+  assertEquals(edgeForVersionedGraphSelection(refreshed, selection), undefined);
+  assertEquals(visibleGraphSelection(refreshed, selection), undefined);
+});
+
+Deno.test("a keyed bit-identical duplicate selection clears when 1 becomes 2", () => {
+  const first = attestedDuplicateHandoff("same-consumption");
+  const initialGraph: ThreadGraph = {
+    nodes: [node("source", "Source"), node("target", "Target")],
+    edges: [first],
+  };
+  const initial = buildVersionedProvenanceProjection(
+    initialGraph,
+    emptyFamilyGraph(),
+  );
+  const selection = {
+    kind: "edge" as const,
+    id: first.id,
+    occurrence: {
+      key: initial.memberOccurrenceKeyByEdge.get(first)!,
+      edge: first,
+    },
+  };
+  const refreshedGraph: ThreadGraph = {
+    nodes: structuredClone(initialGraph.nodes),
+    edges: [structuredClone(first), structuredClone(first)],
+  };
+  const refreshed = buildVersionedProvenanceProjection(
+    refreshedGraph,
+    emptyFamilyGraph(),
+  );
+
+  assertEquals(edgeForVersionedGraphSelection(refreshed, selection), undefined);
+  assertEquals(visibleGraphSelection(refreshed, selection), undefined);
 });
 
 Deno.test("matching labels never create a version family", () => {

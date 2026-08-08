@@ -69,11 +69,11 @@ import {
 } from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
-  resolveSelectedGraphEdge,
   resolveToolInspectorTarget,
 } from "./tool-inspector-model.ts";
 import { EvidenceVersionHistory } from "./version-history.tsx";
 import {
+  buildVersionedGraphSelectionIndex,
   buildVersionedProvenanceProjection,
   currentArtifacts,
   currentRequirements,
@@ -370,6 +370,45 @@ export function ThreadWorkbench({
     );
   }, [evidenceModel, explorationMapKinds, versionedProvenanceMemo]);
 
+  // The renderer re-creates synthetic stub objects for each projection. Keep
+  // one current occurrence index for the active canvas so a controlled keyed
+  // selection can remap to that exact object, or be cleared after SSE if its
+  // occurrence disappeared. Raw ids are intentionally absent from this path.
+  const graphSelectionIndexMemo = useMemo(() => {
+    if (!versionedProvenanceMemo || !evidenceCanvasMemo) return undefined;
+    const activeProjection = evidenceMode === "exploration" &&
+        !evidenceCanvasMemo.isFiltered
+      ? (explorationKindProjectionMemo ?? evidenceCanvasMemo)
+      : evidenceCanvasMemo;
+    return buildVersionedGraphSelectionIndex(
+      versionedProvenanceMemo,
+      activeProjection.edges.filter((edge) => edge.id.startsWith("stub:")),
+    );
+  }, [
+    versionedProvenanceMemo,
+    evidenceCanvasMemo,
+    explorationKindProjectionMemo,
+    evidenceMode,
+  ]);
+
+  // An occurrence key is an exact selection contract. When a live snapshot
+  // changes duplicate cardinality or removes a stub, do not let an inspector
+  // retain a previous object or degrade to edge.id: close it deterministically.
+  useEffect(() => {
+    if (graphSelection?.kind !== "edge" || !graphSelection.occurrence) return;
+    if (!graphSelectionIndexMemo) return;
+    if (
+      isStaleAmbiguousVersionedEdgeSelection(
+        versionedProvenanceMemo!,
+        graphSelection,
+        graphSelectionIndexMemo,
+      )
+    ) {
+      setGraphSelection(undefined);
+      setInspectorOpen(false);
+    }
+  }, [graphSelection, graphSelectionIndexMemo, versionedProvenanceMemo]);
+
   const changeView = (next: ProjectWorkspaceView) => {
     setActiveView(next);
     // A selected record can belong to another tool surface. Keep the main
@@ -455,6 +494,7 @@ export function ThreadWorkbench({
   // returns have already fired.
   const versionedProvenance = versionedProvenanceMemo!;
   const evidenceCanvas = evidenceCanvasMemo!;
+  const graphSelectionIndex = graphSelectionIndexMemo!;
 
   // Visible-depth display filter (local view only). The neighbourhood is
   // computed at max depth; here we derive what the chosen depth actually
@@ -666,16 +706,18 @@ export function ThreadWorkbench({
   };
 
   const selectedEdge = graphSelection?.kind === "edge"
-    ? edgeForVersionedGraphSelection(versionedProvenance, graphSelection) ??
-      (isStaleAmbiguousVersionedEdgeSelection(
-          versionedProvenance,
-          graphSelection,
-        )
-        ? undefined
-        : resolveSelectedGraphEdge(snapshot.graph, graphSelection))
+    ? edgeForVersionedGraphSelection(
+      versionedProvenance,
+      graphSelection,
+      graphSelectionIndex,
+    )
     : undefined;
   const selectedEdgeGroup = graphSelection?.kind === "edge"
-    ? versionedEdgeGroupForSelection(versionedProvenance, graphSelection)
+    ? versionedEdgeGroupForSelection(
+      versionedProvenance,
+      graphSelection,
+      graphSelectionIndex,
+    )
     : undefined;
   const inspectorTarget = resolveToolInspectorTarget(
     snapshot,
@@ -1198,6 +1240,7 @@ export function ThreadWorkbench({
                             selection={visibleGraphSelection(
                               versionedProvenance,
                               graphSelection,
+                              graphSelectionIndex,
                             )}
                             focus={visibleGraphRef(
                               versionedProvenance,
@@ -1228,6 +1271,7 @@ export function ThreadWorkbench({
                           selection={visibleGraphSelection(
                             versionedProvenance,
                             graphSelection,
+                            graphSelectionIndex,
                           )}
                           focus={visibleGraphRef(
                             versionedProvenance,

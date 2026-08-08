@@ -42,8 +42,8 @@ import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import {
   structuredOccurrenceKey,
   threadGraphEdgeRecordSignature,
-  versionedEdgeOccurrenceKey,
 } from "./versioned-provenance-model.ts";
+import { displayedGraphEdgeOccurrenceKey } from "./graph-selection-model.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -323,7 +323,7 @@ export function buildExplorationModel(
     const graphKey = edgeKeyFor(edge);
     graph.addEdgeWithKey(graphKey, from, to, {
       graphKey,
-      occurrenceKey: versionedEdgeOccurrenceKey(edge),
+      occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
       edgeId: edge.id,
       edge,
       label: edge.relation.replaceAll("_", " "),
@@ -341,7 +341,7 @@ export function buildExplorationModel(
     const graphKey = edgeKeyFor(edge);
     graph.addEdgeWithKey(graphKey, from, to, {
       graphKey,
-      occurrenceKey: structuredOccurrenceKey("stub-occurrence", [graphKey]),
+      occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
       edgeId: edge.id,
       edge,
       label: edge.rationale ?? `via ${edge.relation} — replié`,

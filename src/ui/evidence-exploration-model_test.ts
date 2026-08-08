@@ -28,6 +28,7 @@ import {
 } from "./src/thread/evidence-exploration-model.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 import { buildEvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
+import { stubEdgeOccurrenceKey } from "./src/thread/versioned-provenance-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
@@ -379,9 +380,16 @@ Deno.test(
 
     // Dans le graphe sigma, les arêtes moignons doivent être marquées "stub".
     let stubEdgeFound = false;
+    const sigmaStubOccurrences: Array<{ key: string; edge: ThreadGraphEdge }> = [];
     explorationModel.graph.forEachEdge(
       (_key: string, attrs: SigmaEdgeAttrs) => {
-        if (attrs.edgeType === "stub") stubEdgeFound = true;
+        if (attrs.edgeType === "stub") {
+          stubEdgeFound = true;
+          sigmaStubOccurrences.push({
+            key: attrs.occurrenceKey,
+            edge: attrs.edge,
+          });
+        }
       },
     );
     assertEquals(
@@ -389,6 +397,9 @@ Deno.test(
       true,
       "Le graphe sigma doit contenir une arête de type stub",
     );
+    for (const occurrence of sigmaStubOccurrences) {
+      assertEquals(occurrence.key, stubEdgeOccurrenceKey(occurrence.edge));
+    }
   },
 );
 

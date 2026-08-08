@@ -18,6 +18,10 @@ import {
   structuredOccurrenceKey,
   versionedEdgeOccurrenceKey,
 } from "./versioned-provenance-model.ts";
+import {
+  displayedGraphEdgeOccurrenceKey,
+  graphEdgeSelectionMatches,
+} from "./graph-selection-model.ts";
 
 const NODE_WIDTH = 216;
 const NODE_HEIGHT = 82;
@@ -480,8 +484,9 @@ export function ThreadGraph({
     if (item.node.selection) onInspect?.(item.node.selection, item.node);
   };
   const selectEdge = (item: PositionedThreadGraphEdge) => {
-    const occurrenceKey = edgeOccurrenceKey(item, layout.edges);
-    setKeyboardEdge(occurrenceKey);
+    const keyboardOccurrenceKey = edgeOccurrenceKey(item, layout.edges);
+    const selectionOccurrenceKey = displayedGraphEdgeOccurrenceKey(item.edge);
+    setKeyboardEdge(keyboardOccurrenceKey);
     if (presentation === "canvas") {
       setCameraTarget(undefined);
       setCameraCenter(edgeCenter(item));
@@ -489,7 +494,7 @@ export function ThreadGraph({
     onSelectionChange?.({
       kind: "edge",
       id: item.edge.id,
-      occurrence: { key: occurrenceKey, edge: item.edge },
+      occurrence: { key: selectionOccurrenceKey, edge: item.edge },
     });
   };
   const moveNodeFocus = (
@@ -1050,9 +1055,7 @@ function selectedEdgeMatches(
   edge: ThreadGraphEdge,
 ): boolean {
   if (selection?.kind !== "edge") return false;
-  return selection.occurrence
-    ? selection.occurrence.edge === edge
-    : selection.id === edge.id;
+  return graphEdgeSelectionMatches(selection, edge);
 }
 
 function edgeOccurrenceKey(

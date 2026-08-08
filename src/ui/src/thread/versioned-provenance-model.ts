@@ -68,6 +68,22 @@ export interface VersionedProvenanceProjection {
 }
 
 /**
+ * Current graph occurrences that can safely hydrate a controlled selection.
+ *
+ * The map is deliberately keyed by occurrence identity, never by the
+ * provider-facing `edge.id`: edge ids are not unique in the thread contract.
+ * `legacyEdgesById` exists only for selections produced before occurrence keys
+ * were introduced and is resolved only when exactly one raw/stub edge matches.
+ */
+export interface VersionedGraphSelectionIndex {
+  readonly edgeByOccurrenceKey: ReadonlyMap<string, ThreadGraphEdge>;
+  readonly legacyEdgesById: ReadonlyMap<
+    string,
+    readonly ThreadGraphEdge[]
+  >;
+}
+
+/**
  * Folds only BFF-declared, single-successor revision families into the raw
  * provenance graph. Ambiguous or incomplete families remain fully visible.
  * Labels, hashes, timestamps and provider names never create membership.
@@ -259,9 +275,42 @@ export function visibleGraphRef(
   return projection.visibleRefByMemberRef.get(refKey(reference)) ?? reference;
 }
 
+/**
+ * Builds the current selection index shared by the raw Feed, folded graph,
+ * Sigma and SVG renderers. Synthetic stubs are re-created for each canvas
+ * projection, so callers must pass the current stub edge objects here.
+ */
+export function buildVersionedGraphSelectionIndex(
+  projection: VersionedProvenanceProjection,
+  stubEdges: readonly ThreadGraphEdge[] = [],
+): VersionedGraphSelectionIndex {
+  const edgeByOccurrenceKey = new Map<string, ThreadGraphEdge>();
+  const legacyEdgesById = new Map<string, ThreadGraphEdge[]>();
+  const addLegacyEdge = (edge: ThreadGraphEdge) => {
+    const candidates = legacyEdgesById.get(edge.id) ?? [];
+    if (!candidates.includes(edge)) candidates.push(edge);
+    legacyEdgesById.set(edge.id, candidates);
+  };
+
+  for (const [key, edge] of projection.memberEdgeByOccurrenceKey) {
+    edgeByOccurrenceKey.set(key, edge);
+    addLegacyEdge(edge);
+  }
+  for (const [key, edge] of projection.visibleEdgeByOccurrenceKey) {
+    edgeByOccurrenceKey.set(key, edge);
+  }
+  for (const edge of stubEdges) {
+    edgeByOccurrenceKey.set(stubEdgeOccurrenceKey(edge), edge);
+    addLegacyEdge(edge);
+  }
+
+  return { edgeByOccurrenceKey, legacyEdgesById };
+}
+
 export function visibleGraphSelection(
   projection: VersionedProvenanceProjection,
   selection: VersionedGraphSelection | undefined,
+  selectionIndex = buildVersionedGraphSelectionIndex(projection),
 ): VersionedGraphSelection | undefined {
   if (!selection) return undefined;
   if (selection.kind === "node") {
@@ -273,6 +322,7 @@ export function visibleGraphSelection(
   const visibleOccurrence = visibleEdgeOccurrenceForSelection(
     projection,
     selection,
+    selectionIndex,
   );
   if (visibleOccurrence) {
     return {
@@ -281,39 +331,57 @@ export function visibleGraphSelection(
       occurrence: visibleOccurrence,
     };
   }
-  if (isStaleAmbiguousVersionedEdgeSelection(projection, selection)) {
-    // There is no stable contract identity for a byte-for-byte duplicate from
-    // a previous SSE graph. Do not retain its stale object in the renderer.
-    return { kind: "edge", id: selection.id };
+  if (selection.occurrence) {
+    // A keyed selection is an exact current-occurrence lookup. Never retain
+    // the stale object or fall back to its non-unique provider id after SSE.
+    const currentEdge = currentEdgeForKeyedSelection(
+      projection,
+      selectionIndex,
+      selection,
+    );
+    return currentEdge
+      ? {
+        kind: "edge",
+        id: currentEdge.id,
+        occurrence: { key: selection.occurrence.key, edge: currentEdge },
+      }
+      : undefined;
   }
-  // Synthetic stubs do not belong to the versioned raw-edge index. Preserve
-  // their renderer occurrence instead of degrading them to an ambiguous id.
-  return selection.occurrence
-    ? { kind: "edge", id: selection.id, occurrence: selection.occurrence }
-    : { kind: "edge", id: selection.id };
+  // Legacy selections have no occurrence identity and can only stay visible
+  // when the current graph contains exactly one raw/stub record with this id.
+  const currentEdge = uniqueLegacyEdgeForId(selectionIndex, selection.id);
+  return currentEdge ? { kind: "edge", id: currentEdge.id } : undefined;
 }
 
 /** Resolve a member/visible edge selection to its one visible occurrence. */
 export function visibleEdgeOccurrenceForSelection(
   projection: VersionedProvenanceProjection,
   selection: Extract<VersionedGraphSelection, { kind: "edge" }>,
+  selectionIndex = buildVersionedGraphSelectionIndex(projection),
 ): VersionedEdgeOccurrence | undefined {
-  const selectedEdge = selection.occurrence?.edge;
-  const directVisibleKey = selectedEdge
-    ? projection.visibleOccurrenceKeyByEdge.get(selectedEdge)
-    : undefined;
-  const suppliedOccurrenceKey = selection.occurrence?.key;
-  const suppliedVisibleKey = suppliedOccurrenceKey &&
-      projection.visibleEdgeByOccurrenceKey.has(suppliedOccurrenceKey)
-    ? suppliedOccurrenceKey
-    : undefined;
-  const memberKey = memberOccurrenceKeyForSelection(projection, selection);
-  const visibleKey = directVisibleKey ??
-    suppliedVisibleKey ??
-    (memberKey
+  let visibleKey: string | undefined;
+  if (selection.occurrence) {
+    const occurrenceKey = selection.occurrence.key;
+    // A current lookup by the supplied key is mandatory before any mapping.
+    // This prevents a stale object or duplicate raw id from selecting another
+    // relation after a live cardinality change.
+    if (!currentEdgeForKeyedSelection(projection, selectionIndex, selection)) {
+      return undefined;
+    }
+    visibleKey = projection.visibleEdgeByOccurrenceKey.has(occurrenceKey)
+      ? occurrenceKey
+      : projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(
+        occurrenceKey,
+      );
+  } else {
+    const memberKey = uniqueMemberOccurrenceKeyForLegacyId(
+      projection,
+      selection.id,
+    );
+    visibleKey = memberKey
       ? projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(memberKey)
-      : undefined) ??
-    uniqueVisibleOccurrenceKeyForLegacyId(projection, selection.id);
+      : undefined;
+  }
   if (!visibleKey) return undefined;
   const edge = projection.visibleEdgeByOccurrenceKey.get(visibleKey);
   return edge ? { key: visibleKey, edge } : undefined;
@@ -328,58 +396,43 @@ export function visibleEdgeOccurrenceForSelection(
 export function edgeForVersionedGraphSelection(
   projection: VersionedProvenanceProjection,
   selection: Extract<VersionedGraphSelection, { kind: "edge" }> | undefined,
+  selectionIndex = buildVersionedGraphSelectionIndex(projection),
 ): ThreadGraphEdge | undefined {
   if (!selection) return undefined;
-  const selectedEdge = selection.occurrence?.edge;
-  const directVisibleKey = selectedEdge
-    ? projection.visibleOccurrenceKeyByEdge.get(selectedEdge)
-    : undefined;
-  const suppliedOccurrenceKey = selection.occurrence?.key;
-  const suppliedVisibleKey = suppliedOccurrenceKey &&
-      projection.visibleEdgeByOccurrenceKey.has(suppliedOccurrenceKey)
-    ? suppliedOccurrenceKey
-    : undefined;
-  const visibleKey = directVisibleKey ?? suppliedVisibleKey;
-  if (visibleKey) {
-    return projection.visibleEdgeByOccurrenceKey.get(visibleKey);
+  if (selection.occurrence) {
+    // No raw-id fallback is permitted for a keyed selection. The current
+    // occurrence map is the sole source of truth for inspector hydration.
+    return currentEdgeForKeyedSelection(projection, selectionIndex, selection);
   }
-  if (isStaleAmbiguousVersionedEdgeSelection(projection, selection)) {
-    return undefined;
-  }
-  const memberKey = memberOccurrenceKeyForSelection(projection, selection) ??
-    uniqueMemberOccurrenceKeyForLegacyId(projection, selection.id);
-  if (memberKey) return projection.memberEdgeByOccurrenceKey.get(memberKey);
-  return visibleEdgeOccurrenceForSelection(projection, selection)?.edge;
+  return uniqueLegacyEdgeForId(selectionIndex, selection.id);
 }
 
 /**
- * Whether a stale selection names a byte-for-byte duplicate whose only
- * discriminator was a graph-local ordinal. The data contract gives no way to
- * prove which duplicate an old object referred to, so callers must not fall
- * back to a raw id or stale object.
+ * Whether a keyed selection no longer resolves to one safe current occurrence.
+ * This covers a missing key after an SSE cardinality change and a byte-identical
+ * duplicate whose graph-local ordinal cannot prove continuity after reorder.
  */
 export function isStaleAmbiguousVersionedEdgeSelection(
   projection: VersionedProvenanceProjection,
   selection: Extract<VersionedGraphSelection, { kind: "edge" }> | undefined,
+  selectionIndex = buildVersionedGraphSelectionIndex(projection),
 ): boolean {
-  if (!selection?.occurrence) return false;
-  const selectedEdge = selection.occurrence.edge;
-  if (
-    projection.memberOccurrenceKeyByEdge.has(selectedEdge) ||
-    projection.visibleOccurrenceKeyByEdge.has(selectedEdge)
-  ) {
-    return false;
-  }
-  return projection.ambiguousMemberOccurrenceKeys.has(selection.occurrence.key);
+  return !!selection?.occurrence &&
+    !currentEdgeForKeyedSelection(projection, selectionIndex, selection);
 }
 
 /** Resolve a version-history group without ever indexing by edge.id alone. */
 export function versionedEdgeGroupForSelection(
   projection: VersionedProvenanceProjection,
   selection: Extract<VersionedGraphSelection, { kind: "edge" }> | undefined,
+  selectionIndex = buildVersionedGraphSelectionIndex(projection),
 ): VersionedProvenanceEdgeGroup | undefined {
   if (!selection) return undefined;
-  const occurrence = visibleEdgeOccurrenceForSelection(projection, selection);
+  const occurrence = visibleEdgeOccurrenceForSelection(
+    projection,
+    selection,
+    selectionIndex,
+  );
   return occurrence
     ? projection.edgeGroupByVisibleOccurrenceKey.get(occurrence.key)
     : undefined;
@@ -399,6 +452,17 @@ export function versionedEdgeOccurrenceKey(edge: ThreadGraphEdge): string {
     edge.relation,
     edge.origin,
     edge.attestation?.status ?? null,
+  ]);
+}
+
+/**
+ * Synthetic stubs share a domain occurrence identity between Sigma and SVG.
+ * Their provider id is only a display convenience; the full record signature
+ * keeps endpoints, relation and rationale boundary-safe and stable.
+ */
+export function stubEdgeOccurrenceKey(edge: ThreadGraphEdge): string {
+  return structuredOccurrenceKey("stub-edge", [
+    threadGraphEdgeRecordSignature(edge),
   ]);
 }
 
@@ -575,19 +639,6 @@ function compareEdges(left: ThreadGraphEdge, right: ThreadGraphEdge): number {
     );
 }
 
-function uniqueVisibleOccurrenceKeyForLegacyId(
-  projection: VersionedProvenanceProjection,
-  edgeId: string,
-): string | undefined {
-  // A legacy id can only be upgraded when it names exactly one raw record.
-  // Two old records may fold into one visible group, but their common id still
-  // cannot tell us which historical handoff the caller meant.
-  const memberKey = uniqueMemberOccurrenceKeyForLegacyId(projection, edgeId);
-  return memberKey
-    ? projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(memberKey)
-    : undefined;
-}
-
 function uniqueMemberOccurrenceKeyForLegacyId(
   projection: VersionedProvenanceProjection,
   edgeId: string,
@@ -598,20 +649,31 @@ function uniqueMemberOccurrenceKeyForLegacyId(
   return keys.length === 1 ? keys[0] : undefined;
 }
 
-function memberOccurrenceKeyForSelection(
+function uniqueLegacyEdgeForId(
+  selectionIndex: VersionedGraphSelectionIndex,
+  edgeId: string,
+): ThreadGraphEdge | undefined {
+  const candidates = selectionIndex.legacyEdgesById.get(edgeId) ?? [];
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+function currentEdgeForKeyedSelection(
   projection: VersionedProvenanceProjection,
+  selectionIndex: VersionedGraphSelectionIndex,
   selection: Extract<VersionedGraphSelection, { kind: "edge" }>,
-): string | undefined {
-  const exactMemberKey = selection.occurrence?.edge
-    ? projection.memberOccurrenceKeyByEdge.get(selection.occurrence.edge)
-    : undefined;
-  if (exactMemberKey) return exactMemberKey;
-  const suppliedKey = selection.occurrence?.key;
-  return suppliedKey &&
-      !projection.ambiguousMemberOccurrenceKeys.has(suppliedKey) &&
-      projection.memberEdgeByOccurrenceKey.has(suppliedKey)
-    ? suppliedKey
-    : undefined;
+): ThreadGraphEdge | undefined {
+  const occurrence = selection.occurrence;
+  if (!occurrence) return undefined;
+  const currentEdge = selectionIndex.edgeByOccurrenceKey.get(occurrence.key);
+  if (!currentEdge) return undefined;
+  // A byte-identical duplicate only has a graph-local ordinal. Its key cannot
+  // prove continuity across a reordered SSE snapshot, so reject the stale
+  // object rather than assigning the ordinal to an arbitrary counterpart.
+  if (
+    projection.ambiguousMemberOccurrenceKeys.has(occurrence.key) &&
+    occurrence.edge !== currentEdge
+  ) return undefined;
+  return currentEdge;
 }
 
 interface MemberEdgeOccurrenceIndex {
