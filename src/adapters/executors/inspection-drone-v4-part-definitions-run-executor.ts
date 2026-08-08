@@ -48,6 +48,8 @@ export const INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX =
   "casys://inspection-drone-v4-architecture-capture/sha256/" as const;
 export const INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX =
   "casys://inspection-drone-v4-part-definitions-capture/sha256/" as const;
+export const INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT =
+  "Read-only PartDefinition structures from the exact qualitative architecture. No CAD, physics, quantity inference, manufacturing claim or verdict is recorded." as const;
 
 export const INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT = [
   "InspectionDrone",
@@ -199,8 +201,7 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
           schemaVersion: INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA,
           kind: "inspection-drone-v4-part-definitions",
           scope: "read-only-product-structure",
-          statement:
-            "Read-only PartDefinition structures from the exact qualitative architecture. No CAD, physics, quantity inference, manufacturing claim or verdict is recorded.",
+          statement: INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT,
           capturedAt,
           trustedRunId: run.id,
           operation: INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
@@ -545,6 +546,7 @@ async function reconstructPublication(
     record.schemaVersion !== INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA ||
     record.kind !== "inspection-drone-v4-part-definitions" ||
     record.scope !== "read-only-product-structure" ||
+    record.statement !== INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT ||
     record.trustedRunId !== run.id || record.capturedAt !== requiredStart(run) ||
     !same(record.operation, INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION) ||
     !Array.isArray(record.definitions)

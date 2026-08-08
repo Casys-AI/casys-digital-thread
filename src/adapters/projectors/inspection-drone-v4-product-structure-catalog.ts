@@ -10,9 +10,11 @@ import {
 } from "../../domain/thread/thread-component-catalog.ts";
 import {
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX,
   parseInspectionDroneV4ArchitectureCapture,
 } from "../executors/inspection-drone-v4-part-definitions-run-executor.ts";
+import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../orchestration/operations/inspection-drone-v4.ts";
 
 export const INSPECTION_DRONE_V4_SUBJECT_ID = "project:inspection-drone-v4" as const;
 
@@ -72,7 +74,8 @@ export async function resolveInspectionDroneV4ProductStructureCatalog(
     candidate.status === "verified" &&
     deterministicFingerprint(candidate.observedFingerprint) ===
       deterministicFingerprint(architecture[0]!.fingerprint) &&
-    candidate.consumer.runId === artifact.producer.runId
+    deterministicJson(candidate.consumer) === deterministicJson(artifact.producer) &&
+    candidate.verifiedAt === artifact.freshness.changedAt
   );
   if (consumption.length !== 1) {
     return unavailable(
@@ -97,6 +100,7 @@ export async function resolveInspectionDroneV4ProductStructureCatalog(
       artifact,
       architecture[0]!,
       architectureText,
+      snapshot,
     );
     return catalog(snapshot.subject.id, artifact.id, bundle);
   } catch {
@@ -222,6 +226,7 @@ function parseBundle(
   artifact: ThreadSnapshot["artifacts"][number],
   architectureArtifact: ThreadSnapshot["artifacts"][number],
   architectureText: string,
+  snapshot: ThreadSnapshot,
 ): Bundle {
   const raw = JSON.parse(text) as unknown;
   const record = closed(raw, [
@@ -238,6 +243,20 @@ function parseBundle(
   if (
     record.schemaVersion !== INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA ||
     record.kind !== "inspection-drone-v4-part-definitions" ||
+    record.scope !== "read-only-product-structure" ||
+    record.statement !== INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT ||
+    deterministicJson(record.operation) !==
+      deterministicJson(INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION) ||
+    record.trustedRunId !== artifact.producer.runId ||
+    record.capturedAt !== artifact.freshness.changedAt ||
+    record.capturedAt !== snapshot.generatedAt ||
+    record.capturedAt !== snapshot.changeSet.appliedAt ||
+    artifact.name !== "Inspection-drone V4 PartDefinitions product structure" ||
+    artifact.kind !== "sysml-model" ||
+    artifact.mediaType !== "application/json" ||
+    artifact.producer.serverId !== "syson" ||
+    artifact.producer.tool !== "syson_part_structure" ||
+    !artifact.producer.runId ||
     !Array.isArray(record.definitions)
   ) throw new Error("Unexpected PartDefinitions capture schema.");
   const architecture = closed(record.architecture, [
