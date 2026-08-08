@@ -12,6 +12,7 @@ import { DecisionCenter } from "./control-center.tsx";
 import { ProjectBriefRecord } from "./brief-record.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
+  agentRunRecordedAt,
   agentRunSummary,
   buildCurrentProjectWork,
   buildProjectBrief,
@@ -320,9 +321,7 @@ function AgentRunSummary({ run, project, settled }: {
       <p>{agentRunSummary(project, run)}</p>
       <small>
         {settled
-          ? `Last agent run · ${
-            formatShortTime(run.completedAt ?? run.startedAt ?? run.queuedAt)
-          }`
+          ? `Last agent run · ${formatShortTime(agentRunRecordedAt(run))}`
           : `Agent run · ${formatShortTime(run.startedAt ?? run.queuedAt)}`}
       </small>
     </div>

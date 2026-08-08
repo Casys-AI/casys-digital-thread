@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { COFFEE_MACHINE_PROJECT_FIXTURE } from "./src/project/fixture.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
+  agentRunRecordedAt,
   agentRunSummary,
   buildCurrentProjectWork,
   buildProjectBrief,
@@ -1052,6 +1053,40 @@ Deno.test("the agent panel keeps the most recent settled run when nothing is in 
 
   assertEquals(brief.activeRuns.length, 0);
   assertEquals(brief.lastSettledRun?.id, "run-newest");
+});
+
+Deno.test("the agent panel dates a queued cancellation by its terminal human record", () => {
+  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const template = base.agentRuns[0]!;
+  const completed = {
+    ...template,
+    id: "run-completed-earlier",
+    status: "completed" as const,
+    queuedAt: "2026-08-02T08:00:00.000Z",
+    startedAt: "2026-08-02T08:01:00.000Z",
+    completedAt: "2026-08-02T09:00:00.000Z",
+  };
+  const cancelled = {
+    ...template,
+    id: "run-cancelled-later",
+    status: "cancelled" as const,
+    queuedAt: "2026-08-02T07:00:00.000Z",
+    startedAt: undefined,
+    completedAt: undefined,
+    cancellation: {
+      rationale: "The reviewed queue entry was retired before agent claim.",
+      cancelledAt: "2026-08-02T10:00:00.000Z",
+      cancelledBy: { id: "human:owner", origin: "human" as const },
+    },
+  };
+
+  const brief = buildProjectBrief({
+    ...base,
+    agentRuns: [completed, cancelled],
+  });
+
+  assertEquals(brief.lastSettledRun?.id, "run-cancelled-later");
+  assertEquals(agentRunRecordedAt(cancelled), "2026-08-02T10:00:00.000Z");
 });
 
 Deno.test("an in-flight run never counts as the last settled run", () => {

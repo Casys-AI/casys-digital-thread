@@ -197,7 +197,7 @@ export function buildProjectBrief(
         run.status === "cancelled"
       )
       .toSorted((left, right) =>
-        runRecordedAt(left).localeCompare(runRecordedAt(right)) ||
+        agentRunRecordedAt(left).localeCompare(agentRunRecordedAt(right)) ||
         left.id.localeCompare(right.id)
       )
       .at(-1),
@@ -993,14 +993,20 @@ function latestRunForPhase(
   const workItemIds = new Set(phase.workItemIds);
   return snapshot.agentRuns.filter((run) => workItemIds.has(run.workItemId))
     .toSorted((left, right) =>
-      runRecordedAt(left).localeCompare(runRecordedAt(right)) ||
+      agentRunRecordedAt(left).localeCompare(agentRunRecordedAt(right)) ||
       left.id.localeCompare(right.id)
     )
     .at(-1);
 }
 
-function runRecordedAt(run: EngineeringAgentRun): string {
-  return run.completedAt ?? run.startedAt ?? run.queuedAt;
+/**
+ * The timestamp at which the run reached the recorded state. A queued run is
+ * cancelled without ever acquiring a `completedAt`; its human cancellation is
+ * the terminal event and must therefore win over the earlier queue time.
+ */
+export function agentRunRecordedAt(run: EngineeringAgentRun): string {
+  return run.cancellation?.cancelledAt ?? run.completedAt ?? run.startedAt ??
+    run.queuedAt;
 }
 
 function lifecycleEffectivePhaseStatus(
