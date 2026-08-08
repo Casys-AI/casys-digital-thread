@@ -14,6 +14,7 @@ import {
   CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/captures/file-capture-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
@@ -624,6 +625,11 @@ if (import.meta.main) {
     ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
     directory: inspectionDroneV4PartDefinitionsCaptureDirectory,
   });
+  const inspectionDroneV4ArchitectureCaptures = new FileCaptureStore({
+    ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+    directory: cliArgs["inspection-drone-v4-architecture-capture-dir"] ??
+      "state/local/inspection-drone-v4-architecture-captures",
+  });
   const projectRuntime = await createEngineeringProjectCommandRuntime({
     projectId,
     trackedManifestPath: projectPath,
@@ -669,7 +675,10 @@ if (import.meta.main) {
     componentCatalogForSnapshot: async (snapshot) =>
       await resolveInspectionDroneV4ProductStructureCatalog(
         snapshot,
-        inspectionDroneV4PartDefinitionsCaptures,
+        {
+          architecture: inspectionDroneV4ArchitectureCaptures,
+          partDefinitions: inspectionDroneV4PartDefinitionsCaptures,
+        },
       ) ?? await resolveCoffeeMachineCm01V3ProductStructureCatalog(snapshot, {
         architecture: cm01ArchitectureCaptures,
         partDefinitions: cm01PartDefinitionsCaptures,

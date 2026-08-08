@@ -18,13 +18,18 @@ export interface InspectionDroneV4CaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
 }
 
+export interface InspectionDroneV4ProductStructureCaptureReaders {
+  readonly architecture: InspectionDroneV4CaptureReader;
+  readonly partDefinitions: InspectionDroneV4CaptureReader;
+}
+
 /**
  * The Workbench view has no provider access. It reconstructs only the six
  * exact identities recorded in the immutable, content-addressed capture.
  */
 export async function resolveInspectionDroneV4ProductStructureCatalog(
   snapshot: ThreadSnapshot,
-  captures: InspectionDroneV4CaptureReader,
+  captures: InspectionDroneV4ProductStructureCaptureReaders,
 ): Promise<ThreadComponentCatalog | undefined> {
   if (snapshot.subject.id !== INSPECTION_DRONE_V4_SUBJECT_ID) return undefined;
   const archived = archivedRefKeys(snapshot);
@@ -43,15 +48,53 @@ export async function resolveInspectionDroneV4ProductStructureCatalog(
     );
   }
   const artifact = matches[0]!;
+  const architecture = snapshot.artifacts.filter((candidate) =>
+    !archived.has(`artifact:${candidate.id}`) &&
+    candidate.kind === "sysml-model" &&
+    candidate.id.startsWith("inspection-drone-v4-architecture-") &&
+    candidate.uri ===
+      `casys://inspection-drone-v4-architecture-capture/sha256/${candidate.fingerprint.digest}` &&
+    candidate.id ===
+      `inspection-drone-v4-architecture-${candidate.fingerprint.digest}` &&
+    candidate.version === candidate.fingerprint.digest
+  );
+  if (architecture.length !== 1) {
+    return unavailable(
+      snapshot.subject.id,
+      "No single current, canonically content-addressed inspection-drone r3 architecture artifact is attached to this revision.",
+    );
+  }
+  const consumption = snapshot.consumptions.filter((candidate) =>
+    candidate.artifactId === architecture[0]!.id &&
+    candidate.status === "verified" &&
+    deterministicFingerprint(candidate.observedFingerprint) ===
+      deterministicFingerprint(architecture[0]!.fingerprint) &&
+    candidate.consumer.runId === artifact.producer.runId
+  );
+  if (consumption.length !== 1) {
+    return unavailable(
+      snapshot.subject.id,
+      "The PartDefinitions bundle does not carry one exact verified r3 architecture consumption.",
+    );
+  }
   try {
-    const text = await captures.read(artifact.fingerprint);
+    const text = await captures.partDefinitions.read(artifact.fingerprint);
     if (!text) {
       return unavailable(
         snapshot.subject.id,
         "The exact inspection-drone PartDefinitions bundle is not readable from its dedicated store.",
       );
     }
-    const bundle = parseBundle(text, artifact.id, artifact.fingerprint.digest);
+    const architectureText = await captures.architecture.read(
+      architecture[0]!.fingerprint,
+    );
+    if (!architectureText) throw new Error("Architecture capture unavailable.");
+    const bundle = parseBundle(
+      text,
+      artifact,
+      architecture[0]!,
+      architectureText,
+    );
     return catalog(snapshot.subject.id, artifact.id, bundle);
   } catch {
     return unavailable(
@@ -171,7 +214,12 @@ function usageForType(bundle: Bundle, typeId: string): string {
   return typed.usageId;
 }
 
-function parseBundle(text: string, artifactId: string, digest: string): Bundle {
+function parseBundle(
+  text: string,
+  artifact: ThreadSnapshot["artifacts"][number],
+  architectureArtifact: ThreadSnapshot["artifacts"][number],
+  architectureText: string,
+): Bundle {
   const raw = JSON.parse(text) as unknown;
   const record = closed(raw, [
     "architecture",
@@ -201,6 +249,58 @@ function parseBundle(text: string, artifactId: string, digest: string): Bundle {
   if (
     typeof architecture.editingContextId !== "string" || !architecture.editingContextId
   ) throw new Error("The PartDefinitions capture has no SysON editing context.");
+  const bundleFingerprint = fingerprint(
+    architecture.fingerprint,
+    "architecture.fingerprint",
+  );
+  const packageIdentity = element(
+    architecture.architecturePackage,
+    "architecture.architecturePackage",
+  );
+  const recipe = closed(architecture.recipe, ["textSha256"]);
+  if (
+    architecture.artifactId !== architectureArtifact.id ||
+    deterministicFingerprint(bundleFingerprint) !==
+      deterministicFingerprint(architectureArtifact.fingerprint) ||
+    architecture.uri !== architectureArtifact.uri ||
+    !artifact.inputArtifactIds || artifact.inputArtifactIds.length !== 1 ||
+    artifact.inputArtifactIds[0] !== architectureArtifact.id ||
+    !artifact.id.endsWith(artifact.fingerprint.digest) ||
+    artifact.version !== artifact.fingerprint.digest ||
+    typeof recipe.textSha256 !== "string" ||
+    recipe.textSha256 !==
+      "eba0ccf48143a0f3ef8f8f0b985b373a97ead0ed57e7cbd6dff717c56693a530"
+  ) {
+    throw new Error(
+      "The PartDefinitions bundle is not bound to the exact r3 architecture artifact.",
+    );
+  }
+  const source = JSON.parse(architectureText) as Record<string, unknown>;
+  const sourceRecipe = closed(closed(source.recipe, ["textSha256"]).textSha256, [
+    "algorithm",
+    "digest",
+  ]);
+  const sourcePackage = element(
+    source.architecturePackage,
+    "source.architecturePackage",
+  );
+  const sourceSeed = closed(source.seed, [
+    "artifactId",
+    "editingContextId",
+    "fingerprint",
+    "rootPackageId",
+  ]);
+  if (
+    sourceSeed.editingContextId !== architecture.editingContextId ||
+    sourceRecipe.digest !== recipe.textSha256 ||
+    sourcePackage.id !== packageIdentity.id ||
+    sourcePackage.label !== packageIdentity.label ||
+    sourcePackage.kind !== packageIdentity.kind
+  ) {
+    throw new Error(
+      "The PartDefinitions bundle architecture fields diverge from r3 evidence.",
+    );
+  }
   const definitions = record.definitions.map((candidate, index) => {
     const item = closed(candidate, ["definition", "structure"]);
     const definition = element(item.definition, `definitions[${index}].definition`);
@@ -226,13 +326,15 @@ function parseBundle(text: string, artifactId: string, digest: string): Bundle {
       typeof structure.partCount !== "number" ||
       !Number.isSafeInteger(structure.partCount) || count(tree) !== structure.partCount
     ) throw new Error("The PartDefinitions structure count is not exact.");
+    if (!kind(definition.kind, "PartDefinition")) {
+      throw new Error("The bundle exposes a non-PartDefinition product root.");
+    }
     return { ...definition, tree };
   });
   if (
     definitions.length !== LABELS.length ||
     definitions.some((definition, index) => definition.label !== LABELS[index]) ||
-    new Set(definitions.map((definition) => definition.id)).size !== LABELS.length ||
-    !artifactId.endsWith(digest)
+    new Set(definitions.map((definition) => definition.id)).size !== LABELS.length
   ) {
     throw new Error(
       "The bundle does not expose the six reviewed PartDefinition identities in deterministic order.",
@@ -250,8 +352,13 @@ function parseBundle(text: string, artifactId: string, digest: string): Bundle {
   });
   const root = definitions[0]!;
   if (
-    root.tree.length !== 5 || root.tree.some((usage) => usage.children.length !== 0) ||
-    new Set(root.tree.map((usage) => usage.id)).size !== 5
+    root.tree.length !== 5 ||
+    root.tree.some((usage) =>
+      usage.children.length !== 0 || !kind(usage.kind, "PartUsage") ||
+      (usage.quantity !== 1 && usage.quantity !== "1") || !usage.quantitySource
+    ) || new Set(root.tree.map((usage) => usage.id)).size !== 5 ||
+    root.tree.some((usage, index) => usage.label !== USAGE_LABELS[index]) ||
+    definitions.slice(1).some((definition) => definition.tree.length !== 0)
   ) {
     throw new Error(
       "The InspectionDrone root no longer has five direct usage anchors.",
@@ -276,6 +383,13 @@ function parseBundle(text: string, artifactId: string, digest: string): Bundle {
     rootUsageTypes,
   };
 }
+const USAGE_LABELS = [
+  "airframe",
+  "energySystem",
+  "propulsionSystem",
+  "avionicsAndFlightControl",
+  "inspectionCameraPayload",
+] as const;
 
 function exactOne(usage: Usage): number {
   if ((usage.quantity !== 1 && usage.quantity !== "1") || !usage.quantitySource) {
@@ -330,6 +444,19 @@ function element(
     kind: text(record.kind, `${path}.kind`),
     label: text(record.label, `${path}.label`),
   };
+}
+function fingerprint(value: unknown, path: string): ContentFingerprint {
+  const record = closed(value, ["algorithm", "digest"]);
+  if (record.algorithm !== "sha256" || typeof record.digest !== "string") {
+    throw new Error(`${path} is not a SHA-256 fingerprint.`);
+  }
+  return { algorithm: "sha256", digest: record.digest };
+}
+function deterministicFingerprint(fingerprint: ContentFingerprint): string {
+  return `${fingerprint.algorithm}:${fingerprint.digest}`;
+}
+function kind(value: string, expected: string): boolean {
+  return value === `sysml::${expected}` || value.endsWith(`entity=${expected}`);
 }
 function closed(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

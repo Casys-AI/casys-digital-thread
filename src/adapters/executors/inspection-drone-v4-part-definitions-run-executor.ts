@@ -26,7 +26,10 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
 } from "../../orchestration/operations/inspection-drone-v4.ts";
-import { INSPECTION_DRONE_V4_PART_USAGE_CONTRACT } from "./inspection-drone-v4-architecture-run-executor.ts";
+import {
+  INSPECTION_DRONE_V4_PART_USAGE_CONTRACT,
+  INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT,
+} from "./inspection-drone-v4-architecture-run-executor.ts";
 import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
@@ -73,10 +76,28 @@ type Architecture = Readonly<
     editingContextId: string;
     package: Element;
     recipeDigest: string;
+    seed: Readonly<{
+      artifactId: string;
+      fingerprint: ContentFingerprint;
+      rootPackageId: string;
+    }>;
     declarationByLabel: ReadonlyMap<string, Element>;
     rootUsages: readonly Readonly<{ usage: Element; type: Element }>[];
   }
 >;
+
+const FIXED_ARCHITECTURE_RECIPE_DIGEST =
+  "eba0ccf48143a0f3ef8f8f0b985b373a97ead0ed57e7cbd6dff717c56693a530" as const;
+const REQUIRED_DECLARATIONS = [
+  ...INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT.map((label) => ({
+    label,
+    kind: "PartDefinition",
+  })),
+  ...INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT.map((requirement) => ({
+    label: requirement.label,
+    kind: "RequirementDefinition",
+  })),
+] as const;
 
 export interface InspectionDroneV4PartDefinitionsRunExecutorCommand {
   readonly commandId: string;
@@ -277,7 +298,28 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
     if (!text) {
       throw denied("The exact content-addressed architecture capture is not readable.");
     }
-    return { base, artifact, architecture: parseArchitecture(text, artifact) };
+    validateArchitectureArtifact(base, artifact);
+    const architecture = parseInspectionDroneV4ArchitectureCapture(text, artifact);
+    const seed = one(
+      base.artifacts.filter((candidate) =>
+        candidate.id === architecture.seed.artifactId
+      ),
+      "architecture capture seed artifact",
+    );
+    if (
+      artifact.inputArtifactIds[0] !== seed.id ||
+      deterministicJson(seed.fingerprint) !==
+        deterministicJson(architecture.seed.fingerprint)
+    ) {
+      throw denied(
+        "The architecture capture seed does not match the exact r3 artifact input.",
+      );
+    }
+    return {
+      base,
+      artifact,
+      architecture,
+    };
   }
 
   private async structure(
@@ -383,7 +425,8 @@ function step(commandId: string, action: string): string {
   return `${commandId}:inspection-drone-v4-part-definitions:${action}`;
 }
 
-function parseArchitecture(
+/** Exported for fixture-backed, read-only contract tests. */
+export function parseInspectionDroneV4ArchitectureCapture(
   text: string,
   artifact: ThreadArtifact,
 ): Architecture {
@@ -433,10 +476,14 @@ function parseArchitecture(
   ]);
   const pkg = element(record.architecturePackage, "architecturePackage");
   const recipe = closed(record.recipe, ["textSha256"]);
+  const recipeFingerprint = fingerprint(recipe.textSha256, "recipe.textSha256");
+  const insertion = closed(record.insertion, ["parentId", "textSha256"]);
   if (
     typeof seed.editingContextId !== "string" || !seed.editingContextId ||
-    typeof recipe.textSha256 !== "string" ||
-    !/^[a-f0-9]{64}$/.test(recipe.textSha256) || !kind(pkg.kind, "Package")
+    !kind(pkg.kind, "Package") || pkg.label !== "InspectionDroneArchitecture" ||
+    recipeFingerprint.digest !== FIXED_ARCHITECTURE_RECIPE_DIGEST ||
+    insertion.parentId !== seed.rootPackageId ||
+    insertion.textSha256 !== recipeFingerprint.digest
   ) {
     throw denied(
       "The architecture capture has no exact SysON context, package, or recipe identity.",
@@ -453,14 +500,23 @@ function parseArchitecture(
       ]).partUsages,
     )
   ) throw denied("The architecture capture has no exact declaration/readback list.");
+  const seedFingerprint = fingerprint(seed.fingerprint, "seed.fingerprint");
+  if (
+    typeof seed.artifactId !== "string" || !seed.artifactId ||
+    typeof seed.rootPackageId !== "string" || !seed.rootPackageId
+  ) throw denied("The architecture capture has an invalid seed identity.");
   const declarations = record.declarations.map((item, index) =>
     element(item, `declarations[${index}]`)
   );
   const byLabel = new Map(declarations.map((item) => [item.label, item]));
   if (
-    byLabel.size !== declarations.length ||
-    INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT.some((label) =>
-      !byLabel.has(label) || !kind(byLabel.get(label)!.kind, "PartDefinition")
+    declarations.length !== REQUIRED_DECLARATIONS.length ||
+    byLabel.size !== REQUIRED_DECLARATIONS.length ||
+    new Set(declarations.map((item) => item.id)).size !==
+      REQUIRED_DECLARATIONS.length ||
+    REQUIRED_DECLARATIONS.some((expected, index) =>
+      declarations[index]?.label !== expected.label ||
+      !kind(declarations[index]?.kind ?? "", expected.kind)
     )
   ) {
     throw denied(
@@ -474,7 +530,10 @@ function parseArchitecture(
     "requirements",
   ]);
   const root = element(readback.inspectionDrone, "readback.inspectionDrone");
-  if (root.id !== byLabel.get("InspectionDrone")!.id) {
+  if (
+    root.id !== byLabel.get("InspectionDrone")!.id ||
+    root.label !== "InspectionDrone" || !kind(root.kind, "PartDefinition")
+  ) {
     throw denied(
       "The architecture readback root does not match the captured InspectionDrone identity.",
     );
@@ -491,11 +550,13 @@ function parseArchitecture(
     };
   });
   if (
-    rootUsages.length !== 5 ||
+    rootUsages.length !== INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.length ||
     new Set(rootUsages.map((item) => item.usage.id)).size !== 5 ||
+    new Set(rootUsages.map((item) => item.type.id)).size !== 5 ||
     INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.some((expected) => {
       const matches = rootUsages.filter((item) =>
-        item.usage.label === expected.label && item.type.label === expected.type &&
+        item.usage.label === expected.label && kind(item.usage.kind, "PartUsage") &&
+        item.type.label === expected.type && kind(item.type.kind, "PartDefinition") &&
         item.type.id === byLabel.get(expected.type)!.id
       );
       return matches.length !== 1;
@@ -505,13 +566,88 @@ function parseArchitecture(
       "The architecture readback does not bind the five exact PartUsage type identities.",
     );
   }
+  const requirements = readback.requirements;
+  if (
+    !Array.isArray(requirements) ||
+    requirements.length !== INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT.length
+  ) {
+    throw denied(
+      "The architecture capture does not contain the four reviewed requirement attestations.",
+    );
+  }
+  for (let index = 0; index < requirements.length; index++) {
+    const item = closed(requirements[index], ["documentation", "requirement"]);
+    const requirement = element(item.requirement, `requirements[${index}].requirement`);
+    const expected = INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT[index]!;
+    if (
+      requirement.label !== expected.label ||
+      requirement.id !== byLabel.get(expected.label)!.id ||
+      !kind(requirement.kind, "RequirementDefinition") ||
+      item.documentation !== expected.documentation
+    ) {
+      throw denied(
+        "The architecture capture requirement evidence differs from the fixed reviewed contract.",
+      );
+    }
+  }
   return {
     editingContextId: seed.editingContextId,
     package: pkg,
-    recipeDigest: recipe.textSha256,
+    recipeDigest: recipeFingerprint.digest,
+    seed: {
+      artifactId: seed.artifactId,
+      fingerprint: seedFingerprint,
+      rootPackageId: seed.rootPackageId,
+    },
     declarationByLabel: byLabel,
     rootUsages,
   };
+}
+
+function validateArchitectureArtifact(
+  base: ThreadSnapshot,
+  artifact: ThreadArtifact,
+): void {
+  if (
+    artifact.id !== `inspection-drone-v4-architecture-${artifact.fingerprint.digest}` ||
+    artifact.version !== artifact.fingerprint.digest ||
+    artifact.uri !==
+      `${INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX}${artifact.fingerprint.digest}` ||
+    artifact.inputArtifactIds.length !== 1
+  ) {
+    throw denied(
+      "The architecture artifact does not have the exact r3 canonical identity.",
+    );
+  }
+  const seed = one(
+    base.artifacts.filter((candidate) => candidate.id === artifact.inputArtifactIds[0]),
+    "architecture seed artifact",
+  );
+  const consumption = one(
+    base.consumptions.filter((candidate) => candidate.artifactId === seed.id),
+    "architecture seed consumption",
+  );
+  if (
+    deterministicJson(consumption.observedFingerprint) !==
+      deterministicJson(seed.fingerprint) ||
+    consumption.status !== "verified" ||
+    artifact.producer.runId !== consumption.consumer.runId
+  ) {
+    throw denied(
+      "The r3 architecture artifact is not backed by its exact seed consumption.",
+    );
+  }
+}
+
+function fingerprint(value: unknown, path: string): ContentFingerprint {
+  const record = closed(value, ["algorithm", "digest"]);
+  if (
+    record.algorithm !== "sha256" || typeof record.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(record.digest)
+  ) {
+    throw denied(`${path} is not a SHA-256 content fingerprint.`);
+  }
+  return { algorithm: "sha256", digest: record.digest };
 }
 
 function parseStructure(value: unknown, expected: Element): Structure {
@@ -552,13 +688,27 @@ function verifyStructures(
   const root = structures[0]!;
   if (
     root.definition.label !== "InspectionDrone" || root.structure.tree.length !== 5 ||
-    root.structure.tree.some((usage) => usage.children.length !== 0)
+    root.structure.partCount !== 5 ||
+    root.structure.tree.some((usage) =>
+      usage.children.length !== 0 || usage.quantity !== 1 ||
+      !usage.quantitySource.trim() || !kind(usage.kind, "PartUsage")
+    )
   ) {
     throw new Error(
       "InspectionDrone structure must expose exactly five direct qualitative usages.",
     );
   }
   const byUsage = new Map(root.structure.tree.map((usage) => [usage.id, usage]));
+  if (
+    new Set(root.structure.tree.map((usage) => usage.label)).size !== 5 ||
+    INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.some((expected, index) =>
+      root.structure.tree[index]?.label !== expected.label
+    )
+  ) {
+    throw new Error(
+      "InspectionDrone direct usages do not retain the exact reviewed order and labels.",
+    );
+  }
   for (const attested of architecture.rootUsages) {
     const usage = byUsage.get(attested.usage.id);
     if (
@@ -567,6 +717,16 @@ function verifyStructures(
     ) {
       throw new Error(
         "PartDefinition provider readback drifts from the exact architecture usage/type identity.",
+      );
+    }
+  }
+  for (const child of structures.slice(1)) {
+    if (
+      child.structure.partCount !== 0 || child.structure.tree.length !== 0 ||
+      !kind(child.definition.kind, "PartDefinition")
+    ) {
+      throw new Error(
+        "Child PartDefinitions must attest an empty, untruncated structure.",
       );
     }
   }
