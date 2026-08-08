@@ -168,25 +168,35 @@ export class CoffeeMachineCm01V3ArchiveLineageRunExecutor {
 
       // Resolve target entity refs from the work item's thread-entity bindings.
       const workItem = project.workItems.find((item) => item.id === run.workItemId);
-      requireArchiveMrtrApproval(project, workItem?.decisionIds ?? [], basis);
-      const targets: ThreadEntityRef[] = (workItem?.operation?.bindings ?? [])
-        .filter((b) => b.source.kind === "thread-entity")
-        .map((b) => {
-          const ref = (b.source as {
-            kind: "thread-entity";
-            reference: EngineeringThreadEntityRef;
-          })
-            .reference;
-          return { kind: ref.kind, id: ref.id };
-        });
+      const targetRefs: EngineeringThreadEntityRef[] =
+        (workItem?.operation?.bindings ?? [])
+          .filter((b) => b.source.kind === "thread-entity")
+          .map((b) => {
+            const ref = (b.source as {
+              kind: "thread-entity";
+              reference: EngineeringThreadEntityRef;
+            })
+              .reference;
+            return ref;
+          });
 
-      if (targets.length === 0) {
+      if (targetRefs.length === 0) {
         throw new EngineeringProjectCommandError(
           "invalid_input",
           "The CM-01 archive-lineage run requires at least one thread-entity binding as a target.",
         );
       }
       assertExactTargetBindings(workItem?.operation?.bindings ?? [], basis);
+      requireArchiveMrtrApproval(
+        project,
+        workItem?.decisionIds ?? [],
+        basis,
+        targetRefs,
+      );
+      const targets: ThreadEntityRef[] = targetRefs.map((ref) => ({
+        kind: ref.kind,
+        id: ref.id,
+      }));
 
       // Compute the transitive cascade (fail-closed on missing targets).
       // Default filtering keeps only the NOT-yet-archived closure: a partial
@@ -463,6 +473,7 @@ function requireArchiveMrtrApproval(
   project: EngineeringProjectSnapshot,
   decisionIds: readonly string[],
   basis: EngineeringThreadSnapshotBasis,
+  targetRefs: readonly EngineeringThreadEntityRef[],
 ): void {
   const approved = decisionIds.some((id) => {
     const decision = project.decisions.find((item) => item.id === id);
@@ -470,21 +481,52 @@ function requireArchiveMrtrApproval(
       decision?.status !== "approved" ||
       decision.baseSnapshot?.snapshotId !== basis.snapshotId ||
       decision.baseSnapshot.revision !== basis.revision ||
+      decision.baseSnapshot.subjectId !== basis.subjectId ||
+      !sameEvidenceRefs(decision.inputEvidenceRefs, targetRefs) ||
+      !isArchiveProposal(decision.proposal, targetRefs.length) ||
       !decision.inputFingerprint
     ) return false;
     return decision.approvalIds.some((approvalId) => {
       const approval = project.approvals.find((item) => item.id === approvalId);
       return approval?.status === "approved" && approval.decidedByOrigin === "human" &&
         approval.baseSnapshot?.snapshotId === basis.snapshotId &&
-        approval.baseSnapshot.revision === basis.revision;
+        approval.baseSnapshot.revision === basis.revision &&
+        approval.baseSnapshot.subjectId === basis.subjectId &&
+        sameEvidenceRefs(approval.inputEvidenceRefs, targetRefs);
     });
   });
   if (!approved) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "CM-01 archive-lineage requires a human-approved MRTR decision bound to the exact run basis.",
+      "CM-01 archive-lineage requires a human-approved archive MRTR decision bound to the exact target entity references and run basis.",
     );
   }
+}
+
+function isArchiveProposal(
+  proposal: EngineeringProjectSnapshot["decisions"][number]["proposal"],
+  targetCount: number,
+): boolean {
+  if (!proposal) return false;
+  const parameters = new Map(proposal.parameters.map((item) => [item.key, item.value]));
+  return parameters.get("archiveAction") === "retire-lineage" &&
+    parameters.get("archiveOperation") ===
+      `${ARCHIVE_LINEAGE_OP.id}@${ARCHIVE_LINEAGE_OP.version}` &&
+    parameters.get("archiveTargetCount") === targetCount;
+}
+
+function sameEvidenceRefs(
+  left: readonly EngineeringThreadEntityRef[],
+  right: readonly EngineeringThreadEntityRef[],
+): boolean {
+  if (left.length !== right.length) return false;
+  const keys = (refs: readonly EngineeringThreadEntityRef[]) =>
+    refs.map((ref) =>
+      `${ref.snapshotId}\u0000${ref.snapshotRevision}\u0000${ref.kind}\u0000${ref.id}`
+    ).sort();
+  const leftKeys = keys(left);
+  const rightKeys = keys(right);
+  return leftKeys.every((key, index) => key === rightKeys[index]);
 }
 
 // ---------------------------------------------------------------------------

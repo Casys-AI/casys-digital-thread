@@ -46,6 +46,12 @@ export type EngineeringOperationBindingSourceKind =
 export interface RegisteredEngineeringOperationBinding {
   readonly name: string;
   readonly allowedSourceKinds: readonly EngineeringOperationBindingSourceKind[];
+  /** Default is one exact binding; one-or-more is an explicit reviewed variadic slot. */
+  readonly cardinality?: "one" | "one-or-more";
+  /** Optional safe subtype restriction when the source is a thread entity. */
+  readonly allowedThreadEntityKinds?: readonly ThreadEntityKind[];
+  /** Prevents an N-target operation from accepting the same exact entity twice. */
+  readonly uniqueThreadEntityReferences?: true;
 }
 
 /** Safe descriptor suitable for a project plan and a human-facing UI. */
@@ -60,6 +66,8 @@ export interface RegisteredEngineeringOperation {
   readonly workItemKind: EngineeringWorkItemKind;
   readonly riskClass: EngineeringOperationRiskClass;
   readonly execution: EngineeringOperationExecution;
+  /** Makes a consequential decision bind the exact thread-entity targets. */
+  readonly decisionEvidenceScope?: "thread-entity-bindings";
   readonly bindings: readonly RegisteredEngineeringOperationBinding[];
 }
 
@@ -318,12 +326,17 @@ function validateBindings(
   operation: RegisteredEngineeringOperation,
   bindings: readonly EngineeringOperationInputBinding[],
 ): void {
-  const suppliedByName = new Map<string, EngineeringOperationInputBinding>();
+  const suppliedByName = new Map<string, EngineeringOperationInputBinding[]>();
   for (const binding of bindings) {
-    if (suppliedByName.has(binding.name)) {
+    const declared = operation.bindings.find((candidate) =>
+      candidate.name === binding.name
+    );
+    if (suppliedByName.has(binding.name) && declared?.cardinality !== "one-or-more") {
       invalidBindings(`binding ${binding.name} is supplied more than once`);
     }
-    suppliedByName.set(binding.name, binding);
+    const supplied = suppliedByName.get(binding.name) ?? [];
+    supplied.push(binding);
+    suppliedByName.set(binding.name, supplied);
   }
 
   const declaredNames = new Set(operation.bindings.map((binding) => binding.name));
@@ -334,14 +347,40 @@ function validateBindings(
   }
 
   for (const declaration of operation.bindings) {
-    const binding = suppliedByName.get(declaration.name);
-    if (binding === undefined) {
+    const supplied = suppliedByName.get(declaration.name) ?? [];
+    if (supplied.length === 0) {
       invalidBindings(`required binding ${declaration.name} is missing`);
     }
-    if (!declaration.allowedSourceKinds.includes(binding.source.kind)) {
-      invalidBindings(
-        `binding ${binding.name} does not accept a ${binding.source.kind} source`,
-      );
+    const seenThreadEntityReferences = new Set<string>();
+    for (const binding of supplied) {
+      if (!declaration.allowedSourceKinds.includes(binding.source.kind)) {
+        invalidBindings(
+          `binding ${binding.name} does not accept a ${binding.source.kind} source`,
+        );
+      }
+      if (
+        declaration.allowedThreadEntityKinds &&
+        binding.source.kind === "thread-entity" &&
+        !declaration.allowedThreadEntityKinds.includes(binding.source.reference.kind)
+      ) {
+        invalidBindings(
+          `binding ${binding.name} does not accept a ${binding.source.reference.kind} thread entity`,
+        );
+      }
+      if (
+        declaration.uniqueThreadEntityReferences &&
+        binding.source.kind === "thread-entity"
+      ) {
+        const ref = binding.source.reference;
+        const key =
+          `${ref.snapshotId}\u0000${ref.snapshotRevision}\u0000${ref.kind}\u0000${ref.id}`;
+        if (seenThreadEntityReferences.has(key)) {
+          invalidBindings(
+            `binding ${binding.name} repeats the same thread entity reference`,
+          );
+        }
+        seenThreadEntityReferences.add(key);
+      }
     }
   }
 }
@@ -494,6 +533,9 @@ function copyOperation(
     bindings: operation.bindings.map((binding) => ({
       ...binding,
       allowedSourceKinds: [...binding.allowedSourceKinds],
+      ...(binding.allowedThreadEntityKinds
+        ? { allowedThreadEntityKinds: [...binding.allowedThreadEntityKinds] }
+        : {}),
     })),
   };
 }

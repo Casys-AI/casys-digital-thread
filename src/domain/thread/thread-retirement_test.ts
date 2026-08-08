@@ -417,6 +417,31 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "computeArchiveCascade retires a requirement's evaluations and violations",
+  () => {
+    const model = artifact("model", [], "0");
+    const req = requirement("req-retired", "model", "model");
+    const eval1 = evaluation("eval-for-req", "req-retired", []);
+    const viol1 = violation("viol-for-eval", "req-retired", "eval-for-req");
+    const snapshot: ThreadSnapshot = {
+      ...minimalBase(model),
+      requirements: [req],
+      evaluations: [eval1],
+      violations: [viol1],
+    };
+    const result = computeArchiveCascade(snapshot, [{
+      kind: "requirement",
+      id: "req-retired",
+    }]);
+    assertEquals(result.map((entry) => entry.ref), [
+      { kind: "evaluation", id: "eval-for-req" },
+      { kind: "requirement", id: "req-retired" },
+      { kind: "violation", id: "viol-for-eval" },
+    ]);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // computeArchiveCascade — does NOT follow traces_to
 // ---------------------------------------------------------------------------

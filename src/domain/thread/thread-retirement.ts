@@ -198,7 +198,17 @@ export function computeArchiveCascade(
     }
   }
 
-  // -- Phase 3: evaluations that cite cascaded observations or artifacts ----
+  // -- Phase 3: requirement targets and their evaluations -------------------
+  // A requirement is a direct retirement target, but its verdicts are
+  // downstream current-state claims and must retire with it.
+  const cascadedRequirements = new Map<string, string>();
+  for (const ref of targets) {
+    if (ref.kind === "requirement" && !retired.has(`requirement:${ref.id}`)) {
+      cascadedRequirements.set(ref.id, ref.id);
+    }
+  }
+
+  // -- Phase 4: evaluations that cite cascaded requirements, observations or artifacts
   const cascadedEvaluations = new Map<string, string>(); // eval id → because
   for (const ref of targets) {
     if (ref.kind === "evaluation" && !retired.has(`evaluation:${ref.id}`)) {
@@ -207,6 +217,10 @@ export function computeArchiveCascade(
   }
   for (const ev of snapshot.evaluations) {
     if (retired.has(`evaluation:${ev.id}`)) continue;
+    if (cascadedRequirements.has(ev.requirementId)) {
+      cascadedEvaluations.set(ev.id, ev.requirementId);
+      continue;
+    }
     const obsCause = ev.observationIds.find((oid) => cascadedObservations.has(oid));
     if (obsCause !== undefined) {
       cascadedEvaluations.set(ev.id, obsCause);
@@ -218,7 +232,7 @@ export function computeArchiveCascade(
     }
   }
 
-  // -- Phase 4: violations that cite cascaded evaluations or observations ---
+  // -- Phase 5: violations that cite cascaded evaluations or observations ---
   const cascadedViolations = new Map<string, string>(); // violation id → because
   for (const ref of targets) {
     if (ref.kind === "violation" && !retired.has(`violation:${ref.id}`)) {
@@ -234,14 +248,6 @@ export function computeArchiveCascade(
     const obsCause = viol.observationIds.find((oid) => cascadedObservations.has(oid));
     if (obsCause !== undefined) {
       cascadedViolations.set(viol.id, obsCause);
-    }
-  }
-
-  // -- Collect requirement targets (no further cascade) ---------------------
-  const cascadedRequirements = new Map<string, string>();
-  for (const ref of targets) {
-    if (ref.kind === "requirement" && !retired.has(`requirement:${ref.id}`)) {
-      cascadedRequirements.set(ref.id, ref.id);
     }
   }
 

@@ -3,6 +3,7 @@ import type {
   EngineeringProjectStartingPoint,
   EngineeringWorkItemKind,
 } from "../../domain/project/engineering-project.ts";
+import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 
 /**
  * Static, reviewed CM-01 reference kits.
@@ -98,10 +99,14 @@ export interface CoffeeMachineCm01V3OperationDescriptor
   readonly riskClass: "low" | "consequential";
   /** A descriptor never embeds authority; trusted execution stays server-owned. */
   readonly execution: CoffeeMachineCm01V3OperationExecution;
+  readonly decisionEvidenceScope?: "thread-entity-bindings";
   readonly bindings: readonly {
     readonly name: string;
     readonly allowedSourceKinds:
       readonly EngineeringOperationInputBinding["source"]["kind"][];
+    readonly cardinality?: "one" | "one-or-more";
+    readonly allowedThreadEntityKinds?: readonly ThreadEntityKind[];
+    readonly uniqueThreadEntityReferences?: true;
   }[];
 }
 
@@ -367,14 +372,21 @@ const APPROVED_BRIEF_AND_HISTORICAL_R3_RESULT_BINDINGS = [
 
 const APPROVED_BRIEF_AND_ARCHIVE_TARGETS_BINDINGS = [
   ...APPROVED_BRIEF_BINDING,
-  // The N thread-entity bindings are open-ended (N ≥ 1): every binding whose
-  // source.kind === "thread-entity" is treated as a retirement target by the
-  // executor. The descriptor lists exactly one representative slot so the
-  // registry can validate the shape; actual work items carry as many target
-  // bindings as the lineage scope requires.
+  // Explicit variadic contract: N ≥ 1 bindings named archiveTarget, each
+  // an exact live entity reference. The registry rejects all other repeated
+  // names and all non-retirable entity kinds before an agent can queue a run.
   {
     name: "archiveTarget",
     allowedSourceKinds: ["thread-entity"],
+    cardinality: "one-or-more",
+    allowedThreadEntityKinds: [
+      "artifact",
+      "requirement",
+      "observation",
+      "evaluation",
+      "violation",
+    ],
+    uniqueThreadEntityReferences: true,
   },
 ] as const satisfies CoffeeMachineCm01V3OperationDescriptor["bindings"];
 
@@ -1208,6 +1220,7 @@ const KITS = [
       workItemKind: "architect",
       riskClass: "consequential",
       execution: "trusted",
+      decisionEvidenceScope: "thread-entity-bindings",
       bindings: APPROVED_BRIEF_AND_ARCHIVE_TARGETS_BINDINGS,
     },
   },
@@ -1257,6 +1270,9 @@ function copyOperation(
     bindings: operation.bindings.map((binding) => ({
       ...binding,
       allowedSourceKinds: [...binding.allowedSourceKinds],
+      ...(binding.allowedThreadEntityKinds
+        ? { allowedThreadEntityKinds: [...binding.allowedThreadEntityKinds] }
+        : {}),
     })),
   };
 }

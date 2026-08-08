@@ -142,6 +142,45 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "CM-01 archive-lineage executor rejects an approved non-archive MRTR proposal",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-archive-mrtr-" });
+    try {
+      const fixture = await queuedArchiveLineage(
+        directory,
+        undefined,
+        [{
+          key: "retirementScope",
+          label: "Retirement scope",
+          value: "exact-bound-lineage",
+        }],
+      );
+      const executor = new CoffeeMachineCm01V3ArchiveLineageRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        lease: new FileEngineeringProjectRunLease(`${directory}/archive-leases`),
+        now: () => "2026-08-08T10:30:00.000Z",
+      });
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            commandId: "agent-archive-mrtr",
+            projectId: "coffee-machine-cm01-v3",
+            expectedRevision: fixture.queued.revision,
+            issuedAt: "2026-08-08T10:30:00.000Z",
+            runId: fixture.runId,
+          }),
+        EngineeringProjectCommandError,
+        "exact target entity references",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Integration — happy path + idempotent replay
 // ---------------------------------------------------------------------------
@@ -294,11 +333,7 @@ Deno.test(
         baseSnapshot: resultRef,
         proposal: {
           summary: "Review the exact already-retired lineage.",
-          parameters: [{
-            key: "retirementScope",
-            label: "Retirement scope",
-            value: "exact-bound-lineage",
-          }],
+          parameters: archiveProposalParameters(1),
         },
       });
       const idemDecision = project.decisions.find((item) =>
@@ -442,6 +477,7 @@ interface ArchiveLineageFixture {
 async function queuedArchiveLineage(
   directory: string,
   targetArtifactId?: string,
+  proposalParameters = archiveProposalParameters(1),
 ): Promise<ArchiveLineageFixture> {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
@@ -608,22 +644,29 @@ async function queuedArchiveLineage(
     baseSnapshot: r1Ref,
     proposal: {
       summary: "Retire the exact bound thread entities.",
-      parameters: [{
-        key: "retirementScope",
-        label: "Retirement scope",
-        value: "exact-bound-lineage",
-      }],
+      parameters: proposalParameters,
     },
   });
   const archiveDecision = project.decisions.find((item) =>
     item.id === "archive-decision"
   )!;
+  assertEquals(archiveDecision.inputEvidenceRefs, [{
+    snapshotId: r1Ref.snapshotId,
+    snapshotRevision: r1Ref.revision,
+    kind: "artifact",
+    id: resolvedTargetId,
+  }]);
   project = await commands.approveDecision(HUMAN, {
     ...ctx("approve-archive-decision", project.revision),
     decisionId: archiveDecision.id,
     rationale: "MRTR approved after reviewing exact targets.",
     inputFingerprint: archiveDecision.inputFingerprint!,
   });
+  assertEquals(
+    project.approvals.find((item) => item.decisionId === "archive-decision")
+      ?.inputEvidenceRefs,
+    archiveDecision.inputEvidenceRefs,
+  );
 
   const runId = "run:archive-lineage";
   const queued = await commands.queueRun(AGENT, {
@@ -648,4 +691,17 @@ function ctx(commandId: string, expectedRevision: number) {
     expectedRevision,
     issuedAt: "2026-08-08T10:00:00.000Z",
   };
+}
+
+function archiveProposalParameters(targetCount: number) {
+  return [
+    { key: "archiveAction", label: "Archive action", value: "retire-lineage" },
+    {
+      key: "archiveOperation",
+      label: "Archive operation",
+      value:
+        `${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage.id}@${COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage.version}`,
+    },
+    { key: "archiveTargetCount", label: "Archive target count", value: targetCount },
+  ];
 }

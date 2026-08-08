@@ -138,3 +138,90 @@ Deno.test("CM-01 correction operations require an exact thread entity binding", 
     source: { kind: "thread-entity", reference },
   });
 });
+
+Deno.test("CM-01 archive lineage accepts explicit N targets and rejects non-retirable entities", () => {
+  const target = (kind: "artifact" | "requirement" | "observation") => ({
+    snapshotId: "project:coffee-machine-cm01-v3:r8:archive-basis",
+    snapshotRevision: 8,
+    kind,
+    id: `${kind}-target`,
+  });
+  const validated = validateRegisteredEngineeringOperationInput({
+    operation: {
+      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage,
+      bindings: [
+        { name: "approvedBrief", source: { kind: "approved-brief" } },
+        {
+          name: "archiveTarget",
+          source: { kind: "thread-entity", reference: target("artifact") },
+        },
+        {
+          name: "archiveTarget",
+          source: { kind: "thread-entity", reference: target("requirement") },
+        },
+        {
+          name: "archiveTarget",
+          source: { kind: "thread-entity", reference: target("observation") },
+        },
+      ],
+    },
+    stage: "planning",
+  });
+  assertEquals(
+    validated.bindings.filter((binding) => binding.name === "archiveTarget").length,
+    3,
+  );
+
+  for (const kind of ["consumption", "change", "action"] as const) {
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage,
+            bindings: [
+              { name: "approvedBrief", source: { kind: "approved-brief" } },
+              {
+                name: "archiveTarget",
+                source: {
+                  kind: "thread-entity",
+                  reference: {
+                    snapshotId: "project:coffee-machine-cm01-v3:r8:archive-basis",
+                    snapshotRevision: 8,
+                    kind,
+                    id: `${kind}-target`,
+                  },
+                },
+              },
+            ],
+          },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "invalid_bindings");
+  }
+
+  const duplicate = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage,
+          bindings: [
+            { name: "approvedBrief", source: { kind: "approved-brief" } },
+            {
+              name: "archiveTarget",
+              source: { kind: "thread-entity", reference: target("artifact") },
+            },
+            {
+              name: "archiveTarget",
+              source: { kind: "thread-entity", reference: target("artifact") },
+            },
+          ],
+        },
+        stage: "planning",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(duplicate.code, "invalid_bindings");
+});

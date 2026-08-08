@@ -114,7 +114,10 @@ export function projectThreadWorkbenchSnapshot(
       snapshotId: snapshot.id,
       revision: snapshot.revision,
     }),
-    flow: projectFlow(snapshot, context),
+    // `current` excludes retired entities while retaining the immutable
+    // changeSet, so the archive event stays visible without reviving its
+    // former evidence in the flow.
+    flow: projectFlow(current, context),
     artifacts,
     observations,
     requirements,

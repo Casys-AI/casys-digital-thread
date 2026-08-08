@@ -113,6 +113,37 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
   });
 });
 
+Deno.test("the Workbench flow hides retired current entities but retains the archive change", () => {
+  const snapshot = clone(linkedSnapshot());
+  const archived = [
+    ["artifact", "step-r2"],
+    ["artifact", "fea-r2"],
+    ["observation", "OBS-STRESS"],
+    ["requirement", "REQ-STRESS"],
+    ["evaluation", "EVAL-STRESS"],
+    ["violation", "VIO-STRESS"],
+  ] as const;
+  snapshot.changeSet.changes.push(...archived.map(([kind, id]) => ({
+    id: `archive:${kind}:${id}`,
+    kind: "archived" as const,
+    target: { kind, id },
+    summary: `Retired ${kind}:${id}.`,
+  })));
+  snapshot.provenance.push(
+    ...archived.map(([kind, id]) =>
+      link("changes", "change", `archive:${kind}:${id}`, kind, id)
+    ),
+  );
+
+  const projection = projectThreadWorkbenchSnapshot(snapshot);
+  assertEquals(projection.flow.map((stage) => stage.id), ["flow:changes-r2"]);
+  assertEquals(projection.change.summary, "Retired violation:VIO-STRESS.");
+  assertEquals(projection.artifacts, []);
+  assertEquals(projection.observations, []);
+  assertEquals(projection.requirements, []);
+  assertEquals(projection.violations, []);
+});
+
 Deno.test("the Workbench omits predecessor history for an initial snapshot", () => {
   const canonical = linkedSnapshot();
   delete canonical.previous;

@@ -223,6 +223,7 @@ export interface EngineeringProjectPlanOperationRegistry {
       readonly workItemKind: EngineeringWorkItem["kind"];
       /** A queueable run requires a concrete trusted executor. */
       readonly execution: "trusted" | "planning-only";
+      readonly decisionEvidenceScope?: "thread-entity-bindings";
     };
     readonly bindings: readonly EngineeringOperationInputBinding[];
   };
@@ -384,6 +385,7 @@ export class EngineeringProjectCommandService {
             title: resolved.operation.title,
             description: resolved.operation.description,
             kind: resolved.operation.workItemKind,
+            decisionEvidenceScope: resolved.operation.decisionEvidenceScope,
             operation: {
               id: resolved.operation.id,
               version: resolved.operation.version,
@@ -402,7 +404,7 @@ export class EngineeringProjectCommandService {
           question: decision.question,
           status: "required" as const,
           requestedAt: appliedAt,
-          inputEvidenceRefs: [],
+          inputEvidenceRefs: decisionInputEvidenceRefs(decision.id, resolvedWorkItems),
           approvalIds: [],
         }));
         const workItems = resolvedWorkItems.map((item) => ({
@@ -539,6 +541,7 @@ export class EngineeringProjectCommandService {
             title: resolved.operation.title,
             description: resolved.operation.description,
             kind: resolved.operation.workItemKind,
+            decisionEvidenceScope: resolved.operation.decisionEvidenceScope,
             operation: {
               id: resolved.operation.id,
               version: resolved.operation.version,
@@ -560,7 +563,7 @@ export class EngineeringProjectCommandService {
           question: decision.question,
           status: "required" as const,
           requestedAt: appliedAt,
-          inputEvidenceRefs: [],
+          inputEvidenceRefs: decisionInputEvidenceRefs(decision.id, resolvedWorkItems),
           approvalIds: [],
         }));
         const workItems = resolvedWorkItems.map((item) => ({
@@ -1759,6 +1762,34 @@ function assertPlanBindingsResolve(
       continue;
     }
   }
+}
+
+function decisionInputEvidenceRefs(
+  decisionId: string,
+  workItems: readonly {
+    readonly decisionIds: readonly string[];
+    readonly decisionEvidenceScope?: "thread-entity-bindings";
+    readonly operation: {
+      readonly bindings: readonly EngineeringOperationInputBinding[];
+    };
+  }[],
+): EngineeringThreadEntityRef[] {
+  const refs = workItems
+    .filter((item) =>
+      item.decisionEvidenceScope === "thread-entity-bindings" &&
+      item.decisionIds.includes(decisionId)
+    )
+    .flatMap((item) => item.operation.bindings)
+    .flatMap((binding) =>
+      binding.source.kind === "thread-entity" ? [binding.source.reference] : []
+    );
+  const unique = new Map<string, EngineeringThreadEntityRef>();
+  for (const ref of refs) {
+    unique.set(evidenceKey(ref), structuredClone(ref));
+  }
+  return [...unique.values()].sort((left, right) =>
+    evidenceKey(left).localeCompare(evidenceKey(right))
+  );
 }
 
 function assertPlanWorkItemReferences(
