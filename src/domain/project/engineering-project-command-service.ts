@@ -25,7 +25,11 @@ import {
   queuedRunCancellationSummary,
 } from "./engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
-import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 import { currentProjectAnswer } from "./project-brief.ts";
 
@@ -157,7 +161,12 @@ export interface ReconcileWorkItemWithSuccessorCommand
   readonly failedRunId: string;
   readonly successorRunId: string;
   readonly successorRunSnapshot: EngineeringThreadSnapshotRef;
-  readonly successorSnapshot: EngineeringThreadSnapshotRef;
+  /**
+   * Absent for a direct reconciliation where the successor run result is
+   * already the project thread head and no separate closeout snapshot is
+   * needed. When present the full closeout path is used instead.
+   */
+  readonly successorSnapshot?: EngineeringThreadSnapshotRef;
   readonly successorEvidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly rationale: string;
 }
@@ -987,29 +996,46 @@ export class EngineeringProjectCommandService {
           invalidInput("A failed run cannot reconcile itself as its successor.");
         }
         assertDeclaredSnapshot(draft, command.successorRunSnapshot);
-        if (
-          command.successorSnapshot.subjectId !== draft.project.subjectId ||
-          command.successorSnapshot.snapshotId.toLowerCase() === "latest" ||
-          command.successorSnapshot.revision !==
-            command.successorRunSnapshot.revision + 1 ||
-          !sameSnapshotReference(
-            draft.threadSnapshots.at(-1)!,
+        if (command.successorSnapshot !== undefined) {
+          // Full closeout path: a separate closeout snapshot was produced and
+          // must immediately follow the successor result in the project lineage.
+          if (
+            command.successorSnapshot.subjectId !== draft.project.subjectId ||
+            command.successorSnapshot.snapshotId.toLowerCase() === "latest" ||
+            command.successorSnapshot.revision !==
+              command.successorRunSnapshot.revision + 1 ||
+            !sameSnapshotReference(
+              draft.threadSnapshots.at(-1)!,
+              command.successorRunSnapshot,
+            )
+          ) {
+            invalidInput(
+              "The closeout snapshot must directly follow the current completed successor snapshot.",
+            );
+          }
+          if (!this.reconciliationSnapshotValidator) {
+            invalidInput(
+              "Successor reconciliation requires an exact persisted closeout snapshot validator.",
+            );
+          }
+          await this.reconciliationSnapshotValidator.validate(
             command.successorRunSnapshot,
-          )
-        ) {
-          invalidInput(
-            "The closeout snapshot must directly follow the current completed successor snapshot.",
+            command.successorSnapshot,
           );
+        } else {
+          // Direct reconciliation: the successor run result is already the
+          // project thread head — no separate closeout snapshot is produced.
+          if (
+            !sameSnapshotReference(
+              draft.threadSnapshots.at(-1)!,
+              command.successorRunSnapshot,
+            )
+          ) {
+            invalidInput(
+              "Direct reconciliation requires the successor run snapshot to be the current project thread head.",
+            );
+          }
         }
-        if (!this.reconciliationSnapshotValidator) {
-          invalidInput(
-            "Successor reconciliation requires an exact persisted closeout snapshot validator.",
-          );
-        }
-        await this.reconciliationSnapshotValidator.validate(
-          command.successorRunSnapshot,
-          command.successorSnapshot,
-        );
         const failedWork = findWorkItem(draft, command.failedWorkItemId);
         if (!failedWork) notFound("work item", command.failedWorkItemId);
         if (failedWork.status !== "ready") {
@@ -1024,12 +1050,23 @@ export class EngineeringProjectCommandService {
         }
         const failedRun = findRun(draft, command.failedRunId);
         if (!failedRun) notFound("agent run", command.failedRunId);
+        // Accept either an evidence-free failed run (explicit failure record) or
+        // a run that was cancelled by a human before any agent claim — meaning no
+        // provider was ever touched (no claimedAt, no startedAt). A queued run
+        // must be cancelled first via human elicitation before reconciliation is
+        // valid; reconciliation is not a substitute for cancellation.
+        const isEvidenceFreeFailure = failedRun.status === "failed" &&
+          !!failedRun.failure &&
+          failedRun.evidenceRefs.length === 0;
+        const isPreClaimCancellation = failedRun.status === "cancelled" &&
+          !failedRun.claimedAt &&
+          !failedRun.startedAt && failedRun.evidenceRefs.length === 0;
         if (
-          failedRun.workItemId !== failedWork.id || failedRun.status !== "failed" ||
-          !failedRun.failure || failedRun.evidenceRefs.length !== 0
+          failedRun.workItemId !== failedWork.id ||
+          (!isEvidenceFreeFailure && !isPreClaimCancellation)
         ) {
           invalidTransition(
-            `Run ${command.failedRunId} is not an evidence-free failed attempt for ${failedWork.id}.`,
+            `Run ${command.failedRunId} must be an evidence-free failed attempt or a pre-claim cancelled run for ${failedWork.id}.`,
           );
         }
         const successor = findRun(draft, command.successorRunId);
@@ -1068,7 +1105,45 @@ export class EngineeringProjectCommandService {
             `Completed successor run ${successor.id} has inconsistent work-item evidence.`,
           );
         }
-        addThreadSnapshot(draft, command.successorSnapshot);
+        // Equivalence guard: when the failed work item declares a registered
+        // operation, the successor must carry the identical operation (id, version
+        // and canonicalised bindings). This prevents closing a seed work item with
+        // the evidence of a structurally different operation.
+        if (failedWork.operation !== undefined) {
+          if (
+            successorWork.operation?.id !== failedWork.operation.id ||
+            successorWork.operation?.version !== failedWork.operation.version ||
+            deterministicJson(successorWork.operation.bindings) !==
+              deterministicJson(failedWork.operation.bindings)
+          ) {
+            invalidInput(
+              `Successor work item ${successorWork.id} does not carry the same operation ` +
+                `(id, version, bindings) as the failed work item ${failedWork.id}. ` +
+                `Use the exact registered operation the failed work was supposed to execute.`,
+            );
+          }
+        }
+        // Lineage guard: the successor run must have been executed against a snapshot
+        // that belongs to this project's declared thread lineage. This prevents
+        // cross-project runs from being used as reconciliation successors.
+        {
+          const lineageIds = new Set(draft.threadSnapshots.map((s) => s.snapshotId));
+          const successorBaseId = successor.baseSnapshot?.snapshotId ??
+            (successor.basis?.kind === "thread-snapshot"
+              ? successor.basis.snapshotId
+              : successor.basis?.kind === "approved-brief"
+              ? successor.basis.projectSnapshotId
+              : undefined);
+          if (!successorBaseId || !lineageIds.has(successorBaseId)) {
+            invalidInput(
+              `Successor run ${successor.id} was not executed against this project's ` +
+                "declared thread lineage.",
+            );
+          }
+        }
+        if (command.successorSnapshot !== undefined) {
+          addThreadSnapshot(draft, command.successorSnapshot);
+        }
         failedWork.status = "cancelled";
         failedWork.reconciliation = {
           kind: "superseded-by-successor",
@@ -1077,7 +1152,9 @@ export class EngineeringProjectCommandService {
           failedRunId: failedRun.id,
           successorRunId: successor.id,
           successorRunSnapshot: structuredClone(command.successorRunSnapshot),
-          successorSnapshot: structuredClone(command.successorSnapshot),
+          ...(command.successorSnapshot !== undefined
+            ? { successorSnapshot: structuredClone(command.successorSnapshot) }
+            : {}),
           successorEvidenceRefs: structuredClone([...command.successorEvidenceRefs]),
           rationale: command.rationale,
         };

@@ -105,6 +105,354 @@ Deno.test("a failed work item closes only through exact successor reconciliation
   );
 });
 
+Deno.test(
+  "direct reconciliation closes a failed work item when successor run is already the project thread head",
+  async () => {
+    const project = await reconciliableProject();
+    const store = new MemoryRevisionStore(project);
+    // Service with the snapshot validator still wired — it is not called for
+    // direct reconciliation (no successorSnapshot in the command).
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+    const successorRunSnapshot = project.threadSnapshots.at(-1)!;
+
+    // Direct reconciliation: no successorSnapshot field.
+    const command = {
+      ...context("direct-reconcile-r2-through-r3", project.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2-failed",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot,
+      successorEvidenceRefs: evidence,
+      rationale:
+        "R2 stopped before durable evidence. The separately completed R3 is already the project thread head.",
+    };
+
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, command);
+    const failedWork = findWorkItem(reconciled, "verify-current-mechanical-design");
+
+    assertEquals(failedWork.status, "cancelled");
+    assertEquals(failedWork.evidenceRefs, []);
+    assertEquals(failedWork.reconciliation?.kind, "superseded-by-successor");
+    assertEquals(failedWork.reconciliation?.successorRunId, command.successorRunId);
+    // Direct reconciliation leaves successorSnapshot absent.
+    assertEquals(failedWork.reconciliation?.successorSnapshot, undefined);
+    // No new threadSnapshot was added — the project lineage grows only via
+    // published evidence, not through the reconciliation closeout itself.
+    assertEquals(reconciled.threadSnapshots.length, project.threadSnapshots.length);
+    assertEquals(
+      reconciled.agentRuns.find((run) => run.id === command.failedRunId)?.status,
+      "failed",
+    );
+    assertEquals(
+      reconciled.agentRuns.find((run) => run.id === command.successorRunId)?.status,
+      "completed",
+    );
+    assertEquals(deriveEngineeringPhaseStatus(reconciled, "verification"), "completed");
+    assertEquals(deriveEngineeringProjectStatus(reconciled), "completed");
+
+    // Idempotent replay.
+    const replay = await service.reconcileWorkItemWithSuccessor(AGENT, command);
+    assertEquals(replay.id, reconciled.id);
+
+    // Guard: mismatched successorRunSnapshot (not the project thread head) is rejected.
+    // Use the reconciled revision so the CAS check passes and the domain guard fires.
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...command,
+          commandId: "not-the-head",
+          expectedRevision: reconciled.revision,
+          successorRunSnapshot: {
+            snapshotId: "other:r9",
+            revision: 9,
+            subjectId: "other-subject",
+          },
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "direct reconciliation rejects a declared but non-head successor run snapshot",
+  async () => {
+    // Push a second snapshot onto the project so the original r5 is no longer
+    // the head. assertDeclaredSnapshot must pass (r5 is declared), but the
+    // head-position guard must fire (r6 is at(-1), not r5).
+    const base = await reconciliableProject();
+    const mutable = structuredClone(base) as Mutable<EngineeringProjectSnapshot>;
+    (mutable.threadSnapshots as EngineeringThreadSnapshotRef[]).push({
+      snapshotId: "coffee-machine-cm01:r6:guard-test-head",
+      revision: 6,
+      subjectId: "coffee-machine-cm01",
+    });
+    const project = validateEngineeringProjectSnapshot(mutable);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    // r5 is at index [0]; r6 is at index [1] = at(-1). The guard checks at(-1).
+    const declaredButNotHead = project.threadSnapshots[0]!;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("head-guard-declared-stale", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: declaredButNotHead,
+          successorEvidenceRefs: evidence,
+          rationale: "Explicitly exercises the head-position guard.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "direct reconciliation closes a work item whose run was cancelled before any agent claim",
+  async () => {
+    // The DL-01 case: a work item's run was cancelled (human, before any claim)
+    // because the executor rejected the planning lineage. A new successor run
+    // independently completed. The cancelled run is a valid "failed" anchor because
+    // no provider was ever contacted (no claimedAt, no startedAt).
+    const base = await reconciliableProject();
+    const store = new MemoryRevisionStore(base);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(base, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    // Queue a new run for the work item and immediately cancel it before any claim.
+    const queued = await service.queueRun(AGENT, {
+      ...context("queue-r2b-pre-claim-cancel", base.revision),
+      runId: "run:mechanical-r2b-pre-claim",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Second attempt that will be cancelled before any claim.",
+      baseSnapshot: base.threadSnapshots[0]!,
+    });
+    const withCancelled = await service.cancelQueuedRun(HUMAN, {
+      ...context("cancel-r2b-pre-claim", queued.revision),
+      runId: "run:mechanical-r2b-pre-claim",
+      rationale:
+        "Executor rejects non-append lineage; cancelling before claim avoids any provider contact.",
+    });
+
+    const cancelledRun = withCancelled.agentRuns.find((run) =>
+      run.id === "run:mechanical-r2b-pre-claim"
+    )!;
+    assertEquals(cancelledRun.status, "cancelled");
+    assertEquals(cancelledRun.claimedAt, undefined);
+    assertEquals(cancelledRun.startedAt, undefined);
+
+    // Reconcile using the cancelled run as the "failed" anchor.
+    const successorRunSnapshot = withCancelled.threadSnapshots.at(-1)!;
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, {
+      ...context("reconcile-cancelled-r2b-through-r3", withCancelled.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2b-pre-claim",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot,
+      successorEvidenceRefs: evidence,
+      rationale:
+        "The pre-claim cancelled run never touched a provider; the completed R3 successor already delivered the result.",
+    });
+
+    const failedWork = findWorkItem(reconciled, "verify-current-mechanical-design");
+    assertEquals(failedWork.status, "cancelled");
+    assertEquals(
+      failedWork.reconciliation?.failedRunId,
+      "run:mechanical-r2b-pre-claim",
+    );
+    assertEquals(
+      failedWork.reconciliation?.successorRunId,
+      "run:mechanical-r3-completed",
+    );
+    assertEquals(failedWork.reconciliation?.successorSnapshot, undefined);
+    assertEquals(
+      reconciled.agentRuns.find((run) => run.id === "run:mechanical-r2b-pre-claim")
+        ?.status,
+      "cancelled",
+    );
+    assertEquals(deriveEngineeringPhaseStatus(reconciled, "verification"), "completed");
+    assertEquals(deriveEngineeringProjectStatus(reconciled), "completed");
+    // The snapshot was NOT validated so no validator call needed.
+    validateEngineeringProjectSnapshot(reconciled);
+  },
+);
+
+// Operation equivalence guard tests — DL-01 BLOQUANT fix.
+// These tests verify that reconcileWorkItemWithSuccessor refuses to close a
+// registered-operation work item with a successor that carries a different operation.
+
+// Plain object (not typed as EngineeringOperationRef) so structuredClone returns
+// a mutable copy that can be assigned to Mutable<EngineeringWorkItem>.operation.
+const SEED_OP = {
+  id: "architecture.seed-syson-model",
+  version: "2",
+  bindings: [{ name: "project", source: { kind: "approved-brief" as const } }],
+};
+
+/** Like reconciliableProject() but both work items carry SEED_OP. */
+async function reconciliableProjectWithOperation(): Promise<
+  EngineeringProjectSnapshot
+> {
+  const project = structuredClone(
+    await reconciliableProject(),
+  ) as Mutable<EngineeringProjectSnapshot>;
+  const failedWork = project.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design"
+  )!;
+  const successorWork = project.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design-r3"
+  )!;
+  (failedWork as Mutable<typeof failedWork>).operation = structuredClone(SEED_OP);
+  (successorWork as Mutable<typeof successorWork>).operation = structuredClone(SEED_OP);
+  return validateEngineeringProjectSnapshot(project);
+}
+
+Deno.test(
+  "direct reconciliation rejects a successor from a different operation id",
+  async () => {
+    // Build the fixture with the successor carrying a different operation id.
+    // validateEngineeringProjectSnapshot still passes because no reconciliation
+    // record is present yet — the equivalence check only fires on reconcile.
+    const base = structuredClone(
+      await reconciliableProjectWithOperation(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const successorWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design-r3"
+    )!;
+    (successorWork as Mutable<typeof successorWork>).operation = {
+      ...SEED_OP,
+      id: "architecture.different-operation",
+    };
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-diff-op-id", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: project.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: evidence,
+          rationale: "Should be rejected: different operation id.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "direct reconciliation rejects a successor from a different operation version",
+  async () => {
+    const base = structuredClone(
+      await reconciliableProjectWithOperation(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const successorWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design-r3"
+    )!;
+    (successorWork as Mutable<typeof successorWork>).operation = {
+      ...SEED_OP,
+      version: "3",
+    };
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-diff-op-version", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: project.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: evidence,
+          rationale: "Should be rejected: different operation version.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "direct reconciliation rejects a successor with different operation bindings",
+  async () => {
+    const base = structuredClone(
+      await reconciliableProjectWithOperation(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const successorWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design-r3"
+    )!;
+    (successorWork as Mutable<typeof successorWork>).operation = {
+      ...SEED_OP,
+      bindings: [
+        { name: "project", source: { kind: "approved-brief" } },
+        { name: "extra-binding", source: { kind: "approved-brief" } },
+      ],
+    };
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-diff-bindings", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: project.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: evidence,
+          rationale: "Should be rejected: different bindings.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "direct reconciliation accepts a DL-01 style successor with the identical operation",
+  async () => {
+    // Happy path: both work items carry the same operation id, version, bindings.
+    // This is the DL-01 case — seed@2 failed, seed@2 succeeds via change-append.
+    const project = await reconciliableProjectWithOperation();
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, {
+      ...context("accept-same-op", project.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2-failed",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot: project.threadSnapshots.at(-1)!,
+      successorEvidenceRefs: evidence,
+      rationale: "seed@2 failed; seed@2 via change-append completed the seed.",
+    });
+    const failedWork = findWorkItem(reconciled, "verify-current-mechanical-design");
+    assertEquals(failedWork.status, "cancelled");
+    assertEquals(failedWork.reconciliation?.kind, "superseded-by-successor");
+    assertEquals(deriveEngineeringProjectStatus(reconciled), "completed");
+    validateEngineeringProjectSnapshot(reconciled);
+  },
+);
+
 Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);
@@ -1067,3 +1415,43 @@ class MemoryRevisionStore implements EngineeringProjectRevisionStore {
 type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
   : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
   : T;
+
+Deno.test(
+  "direct reconciliation rejects a successor run executed outside the project thread lineage",
+  async () => {
+    const base = structuredClone(
+      await reconciliableProjectWithOperation(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const successorRun = base.agentRuns.find((run) =>
+      run.id === "run:mechanical-r3-completed"
+    )!;
+    // A foreign execution base cannot survive validateEngineeringProjectSnapshot
+    // (the global invariant checks every run basis against threadSnapshots), so
+    // the snapshot is stored unvalidated on purpose: this exercises the service's
+    // own defense-in-depth lineage guard, not the upstream validator.
+    (successorRun as Mutable<typeof successorRun>).baseSnapshot = {
+      ...successorRun.baseSnapshot!,
+      snapshotId: "thread-foreign-project-head",
+    };
+    const store = new MemoryRevisionStore(base as EngineeringProjectSnapshot);
+    const service = serviceFor(store);
+    const evidence =
+      base.workItems.find((item) => item.id === "verify-current-mechanical-design-r3")!
+        .evidenceRefs;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-foreign-lineage", base.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: base.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: evidence,
+          rationale:
+            "Should be rejected: successor executed outside the project lineage.",
+        }),
+      "invalid_input",
+    );
+  },
+);

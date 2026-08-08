@@ -14,6 +14,7 @@ import type {
   EngineeringWorkItem,
 } from "./engineering-project.ts";
 import { queuedRunCancellationSummary } from "./engineering-project.ts";
+import { deterministicJson } from "../kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,
   type EngineeringProjectFraming,
@@ -892,11 +893,12 @@ function validateWorkItemReconciliation(
       "failedRunId",
       "successorRunId",
       "successorRunSnapshot",
-      "successorSnapshot",
       "successorEvidenceRefs",
       "rationale",
     ],
-    [],
+    // successorSnapshot is absent for a direct reconciliation where the
+    // successor run result is already the project thread head.
+    ["successorSnapshot"],
     issues,
   );
   if (!input) return;
@@ -915,7 +917,13 @@ function validateWorkItemReconciliation(
     `${path}.successorRunSnapshot`,
     issues,
   );
-  validateSnapshotRef(input.successorSnapshot, `${path}.successorSnapshot`, issues);
+  if (input.successorSnapshot !== undefined) {
+    validateSnapshotRef(
+      input.successorSnapshot,
+      `${path}.successorSnapshot`,
+      issues,
+    );
+  }
   validateArray(
     input.successorEvidenceRefs,
     `${path}.successorEvidenceRefs`,
@@ -1862,12 +1870,15 @@ function validateInvariants(
   project.workItems.forEach((item, index) => {
     const reconciliation = item.reconciliation;
     if (!reconciliation) return;
-    for (
-      const [name, reference] of [
-        ["successorRunSnapshot", reconciliation.successorRunSnapshot],
-        ["successorSnapshot", reconciliation.successorSnapshot],
-      ] as const
-    ) {
+    // successorSnapshot is absent for a direct reconciliation — skip the
+    // cross-reference check for it when the field is undefined.
+    const snapshotRefs: Array<
+      [string, { snapshotId: string; revision: number }]
+    > = [["successorRunSnapshot", reconciliation.successorRunSnapshot]];
+    if (reconciliation.successorSnapshot !== undefined) {
+      snapshotRefs.push(["successorSnapshot", reconciliation.successorSnapshot]);
+    }
+    for (const [name, reference] of snapshotRefs) {
       if (
         !declaredSnapshots.has(
           snapshotKey(reference.snapshotId, reference.revision),
@@ -2091,15 +2102,23 @@ function validateWorkItemReconciliationInvariant(
     );
   }
   const failed = project.agentRuns.find((run) => run.id === reconciliation.failedRunId);
+  // Mirror the command-service guard: a pre-claim cancelled run (no claimedAt,
+  // no startedAt — never touched a provider) is valid alongside a failed run.
+  const isEvidenceFreeFailure = !!failed && failed.status === "failed" &&
+    !!failed.failure &&
+    failed.evidenceRefs.length === 0;
+  const isPreClaimCancellation = !!failed && failed.status === "cancelled" &&
+    !failed.claimedAt &&
+    !failed.startedAt && failed.evidenceRefs.length === 0;
   if (
-    !failed || failed.workItemId !== item.id || failed.status !== "failed" ||
-    !failed.failure || failed.evidenceRefs.length !== 0
+    !failed || failed.workItemId !== item.id ||
+    (!isEvidenceFreeFailure && !isPreClaimCancellation)
   ) {
     issue(
       issues,
       "invalid_transition",
       `${path}.reconciliation.failedRunId`,
-      "must identify this work item's evidence-free failed run",
+      "must identify this work item's evidence-free failed or pre-claim cancelled run",
     );
   }
   const successor = project.agentRuns.find((run) =>
@@ -2131,27 +2150,32 @@ function validateWorkItemReconciliationInvariant(
       "must exactly match the completed successor result snapshot",
     );
   }
-  if (
-    reconciliation.successorSnapshot.subjectId !== project.project.subjectId ||
-    reconciliation.successorSnapshot.revision !==
-      reconciliation.successorRunSnapshot.revision + 1 ||
-    // The closeout snapshot must belong to the project's recorded lineage. It
-    // was the newest snapshot when the closeout happened, but this validation
-    // replays on every later revision — requiring it to still be the *last*
-    // snapshot would freeze the whole project the moment any post-closeout
-    // run publishes. The direct-successor position is already pinned by the
-    // revision equality above; lineage membership is the durable property.
-    !project.threadSnapshots.some((snapshot) =>
-      sameSnapshotRef(snapshot, reconciliation.successorSnapshot)
-    )
-  ) {
-    issue(
-      issues,
-      "invalid_transition",
-      `${path}.reconciliation.successorSnapshot`,
-      "must be the direct closeout snapshot after the successor result, " +
-        "recorded in the project lineage",
-    );
+  // For a direct reconciliation the successor run result is already the project
+  // thread head and no separate closeout snapshot is produced. When present,
+  // the full closeout path is validated as before.
+  if (reconciliation.successorSnapshot !== undefined) {
+    if (
+      reconciliation.successorSnapshot.subjectId !== project.project.subjectId ||
+      reconciliation.successorSnapshot.revision !==
+        reconciliation.successorRunSnapshot.revision + 1 ||
+      // The closeout snapshot must belong to the project's recorded lineage. It
+      // was the newest snapshot when the closeout happened, but this validation
+      // replays on every later revision — requiring it to still be the *last*
+      // snapshot would freeze the whole project the moment any post-closeout
+      // run publishes. The direct-successor position is already pinned by the
+      // revision equality above; lineage membership is the durable property.
+      !project.threadSnapshots.some((snapshot) =>
+        sameSnapshotRef(snapshot, reconciliation.successorSnapshot!)
+      )
+    ) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.reconciliation.successorSnapshot`,
+        "must be the direct closeout snapshot after the successor result, " +
+          "recorded in the project lineage",
+      );
+    }
   }
   if (
     !sameEvidenceSet(successor.evidenceRefs, reconciliation.successorEvidenceRefs)
@@ -2173,6 +2197,43 @@ function validateWorkItemReconciliationInvariant(
       `${path}.reconciliation.successorRunId`,
       "must retain the same exact evidence on its completed work item",
     );
+  }
+  // Mirror the command-service equivalence guard: when the failed work item
+  // declared a registered operation, the successor must carry the same operation
+  // (id, version, and canonicalised bindings). Checked on every replay.
+  if (item.operation !== undefined && successorWork !== undefined) {
+    if (
+      successorWork.operation?.id !== item.operation.id ||
+      successorWork.operation?.version !== item.operation.version ||
+      deterministicJson(successorWork.operation?.bindings ?? []) !==
+        deterministicJson(item.operation.bindings)
+    ) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.reconciliation.successorRunId`,
+        "successor work item must carry the identical registered operation (id, version, bindings)",
+      );
+    }
+  }
+  // Mirror the command-service lineage guard: the successor run must have been
+  // executed against a snapshot declared in this project's thread lineage.
+  {
+    const lineageIds = new Set(project.threadSnapshots.map((s) => s.snapshotId));
+    const successorBaseId = successor.baseSnapshot?.snapshotId ??
+      (successor.basis?.kind === "thread-snapshot"
+        ? successor.basis.snapshotId
+        : successor.basis?.kind === "approved-brief"
+        ? successor.basis.projectSnapshotId
+        : undefined);
+    if (!successorBaseId || !lineageIds.has(successorBaseId)) {
+      issue(
+        issues,
+        "invalid_transition",
+        `${path}.reconciliation.successorRunId`,
+        "successor run base snapshot must descend from this project's declared thread lineage",
+      );
+    }
   }
   if (Date.parse(reconciliation.reconciledAt) < Date.parse(successor.completedAt!)) {
     issue(
