@@ -54,9 +54,11 @@ import type { EngineeringThreadSnapshotRef } from "../../domain/project/engineer
 import {
   assertGeometryArtifactNotRemoved,
   assertMrtrArtifactHashesMatchDraft,
+  assertMrtrManifestMatchesDraft,
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
   GeometryArtifactRemovedError,
+  GeometryLineageReviewRequiredError,
   requireArchitectureArtifact,
 } from "./design-write-geometry-run-executor.ts";
 import {
@@ -120,6 +122,49 @@ Deno.test("assertGeometryArtifactNotRemoved fires the cliquet when an ancestor h
   );
 });
 
+Deno.test("the geometry monotony ratchet refuses an unresolvable ancestor", async () => {
+  const basis = minimalSnapshotWithoutGeometry("snap-successor", 2, {
+    snapshotId: "snap-missing",
+    revision: 1,
+  });
+  await assertRejects(
+    () => assertGeometryArtifactNotRemoved(basis, memoryStore([basis])),
+    GeometryLineageReviewRequiredError,
+    "not resolvable",
+  );
+});
+
+Deno.test("the geometry monotony ratchet refuses an incompatible lineage record", async () => {
+  const ancestor = minimalSnapshotWithoutGeometry("snap-other", 1);
+  const basis = minimalSnapshotWithoutGeometry("snap-successor", 2, {
+    snapshotId: "snap-other",
+    revision: 9,
+  });
+  await assertRejects(
+    () => assertGeometryArtifactNotRemoved(basis, memoryStore([ancestor, basis])),
+    GeometryLineageReviewRequiredError,
+    "incompatible record",
+  );
+});
+
+Deno.test("the geometry monotony ratchet refuses lineage beyond its review bound", async () => {
+  const snapshots: ThreadSnapshot[] = [];
+  for (let revision = 1; revision <= 52; revision++) {
+    snapshots.push(minimalSnapshotWithoutGeometry(
+      `snap-${revision}`,
+      revision,
+      revision === 1
+        ? undefined
+        : { snapshotId: `snap-${revision - 1}`, revision: revision - 1 },
+    ));
+  }
+  await assertRejects(
+    () => assertGeometryArtifactNotRemoved(snapshots.at(-1)!, memoryStore(snapshots)),
+    GeometryLineageReviewRequiredError,
+    "exceeded",
+  );
+});
+
 // ── Unit: requireArchitectureArtifact ─────────────────────────────────────────
 
 Deno.test("requireArchitectureArtifact returns the artifact when the fingerprint matches", () => {
@@ -164,6 +209,77 @@ Deno.test(
     assertMrtrArtifactHashesMatchDraft([fp], [], [fp], []);
   },
 );
+
+const SIGNED_MANIFEST: GeometryManifest = {
+  schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+  architectureBasis: {
+    snapshotId: "architecture-r2",
+    revision: 2,
+    artifactFingerprint: { algorithm: "sha256", digest: HEX64 },
+  },
+  components: [{ usageName: "frame", elementId: "usage-1", label: "Frame" }],
+  unitSystem: "mm",
+  exportFormats: ["gltf", "step"],
+  scriptHash: { algorithm: "sha256", digest: HEX64_B },
+  artifactHashes: {
+    assemblyFiles: [{
+      format: "gltf",
+      name: "geometry-preview-assembly",
+      fingerprint: { algorithm: "sha256", digest: HEX64 },
+    }],
+    partMeshes: [],
+  },
+};
+
+function matchingDraft() {
+  return {
+    subject: SIGNED_MANIFEST.architectureBasis,
+    scriptHash: SIGNED_MANIFEST.scriptHash!,
+    exportFormats: SIGNED_MANIFEST.exportFormats,
+    components: SIGNED_MANIFEST.components,
+    assemblyFiles: SIGNED_MANIFEST.artifactHashes!.assemblyFiles,
+    partMeshes: [],
+  };
+}
+
+Deno.test("the signed geometry manifest exactly matches the reviewed draft manifest", () => {
+  assertMrtrManifestMatchesDraft(SIGNED_MANIFEST, matchingDraft());
+});
+
+for (
+  const [field, mutate] of [
+    ["script", (draft: ReturnType<typeof matchingDraft>) => ({
+      ...draft,
+      scriptHash: { algorithm: "sha256" as const, digest: "c".repeat(64) },
+    })],
+    ["architecture", (draft: ReturnType<typeof matchingDraft>) => ({
+      ...draft,
+      subject: { ...draft.subject, revision: 3 },
+    })],
+    ["components", (draft: ReturnType<typeof matchingDraft>) => ({
+      ...draft,
+      components: [],
+    })],
+    ["formats", (draft: ReturnType<typeof matchingDraft>) => ({
+      ...draft,
+      exportFormats: ["step" as const, "gltf" as const],
+    })],
+    ["filenames", (draft: ReturnType<typeof matchingDraft>) => ({
+      ...draft,
+      assemblyFiles: draft.assemblyFiles.map((file) => ({ ...file, name: "other" })),
+    })],
+  ] as const
+) {
+  Deno.test(`the signed geometry manifest refuses a ${field} divergence`, () => {
+    let caught: unknown;
+    try {
+      assertMrtrManifestMatchesDraft(SIGNED_MANIFEST, mutate(matchingDraft()));
+    } catch (error) {
+      caught = error;
+    }
+    assertEquals((caught as EngineeringProjectCommandError).code, "invalid_transition");
+  });
+}
 
 Deno.test(
   "assertMrtrArtifactHashesMatchDraft throws invalid_transition when the MRTR assembly hash differs from the draft (D1/D2 attack)",

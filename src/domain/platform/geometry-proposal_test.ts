@@ -2,10 +2,37 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   encodeGeometryDecisionParameters,
   GEOMETRY_MANIFEST_SCHEMA,
+  geometryDecisionParametersToMap,
   type GeometryManifest,
   GeometryProposalError,
   parseGeometryDecisionParameters,
 } from "./geometry-proposal.ts";
+
+Deno.test("geometry decision parameters reject an unexpected signed key", () => {
+  const params = new Map(
+    encodeGeometryDecisionParameters("a".repeat(64), VALID_MANIFEST).map(
+      ({ key, value }) => [key, value] as const,
+    ),
+  );
+  params.set("geometry.manifest.hidden", "heuristic");
+  assertThrows(
+    () => parseGeometryDecisionParameters(params),
+    GeometryProposalError,
+    "Unexpected geometry decision parameter",
+  );
+});
+
+Deno.test("geometry decision parameters reject duplicate signed keys before Map construction", () => {
+  const parameters = encodeGeometryDecisionParameters(
+    "a".repeat(64),
+    VALID_MANIFEST,
+  );
+  assertThrows(
+    () => geometryDecisionParametersToMap([...parameters, parameters[0]!]),
+    GeometryProposalError,
+    "Duplicate geometry decision parameter",
+  );
+});
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -155,6 +182,9 @@ Deno.test("parseGeometryDecisionParameters accepts zero assembly files", () => {
   const mut = new Map(params);
   // Count 0 is valid: a draft may have produced only part meshes.
   mut.set("geometry.manifest.assemblyFiles.count", 0);
+  mut.delete("geometry.manifest.assemblyFiles.0.format");
+  mut.delete("geometry.manifest.assemblyFiles.0.name");
+  mut.delete("geometry.manifest.assemblyFiles.0.fingerprint");
   const result = parseGeometryDecisionParameters(mut);
   assertEquals(result.manifest.artifactHashes?.assemblyFiles.length, 0);
 });

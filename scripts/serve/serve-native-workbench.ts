@@ -590,18 +590,33 @@ async function serveThreadAsset(
   } catch {
     return new Response("Invalid asset path", { status: 400 });
   }
-  if (!/^[A-Za-z0-9._-]+$/.test(filename) || !filename.endsWith(".stl")) {
+  if (!/^[A-Za-z0-9._-]+$/.test(filename)) {
     return new Response("Invalid asset path", { status: 400 });
   }
   const bytes = await reader(filename);
   if (!bytes) return new Response("Not found", { status: 404 });
+  const addressed = /^([a-f0-9]{64})\.(step|gltf|stl)$/.exec(filename);
+  if (addressed && await sha256Hex(bytes) !== addressed[1]) {
+    return new Response("Not found", { status: 404 });
+  }
   return new Response(Uint8Array.from(bytes).buffer, {
     headers: {
-      "Content-Type": "model/stl",
+      "Content-Type": filename.endsWith(".step")
+        ? "model/step"
+        : filename.endsWith(".gltf")
+        ? "model/gltf+json"
+        : "model/stl",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     },
   });
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**

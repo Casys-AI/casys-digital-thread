@@ -136,6 +136,8 @@ export type GeometryProposalErrorCode =
   | "invalid_fingerprint"
   | "invalid_format"
   | "invalid_component"
+  | "duplicate_parameter"
+  | "unexpected_parameter"
   | "manifest_incomplete";
 
 export class GeometryProposalError extends Error {
@@ -276,9 +278,10 @@ export function parseGeometryDecisionParameters(
   }
 
   const partMeshes: GeometryArtifactHashes["partMeshes"][number][] = [];
-  const partMeshCount = params.has("geometry.manifest.partMeshes.count")
-    ? requirePositiveIntOrZeroParam(params, "geometry.manifest.partMeshes.count")
-    : 0;
+  const partMeshCount = requirePositiveIntOrZeroParam(
+    params,
+    "geometry.manifest.partMeshes.count",
+  );
   for (let i = 0; i < partMeshCount; i++) {
     const semanticKey = requireStringParam(
       params,
@@ -305,6 +308,43 @@ export function parseGeometryDecisionParameters(
     });
   }
 
+  const expectedKeys = new Set<string>([
+    "geometry.draft.digest",
+    "geometry.manifest.schemaVersion",
+    "geometry.manifest.architectureBasis.snapshotId",
+    "geometry.manifest.architectureBasis.revision",
+    "geometry.manifest.architectureBasis.artifactFingerprint",
+    "geometry.manifest.unitSystem",
+    "geometry.manifest.exportFormats",
+    "geometry.manifest.scriptHash",
+    "geometry.manifest.assemblyFiles.count",
+    "geometry.manifest.components.count",
+    "geometry.manifest.partMeshes.count",
+  ]);
+  for (let i = 0; i < assemblyFileCount; i++) {
+    for (const field of ["format", "name", "fingerprint"]) {
+      expectedKeys.add(`geometry.manifest.assemblyFiles.${i}.${field}`);
+    }
+  }
+  for (let i = 0; i < componentCount; i++) {
+    for (const field of ["usageName", "elementId", "label"]) {
+      expectedKeys.add(`geometry.manifest.components.${i}.${field}`);
+    }
+  }
+  for (let i = 0; i < partMeshCount; i++) {
+    for (const field of ["semanticKey", "name", "fingerprint"]) {
+      expectedKeys.add(`geometry.manifest.partMeshes.${i}.${field}`);
+    }
+  }
+  for (const key of params.keys()) {
+    if (!expectedKeys.has(key)) {
+      throw new GeometryProposalError(
+        "unexpected_parameter",
+        `Unexpected geometry decision parameter: ${key}`,
+      );
+    }
+  }
+
   const manifest: GeometryManifest = {
     schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
     architectureBasis: {
@@ -320,6 +360,30 @@ export function parseGeometryDecisionParameters(
   };
 
   return { draftDigest, manifest };
+}
+
+/**
+ * Preserve the parameter-list boundary until duplicate keys have been rejected.
+ * A Map alone cannot prove this invariant because constructing it already loses
+ * the earlier signed value.
+ */
+export function geometryDecisionParametersToMap(
+  parameters: ReadonlyArray<{
+    readonly key: string;
+    readonly value: string | number | boolean;
+  }>,
+): ReadonlyMap<string, string | number | boolean> {
+  const result = new Map<string, string | number | boolean>();
+  for (const parameter of parameters) {
+    if (result.has(parameter.key)) {
+      throw new GeometryProposalError(
+        "duplicate_parameter",
+        `Duplicate geometry decision parameter: ${parameter.key}`,
+      );
+    }
+    result.set(parameter.key, parameter.value);
+  }
+  return result;
 }
 
 /**

@@ -47,6 +47,8 @@ import {
 import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   type GeometryDecisionParameters,
+  geometryDecisionParametersToMap,
+  type GeometryManifest,
   parseGeometryDecisionParameters,
 } from "../../domain/platform/geometry-proposal.ts";
 import type {
@@ -67,6 +69,7 @@ import {
   GEOMETRY_CAPTURE_URI_PREFIX,
 } from "../captures/file-capture-store.ts";
 import { GEOMETRY_DRAFT_ASSETS_DIR } from "../captures/geometry-draft-capture.ts";
+import { assertThreadSnapshotLineageIntact } from "../stores/thread-snapshot-lineage.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   requireBasis,
@@ -87,6 +90,7 @@ export { DESIGN_WRITE_GEOMETRY_OPERATION };
 
 /** Schema version written into every canonical geometry capture. */
 export const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.0" as const;
+export const GEOMETRY_CANONICAL_ASSETS_DIR = "state/local/thread-assets" as const;
 
 // ── Cliquet error ─────────────────────────────────────────────────────────────
 
@@ -106,6 +110,13 @@ export class GeometryArtifactRemovedError extends Error {
         "monotony-ratchet violation; the artifact must not be removed once published.",
     );
     this.name = "GeometryArtifactRemovedError";
+  }
+}
+
+export class GeometryLineageReviewRequiredError extends Error {
+  constructor(detail: string) {
+    super(`geometry_lineage_review_required: ${detail}`);
+    this.name = "GeometryLineageReviewRequiredError";
   }
 }
 
@@ -144,51 +155,68 @@ export class GeometryAssetVerificationError extends Error {
  * scenario (human signs hashes for D2 while the viewer shows D1) without
  * bootstrapping a full project fixture.
  */
+export function assertMrtrManifestMatchesDraft(
+  signed: GeometryManifest,
+  draft: {
+    readonly subject: GeometryManifest["architectureBasis"];
+    readonly scriptHash: ContentFingerprint;
+    readonly exportFormats: GeometryManifest["exportFormats"];
+    readonly components: GeometryManifest["components"];
+    readonly assemblyFiles: NonNullable<
+      GeometryManifest["artifactHashes"]
+    >["assemblyFiles"];
+    readonly partMeshes: ReadonlyArray<{
+      readonly usageName: string;
+      readonly name: string;
+      readonly fingerprint: ContentFingerprint;
+    }>;
+  },
+): void {
+  const reconstructed: GeometryManifest = {
+    schemaVersion: "geometry-manifest/1.0",
+    architectureBasis: draft.subject,
+    components: draft.components,
+    unitSystem: "mm",
+    exportFormats: draft.exportFormats,
+    scriptHash: draft.scriptHash,
+    artifactHashes: {
+      assemblyFiles: draft.assemblyFiles,
+      partMeshes: draft.partMeshes.map((mesh) => ({
+        semanticKey: mesh.usageName,
+        name: mesh.name,
+        fingerprint: mesh.fingerprint,
+      })),
+    },
+  };
+  if (deterministicJson(signed) !== deterministicJson(reconstructed)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_manifest_mismatch: the signed MRTR manifest is not exactly the " +
+        "manifest reconstructed from the reviewed draft record.",
+    );
+  }
+}
+
+/**
+ * Compatibility-level hash guard retained for focused callers; promotion uses
+ * the stronger whole-manifest comparison above.
+ */
 export function assertMrtrArtifactHashesMatchDraft(
   mrtrAssemblyFiles: ReadonlyArray<{ fingerprint: { digest: string } }>,
   mrtrPartMeshes: ReadonlyArray<{ fingerprint: { digest: string } }>,
   draftAssemblyFiles: ReadonlyArray<{ fingerprint: { digest: string } }>,
   draftPartMeshes: ReadonlyArray<{ fingerprint: { digest: string } }>,
 ): void {
-  if (mrtrAssemblyFiles.length !== draftAssemblyFiles.length) {
+  const signed = deterministicJson({ mrtrAssemblyFiles, mrtrPartMeshes });
+  const captured = deterministicJson({
+    mrtrAssemblyFiles: draftAssemblyFiles,
+    mrtrPartMeshes: draftPartMeshes,
+  });
+  if (signed !== captured) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `MRTR has ${mrtrAssemblyFiles.length} assembly file(s) but draft record ` +
-        `has ${draftAssemblyFiles.length}. Hashes may belong to a different draft.`,
+      "geometry_artifact_hash_mismatch: MRTR hashes differ from the draft.",
     );
-  }
-  for (let k = 0; k < mrtrAssemblyFiles.length; k++) {
-    const mrtrDigest = mrtrAssemblyFiles[k]!.fingerprint.digest;
-    const draftDigestK = draftAssemblyFiles[k]!.fingerprint.digest;
-    if (mrtrDigest !== draftDigestK) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Assembly file ${k} fingerprint mismatch: MRTR carries '` +
-          `${mrtrDigest.slice(0, 16)}…', draft record has '` +
-          `${draftDigestK.slice(0, 16)}…'. The MRTR was signed for a ` +
-          "different draft. Operator inspection required.",
-      );
-    }
-  }
-  if (mrtrPartMeshes.length !== draftPartMeshes.length) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `MRTR has ${mrtrPartMeshes.length} part mesh(es) but draft record has ` +
-        `${draftPartMeshes.length}. Hashes may belong to a different draft.`,
-    );
-  }
-  for (let k = 0; k < mrtrPartMeshes.length; k++) {
-    const mrtrDigest = mrtrPartMeshes[k]!.fingerprint.digest;
-    const draftDigestK = draftPartMeshes[k]!.fingerprint.digest;
-    if (mrtrDigest !== draftDigestK) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Part mesh ${k} fingerprint mismatch: MRTR carries '` +
-          `${mrtrDigest.slice(0, 16)}…', draft record has '` +
-          `${draftDigestK.slice(0, 16)}…'. The MRTR was signed for a ` +
-          "different draft. Operator inspection required.",
-      );
-    }
   }
 }
 
@@ -216,6 +244,8 @@ export interface DesignWriteGeometryRunExecutorDependencies {
   readonly geometryCaptures: FileCaptureStore<"geometry-capture">;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
+  readonly canonicalAssetDirectory?: string;
+  readonly draftAssetDirectory?: string;
   readonly now?: () => string;
 }
 
@@ -234,6 +264,8 @@ export class DesignWriteGeometryRunExecutor {
   readonly #geometryCaptures: FileCaptureStore<"geometry-capture">;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
+  readonly #canonicalAssetDirectory: string;
+  readonly #draftAssetDirectory: string;
   readonly #now: () => string;
 
   constructor(dependencies: DesignWriteGeometryRunExecutorDependencies) {
@@ -245,6 +277,10 @@ export class DesignWriteGeometryRunExecutor {
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#lease = dependencies.lease;
     this.#liveUpdates = dependencies.liveUpdates;
+    this.#canonicalAssetDirectory = dependencies.canonicalAssetDirectory ??
+      GEOMETRY_CANONICAL_ASSETS_DIR;
+    this.#draftAssetDirectory = dependencies.draftAssetDirectory ??
+      GEOMETRY_DRAFT_ASSETS_DIR;
     this.#now = dependencies.now ?? (() => new Date().toISOString());
   }
 
@@ -266,7 +302,9 @@ export class DesignWriteGeometryRunExecutor {
     const { proposal } = await requireMrtrApproval(project, run);
     let params: GeometryDecisionParameters;
     try {
-      params = parseGeometryDecisionParameters(proposalToMap(proposal));
+      params = parseGeometryDecisionParameters(
+        geometryDecisionParametersToMap(proposal.parameters),
+      );
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
@@ -340,6 +378,7 @@ export class DesignWriteGeometryRunExecutor {
       );
 
       // Step 8: cliquet.
+      await assertThreadSnapshotLineageIntact(base, this.#snapshots);
       await assertGeometryArtifactNotRemoved(base, this.#snapshots);
 
       // Step 9: reload draft JSON + byte-level fingerprint recomputation.
@@ -365,14 +404,9 @@ export class DesignWriteGeometryRunExecutor {
         );
       }
 
-      // I2: cross-check MRTR artifact hashes against the draft record.
-      // See assertMrtrArtifactHashesMatchDraft for the attack scenario this guards.
-      assertMrtrArtifactHashesMatchDraft(
-        params.manifest.artifactHashes?.assemblyFiles ?? [],
-        params.manifest.artifactHashes?.partMeshes ?? [],
-        draftRecord.assemblyFiles ?? [],
-        draftRecord.partMeshes ?? [],
-      );
+      // The signed decision is authoritative only if every manifest field is
+      // exactly reconstructible from the reviewed draft record.
+      assertMrtrManifestMatchesDraft(params.manifest, draftRecord);
 
       // Step 10 (D5 part 2): architecture capture load + per-component binding check.
       await assertComponentBindingsMatchArchitecture(
@@ -388,12 +422,30 @@ export class DesignWriteGeometryRunExecutor {
         await verifyDraftAsset(
           file.fingerprint.digest,
           `assembly file ${file.name}`,
+          this.#draftAssetDirectory,
         );
       }
       for (const mesh of partMeshes) {
         await verifyDraftAsset(
           mesh.fingerprint.digest,
           `part mesh ${mesh.name}`,
+          this.#draftAssetDirectory,
+        );
+      }
+      for (const file of assemblyFiles) {
+        await promoteDraftAsset(
+          file.fingerprint.digest,
+          file.format,
+          this.#draftAssetDirectory,
+          this.#canonicalAssetDirectory,
+        );
+      }
+      for (const mesh of partMeshes) {
+        await promoteDraftAsset(
+          mesh.fingerprint.digest,
+          "stl",
+          this.#draftAssetDirectory,
+          this.#canonicalAssetDirectory,
         );
       }
 
@@ -667,11 +719,29 @@ async function assertGeometryArtifactNotRemoved(
   for (let i = 0; i < MAX_ANCESTORS; i++) {
     if (!current) return; // Reached the root without finding a geometry artifact.
     const ancestor = await snapshots.get(current.snapshotId);
-    if (!ancestor) return; // Missing ancestor — cannot determine; do not block.
+    if (!ancestor) {
+      throw new GeometryLineageReviewRequiredError(
+        `ancestor ${current.snapshotId}@${current.revision} is not resolvable.`,
+      );
+    }
+    if (
+      ancestor.id !== current.snapshotId ||
+      ancestor.revision !== current.revision ||
+      ancestor.subject.id !== basis.subject.id
+    ) {
+      throw new GeometryLineageReviewRequiredError(
+        `ancestor ${current.snapshotId}@${current.revision} resolved to an incompatible record.`,
+      );
+    }
     if (hasGeometryArtifact(ancestor)) {
       throw new GeometryArtifactRemovedError(basis.subject.id);
     }
     current = ancestor.previous;
+  }
+  if (current) {
+    throw new GeometryLineageReviewRequiredError(
+      `ancestor traversal exceeded the explicit ${MAX_ANCESTORS}-revision review bound.`,
+    );
   }
 }
 
@@ -691,8 +761,12 @@ function hasGeometryArtifact(snapshot: ThreadSnapshot): boolean {
  * directory does not hold those exact bytes, we cannot seal the geometry: the
  * seal would attest bytes the operator never reviewed.
  */
-async function verifyDraftAsset(expectedDigest: string, name: string): Promise<void> {
-  const path = `${GEOMETRY_DRAFT_ASSETS_DIR}/${expectedDigest}`;
+async function verifyDraftAsset(
+  expectedDigest: string,
+  name: string,
+  draftDirectory: string,
+): Promise<void> {
+  const path = `${draftDirectory}/${expectedDigest}`;
   let bytes: Uint8Array;
   try {
     bytes = await Deno.readFile(path);
@@ -715,6 +789,58 @@ async function verifyDraftAsset(expectedDigest: string, name: string): Promise<v
       `SHA-256 mismatch for geometry draft asset ${name}: ` +
         `expected ${expectedDigest.slice(0, 16)}…, got ${actual.slice(0, 16)}….`,
     );
+  }
+}
+
+/**
+ * Copy verified draft bytes into the canonical content-addressed store.
+ * The destination is written through a temporary file because a crash must
+ * never expose a partial object under an authoritative digest-bearing name.
+ */
+async function promoteDraftAsset(
+  expectedDigest: string,
+  extension: string,
+  draftDirectory: string,
+  canonicalDirectory: string,
+): Promise<void> {
+  const source = `${draftDirectory}/${expectedDigest}`;
+  const destination = `${canonicalDirectory}/${expectedDigest}.${extension}`;
+  let bytes = await readCanonicalAsset(destination);
+  if (bytes && await sha256Hex(bytes) === expectedDigest) return;
+  await Deno.mkdir(canonicalDirectory, { recursive: true });
+  bytes = await Deno.readFile(source);
+  const actual = await sha256Hex(bytes);
+  if (actual !== expectedDigest) {
+    throw new GeometryAssetVerificationError(
+      "sha256_mismatch",
+      { expected: expectedDigest, actual, source },
+      "Geometry draft bytes changed before canonical promotion.",
+    );
+  }
+  const temporary = `${canonicalDirectory}/.${crypto.randomUUID()}.tmp`;
+  await Deno.writeFile(temporary, bytes, { createNew: true });
+  try {
+    await Deno.rename(temporary, destination);
+  } catch (error) {
+    await Deno.remove(temporary).catch(() => undefined);
+    if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+  }
+  const persisted = await readCanonicalAsset(destination);
+  if (!persisted || await sha256Hex(persisted) !== expectedDigest) {
+    throw new GeometryAssetVerificationError(
+      "sha256_mismatch",
+      { expected: expectedDigest, destination },
+      "Canonical geometry asset failed its post-copy SHA-256 verification.",
+    );
+  }
+}
+
+async function readCanonicalAsset(path: string): Promise<Uint8Array | undefined> {
+  try {
+    return await Deno.readFile(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return undefined;
+    throw error;
   }
 }
 
@@ -784,7 +910,7 @@ function buildExtension(options: {
       kind: "mesh" as const,
       version: mesh.fingerprint.digest,
       fingerprint: mesh.fingerprint,
-      uri: `casys://geometry-draft-asset/sha256/${mesh.fingerprint.digest}`,
+      uri: `/api/thread/assets/${mesh.fingerprint.digest}.stl`,
       mediaType: "model/stl",
       producer,
       inputArtifactIds: [artifactId],
@@ -799,7 +925,7 @@ function buildExtension(options: {
       kind: (file.format === "step" ? "step" : "cad-model") as ThreadArtifact["kind"],
       version: file.fingerprint.digest,
       fingerprint: file.fingerprint,
-      uri: `casys://geometry-draft-asset/sha256/${file.fingerprint.digest}`,
+      uri: `/api/thread/assets/${file.fingerprint.digest}.${file.format}`,
       mediaType: file.format === "step"
         ? "model/step"
         : file.format === "gltf"
@@ -1063,8 +1189,3 @@ function sameEvidenceRefs(
  * Convert an `EngineeringDecisionProposal.parameters` array into a `ReadonlyMap`
  * for `parseGeometryDecisionParameters`.
  */
-function proposalToMap(
-  proposal: NonNullable<EngineeringDecision["proposal"]>,
-): ReadonlyMap<string, string | number | boolean> {
-  return new Map(proposal.parameters.map(({ key, value }) => [key, value]));
-}
