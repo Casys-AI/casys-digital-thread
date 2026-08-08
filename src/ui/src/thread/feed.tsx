@@ -310,7 +310,8 @@ export function ThreadFeed({
                           evidenceModel={evidenceModel}
                           focusRef={node.ref}
                           selection={selection}
-                          onOpenEvidenceAnchored={onOpenEvidenceAnchored}
+                          onSelectNode={(related) =>
+                            onSelectNode(related, "lineage")}
                           ariaLabel={`Complete recorded lineage for ${node.label}`}
                         />
                       )
@@ -366,12 +367,12 @@ interface FeedLineageGraphProps {
   focusRef: ThreadGraphRef;
   selection?: ThreadGraphSelection;
   /**
-   * Opens the evidence canvas anchored on the given ref.
-   * Called on every node click in the vignette — single click, no dblclick.
-   * This is the same flow as the "Open evidence canvas" button but anchored
-   * on the clicked node rather than on the card's own fact.
+   * Selects the clicked node's activity IN PLACE — the reader stays in the
+   * Activity space (operator decision 2026-08-08: a vignette click must never
+   * change space). Leaving for the Evidence canvas remains an explicit act:
+   * the "Open evidence canvas" button on the card header.
    */
-  onOpenEvidenceAnchored?: (ref: ThreadGraphRef) => void;
+  onSelectNode: (node: ThreadGraphNode) => void;
   ariaLabel: string;
 }
 
@@ -393,14 +394,14 @@ interface FeedLineageGraphProps {
  * is rendered only when the card is expanded; it unmounts on collapse or on
  * selection of a different card (key={refKey(focusRef)} in the parent).
  *
- * Click contract: single click on a node opens the evidence canvas anchored
- * on that node (changeView verification + lineageFocus). No dblclick action.
+ * Click contract: single click on a node selects the matching activity in
+ * the feed and stays in Activity. No dblclick action, no space change.
  */
 function FeedLineageGraph({
   evidenceModel,
   focusRef,
   selection,
-  onOpenEvidenceAnchored,
+  onSelectNode,
   ariaLabel,
 }: FeedLineageGraphProps): JSX.Element {
   // Bounded neighborhood depth 2: direct neighbours + their direct neighbours.
@@ -440,13 +441,17 @@ function FeedLineageGraph({
         selection={selection}
         compact
         onSelectionChange={(next) => {
-          // Single click on a vignette node: open the evidence canvas anchored
-          // on that node. This reuses the same flow as the "Open evidence
-          // canvas" button (changeView verification + lineageFocus/selection).
-          // Edge clicks and background clicks are not handled in the vignette —
-          // the full Evidence tab is the entry-point for those interactions.
-          if (next?.kind === "node" && onOpenEvidenceAnchored) {
-            onOpenEvidenceAnchored(next.ref);
+          // Single click on a vignette node: select the matching activity and
+          // STAY in the Activity space. Edge clicks and background clicks are
+          // not handled in the vignette — the full Evidence tab is the
+          // entry-point for those interactions.
+          if (next?.kind === "node") {
+            const selected = neighborhood.nodes.find(
+              (candidate) =>
+                candidate.ref.kind === next.ref.kind &&
+                candidate.ref.id === next.ref.id,
+            );
+            if (selected) onSelectNode(selected);
           }
         }}
       />
