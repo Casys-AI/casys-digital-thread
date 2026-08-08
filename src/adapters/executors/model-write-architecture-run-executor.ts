@@ -380,11 +380,6 @@ export class ModelWriteArchitectureRunExecutor {
 
       await this.#commands.claimRun(origin, {
         ...command,
-        // The basis lease has serialized every same-basis writer.  Refresh the
-        // optimistic project revision inside that lease so independently queued
-        // siblings can reach the deterministic basis guard after a winner's
-        // lifecycle transitions, rather than failing only as stale requests.
-        expectedRevision: preClaim.revision,
         commandId: commandStep(command.commandId, "claim"),
         summary: "Started the generic model-write-architecture run.",
       });
