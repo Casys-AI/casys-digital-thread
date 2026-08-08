@@ -332,9 +332,14 @@ export class ModelWriteArchitectureRunExecutor {
     const { proposal } = await requireMrtrApproval(project, run);
     const architectureProposal = parseProposal(proposal);
 
+    // A run-scoped lease is sufficient to replay one runId, but it leaves two
+    // independently queued work items free to author divergent successors from
+    // the same immutable ThreadSnapshot basis.  Serialize this irreversible
+    // operation by its exact basis instead.  The file lease hashes the scope,
+    // so the canonical JSON key remains safe for arbitrary snapshot IDs.
     return await this.#lease.withLease(
       command.projectId,
-      command.runId,
+      architectureBasisLeaseScope(run),
       () => this.#executeLeased(origin, command, architectureProposal),
     );
   }
@@ -363,9 +368,23 @@ export class ModelWriteArchitectureRunExecutor {
         await this.#reconcileLive(alreadyCompleted.project.subjectId, command.runId);
         return alreadyCompleted;
       }
+      // The scope lease has made this pre-claim snapshot authoritative for
+      // sibling selection.  Refuse before changing lifecycle state, reading a
+      // seed capture, or touching SysON when a prior same-basis writer already
+      // owns, consumed, or may have mutated this basis.
+      await assertNoBlockedArchitectureSibling(
+        preClaim,
+        requireRun(preClaim, command.runId),
+        this.#attempts,
+      );
 
       await this.#commands.claimRun(origin, {
         ...command,
+        // The basis lease has serialized every same-basis writer.  Refresh the
+        // optimistic project revision inside that lease so independently queued
+        // siblings can reach the deterministic basis guard after a winner's
+        // lifecycle transitions, rather than failing only as stale requests.
+        expectedRevision: preClaim.revision,
         commandId: commandStep(command.commandId, "claim"),
         summary: "Started the generic model-write-architecture run.",
       });
@@ -391,8 +410,6 @@ export class ModelWriteArchitectureRunExecutor {
       // Step 6: load basis snapshot + seed capture (with byte-level fingerprint verification).
       const { base, seed, seedArtifact, seedVerifiedFingerprint } = await this
         .#loadSeedInputs(basis);
-      assertNoBlockedArchitectureSibling(project, run);
-
       // Step 7: cliquet.
       await assertArchitectureArtifactNotRemoved(base, this.#snapshots);
 
@@ -2136,33 +2153,77 @@ function assertCompleted(
  * unresolved provider write.  Keep recovery explicitly reviewed by refusing a
  * sibling run on the same sealed basis after either terminal uncertainty.
  */
-function assertNoBlockedArchitectureSibling(
+async function assertNoBlockedArchitectureSibling(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): void {
+  attempts: FileArchitectureAttemptStore,
+): Promise<void> {
   const basis = requireBasis(run);
-  const blockers = project.agentRuns.filter((candidate) => {
-    if (candidate.id === run.id || candidate.status !== "failed") return false;
-    if (!candidate.failure || !sameSnapshotBasis(candidate.basis, basis)) return false;
+  const siblings = project.agentRuns.filter((candidate) => {
+    if (candidate.id === run.id || !sameSnapshotBasis(candidate.basis, basis)) {
+      return false;
+    }
     const operation = project.workItems.find((item) => item.id === candidate.workItemId)
       ?.operation;
     return operation?.id === MODEL_WRITE_ARCHITECTURE_OPERATION.id &&
-      operation.version === MODEL_WRITE_ARCHITECTURE_OPERATION.version &&
-      (candidate.failure.code ===
-          "model-write-architecture-provider-outcome-unknown" ||
-        candidate.failure.code ===
-          "model-write-architecture-post-acknowledgement-quarantined" ||
-        candidate.failure.code ===
-          "model-write-architecture-quarantine-write-failed");
+      operation.version === MODEL_WRITE_ARCHITECTURE_OPERATION.version;
   });
-  if (blockers.length > 0) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      "A prior generic architecture run on this exact basis has an unresolved " +
-        "provider outcome or post-acknowledgement quarantine. A separately reviewed " +
-        "recovery must advance the basis before another run can write SysON.",
-    );
+  for (const sibling of siblings) {
+    if (
+      sibling.status === "completed" ||
+      sibling.status === "running" ||
+      sibling.status === "publishing" ||
+      (sibling.status === "failed" && isTerminalArchitectureFailure(sibling))
+    ) {
+      throw staleArchitectureBasisSibling();
+    }
+    try {
+      // A process can die after WAL reservation or acknowledgement but before
+      // its lifecycle transition is persisted.  A sibling must treat either
+      // durable fact as a basis-level stop: only the exact runId may recover
+      // its own WAL record.
+      if (
+        await attempts.isQuarantined(project.project.id, sibling.id) ||
+        await attempts.readRun(project.project.id, sibling.id)
+      ) {
+        throw staleArchitectureBasisSibling();
+      }
+    } catch (error) {
+      if (error instanceof EngineeringProjectCommandError) throw error;
+      // An unreadable sibling journal could conceal a dispatched provider
+      // write.  The safe resolution is the same as for a known terminal WAL.
+      throw staleArchitectureBasisSibling();
+    }
   }
+}
+
+function architectureBasisLeaseScope(run: EngineeringAgentRun): string {
+  const basis = requireBasis(run);
+  return deterministicJson({
+    operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+    basis: {
+      snapshotId: basis.snapshotId,
+      revision: basis.revision,
+      subjectId: basis.subjectId,
+    },
+  });
+}
+
+function isTerminalArchitectureFailure(run: EngineeringAgentRun): boolean {
+  return run.failure?.code === "model-write-architecture-provider-outcome-unknown" ||
+    run.failure?.code ===
+      "model-write-architecture-post-acknowledgement-quarantined" ||
+    run.failure?.code ===
+      "model-write-architecture-quarantine-write-failed";
+}
+
+function staleArchitectureBasisSibling(): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError(
+    "invalid_transition",
+    "A prior generic architecture run on this exact basis has an unresolved " +
+      "provider outcome, active execution, post-acknowledgement quarantine, or published result. " +
+      "A separately reviewed recovery must advance the basis before another run can write SysON.",
+  );
 }
 
 function architectureArtifactEntityRef(

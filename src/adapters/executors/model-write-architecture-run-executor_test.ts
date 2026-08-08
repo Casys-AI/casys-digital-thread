@@ -529,6 +529,7 @@ interface ArchFixture {
 async function queuedArchitectureFixture(
   directory: string,
   proposalParams = DRONE_PROPOSAL_PARAMS,
+  prepareParallelSibling = false,
 ): Promise<ArchFixture> {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
@@ -747,6 +748,54 @@ async function queuedArchitectureFixture(
     inputFingerprint: approval.inputFingerprint!,
   });
 
+  if (prepareParallelSibling) {
+    project = await commands.appendChange(AGENT, {
+      ...ctx("append-parallel-architecture", project.revision),
+      baseSnapshot: r2,
+      phases: [{
+        id: "arch-parallel",
+        name: "Parallel architecture",
+        description: "Reviewed sibling sealed to the original architecture basis.",
+      }],
+      workItems: [{
+        id: "wi:architecture-parallel",
+        phaseId: "arch-parallel",
+        owner: "agent",
+        dependsOnWorkItemIds: ["wi:seed"],
+        decisionIds: ["decision:arch-parallel"],
+        operation: {
+          ...MODEL_WRITE_ARCHITECTURE_OPERATION,
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        },
+      }],
+      requiredDecisions: [{
+        id: "decision:arch-parallel",
+        phaseId: "arch-parallel",
+        title: "Parallel architecture declaration",
+        question: "Which reviewed architecture is proposed from the original basis?",
+      }],
+    });
+    project = await commands.proposeDecision(AGENT, {
+      ...ctx("propose-parallel-architecture", project.revision),
+      decisionId: "decision:arch-parallel",
+      baseSnapshot: r2,
+      proposal: {
+        summary: "Parallel DroneV4 architecture package",
+        parameters: proposalParams,
+      },
+    });
+    const parallelApproval = project.approvals.find((candidate) =>
+      candidate.decisionId === "decision:arch-parallel"
+    );
+    assertExists(parallelApproval);
+    project = await commands.approveDecision(HUMAN, {
+      ...ctx("approve-parallel-architecture", project.revision),
+      decisionId: "decision:arch-parallel",
+      rationale: "Approved only as a concurrency test sibling.",
+      inputFingerprint: parallelApproval.inputFingerprint!,
+    });
+  }
+
   // Queue the architecture run.
   const queued = await commands.queueRun(AGENT, {
     ...ctx("queue-arch", project.revision),
@@ -906,6 +955,27 @@ async function queueArchitectureEnrichment(
   return { revision: queued.revision, runId: "run:architecture-enrichment" };
 }
 
+/** Queue a distinct reviewed work item deliberately sealed to the same basis. */
+async function queueParallelArchitectureSibling(
+  fixture: Pick<ArchFixture, "projects" | "commands">,
+): Promise<{ readonly revision: number; readonly runId: string }> {
+  const project = await fixture.projects.get(PROJECT_ID);
+  if (!project) throw new Error("Architecture fixture project is missing.");
+  const original = project.agentRuns.find((run) => run.id === "run:architecture");
+  if (!original?.basis || original.basis.kind !== "thread-snapshot") {
+    throw new Error("Architecture fixture run has no thread-snapshot basis.");
+  }
+  const basis = original.basis;
+  const queued = await fixture.commands.queueRun(AGENT, {
+    ...ctx("queue-parallel-architecture", project.revision),
+    runId: "run:architecture-parallel",
+    workItemId: "wi:architecture-parallel",
+    summary: "Attempt a parallel architecture authoring run.",
+    basis,
+  });
+  return { revision: queued.revision, runId: "run:architecture-parallel" };
+}
+
 // ── Happy path — initial mode ─────────────────────────────────────────────────
 
 Deno.test(
@@ -1038,6 +1108,115 @@ Deno.test(
 );
 
 Deno.test(
+  "model.write-architecture serializes concurrent same-basis siblings before SysON",
+  async () => {
+    class BarrierInitialArchSyson extends InitialArchSyson {
+      readonly insertionEntered = deferred<void>();
+      readonly releaseInsertion = deferred<void>();
+
+      override async callTool(call: McpToolCall): Promise<McpToolResult> {
+        if (call.name === "syson_element_insert_sysml") {
+          this.calls.push(structuredClone(call));
+          this.insertionEntered.resolve();
+          await this.releaseInsertion.promise;
+          return {
+            text: "inserted",
+            structuredContent: {
+              inserted: true,
+              parentId: call.arguments?.parent_id,
+            },
+          };
+        }
+        return await super.callTool(call);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-same-basis-" });
+    try {
+      const fixture = await queuedArchitectureFixture(
+        directory,
+        DRONE_PROPOSAL_PARAMS,
+        true,
+      );
+      const sibling = await queueParallelArchitectureSibling(fixture);
+      const syson = new BarrierInitialArchSyson();
+      const winner = makeExecutor(fixture, { syson, directory }).execute(AGENT, {
+        ...executionCommand(fixture),
+        expectedRevision: sibling.revision,
+      });
+      await syson.insertionEntered.promise;
+
+      const loser = makeExecutor(fixture, { syson, directory }).execute(AGENT, {
+        commandId: "agent-author-architecture-parallel",
+        projectId: PROJECT_ID,
+        expectedRevision: sibling.revision,
+        issuedAt: "2026-08-08T12:16:00.000Z",
+        runId: sibling.runId,
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      assertEquals(
+        syson.calls.length,
+        2,
+        "the contender must wait on the basis lease, not preflight SysON",
+      );
+
+      syson.releaseInsertion.resolve();
+      await winner;
+      await assertRejects(
+        () => loser,
+        EngineeringProjectCommandError,
+        "published result",
+      );
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        1,
+        "only the basis-lease winner may insert into SysON",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture refuses a sequential same-basis sibling after completion",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-stale-basis-" });
+    try {
+      const fixture = await queuedArchitectureFixture(
+        directory,
+        DRONE_PROPOSAL_PARAMS,
+        true,
+      );
+      const sibling = await queueParallelArchitectureSibling(fixture);
+      const winner = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, {
+        ...executionCommand(fixture),
+        expectedRevision: sibling.revision,
+      });
+      const blockedSyson = new InitialArchSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson: blockedSyson, directory }).execute(AGENT, {
+            commandId: "agent-author-architecture-stale-sibling",
+            projectId: PROJECT_ID,
+            expectedRevision: winner.revision,
+            issuedAt: "2026-08-08T12:17:00.000Z",
+            runId: sibling.runId,
+          }),
+        EngineeringProjectCommandError,
+        "published result",
+      );
+      assertEquals(blockedSyson.calls, []);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   "model.write-architecture binds the second enrichment completion to its own current tip and replays it exactly",
   async () => {
     const directory = await Deno.makeTempDir({ prefix: "casys-arch-enrichment-" });
@@ -1100,6 +1279,17 @@ Deno.test(
     }
   },
 );
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 Deno.test(
   "model.write-architecture rejects a transplanted valid seed capture before SysON dispatch",
