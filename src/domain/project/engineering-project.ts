@@ -332,6 +332,11 @@ export interface EngineeringAgentRunCancellation {
   readonly cancelledBy: EngineeringCommandActor;
 }
 
+/** Server-derived audit wording for a queued run that never started. */
+export function queuedRunCancellationSummary(rationale: string): string {
+  return `Cancelled before agent claim: ${rationale}`;
+}
+
 export interface EngineeringAgentRunTransition {
   readonly commandId: string;
   readonly status: EngineeringAgentRunStatus;

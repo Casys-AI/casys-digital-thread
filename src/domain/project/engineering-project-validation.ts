@@ -12,6 +12,7 @@ import type {
   EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "./engineering-project.ts";
+import { queuedRunCancellationSummary } from "./engineering-project.ts";
 import {
   currentProjectAnswer,
   type EngineeringProjectFraming,
@@ -1984,6 +1985,7 @@ function validateInvariants(
   project.agentRuns.forEach((run, index) =>
     validateRunInvariant(run, index, workById, project, issues)
   );
+  validateRunTransitionCommandUsage(project, issues);
   project.workItems.forEach((item, index) =>
     validateWorkItemReconciliationInvariant(item, index, project, issues)
   );
@@ -3054,6 +3056,26 @@ function validateRunInvariant(
         "a cancelled queued run must contain exactly its initial queued transition at queuedAt and its final cancelled transition",
       );
     }
+    const queueReceipt = queuedTransition
+      ? (project.commandReceipts ?? []).find((receipt) =>
+        receipt.type === "agent-run.queue" &&
+        receipt.commandId === queuedTransition.commandId
+      )
+      : undefined;
+    if (
+      !queuedTransition || !queueReceipt ||
+      queueReceipt.actor.id !== queuedTransition.actor.id ||
+      queueReceipt.actor.origin !== queuedTransition.actor.origin ||
+      Date.parse(queueReceipt.appliedAt) !== Date.parse(run.queuedAt) ||
+      Date.parse(queueReceipt.appliedAt) !== Date.parse(queuedTransition.at)
+    ) {
+      issue(
+        issues,
+        "missing_queue_receipt",
+        `${path}.statusHistory[0]`,
+        "must be anchored by its exact agent-run.queue receipt at queuedAt",
+      );
+    }
     if (
       run.cancellation &&
       (!finalTransition || finalTransition.status !== "cancelled" ||
@@ -3080,7 +3102,8 @@ function validateRunInvariant(
         cancellationReceipt.actor.id !== run.cancellation.cancelledBy.id ||
         cancellationReceipt.actor.origin !== run.cancellation.cancelledBy.origin ||
         Date.parse(cancellationReceipt.appliedAt) !==
-          Date.parse(run.cancellation.cancelledAt))
+          Date.parse(run.cancellation.cancelledAt) ||
+        Date.parse(cancellationReceipt.appliedAt) !== Date.parse(finalTransition!.at))
     ) {
       issue(
         issues,
@@ -3088,6 +3111,27 @@ function validateRunInvariant(
         `${path}.cancellation`,
         "must be anchored by its exact human agent-run.cancel receipt",
       );
+    }
+    if (run.cancellation) {
+      const expectedSummary = queuedRunCancellationSummary(
+        run.cancellation.rationale,
+      );
+      if (run.summary !== expectedSummary) {
+        issue(
+          issues,
+          "invalid_run_cancellation_summary",
+          `${path}.summary`,
+          "must be the server-derived queued-run cancellation summary",
+        );
+      }
+      if (finalTransition?.summary !== expectedSummary) {
+        issue(
+          issues,
+          "invalid_run_cancellation_summary",
+          `${path}.statusHistory[1].summary`,
+          "must be the server-derived queued-run cancellation summary",
+        );
+      }
     }
   } else if (run.cancellation) {
     issue(
@@ -3144,6 +3188,36 @@ function validateRunInvariant(
   }
   chronological(run.queuedAt, run.startedAt, `${path}.startedAt`, issues);
   chronological(run.startedAt, run.completedAt, `${path}.completedAt`, issues);
+}
+
+/**
+ * A command receipt is globally unique, so one transition commandId must
+ * belong to one agent run. This prevents copying an otherwise valid cancelled
+ * history to a second work item and claiming the same queue/cancel receipts.
+ * Older snapshots without transition history remain readable.
+ */
+function validateRunTransitionCommandUsage(
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const ownerByCommandId = new Map<string, { runId: string }>();
+  project.agentRuns.forEach((run, runIndex) => {
+    run.statusHistory?.forEach((transition, transitionIndex) => {
+      const path =
+        `$.agentRuns[${runIndex}].statusHistory[${transitionIndex}].commandId`;
+      const owner = ownerByCommandId.get(transition.commandId);
+      if (owner && owner.runId !== run.id) {
+        issue(
+          issues,
+          "duplicate_run_transition_command",
+          path,
+          `commandId ${transition.commandId} is already bound to agent run ${owner.runId}`,
+        );
+        return;
+      }
+      if (!owner) ownerByCommandId.set(transition.commandId, { runId: run.id });
+    });
+  });
 }
 
 function validateDecisionInvariant(

@@ -497,6 +497,17 @@ Deno.test("browser project contract accepts only exact human queued-run cancella
   const valid = v3CancelledQueuedRunEnvelope();
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
+  const forgedRunSummary = structuredClone(valid) as Record<string, unknown>;
+  (forgedRunSummary.agentRuns as Array<Record<string, unknown>>)[0]!.summary =
+    "Forged cancellation summary.";
+  assertEquals(isEngineeringProjectSnapshot(forgedRunSummary), false);
+
+  const forgedTransitionSummary = structuredClone(valid) as Record<string, unknown>;
+  ((forgedTransitionSummary.agentRuns as Array<Record<string, unknown>>)[0]!
+    .statusHistory as Array<Record<string, unknown>>)[1]!.summary =
+      "Forged cancellation transition summary.";
+  assertEquals(isEngineeringProjectSnapshot(forgedTransitionSummary), false);
+
   const missingCancellation = structuredClone(valid) as Record<string, unknown>;
   delete (missingCancellation.agentRuns as Array<Record<string, unknown>>)[0]!
     .cancellation;
@@ -639,7 +650,8 @@ function v3CancelledQueuedRunEnvelope(): Record<string, unknown> {
     id: "run-approved-brief-cancelled-before-start",
     workItemId: "work-define",
     status: "cancelled",
-    summary: "Cancelled before agent claim: the reviewed queue entry was retired.",
+    summary:
+      "Cancelled before agent claim: The reviewed queue entry was retired before any worker claim.",
     queuedAt,
     basis: (project.plan as Record<string, unknown>).basis,
     inputFingerprint: {
@@ -663,7 +675,8 @@ function v3CancelledQueuedRunEnvelope(): Record<string, unknown> {
       status: "cancelled",
       at: cancelledAt,
       actor: { id: "human:owner", origin: "human" },
-      summary: "Cancelled before agent claim: the reviewed queue entry was retired.",
+      summary:
+        "Cancelled before agent claim: The reviewed queue entry was retired before any worker claim.",
     }],
   }];
   return project;

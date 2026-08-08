@@ -1,15 +1,16 @@
-import type {
-  EngineeringAgentRunStatus,
-  EngineeringApprovalStatus,
-  EngineeringApprovedBriefBasis,
-  EngineeringBasisRef,
-  EngineeringBlockerStatus,
-  EngineeringDecisionStatus,
-  EngineeringProjectPlan,
-  EngineeringProjectSchemaVersion,
-  EngineeringProjectSnapshot,
-  EngineeringThreadSnapshotRef,
-  EngineeringWorkItemStatus,
+import {
+  type EngineeringAgentRunStatus,
+  type EngineeringApprovalStatus,
+  type EngineeringApprovedBriefBasis,
+  type EngineeringBasisRef,
+  type EngineeringBlockerStatus,
+  type EngineeringDecisionStatus,
+  type EngineeringProjectPlan,
+  type EngineeringProjectSchemaVersion,
+  type EngineeringProjectSnapshot,
+  type EngineeringThreadSnapshotRef,
+  type EngineeringWorkItemStatus,
+  queuedRunCancellationSummary,
 } from "../../../domain/project/engineering-project.ts";
 
 const WORK_ITEM_STATUSES: readonly EngineeringWorkItemStatus[] = [
@@ -601,6 +602,14 @@ function hasValidAgentRunCancellation(value: Record<string, unknown>): boolean {
     cancelled.status !== "cancelled" ||
     cancelled.at !== value.cancellation.cancelledAt ||
     !sameCommandActor(cancelled.actor, value.cancellation.cancelledBy)
+  ) {
+    return false;
+  }
+  const expectedSummary = queuedRunCancellationSummary(
+    value.cancellation.rationale,
+  );
+  if (
+    value.summary !== expectedSummary || cancelled.summary !== expectedSummary
   ) {
     return false;
   }

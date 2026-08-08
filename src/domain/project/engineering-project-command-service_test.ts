@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   deriveEngineeringPhaseStatus,
   deriveEngineeringProjectStatus,
@@ -13,7 +13,10 @@ import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
 } from "./engineering-project-command-service.ts";
-import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
+import {
+  EngineeringProjectValidationError,
+  validateEngineeringProjectSnapshot,
+} from "./engineering-project-validation.ts";
 
 const CONFIG = new URL(
   "../../../config/projects/coffee-machine-cm01.project.json",
@@ -387,6 +390,57 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
     "ready",
   );
   assertEquals(cancelled.commandReceipts?.at(-1)?.type, "agent-run.cancel");
+
+  const receiptReusedByAnotherRun = structuredClone(cancelled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const cancelledRun = receiptReusedByAnotherRun.agentRuns.find((item) =>
+    item.id === command.runId
+  )!;
+  receiptReusedByAnotherRun.agentRuns.push({
+    ...structuredClone(cancelledRun),
+    id: "verify-run-cancellable-receipt-clone",
+    workItemId: "build-current-cad",
+  });
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(receiptReusedByAnotherRun),
+    EngineeringProjectValidationError,
+    "already bound to agent run",
+  );
+
+  const forgedQueueCommand = structuredClone(cancelled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  forgedQueueCommand.agentRuns.find((item) => item.id === command.runId)!
+    .statusHistory![0]!.commandId = "forged-queue-command-without-receipt";
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(forgedQueueCommand),
+    EngineeringProjectValidationError,
+    "agent-run.queue receipt",
+  );
+
+  const forgedCancellationSummary = structuredClone(cancelled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  forgedCancellationSummary.agentRuns.find((item) => item.id === command.runId)!
+    .summary = "Retired by a forged summary.";
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(forgedCancellationSummary),
+    EngineeringProjectValidationError,
+    "server-derived queued-run cancellation summary",
+  );
+
+  const forgedCancellationTransitionSummary = structuredClone(cancelled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  forgedCancellationTransitionSummary.agentRuns.find((item) =>
+    item.id === command.runId
+  )!.statusHistory![1]!.summary = "Forged cancellation transition summary.";
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(forgedCancellationTransitionSummary),
+    EngineeringProjectValidationError,
+    "server-derived queued-run cancellation summary",
+  );
 
   const replay = await service.cancelQueuedRun(HUMAN, command);
   assertEquals(replay.id, cancelled.id);

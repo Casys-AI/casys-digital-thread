@@ -20,6 +20,7 @@ import {
   type EngineeringThreadSnapshotRef,
   type EngineeringWorkItem,
   type EngineeringWorkOwner,
+  queuedRunCancellationSummary,
 } from "./engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
 import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
@@ -920,7 +921,7 @@ export class EngineeringProjectCommandService {
           `Queued agent run ${run.id} has execution state and cannot be cancelled safely.`,
         );
       }
-      const summary = `Cancelled before agent claim: ${command.rationale}`;
+      const summary = queuedRunCancellationSummary(command.rationale);
       run.status = "cancelled";
       run.summary = summary;
       run.cancellation = {
