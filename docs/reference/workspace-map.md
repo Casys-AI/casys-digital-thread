@@ -50,16 +50,10 @@
 | [`src/ui/dist/console/index.html`](../../src/ui/dist/console/index.html)                                                                                   | Generated Console MCP App bundle                                     |
 | `deno task preview:browser`                                                                                                                                | Loopback Console preview                                             |
 | `deno task preview:thread` / `deno task preview:cockpit`                                                                                                   | Passive project/thread reads and SSE dossier BFF                     |
-| `deno task thread:assemble`                                                                                                                                | Writes immutable local snapshots from CM-01 branches; does not mutate providers |
-| `deno task thread:run-coffee-machine-build`                                                                                                                | Explicit SysON to build123d MCP runner                               |
-| `deno task thread:attach-coffee-machine-build`                                                                                                             | Capture validation, canonical publication and reconciliation         |
-| `deno task thread:run-coffee-machine-mechanical`                                                                                                           | Archived bounded SysON to CAD to FEA verification runner             |
 | `deno task thread:run-coffee-machine-cm01-v3-correction`                                                                                                   | Explicit CM-01 V3 28 mm to 30 mm control-plane driver                |
 | `deno task thread:retry-coffee-machine-cm01-v3-mechanical-r3`                                                                                             | Bounded CM-01 V3 R3 mechanical recovery driver                       |
 | `deno task thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity`                                                                                   | Provider-free R10 to R11 identity recovery                           |
 | `deno task thread:close-coffee-machine-cm01-v3-r11`                                                                                                       | Provider-free R11 to R12 failed-work reconciliation                  |
-| [`src/adapters/historical/coffee-machine-mechanical-run-extension.ts`](../../src/adapters/historical/coffee-machine-mechanical-run-extension.ts)           | Strict mechanical capture to canonical evidence projection           |
-| `deno task thread:attach-coffee-machine-mechanical`                                                                                                        | Durable mechanical publication and live-feed reconciliation          |
 | `deno task thread:capture-syson-inventory`                                                                                                                 | Read-only SysON inventory capture; writes immutable local capture file |
 | [`state/fixtures/`](../../state/fixtures/)                                                                                                                 | Explicitly labelled demo evidence                                    |
 | `state/local/engineering-projects/`                                                                                                                        | Ignored immutable active project revisions and CAS claims            |
@@ -131,41 +125,6 @@ The Console MCP server and native Workbench entry point reject non-loopback host
 Loopback is a deployment guard, not user authentication. Human confirmation flows use
 the paired MCP host and still require a real authentication policy before multi-user
 deployment.
-
-`deno task thread:assemble` reads the declared CM-01 manifest, the latest captured SysON
-inventory, one persisted Modelica run, and reviewed ERPNext list/detail/balance
-responses. It writes immutable local snapshots and an ERP capture; it does not start
-CAD, FEA, Modelica, mutate SysON, or mutate ERPNext.
-
-`deno task thread:run-coffee-machine-build` is the explicit execution path. It calls
-SysON and build123d through backend MCP clients and appends redacted progress to
-`state/local/live-thread-updates/`. `deno task thread:attach-coffee-machine-build`
-validates the persisted capture, publishes the next immutable snapshot, then reconciles
-that run's provisional feed nodes.
-
-`deno task thread:run-coffee-machine-mechanical --run-id=<id>` audits only the exact
-historical CM-01 run recorded with r6. It derives geometry, material, mesh, load, and
-limits from the approved proposal, ensures the two model-owned DripTray constraints
-exist, generates a content-addressed STEP, then runs the reviewed CalculiX-to-SysON
-workflow through recorded backend clients. Its deterministic capture is written under
-`state/local/coffee-machine-mechanical-runs/`. A same-ID retry is allowed only when
-prior live activity is limited to the exact SysON constraint preflight for the same base
-revision; any CAD, FEA, normalization, evaluation, reconciliation, unknown operation, or
-existing capture fails closed. After the project run has explicitly entered
-`publishing`, use `deno task thread:attach-coffee-machine-mechanical --run-id=<id>`.
-That command fail-closes on authorization, effective arguments, constraints, provider
-results and the exact STEP consumption hash; saves the immutable canonical snapshot;
-reads it back; and only then reconciles the run's provisional feed nodes. It returns the
-exact result snapshot and entity references needed for the separate MCP `completed`
-transition, but never mutates the project lifecycle itself.
-
-The completed local reference path for historical project `coffee-machine-cm01`
-publishes thread r6
-`coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechanical-run-v1-extension`;
-active project r10 records the same run and verification work item as `completed`. This
-r5/r6 provenance remains required historical input for the distinct CM-01 V3 golden
-path. Its proof boundary is the isolated concept DripTray, not the whole machine, a
-fabrication release, or certification.
 
 The fixed `coffee-machine-cm01-v3` path is a separate project and catalog. Its original
 five reviewed product operations follow the documentary baseline and SysON seed. The

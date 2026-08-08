@@ -10,18 +10,12 @@ running the task writes local state. Scripts that write always write under
 
 | Script                                                             | Task                                                                                      | Risk  |
 | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ----- |
-| `runners/attach-coffee-machine-build-run.ts`                       | `thread:attach-coffee-machine-build`                                                      | write |
-| `runners/attach-coffee-machine-mechanical-run.ts`                  | `thread:attach-coffee-machine-mechanical`                                                 | write |
-| `runners/attach-observed-modelica-run.ts`                          | `thread:attach-modelica`                                                                  | write |
 | `runners/close-coffee-machine-cm01-v3-r11.ts`                      | `thread:close-coffee-machine-cm01-v3-r11`                                                 | write |
 | `runners/finalize-coffee-machine-cm01-v3-local.ts`                 | `thread:finalize-coffee-machine-cm01-v3-local`                                            | write |
-| `runners/materialize-coffee-machine-thread.ts`                     | `thread:assemble`                                                                         | write |
 | `runners/recover-coffee-machine-cm01-v3-mechanical-r3-identity.ts` | `thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity`                            | write |
-| `runners/run-coffee-machine-build.ts`                              | `thread:run-coffee-machine-build`                                                         | write |
 | `runners/run-coffee-machine-cm01-v3-correction.ts`                 | `thread:run-coffee-machine-cm01-v3-correction`                                            | write |
 | `runners/run-coffee-machine-cm01-v3-local.ts`                      | `thread:run-coffee-machine-cm01-v3-local` / `thread:run-coffee-machine-cm01-v3-canonical` | write |
 | `runners/run-coffee-machine-cm01-v3-mechanical-r3-retry.ts`        | `thread:retry-coffee-machine-cm01-v3-mechanical-r3`                                       | write |
-| `runners/run-coffee-machine-mechanical.ts`                         | `thread:run-coffee-machine-mechanical`                                                    | write |
 
 ## gates/ — read-only verification; no provider calls, no local writes
 

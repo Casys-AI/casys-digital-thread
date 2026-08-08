@@ -19,7 +19,6 @@ operations; the cockpit itself remains a passive projection.
 ```bash
 deno task start             # http://127.0.0.1:3020/mcp
 deno task preview:browser   # http://127.0.0.1:3021/
-deno task thread:assemble
 deno task preview:cockpit --port=5175  # canonical product shell
 deno task preview:thread               # 5173, direct development preview
 ```

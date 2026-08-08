@@ -20,19 +20,9 @@ categories deliberately answer different questions.
   starts the single-shell Preact product surface, follows a project from its living
   brief into activity and evidence, and explains why the cockpit observes while the
   paired conversation controls bounded provider work.
-- [Assemble the CoffeeMachine CM-01 thread](how-to/assemble-coffee-machine-thread.md)
-  bootstraps the reviewed SysON, Modelica, and ERPNext branches; explicit runners add
-  CAD and the approved DripTray mechanical revision without manufacturing unrelated
-  cross-branch cause.
 - [Preview the MCP console in a local browser](how-to/preview-console.md) explains the
   `127.0.0.1:3021` harness, how to confirm that it is live, and what it intentionally
   does not do.
-- [Inspect the historical CoffeeMachine mechanical proof](how-to/view-coffee-machine-cm01.md)
-  explains the archived r6 SysON → build123d → CalculiX → normalization → SysON loop,
-  its bounded safe-resume contract, and why it is not the current V3 agent recipe.
-- [Attach a persisted Modelica branch](how-to/attach-observed-modelica-branch.md)
-  imports one exact, already-persisted thermal run as evidence only: the model,
-  scenario, metrics, and hashes are retained, without inventing a verdict.
 - [Add a result-viewer MCP App](how-to/add-mcp-app.md) scaffolds, builds, registers, and
   verifies a standard structured-result view without broadening its server grants.
 

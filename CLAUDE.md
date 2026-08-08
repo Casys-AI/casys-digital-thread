@@ -57,22 +57,8 @@ deno task preview:thread      # :5173 — cockpit projet natif (reads/SSE passif
 deno task preview:cockpit     # :5175 — même cockpit, port explicite de démonstration
 ```
 
-Chaîne CM-01 historique r5/r6 — **n'exécuter que pour produire délibérément de nouvelles
-preuves locales**, jamais « pour voir » : les runners provider écrivent des révisions
-immuables sous `state/local/`.
-
-```bash
-deno task thread:assemble                        # assemble les branches CM-01 ; écrit des snapshots immuables sous state/local/ (ne mute pas les providers)
-deno task thread:run-coffee-machine-build        # SysON → build123d
-deno task thread:attach-coffee-machine-build     # valide, publie, réconcilie le feed
-deno task thread:run-coffee-machine-mechanical --run-id=<id>      # run humain-autorisé
-deno task thread:attach-coffee-machine-mechanical --run-id=<id>
-deno task thread:attach-modelica
-```
-
-Le chemin fermé `coffee-machine-cm01-v3` est distinct de cette référence historique. Ses
-runners de correction et de récupération appellent le plan de contrôle MCP seulement
-après consentement explicite ;
+Le chemin fermé `coffee-machine-cm01-v3` — ses runners de correction et de récupération
+appellent le plan de contrôle MCP seulement après consentement explicite ;
 `thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity` reconstruit une identité
 R3 depuis une capture achevée, et `thread:close-coffee-machine-cm01-v3-r11` crée le
 closeout R12. Ces deux dernières étapes ne rejouent aucun provider ; elles restent

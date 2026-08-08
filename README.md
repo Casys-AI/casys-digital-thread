@@ -142,8 +142,6 @@ deno task preview:browser        # http://127.0.0.1:3021/
 deno task preview:cockpit --port=5175  # http://127.0.0.1:5175/
 # Direct thread preview remains available for development and diagnosis.
 deno task preview:thread              # http://127.0.0.1:5173/
-# Reassemble only when deliberately producing new local evidence:
-deno task thread:assemble
 ```
 
 The browser host relays the Console's read-only tools to the live MCP server. It is a
@@ -207,11 +205,7 @@ Opening or refreshing the UI never launches CAD, FEA, or Modelica. In the produc
 calculation, modeling, ERP, and evidence publication belong to agent orchestration
 through bounded backend tools, with chat elicitation where human authority is
 consequential. Only registered operations are executable today; a missing executor stays
-an explicit capability gap. `thread:assemble` bootstraps a local CM-01 revision from
-read-only SysON inventory, one persisted Modelica run, and reviewed ERPNext reads. The
-explicit build runner adds the current SysON-derived CAD artifacts. A separately
-human-approved and agent-claimed mechanical runner can then add exact DripTray CAD,
-CalculiX observations, and SysON evaluations. Provider execution, canonical attachment,
+an explicit capability gap. Provider execution, canonical attachment,
 and project completion remain separate operations. See the
 [native preview how-to](docs/how-to/preview-native-workbench.md) and the
 [ThreadSnapshot reference](docs/reference/thread-snapshot.md).

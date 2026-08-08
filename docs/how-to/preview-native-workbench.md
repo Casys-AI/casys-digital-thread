@@ -25,13 +25,7 @@ npm --prefix src/ui ci
 ```
 
 The repository includes one domain-validated observed baseline specifically so preview
-does not require local state or a running provider. When deliberately producing new
-evidence, `deno task thread:assemble` reads the workspace-declared identity manifest,
-captured SysON inventory, one persisted Modelica run, and reviewed ERPNext reads. It
-writes successive immutable canonical documents under `state/local/thread-snapshots/`;
-an explicit build run then adds the reviewed whole-machine CAD branch. See
-[the assembly how-to](assemble-coffee-machine-thread.md) for that execution and
-publication sequence.
+does not require local state or a running provider.
 
 The current clean baseline ends at:
 

@@ -8,9 +8,7 @@
  * dependency. The MechanicalCaptureStore port interface lives here too so
  * executors can reference the contract without importing a Deno I/O adapter.
  *
- * Source: extracted from scripts/runners/run-coffee-machine-mechanical.ts
- * (vague organisation v2). The runner now imports from here; FileMechanicalCaptureStore
- * (I/O implementation) lives in src/adapters/captures/.
+ * FileMechanicalCaptureStore (I/O implementation) lives in src/adapters/captures/.
  */
 
 import { deterministicJson } from "../kernel/deterministic-json.ts";

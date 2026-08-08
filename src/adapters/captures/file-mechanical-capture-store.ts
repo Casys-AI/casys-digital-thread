@@ -9,10 +9,8 @@
  * same path. This is a write-ahead-log pattern with OS-level file locking, not
  * a content-addressed append.
  *
- * Source: extracted from scripts/runners/run-coffee-machine-mechanical.ts
- * (vague organisation v2). The runner imports from here; the port interface
- * (MechanicalCaptureStore) lives in src/domain/cm01/ so executors can
- * reference it without pulling in Deno I/O.
+ * The port interface (MechanicalCaptureStore) lives in src/domain/cm01/ so
+ * executors can reference it without pulling in Deno I/O.
  */
 
 import type { MechanicalCaptureStore } from "../../domain/cm01/coffee-machine-cm01-mechanical-proposal.ts";

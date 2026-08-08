@@ -114,11 +114,7 @@ implements it as immutable JSON documents under ignored local state. Saving iden
 content is idempotent; reusing a snapshot ID for different content is rejected. Every
 read crosses the canonical validator again.
 
-`deno task thread:assemble` materializes the declared CoffeeMachine CM-01 subject into
-that store. It starts from a captured SysON inventory, reads the declared persisted
-Modelica run, and reads the reviewed ERPNext BOM and Bin projections. Explicit build and
-mechanical runners publish later immutable revisions through separate attach tasks. The
-BFF's passive read path projects the latest validated subject snapshot into the
+The BFF's passive read path projects the latest validated subject snapshot into the
 deliberately smaller browser contract. The projection is never promoted back into the
 canonical domain model, and project commands cannot create thread evidence.
 

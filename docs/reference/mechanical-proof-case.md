@@ -60,7 +60,4 @@ following to one immutable run:
    receipt.
 
 Until such a receipt is implemented and checked at the execution boundary, this schema
-remains a reviewable candidate declaration only. The existing
-`deno task thread:run-coffee-machine-mechanical`
-continues to derive its inputs from the approved project proposal and does not consume
-this file.
+remains a reviewable candidate declaration only.
