@@ -249,8 +249,6 @@ function parseBundle(
       deterministicJson(INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION) ||
     record.trustedRunId !== artifact.producer.runId ||
     record.capturedAt !== artifact.freshness.changedAt ||
-    record.capturedAt !== snapshot.generatedAt ||
-    record.capturedAt !== snapshot.changeSet.appliedAt ||
     artifact.name !== "Inspection-drone V4 PartDefinitions product structure" ||
     artifact.kind !== "sysml-model" ||
     artifact.mediaType !== "application/json" ||

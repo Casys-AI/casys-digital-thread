@@ -306,6 +306,15 @@ Deno.test("inspection-drone product catalog accepts only the exact r3 identities
     fixture.readers,
   );
   assertEquals(producerTamper?.components, []);
+
+  const descendant = structuredClone(fixture.snapshot) as typeof fixture.snapshot;
+  descendant.generatedAt = "2026-08-08T06:00:00.000Z";
+  descendant.changeSet.appliedAt = "2026-08-08T06:00:00.000Z";
+  const inherited = await resolveInspectionDroneV4ProductStructureCatalog(
+    descendant,
+    fixture.readers,
+  );
+  assertEquals(inherited?.components.length, 6);
 });
 
 function productCatalogFixture() {
