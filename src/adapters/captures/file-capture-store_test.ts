@@ -8,6 +8,8 @@ import {
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./file-capture-store.ts";
@@ -237,6 +239,67 @@ Deno.test(
         () => store.read(fp),
         Error,
         "does not match its filename digest",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "A torn pre-existing final capture is never overwritten and a clean retry can publish it",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const store = new FileCaptureStore({
+        ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        directory,
+      });
+      const text = '{"crash":"recovery"}';
+      const fp = await sha256Fingerprint({ crash: "recovery" });
+      // This represents an old direct-final write interrupted before all bytes
+      // reached disk. A new save must surface it, not silently overwrite it.
+      await Deno.writeTextFile(store.pathFor(fp), '{"crash":');
+      await assertRejects(() => store.save(fp, text), Error, "already exists");
+      await assertRejects(
+        () => store.read(fp),
+        Error,
+        "does not match its filename digest",
+      );
+
+      await Deno.remove(store.pathFor(fp));
+      await store.save(fp, text);
+      assertEquals(await store.read(fp), text);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "Concurrent identical capture writers publish one complete idempotent final file",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-file-capture-store-",
+    });
+    try {
+      const descriptor = {
+        ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+        directory,
+      };
+      const left = new FileCaptureStore(descriptor);
+      const right = new FileCaptureStore(descriptor);
+      const text = '{"concurrent":true}';
+      const fp = await sha256Fingerprint({ concurrent: true });
+      await Promise.all([left.save(fp, text), right.save(fp, text)]);
+      assertEquals(await left.read(fp), text);
+      assertEquals(
+        [...(await Array.fromAsync(Deno.readDir(directory)))].filter((entry) =>
+          entry.name.endsWith(".tmp")
+        ).length,
+        0,
       );
     } finally {
       await Deno.remove(directory, { recursive: true });

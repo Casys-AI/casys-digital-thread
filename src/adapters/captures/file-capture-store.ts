@@ -326,19 +326,33 @@ async function writeNewDurably(
   bytes: Uint8Array,
   label: string,
 ): Promise<void> {
-  const file = await Deno.open(path, { createNew: true, write: true });
+  // Do not expose the content-addressed final name until all bytes are fsynced.
+  // A short sibling name also avoids exceeding NAME_MAX for a long final path.
+  const parent = path.slice(0, path.lastIndexOf("/"));
+  const temporary = `${parent}/.${crypto.randomUUID()}.tmp`;
   try {
-    let written = 0;
-    while (written < bytes.length) {
-      const count = await file.write(bytes.subarray(written));
-      if (count <= 0) {
-        throw new Error(`${label} capture made no write progress.`);
+    const file = await Deno.open(temporary, { createNew: true, write: true });
+    try {
+      let written = 0;
+      while (written < bytes.length) {
+        const count = await file.write(bytes.subarray(written));
+        if (count <= 0) {
+          throw new Error(`${label} capture made no write progress.`);
+        }
+        written += count;
       }
-      written += count;
+      await file.syncData();
+    } finally {
+      file.close();
     }
-    await file.syncData();
+    // link(2) publishes the complete inode without overwrite semantics. A
+    // competing writer can only observe a complete final file and save() will
+    // compare its exact bytes for idempotence/conflict.
+    await Deno.link(temporary, path);
   } finally {
-    file.close();
+    await Deno.remove(temporary).catch((error) => {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    });
   }
 }
 
