@@ -285,7 +285,7 @@ Deno.test(
 );
 
 // Operation equivalence guard tests — DL-01 BLOQUANT fix.
-// These four tests verify that reconcileWorkItemWithSuccessor refuses to close a
+// These tests verify that reconcileWorkItemWithSuccessor refuses to close a
 // registered-operation work item with a successor that carries a different operation.
 
 // Plain object (not typed as EngineeringOperationRef) so structuredClone returns
@@ -1415,3 +1415,43 @@ class MemoryRevisionStore implements EngineeringProjectRevisionStore {
 type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
   : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
   : T;
+
+Deno.test(
+  "direct reconciliation rejects a successor run executed outside the project thread lineage",
+  async () => {
+    const base = structuredClone(
+      await reconciliableProjectWithOperation(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const successorRun = base.agentRuns.find((run) =>
+      run.id === "run:mechanical-r3-completed"
+    )!;
+    // A foreign execution base cannot survive validateEngineeringProjectSnapshot
+    // (the global invariant checks every run basis against threadSnapshots), so
+    // the snapshot is stored unvalidated on purpose: this exercises the service's
+    // own defense-in-depth lineage guard, not the upstream validator.
+    (successorRun as Mutable<typeof successorRun>).baseSnapshot = {
+      ...successorRun.baseSnapshot!,
+      snapshotId: "thread-foreign-project-head",
+    };
+    const store = new MemoryRevisionStore(base as EngineeringProjectSnapshot);
+    const service = serviceFor(store);
+    const evidence =
+      base.workItems.find((item) => item.id === "verify-current-mechanical-design-r3")!
+        .evidenceRefs;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-foreign-lineage", base.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: base.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: evidence,
+          rationale:
+            "Should be rejected: successor executed outside the project lineage.",
+        }),
+      "invalid_input",
+    );
+  },
+);

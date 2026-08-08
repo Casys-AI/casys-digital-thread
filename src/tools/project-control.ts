@@ -354,7 +354,7 @@ export function registerProjectControlTools(
         },
       );
       return projectResult(
-        `Work item ${failedWorkItemId} is now closed as superseded. Its failed run ${failedRunId} stays failed in history; the successor run ${successorRunId} retains its own evidence at project revision ${snapshot.revision}.`,
+        `Work item ${failedWorkItemId} is now closed as superseded. Its anchoring run ${failedRunId} keeps its durable status (failed, or cancelled before any claim) in history; the successor run ${successorRunId} retains its own evidence at project revision ${snapshot.revision}.`,
         snapshot,
       );
     },
