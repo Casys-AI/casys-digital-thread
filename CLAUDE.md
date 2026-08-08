@@ -357,6 +357,24 @@ vers `state/local/thread-assets` (vérification SHA-256 fail-closed) — son pre
 reste soumis au consentement ; les viewers actuels servent la matérialisation manuelle
 vérifiée du R18.
 
-La suite : le deuxième projet, seul vrai test que le Golden Path est générique. Le
-premier usage réel de `design.apply-vector-correction@1` attendra un vrai échec
-d'exigence — on n'en fabrique pas un.
+Le chemin ne s'arrête plus au seed générique r2 : le projet
+`inspection-drone-v4` a été exécuté jusqu'à r3. Son r1 est le baseline documentaire
+du brief approuvé, r2 la capture d'identité du conteneur SysON, et r3 une architecture
+qualitative relue : cinq usages typés et quatre exigences avec leurs inconnues explicites.
+Ce n'est ni de la CAO, ni de la physique, ni un coût, ni une certification ; le produit
+r4 reste en correction et en revue, donc n'est pas un résultat documenté.
+
+CM-01 a aussi gagné un r19 de `PartDefinition` : les captures content-addressed de
+`CoffeeMachine` et `DripTray` sont liées à l'architecture et à la preuve existante. Le
+contrat vérifie les identités, le contexte et les hashes, distingue les stores de capture,
+et refuse qu'une révision ultérieure supprime silencieusement cette famille d'artefacts.
+L'archivage gouverné retire, après décision humaine MRTR portant les cibles exactes, une
+ligne d'artefact ou d'exigence et ses observations, évaluations et violations dérivées ;
+l'historique reste lisible tandis que les vues courantes l'excluent.
+
+Un run seulement `queued` peut désormais être annulé avec
+`project_agent_run_cancel` : la confirmation humaine signée est obligatoire avant tout
+claim, et le reçu scelle le run, son work item et le reçu de queue. L'annulation rend le
+work item à son état dérivé, permet une nouvelle queue, et conserve la compatibilité des
+anciens reçus. Enfin, `.github/workflows/quality.yml` exécute sur PR et sur `main` les
+gates formatage, lint, type-check, tests, vérification d'évidence et Workbench.

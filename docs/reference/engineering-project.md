@@ -333,6 +333,15 @@ materialization, records redacted progress, persists the capture and resulting s
 reads the snapshot back, then completes or fails the run. `statusHistory` records public
 lifecycle facts and summaries, not chain-of-thought.
 
+`project_agent_run_cancel` is the narrow inverse available before that claim only. Its
+first call asks the paired MCP host to obtain a signed human confirmation for the exact
+queued run and rationale; only the accepted, framework-verified retry mutates durable
+state. The final cancellation transition and its receipt bind the exact run ID, work-item
+ID, and original queue command ID. A cancelled unclaimed run has no provider activity;
+its work item returns to the state derived from its dependencies and may be queued again.
+Historical queue receipts without the newer `queuedRun` binding remain valid, while new
+queue and every cancellation receipt are sealed to their exact targets.
+
 For the first run, the dedicated validator requires root revision 1 and the exact
 documentary artifact produced by the reviewed operation; it does not pretend the result
 descends from a fabricated base. The first SysON seed requires that exact documentary
@@ -396,13 +405,17 @@ is currently process-local, so a shared signing key alone is not sufficient for
 multi-instance operation. That deployment needs a shared, durable replay store with
 atomic consume semantics.
 
-The source dispatcher materializes two generic V3 operations and, only for the fixed
-`coffee-machine-cm01-v3` reference, ten reviewed product operations.
+The source dispatcher materializes two generic V3 operations, the reviewed
+`inspection-drone-v4` qualitative-architecture operation, and the fixed CM-01 catalog.
 `baseline.from-approved-brief@1` has no provider invocation and persists its canonical
 capture before publishing the cited root snapshot. `architecture.seed-syson-model@2`
 owns only the fixed SysON project/document/root-package sequence, closed capture,
-materializer, and result validator before publishing revision 2. The CM-01 catalog adds
-its own architecture, CAD, Modelica, ERP, correction, and mechanical
+materializer, and result validator before publishing revision 2.
+`architecture.author-inspection-drone@3` is restricted to the exact
+`inspection-drone-v4` r2 basis and has published r3: five typed usages and four
+qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
+or verdict claims. The CM-01 catalog adds its own architecture, CAD, Modelica, ERP,
+correction, governed lineage retirement, PartDefinition, and mechanical
 capture/materializer contracts; see the
 [CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). Neither MCP planning
 nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint, and no
@@ -475,6 +488,22 @@ and performs the narrow failed-work reconciliation described above.
 This is one bounded CM-01 correction dossier, not a generic correction engine. It does
 not make the historical r6 verdict current, validate the whole CoffeeMachine, authorize
 fabrication, or establish certification.
+
+## CM-01 PartDefinition and governed retirement
+
+CM-01 r19 retains content-addressed PartDefinition captures for `CoffeeMachine` and
+`DripTray`, bound to the exact architecture package, editing context, identities, and
+capture hashes. The capture stores are intentionally distinct from architecture capture;
+lineage checks fail closed if a later basis silently drops established PartDefinition
+artifacts. It records documentary structure and provenance, not a new physical,
+manufacturing, or certification claim.
+
+The governed archive operation accepts only an exact approved human MRTR decision whose
+proposal names the retirement targets. It can retire an artifact or requirement and its
+dependent observations, evaluations, and violations as a recorded cascade. No historic
+record is deleted: the snapshot retains the archived changes and provenance, while
+current-state projections filter the retired entities. A fully retired cascade cannot be
+run again as if it were new.
 
 ## Validation and persistence
 

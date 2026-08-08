@@ -58,6 +58,7 @@ Workbench projection.
 | `project_decision_approve`  | Human elicitation        | Ask the person in chat to approve the exact proposal; the agent cannot self-approve        |
 | `project_decision_reject`   | Human elicitation        | Ask the person in chat to reject the exact proposal                                        |
 | `project_agent_run_queue`   | Bounded agent mutation   | Queue one ready, registered work item with server-derived run identity, basis, and summary |
+| `project_agent_run_cancel`  | Human elicitation        | Cancel one exact unclaimed queued run after signed paired-chat confirmation                |
 | `project_agent_run_execute` | Bounded server execution | Dispatch that exact queued registered run; no arbitrary execution payload                  |
 
 Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
@@ -106,6 +107,11 @@ phases, work, decisions, runs, or evidence. These anchors belong to the change c
 not to a later run; each queued run still receives its server-derived exact `basis`.
 `project_agent_run_queue` derives the run ID, summary, basis, and operation from durable
 project state; the caller cannot submit those execution details.
+`project_agent_run_cancel` is not a generic lifecycle mutation: it accepts only an exact
+still-queued run, asks the paired host for a signed human confirmation, and cannot run
+after claim. Its cancellation receipt seals the run ID, work-item ID, and original queue
+receipt; the derived work-item state can then become ready again for a new queue. Older
+queue receipts remain readable without the newer server-stamped binding.
 `project_agent_run_execute` is deliberately different from a generic lifecycle command:
 it dispatches one queued, registered, server-owned operation. The generic V3 route has
 two bounded bootstrap operations:
@@ -133,10 +139,14 @@ retried. The r2 result records only an editable container identity, not a system
 architecture, requirement, CAD artifact, simulation, measurement, verification result,
 or compliance claim.
 
-The generic route stops at r2. Any future architecture, CAD, physics, cost, compliance,
-or verified-requirement capability must begin with a sourced, reviewed definition and a
-separate executor/output contract. CM-01 remains the sole current CAD/physics proof
-case.
+The first reviewed continuation beyond r2 is
+`architecture.author-inspection-drone@3`, bound to `inspection-drone-v4`. It has already
+published r3 from its r1 documentary baseline and r2 SysON seed: a qualitative
+architecture with five typed usages and four requirements whose unresolved points remain
+explicit. It establishes neither CAD, physical analysis, cost, compliance, certification,
+nor a requirement verdict. Other architecture, CAD, physics, cost, compliance, or
+verified-requirement capabilities still need their own reviewed executor and output
+contract. CM-01 remains the sole current CAD/physics proof case.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
 SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its
@@ -169,7 +179,8 @@ uses fresh identities and distinct registered executors instead.
 
 ## Signed human elicitation
 
-`project_brief_confirm`, `project_decision_approve`, and `project_decision_reject` use
+`project_brief_confirm`, `project_decision_approve`, `project_decision_reject`, and
+`project_agent_run_cancel` use
 MCP `2026-07-28` multi-round-trip requests. Their first call returns `input_required`
 with an `elicitation/create` request. The MCP host asks the person in the current
 conversation and retries the original tool call. The mutation is allowed only when the
@@ -192,3 +203,7 @@ deno task verify:evidence
 
 This checks the Console fixture, cross-file values, byte counts and SHA-256 identities
 without rewriting evidence.
+
+The repository quality workflow runs on pull requests and pushes to `main`: UI dependency
+installation, `deno task fmt`, `deno task lint`, backend and UI type checks, tests,
+evidence verification, and native Workbench presentation verification.
