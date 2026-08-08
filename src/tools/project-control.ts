@@ -393,6 +393,22 @@ export function registerProjectControlTools(
    * all is the honest contract — agents learn the capability is absent by
    * inspecting `tools/list`, not by calling and receiving an error.
    */
+
+  // Hard bound on components list length.
+  // WHY 32 — each component is metadata stored in the draft record and manifest.
+  // Unbounded lists bloat the capture JSON and, once per-part exports are added
+  // in v2, would multiply the provider dispatch time proportionally.  32 covers
+  // any foreseeable sub-system decomposition at concept-design stage.
+  const MAX_GEOMETRY_COMPONENTS_V1 = 32;
+
+  // Regex for a valid component usageName slug.
+  // WHY STRICT — usageName is stored in the manifest and the draft capture, and
+  // will be used as part of server-fixed export names in v2.  Restricting to
+  // [a-zA-Z][a-zA-Z0-9_-]* now prevents accumulation of names that would be
+  // impossible to use safely later, and defends against injection if the
+  // restriction is ever relaxed without a review.
+  const USAGE_NAME_SLUG = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+
   if (dependencies.geometryPreview) {
     const geo = dependencies.geometryPreview;
     app.registerTool(projectGeometryPreviewTool, async (args) => {
@@ -423,19 +439,43 @@ export function registerProjectControlTools(
       const rawComponents: unknown[] = Array.isArray(args.components)
         ? args.components
         : [];
+      if (rawComponents.length > MAX_GEOMETRY_COMPONENTS_V1) {
+        throw new TypeError(
+          `components must not exceed ${MAX_GEOMETRY_COMPONENTS_V1} entries ` +
+            `(got ${rawComponents.length}).`,
+        );
+      }
       const components: GeometryComponentBinding[] = rawComponents.map(
         (c: unknown, i: number) => {
           if (!c || typeof c !== "object" || Array.isArray(c)) {
             throw new TypeError(`components[${i}] must be an object`);
           }
           const obj = c as Record<string, unknown>;
+          const usageName = requiredString(obj.usageName, `components[${i}].usageName`);
+          if (!USAGE_NAME_SLUG.test(usageName)) {
+            throw new TypeError(
+              `components[${i}].usageName '${usageName}' does not match the ` +
+                `required slug pattern [a-zA-Z][a-zA-Z0-9_-]{0,63}.`,
+            );
+          }
           return {
             elementId: requiredString(obj.elementId, `components[${i}].elementId`),
-            usageName: requiredString(obj.usageName, `components[${i}].usageName`),
+            usageName,
             label: requiredString(obj.label, `components[${i}].label`),
           };
         },
       );
+      // Uniqueness check: usageName must be distinct within the list.
+      const seenUsageNames = new Set<string>();
+      for (let i = 0; i < components.length; i++) {
+        const name = components[i]!.usageName;
+        if (seenUsageNames.has(name)) {
+          throw new TypeError(
+            `components contains duplicate usageName '${name}' at index ${i}.`,
+          );
+        }
+        seenUsageNames.add(name);
+      }
 
       // Build a manifest without scriptHash/artifactHashes — the draft-capture
       // layer computes those after the build123d_export call.

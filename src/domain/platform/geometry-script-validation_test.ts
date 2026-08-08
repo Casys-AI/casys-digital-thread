@@ -123,6 +123,83 @@ result = Box(result=True)
 `);
 });
 
+// ── P0: multi-module import attacks ──────────────────────────────────────────
+//
+// `import build123d, ctypes` was previously accepted because checkImports only
+// validated the first module after `import`.  These tests pin the fix.
+
+Deno.test(
+  "validateGeometryScript rejects import build123d, ctypes (multi-module comma list)",
+  () => {
+    // Attack: ctypes.CDLL("libc.so.6").system(...) reaches the provider with
+    // access to the shared /exports volume after slipping past a single-module
+    // check on the allowed `build123d` first entry.
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `import build123d, ctypes\nresult = Box(1, 1, 1)\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "forbidden_import");
+  },
+);
+
+Deno.test(
+  "validateGeometryScript rejects import build123d as b, ctypes as c (alias form)",
+  () => {
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `import build123d as b, ctypes as c\nresult = Box(1, 1, 1)\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "forbidden_import");
+  },
+);
+
+Deno.test(
+  "validateGeometryScript rejects import math, numpy, build123d (forbidden module in the middle)",
+  () => {
+    // Validates that ALL modules are checked, not just the last or first.
+    // Uses numpy rather than os: os is in FORBIDDEN_NAMES and would be caught
+    // as forbidden_name before checkImports can see it.  numpy is not in
+    // FORBIDDEN_NAMES but is not in ALLOWED_IMPORT_SOURCES either, so it
+    // produces forbidden_import — the correct code for an import check.
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `import math, numpy, build123d\nresult = Box(1, 1, 1)\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "forbidden_import");
+  },
+);
+
+Deno.test(
+  "validateGeometryScript rejects import build123d.utils, ctypes (dotted first module, forbidden second)",
+  () => {
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `import build123d.utils, ctypes\nresult = Box(1, 1, 1)\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "forbidden_import");
+  },
+);
+
 // ── Forbidden import tests ────────────────────────────────────────────────────
 
 Deno.test("validateGeometryScript rejects import of numpy", () => {

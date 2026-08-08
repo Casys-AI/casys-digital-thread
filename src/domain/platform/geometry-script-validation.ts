@@ -536,10 +536,136 @@ function consumeString(
 // ── Semantic checks on the token stream ─────────────────────────────────────
 
 /**
+ * Validate all module names in a standalone `import A [as a] [, B [as b], …]`
+ * statement.
+ *
+ * WHY THIS FUNCTION EXISTS — Python allows comma-separated module lists in a
+ * single `import` statement.  The original check called `nextSignificantName`
+ * once and validated only the first module, so `import build123d, ctypes`
+ * silently passed: `build123d` was validated, `ctypes` was never checked, and
+ * the subsequent `ctypes.CDLL("libc.so.6").system(...)` call reached the
+ * provider with access to the shared /exports volume.
+ *
+ * This function validates EVERY module in the comma-separated list.
+ * Dotted sub-names (`import build123d.utils`) are handled by validating the
+ * top-level segment only; `as alias` clauses are skipped.
+ */
+function checkStandaloneImportList(
+  tokens: Token[],
+  start: number,
+  importLine: number,
+): void {
+  let i = start;
+  let moduleCount = 0;
+
+  outer: while (true) {
+    // Skip leading whitespace / continuation.
+    while (
+      i < tokens.length &&
+      (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
+    ) {
+      i++;
+    }
+    if (i >= tokens.length) break;
+
+    const t = tokens[i]!;
+    if (t.kind === "NEWLINE" || t.kind === "COMMENT") break;
+
+    // Must be a NAME (the top-level module or package name).
+    if (t.kind !== "NAME") {
+      if (moduleCount === 0) {
+        throw new GeometryScriptValidationError(
+          "forbidden_import",
+          `Bare 'import' without a module name at line ${importLine}.`,
+          importLine,
+        );
+      }
+      break;
+    }
+
+    moduleCount++;
+
+    // Validate against the allowlist (only the first segment matters for
+    // dotted names: `import build123d.X` — `build123d` is the package).
+    if (!ALLOWED_IMPORT_SOURCES.has(t.value)) {
+      throw new GeometryScriptValidationError(
+        "forbidden_import",
+        `Forbidden import of '${t.value}' at line ${importLine}. ` +
+          `Only build123d and math are allowed.`,
+        importLine,
+      );
+    }
+    i++;
+
+    // Skip dotted suffix: `.sub.module` after the top-level package name.
+    while (i < tokens.length) {
+      const dt = tokens[i]!;
+      if (dt.kind === "WHITESPACE" || dt.kind === "CONTINUATION") {
+        i++;
+        continue;
+      }
+      if (dt.kind !== "OP" || dt.value !== ".") break;
+      i++; // skip "."
+      while (
+        i < tokens.length &&
+        (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
+      ) {
+        i++;
+      }
+      if (tokens[i]?.kind === "NAME") i++; // skip sub-name
+    }
+
+    // Skip optional `as alias`.
+    while (
+      i < tokens.length &&
+      (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
+    ) {
+      i++;
+    }
+    if (i < tokens.length && tokens[i]?.kind === "NAME" && tokens[i]!.value === "as") {
+      i++; // skip "as"
+      while (
+        i < tokens.length &&
+        (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
+      ) {
+        i++;
+      }
+      if (i < tokens.length && tokens[i]?.kind === "NAME") i++; // skip alias
+    }
+
+    // Look for a comma (more modules) or end of statement.
+    while (
+      i < tokens.length &&
+      (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
+    ) {
+      i++;
+    }
+    if (i >= tokens.length) break outer;
+    const sep = tokens[i]!;
+    if (sep.kind === "NEWLINE" || sep.kind === "COMMENT") break outer;
+    if (sep.kind === "OP" && sep.value === ",") {
+      i++; // consume comma; loop to read next module
+      continue;
+    }
+    break; // any other token — end of import statement
+  }
+
+  if (moduleCount === 0) {
+    throw new GeometryScriptValidationError(
+      "forbidden_import",
+      `Bare 'import' without a module name at line ${importLine}.`,
+      importLine,
+    );
+  }
+}
+
+/**
  * Scan the token stream for import statements.
  *
  * Accepted forms:
  *   import build123d
+ *   import build123d, math           (comma list — each module validated)
+ *   import build123d as b            (alias — module still validated)
  *   from build123d import Foo, Bar
  *   from math import pi, sqrt
  *
@@ -578,23 +704,8 @@ function checkImports(tokens: Token[]): void {
     if (tok.kind !== "NAME") continue;
 
     if (tok.value === "import" && !fromImportTokenIndices.has(i)) {
-      // Standalone `import X` — module name must follow.
-      const next = nextSignificantName(tokens, i + 1);
-      if (!next) {
-        throw new GeometryScriptValidationError(
-          "forbidden_import",
-          `Bare 'import' without a module name at line ${tok.line}.`,
-          tok.line,
-        );
-      }
-      if (!ALLOWED_IMPORT_SOURCES.has(next.value)) {
-        throw new GeometryScriptValidationError(
-          "forbidden_import",
-          `Forbidden import of '${next.value}' at line ${tok.line}. ` +
-            `Only build123d and math are allowed.`,
-          tok.line,
-        );
-      }
+      // Standalone `import X [as y] [, Y [as z], …]` — validate EVERY module.
+      checkStandaloneImportList(tokens, i + 1, tok.line);
     }
 
     if (tok.value === "from") {

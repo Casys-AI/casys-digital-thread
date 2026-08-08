@@ -66,26 +66,6 @@ function assemblyGltfResponse(digest = HEX64): McpToolResult {
   };
 }
 
-/** One valid structuredContent response for a part STL export. */
-function partStlResponse(usageName: string, digest: string): McpToolResult {
-  return {
-    structuredContent: {
-      schemaVersion: "1.0",
-      kind: "export",
-      metrics: {},
-      files: [
-        {
-          format: "stl",
-          path: `/exports/geometry-preview-${usageName}.stl`,
-          bytes: 512,
-          sha256: digest,
-        },
-      ],
-    },
-    text: "",
-  };
-}
-
 /** No-op materializer: does not touch Docker or the filesystem. */
 const noopMaterialize = (_sha256: string, _containerPath: string) => Promise.resolve();
 
@@ -185,53 +165,57 @@ Deno.test("captureGeometryDraft uses server-fixed name 'geometry-preview-assembl
   }
 });
 
-Deno.test("captureGeometryDraft makes N+1 build123d_export calls when manifest has components", async () => {
-  const [store, tmpDir] = await makeTempDraftStore();
-  try {
-    const manifest: GeometryManifest = {
-      ...VALID_MANIFEST,
-      exportFormats: ["gltf"],
-      components: [
-        { usageName: "dripTray", elementId: "elem-01", label: "Drip Tray" },
-        { usageName: "tank", elementId: "elem-02", label: "Tank" },
-      ],
-    };
+Deno.test(
+  "captureGeometryDraft makes exactly one build123d_export call even when manifest has components (per-part exports deferred to v2)",
+  async () => {
+    // WHY ONE CALL — per-component STL exports were removed in v1 because repeating
+    // the assembly script with a different `name` exports the full model each time,
+    // not the named sub-solid.  The resulting artefacts would be labelled by
+    // usageName but carry full-assembly bytes — a "no hidden heuristics" violation.
+    // v1 produces only the assembly export; components are stored as metadata only.
+    const [store, tmpDir] = await makeTempDraftStore();
+    try {
+      const manifest: GeometryManifest = {
+        ...VALID_MANIFEST,
+        exportFormats: ["gltf"],
+        components: [
+          { usageName: "dripTray", elementId: "elem-01", label: "Drip Tray" },
+          { usageName: "tank", elementId: "elem-02", label: "Tank" },
+        ],
+      };
 
-    const callNames: string[] = [];
-    const client = {
-      callTool: (call: McpToolCall): Promise<McpToolResult> => {
-        const args = call.arguments as Record<string, unknown>;
-        callNames.push(args.name as string);
-        if (args.name === "geometry-preview-assembly") {
-          return Promise.resolve(assemblyGltfResponse());
-        }
-        const usageName = (args.name as string).replace("geometry-preview-", "");
-        return Promise.resolve(partStlResponse(usageName, "b".repeat(64)));
-      },
-      callToolTextResult: () => Promise.reject(new Error("unexpected")),
-    };
+      const callNames: string[] = [];
+      const client = {
+        callTool: (call: McpToolCall): Promise<McpToolResult> => {
+          const args = call.arguments as Record<string, unknown>;
+          callNames.push(args.name as string);
+          if (args.name === "geometry-preview-assembly") {
+            return Promise.resolve(assemblyGltfResponse());
+          }
+          return Promise.reject(
+            new Error(`unexpected provider call for name '${args.name}'`),
+          );
+        },
+        callToolTextResult: () => Promise.reject(new Error("unexpected")),
+      };
 
-    const capture = await captureGeometryDraft(
-      client,
-      { script: VALID_SCRIPT, manifest },
-      store,
-      { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
-    );
+      const capture = await captureGeometryDraft(
+        client,
+        { script: VALID_SCRIPT, manifest },
+        store,
+        { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
+      );
 
-    assertEquals(callNames, [
-      "geometry-preview-assembly",
-      "geometry-preview-dripTray",
-      "geometry-preview-tank",
-    ]);
-    assertEquals(capture.partMeshes.length, 2);
-    assertEquals(capture.partMeshes[0]?.usageName, "dripTray");
-    assertEquals(capture.partMeshes[0]?.elementId, "elem-01");
-    assertEquals(capture.partMeshes[1]?.usageName, "tank");
-    assertEquals(capture.partMeshes[1]?.elementId, "elem-02");
-  } finally {
-    await Deno.remove(tmpDir, { recursive: true });
-  }
-});
+      // Only the assembly call — no per-part calls.
+      assertEquals(callNames, ["geometry-preview-assembly"]);
+      assertEquals(capture.partMeshes.length, 0);
+      // Components are preserved as metadata in the capture.
+      assertEquals(capture.components.length, 2);
+    } finally {
+      await Deno.remove(tmpDir, { recursive: true });
+    }
+  },
+);
 
 Deno.test("captureGeometryDraft rejects a script with a forbidden identifier before any provider call", async () => {
   const [store, tmpDir] = await makeTempDraftStore();

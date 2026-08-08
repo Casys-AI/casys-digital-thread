@@ -55,11 +55,6 @@ export const GEOMETRY_DRAFT_CAPTURE_SCHEMA = "geometry-draft-capture/1.0" as con
 /** Server-fixed name prefix used for all geometry preview exports. */
 const PREVIEW_ASSEMBLY_NAME = "geometry-preview-assembly" as const;
 
-/** Derive a server-fixed part-mesh name from a component's usageName. */
-function previewPartName(usageName: string): string {
-  return `geometry-preview-${usageName}`;
-}
-
 // ── Public types ──────────────────────────────────────────────────────────────
 
 /** One assembly-level export file from the preview run. */
@@ -231,27 +226,18 @@ export async function captureGeometryDraft(
     await materialize(file.fingerprint.digest, file.containerPath);
   }
 
-  // Step 4: per-component STL exports.
+  // Step 4: per-component STL exports — DEFERRED to v2.
+  //
+  // WHY NOT IN V1 — producing per-component meshes requires a dedicated script
+  // per component (isolating the sub-solid and assigning it to `result`).
+  // Repeating the ASSEMBLY script with a different `name` argument exports the
+  // entire model each time: the resulting artefacts are labelled `usageName`
+  // but contain full-assembly bytes — a "no hidden heuristics" violation.
+  //
+  // The correct solution (a) needs a server-fixed convention for extracting a
+  // named sub-solid without agent-interpolated code.  Until that convention is
+  // designed and reviewed, only the assembly export is produced.
   const partMeshes: GeometryDraftPartMesh[] = [];
-  for (const component of manifest.components) {
-    const partName = previewPartName(component.usageName);
-    const partResult = await client.callTool({
-      name: "build123d_export",
-      arguments: {
-        script,
-        formats: ["stl"],
-        name: partName,
-        timeout_ms: 120000,
-      },
-    });
-    const mesh = normalizePartMesh(
-      partResult.structuredContent,
-      component,
-      partName,
-    );
-    await materialize(mesh.fingerprint.digest, mesh.containerPath);
-    partMeshes.push(mesh);
-  }
 
   // Step 6: build + save the JSON capture.
   const capturedAt = now();
@@ -358,49 +344,6 @@ function normalizeAssemblyExport(
       },
     };
   });
-}
-
-function normalizePartMesh(
-  value: unknown,
-  component: GeometryComponentBinding,
-  partName: string,
-): GeometryDraftPartMesh {
-  const root = exactRecord(
-    value,
-    ["files", "kind", "metrics", "schemaVersion"],
-    `build123d_export part ${component.usageName} structuredContent`,
-  );
-  if (root.schemaVersion !== "1.0" || root.kind !== "export") {
-    throw new Error(
-      `build123d_export part ${component.usageName} returned an unsupported structuredContent.`,
-    );
-  }
-  if (!Array.isArray(root.files) || root.files.length !== 1) {
-    throw new Error(
-      `build123d_export part (${component.usageName}) must return exactly one STL file.`,
-    );
-  }
-  const item = requireFileShape(
-    root.files[0],
-    "stl",
-    `part ${component.usageName} file`,
-  );
-  if (item.format !== "stl") {
-    throw new Error(
-      `build123d_export part ${component.usageName}: expected format "stl", got "${item.format}".`,
-    );
-  }
-  return {
-    usageName: component.usageName,
-    elementId: component.elementId,
-    name: partName,
-    containerPath: requireNonEmptyString(item.path, `part ${component.usageName} path`),
-    bytes: requirePositiveInt(item.bytes, `part ${component.usageName} bytes`),
-    fingerprint: {
-      algorithm: "sha256" as const,
-      digest: requireSha256Digest(item.sha256, `part ${component.usageName} sha256`),
-    },
-  };
 }
 
 /**
