@@ -814,13 +814,15 @@ export function parseInspectionDroneV4ArchitectureCapture(
     rootUsages.length !== INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.length ||
     new Set(rootUsages.map((item) => item.usage.id)).size !== 5 ||
     new Set(rootUsages.map((item) => item.type.id)).size !== 5 ||
-    INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.some((expected) => {
-      const matches = rootUsages.filter((item) =>
-        item.usage.label === expected.label && kind(item.usage.kind, "PartUsage") &&
-        item.type.label === expected.type && kind(item.type.kind, "PartDefinition") &&
-        item.type.id === byLabel.get(expected.type)!.id
-      );
-      return matches.length !== 1;
+    INSPECTION_DRONE_V4_PART_USAGE_CONTRACT.some((expected, index) => {
+      const actual = rootUsages[index];
+      const expectedType = byLabel.get(expected.type)!;
+      return !actual ||
+        actual.usage.label !== expected.label ||
+        !kind(actual.usage.kind, "PartUsage") ||
+        actual.type.id !== expectedType.id ||
+        actual.type.label !== expectedType.label ||
+        actual.type.kind !== expectedType.kind;
     })
   ) {
     throw denied(

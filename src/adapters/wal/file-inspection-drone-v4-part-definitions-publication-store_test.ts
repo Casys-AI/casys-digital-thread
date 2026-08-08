@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import {
   FileInspectionDroneV4PartDefinitionsPublicationStore,
@@ -27,6 +28,31 @@ Deno.test("PartDefinitions publication WAL uses stable short names for maximum p
     assertEquals(await right.read(projectId, runId), undefined);
     await right.save(value);
     assertEquals(await right.read(projectId, runId), value);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("PartDefinitions publication WAL reads a safe legacy key without probing an overlong one", async () => {
+  const root = await Deno.makeTempDir({ prefix: "inspection-drone-wal-legacy-" });
+  try {
+    const projectId = "project:short";
+    const runId = "run:short";
+    const store = new FileInspectionDroneV4PartDefinitionsPublicationStore(root);
+    const value = publication(projectId, runId);
+    const legacyBasename = `${
+      encodeURIComponent(JSON.stringify([projectId, runId]))
+    }.json`;
+    await Deno.writeTextFile(
+      `${root}/${legacyBasename}`,
+      `${deterministicJson(value)}\n`,
+    );
+
+    assertEquals(await store.read(projectId, runId), value);
+    assertEquals(
+      await store.read("p".repeat(160), "r".repeat(160)),
+      undefined,
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }

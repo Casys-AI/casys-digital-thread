@@ -77,21 +77,25 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
     projectId: string,
     runId: string,
   ): Promise<InspectionDroneV4PartDefinitionsPublication | undefined> {
-    try {
-      const value = JSON.parse(
-        await Deno.readTextFile(await this.pathFor(projectId, runId)),
-      );
-      validate(value);
-      if (value.projectId !== projectId || value.runId !== runId) {
-        throw new Error(
-          "Inspection-drone PartDefinitions publication identity mismatch.",
-        );
+    let text = await readTextIfExists(await this.pathFor(projectId, runId));
+    if (text === undefined) {
+      // Upgrade-only compatibility. New writes never recreate this path, and
+      // long legacy basenames are deliberately not touched: attempting them
+      // would itself fail with ENAMETOOLONG on otherwise valid identifiers.
+      const legacy = this.legacyPathFor(projectId, runId);
+      if (legacy.basenameUtf8Bytes <= 255) {
+        text = await readTextIfExists(legacy.path);
       }
-      return value;
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
-      throw error;
     }
+    if (text === undefined) return undefined;
+    const value = JSON.parse(text);
+    validate(value);
+    if (value.projectId !== projectId || value.runId !== runId) {
+      throw new Error(
+        "Inspection-drone PartDefinitions publication identity mismatch.",
+      );
+    }
+    return value;
   }
 
   /**
@@ -103,6 +107,26 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
     return `${this.directory.replace(/\/$/, "")}/${await sha256Hex(
       deterministicJson([projectId, runId]),
     )}.json`;
+  }
+
+  private legacyPathFor(
+    projectId: string,
+    runId: string,
+  ): Readonly<{ path: string; basenameUtf8Bytes: number }> {
+    const basename = `${encodeURIComponent(JSON.stringify([projectId, runId]))}.json`;
+    return {
+      path: `${this.directory.replace(/\/$/, "")}/${basename}`,
+      basenameUtf8Bytes: new TextEncoder().encode(basename).byteLength,
+    };
+  }
+}
+
+async function readTextIfExists(path: string): Promise<string | undefined> {
+  try {
+    return await Deno.readTextFile(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return undefined;
+    throw error;
   }
 }
 

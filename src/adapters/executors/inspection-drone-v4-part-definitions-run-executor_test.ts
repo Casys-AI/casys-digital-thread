@@ -73,6 +73,20 @@ Deno.test("inspection-drone PartDefinitions parser rejects a local r3 usage type
   );
 });
 
+Deno.test("inspection-drone PartDefinitions parser rejects a permuted r3 readback usage vector", () => {
+  const capture = r3Capture();
+  [capture.readback.partUsages[0], capture.readback.partUsages[1]] = [
+    capture.readback.partUsages[1]!,
+    capture.readback.partUsages[0]!,
+  ];
+  assertThrows(() =>
+    parseInspectionDroneV4ArchitectureCapture(
+      JSON.stringify(capture),
+      architectureArtifact(),
+    )
+  );
+});
+
 Deno.test("inspection-drone PartDefinitions executes the real r3 basis to the exact r4 bundle with six read-only SysON calls", async () => {
   const fixture = await productFixture();
   const completed = await fixture.executor().execute(AGENT, fixture.command());
@@ -112,6 +126,17 @@ Deno.test("inspection-drone PartDefinitions executes the real r3 basis to the ex
   assertEquals(
     r4.provenance.filter((item) => item.relation === "derived_from").at(-1)?.to.id,
     fixture.architecture.id,
+  );
+});
+
+Deno.test("inspection-drone PartDefinitions refuses a permuted r3 readback before SysON publication", async () => {
+  const fixture = await productFixture({ permutedReadback: true });
+  await assertRejects(() => fixture.executor().execute(AGENT, fixture.command()));
+  assertEquals(fixture.syson.calls, []);
+  assertEquals(fixture.project.agentRuns[0]!.status, "queued");
+  assertEquals(
+    await fixture.publications.read(PROJECT_ID, RUN_ID),
+    undefined,
   );
 });
 
@@ -651,6 +676,7 @@ async function productFixture(options: {
   publicationThrowsAfterSave?: boolean;
   corruption?: ProductCorruption;
   publicationDirectory?: string;
+  permutedReadback?: boolean;
 } = {}) {
   const directory = await Deno.makeTempDir({ prefix: "inspection-drone-v4-parts-" });
   const architectureCaptures = new FileCaptureStore({
@@ -662,6 +688,12 @@ async function productFixture(options: {
     directory: `${directory}/parts`,
   });
   const capture = r3Capture();
+  if (options.permutedReadback) {
+    [capture.readback.partUsages[0], capture.readback.partUsages[1]] = [
+      capture.readback.partUsages[1]!,
+      capture.readback.partUsages[0]!,
+    ];
+  }
   const architectureText = deterministicJson(capture);
   const architectureFingerprint = await sha256Fingerprint(capture);
   await architectureCaptures.save(architectureFingerprint, architectureText);
