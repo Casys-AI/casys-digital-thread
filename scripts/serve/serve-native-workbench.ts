@@ -36,6 +36,7 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
 } from "../../src/orchestration/operations/inspection-drone-v4.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/platform/architecture-proposal.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/platform/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
@@ -509,6 +510,7 @@ const PROVIDER_DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   SYSON_MODEL_SEED_OPERATION,
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+  MODEL_WRITE_ARCHITECTURE_OPERATION,
 ] as const;
 
 function hasUnattachedProviderDurableProjectOperation(

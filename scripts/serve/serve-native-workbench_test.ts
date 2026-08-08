@@ -4,6 +4,7 @@ import type { EngineeringProjectSnapshot } from "../../src/domain/project/engine
 import type { EngineeringProjectRevisionStore } from "../../src/domain/project/engineering-project-command-service.ts";
 import type { CockpitFocusSnapshot } from "../../src/domain/platform/cockpit-focus.ts";
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/platform/cockpit-focus.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/platform/architecture-proposal.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
@@ -84,6 +85,29 @@ Deno.test("native Workbench keeps a durable unattached drone architecture snapsh
   }
 
   projects.replace(droneArchitectureProject("completed", r2, r3));
+  assertEquals(await previewThreadId(handler), r3.id);
+});
+
+Deno.test("native Workbench keeps a durable unattached generic architecture snapshot out of preview until completion attaches it", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const projects = new ProjectStore([
+    genericArchitectureProject("queued", r2, r3),
+  ]);
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: projects,
+    projectId: "generic-architecture-project",
+    subjectId: r2.subject.id,
+    html: "unused",
+  });
+
+  for (const status of ["queued", "running", "publishing", "failed"] as const) {
+    projects.replace(genericArchitectureProject(status, r2, r3));
+    assertEquals(await previewThreadId(handler), r2.id);
+  }
+
+  projects.replace(genericArchitectureProject("completed", r2, r3));
   assertEquals(await previewThreadId(handler), r3.id);
 });
 
@@ -271,6 +295,95 @@ function droneArchitectureProject(
   };
 }
 
+function genericArchitectureProject(
+  status: "queued" | "running" | "publishing" | "failed" | "completed",
+  r2: ThreadSnapshot,
+  r3: ThreadSnapshot,
+): EngineeringProjectSnapshot {
+  const completed = status === "completed";
+  const evidence = {
+    snapshotId: r3.id,
+    snapshotRevision: r3.revision,
+    kind: "artifact" as const,
+    id: r3.artifacts[0]!.id,
+  };
+  const reference = (snapshot: ThreadSnapshot) => ({
+    snapshotId: snapshot.id,
+    revision: snapshot.revision,
+    subjectId: snapshot.subject.id,
+  });
+  return {
+    schemaVersion: "1.0",
+    id: "generic-architecture-project:r1",
+    revision: 1,
+    generatedAt: "2026-08-08T05:00:00.000Z",
+    project: {
+      id: "generic-architecture-project",
+      name: "Generic architecture project",
+      subjectId: r2.subject.id,
+      objective: {
+        title: "Generic architecture",
+        statement: "Keep the approved generic architecture traceable.",
+      },
+    },
+    threadSnapshots: completed ? [reference(r2), reference(r3)] : [reference(r2)],
+    phases: [{
+      id: "architecture",
+      name: "Architecture",
+      order: 1,
+      description: "Publish the generic SysON architecture.",
+      workItemIds: ["author-generic-architecture"],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "author-generic-architecture",
+      phaseId: "architecture",
+      title: "Author generic architecture",
+      description: "Run the registered generic architecture operation.",
+      kind: "architect",
+      operation: { ...MODEL_WRITE_ARCHITECTURE_OPERATION, bindings: [] },
+      status: completed ? "completed" : "in-progress",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: completed ? [evidence] : [],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+    agentRuns: [{
+      id: "run:generic-architecture",
+      workItemId: "author-generic-architecture",
+      status,
+      summary: "Author the approved generic architecture.",
+      queuedAt: "2026-08-08T04:45:00.000Z",
+      ...(status === "queued" ? {} : {
+        startedAt: "2026-08-08T04:46:00.000Z",
+        claimedAt: "2026-08-08T04:46:00.000Z",
+        claimedBy: { origin: "agent" as const, id: "agent:engineering" },
+      }),
+      ...(completed
+        ? {
+          completedAt: "2026-08-08T04:47:00.000Z",
+          resultSnapshot: reference(r3),
+          evidenceRefs: [evidence],
+        }
+        : status === "failed"
+        ? {
+          completedAt: "2026-08-08T04:47:00.000Z",
+          failure: {
+            code: "readback-unavailable",
+            message: "r3 durable but unattached",
+          },
+          evidenceRefs: [],
+        }
+        : { evidenceRefs: [] }),
+    }],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  };
+}
+
 function droneThreadSnapshot(
   revision: number,
   previous?: ThreadSnapshot,
@@ -333,6 +446,75 @@ function droneThreadSnapshot(
       from: { kind: "change", id: changeId },
       to: { kind: "artifact", id: artifactId },
       rationale: "The exact snapshot records this qualitative architecture artifact.",
+    }],
+    proposedActions: [],
+  };
+}
+
+function genericArchitectureThreadSnapshot(
+  revision: number,
+  previous?: ThreadSnapshot,
+): ThreadSnapshot {
+  const at = "2026-08-08T05:00:00.000Z";
+  const digest = String(revision).repeat(64);
+  const artifactId = `architecture-${digest}`;
+  const changeId = `generic-architecture-change-r${revision}`;
+  return {
+    schemaVersion: "1.0",
+    id: `generic-architecture-thread-r${revision}`,
+    revision,
+    ...(previous
+      ? { previous: { snapshotId: previous.id, revision: previous.revision } }
+      : {}),
+    generatedAt: at,
+    subject: {
+      id: "project:generic-architecture",
+      name: "Generic architecture",
+      kind: "system",
+      version: String(revision),
+      modelArtifactId: artifactId,
+    },
+    freshness: { status: "fresh", changedAt: at, invalidatedByChangeIds: [] },
+    changeSet: {
+      id: changeId,
+      name: "Record generic architecture",
+      status: "applied",
+      createdAt: at,
+      appliedAt: at,
+      changes: [{
+        id: `generic-architecture-artifact-r${revision}`,
+        kind: "created",
+        target: { kind: "artifact", id: artifactId },
+        summary: "Recorded one exact generic architecture artifact.",
+        afterFingerprint: { algorithm: "sha256", digest },
+      }],
+    },
+    artifacts: [{
+      id: artifactId,
+      name: "Generic architecture",
+      kind: "sysml-model",
+      version: digest,
+      fingerprint: { algorithm: "sha256", digest },
+      uri: `casys://architecture-capture/sha256/${digest}`,
+      producer: {
+        serverId: "syson",
+        tool: "syson_element_insert_sysml",
+        runId: `run:generic-architecture-r${revision}`,
+      },
+      inputArtifactIds: [],
+      freshness: { status: "fresh", changedAt: at, invalidatedByChangeIds: [] },
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [{
+      id: `generic-architecture-provenance-r${revision}`,
+      relation: "changes",
+      from: { kind: "change", id: changeId },
+      to: { kind: "artifact", id: artifactId },
+      rationale: "The exact snapshot records this generic architecture artifact.",
     }],
     proposedActions: [],
   };
