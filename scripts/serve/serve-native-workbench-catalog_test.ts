@@ -118,7 +118,7 @@ async function snapshotWithGenericArch(): Promise<
       freshness: freshness(),
     }, {
       id: archId,
-      name: "DroneV4 architecture",
+      name: "Architecture: DroneV4",
       kind: "sysml-model",
       version: captureFp.digest,
       fingerprint: captureFp,
