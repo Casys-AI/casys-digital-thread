@@ -154,9 +154,12 @@ Its separate read-only product-structure successor,
 `project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`,
 from capture SHA-256 `7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`.
 The Workbench is aligned to this revision and its product catalog displays
-`InspectionDrone` plus five direct children, each with provider-attested quantity `1`.
-It is a recorded SysON product structure only: it establishes no CAD, physical analysis,
-cost, manufacturing, certification, compliance, or verdict.
+`InspectionDrone` plus five child `PartDefinition` elements: `Airframe`, `EnergySystem`,
+`PropulsionSystem`, `AvionicsAndFlightControl`, and `InspectionCameraPayload`.
+`InspectionDrone` has five direct `PartUsage` elements, each typed by one child
+definition and with provider-attested quantity `1`. It is a recorded SysON product
+structure only: it establishes no CAD, physical analysis, cost, manufacturing,
+certification, compliance, or verdict.
 
 The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
 SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its

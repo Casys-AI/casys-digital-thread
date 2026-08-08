@@ -421,11 +421,14 @@ certification, or verdict claims. Its read-only successor,
 snapshot,
 `project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`.
 The SHA-256 capture `7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`
-records exactly six SysON `PartDefinition` elements: root `InspectionDrone` and five
-direct usages with provider-attested quantity `1`. This product-structure record remains
-neither CAD, physics, cost, manufacturing, certification, nor a verdict. The CM-01
-catalog adds its own architecture, CAD, Modelica, ERP, correction, governed lineage
-retirement, PartDefinition, and mechanical capture/materializer contracts; see the
+records exactly six SysON `PartDefinition` elements: `InspectionDrone`, `Airframe`,
+`EnergySystem`, `PropulsionSystem`, `AvionicsAndFlightControl`, and
+`InspectionCameraPayload`. Root `InspectionDrone` has five direct `PartUsage` elements,
+each typed by one of those five child definitions and with provider-attested quantity
+`1`. This product-structure record remains neither CAD, physics, cost, manufacturing,
+certification, nor a verdict. The CM-01 catalog adds its own architecture, CAD,
+Modelica, ERP, correction, governed lineage retirement, PartDefinition, and mechanical
+capture/materializer contracts; see the
 [CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). Neither MCP planning
 nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint, and no
 generic provider execution is available.

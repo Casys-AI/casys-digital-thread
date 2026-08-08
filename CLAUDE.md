@@ -366,10 +366,12 @@ usages typés et quatre exigences avec leurs inconnues explicites. Le run
 `run:queue-drone-v4-product-structure-20260808` est terminé et a publié r4,
 `project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`.
 Sa capture SHA-256 `7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`
-retient six `PartDefinition` : la racine `InspectionDrone` et ses cinq usages directs,
-chacun avec une quantité `1` attestée par le fournisseur. Le Workbench est aligné sur r4
-et le catalogue expose cette racine et ses cinq enfants. Cela n'établit aucune CAO,
-physique, coût, fabrication, certification ni verdict.
+retient six `PartDefinition` : `InspectionDrone`, `Airframe`, `EnergySystem`,
+`PropulsionSystem`, `AvionicsAndFlightControl` et `InspectionCameraPayload`.
+`InspectionDrone` porte cinq `PartUsage` directs, chacun typé par l'une de ces cinq
+définitions enfants et avec une quantité `1` attestée par le fournisseur. Le Workbench
+est aligné sur r4 et le catalogue expose cette racine et ses cinq enfants. Cela
+n'établit aucune CAO, physique, coût, fabrication, certification ni verdict.
 
 CM-01 a aussi gagné un r19 de `PartDefinition` : les captures content-addressed de
 `CoffeeMachine` et `DripTray` sont liées à l'architecture et à la preuve existante. Le
