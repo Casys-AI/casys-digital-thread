@@ -203,7 +203,7 @@ export async function assertRequirementsArtifactNotRemoved(
   let cursor = basis.previous;
   const visited = new Set<string>();
   while (cursor) {
-    const key = `${cursor.snapshotId} ${cursor.revision}`;
+    const key = `${cursor.snapshotId}\u0000${cursor.revision}`;
     if (visited.has(key)) break;
     visited.add(key);
     let ancestor: ThreadSnapshot | undefined;
@@ -1783,7 +1783,7 @@ function sameEvidenceRefs(
   }[],
 ): boolean {
   const key = (ref: typeof left[number]) =>
-    `${ref.snapshotId} ${ref.snapshotRevision} ${ref.kind} ${ref.id}`;
+    `${ref.snapshotId}\u0000${ref.snapshotRevision}\u0000${ref.kind}\u0000${ref.id}`;
   return left.length === right.length &&
     left.map(key).sort().every((item, index) => item === right.map(key).sort()[index]);
 }
