@@ -35,8 +35,24 @@ Deno.test("completion evidence must be new or changed since the exact run base",
       index === 0 ? { ...artifact, version: `${artifact.version}-parallel` } : artifact
     ),
   });
+  const skippedRevision = {
+    ...nextSnapshot(base, "skipped-revision", {
+      artifacts: base.artifacts.map((artifact, index) =>
+        index === 0 ? { ...artifact, version: `${artifact.version}-skipped` } : artifact
+      ),
+    }),
+    revision: base.revision + 2,
+  };
   const snapshots = new Map(
-    [base, changed, added, unchanged, parallelBase, parallelResult].map(
+    [
+      base,
+      changed,
+      added,
+      unchanged,
+      parallelBase,
+      parallelResult,
+      skippedRevision,
+    ].map(
       (snapshot) => [snapshot.id, snapshot],
     ),
   );
@@ -81,6 +97,17 @@ Deno.test("completion evidence must be new or changed since the exact run base",
         snapshotRevision: parallelResult.revision,
         kind: "artifact",
         id: parallelResult.artifacts[0].id,
+      }]),
+    Error,
+    "does not descend from exact run base",
+  );
+  await assertRejects(
+    () =>
+      validator.validate(baseReference, snapshotReference(skippedRevision), [{
+        snapshotId: skippedRevision.id,
+        snapshotRevision: skippedRevision.revision,
+        kind: "artifact",
+        id: skippedRevision.artifacts[0].id,
       }]),
     Error,
     "does not descend from exact run base",

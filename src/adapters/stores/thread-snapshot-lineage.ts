@@ -119,7 +119,10 @@ export async function threadSnapshotDescendsFrom(
     if (visited.has(key) || cursor.revision <= ancestor.revision) return false;
     visited.add(key);
     const previous = cursor.previous;
-    if (!previous || previous.revision >= cursor.revision) return false;
+    // A ThreadSnapshot lineage is one immutable revision at a time. Merely
+    // pointing to an older record would let a completion proof skip evidence
+    // revisions that were part of the run's actual causal history.
+    if (!previous || previous.revision !== cursor.revision - 1) return false;
     const resolved = await snapshots.get(previous.snapshotId);
     if (
       !resolved ||
