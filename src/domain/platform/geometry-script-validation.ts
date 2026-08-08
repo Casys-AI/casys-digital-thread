@@ -144,6 +144,7 @@ const FORBIDDEN_NAMES = new Set([
   "type",
   "callable",
   "hasattr",
+  "breakpoint",
   "id",
 ]);
 

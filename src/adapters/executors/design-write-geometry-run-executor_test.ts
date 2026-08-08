@@ -201,6 +201,20 @@ Deno.test(
 );
 
 Deno.test(
+  "assertMrtrArtifactHashesMatchDraft throws invalid_transition when MRTR has more part meshes than the draft",
+  () => {
+    const fp = { fingerprint: { digest: HEX64 } };
+    let thrown: unknown;
+    try {
+      assertMrtrArtifactHashesMatchDraft([], [fp, fp], [], [fp]);
+    } catch (error) {
+      thrown = error;
+    }
+    assertExists(thrown, "part-mesh count mismatch must be refused");
+  },
+);
+
+Deno.test(
   "assertMrtrArtifactHashesMatchDraft throws invalid_transition when MRTR has more assembly files than the draft",
   () => {
     const fp = { fingerprint: { digest: HEX64 } };
