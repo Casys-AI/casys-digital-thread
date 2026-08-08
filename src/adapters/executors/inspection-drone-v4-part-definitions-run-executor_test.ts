@@ -130,6 +130,28 @@ Deno.test("inspection-drone PartDefinitions recovers a WAL saved before snapshot
   assertEquals(fixture.syson.calls.length, 6);
 });
 
+Deno.test("inspection-drone PartDefinitions WAL custom directories isolate two runtimes", async () => {
+  const root = await Deno.makeTempDir({ prefix: "inspection-drone-v4-wal-isolation-" });
+  try {
+    const first = await productFixture({
+      failSnapshotOnce: true,
+      publicationDirectory: `${root}/runtime-a`,
+    });
+    const second = await productFixture({
+      failSnapshotOnce: true,
+      publicationDirectory: `${root}/runtime-b`,
+    });
+    await assertRejects(() => first.executor().execute(AGENT, first.command()));
+    assert(await first.publications.read(PROJECT_ID, RUN_ID));
+    assertEquals(await second.publications.read(PROJECT_ID, RUN_ID), undefined);
+
+    await assertRejects(() => second.executor().execute(AGENT, second.command()));
+    assert(await second.publications.read(PROJECT_ID, RUN_ID));
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("inspection-drone PartDefinitions treats a WAL save outcome that throws after persistence as recoverable", async () => {
   const fixture = await productFixture({ publicationThrowsAfterSave: true });
   await assertRejects(
@@ -602,6 +624,7 @@ async function productFixture(options: {
   failSnapshotOnce?: boolean;
   publicationThrowsAfterSave?: boolean;
   corruption?: ProductCorruption;
+  publicationDirectory?: string;
 } = {}) {
   const directory = await Deno.makeTempDir({ prefix: "inspection-drone-v4-parts-" });
   const architectureCaptures = new FileCaptureStore({
@@ -703,7 +726,7 @@ async function productFixture(options: {
   const project = projectState(r3, architecture) as MutableProject;
   const commands = new ProductCommands(project);
   const publications = new FileInspectionDroneV4PartDefinitionsPublicationStore(
-    `${directory}/publications`,
+    options.publicationDirectory ?? `${directory}/publications`,
   );
   const syson = new ProductSyson(options.corruption);
   const throwingPublications = options.publicationThrowsAfterSave

@@ -219,6 +219,8 @@ const DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_ATTEMPT_DIRECTORY =
   "state/local/inspection-drone-v4-architecture-attempts";
 const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DIRECTORY =
   "state/local/inspection-drone-v4-part-definitions-captures";
+const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
+  "state/local/inspection-drone-v4-part-definitions-publications";
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -334,6 +336,7 @@ export interface CreateConsoleServerOptions {
   inspectionDroneV4ArchitectureCaptureDirectory?: string;
   inspectionDroneV4ArchitectureAttemptDirectory?: string;
   inspectionDroneV4PartDefinitionsCaptureDirectory?: string;
+  inspectionDroneV4PartDefinitionsPublicationDirectory?: string;
   cm01ErpNextBomCaptureDirectory?: string;
   cm01ErpNextBomRunCaptureDirectory?: string;
   cm01SemanticCadAttemptDirectory?: string;
@@ -607,7 +610,10 @@ async function createProjectControl(
       }),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
-      publications: new FileInspectionDroneV4PartDefinitionsPublicationStore(),
+      publications: new FileInspectionDroneV4PartDefinitionsPublicationStore(
+        options.inspectionDroneV4PartDefinitionsPublicationDirectory ??
+          DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
+      ),
     })
     : undefined;
   const cm01OracleRequirementsCaptures = new FileCaptureStore({
