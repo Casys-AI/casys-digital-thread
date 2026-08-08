@@ -14,7 +14,10 @@ import type {
   ThreadRef,
 } from "./types.ts";
 import { isSupportingNode } from "./essential-graph-filter.ts";
-import { versionedEdgeOccurrenceKey } from "./versioned-provenance-model.ts";
+import {
+  structuredOccurrenceKey,
+  versionedEdgeOccurrenceKey,
+} from "./versioned-provenance-model.ts";
 
 const NODE_WIDTH = 216;
 const NODE_HEIGHT = 82;
@@ -1061,7 +1064,12 @@ function edgeOccurrenceKey(
     edges.slice(0, edges.indexOf(item)).filter((candidate) =>
       versionedEdgeOccurrenceKey(candidate.edge) === baseKey
     ).length;
-  return sameBaseBefore === 0 ? baseKey : `${baseKey}|${sameBaseBefore}`;
+  return sameBaseBefore === 0
+    ? baseKey
+    : structuredOccurrenceKey("svg-edge-occurrence", [
+      baseKey,
+      sameBaseBefore,
+    ]);
 }
 
 function shortestPath(

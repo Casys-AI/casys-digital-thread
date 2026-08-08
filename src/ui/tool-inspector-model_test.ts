@@ -122,7 +122,7 @@ Deno.test("edge occurrence selection opens the second relation with a duplicate 
   const selected = resolveSelectedGraphEdge(snapshot.graph, {
     kind: "edge",
     id: "duplicate-handoff",
-    occurrence: { key: "sigma-edge:duplicate-handoff:1", edge: second },
+    occurrence: { key: "second-rendered-occurrence", edge: second },
   });
 
   assertEquals(selected, second);

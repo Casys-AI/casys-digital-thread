@@ -911,3 +911,53 @@ Deno.test("Sigma assigns distinct graph keys when recorded edge ids collide", ()
     ["duplicated-id", "duplicated-id"],
   );
 });
+
+Deno.test("Sigma does not merge occurrence groups when recorded ids contain pipes", () => {
+  const evidenceModel = buildEvidenceGraphModel(
+    {
+      nodes: [
+        node("one|artifact:two", "artifact", "build123d", "artifact"),
+        node("three", "artifact", "build123d", "artifact"),
+        node("one", "artifact", "build123d", "artifact"),
+        node("two|artifact:three", "artifact", "build123d", "artifact"),
+      ],
+      edges: [
+        edge(
+          "handoff|one",
+          ref("one|artifact:two", "artifact"),
+          ref("three", "artifact"),
+          "evidences",
+        ),
+        edge(
+          "handoff|two",
+          ref("one", "artifact"),
+          ref("two|artifact:three", "artifact"),
+          "evidences",
+        ),
+      ],
+    },
+    EMPTY_FAMILY,
+    {},
+  );
+  const projection = buildEvidenceCanvasProjection(
+    evidenceModel,
+    0,
+    undefined,
+    new Map(),
+  );
+  const model = buildExplorationModel(
+    evidenceModel,
+    projection,
+    FALLBACK_TOKENS,
+  );
+
+  assertEquals(model.graph.size, 2);
+  assertEquals(
+    new Set(model.graph.mapEdges((_key, attrs) => attrs.occurrenceKey)).size,
+    2,
+  );
+  assertEquals(
+    model.graph.mapEdges((_key, attrs) => attrs.edgeId).sort(),
+    ["handoff|one", "handoff|two"],
+  );
+});

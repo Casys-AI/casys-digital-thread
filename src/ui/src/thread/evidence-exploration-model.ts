@@ -39,7 +39,11 @@ export {
 } from "./essential-graph-filter.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
-import { versionedEdgeOccurrenceKey } from "./versioned-provenance-model.ts";
+import {
+  structuredOccurrenceKey,
+  threadGraphEdgeRecordSignature,
+  versionedEdgeOccurrenceKey,
+} from "./versioned-provenance-model.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -309,7 +313,7 @@ export function buildExplorationModel(
   // historic imports may contain duplicate edge.id values. Keep edgeId on the
   // attrs for the inspector while assigning every rendered occurrence a
   // deterministic, collision-free key.
-  const edgeKeyFor = makeSigmaEdgeKeyFactory();
+  const edgeKeyFor = makeSigmaEdgeKeyFactory(displayEdges);
 
   // Add regular edges to the graphology graph.
   for (const edge of regularEdges) {
@@ -337,7 +341,7 @@ export function buildExplorationModel(
     const graphKey = edgeKeyFor(edge);
     graph.addEdgeWithKey(graphKey, from, to, {
       graphKey,
-      occurrenceKey: `stub-occurrence:${edge.id}`,
+      occurrenceKey: structuredOccurrenceKey("stub-occurrence", [graphKey]),
       edgeId: edge.id,
       edge,
       label: edge.rationale ?? `via ${edge.relation} — replié`,
@@ -568,23 +572,22 @@ function nodeKey(ref: ThreadGraphRef): string {
  * makes different duplicated ids deterministic; the ordinal preserves each
  * genuinely identical recorded occurrence too.
  */
-function makeSigmaEdgeKeyFactory(): (edge: ThreadGraphEdge) => string {
+function makeSigmaEdgeKeyFactory(
+  edges: readonly ThreadGraphEdge[],
+): (edge: ThreadGraphEdge) => string {
+  const countBySignature = new Map<string, number>();
+  for (const edge of edges) {
+    const signature = threadGraphEdgeRecordSignature(edge);
+    countBySignature.set(signature, (countBySignature.get(signature) ?? 0) + 1);
+  }
   const occurrenceBySignature = new Map<string, number>();
   return (edge) => {
-    const signature = [
-      edge.id,
-      nodeKey(edge.from),
-      nodeKey(edge.to),
-      edge.relation,
-      edge.origin,
-      edge.rationale,
-      edge.attestation?.status ?? "",
-      edge.attestation?.producerFingerprint ?? "",
-      edge.attestation?.consumedFingerprint ?? "",
-    ].join("\u0000");
+    const signature = threadGraphEdgeRecordSignature(edge);
     const occurrence = occurrenceBySignature.get(signature) ?? 0;
     occurrenceBySignature.set(signature, occurrence + 1);
-    return `sigma-edge:${signature}\u0000${occurrence}`;
+    return (countBySignature.get(signature) ?? 0) > 1
+      ? structuredOccurrenceKey("sigma-edge", [signature, occurrence])
+      : structuredOccurrenceKey("sigma-edge", [signature]);
   };
 }
 

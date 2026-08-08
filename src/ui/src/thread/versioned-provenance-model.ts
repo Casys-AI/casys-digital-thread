@@ -56,6 +56,12 @@ export interface VersionedProvenanceProjection {
   /** Identity indexes used to reproject a selection after folding/live updates. */
   memberOccurrenceKeyByEdge: ReadonlyMap<ThreadGraphEdge, string>;
   memberEdgeByOccurrenceKey: ReadonlyMap<string, ThreadGraphEdge>;
+  /**
+   * A byte-for-byte duplicate has no business discriminator in the contract.
+   * Its ordinal is graph-local only, so a stale selection is rejected rather
+   * than being reassigned to an arbitrary duplicate after an SSE snapshot.
+   */
+  ambiguousMemberOccurrenceKeys: ReadonlySet<string>;
   visibleOccurrenceKeyByEdge: ReadonlyMap<ThreadGraphEdge, string>;
   visibleEdgeByOccurrenceKey: ReadonlyMap<string, ThreadGraphEdge>;
   visibleRefByMemberRef: ReadonlyMap<string, ThreadGraphRef>;
@@ -114,7 +120,8 @@ export function buildVersionedProvenanceProjection(
     }
   }
 
-  const memberOccurrenceKeyByEdge = indexMemberEdgeOccurrences(graph.edges);
+  const memberOccurrences = indexMemberEdgeOccurrences(graph.edges);
+  const memberOccurrenceKeyByEdge = memberOccurrences.keyByEdge;
   const memberEdgeByOccurrenceKey = new Map<string, ThreadGraphEdge>();
   for (const [edge, occurrenceKey] of memberOccurrenceKeyByEdge) {
     memberEdgeByOccurrenceKey.set(occurrenceKey, edge);
@@ -237,6 +244,7 @@ export function buildVersionedProvenanceProjection(
     visibleOccurrenceKeyByMemberOccurrenceKey,
     memberOccurrenceKeyByEdge,
     memberEdgeByOccurrenceKey,
+    ambiguousMemberOccurrenceKeys: memberOccurrences.ambiguousKeys,
     visibleOccurrenceKeyByEdge,
     visibleEdgeByOccurrenceKey,
     visibleRefByMemberRef,
@@ -273,6 +281,11 @@ export function visibleGraphSelection(
       occurrence: visibleOccurrence,
     };
   }
+  if (isStaleAmbiguousVersionedEdgeSelection(projection, selection)) {
+    // There is no stable contract identity for a byte-for-byte duplicate from
+    // a previous SSE graph. Do not retain its stale object in the renderer.
+    return { kind: "edge", id: selection.id };
+  }
   // Synthetic stubs do not belong to the versioned raw-edge index. Preserve
   // their renderer occurrence instead of degrading them to an ambiguous id.
   return selection.occurrence
@@ -289,19 +302,16 @@ export function visibleEdgeOccurrenceForSelection(
   const directVisibleKey = selectedEdge
     ? projection.visibleOccurrenceKeyByEdge.get(selectedEdge)
     : undefined;
-  const memberKey = memberOccurrenceKeyForSelection(projection, selection);
   const suppliedOccurrenceKey = selection.occurrence?.key;
+  const suppliedVisibleKey = suppliedOccurrenceKey &&
+      projection.visibleEdgeByOccurrenceKey.has(suppliedOccurrenceKey)
+    ? suppliedOccurrenceKey
+    : undefined;
+  const memberKey = memberOccurrenceKeyForSelection(projection, selection);
   const visibleKey = directVisibleKey ??
+    suppliedVisibleKey ??
     (memberKey
       ? projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(memberKey)
-      : undefined) ??
-    (suppliedOccurrenceKey
-      ? projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(
-        suppliedOccurrenceKey,
-      ) ??
-        (projection.visibleEdgeByOccurrenceKey.has(suppliedOccurrenceKey)
-          ? suppliedOccurrenceKey
-          : undefined)
       : undefined) ??
     uniqueVisibleOccurrenceKeyForLegacyId(projection, selection.id);
   if (!visibleKey) return undefined;
@@ -320,10 +330,47 @@ export function edgeForVersionedGraphSelection(
   selection: Extract<VersionedGraphSelection, { kind: "edge" }> | undefined,
 ): ThreadGraphEdge | undefined {
   if (!selection) return undefined;
+  const selectedEdge = selection.occurrence?.edge;
+  const directVisibleKey = selectedEdge
+    ? projection.visibleOccurrenceKeyByEdge.get(selectedEdge)
+    : undefined;
+  const suppliedOccurrenceKey = selection.occurrence?.key;
+  const suppliedVisibleKey = suppliedOccurrenceKey &&
+      projection.visibleEdgeByOccurrenceKey.has(suppliedOccurrenceKey)
+    ? suppliedOccurrenceKey
+    : undefined;
+  const visibleKey = directVisibleKey ?? suppliedVisibleKey;
+  if (visibleKey) {
+    return projection.visibleEdgeByOccurrenceKey.get(visibleKey);
+  }
+  if (isStaleAmbiguousVersionedEdgeSelection(projection, selection)) {
+    return undefined;
+  }
   const memberKey = memberOccurrenceKeyForSelection(projection, selection) ??
     uniqueMemberOccurrenceKeyForLegacyId(projection, selection.id);
   if (memberKey) return projection.memberEdgeByOccurrenceKey.get(memberKey);
   return visibleEdgeOccurrenceForSelection(projection, selection)?.edge;
+}
+
+/**
+ * Whether a stale selection names a byte-for-byte duplicate whose only
+ * discriminator was a graph-local ordinal. The data contract gives no way to
+ * prove which duplicate an old object referred to, so callers must not fall
+ * back to a raw id or stale object.
+ */
+export function isStaleAmbiguousVersionedEdgeSelection(
+  projection: VersionedProvenanceProjection,
+  selection: Extract<VersionedGraphSelection, { kind: "edge" }> | undefined,
+): boolean {
+  if (!selection?.occurrence) return false;
+  const selectedEdge = selection.occurrence.edge;
+  if (
+    projection.memberOccurrenceKeyByEdge.has(selectedEdge) ||
+    projection.visibleOccurrenceKeyByEdge.has(selectedEdge)
+  ) {
+    return false;
+  }
+  return projection.ambiguousMemberOccurrenceKeys.has(selection.occurrence.key);
 }
 
 /** Resolve a version-history group without ever indexing by edge.id alone. */
@@ -344,14 +391,50 @@ export function versionedEdgeGroupForSelection(
  * attestation status define the versioned grouping contract.
  */
 export function versionedEdgeOccurrenceKey(edge: ThreadGraphEdge): string {
-  return [
-    "versioned-edge",
-    refKey(edge.from),
-    refKey(edge.to),
+  return structuredOccurrenceKey("versioned-edge", [
+    edge.from.kind,
+    edge.from.id,
+    edge.to.kind,
+    edge.to.id,
     edge.relation,
     edge.origin,
-    edge.attestation?.status ?? "none",
-  ].join("|");
+    edge.attestation?.status ?? null,
+  ]);
+}
+
+/**
+ * Collision-free tuple encoding for occurrence and group keys. JSON strings
+ * preserve field boundaries (including user ids containing `|` or NUL) while
+ * remaining deterministic and readable in diagnostics.
+ */
+export function structuredOccurrenceKey(
+  namespace: string,
+  parts: readonly (string | number | null)[],
+): string {
+  return JSON.stringify([namespace, ...parts]);
+}
+
+/**
+ * Every stable field of a recorded graph edge. It deliberately includes the
+ * consumption id: two otherwise equal handoffs can record distinct consumed
+ * inputs and must survive an SSE reorder as distinct occurrences.
+ */
+export function threadGraphEdgeRecordSignature(edge: ThreadGraphEdge): string {
+  return structuredOccurrenceKey("thread-edge-record", [
+    edge.id,
+    edge.from.kind,
+    edge.from.id,
+    edge.to.kind,
+    edge.to.id,
+    edge.relation,
+    edge.rationale,
+    edge.origin,
+    edge.attestation?.consumptionId ?? null,
+    edge.attestation?.status ?? null,
+    edge.attestation?.producerFingerprint ?? null,
+    edge.attestation?.consumedFingerprint ?? null,
+    edge.attestation?.checkedAt ?? null,
+  ]);
 }
 
 export function versionLabel(count: number): string {
@@ -479,21 +562,30 @@ function compareRepresentativeEdges(
     .localeCompare(
       left.attestation?.checkedAt ?? "",
     );
-  return checkedAtDifference || left.id.localeCompare(right.id);
+  return checkedAtDifference || left.id.localeCompare(right.id) ||
+    threadGraphEdgeRecordSignature(left).localeCompare(
+      threadGraphEdgeRecordSignature(right),
+    );
 }
 
 function compareEdges(left: ThreadGraphEdge, right: ThreadGraphEdge): number {
-  return left.id.localeCompare(right.id);
+  return left.id.localeCompare(right.id) ||
+    threadGraphEdgeRecordSignature(left).localeCompare(
+      threadGraphEdgeRecordSignature(right),
+    );
 }
 
 function uniqueVisibleOccurrenceKeyForLegacyId(
   projection: VersionedProvenanceProjection,
   edgeId: string,
 ): string | undefined {
-  const keys = [...projection.edgeGroupByVisibleOccurrenceKey.entries()]
-    .filter(([, group]) => group.members.some((member) => member.id === edgeId))
-    .map(([key]) => key);
-  return keys.length === 1 ? keys[0] : undefined;
+  // A legacy id can only be upgraded when it names exactly one raw record.
+  // Two old records may fold into one visible group, but their common id still
+  // cannot tell us which historical handoff the caller meant.
+  const memberKey = uniqueMemberOccurrenceKeyForLegacyId(projection, edgeId);
+  return memberKey
+    ? projection.visibleOccurrenceKeyByMemberOccurrenceKey.get(memberKey)
+    : undefined;
 }
 
 function uniqueMemberOccurrenceKeyForLegacyId(
@@ -515,34 +607,47 @@ function memberOccurrenceKeyForSelection(
     : undefined;
   if (exactMemberKey) return exactMemberKey;
   const suppliedKey = selection.occurrence?.key;
-  return suppliedKey && projection.memberEdgeByOccurrenceKey.has(suppliedKey)
+  return suppliedKey &&
+      !projection.ambiguousMemberOccurrenceKeys.has(suppliedKey) &&
+      projection.memberEdgeByOccurrenceKey.has(suppliedKey)
     ? suppliedKey
     : undefined;
 }
 
+interface MemberEdgeOccurrenceIndex {
+  keyByEdge: ReadonlyMap<ThreadGraphEdge, string>;
+  ambiguousKeys: ReadonlySet<string>;
+}
+
 function indexMemberEdgeOccurrences(
   edges: readonly ThreadGraphEdge[],
-): ReadonlyMap<ThreadGraphEdge, string> {
+): MemberEdgeOccurrenceIndex {
   const occurrences = new Map<ThreadGraphEdge, string>();
-  const ordinalBySignature = new Map<string, number>();
+  const signatureByEdge = new Map<ThreadGraphEdge, string>();
+  const countBySignature = new Map<string, number>();
   for (const edge of edges) {
-    const signature = [
-      edge.id,
-      refKey(edge.from),
-      refKey(edge.to),
-      edge.relation,
-      edge.origin,
-      edge.rationale,
-      edge.attestation?.status ?? "none",
-      edge.attestation?.producerFingerprint ?? "",
-      edge.attestation?.consumedFingerprint ?? "",
-      edge.attestation?.checkedAt ?? "",
-    ].join("\u0000");
+    const signature = threadGraphEdgeRecordSignature(edge);
+    signatureByEdge.set(edge, signature);
+    countBySignature.set(signature, (countBySignature.get(signature) ?? 0) + 1);
+  }
+
+  const ordinalBySignature = new Map<string, number>();
+  const ambiguousKeys = new Set<string>();
+  for (const edge of edges) {
+    const signature = signatureByEdge.get(edge)!;
     const ordinal = ordinalBySignature.get(signature) ?? 0;
     ordinalBySignature.set(signature, ordinal + 1);
-    occurrences.set(edge, `member-edge|${signature}|${ordinal}`);
+    const hasByteIdenticalDuplicate = (countBySignature.get(signature) ?? 0) >
+      1;
+    // An ordinal is needed only for exact contract duplicates. It is local to
+    // this graph instance, never treated as a cross-SSE business identity.
+    const occurrenceKey = hasByteIdenticalDuplicate
+      ? structuredOccurrenceKey("member-edge", [signature, ordinal])
+      : structuredOccurrenceKey("member-edge", [signature]);
+    if (hasByteIdenticalDuplicate) ambiguousKeys.add(occurrenceKey);
+    occurrences.set(edge, occurrenceKey);
   }
-  return occurrences;
+  return { keyByEdge: occurrences, ambiguousKeys };
 }
 
 function refKey(reference: ThreadGraphRef): string {

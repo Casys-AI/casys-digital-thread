@@ -78,6 +78,7 @@ import {
   currentArtifacts,
   currentRequirements,
   edgeForVersionedGraphSelection,
+  isStaleAmbiguousVersionedEdgeSelection,
   versionedEdgeGroupForSelection,
   versionedEdgeOccurrenceKey,
   type VersionedProvenanceEdgeGroup,
@@ -666,7 +667,12 @@ export function ThreadWorkbench({
 
   const selectedEdge = graphSelection?.kind === "edge"
     ? edgeForVersionedGraphSelection(versionedProvenance, graphSelection) ??
-      resolveSelectedGraphEdge(snapshot.graph, graphSelection)
+      (isStaleAmbiguousVersionedEdgeSelection(
+          versionedProvenance,
+          graphSelection,
+        )
+        ? undefined
+        : resolveSelectedGraphEdge(snapshot.graph, graphSelection))
     : undefined;
   const selectedEdgeGroup = graphSelection?.kind === "edge"
     ? versionedEdgeGroupForSelection(versionedProvenance, graphSelection)

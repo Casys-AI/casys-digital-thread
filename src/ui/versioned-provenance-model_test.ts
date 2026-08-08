@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
 import {
   buildVersionedProvenanceProjection,
   currentArtifacts,
@@ -98,19 +98,59 @@ Deno.test("synthetic stubs retain their exact renderer occurrence", () => {
     familyGraph("current"),
   );
   const stub = {
-    ...edge("stub:proof-to-requirement", "proof-r3", "requirement", "evidences"),
+    ...edge(
+      "stub:proof-to-requirement",
+      "proof-r3",
+      "requirement",
+      "evidences",
+    ),
     rationale: "via folded instrument — replié",
   };
 
   const selected = visibleGraphSelection(projection, {
     kind: "edge",
     id: stub.id,
-    occurrence: { key: "stub-occurrence:proof-to-requirement", edge: stub },
+    occurrence: { key: "rendered-stub-occurrence", edge: stub },
   });
 
   assertEquals(
     selected?.kind === "edge" ? selected.occurrence?.edge : undefined,
     stub,
+  );
+});
+
+Deno.test("folded handoff selection keeps the exact rendered representative in the inspector", () => {
+  const graph = rawGraph();
+  const projection = buildVersionedProvenanceProjection(
+    graph,
+    familyGraph("current"),
+  );
+  const historicHandoff = graph.edges.find((edge) =>
+    edge.id === "proof-r2-to-requirement"
+  )!;
+  const visibleSelection = visibleGraphSelection(projection, {
+    kind: "edge",
+    id: historicHandoff.id,
+    occurrence: {
+      key: projection.memberOccurrenceKeyByEdge.get(historicHandoff)!,
+      edge: historicHandoff,
+    },
+  });
+  const renderedHandoff = projection.graph.edges.find((edge) =>
+    edge.id === "proof-r3-to-requirement"
+  );
+  const inspectorHandoff = visibleSelection?.kind === "edge"
+    ? edgeForVersionedGraphSelection(projection, visibleSelection)
+    : undefined;
+
+  assertStrictEquals(
+    visibleSelection?.kind === "edge" ? visibleSelection.occurrence?.edge : undefined,
+    renderedHandoff,
+  );
+  assertStrictEquals(inspectorHandoff, renderedHandoff);
+  assertStringIncludes(
+    inspectorHandoff?.rationale ?? "",
+    "2 recorded handoffs across versions.",
   );
 });
 
@@ -208,6 +248,14 @@ Deno.test("duplicate edge ids retain separate versioned histories and reproject 
       : undefined,
     refreshedFirstVisibleEdge,
   );
+  const refreshedFoldedInspectorEdge = firstVisible?.kind === "edge"
+    ? edgeForVersionedGraphSelection(refreshed, firstVisible)
+    : undefined;
+  assertStrictEquals(refreshedFoldedInspectorEdge, refreshedFirstVisibleEdge);
+  assertStringIncludes(
+    refreshedFoldedInspectorEdge?.rationale ?? "",
+    "2 recorded handoffs across versions.",
+  );
   assertEquals(
     edgeForVersionedGraphSelection(refreshed, firstSelection)?.rationale,
     "first-family historical handoff",
@@ -216,6 +264,159 @@ Deno.test("duplicate edge ids retain separate versioned histories and reproject 
     edgeForVersionedGraphSelection(refreshed, secondSelection)?.rationale,
     "second-family historical handoff",
   );
+});
+
+Deno.test("member occurrence keeps consumption identity through a reordered SSE snapshot", () => {
+  const c1 = attestedDuplicateHandoff("c1");
+  const c2 = attestedDuplicateHandoff("c2");
+  const initialGraph: ThreadGraph = {
+    nodes: [node("source", "Source"), node("target", "Target")],
+    edges: [c1, c2],
+  };
+  const initial = buildVersionedProvenanceProjection(
+    initialGraph,
+    emptyFamilyGraph(),
+  );
+  const c1Key = initial.memberOccurrenceKeyByEdge.get(c1)!;
+  const c2Key = initial.memberOccurrenceKeyByEdge.get(c2)!;
+  const staleSelection = {
+    kind: "edge" as const,
+    id: c1.id,
+    occurrence: { key: c1Key, edge: c1 },
+  };
+  const refreshedGraph = structuredClone(initialGraph);
+  refreshedGraph.edges.reverse();
+  const refreshed = buildVersionedProvenanceProjection(
+    refreshedGraph,
+    emptyFamilyGraph(),
+  );
+  const refreshedC1 = refreshedGraph.edges.find((edge) =>
+    edge.attestation?.consumptionId === "c1"
+  );
+
+  assertEquals(c1Key === c2Key, false);
+  assertEquals(
+    edgeForVersionedGraphSelection(initial, {
+      kind: "edge",
+      id: c1.id,
+    }),
+    undefined,
+  );
+  assertEquals(
+    initial.graph.edges[0]?.attestation?.consumptionId,
+    "c1",
+  );
+  assertEquals(
+    refreshed.graph.edges[0]?.attestation?.consumptionId,
+    "c1",
+  );
+  assertStrictEquals(
+    edgeForVersionedGraphSelection(refreshed, staleSelection),
+    refreshedC1,
+  );
+  assertEquals(
+    edgeForVersionedGraphSelection(refreshed, staleSelection)?.attestation
+      ?.consumptionId,
+    "c1",
+  );
+});
+
+Deno.test("structured occurrence keys keep pipe-containing ids in separate groups", () => {
+  const first = {
+    ...edge(
+      "handoff|one",
+      "one|artifact:two",
+      "three",
+      "evidences",
+    ),
+    rationale: "first pipe handoff",
+  };
+  const second = {
+    ...edge(
+      "handoff|two",
+      "one",
+      "two|artifact:three",
+      "evidences",
+    ),
+    rationale: "second pipe handoff",
+  };
+  const projection = buildVersionedProvenanceProjection(
+    {
+      nodes: [
+        node("one|artifact:two", "Pipe source one"),
+        node("three", "Pipe target one"),
+        node("one", "Pipe source two"),
+        node("two|artifact:three", "Pipe target two"),
+      ],
+      edges: [first, second],
+    },
+    emptyFamilyGraph(),
+  );
+  const firstSelection = {
+    kind: "edge" as const,
+    id: first.id,
+    occurrence: {
+      key: projection.memberOccurrenceKeyByEdge.get(first)!,
+      edge: first,
+    },
+  };
+  const secondSelection = {
+    kind: "edge" as const,
+    id: second.id,
+    occurrence: {
+      key: projection.memberOccurrenceKeyByEdge.get(second)!,
+      edge: second,
+    },
+  };
+
+  assertEquals(projection.graph.edges.length, 2);
+  assertEquals(projection.edgeGroupByVisibleOccurrenceKey.size, 2);
+  assertEquals(
+    versionedEdgeGroupForSelection(projection, firstSelection)?.members.map(
+      (edge) => edge.id,
+    ),
+    ["handoff|one"],
+  );
+  assertEquals(
+    versionedEdgeGroupForSelection(projection, secondSelection)?.members.map(
+      (edge) => edge.id,
+    ),
+    ["handoff|two"],
+  );
+});
+
+Deno.test("byte-identical duplicate handoffs refuse a stale ambiguous selection", () => {
+  const first = attestedDuplicateHandoff("same-consumption");
+  const initialGraph: ThreadGraph = {
+    nodes: [node("source", "Source"), node("target", "Target")],
+    edges: [first, structuredClone(first)],
+  };
+  const initial = buildVersionedProvenanceProjection(
+    initialGraph,
+    emptyFamilyGraph(),
+  );
+  const firstKey = initial.memberOccurrenceKeyByEdge.get(first)!;
+  const staleSelection = {
+    kind: "edge" as const,
+    id: first.id,
+    occurrence: { key: firstKey, edge: first },
+  };
+  const refreshedGraph = structuredClone(initialGraph);
+  refreshedGraph.edges.reverse();
+  const refreshed = buildVersionedProvenanceProjection(
+    refreshedGraph,
+    emptyFamilyGraph(),
+  );
+
+  assertEquals(initial.ambiguousMemberOccurrenceKeys.has(firstKey), true);
+  assertEquals(
+    edgeForVersionedGraphSelection(refreshed, staleSelection),
+    undefined,
+  );
+  assertEquals(visibleGraphSelection(refreshed, staleSelection), {
+    kind: "edge",
+    id: first.id,
+  });
 });
 
 Deno.test("matching labels never create a version family", () => {
@@ -471,6 +672,17 @@ function duplicateIdFamilyGraph(): ThreadEvidenceFamilyGraph {
   };
 }
 
+function emptyFamilyGraph(): ThreadEvidenceFamilyGraph {
+  return {
+    schemaVersion: "thread-evidence-family-graph/1.0",
+    asOf: { snapshotId: "thread-empty", revision: 0 },
+    families: [],
+    edges: [],
+    omittedSelfLoops: [],
+    omittedCycleEdges: [],
+  };
+}
+
 function familyGraph(
   status: "current" | "review-required",
 ): ThreadEvidenceFamilyGraph {
@@ -586,6 +798,20 @@ function edge(
     relation,
     rationale: id,
     origin: "provenance",
+  };
+}
+
+function attestedDuplicateHandoff(consumptionId: string): ThreadGraphEdge {
+  return {
+    ...edge("duplicate-handoff", "source", "target", "evidences"),
+    rationale: "same recorded handoff",
+    attestation: {
+      consumptionId,
+      status: "verified",
+      producerFingerprint: "producer-fingerprint",
+      consumedFingerprint: "consumed-fingerprint",
+      checkedAt: "2026-08-08T00:00:00.000Z",
+    },
   };
 }
 
