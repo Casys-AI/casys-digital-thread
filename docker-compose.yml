@@ -89,6 +89,22 @@ services:
     volumes:
       - exports:/exports
     networks: [chain]
+    # WHY QUOTAS HERE AND NOT IN THE SCRIPT VALIDATOR — this is the only
+    # provider that executes a geometry program proposed by an agent and signed
+    # by a human.  Resource exhaustion is a quantitative bound: a token-level
+    # validator cannot express it (a single expression with no loop can still
+    # exhaust memory), and enforcing it in the language would cripple the
+    # geometry vocabulary.  The container bounds consumption whatever the
+    # script does; the validator bounds *reach* (filesystem, imports, I/O).
+    # Values are deliberately generous: a real STEP/GLTF export of an assembly
+    # is memory-hungry, and a false OOM would look like a product defect.
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   mcp-calculix:
     image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
