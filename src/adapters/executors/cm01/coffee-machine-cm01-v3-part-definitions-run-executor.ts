@@ -83,12 +83,12 @@ const ARCHITECTURE_URI_PREFIX = "casys://coffee-machine-cm01-v3-architecture/" a
  * artifacts, every subsequent revision MUST also carry them.
  */
 export class PartDefinitionsArtifactRemovedError extends Error {
-  constructor(subjectId: string) {
+  constructor(subjectId: string, detail?: string) {
     super(
       `Snapshot lineage for subject "${subjectId}" previously carried part-definition ` +
         `artifacts (URI prefix "${PART_DEFINITIONS_URI_PREFIX}") ` +
         `but the current basis does not. The artifacts cannot be silently dropped — ` +
-        `stop for review before allowing downstream runs.`,
+        `stop for review before allowing downstream runs.${detail ? ` ${detail}` : ""}`,
     );
     this.name = "PartDefinitionsArtifactRemovedError";
   }
@@ -268,14 +268,22 @@ export async function assertPartDefinitionsNotRemoved(
     let ancestor: ThreadSnapshot | undefined;
     try {
       ancestor = await snapshots.get(cursor.snapshotId);
-    } catch {
-      break; // fail-open on resolution error (documented limit)
+    } catch (error) {
+      throw new PartDefinitionsArtifactRemovedError(
+        basis.subject.id,
+        `Ancestor ${cursor.snapshotId}@${cursor.revision} cannot be resolved: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
     if (
       !ancestor || ancestor.id !== cursor.snapshotId ||
       ancestor.revision !== cursor.revision
     ) {
-      break;
+      throw new PartDefinitionsArtifactRemovedError(
+        basis.subject.id,
+        `Ancestor ${cursor.snapshotId}@${cursor.revision} is absent or does not match its lineage pointer.`,
+      );
     }
     if (findPartDefinitionsArtifacts(ancestor).length > 0) {
       throw new PartDefinitionsArtifactRemovedError(basis.subject.id);
@@ -702,9 +710,7 @@ function materializePartDefinitions(input: {
     freshness,
   };
 
-  // The DripTray part definition also declares the CoffeeMachine part
-  // definition as an input: DripTray is a part usage of the assembly, and the
-  // structural input edge is what renders the root → sub-root hierarchy.
+  // Both definitions are independent reads of the same architecture capture.
   const dtArtifact: ThreadArtifact = {
     id: dtArtifactId,
     name: "CM-01 DripTray part definition",
@@ -714,7 +720,7 @@ function materializePartDefinitions(input: {
     uri: input.dtCaptureUri,
     mediaType: "application/json",
     producer: operation,
-    inputArtifactIds: [input.architectureArtifactId, cmArtifactId],
+    inputArtifactIds: [input.architectureArtifactId],
     freshness,
   };
 
@@ -742,18 +748,6 @@ function materializePartDefinitions(input: {
     status: "verified",
   };
 
-  // The DripTray artifact declares the CoffeeMachine artifact as an input
-  // (hierarchy); the derivation regime demands a verified consumption of that
-  // input by the same producer run.
-  const cmConsumption: ThreadArtifactConsumption = {
-    id: `consume-${cmArtifactId}-by-${dtArtifactId}`,
-    artifactId: cmArtifactId,
-    consumer: operation,
-    observedFingerprint: input.cmCaptureFingerprint,
-    verifiedAt: input.capturedAt,
-    status: "verified",
-  };
-
   const extension = {
     id: `capture-${cmArtifactId}-${dtArtifactId}`,
     name:
@@ -761,7 +755,7 @@ function materializePartDefinitions(input: {
     subjectId: input.base.subject.id,
     capturedAt: input.capturedAt,
     artifacts: [cmArtifact, dtArtifact],
-    consumptions: [archConsumption, cmConsumption],
+    consumptions: [archConsumption],
     observations: [],
     requirements: [],
     evaluations: [],
@@ -791,23 +785,6 @@ function materializePartDefinitions(input: {
         to: { kind: "artifact" as const, id: input.architectureArtifactId },
         rationale:
           "The executor read the architecture package to locate and capture the PartDef elements.",
-      },
-      {
-        id: `link-${cmConsumption.id}-uses-${cmArtifactId}`,
-        relation: "uses" as const,
-        from: { kind: "consumption" as const, id: cmConsumption.id },
-        to: { kind: "artifact" as const, id: cmArtifactId },
-        rationale:
-          "The DripTray record was captured against the CoffeeMachine record produced by the same run.",
-      },
-      // Hierarchy: stored derived_from is from=derived, to=source; the graph
-      // projector reverses it, so the assembly renders upstream of the part.
-      {
-        id: `link-${dtArtifactId}-derived-from-${cmArtifactId}`,
-        relation: "derived_from" as const,
-        from: { kind: "artifact" as const, id: dtArtifactId },
-        to: { kind: "artifact" as const, id: cmArtifactId },
-        rationale: "DripTray is a part usage of the CoffeeMachine assembly.",
       },
       // Closed US-2 attachment list: each existing proof records that it
       // traces to the part it measured. `traces_to` (not `derived_from`):

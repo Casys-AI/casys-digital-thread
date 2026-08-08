@@ -44,6 +44,7 @@ export type PartStructureExtractionCode =
   | "part_definition_ambiguous"
   | "part_structure_root_mismatch"
   | "part_count_mismatch"
+  | "part_structure_truncated"
   | "drip_tray_usage_absent";
 
 export interface PartStructureExtractionContext {
@@ -263,6 +264,7 @@ async function readPartStructure(
         editing_context_id: editingContextId,
         root_element_id: elementId,
         max_depth: 4,
+        include_attributes: false,
       },
     });
     raw = parsed;
@@ -354,6 +356,19 @@ function validatePartStructure(
       `The element id "${elementId}" does not correspond to a ${expectedLabel} PartDef. Stop for review.`,
     );
   }
+  if (rootRec.id !== elementId) {
+    throw new PartStructureExtractionError(
+      "part_structure_root_mismatch",
+      `syson_part_structure: root.id does not match the requested ${expectedLabel} element.`,
+      {
+        label: expectedLabel,
+        field: "root.id",
+        expected: elementId,
+        actual: rootRec.id,
+      },
+      "The provider returned a structure for another element. Stop for review.",
+    );
+  }
 
   // Validate partCount.
   if (typeof rec.partCount !== "number" || !Number.isFinite(rec.partCount)) {
@@ -388,18 +403,27 @@ function validatePartStructure(
     validateTreeNode(node, `$partStructure[${expectedLabel}].tree[${index}]`)
   );
 
-  // Verify declared partCount matches tree length.
-  if (rec.partCount !== tree.length) {
+  // SysON counts every recursively visited PartUsage, not merely roots.
+  const recursivePartCount = countTreeNodes(tree);
+  if (rec.partCount !== recursivePartCount) {
     throw new PartStructureExtractionError(
       "part_count_mismatch",
-      `syson_part_structure: partCount is ${rec.partCount} but tree has ${tree.length} node(s) for "${expectedLabel}".`,
+      `syson_part_structure: partCount is ${rec.partCount} but tree has ${recursivePartCount} recursive node(s) for "${expectedLabel}".`,
       {
         label: expectedLabel,
         field: "partCount",
-        expected: tree.length,
+        expected: recursivePartCount,
         actual: rec.partCount,
       },
       "The part structure is inconsistent. Stop for review before retrying.",
+    );
+  }
+  if (rec.maxDepthReached) {
+    throw new PartStructureExtractionError(
+      "part_structure_truncated",
+      `syson_part_structure: traversal for "${expectedLabel}" reached max_depth and is incomplete.`,
+      { label: expectedLabel, field: "maxDepthReached", actual: true },
+      "Increase the server-fixed depth only after reviewing the expected product structure.",
     );
   }
 
@@ -512,4 +536,8 @@ function treeContainsLabel(
     if (treeContainsLabel(node.children, label)) return true;
   }
   return false;
+}
+
+function countTreeNodes(nodes: readonly PartTreeNode[]): number {
+  return nodes.reduce((count, node) => count + 1 + countTreeNodes(node.children), 0);
 }

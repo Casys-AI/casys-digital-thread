@@ -505,22 +505,19 @@ Deno.test(
         "consumption.observedFingerprint must equal the architecture artifact fingerprint.",
       );
 
-      // Hierarchy: the DripTray artifact declares the CoffeeMachine artifact
-      // as an input, with the derivation regime satisfied (link + consumption).
+      // The captures are independent reads of the same architecture; do not
+      // fabricate byte-level consumption or derivation between them.
       assertEquals(
         dtArtifact.inputArtifactIds.includes(cmArtifact.id),
-        true,
-        "DripTray must declare the CoffeeMachine part-def artifact as input.",
+        false,
+        "DripTray must not declare an independently captured CoffeeMachine record as consumed input.",
       );
-      const hierarchyLink = snapshot.provenance.find(
-        (l) =>
-          l.relation === "derived_from" &&
-          l.from.id === dtArtifact.id &&
-          l.to.id === cmArtifact.id,
-      );
-      assertExists(
-        hierarchyLink,
-        "Snapshot must carry the DripTray → CoffeeMachine hierarchy link.",
+      assertEquals(
+        snapshot.provenance.some(
+          (l) => l.from.id === dtArtifact.id && l.to.id === cmArtifact.id,
+        ),
+        false,
+        "Snapshot must not claim a provenance relation between independent capture bytes.",
       );
 
       // Closed US-2 attachment list: one traces_to link per anchored evidence

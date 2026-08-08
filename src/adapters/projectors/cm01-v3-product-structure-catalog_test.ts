@@ -860,7 +860,7 @@ Deno.test("CM-01 V3 Product Structure falls back to architecture id when no part
   }
 });
 
-Deno.test("CM-01 V3 Product Structure uses specific part-definition artifact ids for CoffeeMachine and DripTray", async () => {
+Deno.test("CM-01 V3 Product Structure leaves label-only part-definition artifacts unanchored", async () => {
   const fixture = await v3Fixture();
 
   const cmPartDefId = "part-definition-coffee-machine-" + "a".repeat(64);
@@ -913,22 +913,23 @@ Deno.test("CM-01 V3 Product Structure uses specific part-definition artifact ids
 
   assertEquals(catalog?.components.length, 11);
 
-  // CoffeeMachine (assembly) must use the specific part-definition artifact.
+  // Names alone are not SysON identity. These artifacts have no matching
+  // hashed capture record, so the catalog must retain architecture evidence.
   const cmComponent = catalog?.components[0];
   assertEquals(cmComponent?.id, "cm01-v3:coffee-machine");
   const cmSysonBinding = cmComponent?.bindings.find(
     (b) => b.provider === "syson" && b.kind === "part-definition",
   );
-  assertEquals(cmSysonBinding?.evidenceArtifactId, cmPartDefId);
+  assertEquals(cmSysonBinding?.evidenceArtifactId, fixture.architectureId);
 
-  // DripTray must use its specific part-definition artifact.
+  // Ditto for DripTray: a label-only match is deliberately not a join key.
   const dtComponent = catalog?.components.find(
     (c) => c.id === "cm01-v3:drip-tray",
   );
   const dtSysonBinding = dtComponent?.bindings.find(
     (b) => b.provider === "syson" && b.kind === "part-definition",
   );
-  assertEquals(dtSysonBinding?.evidenceArtifactId, dtPartDefId);
+  assertEquals(dtSysonBinding?.evidenceArtifactId, fixture.architectureId);
 
   // The 9 other parts must still fall back to architecture.id.
   const otherParts = catalog?.components.slice(1).filter(

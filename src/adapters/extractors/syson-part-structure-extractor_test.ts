@@ -329,6 +329,49 @@ Deno.test("extractPartDefinitions throws part_count_mismatch when partCount diff
   assertEquals(error.code, "part_count_mismatch");
 });
 
+Deno.test("extractPartDefinitions accepts the provider recursive partCount and requests no attributes", async () => {
+  const nested = {
+    root: { id: CM_ID, label: COFFEE_MACHINE_PART_LABEL, kind: "PartDef" },
+    tree: [{
+      id: "usage-dt-001",
+      label: DRIP_TRAY_USAGE_LABEL,
+      kind: "PartUsage",
+      quantity: 1,
+      quantitySource: "explicit",
+      children: [{
+        id: "usage-nested-001",
+        label: "nestedPart",
+        kind: "PartUsage",
+        quantity: 1,
+        quantitySource: "explicit",
+        children: [],
+      }],
+    }],
+    partCount: 2,
+    maxDepthReached: false,
+  };
+  const mock = buildMock({ cmStructure: nested });
+  await extractPartDefinitions(mock, CTX_ID, ARCH_PACKAGE_ID);
+  const structureCalls = mock.calls.filter((call) =>
+    call.name === "syson_part_structure"
+  );
+  assertEquals(
+    structureCalls.every((call) => call.arguments.include_attributes === false),
+    true,
+  );
+});
+
+Deno.test("extractPartDefinitions rejects a truncated provider traversal", async () => {
+  const mock = buildMock({
+    cmStructure: { ...validCmStructurePayload(), maxDepthReached: true },
+  });
+  const error = await assertRejects(
+    () => extractPartDefinitions(mock, CTX_ID, ARCH_PACKAGE_ID),
+    PartStructureExtractionError,
+  );
+  assertEquals(error.code, "part_structure_truncated");
+});
+
 Deno.test("extractPartDefinitions throws drip_tray_usage_absent when CoffeeMachine tree has no DripTray node", async () => {
   const mock = buildMock({
     cmStructure: {

@@ -120,7 +120,12 @@ export async function resolveCoffeeMachineCm01V3ProductStructureCatalog(
   const r3Meshes = freshR3MeshArtifactMap(artifacts);
   const assemblyMesh = r3Meshes.get("assembly");
   const r3WholeAssembly = freshR3WholeAssemblyArtifactMap(artifacts);
-  const partDefMap = buildPartDefinitionMap(artifacts);
+  const partDefMap = await buildPartDefinitionMap(
+    artifacts,
+    captures,
+    architecture.id,
+    capture.declarations,
+  );
   const rootDefinition = root[0]!;
   return validateThreadComponentCatalog({
     schemaVersion: "thread-components/1.0",
@@ -353,9 +358,12 @@ function r3AssetUrl(semanticKey: string): string {
  * callers fall back to the architecture artifact id, preserving the
  * pre-US-3 behaviour.
  */
-function buildPartDefinitionMap(
+async function buildPartDefinitionMap(
   artifacts: readonly ThreadArtifact[],
-): ReadonlyMap<string, string> {
+  captures: Cm01V3ArchitectureCaptureReader,
+  architectureArtifactId: string,
+  declarations: readonly Cm01V3PartDefinition[],
+): Promise<ReadonlyMap<string, string>> {
   const map = new Map<string, string>();
   for (const a of artifacts) {
     if (
@@ -363,12 +371,64 @@ function buildPartDefinitionMap(
       typeof a.uri !== "string" ||
       !a.uri.startsWith(CM01_V3_PART_DEFINITIONS_URI_PREFIX)
     ) continue;
-    if (typeof a.name !== "string") continue;
+    if (
+      a.producer.serverId !== "syson" ||
+      a.producer.tool !== "syson_part_structure" ||
+      !a.inputArtifactIds.includes(architectureArtifactId) ||
+      typeof a.name !== "string"
+    ) continue;
     const m = CM01_V3_PART_DEF_NAME_RE.exec(a.name);
     if (!m) continue;
-    map.set(m[1]!, a.id);
+    const label = m[1]!;
+    const expected = declarations.find((declaration) => declaration.label === label);
+    if (!expected || map.has(label)) return new Map();
+    try {
+      const text = await captures.read(a.fingerprint);
+      if (
+        !text || !(await partDefinitionCaptureMatches(text, a.fingerprint, expected))
+      ) {
+        return new Map();
+      }
+    } catch {
+      return new Map();
+    }
+    map.set(label, a.id);
   }
   return map;
+}
+
+/**
+ * A label is presentation only.  A part-definition capture is eligible for a
+ * catalog binding only when its hashed provider record repeats the exact SysON
+ * element id and the same architecture context.  This stays in the adapter:
+ * the domain catalog receives already verified metadata and performs no I/O.
+ */
+async function partDefinitionCaptureMatches(
+  text: string,
+  expectedFingerprint: ContentFingerprint,
+  expected: Cm01V3PartDefinition,
+): Promise<boolean> {
+  try {
+    const value = JSON.parse(text);
+    const capture = record(value, "CM-01 part-definition capture");
+    exactKeys(capture, [
+      "architecturePackageId",
+      "capturedAt",
+      "editingContextId",
+      "elementId",
+      "label",
+      "schemaVersion",
+      "structure",
+    ], "CM-01 part-definition capture");
+    const fingerprint = await sha256Fingerprint(capture);
+    return fingerprint.algorithm === expectedFingerprint.algorithm &&
+      fingerprint.digest === expectedFingerprint.digest &&
+      capture.schemaVersion === "cm01-part-definitions/1.0" &&
+      capture.elementId === expected.id && capture.label === expected.label &&
+      capture.structure !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 function oneFreshArchitecture(
