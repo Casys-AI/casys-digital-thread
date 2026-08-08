@@ -17,7 +17,8 @@
  *  9.  Find architecture artifact in basis; parse capture; resolve target
  *      (D5 identification by label — never by exclusion).
  * 10.  Load seed capture from the architecture capture → editingContextId.
- * 11.  D1: compute envelope fingerprint; verify against decision.inputFingerprint.
+ * 11.  Verify the service-owned decision fingerprint, then derive the exact
+ *      requirements envelope from its signed basis and proposal.
  * 12.  Find prior requirements artifact for this target (if enrichment).
  * 13.  planRequirementsEnrichment: compute toInsert / adopted / conflicts.
  * 14.  Guard: conflicts → invalid_transition; disappeared → cliquet violation.
@@ -55,7 +56,6 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import { parseSysonModelSeedCapture } from "../../domain/platform/syson-model-seed.ts";
 import {
-  fingerprintRequirementsEnvelope,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   parseRequirementsProposalParameters,
   planRequirementsEnrichment,
@@ -374,11 +374,30 @@ export class ModelWriteRequirementsRunExecutor {
           proposal,
         );
 
-      // Step 11 (D1): verify the envelope fingerprint against the MRTR decision.
-      // The agent computed this fingerprint when proposing the decision — if the
-      // architecture changed since then, the fingerprint will diverge and the run
-      // must stop for human review.
-      const envelopeFp = await fingerprintRequirementsEnvelope({
+      // Step 11a: the decision must still seal exactly what the command service
+      // presented to the human. No executor-specific fingerprint is accepted.
+      const signedInputFingerprint = await sha256Fingerprint({
+        baseSnapshot: decision.baseSnapshot,
+        inputEvidenceRefs: decision.inputEvidenceRefs,
+        proposal: {
+          summary: decision.proposal!.summary,
+          parameters: decision.proposal!.parameters,
+        },
+      });
+      if (!fingerprintsEqual(signedInputFingerprint, decision.inputFingerprint)) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "requirements_decision_fingerprint_mismatch: the decision fingerprint no " +
+            "longer seals its exact base snapshot, evidence references, and proposal.",
+        );
+      }
+
+      // Step 11b: #resolveTargetFromArchitecture has derived this envelope only
+      // from the exact signed basis and proposal: the basis selects the content-
+      // addressed architecture capture, the proposal selects one unique partDef,
+      // and that partDef must have one unique typing usage. Keep the values
+      // together here so later publication cannot substitute another derivation.
+      const derivedEnvelope = {
         target,
         architectureBasis: {
           snapshotId: basis.snapshotId,
@@ -387,16 +406,7 @@ export class ModelWriteRequirementsRunExecutor {
         },
         partDefName: proposal.partDefName,
         requirements: requirementEntriesToOracleRequirements(proposal.requirements),
-      });
-      if (!fingerprintsEqual(envelopeFp, decision.inputFingerprint)) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          "The requirements envelope fingerprint (target + architectureBasis + " +
-            "partDefName + requirements[]) no longer matches the MRTR decision " +
-            "inputFingerprint. The architecture may have changed since the decision " +
-            "was approved. A new MRTR decision is required.",
-        );
-      }
+      };
 
       assertNoBlockedRequirementsSibling(project, run);
 
@@ -407,9 +417,7 @@ export class ModelWriteRequirementsRunExecutor {
         : undefined;
 
       // Step 13: enrichment plan.
-      const oracleRequirements = requirementEntriesToOracleRequirements(
-        proposal.requirements,
-      );
+      const oracleRequirements = derivedEnvelope.requirements;
       const enrichmentPlan = planRequirementsEnrichment(
         proposal,
         priorCapture?.requirements,
@@ -632,7 +640,7 @@ export class ModelWriteRequirementsRunExecutor {
       // Step 22: build + save capture.
       const captureRecord = buildCaptureRecord({
         proposal,
-        target,
+        target: derivedEnvelope.target,
         architectureArtifact,
         architectureBasis: basis,
         archCaptureSchema: archCapture.schemaVersion,
@@ -665,7 +673,7 @@ export class ModelWriteRequirementsRunExecutor {
         proposal,
         architectureArtifact,
         priorRequirementsArtifact: priorArtifact,
-        target,
+        target: derivedEnvelope.target,
         runId: run.id,
         capturedAt,
         captureFp,
@@ -869,39 +877,37 @@ export class ModelWriteRequirementsRunExecutor {
     if (matches.length === 0) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Component "${proposal.containerComponent}" is not present in the generic ` +
+        "requirements_envelope_derivation_mismatch: " +
+          `component "${proposal.containerComponent}" is not present in the generic ` +
           "architecture capture. Run model.write-architecture@1 to add it first.",
       );
     }
     if (matches.length > 1) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Ambiguous: ${matches.length} partDefs with label "${proposal.containerComponent}" ` +
+        "requirements_envelope_derivation_mismatch: " +
+          `${matches.length} partDefs have label "${proposal.containerComponent}" ` +
           "in the architecture capture. The model must have unique part-definition labels.",
       );
     }
     const componentPartDef = matches[0]!;
     const elementId = componentPartDef.id;
 
-    // Find the usage that types this component (to get usageName).
     // A usage "dripTray : DripTray" lives under the parent partDef's usages.
-    let usageName: string | undefined;
-    outer: for (const pd of archCapture.partDefinitions) {
-      for (const usage of pd.usages) {
-        if (usage.targetLabel === proposal.containerComponent) {
-          usageName = usage.label;
-          break outer;
-        }
-      }
-    }
-    // The system partDef itself may also have the usage.
-    if (!usageName) {
+    // The signed component name must resolve to exactly one occurrence: taking
+    // the first match would make the envelope depend on capture ordering.
+    const typingUsages = archCapture.partDefinitions.flatMap((pd) =>
+      pd.usages.filter((usage) => usage.targetLabel === proposal.containerComponent)
+    );
+    if (typingUsages.length !== 1) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `No usage typing "${proposal.containerComponent}" found in the architecture capture. ` +
-          "The component must be typed by exactly one usage to determine the usageName.",
+        "requirements_envelope_derivation_mismatch: " +
+          `expected exactly one usage typing "${proposal.containerComponent}" in the ` +
+          `architecture capture selected by the signed basis, found ${typingUsages.length}.`,
       );
     }
+    const usageName = typingUsages[0]!.label;
 
     // Load the seed capture to get editingContextId.
     const seedFp = archCapture.seed.fingerprint;

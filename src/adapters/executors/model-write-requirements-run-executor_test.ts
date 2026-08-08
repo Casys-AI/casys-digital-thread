@@ -6,7 +6,7 @@
  *   - assertRequirementsArtifactNotRemoved: pass / throw
  *   - Refusal: non-agent origin.
  *   - Refusal: no exact human-approved MRTR decision (work item has no decisionIds).
- *   - D1: envelope fingerprint divergence refusal.
+ *   - Decision fingerprint: service-owned standard fingerprint.
  *   - Happy path — initial mode: valid snapshot, validateThreadSnapshot implicit.
  *   - WAL idempotence: second call returns already-completed project.
  *   - Cliquet: requirements artifact silently removed from basis.
@@ -20,6 +20,7 @@
  */
 
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {
   EngineeringProjectCommandError,
@@ -74,7 +75,11 @@ import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
-import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import type {
+  EngineeringDecisionProposalParameter,
+  EngineeringProjectSnapshot,
+} from "../../domain/project/engineering-project.ts";
+import { registerProjectControlTools } from "../../tools/project-control.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -120,6 +125,12 @@ const WING_REQS_PARAMS_INITIAL = [
     unit: "kg",
   },
 ];
+
+const UNKNOWN_TARGET_REQS_PARAMS = WING_REQS_PARAMS_INITIAL.map((parameter) =>
+  parameter.key === "requirements.containerComponent"
+    ? { ...parameter, value: "Tail" }
+    : parameter
+);
 
 // Enrichment proposal: adds maxForce (new) alongside adopted maxMass.
 const WING_REQS_PARAMS_ENRICHMENT = [
@@ -784,16 +795,31 @@ interface ReqsFixture {
   readonly queued: { readonly revision: number; readonly runId: string };
 }
 
+class RequirementsMcpApp {
+  readonly #handlers = new Map<string, ToolHandler>();
+
+  registerTool(tool: MCPTool, handler: ToolHandler): void {
+    this.#handlers.set(tool.name, handler);
+  }
+
+  handler(name: string): ToolHandler {
+    const handler = this.#handlers.get(name);
+    assertExists(handler, `Expected MCP tool ${name} to be registered.`);
+    return handler;
+  }
+}
+
 /**
  * Builds a fully initialised fixture with:
  *   1. A project that completed baseline + seed + architecture runs.
  *   2. An architecture artifact in the thread snapshot (from InitialArchSyson).
- *   3. A queued requirements run with a human-approved MRTR decision whose
- *      D1 envelope fingerprint was computed from the live architecture capture.
+ *   3. A queued requirements run proposed through the real MCP tool without
+ *      any caller-provided fingerprint, then human-approved.
  */
 async function queuedRequirementsFixture(
   directory: string,
-  proposalParams = WING_REQS_PARAMS_INITIAL,
+  proposalParams: readonly EngineeringDecisionProposalParameter[] =
+    WING_REQS_PARAMS_INITIAL,
 ): Promise<ReqsFixture> {
   const projects = new FileEngineeringProjectRevisionStore(
     `${directory}/projects`,
@@ -1047,25 +1073,6 @@ async function queuedRequirementsFixture(
   };
   const archBasis = { kind: "thread-snapshot" as const, ...archBasisRef };
 
-  // Compute the envelope fingerprint from the live architecture capture.
-  // target is derived from the architecture capture:
-  //   Wing partDef → elementId = "wing-def-001"
-  //   DroneSystem usage "wing" → usageName = "wing"
-  const parsedProposal = parseRequirementsProposalParameters(proposalParams);
-  const oracleRequirements = requirementEntriesToOracleRequirements(
-    parsedProposal.requirements,
-  );
-  const envelopeFp = await fingerprintRequirementsEnvelope({
-    target: { usageName: "wing", elementId: "wing-def-001" },
-    architectureBasis: {
-      snapshotId: archBasisRef.snapshotId,
-      revision: archBasisRef.revision,
-      fingerprint: archArtifact.fingerprint.digest,
-    },
-    partDefName: parsedProposal.partDefName,
-    requirements: oracleRequirements,
-  });
-
   project = await commands.appendChange(AGENT, {
     ...ctx("append-reqs", afterArch.revision),
     baseSnapshot: archBasisRef,
@@ -1088,16 +1095,17 @@ async function queuedRequirementsFixture(
       question: "Which requirements are proposed for Wing?",
     }],
   });
-  project = await commands.proposeDecision(AGENT, {
+  const mcp = new RequirementsMcpApp();
+  registerProjectControlTools(mcp as unknown as McpApp, { projects, commands });
+  await mcp.handler("project_decision_propose")({
     ...ctx("propose-reqs-decision", project.revision),
     decisionId: "decision:reqs-params",
-    baseSnapshot: archBasisRef,
-    inputFingerprint: envelopeFp,
-    proposal: {
-      summary: "Wing requirements",
-      parameters: proposalParams,
-    },
+    proposal: { summary: "Wing requirements", parameters: proposalParams },
+  }, {
+    toolName: "project_decision_propose",
+    clientInfo: { name: "paired-chat", version: "1" },
   });
+  project = (await projects.get(PROJECT_ID))!;
   const reqsApproval = project.approvals.find((a) =>
     a.decisionId === "decision:reqs-params"
   )!;
@@ -1215,21 +1223,6 @@ async function queueEnrichmentRun(
   };
   const enrichmentBasis = { kind: "thread-snapshot" as const, ...enrichmentBasisRef };
 
-  const enrichmentProposal = parseRequirementsProposalParameters(enrichmentParams);
-  const enrichmentOracle = requirementEntriesToOracleRequirements(
-    enrichmentProposal.requirements,
-  );
-  const enrichmentFp = await fingerprintRequirementsEnvelope({
-    target: { usageName: "wing", elementId: "wing-def-001" },
-    architectureBasis: {
-      snapshotId: enrichmentBasisRef.snapshotId,
-      revision: enrichmentBasisRef.revision,
-      fingerprint: archArtifact.fingerprint.digest,
-    },
-    partDefName: enrichmentProposal.partDefName,
-    requirements: enrichmentOracle,
-  });
-
   let project = await fixture.commands.appendChange(AGENT, {
     ...ctx("append-reqs-enrichment", initialResult.revision),
     baseSnapshot: enrichmentBasisRef,
@@ -1260,7 +1253,6 @@ async function queueEnrichmentRun(
     ...ctx("propose-reqs-enrichment", project.revision),
     decisionId: "decision:reqs-enrichment",
     baseSnapshot: enrichmentBasisRef,
-    inputFingerprint: enrichmentFp,
     proposal: {
       summary: "Wing requirements enrichment",
       parameters: enrichmentParams,
@@ -1679,10 +1671,38 @@ Deno.test(
   },
 );
 
-// ── D1: envelope fingerprint mismatch ─────────────────────────────────────────
+// ── Signed-input envelope derivation ─────────────────────────────────────────
 
 Deno.test(
-  "model.write-requirements executor refuses when the envelope fingerprint diverges from the decision",
+  "model.write-requirements refuses a target absent from the architecture selected by the signed basis",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-target-divergence-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(
+        directory,
+        UNKNOWN_TARGET_REQS_PARAMS,
+      );
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson: new InitialReqsSyson(),
+            directory,
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "requirements_envelope_derivation_mismatch",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ── Service-owned decision fingerprint ───────────────────────────────────────
+
+Deno.test(
+  "decision service ignores an untrusted fingerprint-shaped extra and keeps its canonical fingerprint",
   async () => {
     const directory = await Deno.makeTempDir({
       prefix: "casys-reqs-fp-mismatch-",
@@ -1823,12 +1843,13 @@ Deno.test(
           question: "D1 test",
         }],
       });
-      // Propose with INITIAL params but WRONG fingerprint (as if params were 0.8 kg).
+      // Simulate an old/untyped caller still sending the removed override. The
+      // command service must ignore the extra property and seal its canonical input.
       project = await helperFixture.commands.proposeDecision(AGENT, {
         ...ctx("propose-tampered", project.revision),
         decisionId: "decision:reqs-tampered",
         baseSnapshot: archBasisRef,
-        inputFingerprint: wrongFp, // fingerprint is for 0.8 kg but params are 0.5 kg
+        ...({ inputFingerprint: wrongFp } as Record<string, unknown>),
         proposal: {
           summary: "Tampered",
           parameters: WING_REQS_PARAMS_INITIAL, // executor re-computes from these
@@ -1866,22 +1887,13 @@ Deno.test(
         },
       };
 
-      await assertRejects(
-        () =>
-          makeExecutor(tamperedFixture, {
-            syson: new InitialReqsSyson(),
-            directory: `${directory}/helper`,
-            leaseSubdir: "tampered-leases",
-          }).execute(AGENT, {
-            ...executionCommand(tamperedFixture),
-            // Use a distinct commandId — the initial run's claim receipt is keyed on
-            // "agent-author-requirements:model-write-requirements:claim"; reusing the
-            // same prefix for a different runId would trigger command_id_conflict
-            // instead of the expected fingerprint_mismatch.
-            commandId: "agent-author-requirements-d1-tampered",
-          }),
-        EngineeringProjectCommandError,
-        "fingerprint",
+      assertEquals(
+        tamperedApproval.inputFingerprint?.digest === wrongFp.digest,
+        false,
+      );
+      assertEquals(
+        tamperedFixture.queued.revision,
+        queuedTampered.revision,
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -2145,18 +2157,6 @@ Deno.test(
         }],
       });
 
-      const proposal = parseRequirementsProposalParameters(WING_REQS_PARAMS_INITIAL);
-      const oracle = requirementEntriesToOracleRequirements(proposal.requirements);
-      const fp2 = await fingerprintRequirementsEnvelope({
-        target: { usageName: "wing", elementId: "wing-def-001" },
-        architectureBasis: {
-          snapshotId: strippedBasisRef.snapshotId,
-          revision: strippedBasisRef.revision,
-          fingerprint: archArtifact.fingerprint.digest,
-        },
-        partDefName: proposal.partDefName,
-        requirements: oracle,
-      });
       // All commands after completeRun (13:xx clock) must use permissiveCommands so the
       // monotonic-clock check passes.  The executor inherits permissiveCommands via
       // cliquetFixture.commands and uses it for its internal claimRun / failRun calls.
@@ -2188,7 +2188,6 @@ Deno.test(
         // proposeDecision.baseSnapshot must equal queueRun.basis so that
         // requireMrtrApproval can match the approval via sameSnapshotBasis.
         baseSnapshot: strippedBasisRef,
-        inputFingerprint: fp2,
         proposal: {
           summary: "Wing requirements re-attempt",
           parameters: WING_REQS_PARAMS_INITIAL,

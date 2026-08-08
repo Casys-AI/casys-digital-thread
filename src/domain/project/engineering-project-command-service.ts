@@ -106,20 +106,6 @@ export interface ProposeDecisionCommand extends EngineeringProjectCommandInput {
   readonly decisionId: string;
   readonly proposal: EngineeringDecisionProposalInput;
   readonly baseSnapshot: EngineeringThreadSnapshotRef;
-  /**
-   * Optional fingerprint override for the executor D1 envelope check.
-   *
-   * When present, stored directly as decision.inputFingerprint instead of the
-   * auto-computed SHA-256({baseSnapshot, inputEvidenceRefs, proposal}). Use
-   * this when the operation requires an executor-level content check: the caller
-   * pre-computes a content-addressed envelope fingerprint (e.g.
-   * fingerprintRequirementsEnvelope) and passes it here so the executor can
-   * re-compute and compare at run time.
-   *
-   * Callers that omit this field get the standard proposal-level fingerprint,
-   * which the human provides verbatim when calling approveDecision.
-   */
-  readonly inputFingerprint?: ContentFingerprint;
 }
 
 export interface DecideDecisionCommand extends EngineeringProjectCommandInput {
@@ -678,16 +664,11 @@ export class EngineeringProjectCommandService {
         proposedAt: appliedAt,
         proposedBy: actor(origin),
       };
-      // If the caller supplied a pre-computed fingerprint (e.g. an envelope
-      // fingerprint for a D1 executor check), store it directly. Otherwise
-      // compute the standard proposal-level fingerprint so the human can
-      // independently verify the exact proposal they are approving.
-      const inputFingerprint = command.inputFingerprint ??
-        await sha256Fingerprint({
-          baseSnapshot: command.baseSnapshot,
-          inputEvidenceRefs: decision.inputEvidenceRefs,
-          proposal: command.proposal,
-        });
+      const inputFingerprint = await sha256Fingerprint({
+        baseSnapshot: command.baseSnapshot,
+        inputEvidenceRefs: decision.inputEvidenceRefs,
+        proposal: command.proposal,
+      });
       const approvalId = `approval:${decision.id}:${command.commandId}`;
       const approval: Mutable<EngineeringApproval> = {
         id: approvalId,
