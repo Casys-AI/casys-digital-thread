@@ -3,6 +3,7 @@ import type {
   EngineeringApproval,
   EngineeringApprovedBriefBasis,
   EngineeringBlocker,
+  EngineeringCancelledRunReceiptBinding,
   EngineeringDecision,
   EngineeringProjectCommandReceipt,
   EngineeringProjectPhase,
@@ -1363,7 +1364,7 @@ function validateCommandReceipt(
       "requestFingerprint",
       "resultingSnapshot",
     ],
-    ["approvedBriefBasis"],
+    ["approvedBriefBasis", "cancelledRun"],
     issues,
   );
   if (!input) return;
@@ -1410,6 +1411,31 @@ function validateCommandReceipt(
       issues,
     );
   }
+  if (input.cancelledRun !== undefined) {
+    validateCancelledRunReceiptBinding(
+      input.cancelledRun,
+      `${path}.cancelledRun`,
+      issues,
+    );
+  }
+}
+
+function validateCancelledRunReceiptBinding(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["runId", "workItemId", "queuedCommandId"],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.runId, `${path}.runId`, issues);
+  nonEmptyString(input.workItemId, `${path}.workItemId`, issues);
+  nonEmptyString(input.queuedCommandId, `${path}.queuedCommandId`, issues);
 }
 
 function validateBlocker(
@@ -2008,6 +2034,7 @@ function validateInvariants(
   (project.commandReceipts ?? []).forEach((receipt, index) =>
     validateCommandReceiptInvariant(receipt, index, project, issues)
   );
+  validateCancelledRunReceiptBindings(project, issues);
 }
 
 function validateWorkItemReconciliationInvariant(
@@ -3103,7 +3130,8 @@ function validateRunInvariant(
         cancellationReceipt.actor.origin !== run.cancellation.cancelledBy.origin ||
         Date.parse(cancellationReceipt.appliedAt) !==
           Date.parse(run.cancellation.cancelledAt) ||
-        Date.parse(cancellationReceipt.appliedAt) !== Date.parse(finalTransition!.at))
+        Date.parse(cancellationReceipt.appliedAt) !== Date.parse(finalTransition!.at) ||
+        !matchesCancelledRunReceiptBinding(run, cancellationReceipt.cancelledRun))
     ) {
       issue(
         issues,
@@ -3217,6 +3245,74 @@ function validateRunTransitionCommandUsage(
       }
       if (!owner) ownerByCommandId.set(transition.commandId, { runId: run.id });
     });
+  });
+}
+
+function matchesCancelledRunReceiptBinding(
+  run: EngineeringAgentRun,
+  binding: EngineeringCancelledRunReceiptBinding | undefined,
+): boolean {
+  const queuedTransition = run.statusHistory?.[0];
+  return !!binding && queuedTransition?.status === "queued" &&
+    binding.runId === run.id &&
+    binding.workItemId === run.workItemId &&
+    binding.queuedCommandId === queuedTransition.commandId;
+}
+
+function runMatchesCancellationReceipt(
+  run: EngineeringAgentRun,
+  receipt: EngineeringProjectCommandReceipt,
+): boolean {
+  return receipt.type === "agent-run.cancel" &&
+    run.status === "cancelled" &&
+    receipt.commandId === run.statusHistory?.at(-1)?.commandId &&
+    matchesCancelledRunReceiptBinding(run, receipt.cancelledRun);
+}
+
+/**
+ * A cancellation receipt is a one-to-one, server-stamped seal over its
+ * cancelled run. It carries enough immutable identity to reject a copied
+ * status history even when an older queue receipt has no such binding.
+ */
+function validateCancelledRunReceiptBindings(
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const cancelledRuns = project.agentRuns.filter((run) => run.status === "cancelled");
+  const cancellationReceipts = (project.commandReceipts ?? []).map((
+    receipt,
+    index,
+  ) => ({ receipt, index })).filter(({ receipt }) =>
+    receipt.type === "agent-run.cancel"
+  );
+
+  cancellationReceipts.forEach(({ receipt, index }) => {
+    const matches = cancelledRuns.filter((run) =>
+      runMatchesCancellationReceipt(run, receipt)
+    );
+    if (matches.length !== 1) {
+      issue(
+        issues,
+        "invalid_cancellation_receipt_binding",
+        `$.commandReceipts[${index}].cancelledRun`,
+        "must identify exactly one cancelled run, work item and initial queued command",
+      );
+    }
+  });
+
+  project.agentRuns.forEach((run, index) => {
+    if (run.status !== "cancelled") return;
+    const matches = cancellationReceipts.filter(({ receipt }) =>
+      runMatchesCancellationReceipt(run, receipt)
+    );
+    if (matches.length !== 1) {
+      issue(
+        issues,
+        "missing_cancellation_receipt_binding",
+        `$.agentRuns[${index}].cancellation`,
+        "must be sealed by exactly one matching agent-run.cancel receipt binding",
+      );
+    }
   });
 }
 
@@ -3430,6 +3526,28 @@ function validateCommandReceiptInvariant(
       "schema_version_mismatch",
       `${path}.approvedBriefBasis`,
       "is permitted only on a project.brief-approve receipt",
+    );
+  }
+  if (
+    receipt.cancelledRun !== undefined &&
+    receipt.type !== "agent-run.cancel"
+  ) {
+    issue(
+      issues,
+      "schema_version_mismatch",
+      `${path}.cancelledRun`,
+      "is permitted only on an agent-run.cancel receipt",
+    );
+  }
+  if (
+    receipt.type === "agent-run.cancel" &&
+    receipt.cancelledRun === undefined
+  ) {
+    issue(
+      issues,
+      "missing_cancellation_receipt_binding",
+      `${path}.cancelledRun`,
+      "is required for every agent-run.cancel receipt",
     );
   }
   if (

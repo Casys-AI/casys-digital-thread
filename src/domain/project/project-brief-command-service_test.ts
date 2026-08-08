@@ -324,6 +324,46 @@ Deno.test("the initial engineering plan is bound to the exact approved in-projec
   }
 });
 
+Deno.test("a V3 cancellation seals its legacy unbound queue receipt", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+  );
+  const planned = await commands.publishPlan(
+    AGENT,
+    baselinePlanCommand("publish-cancellable-v3-plan", approved.revision),
+  );
+  const queued = await commands.queueRun(AGENT, {
+    ...context("queue-legacy-v3-receipt", planned.revision),
+    runId: "run:legacy-v3-queue",
+    workItemId: "record-approved-brief",
+    summary: "Queue the approved V3 documentary baseline.",
+    basis: planned.plan!.basis,
+  });
+  const queueReceipt = queued.commandReceipts?.at(-1);
+  assertEquals(queued.schemaVersion, "3.0");
+  assertEquals(queueReceipt?.type, "agent-run.queue");
+  assertEquals(queueReceipt?.cancelledRun, undefined);
+
+  const cancelled = await commands.cancelQueuedRun(HUMAN, {
+    ...context("cancel-legacy-v3-queue", queued.revision),
+    runId: "run:legacy-v3-queue",
+    rationale: "The reviewed baseline was retired before any worker claim.",
+  });
+  const run = cancelled.agentRuns.find((item) => item.id === "run:legacy-v3-queue")!;
+  assertEquals(cancelled.commandReceipts?.at(-1)?.cancelledRun, {
+    runId: run.id,
+    workItemId: run.workItemId,
+    queuedCommandId: queueReceipt?.commandId,
+  });
+  assertEquals(collectEngineeringProjectIssues(cancelled), []);
+});
+
 Deno.test("a living brief revision does not rewrite the historical approval that authorized the plan", async () => {
   const store = new MemoryProjectStore();
   const briefs = serviceFor(store);
@@ -446,6 +486,34 @@ function context(
     projectId: PROJECT_ID,
     expectedRevision,
     issuedAt: "2026-08-03T08:59:30.000Z",
+  };
+}
+
+function baselinePlanCommand(commandId: string, expectedRevision: number) {
+  return {
+    ...context(commandId, expectedRevision),
+    startingPoint: "idea-or-spec" as const,
+    phases: [{
+      id: "phase-baseline",
+      name: "Engineering baseline",
+      description: "Record the reviewed intent before technical work begins.",
+    }],
+    workItems: [{
+      id: "record-approved-brief",
+      phaseId: "phase-baseline",
+      owner: "agent" as const,
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: {
+        id: "baseline.from-approved-brief",
+        version: "1",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" as const },
+        }],
+      },
+    }],
+    requiredDecisions: [],
   };
 }
 

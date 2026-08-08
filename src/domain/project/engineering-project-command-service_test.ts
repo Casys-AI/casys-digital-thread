@@ -6,6 +6,7 @@ import {
   type EngineeringThreadSnapshotRef,
 } from "./engineering-project.ts";
 import {
+  type CancelQueuedRunCommand,
   type CompleteRunCommand,
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
@@ -352,10 +353,28 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
     rationale:
       "This queued run is superseded before any agent claim or provider execution.",
   };
+  const legacyQueueReceipt = queued.commandReceipts?.at(-1);
+  assertEquals(legacyQueueReceipt?.type, "agent-run.queue");
+  assertEquals(legacyQueueReceipt?.cancelledRun, undefined);
 
   await assertCommandError(
     () => service.cancelQueuedRun(AGENT, command),
     "permission_denied",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, queued.revision);
+
+  await assertCommandError(
+    () =>
+      service.cancelQueuedRun(HUMAN, {
+        ...command,
+        commandId: "cancel-caller-supplied-binding",
+        cancelledRun: {
+          runId: "forged-run-id",
+          workItemId: "forged-work-item-id",
+          queuedCommandId: "forged-queue-command-id",
+        },
+      } as unknown as CancelQueuedRunCommand),
+    "invalid_input",
   );
   assertEquals((await store.get(PROJECT_ID))?.revision, queued.revision);
 
@@ -390,6 +409,12 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
     "ready",
   );
   assertEquals(cancelled.commandReceipts?.at(-1)?.type, "agent-run.cancel");
+  assertEquals(cancelled.commandReceipts?.at(-1)?.cancelledRun, {
+    runId: command.runId,
+    workItemId: "verify-current-mechanical-design",
+    queuedCommandId: queued.agentRuns.find((item) => item.id === command.runId)!
+      .statusHistory![0]!.commandId,
+  });
 
   const receiptReusedByAnotherRun = structuredClone(cancelled) as Mutable<
     EngineeringProjectSnapshot
@@ -417,6 +442,26 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
     () => validateEngineeringProjectSnapshot(forgedQueueCommand),
     EngineeringProjectValidationError,
     "agent-run.queue receipt",
+  );
+
+  const tamperedCancelledRunId = structuredClone(cancelled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  tamperedCancelledRunId.agentRuns.find((item) => item.id === command.runId)!
+    .id = "forged-cancelled-run-id";
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(tamperedCancelledRunId),
+    EngineeringProjectValidationError,
+  );
+
+  const tamperedCancelledWorkItem = structuredClone(cancelled) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  tamperedCancelledWorkItem.agentRuns.find((item) => item.id === command.runId)!
+    .workItemId = "build-current-cad";
+  assertThrows(
+    () => validateEngineeringProjectSnapshot(tamperedCancelledWorkItem),
+    EngineeringProjectValidationError,
   );
 
   const forgedCancellationSummary = structuredClone(cancelled) as Mutable<

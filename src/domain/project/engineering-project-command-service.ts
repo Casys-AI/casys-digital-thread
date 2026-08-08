@@ -4,6 +4,7 @@ import {
   type EngineeringApproval,
   type EngineeringApprovedBriefBasis,
   type EngineeringBasisRef,
+  type EngineeringCancelledRunReceiptBinding,
   type EngineeringCommandActor,
   type EngineeringCommandOriginKind,
   type EngineeringDecision,
@@ -323,6 +324,11 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
 } as const;
 
 type EngineeringProjectCommandType = EngineeringProjectCommandName;
+
+interface CancellationFingerprintInput extends EngineeringProjectCommandInput {
+  readonly runId?: string;
+  readonly rationale?: string;
+}
 
 type Clock = () => string;
 
@@ -902,6 +908,14 @@ export class EngineeringProjectCommandService {
     origin: EngineeringProjectCommandOrigin,
     command: CancelQueuedRunCommand,
   ): Promise<EngineeringProjectSnapshot> {
+    if (hasCallerCancelledRunBinding(command)) {
+      return Promise.reject(
+        new EngineeringProjectCommandError(
+          "invalid_input",
+          "cancelledRun is server-stamped and cannot be supplied by a caller.",
+        ),
+      );
+    }
     return this.apply(origin, "agent-run.cancel", command, (draft, appliedAt) => {
       nonEmpty(command.runId, "runId");
       nonEmpty(command.rationale, "rationale");
@@ -1153,10 +1167,16 @@ export class EngineeringProjectCommandService {
     assertAllowed(origin.kind, type);
     const issuedAt = normalizeIsoDateTime(command.issuedAt)!;
     const normalizedCommand = { ...command, issuedAt };
+    const fingerprintCommand = type === "agent-run.cancel"
+      ? cancellationFingerprintCommand(
+        command,
+        issuedAt,
+      )
+      : normalizedCommand;
     const requestFingerprint = await sha256Fingerprint({
       type,
       origin,
-      command: normalizedCommand,
+      command: fingerprintCommand,
     });
     const current = await this.store.get(command.projectId);
     if (!current) {
@@ -1187,6 +1207,9 @@ export class EngineeringProjectCommandService {
     draft.revision = revision;
     draft.previous = { snapshotId: current.id, revision: current.revision };
     draft.generatedAt = appliedAt;
+    const cancelledRun = type === "agent-run.cancel"
+      ? cancelledRunReceiptBinding(draft, command.commandId)
+      : undefined;
     draft.commandReceipts ??= [];
     draft.commandReceipts.push({
       commandId: command.commandId,
@@ -1196,6 +1219,7 @@ export class EngineeringProjectCommandService {
       appliedAt,
       requestFingerprint,
       resultingSnapshot: { snapshotId, revision },
+      ...(cancelledRun ? { cancelledRun } : {}),
     });
     const next = validateEngineeringProjectSnapshot(draft);
     try {
@@ -1955,6 +1979,60 @@ function uniquePlanIds(values: readonly string[], label: string): void {
     if (seen.has(value)) invalidInput(`${label} id ${value} is duplicated.`);
     seen.add(value);
   }
+}
+
+/** The cancellation receipt target is derived from the server draft, never input. */
+function hasCallerCancelledRunBinding(command: CancelQueuedRunCommand): boolean {
+  return Object.prototype.hasOwnProperty.call(command, "cancelledRun");
+}
+
+/** Keep server-stamped receipt fields outside the caller's idempotency payload. */
+function cancellationFingerprintCommand(
+  command: CancellationFingerprintInput,
+  issuedAt: string,
+): {
+  readonly commandId: string;
+  readonly projectId: string;
+  readonly expectedRevision: number;
+  readonly issuedAt: string;
+  readonly runId?: string;
+  readonly rationale?: string;
+} {
+  return {
+    commandId: command.commandId,
+    projectId: command.projectId,
+    expectedRevision: command.expectedRevision,
+    issuedAt,
+    runId: command.runId,
+    rationale: command.rationale,
+  };
+}
+
+function cancelledRunReceiptBinding(
+  draft: EngineeringProjectSnapshot,
+  cancellationCommandId: string,
+): EngineeringCancelledRunReceiptBinding {
+  const candidates = draft.agentRuns.filter((run) =>
+    run.status === "cancelled" &&
+    run.statusHistory?.at(-1)?.commandId === cancellationCommandId
+  );
+  if (candidates.length !== 1) {
+    invalidTransition(
+      "A cancellation receipt must resolve to exactly one server-cancelled agent run.",
+    );
+  }
+  const run = candidates[0]!;
+  const queuedTransition = run.statusHistory?.[0];
+  if (!queuedTransition || queuedTransition.status !== "queued") {
+    invalidTransition(
+      `Cancelled agent run ${run.id} has no exact initial queued transition.`,
+    );
+  }
+  return {
+    runId: run.id,
+    workItemId: run.workItemId,
+    queuedCommandId: queuedTransition.commandId,
+  };
 }
 
 function isEngineeringWorkOwner(value: unknown): value is EngineeringWorkOwner {

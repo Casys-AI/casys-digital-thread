@@ -405,6 +405,18 @@ export interface EngineeringProjectCommandReceipt {
    * receipts pre-dating the living brief intentionally omit this field.
    */
   readonly approvedBriefBasis?: EngineeringApprovedBriefBasis;
+  /**
+   * Server-stamped target of a human queued-run cancellation. Queue receipts
+   * intentionally predate this binding and remain valid without it.
+   */
+  readonly cancelledRun?: EngineeringCancelledRunReceiptBinding;
+}
+
+/** Exact run identity sealed into an agent-run.cancel receipt by the service. */
+export interface EngineeringCancelledRunReceiptBinding {
+  readonly runId: string;
+  readonly workItemId: string;
+  readonly queuedCommandId: string;
 }
 
 export type EngineeringBlockerKind =

@@ -378,6 +378,7 @@ Deno.test("project queued-run cancellation requires a verified human elicitation
       "basis",
       "resultSnapshot",
       "evidenceRefs",
+      "cancelledRun",
     ]
   ) {
     assertEquals(
