@@ -32,7 +32,17 @@ export class FileInspectionDroneV4PartDefinitionsPublicationStore {
     try {
       const file = await Deno.open(path, { createNew: true, write: true });
       try {
-        await file.write(new TextEncoder().encode(text));
+        const bytes = new TextEncoder().encode(text);
+        let written = 0;
+        while (written < bytes.length) {
+          const count = await file.write(bytes.subarray(written));
+          if (count <= 0) {
+            throw new Error(
+              "Inspection-drone PartDefinitions publication made no write progress.",
+            );
+          }
+          written += count;
+        }
         await file.syncData();
       } finally {
         file.close();

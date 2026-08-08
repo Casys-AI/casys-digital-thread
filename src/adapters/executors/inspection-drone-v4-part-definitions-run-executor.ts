@@ -119,8 +119,9 @@ export interface InspectionDroneV4PartDefinitionsRunExecutorDependencies {
 }
 
 /**
- * This executor deliberately has no write-ahead log: it issues only SysON
- * reads. Snapshot publication remains append-only and exact-replay safe.
+ * SysON is read-only, but a durable publication record bridges the local
+ * snapshot-save to project-attachment boundary. It is append-only and lets a
+ * crash resume without a second provider read.
  */
 export class InspectionDroneV4PartDefinitionsRunExecutor {
   constructor(
@@ -283,6 +284,19 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
         "The publishing PartDefinitions run has no durable exact publication record; it will not re-query SysON.",
       );
     }
+    const basis = requireBasis(run);
+    if (
+      basis.kind !== "thread-snapshot" ||
+      basis.subjectId !== "project:inspection-drone-v4" ||
+      basis.revision !== 3 || publication.snapshot.subject.id !== basis.subjectId ||
+      publication.snapshot.revision !== 4 ||
+      publication.snapshot.previous?.snapshotId !== basis.snapshotId ||
+      publication.snapshot.previous.revision !== basis.revision
+    ) {
+      throw denied(
+        "The durable PartDefinitions publication does not advance the exact r3 run basis.",
+      );
+    }
     const capture = await this.d.captures.read(publication.fingerprint);
     const persisted = await this.d.snapshots.get(publication.snapshot.id);
     if (
@@ -302,6 +316,30 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       ),
       "durable PartDefinitions artifact",
     );
+    if (
+      artifact.uri !==
+        `${INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX}${publication.fingerprint.digest}` ||
+      artifact.version !== publication.fingerprint.digest ||
+      artifact.producer.runId !== run.id || artifact.inputArtifactIds.length !== 1
+    ) {
+      throw denied(
+        "The durable PartDefinitions publication artifact is not canonically bound to this run.",
+      );
+    }
+    const base = await this.d.snapshots.get(basis.snapshotId);
+    const architecture =
+      base?.artifacts.filter((candidate) =>
+        candidate.id === artifact.inputArtifactIds[0] &&
+        candidate.id ===
+          `inspection-drone-v4-architecture-${candidate.fingerprint.digest}` &&
+        candidate.uri ===
+          `${INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX}${candidate.fingerprint.digest}`
+      ) ?? [];
+    if (architecture.length !== 1) {
+      throw denied(
+        "The durable PartDefinitions publication does not name one exact r3 architecture input.",
+      );
+    }
     if (run.status === "running") {
       await this.d.commands.publishRun(origin, {
         ...command,
