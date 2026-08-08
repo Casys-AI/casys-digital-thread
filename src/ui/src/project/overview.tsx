@@ -172,6 +172,14 @@ export function ProjectOverview({
             ? <AgentRunSummary run={leadRun} project={project} />
             : brief.currentWork[0]
             ? <WorkItemSummary item={brief.currentWork[0]} />
+            : brief.lastSettledRun
+            ? (
+              <AgentRunSummary
+                run={brief.lastSettledRun}
+                project={project}
+                settled
+              />
+            )
             : null}
         </ProjectControlPanel>
 
@@ -298,9 +306,11 @@ function ProjectControlPanel({
   );
 }
 
-function AgentRunSummary({ run, project }: {
+function AgentRunSummary({ run, project, settled }: {
   run: EngineeringAgentRun;
   project: EngineeringProjectSnapshot;
+  /** A settled run is history, never presented as in-flight activity. */
+  settled?: boolean;
 }): JSX.Element {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   return (
@@ -309,7 +319,11 @@ function AgentRunSummary({ run, project }: {
       <strong>{workItem?.title ?? run.workItemId}</strong>
       <p>{agentRunSummary(project, run)}</p>
       <small>
-        Agent run · {formatShortTime(run.startedAt ?? run.queuedAt)}
+        {settled
+          ? `Last agent run · ${
+            formatShortTime(run.completedAt ?? run.startedAt ?? run.queuedAt)
+          }`
+          : `Agent run · ${formatShortTime(run.startedAt ?? run.queuedAt)}`}
       </small>
     </div>
   );

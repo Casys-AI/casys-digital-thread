@@ -33,6 +33,12 @@ export interface ProjectBrief {
   readonly currentWork: readonly EngineeringWorkItem[];
   readonly nextWork: readonly EngineeringWorkItem[];
   readonly activeRuns: readonly EngineeringAgentRun[];
+  /**
+   * Most recent settled run (completed, failed or cancelled). Runs finish in
+   * seconds, so the agent panel is almost always between runs: showing the
+   * last settled run keeps the panel factual without pretending activity.
+   */
+  readonly lastSettledRun: EngineeringAgentRun | undefined;
   readonly pendingDecisions: readonly EngineeringDecision[];
   readonly openBlockers: readonly EngineeringBlocker[];
 }
@@ -185,6 +191,16 @@ export function buildProjectBrief(
       run.status === "queued" || run.status === "running" ||
       run.status === "waiting-for-decision" || run.status === "publishing"
     ),
+    lastSettledRun: snapshot.agentRuns
+      .filter((run) =>
+        run.status === "completed" || run.status === "failed" ||
+        run.status === "cancelled"
+      )
+      .toSorted((left, right) =>
+        runRecordedAt(left).localeCompare(runRecordedAt(right)) ||
+        left.id.localeCompare(right.id)
+      )
+      .at(-1),
     pendingDecisions: snapshot.decisions.filter((decision) =>
       decision.status === "required" || decision.status === "proposed" ||
       decision.status === "rejected"

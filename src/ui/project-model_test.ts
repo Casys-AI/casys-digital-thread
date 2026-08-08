@@ -1026,3 +1026,37 @@ function graphEdge(
     origin: "provenance" as const,
   };
 }
+
+Deno.test("the agent panel keeps the most recent settled run when nothing is in flight", () => {
+  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const settled = (
+    id: string,
+    completedAt: string,
+    status: "completed" | "failed" | "cancelled" = "completed",
+  ) => ({
+    ...base.agentRuns[0]!,
+    id,
+    status,
+    completedAt,
+  });
+  const snapshot = {
+    ...base,
+    agentRuns: [
+      settled("run-older", "2026-08-01T09:00:00.000Z"),
+      settled("run-newest", "2026-08-02T10:00:00.000Z"),
+      settled("run-failed-later", "2026-08-01T12:00:00.000Z", "failed" as const),
+    ],
+  };
+
+  const brief = buildProjectBrief(snapshot);
+
+  assertEquals(brief.activeRuns.length, 0);
+  assertEquals(brief.lastSettledRun?.id, "run-newest");
+});
+
+Deno.test("an in-flight run never counts as the last settled run", () => {
+  const brief = buildProjectBrief(COFFEE_MACHINE_PROJECT_FIXTURE);
+
+  assertEquals(brief.activeRuns[0]?.status, "waiting-for-decision");
+  assertEquals(brief.lastSettledRun, undefined);
+});
