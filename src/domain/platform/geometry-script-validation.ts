@@ -1,5 +1,6 @@
 /**
- * Fail-closed AST-level Python script validator for geometry proposals (D4).
+ * Fail-closed lexical and partial-syntax Python script validator for geometry
+ * proposals (D4).
  *
  * WHY THIS MODULE EXISTS — before the server dispatches any script to the
  * build123d provider, the script must be statically verified to exclude the
@@ -7,8 +8,8 @@
  * or introduce non-determinism.  A regex allowlist would be too permissive;
  * full CPython parsing is overkill for the narrow subset we accept.
  *
- * STRATEGY — fail-closed tokenizer.  The tokenizer walks UTF-8 source
- * character by character and emits a minimal token stream.  Any byte sequence
+ * STRATEGY — fail-closed tokenizer.  The tokenizer walks source text character
+ * by character and emits a minimal token stream.  Any source sequence
  * that cannot be identified as one of the recognized token kinds is an
  * immediate rejection.  No backtracking, no partial acceptance.
  *
@@ -19,14 +20,11 @@
  * validator.
  *
  * WHAT IS ACCEPTED:
- *  • imports:
+ *  • imports (the only accepted form):
  *      `from build123d import Name [as alias] [, Name2 [as alias2] …]`
  *        — every imported name must appear in ALLOWED_BUILD123D_NAMES.
  *        — wildcard `from build123d import *` is rejected (un-auditable).
  *      `from math import {approved names}` (same alias rule)
- *      `import build123d [as alias] [, math [as alias], …]`
- *        — the standalone `import` form is only allowed for the top-level
- *          packages; individual names must come through `from … import`.
  *  • name references: any [a-zA-Z_][a-zA-Z0-9_]* identifier NOT in the
  *    forbidden list and NOT matching the dunder pattern __foo__
  *  • number literals: decimal integers and floats whose parsed value is finite
@@ -40,13 +38,18 @@
  *
  * WHAT IS ALWAYS REJECTED regardless of placement:
  *  • dunder references: __foo__
- *  • forbidden built-in and module names (see FORBIDDEN_NAMES below)
- *  • `result` assigned anywhere other than module level (column 0)
+ *  • forbidden built-in and module names in normal identifier position (see
+ *    FORBIDDEN_NAMES below)
+ *  • known write/serialization methods in attribute position (see
+ *    FORBIDDEN_ATTRIBUTES below)
+ *  • `result` assigned anywhere other than the start of a module-level logical
+ *    line (column 0, delimiter depth zero)
  *  • `result` never assigned
  *  • `result` assigned more than once at module level
  *  • raw/bytes/f-string prefixes (rb, br, b, f, rf, fr literals, case-insensitive)
  *  • walrus operator `:=`
  *  • wildcard imports `from X import *` for any source
+ *  • every standalone `import X` form, including dotted module names
  *  • `from build123d import N` when N is not in ALLOWED_BUILD123D_NAMES
  *  • any byte sequence not matched by the tokenizer
  *
@@ -71,6 +74,19 @@
  *  patterns (`[Pos(i*10, 0, 0) * Box(5, 5, 5) for i in [0, 1, 2]]`).
  *  Resource bounding belongs exclusively at the container layer.
  *
+ * IMPORT AUTOMATON — both allowed sources use one parameterised parser.  Every
+ * token in a named import list must be explicitly recognized by that automaton;
+ * an unexpected token always rejects and never silently terminates the list.
+ * A comment inside parentheses behaves like a newline and only terminates an
+ * import list when delimiter depth is zero.
+ *
+ * ATTRIBUTE DENYLIST CAVEAT — FORBIDDEN_ATTRIBUTES is incomplete by
+ * construction: it knows only write/serialization method names present in the
+ * reviewed third-party API when this boundary was written.  It is defense in
+ * depth, not the promise of isolation.  Reachability is bounded structurally by
+ * named-import allowlists and by rejecting normal dangerous identifiers; the
+ * execution container remains the sandbox boundary.
+ *
  * WALRUS POLICY (v2)
  *  The walrus operator `:=` is rejected in v1.  Python tokenises it as a single
  *  two-character token; our lexer would otherwise split it as `:` then `=`,
@@ -78,7 +94,7 @@
  *  single-char check.  A future review may admit walrus in comprehensions once
  *  comprehension scope rules are also validated.
  *
- * SANDBOX CAVEAT — this validator is a guard, not a sandbox.  The container
+ * SANDBOX CAVEAT — this partial validator is a guard, not a sandbox.  The container
  * that executes build123d remains the isolation boundary.  Deployment is
  * local single-operator; the validator raises the bar for accidental or
  * obvious misuse without pretending to be a security perimeter.
@@ -160,12 +176,10 @@ function isStringQuoteChar(c: string): boolean {
  *    runtime (`vars()["__builtins__"]`, `dir(obj)`, `type(x)`).
  * 3. Exit / abort names — `raise SystemExit(0)` terminates the container
  *    process silently before any artefact is written or attested.
- * 4. I/O backdoor functions from build123d — backstop for `export_step(...)`,
- *    `result.export_stl(...)`, `build123d.import_step(...)`, etc.  These are
+ * 4. I/O backdoor functions from build123d in normal identifier position —
+ *    backstop for `export_step(...)`.  These are
  *    legitimate build123d functions but must never appear in an agent-authored
  *    script; the provider itself handles all file I/O under server-fixed paths.
- * 5. Resource-bounding keywords — `while` and `for` are Python keywords but
- *    tokenise as NAME tokens here.  Rejecting them closes the loop-DoS surface.
  */
 const FORBIDDEN_NAMES = new Set([
   // ── 1. Dangerous built-ins and modules ───────────────────────────────────
@@ -214,9 +228,8 @@ const FORBIDDEN_NAMES = new Set([
   // ── 4. I/O backdoor functions from build123d ─────────────────────────────
   // These are real build123d public API names.  A script that imports * or
   // imports them explicitly gains read/write access to the shared /exports
-  // volume.  Reject by name everywhere: covers `export_step(result, "/exports/x")`
-  // as well as `result.export_step("/exports/x")` and
-  // `build123d.export_step(...)`.
+  // volume. Named import allowlists are the structural boundary; these names
+  // are a defense-in-depth backstop in normal identifier position.
   "export_step",
   "export_stl",
   "export_brep",
@@ -229,8 +242,37 @@ const FORBIDDEN_NAMES = new Set([
   "import_svg",
 ]);
 
-/** Only these top-level import sources are allowed. */
-const ALLOWED_IMPORT_SOURCES = new Set(["build123d", "math"]);
+/**
+ * Known attribute names that write or serialize through third-party APIs.
+ *
+ * WHY SEPARATE FROM FORBIDDEN_NAMES — an attribute is not a free identifier:
+ * `.type` is legitimate geometric API usage even though `type(...)` is a
+ * forbidden introspection builtin. This list is intentionally incomplete and
+ * must never be described as the isolation boundary; see the header caveat.
+ */
+const FORBIDDEN_ATTRIBUTES = new Set([
+  "save",
+  "write",
+  "dump",
+  "serialize",
+  "to_step",
+  "to_stl",
+  "to_brep",
+  "to_gltf",
+  "to_svg",
+  "to_dxf",
+  "to_file",
+  "export_step",
+  "export_stl",
+  "export_brep",
+  "export_gltf",
+  "export_svg",
+  "export_dxf",
+  "import_step",
+  "import_stl",
+  "import_brep",
+  "import_svg",
+]);
 
 /**
  * `from math import` only permits this subset.
@@ -243,8 +285,6 @@ const ALLOWED_MATH_NAMES = new Set([
   "pi",
   "e",
   "tau",
-  "inf",
-  "nan",
   "sqrt",
   "sin",
   "cos",
@@ -430,6 +470,8 @@ interface Token {
   kind: TokenKind;
   value: string;
   line: number;
+  column: number;
+  startsLogicalLine: boolean;
 }
 
 // ── Tokenizer ────────────────────────────────────────────────────────────────
@@ -438,10 +480,18 @@ function tokenize(source: string): Token[] {
   const tokens: Token[] = [];
   let pos = 0;
   let line = 1;
+  let column = 0;
+  let delimiterDepth = 0;
+  let atLogicalLineStart = true;
 
   function advance(): string {
     const ch = source[pos++] ?? "";
-    if (ch === "\n") line++;
+    if (ch === "\n") {
+      line++;
+      column = 0;
+    } else {
+      column++;
+    }
     return ch;
   }
 
@@ -475,13 +525,27 @@ function tokenize(source: string): Token[] {
     }
 
     const startLine = currentLine();
+    const startColumn = column;
     const ch = peek();
+
+    const pushToken = (kind: TokenKind, value: string): void => {
+      const significant = kind !== "WHITESPACE" && kind !== "COMMENT" &&
+        kind !== "NEWLINE" && kind !== "CONTINUATION";
+      tokens.push({
+        kind,
+        value,
+        line: startLine,
+        column: startColumn,
+        startsLogicalLine: significant && atLogicalLineStart,
+      });
+      if (significant) atLogicalLineStart = false;
+    };
 
     // Whitespace (space, tab — not newline)
     if (ch === " " || ch === "\t") {
       let ws = "";
       while (peek() === " " || peek() === "\t") ws += advance();
-      tokens.push({ kind: "WHITESPACE", value: ws, line: startLine });
+      pushToken("WHITESPACE", ws);
       continue;
     }
 
@@ -489,7 +553,8 @@ function tokenize(source: string): Token[] {
     if (ch === "\r" || ch === "\n") {
       let nl = advance();
       if (nl === "\r" && peek() === "\n") nl += advance();
-      tokens.push({ kind: "NEWLINE", value: nl, line: startLine });
+      pushToken("NEWLINE", nl);
+      if (delimiterDepth === 0) atLogicalLineStart = true;
       continue;
     }
 
@@ -500,7 +565,7 @@ function tokenize(source: string): Token[] {
         advance(); // consume backslash
         let nl = advance(); // consume \n or \r
         if (nl === "\r" && peek() === "\n") nl += advance();
-        tokens.push({ kind: "CONTINUATION", value: "\\" + nl, line: startLine });
+        pushToken("CONTINUATION", "\\" + nl);
         continue;
       }
       // Otherwise backslash is not a recognized operator in our subset
@@ -517,7 +582,7 @@ function tokenize(source: string): Token[] {
       while (pos < source.length && peek() !== "\n" && peek() !== "\r") {
         comment += advance();
       }
-      tokens.push({ kind: "COMMENT", value: comment, line: startLine });
+      pushToken("COMMENT", comment);
       continue;
     }
 
@@ -562,10 +627,11 @@ function tokenize(source: string): Token[] {
           startLine,
         );
       }
-      const strToken = consumeString(source, pos, line, startLine);
+      const strToken = consumeString(source, pos, line, startColumn, startLine);
       pos = strToken.nextPos;
       line = strToken.nextLine;
-      tokens.push({ kind: "STRING", value: strToken.value, line: startLine });
+      column = strToken.nextColumn;
+      pushToken("STRING", strToken.value);
       continue;
     }
 
@@ -606,7 +672,7 @@ function tokenize(source: string): Token[] {
           startLine,
         );
       }
-      tokens.push({ kind: "NUMBER", value: numStr, line: startLine });
+      pushToken("NUMBER", numStr);
       continue;
     }
 
@@ -624,16 +690,28 @@ function tokenize(source: string): Token[] {
         );
       }
 
-      // Reject forbidden names
-      if (FORBIDDEN_NAMES.has(name)) {
+      const previous = [...tokens].reverse().find((token) =>
+        token.kind !== "WHITESPACE" && token.kind !== "CONTINUATION" &&
+        token.kind !== "NEWLINE" && token.kind !== "COMMENT"
+      );
+      const isAttribute = previous?.kind === "OP" && previous.value === ".";
+
+      // Attribute names have a separate defense-in-depth denylist so normal
+      // builtins such as `type` do not block legitimate geometric properties.
+      const forbidden = isAttribute
+        ? FORBIDDEN_ATTRIBUTES.has(name)
+        : FORBIDDEN_NAMES.has(name);
+      if (forbidden) {
         throw new GeometryScriptValidationError(
           "forbidden_name",
-          `Forbidden identifier '${name}' at line ${startLine}.`,
+          `Forbidden ${
+            isAttribute ? "attribute" : "identifier"
+          } '${name}' at line ${startLine}.`,
           startLine,
         );
       }
 
-      tokens.push({ kind: "NAME", value: name, line: startLine });
+      pushToken("NAME", name);
       continue;
     }
 
@@ -654,13 +732,17 @@ function tokenize(source: string): Token[] {
     const twoChar = source.slice(pos, pos + 2);
     if (ALLOWED_OPS.has(twoChar)) {
       pos += 2;
-      tokens.push({ kind: "OP", value: twoChar, line: startLine });
+      column += 2;
+      pushToken("OP", twoChar);
       continue;
     }
     const oneChar = source[pos]!;
     if (ALLOWED_OPS.has(oneChar)) {
       pos++;
-      tokens.push({ kind: "OP", value: oneChar, line: startLine });
+      column++;
+      pushToken("OP", oneChar);
+      if (oneChar === "(" || oneChar === "[" || oneChar === "{") delimiterDepth++;
+      if (oneChar === ")" || oneChar === "]" || oneChar === "}") delimiterDepth--;
       continue;
     }
 
@@ -680,20 +762,28 @@ interface StringResult {
   value: string;
   nextPos: number;
   nextLine: number;
+  nextColumn: number;
 }
 
 function consumeString(
   source: string,
   startPos: number,
   startLine: number,
+  startColumn: number,
   _tokenLine: number,
 ): StringResult {
   let pos = startPos;
   let line = startLine;
+  let column = startColumn;
 
   function advance(): string {
     const ch = source[pos++] ?? "";
-    if (ch === "\n") line++;
+    if (ch === "\n") {
+      line++;
+      column = 0;
+    } else {
+      column++;
+    }
     return ch;
   }
 
@@ -718,12 +808,12 @@ function consumeString(
     if (triple) {
       if (ch === q1 && source[pos + 1] === q1 && source[pos + 2] === q1) {
         content += advance() + advance() + advance();
-        return { value: content, nextPos: pos, nextLine: line };
+        return { value: content, nextPos: pos, nextLine: line, nextColumn: column };
       }
     } else {
       if (ch === q1) {
         content += advance();
-        return { value: content, nextPos: pos, nextLine: line };
+        return { value: content, nextPos: pos, nextLine: line, nextColumn: column };
       }
       if (ch === "\n" || ch === "\r") {
         throw new GeometryScriptValidationError(
@@ -746,136 +836,11 @@ function consumeString(
 // ── Semantic checks on the token stream ─────────────────────────────────────
 
 /**
- * Validate all module names in a standalone `import A [as a] [, B [as b], …]`
- * statement.
+ * Validate a named import list with one fail-closed state machine.
  *
- * WHY THIS FUNCTION EXISTS — Python allows comma-separated module lists in a
- * single `import` statement.  The original check called `nextSignificantName`
- * once and validated only the first module, so `import build123d, ctypes`
- * silently passed: `build123d` was validated, `ctypes` was never checked, and
- * the subsequent `ctypes.CDLL("libc.so.6").system(...)` call reached the
- * provider with access to the shared /exports volume.
- *
- * This function validates EVERY module in the comma-separated list.
- * Dotted sub-names (`import build123d.utils`) are handled by validating the
- * top-level segment only; `as alias` clauses are skipped.
- */
-function checkStandaloneImportList(
-  tokens: Token[],
-  start: number,
-  importLine: number,
-): void {
-  let i = start;
-  let moduleCount = 0;
-
-  outer: while (true) {
-    // Skip leading whitespace / continuation.
-    while (
-      i < tokens.length &&
-      (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
-    ) {
-      i++;
-    }
-    if (i >= tokens.length) break;
-
-    const t = tokens[i]!;
-    if (t.kind === "NEWLINE" || t.kind === "COMMENT") break;
-
-    // Must be a NAME (the top-level module or package name).
-    if (t.kind !== "NAME") {
-      if (moduleCount === 0) {
-        throw new GeometryScriptValidationError(
-          "forbidden_import",
-          `Bare 'import' without a module name at line ${importLine}.`,
-          importLine,
-        );
-      }
-      break;
-    }
-
-    moduleCount++;
-
-    // Validate against the allowlist (only the first segment matters for
-    // dotted names: `import build123d.X` — `build123d` is the package).
-    if (!ALLOWED_IMPORT_SOURCES.has(t.value)) {
-      throw new GeometryScriptValidationError(
-        "forbidden_import",
-        `Forbidden import of '${t.value}' at line ${importLine}. ` +
-          `Only build123d and math are allowed.`,
-        importLine,
-      );
-    }
-    i++;
-
-    // Skip dotted suffix: `.sub.module` after the top-level package name.
-    while (i < tokens.length) {
-      const dt = tokens[i]!;
-      if (dt.kind === "WHITESPACE" || dt.kind === "CONTINUATION") {
-        i++;
-        continue;
-      }
-      if (dt.kind !== "OP" || dt.value !== ".") break;
-      i++; // skip "."
-      while (
-        i < tokens.length &&
-        (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
-      ) {
-        i++;
-      }
-      if (tokens[i]?.kind === "NAME") i++; // skip sub-name
-    }
-
-    // Skip optional `as alias`.
-    while (
-      i < tokens.length &&
-      (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
-    ) {
-      i++;
-    }
-    if (i < tokens.length && tokens[i]?.kind === "NAME" && tokens[i]!.value === "as") {
-      i++; // skip "as"
-      while (
-        i < tokens.length &&
-        (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
-      ) {
-        i++;
-      }
-      if (i < tokens.length && tokens[i]?.kind === "NAME") i++; // skip alias
-    }
-
-    // Look for a comma (more modules) or end of statement.
-    while (
-      i < tokens.length &&
-      (tokens[i]!.kind === "WHITESPACE" || tokens[i]!.kind === "CONTINUATION")
-    ) {
-      i++;
-    }
-    if (i >= tokens.length) break outer;
-    const sep = tokens[i]!;
-    if (sep.kind === "NEWLINE" || sep.kind === "COMMENT") break outer;
-    if (sep.kind === "OP" && sep.value === ",") {
-      i++; // consume comma; loop to read next module
-      continue;
-    }
-    break; // any other token — end of import statement
-  }
-
-  if (moduleCount === 0) {
-    throw new GeometryScriptValidationError(
-      "forbidden_import",
-      `Bare 'import' without a module name at line ${importLine}.`,
-      importLine,
-    );
-  }
-}
-
-/**
- * Validate the name list in `from build123d import N1 [as a1] [, N2 [as a2]…]`.
- *
- * WHY AN EXPLICIT CHECKER — `from build123d import export_step` grants write
- * access to /exports without any obviously forbidden name in the script body.
- * Inverting the check to an allowlist ensures unknown names are rejected even
- * if FORBIDDEN_NAMES is incomplete.
+ * WHY ONE AUTOMATON — source-specific copies repeatedly diverged on unexpected
+ * tokens. Parameterising the source and allowlist makes commas, aliases,
+ * parentheses, newlines, comments, and rejection behavior one invariant.
  *
  * ALIAS RULE — the SOURCE name (`Box`) must be in ALLOWED_BUILD123D_NAMES; the
  * alias (`B`) is a local binding chosen by the script author and is not checked
@@ -887,10 +852,12 @@ function checkStandaloneImportList(
  * FAIL-CLOSED — any token that is not whitespace, comma, open/close paren,
  * a valid name, `as`, or an alias is a REJECT, not a silent pass.
  */
-function checkBuild123dImportNames(
+function checkNamedImportNames(
   tokens: Token[],
   start: number,
   importLine: number,
+  source: "build123d" | "math",
+  allowlist: ReadonlySet<string>,
 ): void {
   // Skip to the `import` keyword following the module name.
   let i = start;
@@ -904,78 +871,104 @@ function checkBuild123dImportNames(
       i++;
       break;
     }
-    return; // No `import` keyword — handled upstream.
+    throw new GeometryScriptValidationError(
+      "forbidden_import",
+      `Expected 'import' after 'from ${source}' at line ${importLine}.`,
+      importLine,
+    );
   }
 
   let parenDepth = 0;
-  let expectingAlias = false; // true immediately after consuming `as`
+  let state: "name" | "separator" | "alias" = "name";
+  let importedNameCount = 0;
 
   while (i < tokens.length) {
     const t = tokens[i++]!;
     if (t.kind === "WHITESPACE" || t.kind === "CONTINUATION") continue;
-    if (t.kind === "NEWLINE") {
-      if (parenDepth === 0) break; // single-line import ended
-      continue; // inside parens — multi-line continuation
+    if (t.kind === "NEWLINE" || t.kind === "COMMENT") {
+      if (parenDepth === 0) break;
+      continue;
     }
-    if (t.kind === "COMMENT") break;
     if (t.kind === "OP" && t.value === "(") {
+      if (parenDepth !== 0 || importedNameCount !== 0 || state !== "name") {
+        throw unexpectedImportToken(t, source, importLine);
+      }
       parenDepth++;
       continue;
     }
     if (t.kind === "OP" && t.value === ")") {
-      if (parenDepth > 0) parenDepth--;
-      if (parenDepth === 0) break; // closing paren ends the import list
-      continue;
+      if (parenDepth !== 1 || importedNameCount === 0 || state === "alias") {
+        throw unexpectedImportToken(t, source, importLine);
+      }
+      while (i < tokens.length && tokens[i]!.kind === "WHITESPACE") i++;
+      const afterList = tokens[i];
+      if (
+        afterList === undefined || afterList.kind === "NEWLINE" ||
+        afterList.kind === "COMMENT"
+      ) return;
+      throw unexpectedImportToken(afterList, source, importLine);
     }
     if (t.kind === "OP" && t.value === ",") {
-      expectingAlias = false;
+      if (state !== "separator") throw unexpectedImportToken(t, source, importLine);
+      state = "name";
       continue;
     }
     if (t.kind === "OP" && t.value === "*") {
       throw new GeometryScriptValidationError(
         "forbidden_import",
-        `Wildcard 'from build123d import *' is not allowed at line ${importLine}. ` +
-          `Import only the names you need from ALLOWED_BUILD123D_NAMES.`,
+        `Wildcard 'from ${source} import *' is not allowed at line ${importLine}.`,
         importLine,
       );
     }
     if (t.kind === "NAME") {
-      if (expectingAlias) {
-        // This is the alias token — accept any valid identifier.
-        expectingAlias = false;
+      if (state === "alias") {
+        state = "separator";
         continue;
       }
-      if (t.value === "as") {
-        expectingAlias = true;
+      if (state === "separator" && t.value === "as") {
+        state = "alias";
         continue;
       }
-      // Source name — must be in the allowlist.
-      if (!ALLOWED_BUILD123D_NAMES.has(t.value)) {
+      if (state !== "name") throw unexpectedImportToken(t, source, importLine);
+      if (!allowlist.has(t.value)) {
         throw new GeometryScriptValidationError(
           "forbidden_import",
-          `'${t.value}' is not in the allowed build123d import set at line ${importLine}. ` +
-            `Allowed: ${[...ALLOWED_BUILD123D_NAMES].sort().join(", ")}`,
+          `'${t.value}' is not in the allowed ${source} import set at line ${importLine}.`,
           importLine,
         );
       }
+      importedNameCount++;
+      state = "separator";
       continue;
     }
-    // Any other token — REJECT (fail-closed, see DESIGN RULE in module header).
+    throw unexpectedImportToken(t, source, importLine);
+  }
+
+  if (parenDepth !== 0 || importedNameCount === 0 || state !== "separator") {
     throw new GeometryScriptValidationError(
       "forbidden_import",
-      `Unexpected token '${t.value}' in 'from build123d import' at line ${importLine}.`,
+      `Incomplete 'from ${source} import' at line ${importLine}.`,
       importLine,
     );
   }
+}
+
+function unexpectedImportToken(
+  token: Token,
+  source: string,
+  importLine: number,
+): GeometryScriptValidationError {
+  return new GeometryScriptValidationError(
+    "forbidden_import",
+    `Unexpected token '${token.value}' in 'from ${source} import' at line ${importLine}.`,
+    importLine,
+  );
 }
 
 /**
  * Scan the token stream for import statements.
  *
  * Accepted forms:
- *   import build123d
- *   import build123d, math           (comma list — each module validated)
- *   import build123d as b            (alias — module still validated)
  *   from build123d import Foo, Bar   (each name checked against allowlist)
  *   from math import pi, sqrt        (each name checked against allowlist)
  *
@@ -1014,8 +1007,11 @@ function checkImports(tokens: Token[]): void {
     if (tok.kind !== "NAME") continue;
 
     if (tok.value === "import" && !fromImportTokenIndices.has(i)) {
-      // Standalone `import X [as y] [, Y [as z], …]` — validate EVERY module.
-      checkStandaloneImportList(tokens, i + 1, tok.line);
+      throw new GeometryScriptValidationError(
+        "forbidden_import",
+        `Standalone 'import' is not allowed at line ${tok.line}; use a named import.`,
+        tok.line,
+      );
     }
 
     if (tok.value === "from") {
@@ -1027,7 +1023,7 @@ function checkImports(tokens: Token[]): void {
           tok.line,
         );
       }
-      if (!ALLOWED_IMPORT_SOURCES.has(modTok.value)) {
+      if (modTok.value !== "build123d" && modTok.value !== "math") {
         throw new GeometryScriptValidationError(
           "forbidden_import",
           `Forbidden 'from ${modTok.value} import …' at line ${tok.line}.`,
@@ -1035,10 +1031,22 @@ function checkImports(tokens: Token[]): void {
         );
       }
       if (modTok.value === "math") {
-        checkMathImportNames(tokens, modTok.index + 1, tok.line);
+        checkNamedImportNames(
+          tokens,
+          modTok.index + 1,
+          tok.line,
+          "math",
+          ALLOWED_MATH_NAMES,
+        );
       }
       if (modTok.value === "build123d") {
-        checkBuild123dImportNames(tokens, modTok.index + 1, tok.line);
+        checkNamedImportNames(
+          tokens,
+          modTok.index + 1,
+          tok.line,
+          "build123d",
+          ALLOWED_BUILD123D_NAMES,
+        );
       }
     }
   }
@@ -1063,108 +1071,11 @@ function nextSignificantName(
 }
 
 /**
- * Validate the name list in `from math import N1 [as a1] [, N2 [as a2] …]`.
- *
- * ALIAS RULE — `from math import pi as MY_PI` is valid; the SOURCE name `pi`
- * must be in ALLOWED_MATH_NAMES; the alias `MY_PI` is a local binding and is
- * NOT checked.  Bug fixed here: the previous implementation checked the alias
- * name against the allowlist, incorrectly rejecting `pi as MY_PI`.
- *
- * PAREN RULE — `from math import (\npi,\nsqrt\n)` is legal Python; paren depth
- * tracking prevents NEWLINE inside parentheses from terminating the check early
- * (which would silently accept forbidden names that appear after the newline).
- *
- * FAIL-CLOSED — any token that is not whitespace, comma, open/close paren, a
- * valid name, or `as` is a REJECT, not a silent pass (DESIGN RULE).
- */
-function checkMathImportNames(
-  tokens: Token[],
-  start: number,
-  importLine: number,
-): void {
-  // Skip to the `import` keyword following the module name.
-  let i = start;
-  while (i < tokens.length) {
-    const t = tokens[i]!;
-    if (t.kind === "WHITESPACE" || t.kind === "CONTINUATION") {
-      i++;
-      continue;
-    }
-    if (t.kind === "NAME" && t.value === "import") {
-      i++;
-      break;
-    }
-    return; // No `import` keyword — handled upstream.
-  }
-
-  let parenDepth = 0;
-  let expectingAlias = false; // true immediately after consuming `as`
-
-  while (i < tokens.length) {
-    const t = tokens[i++]!;
-    if (t.kind === "WHITESPACE" || t.kind === "CONTINUATION") continue;
-    if (t.kind === "NEWLINE") {
-      if (parenDepth === 0) break; // single-line import ended
-      continue; // inside parens — multi-line continuation
-    }
-    if (t.kind === "COMMENT") break;
-    if (t.kind === "OP" && t.value === "(") {
-      parenDepth++;
-      continue;
-    }
-    if (t.kind === "OP" && t.value === ")") {
-      if (parenDepth > 0) parenDepth--;
-      if (parenDepth === 0) break; // closing paren ends the import list
-      continue;
-    }
-    if (t.kind === "OP" && t.value === ",") {
-      expectingAlias = false;
-      continue;
-    }
-    if (t.kind === "OP" && t.value === "*") {
-      throw new GeometryScriptValidationError(
-        "forbidden_import",
-        `Wildcard 'from math import *' is not allowed at line ${importLine}.`,
-        importLine,
-      );
-    }
-    if (t.kind === "NAME") {
-      if (expectingAlias) {
-        // This is the alias token — any valid identifier is acceptable.
-        expectingAlias = false;
-        continue;
-      }
-      if (t.value === "as") {
-        expectingAlias = true;
-        continue;
-      }
-      // Source name — must be in the math allowlist.
-      if (!ALLOWED_MATH_NAMES.has(t.value)) {
-        throw new GeometryScriptValidationError(
-          "forbidden_import",
-          `'${t.value}' is not in the allowed math import set at line ${importLine}.`,
-          importLine,
-        );
-      }
-      continue;
-    }
-    // Any other token — REJECT (fail-closed, see DESIGN RULE in module header).
-    throw new GeometryScriptValidationError(
-      "forbidden_import",
-      `Unexpected token '${t.value}' in 'from math import' at line ${importLine}.`,
-      importLine,
-    );
-  }
-}
-
-/**
  * Verify that `result` is assigned exactly once at module level (column 0).
  *
- * COLUMN-0 RULE — `result` must be the first significant token on its line
- * (no WHITESPACE between the preceding NEWLINE and the `result` NAME token).
- * This rejects assignments inside `def`, `class`, `if`, `except`, `with`, and
- * any other indented block — they would produce an inconsistent or conditional
- * value rather than the geometry the provider materialises.
+ * LOGICAL-LINE RULE — `result` must start a new logical line at column zero and
+ * delimiter depth zero. A physical newline consumed by `\\\n` or inside a
+ * delimiter never creates module-level assignment authority.
  *
  * DOT-ACCESS EXCEPTION — `shape.result = …` is an attribute assignment, not a
  * variable assignment.  We detect this by checking for `OP(".")` immediately
@@ -1207,16 +1118,7 @@ function checkResultAssignment(tokens: Token[]): void {
     const next = nextSignificantToken(tokens, i + 1);
     if (next?.value !== "=") continue; // not an assignment
 
-    // Column-0 check: the token immediately before `result` (no whitespace
-    // skipping!) must be NEWLINE, CONTINUATION, or absent.  If it is
-    // WHITESPACE, `result` is indented — it is inside a block, not at module
-    // level.
-    const immediatePrev = i > 0 ? tokens[i - 1] : undefined;
-    const atModuleLevel = immediatePrev === undefined ||
-      immediatePrev.kind === "NEWLINE" ||
-      immediatePrev.kind === "CONTINUATION";
-
-    if (!atModuleLevel) {
+    if (tok.column !== 0 || !tok.startsLogicalLine) {
       throw new GeometryScriptValidationError(
         "result_not_at_module_level",
         `'result' must be assigned at module level (column 0) — ` +
@@ -1269,10 +1171,11 @@ function nextSignificantToken(
  * responsible for invoking it before any provider dispatch.
  */
 export function validateGeometryScript(script: string): void {
-  if (script.length > MAX_SCRIPT_BYTES) {
+  const scriptBytes = new TextEncoder().encode(script).byteLength;
+  if (scriptBytes > MAX_SCRIPT_BYTES) {
     throw new GeometryScriptValidationError(
       "script_too_large",
-      `Script exceeds maximum size of ${MAX_SCRIPT_BYTES} bytes (got ${script.length}).`,
+      `Script exceeds maximum size of ${MAX_SCRIPT_BYTES} bytes (got ${scriptBytes}).`,
     );
   }
 

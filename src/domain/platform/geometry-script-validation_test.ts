@@ -685,6 +685,129 @@ result = Compound(label="base-plate", children=[base] + bosses)
   },
 );
 
+Deno.test("validateGeometryScript accepts a legitimate geometric type attribute", () => {
+  validateGeometryScript(`from build123d import Box
+shape = Box(1, 1, 1)
+face_type = shape.faces()[0].type
+result = shape
+`);
+});
+
+Deno.test("validateGeometryScript rejects every standalone import form", () => {
+  for (
+    const statement of ["import build123d", "import math", "import build123d.geometry"]
+  ) {
+    const error = (() => {
+      try {
+        validateGeometryScript(`${statement}
+result = value
+`);
+      } catch (cause) {
+        return cause as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(error?.code, "forbidden_import");
+  }
+});
+
+for (
+  const attribute of [
+    "save",
+    "write",
+    "dump",
+    "serialize",
+    "to_step",
+    "to_stl",
+    "to_brep",
+    "to_gltf",
+    "to_svg",
+    "to_dxf",
+    "to_file",
+  ]
+) {
+  Deno.test(`validateGeometryScript rejects the known writing attribute '${attribute}'`, () => {
+    const error = (() => {
+      try {
+        validateGeometryScript(`from build123d import Box
+shape = Box(1, 1, 1)
+shape.${attribute}("/exports/not-used")
+result = shape
+`);
+      } catch (cause) {
+        return cause as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(error?.code, "forbidden_name");
+  });
+}
+
+for (const source of ["build123d", "math"]) {
+  Deno.test(
+    `validateGeometryScript rejects a forbidden ${source} name after a parenthesised comment`,
+    () => {
+      const forbiddenName = source === "build123d" ? "NotAllowed" : "factorial";
+      const error = (() => {
+        try {
+          validateGeometryScript(`from ${source} import (
+    ${source === "build123d" ? "Box" : "pi"}, # reviewed name
+    ${forbiddenName}
+)
+from build123d import Box
+result = Box(1, 1, 1)
+`);
+        } catch (cause) {
+          return cause as GeometryScriptValidationError;
+        }
+      })();
+      assertEquals(error?.code, "forbidden_import");
+    },
+  );
+}
+
+Deno.test(
+  "validateGeometryScript rejects result after a continued compound header",
+  () => {
+    const error = (() => {
+      try {
+        validateGeometryScript(`from build123d import Box
+if True: \\
+result = Box(1, 1, 1)
+`);
+      } catch (cause) {
+        return cause as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(error?.code, "result_not_at_module_level");
+  },
+);
+
+for (const nonFiniteName of ["inf", "nan"]) {
+  Deno.test(`validateGeometryScript rejects math name '${nonFiniteName}'`, () => {
+    const error = (() => {
+      try {
+        validateGeometryScript(`from math import ${nonFiniteName}
+from build123d import Box
+result = Box(${nonFiniteName}, 1, 1)
+`);
+      } catch (cause) {
+        return cause as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(error?.code, "forbidden_import");
+  });
+}
+
+Deno.test("validateGeometryScript measures its size limit in UTF-8 bytes", () => {
+  const error = (() => {
+    try {
+      validateGeometryScript("é".repeat(32_769));
+    } catch (cause) {
+      return cause as GeometryScriptValidationError;
+    }
+  })();
+  assertEquals(error?.code, "script_too_large");
+});
+
 // ── P2: walrus operator ───────────────────────────────────────────────────────
 
 Deno.test(
