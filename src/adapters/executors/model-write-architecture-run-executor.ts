@@ -69,6 +69,10 @@ import {
   FileArchitectureAttemptStore,
 } from "../wal/file-architecture-attempt-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
+import {
+  assertThreadSnapshotLineageIntact,
+  ThreadSnapshotLineageIntegrityError,
+} from "../stores/thread-snapshot-lineage.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { extractArchitectureStructure } from "../extractors/architecture-structure-extractor.ts";
@@ -187,13 +191,12 @@ export async function assertArchitectureArtifactNotRemoved(
      * - Missing or mismatched ancestor: the lineage is broken or the resolved
      *   snapshot does not match its pointer. The ratchet's responsibility is
      *   narrow: assert monotonicity within a single subject's intact lineage.
-     *   A broken pointer is structural corruption that the general snapshot
-     *   validator (validateThreadSnapshot) owns — not this predicate.
+     *   The executor separately calls assertThreadSnapshotLineageIntact before
+     *   this predicate and rejects that corruption before any provider call.
      *
      * - Subject boundary (`ancestor.subject.id !== basis.subject.id`): a
      *   lineage pointer that crosses to a different subject's snapshot is
-     *   almost certainly corruption, but again belongs to the general
-     *   validator. The architecture-artifact ratchet only asserts that *this*
+     *   almost certainly corruption. The architecture-artifact ratchet only asserts that *this*
      *   subject never silently drops an artifact it once published. An artifact
      *   held by a *different* subject's snapshot must not trigger a ratchet
      *   for this one.
@@ -744,6 +747,17 @@ export class ModelWriteArchitectureRunExecutor {
     seedVerifiedFingerprint: ContentFingerprint;
   }> {
     const base = await exactSnapshot(this.#snapshots, basis);
+    try {
+      await assertThreadSnapshotLineageIntact(base, this.#snapshots);
+    } catch (error) {
+      if (error instanceof ThreadSnapshotLineageIntegrityError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `The architecture basis ThreadSnapshot has an invalid predecessor lineage: ${error.message}`,
+        );
+      }
+      throw error;
+    }
     const seedArtifact = base.artifacts.find(
       (a) => a.kind === "sysml-model" && a.producer.tool === "syson_model_create",
     );
