@@ -6,10 +6,11 @@ import type { ProjectReviewIntentAction } from "../../../domain/project/project-
 import { ActivityReviewFeedCard } from "../project/control-center.tsx";
 import {
   activityReviewStatus,
-  activityReviewStatusLabel,
   type ProjectReviewRecord,
 } from "../project/review-decision-model.ts";
 import {
+  activityReviewDisplayStatusLabel,
+  effectiveActivityReviewStatus,
   reviewIntentScopeKey,
   type ReviewIntentTransmissionState,
 } from "../project/review-intent-model.ts";
@@ -74,7 +75,9 @@ export interface ThreadFeedProps {
   components?: ThreadComponentCatalog;
   /** Durable human reviews merged into the same chronological Activity rail. */
   reviewRecords?: readonly ProjectReviewRecord[];
-  /** Delivery state keyed by exact decision id and input fingerprint. */
+  /** Current project identity used to isolate transport state across focus changes. */
+  reviewIntentProjectId?: string;
+  /** Delivery state keyed by project, decision, fingerprint, and approval attempt. */
   reviewIntentStates?: ReadonlyMap<string, ReviewIntentTransmissionState>;
   onSubmitReviewIntent?: (
     record: ProjectReviewRecord,
@@ -119,6 +122,7 @@ export function ThreadFeed({
   anchorage,
   components,
   reviewRecords = [],
+  reviewIntentProjectId,
   reviewIntentStates,
   onSubmitReviewIntent,
   onRetryReviewIntent,
@@ -135,9 +139,19 @@ export function ThreadFeed({
     record: ProjectReviewRecord,
   ): ReviewIntentTransmissionState => {
     const decision = record.decision;
-    if (!decision?.inputFingerprint) return { kind: "idle" };
+    if (
+      !reviewIntentProjectId || !decision?.inputFingerprint ||
+      !record.approvalId
+    ) {
+      return { kind: "idle" };
+    }
     return reviewIntentStates?.get(
-      reviewIntentScopeKey(decision.id, decision.inputFingerprint),
+      reviewIntentScopeKey(
+        reviewIntentProjectId,
+        decision.id,
+        decision.inputFingerprint,
+        record.approvalId,
+      ),
     ) ?? { kind: "idle" };
   };
   const allFeedNodes = activityFeedNodes(nodes, edges);
@@ -233,12 +247,18 @@ export function ThreadFeed({
         {entries.map((entry, index) => {
           if (entry.kind === "review") {
             const status = activityReviewStatus(entry.review);
+            const transmissionState = transmissionFor(entry.review);
+            const displayStatus = effectiveActivityReviewStatus(
+              status,
+              transmissionState,
+            );
             return (
               <li
                 id={entry.review.anchorId}
                 key={entry.key}
                 class="thread-feed-entry thread-feed-entry--review"
-                data-review-status={status}
+                data-review-status={displayStatus}
+                data-canonical-review-status={status}
                 style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
               >
                 <div
@@ -255,7 +275,7 @@ export function ThreadFeed({
                   <ActivityReviewFeedCard
                     record={entry.review}
                     onOpenEvidence={onOpenReviewEvidence}
-                    transmissionState={transmissionFor(entry.review)}
+                    transmissionState={transmissionState}
                     onSubmitIntent={onSubmitReviewIntent
                       ? (action, comment) =>
                         onSubmitReviewIntent(entry.review, action, comment)
@@ -274,6 +294,13 @@ export function ThreadFeed({
           const reviewStatus = attachedReview
             ? activityReviewStatus(attachedReview)
             : undefined;
+          const transmissionState = attachedReview
+            ? transmissionFor(attachedReview)
+            : { kind: "idle" as const };
+          const reviewDisplayStatus = effectiveActivityReviewStatus(
+            reviewStatus,
+            transmissionState,
+          );
           const active = isActivityEntryExpanded(focus, node);
           const lineage = active
             ? traceThreadLineage(nodes, edges, focus)
@@ -300,7 +327,8 @@ export function ThreadFeed({
               data-active={active ? "true" : "false"}
               data-kind={node.entityKind}
               data-freshness={node.freshness}
-              data-review-status={reviewStatus}
+              data-review-status={reviewDisplayStatus}
+              data-canonical-review-status={reviewStatus}
               style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
             >
               <div class="thread-feed-time" aria-label={node.recordedAt}>
@@ -331,12 +359,14 @@ export function ThreadFeed({
                     <span>{node.summary}</span>
                   </span>
                   <span class="thread-feed-meta">
-                    {reviewStatus && (
+                    {reviewDisplayStatus && (
                       <i
                         class="thread-feed-review-badge"
-                        data-review-status={reviewStatus}
+                        data-review-status={reviewDisplayStatus}
                       >
-                        {activityReviewStatusLabel(reviewStatus)}
+                        {activityReviewDisplayStatusLabel(
+                          reviewDisplayStatus,
+                        )}
                       </i>
                     )}
                     <i data-state={node.freshness}>{node.freshness}</i>
@@ -348,7 +378,7 @@ export function ThreadFeed({
                   <ActivityReviewFeedCard
                     record={attachedReview}
                     onOpenEvidence={onOpenReviewEvidence}
-                    transmissionState={transmissionFor(attachedReview)}
+                    transmissionState={transmissionState}
                     onSubmitIntent={onSubmitReviewIntent
                       ? (action, comment) =>
                         onSubmitReviewIntent(attachedReview, action, comment)

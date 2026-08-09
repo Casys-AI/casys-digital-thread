@@ -11,7 +11,8 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "REVIEW NOW");
   assertStringIncludes(source, "export function ActivityReviewFeedCard");
   assertStringIncludes(source, "activityReviewStatus(record)");
-  assertStringIncludes(source, "data-review-status={status}");
+  assertStringIncludes(source, "data-review-status={displayStatus}");
+  assertStringIncludes(source, "data-canonical-review-status={status}");
   assertStringIncludes(source, "ReviewBusinessPreview");
   assertEquals(source.includes("activity-review-events"), false);
   assertEquals(source.includes("CompactDecisionRecord"), false);
@@ -28,16 +29,41 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "VALIDATED PROPOSAL · RESULT PENDING");
   assertStringIncludes(source, "DRAFT · GEOMETRY PROPOSAL");
   assertEquals(source.includes("0x1a1c1e"), false);
-  assertStringIncludes(source, "Comment for the agent");
-  assertStringIncludes(source, 'send("validate")');
+  assertEquals(source.includes("Comment for the agent"), false);
+  assertStringIncludes(source, 'send("validate", undefined)');
   assertStringIncludes(source, "Request revision");
+  assertStringIncludes(source, "What should change?");
+  assertStringIncludes(source, 'aria-required="true"');
+  assertStringIncludes(source, "Send revision request");
+  assertStringIncludes(source, 'setComposerMode("revision")');
+  assertStringIncludes(source, 'setComposerMode("choice")');
+  assertStringIncludes(source, 'send("request-revision", comment)');
   assertStringIncludes(source, 'role="group"');
   assertStringIncludes(source, 'aria-live="polite"');
   assertStringIncludes(source, 'role="alert"');
-  assertStringIncludes(source, "Sent to agent · signed confirmation pending");
-  assertStringIncludes(source, "Awaiting signed decision");
+  assertStringIncludes(source, "Sent to review queue · agent receipt pending");
+  assertStringIncludes(source, "Waiting for agent receipt");
+  assertStringIncludes(source, "Waiting for signed decision");
   assertStringIncludes(source, "Recorded review outcome");
   assertEquals(source.includes("decision-inbox-preview"), false);
+
+  const feed = await Deno.readTextFile(
+    new URL("./src/thread/feed.tsx", import.meta.url),
+  );
+  assertStringIncludes(feed, "effectiveActivityReviewStatus");
+  assertStringIncludes(feed, "data-review-status={displayStatus}");
+  assertStringIncludes(feed, "data-review-status={reviewDisplayStatus}");
+  assertStringIncludes(feed, "activityReviewDisplayStatusLabel");
+
+  const styles = await Deno.readTextFile(
+    new URL("./src/styles/11-review-notifications.css", import.meta.url),
+  );
+  for (const transportStatus of ["sending", "sent", "received"]) {
+    assertStringIncludes(
+      styles,
+      `[data-review-status="${transportStatus}"]`,
+    );
+  }
 
   for (
     const removedCommand of [
@@ -58,6 +84,56 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   ) {
     assertEquals(source.includes(removedCommand), false, removedCommand);
   }
+});
+
+Deno.test("Activity reuses one exact GLB viewer across selectable PartDefinitions", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/control-center.tsx", import.meta.url),
+  );
+  const start = source.indexOf("function PartDefinitionGlbReview(");
+  const end = source.indexOf("function partDefinitionPreviewCopy(", start);
+  const viewer = source.slice(start, end);
+
+  assertEquals(start >= 0, true);
+  assertEquals(end > start, true);
+  assertStringIncludes(
+    source,
+    'asset.format === "gltf" && asset.path !== undefined &&',
+  );
+  assertStringIncludes(source, "asset.path.length > 0");
+  assertStringIncludes(
+    source,
+    "partDefinitionIds.has(asset.partDefinitionElementId)",
+  );
+  assertStringIncludes(viewer, 'aria-label="PartDefinition GLB previews"');
+  assertStringIncludes(viewer, "aria-pressed={isSelected}");
+  assertStringIncludes(viewer, "url={selected.asset.path}");
+  assertEquals(viewer.match(/<GltfAssetCanvas/g)?.length, 1);
+  assertStringIncludes(source, "STEP remains the");
+  assertStringIncludes(source, "authoritative per-part CAD");
+  assertStringIncludes(source, "no per-part browser");
+  assertStringIncludes(source, "viewer is claimed");
+  assertStringIncludes(source, "SEALED PART PRESENTATION · EXACT RECORDED GLB");
+  assertStringIncludes(
+    source,
+    "VALIDATED PART PROPOSAL · RESULT PENDING · GLB",
+  );
+  assertStringIncludes(
+    source,
+    "VALIDATED HISTORICAL PART PROPOSAL · SUPERSEDED · GLB",
+  );
+  assertStringIncludes(source, "DRAFT PART PROPOSAL · GLB · NOT CANONICAL");
+  assertEquals(source.includes("Desk Lamp"), false);
+
+  const styles = await Deno.readTextFile(
+    new URL("./src/styles/11-review-notifications.css", import.meta.url),
+  );
+  assertStringIncludes(styles, ".geometry-part-visual-list");
+  assertStringIncludes(styles, "max-height: 25rem;");
+  assertStringIncludes(
+    styles,
+    "grid-template-columns: minmax(10.5rem, 0.32fr) minmax(0, 1fr);",
+  );
 });
 
 Deno.test("Project keeps its brief and path without duplicate engineering summaries", async () => {
@@ -97,7 +173,11 @@ Deno.test("Workbench keeps navigation and sends only bounded review intents", as
   assertStringIncludes(source, "buildReviewIntent");
   assertStringIncludes(source, "retryIntent");
   assertStringIncludes(source, "reviewIntentScopeKey");
+  assertStringIncludes(source, "reviewIntentProjectId={project.project.id}");
   assertStringIncludes(source, "hasQueuedReviewIntent");
+  assertStringIncludes(source, 'approval?.status !== "pending"');
+  assertStringIncludes(source, "decision.approvalIds.at(-1)");
+  assertStringIncludes(source, "approvalId: record.approvalId");
   assertStringIncludes(source, "setInterval(refreshReceipts, 2_000)");
   assertStringIncludes(source, "ReviewIntentStaleError");
   assertStringIncludes(source, 'target.startsWith("review/")');
@@ -105,6 +185,12 @@ Deno.test("Workbench keeps navigation and sends only bounded review intents", as
   assertEquals(source.includes('surface="activity"'), false);
   assertEquals(source.includes("onOpenOwner"), false);
   assertEquals(source.includes("groupActivityNodesByOperation"), false);
+
+  const reviewCard = await Deno.readTextFile(
+    new URL("./src/project/control-center.tsx", import.meta.url),
+  );
+  assertStringIncludes(reviewCard, "approvalId !== undefined");
+  assertStringIncludes(reviewCard, "[decisionId, digest, approvalId]");
 
   for (
     const removedCommand of [

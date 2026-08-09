@@ -23,14 +23,29 @@ function trimGeneratedHtml(): Plugin {
 }
 
 const root = dirname(fileURLToPath(import.meta.url));
-const workbenchBffOrigin = "http://127.0.0.1:5173";
+const workbenchBffPort = environmentPort("CASYS_COCKPIT_BFF_PORT", 5175);
+const nativeUiPort = environmentPort("CASYS_COCKPIT_UI_PORT", 5174);
+const workbenchBffOrigin = `http://127.0.0.1:${workbenchBffPort}`;
+
+function environmentPort(name: string, fallback: number): number {
+  const value = process.env[name];
+  if (value === undefined || value === "") return fallback;
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+  const port = Number(value);
+  if (port < 1 || port > 65_535) {
+    throw new Error(`${name} must be an integer between 1 and 65535.`);
+  }
+  return port;
+}
 
 export default defineConfig({
   plugins: [viteSingleFile(), trimGeneratedHtml()],
   base: "./",
   server: {
     host: "127.0.0.1",
-    port: 5174,
+    port: nativeUiPort,
     strictPort: true,
     open: "/native-workbench.html",
     proxy: {

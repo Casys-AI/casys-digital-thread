@@ -366,15 +366,108 @@ Deno.test("exact digital-thread bindings link a PartDefinition STEP without inve
   );
 });
 
-Deno.test("Product names the authoritative STEP link without adding a part viewer", async () => {
+Deno.test("exact v2 PartDefinition mapping resolves one reusable GLB viewer per selected part", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "7".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const assemblyStep = projectedV2GeometryBinary(
+    captureDigest,
+    "8".repeat(64),
+    "step",
+    "step",
+    { scope: "assembly", formatIndex: 0 },
+  );
+  const definitionSteps = [
+    projectedV2GeometryBinary(
+      captureDigest,
+      "9".repeat(64),
+      "step",
+      "step",
+      { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+    ),
+    projectedV2GeometryBinary(
+      captureDigest,
+      "a".repeat(64),
+      "step",
+      "step",
+      { scope: "definition", definitionIndex: 1, fileIndex: 0 },
+    ),
+  ];
+  const definitionGlbs = [
+    projectedV2GeometryBinary(
+      captureDigest,
+      "b".repeat(64),
+      "cad-model",
+      "glb",
+      { scope: "definition", definitionIndex: 0, fileIndex: 1 },
+    ),
+    projectedV2GeometryBinary(
+      captureDigest,
+      "c".repeat(64),
+      "cad-model",
+      "glb",
+      { scope: "definition", definitionIndex: 1, fileIndex: 1 },
+    ),
+  ];
+  const binaries = [assemblyStep, ...definitionSteps, ...definitionGlbs];
+  snapshot.artifacts.push(capture, ...binaries);
+  snapshot.graph.edges.push(
+    ...binaries.map((binary) => projectedTrace(capture.id, binary.id)),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    capture.id,
+    assemblyStep,
+    definitionSteps,
+    [2, 1],
+    definitionGlbs,
+  );
+
+  const parts = snapshot.components.components.filter((component) =>
+    component.kind === "part"
+  );
+  const surfaces = parts.map((part) => resolveCadSurface(snapshot, part));
+  assertEquals(
+    surfaces.map((surface) => surface?.authoritativeArtifact.id),
+    [definitionSteps[0]!.id, definitionSteps[0]!.id, definitionSteps[1]!.id],
+  );
+  assertEquals(
+    surfaces.map((surface) => surface?.presentationArtifact?.id),
+    [definitionGlbs[0]!.id, definitionGlbs[0]!.id, definitionGlbs[1]!.id],
+  );
+  assertEquals(
+    surfaces.map((surface) => surface?.preview?.mediaType),
+    ["model/gltf-binary", "model/gltf-binary", "model/gltf-binary"],
+  );
+  assertEquals(cadSurfaceCoverage(snapshot), {
+    assemblySurfaces: 0,
+    partSurfaces: 3,
+    totalComponents: 4,
+  });
+
+  // A valid GLB from another signed PartDefinition is still the wrong viewer.
+  parts[0]!.preview = {
+    ...parts[0]!.preview!,
+    artifactId: definitionGlbs[1]!.id,
+    url: definitionGlbs[1]!.uri!,
+    sha256: "c".repeat(64),
+  };
+  const mismatched = resolveCadSurface(snapshot, parts[0]!);
+  assertEquals(mismatched?.authoritativeArtifact.id, definitionSteps[0]!.id);
+  assertEquals(mismatched?.preview, undefined);
+});
+
+Deno.test("Product renders exact GLB parts and keeps STEP-only bundles honest", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/thread/component-workspace.tsx", import.meta.url),
   );
+  assertStringIncludes(source, "PARTDEFINITION PREVIEW · GLB");
+  assertStringIncludes(source, "<GltfAssetCanvas");
+  assertStringIncludes(source, "AUTHORITATIVE CAD · STEP");
   assertStringIncludes(source, "Authoritative STEP linked");
-  assertStringIncludes(source, "No per-part viewer is created");
   assertStringIncludes(
     source,
-    "the assembly remains the single visual review surface",
+    "No exact PartDefinition GLB was published in this bundle",
   );
 });
 
@@ -1093,6 +1186,7 @@ function attachExactV2Catalog(
   assemblyStep: ThreadArtifact,
   definitionSteps: readonly ThreadArtifact[],
   occurrenceCounts: readonly number[] = definitionSteps.map(() => 1),
+  definitionGlbs: readonly (ThreadArtifact | undefined)[] = [],
 ): void {
   const binding = (artifact: ThreadArtifact) => ({
     provider: "digital-thread" as const,
@@ -1121,6 +1215,20 @@ function attachExactV2Catalog(
           kind: "part" as const,
           quantity: 1,
           bindings: [binding(step)],
+          ...(definitionGlbs[definitionIndex]
+            ? {
+              preview: {
+                provider: "build123d" as const,
+                artifactId: definitionGlbs[definitionIndex]!.id,
+                mediaType: "model/gltf-binary" as const,
+                url: definitionGlbs[definitionIndex]!.uri!,
+                sha256: definitionGlbs[definitionIndex]!.fingerprint!.replace(
+                  "sha256:",
+                  "",
+                ),
+              },
+            }
+            : {}),
         }),
       )
     ),

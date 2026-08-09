@@ -38,7 +38,8 @@ running the task writes local state. Scripts that write always write under
 
 ## serve/ — serve local preview; preview:thread and preview:cockpit seed project on first run
 
-| Script                             | Task                                 | Risk |
-| ---------------------------------- | ------------------------------------ | ---- |
-| `serve/console-browser-harness.ts` | `preview:browser`                    | read |
-| `serve/serve-native-workbench.ts`  | `preview:thread` / `preview:cockpit` | read |
+| Script                             | Task                                 | Risk  |
+| ---------------------------------- | ------------------------------------ | ----- |
+| `serve/console-browser-harness.ts` | `preview:browser`                    | read  |
+| `serve/serve-native-workbench.ts`  | `preview:thread` / `preview:cockpit` | read  |
+| `serve/supervise-agent-stack.ts`   | `start:agent`                        | write |

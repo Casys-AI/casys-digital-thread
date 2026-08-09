@@ -11,6 +11,7 @@ const INTENT = buildReviewIntent({
   projectId: "project-1",
   expectedRevision: 12,
   decisionId: "decision-1",
+  approvalId: "approval-1",
   inputFingerprint: {
     algorithm: "sha256",
     digest: "a".repeat(64),
@@ -74,6 +75,24 @@ Deno.test("review intent client reloads acknowledged records with an uncached GE
   assertEquals(captured?.cache, "no-store");
 });
 
+Deno.test("review intent client keeps legacy journal entries readable", async () => {
+  const { approvalId: _approvalId, ...legacyIntent } = INTENT;
+  const client = new HttpProjectReviewIntentClient(
+    "/api/review-intents",
+    () =>
+      Promise.resolve(Response.json({
+        projectId: "project-1",
+        projectRevision: 12,
+        intents: [{ intent: legacyIntent }],
+      })),
+  );
+
+  const response = await client.list();
+
+  assertEquals(response.intents[0]?.intent, legacyIntent);
+  assertEquals(response.intents[0]?.intent.approvalId, undefined);
+});
+
 Deno.test("review intent client exposes an explicit 409 without calling it validation", async () => {
   const client = new HttpProjectReviewIntentClient(
     "/api/review-intents",
@@ -91,6 +110,31 @@ Deno.test("review intent client exposes an explicit 409 without calling it valid
   );
   assertEquals(error.code, "review_intent_fingerprint_mismatch");
   assertEquals(error.currentRevision, 13);
+});
+
+Deno.test("approval drift conflicts require the exact preview to be refreshed", async () => {
+  for (
+    const code of [
+      "review_intent_approval_mismatch",
+      "review_intent_approval_not_pending",
+    ]
+  ) {
+    const client = new HttpProjectReviewIntentClient(
+      "/api/review-intents",
+      () =>
+        Promise.resolve(Response.json({
+          error: code,
+          projectId: "project-1",
+          currentRevision: 13,
+        }, { status: 409 })),
+    );
+
+    const error = await assertRejects(
+      () => client.submit(INTENT),
+      ReviewIntentStaleError,
+    );
+    assertEquals(error.code, code);
+  }
 });
 
 Deno.test("revision drift and duplicate intent conflicts are not mislabeled as changed proposals", async () => {

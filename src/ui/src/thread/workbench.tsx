@@ -351,10 +351,16 @@ export function ThreadWorkbench({
 
   const reviewIntentProjectId = workbench?.project.project.id;
   const reviewIntentProjectRevision = workbench?.project.revision;
+  const activityReviewRecords = workbench
+    ? buildActivityReviewRecords(
+      workbench.project,
+      workbench.surface === "evidence" ? workbench.thread : undefined,
+    )
+    : [];
 
   // Restore delivery receipts independently from canonical decision state.
-  // Exact decision+fingerprint matching prevents a predecessor's Sent badge
-  // from appearing on a changed proposal after reload.
+  // Exact project+decision+fingerprint+approval matching prevents a Sent badge
+  // from crossing either a changed proposal or a project focus switch.
   useEffect(() => {
     if (!reviewIntentClient || !reviewIntentProjectId) return;
     const controller = new AbortController();
@@ -380,7 +386,8 @@ export function ThreadWorkbench({
 
   const hasQueuedReviewIntent = shouldPollReviewIntentReceipts(
     reviewIntentStates,
-    workbench?.project.decisions ?? [],
+    reviewIntentProjectId,
+    activityReviewRecords,
   );
   useEffect(() => {
     if (
@@ -635,7 +642,6 @@ export function ThreadWorkbench({
 
   const snapshot = workbench.thread;
   const project = workbench.project;
-  const activityReviewRecords = buildActivityReviewRecords(project, snapshot);
 
   const setReviewIntentState = (
     scope: string,
@@ -659,8 +665,10 @@ export function ThreadWorkbench({
       if (response.projectId === intent.projectId) {
         const exact = reattachReviewIntent(
           response.intents,
+          intent.projectId,
           intent.decisionId,
           intent.inputFingerprint,
+          intent.approvalId,
         );
         if (exact.kind !== "idle") {
           setReviewIntentState(scope, exact);
@@ -717,22 +725,36 @@ export function ThreadWorkbench({
     comment?: string,
   ): Promise<void> => {
     const decision = record.decision;
+    const approval = record.approvalId
+      ? project.approvals.find((candidate) =>
+        candidate.id === record.approvalId &&
+        candidate.decisionId === decision?.id
+      )
+      : undefined;
     if (
       !reviewIntentClient || decision?.status !== "proposed" ||
-      !decision.inputFingerprint
+      !decision.inputFingerprint || !record.approvalId ||
+      decision.approvalIds.at(-1) !== record.approvalId ||
+      approval?.status !== "pending"
     ) return;
     const intent = buildReviewIntent({
       intentId: `review-${globalThis.crypto.randomUUID()}`,
       projectId: project.project.id,
       expectedRevision: project.revision,
       decisionId: decision.id,
+      approvalId: record.approvalId,
       inputFingerprint: decision.inputFingerprint,
       action,
       comment,
       submittedAt: new Date().toISOString(),
     });
     await transmitReviewIntent(
-      reviewIntentScopeKey(decision.id, decision.inputFingerprint),
+      reviewIntentScopeKey(
+        project.project.id,
+        decision.id,
+        decision.inputFingerprint,
+        record.approvalId,
+      ),
       intent,
     );
   };
@@ -741,8 +763,13 @@ export function ThreadWorkbench({
     record: ProjectReviewRecord,
   ): Promise<void> => {
     const decision = record.decision;
-    if (!decision?.inputFingerprint) return;
-    const scope = reviewIntentScopeKey(decision.id, decision.inputFingerprint);
+    if (!decision?.inputFingerprint || !record.approvalId) return;
+    const scope = reviewIntentScopeKey(
+      project.project.id,
+      decision.id,
+      decision.inputFingerprint,
+      record.approvalId,
+    );
     const state = reviewIntentStates.get(scope);
     if (state?.kind !== "error" || !state.retryIntent) return;
     // Retry is byte-for-byte idempotent: same intentId, timestamp, revision,
@@ -1291,6 +1318,7 @@ export function ThreadWorkbench({
                       anchorage={partAnchorage}
                       components={snapshot.components}
                       reviewRecords={activityReviewRecords}
+                      reviewIntentProjectId={project.project.id}
                       reviewIntentStates={reviewIntentStates}
                       onSubmitReviewIntent={reviewIntentClient
                         ? submitReviewIntent

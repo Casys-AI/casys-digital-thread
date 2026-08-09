@@ -20,6 +20,7 @@ import {
 import { parseGeometryDecisionParameters } from "../domain/platform/geometry-proposal.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
+const APPROVAL_ID = "approval:airframe-material:proposal-1";
 const COMMON = {
   commandId: "chat-command-1",
   projectId: "chat-first-project",
@@ -712,6 +713,7 @@ Deno.test("project review intent tools list and acknowledge exact pending intent
     projectId: snapshot.project.id,
     expectedRevision: snapshot.revision,
     decisionId: "airframe-material",
+    approvalId: APPROVAL_ID,
     inputFingerprint: FINGERPRINT,
     action: "validate",
     submittedAt: "2026-08-09T03:15:00.000Z",
@@ -760,12 +762,13 @@ Deno.test("project review intent tools list and acknowledge exact pending intent
           expectedRevision: snapshot.revision,
           intentId: pending.intentId,
           decisionId: pending.decisionId,
+          approvalId: pending.approvalId,
           inputFingerprint: pending.inputFingerprint,
           action: "request-revision",
         }, clientContext());
       },
       TypeError,
-      "does not match the exact project revision, decision, fingerprint, and action",
+      "does not match the exact project revision, decision, approval, fingerprint, and action",
     );
     assertEquals(
       (await journal.list(snapshot.project.id))[0]?.acknowledgement,
@@ -777,6 +780,7 @@ Deno.test("project review intent tools list and acknowledge exact pending intent
       expectedRevision: snapshot.revision,
       intentId: pending.intentId,
       decisionId: pending.decisionId,
+      approvalId: pending.approvalId,
       inputFingerprint: pending.inputFingerprint,
       action: pending.action,
     }, clientContext()) as {
@@ -869,6 +873,7 @@ Deno.test("project review intent tools list and acknowledge exact pending intent
       expectedRevision: snapshot.revision,
       intentId: pending.intentId,
       decisionId: pending.decisionId,
+      approvalId: pending.approvalId,
       inputFingerprint: pending.inputFingerprint,
       action: pending.action,
     }, clientContext()) as { content: string; structuredContent: unknown };
@@ -909,6 +914,7 @@ Deno.test("project review intent tools list and acknowledge exact pending intent
       expectedRevision: snapshot.revision,
       intentId: pending.intentId,
       decisionId: pending.decisionId,
+      approvalId: pending.approvalId,
       inputFingerprint: pending.inputFingerprint,
       action: pending.action,
     }, clientContext()) as {
@@ -987,6 +993,7 @@ Deno.test("project review intent acknowledgement returns the exact reviewer comm
     projectId: snapshot.project.id,
     expectedRevision: snapshot.revision,
     decisionId: "airframe-material",
+    approvalId: APPROVAL_ID,
     inputFingerprint: FINGERPRINT,
     action: "request-revision",
     comment,
@@ -1004,6 +1011,7 @@ Deno.test("project review intent acknowledgement returns the exact reviewer comm
       expectedRevision: intent.expectedRevision,
       intentId: intent.intentId,
       decisionId: intent.decisionId,
+      approvalId: intent.approvalId,
       inputFingerprint: intent.inputFingerprint,
       action: intent.action,
     }, clientContext()) as {
@@ -1050,6 +1058,7 @@ Deno.test("project review intent acknowledgement refuses a replaced proposal fin
     projectId: revisionFour.project.id,
     expectedRevision: revisionFour.revision,
     decisionId: "airframe-material",
+    approvalId: APPROVAL_ID,
     inputFingerprint: FINGERPRINT,
     action: "request-revision",
     comment: "Please revise the exact material proposal.",
@@ -1082,6 +1091,7 @@ Deno.test("project review intent acknowledgement refuses a replaced proposal fin
           expectedRevision: intent.expectedRevision,
           intentId: intent.intentId,
           decisionId: intent.decisionId,
+          approvalId: intent.approvalId,
           inputFingerprint: intent.inputFingerprint,
           action: intent.action,
         }, clientContext());
@@ -1090,6 +1100,144 @@ Deno.test("project review intent acknowledgement refuses a replaced proposal fin
       "same input fingerprint at current project revision 5",
     );
     assertEquals((await journal.list(intent.projectId))[0]?.acknowledgement, undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("project review intent cannot replay across a same-fingerprint reproposal with a new approval", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "project-review-reproposal-" });
+  const journal = new FileProjectReviewIntentStore(directory);
+  const original = projectSnapshot({ withDecision: true });
+  const intent: ProjectReviewIntent = {
+    intentId: "intent-old-approval-attempt",
+    projectId: original.project.id,
+    expectedRevision: original.revision,
+    decisionId: "airframe-material",
+    approvalId: APPROVAL_ID,
+    inputFingerprint: FINGERPRINT,
+    action: "validate",
+    submittedAt: "2026-08-09T03:25:00.000Z",
+  };
+  try {
+    await journal.append(intent);
+    const successorApprovalId = "approval:airframe-material:proposal-2";
+    const current = {
+      ...original,
+      id: "chat-first-project:project:r5",
+      revision: 5,
+      decisions: original.decisions.map((decision) => ({
+        ...decision,
+        approvalIds: [...decision.approvalIds, successorApprovalId],
+      })),
+      approvals: [
+        ...original.approvals.map((approval) => ({
+          ...approval,
+          status: "rejected" as const,
+          decidedAt: "2026-08-09T03:24:00.000Z",
+          decidedBy: "human:reviewer",
+          decidedByOrigin: "human" as const,
+          rationale: "Propose the same content again as a new attempt.",
+        })),
+        {
+          ...original.approvals[0],
+          id: successorApprovalId,
+          status: "pending" as const,
+          requestedAt: "2026-08-09T03:25:00.000Z",
+        },
+      ],
+    } satisfies EngineeringProjectSnapshot;
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      { ...dependencies(current), reviewIntents: journal },
+    );
+
+    const listed = await app.handler("project_review_intent_list")({
+      projectId: current.project.id,
+    }) as {
+      structuredContent: {
+        projectId: string;
+        projectRevision: number;
+        count: number;
+        records: unknown[];
+      };
+    };
+    assertEquals(listed.structuredContent, {
+      projectId: current.project.id,
+      projectRevision: current.revision,
+      count: 0,
+      records: [],
+    });
+    await assertRejects(
+      () =>
+        app.handler("project_review_intent_acknowledge")({
+          projectId: intent.projectId,
+          expectedRevision: intent.expectedRevision,
+          intentId: intent.intentId,
+          decisionId: intent.decisionId,
+          approvalId: intent.approvalId,
+          inputFingerprint: intent.inputFingerprint,
+          action: intent.action,
+        }, clientContext()) as Promise<unknown>,
+      TypeError,
+      "is not the exact pending approval attempt",
+    );
+    assertEquals((await journal.list(intent.projectId))[0]?.acknowledgement, undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("project review intent tools keep readable legacy 1.0 records non-actionable", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "project-review-legacy-" });
+  const snapshot = projectSnapshot({ withDecision: true });
+  const legacy = {
+    intentId: "intent-legacy-without-approval",
+    projectId: snapshot.project.id,
+    expectedRevision: snapshot.revision,
+    decisionId: "airframe-material",
+    inputFingerprint: FINGERPRINT,
+    action: "validate" as const,
+    submittedAt: "2026-08-09T03:10:00.000Z",
+  };
+  try {
+    await Deno.writeTextFile(
+      `${directory}/project-review-intents.jsonl`,
+      `${
+        JSON.stringify({
+          schemaVersion: "project-review-intent-event/1.0",
+          kind: "intent",
+          intent: legacy,
+        })
+      }\n`,
+    );
+    const journal = new FileProjectReviewIntentStore(directory);
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      { ...dependencies(snapshot), reviewIntents: journal },
+    );
+
+    const listed = await app.handler("project_review_intent_list")({
+      projectId: snapshot.project.id,
+    }) as { structuredContent: { count: number; records: unknown[] } };
+    assertEquals(listed.structuredContent.count, 0);
+    assertEquals(listed.structuredContent.records, []);
+    await assertRejects(
+      () =>
+        app.handler("project_review_intent_acknowledge")({
+          projectId: legacy.projectId,
+          expectedRevision: legacy.expectedRevision,
+          intentId: legacy.intentId,
+          decisionId: legacy.decisionId,
+          approvalId: APPROVAL_ID,
+          inputFingerprint: legacy.inputFingerprint,
+          action: legacy.action,
+        }, clientContext()) as Promise<unknown>,
+      TypeError,
+      "is legacy and has no exact approval binding",
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -1208,7 +1356,7 @@ function projectSnapshot(
         requestedAt: "2026-08-03T11:58:00.000Z",
         inputFingerprint: FINGERPRINT,
         inputEvidenceRefs: [],
-        approvalIds: ["approval:airframe-material:proposal-1"],
+        approvalIds: [APPROVAL_ID],
         proposal: {
           summary: "Use a composite airframe for the first demonstrator.",
           parameters: [{
@@ -1221,7 +1369,16 @@ function projectSnapshot(
         },
       }]
       : [],
-    approvals: [],
+    approvals: options.withDecision
+      ? [{
+        id: APPROVAL_ID,
+        decisionId: "airframe-material",
+        status: "pending",
+        requestedAt: "2026-08-03T11:58:00.000Z",
+        inputFingerprint: FINGERPRINT,
+        inputEvidenceRefs: [],
+      }]
+      : [],
     blockers: [],
     commandReceipts: [],
   };

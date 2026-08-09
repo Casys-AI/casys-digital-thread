@@ -59,6 +59,8 @@ export interface ProjectReviewRecord {
   readonly recordedAt?: string;
   readonly preview: ProjectReviewPreview;
   readonly decision?: EngineeringDecision;
+  /** Current pending approval attempt bound to this exact proposal. */
+  readonly approvalId?: string;
   readonly workItem?: EngineeringWorkItem;
   readonly resultEvidence?: EngineeringThreadEntityRef;
   /** Canonical human outcome fields, shown only after the project records one. */
@@ -466,6 +468,7 @@ function buildDecisionRecord(
   canOwnPublishedResult: boolean,
 ): ProjectReviewRecord {
   const approval = latestDecisionApproval(project, decision);
+  const approvalId = pendingProposalApprovalId(project, decision);
   const declaredResultEvidence = workItem?.evidenceRefs[0];
   const resultEvidence = firstPresentEvidence(thread, workItem?.evidenceRefs);
   const hasPublishedResult = canOwnPublishedResult &&
@@ -507,6 +510,7 @@ function buildDecisionRecord(
       resultEvidence !== undefined,
     ),
     decision,
+    approvalId,
     workItem,
     resultEvidence,
     outcome: decision?.status !== "proposed" && approval
@@ -582,6 +586,32 @@ function latestDecisionApproval(
   return [...project.approvals].reverse().find((approval) =>
     ids.has(approval.id) && approval.decisionId === decision.id
   );
+}
+
+function pendingProposalApprovalId(
+  project: EngineeringProjectSnapshot,
+  decision: EngineeringDecision | undefined,
+): string | undefined {
+  if (
+    decision?.status !== "proposed" || !decision.inputFingerprint ||
+    decision.approvalIds.length === 0
+  ) return undefined;
+  const approvalId = decision.approvalIds.at(-1)!;
+  const approval = project.approvals.find((candidate) =>
+    candidate.id === approvalId && candidate.decisionId === decision.id
+  );
+  return approval?.status === "pending" && approval.inputFingerprint &&
+      fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
+    ? approval.id
+    : undefined;
+}
+
+function fingerprintsEqual(
+  left: NonNullable<EngineeringDecision["inputFingerprint"]>,
+  right: NonNullable<EngineeringDecision["inputFingerprint"]>,
+): boolean {
+  return left.algorithm === right.algorithm &&
+    left.digest.toLowerCase() === right.digest.toLowerCase();
 }
 
 function parsePreview(

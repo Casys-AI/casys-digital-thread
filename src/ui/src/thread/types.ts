@@ -734,7 +734,9 @@ function isThreadComponent(value: unknown): value is ThreadComponent {
     component.bindings.every(isThreadComponentBinding) &&
     (component.preview === undefined ||
       (component.preview.provider === "build123d" &&
-        component.preview.mediaType === "model/stl" &&
+        (component.preview.mediaType === "model/stl" ||
+          component.preview.mediaType === "model/gltf-binary") &&
+        typeof component.preview.artifactId === "string" &&
         typeof component.preview.url === "string" &&
         typeof component.preview.sha256 === "string"));
 }

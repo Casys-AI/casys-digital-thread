@@ -15,5 +15,10 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.config.ts",
+    "vite.native.config.ts"
+  ]
 }

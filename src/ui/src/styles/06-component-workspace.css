@@ -467,12 +467,14 @@ button.erp-bom-row {
   border: 1px solid var(--thread-border);
 }
 
-.cad-assembly-gltf-viewer {
+.cad-assembly-gltf-viewer,
+.cad-part-gltf-viewer {
   overflow: hidden;
   background: #faf7f0;
 }
 
-.cad-assembly-gltf-heading {
+.cad-assembly-gltf-heading,
+.cad-part-gltf-heading {
   min-height: 64px;
   display: flex;
   align-items: center;
@@ -484,46 +486,59 @@ button.erp-bom-row {
   background: #faf7f0;
 }
 
-.cad-assembly-gltf-heading > div {
+.cad-assembly-gltf-heading > div,
+.cad-part-gltf-heading > div {
   min-width: 0;
   display: grid;
   gap: var(--space-4);
 }
 
-.cad-assembly-gltf-heading small {
+.cad-assembly-gltf-heading small,
+.cad-part-gltf-heading small {
   color: #874b29;
   font: 700 var(--text-3xs)/1 var(--mono);
   letter-spacing: 0.08em;
 }
 
-.cad-assembly-gltf-heading strong {
+.cad-assembly-gltf-heading strong,
+.cad-part-gltf-heading strong {
   font-size: var(--text-sm);
 }
 
-.cad-assembly-gltf-viewer .geometry-draft-canvas-shell {
+.cad-assembly-gltf-viewer .geometry-draft-canvas-shell,
+.cad-part-gltf-viewer .geometry-draft-canvas-shell {
   height: clamp(390px, 52vh, 620px);
   background: #f4efe5;
 }
 
-.cad-assembly-gltf-viewer .geometry-draft-reset {
+.cad-assembly-gltf-viewer .geometry-draft-reset,
+.cad-part-gltf-viewer .geometry-draft-reset {
   color: #302b26;
   border-color: #b8aa98;
   background: rgba(250, 247, 240, 0.92);
 }
 
-.cad-assembly-gltf-viewer .cad-viewer-evidence {
+.cad-assembly-gltf-viewer .cad-viewer-evidence,
+.cad-part-gltf-viewer .cad-viewer-evidence {
   color: #302b26;
   border-color: #d7cbbb;
   background: #faf7f0;
 }
 
-.cad-assembly-gltf-viewer .cad-viewer-evidence > div + div {
+.cad-assembly-gltf-viewer .cad-viewer-evidence > div + div,
+.cad-part-gltf-viewer .cad-viewer-evidence > div + div {
   border-color: #d7cbbb;
 }
 
 .cad-assembly-gltf-viewer .cad-viewer-evidence small,
-.cad-assembly-gltf-viewer .cad-viewer-evidence code {
+.cad-assembly-gltf-viewer .cad-viewer-evidence code,
+.cad-part-gltf-viewer .cad-viewer-evidence small,
+.cad-part-gltf-viewer .cad-viewer-evidence code {
   color: #665b50;
+}
+
+.cad-part-gltf-viewer {
+  border-left: 3px solid var(--thread-green, var(--green));
 }
 
 .cad-sealed-assembly {
@@ -830,7 +845,8 @@ button.erp-bom-row {
     flex-direction: column;
   }
 
-  .cad-assembly-gltf-heading {
+  .cad-assembly-gltf-heading,
+  .cad-part-gltf-heading {
     align-items: flex-start;
     flex-direction: column;
   }

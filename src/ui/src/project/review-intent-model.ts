@@ -6,6 +6,10 @@ import {
   type ProjectReviewIntentRecord,
   validateProjectReviewIntent,
 } from "../../../domain/project/project-review-intent.ts";
+import type {
+  ActivityReviewStatus,
+  ProjectReviewRecord,
+} from "./review-decision-model.ts";
 
 export const REVIEW_INTENT_COMMENT_MAX_LENGTH = 2_000;
 
@@ -33,11 +37,44 @@ export type ReviewIntentTransmissionState =
     readonly currentRevision?: number;
   };
 
+/**
+ * Visible feed status. Transport states temporarily replace only "To review";
+ * a canonical human outcome always takes precedence after the project refresh.
+ */
+export type ActivityReviewDisplayStatus =
+  | ActivityReviewStatus
+  | "sending"
+  | "sent"
+  | "received";
+
+export function effectiveActivityReviewStatus(
+  canonicalStatus: ActivityReviewStatus | undefined,
+  transmissionState: ReviewIntentTransmissionState,
+): ActivityReviewDisplayStatus | undefined {
+  if (canonicalStatus !== "to-review") return canonicalStatus;
+  if (transmissionState.kind === "sending") return "sending";
+  if (transmissionState.kind === "queued") return "sent";
+  if (transmissionState.kind === "acknowledged") return "received";
+  return canonicalStatus;
+}
+
+export function activityReviewDisplayStatusLabel(
+  status: ActivityReviewDisplayStatus,
+): string {
+  if (status === "to-review") return "To review";
+  if (status === "sending") return "Sending";
+  if (status === "sent") return "Sent";
+  if (status === "received") return "Received";
+  if (status === "validated") return "Validated";
+  return "Revision requested";
+}
+
 export interface BuildReviewIntentInput {
   readonly intentId: string;
   readonly projectId: string;
   readonly expectedRevision: number;
   readonly decisionId: string;
+  readonly approvalId: string;
   readonly inputFingerprint: ContentFingerprint;
   readonly action: ProjectReviewIntentAction;
   readonly comment?: string;
@@ -51,7 +88,7 @@ export class ReviewIntentCommentError extends Error {
   }
 }
 
-/** Builds the exact POST body, omitting an optional blank validation comment. */
+/** Builds the exact POST body with a canonical lowercase SHA-256 digest. */
 export function buildReviewIntent(
   input: BuildReviewIntentInput,
 ): ProjectReviewIntent {
@@ -61,7 +98,11 @@ export function buildReviewIntent(
     projectId: input.projectId,
     expectedRevision: input.expectedRevision,
     decisionId: input.decisionId,
-    inputFingerprint: input.inputFingerprint,
+    approvalId: input.approvalId,
+    inputFingerprint: {
+      ...input.inputFingerprint,
+      digest: input.inputFingerprint.digest.toLowerCase(),
+    },
     action: input.action,
     ...(comment === undefined ? {} : { comment }),
     submittedAt: input.submittedAt,
@@ -91,13 +132,17 @@ export function normalizeReviewIntentComment(
 }
 
 export function reviewIntentScopeKey(
+  projectId: string,
   decisionId: string,
   inputFingerprint: ContentFingerprint,
+  approvalId: string,
 ): string {
   return JSON.stringify([
+    projectId,
     decisionId,
     inputFingerprint.algorithm,
     inputFingerprint.digest.toLowerCase(),
+    approvalId,
   ]);
 }
 
@@ -110,16 +155,20 @@ export function reviewIntentStateFromRecord(
 }
 
 /**
- * Reattaches only intents bound to the exact decision and fingerprint shown in
- * the preview. An intent for a predecessor can never decorate its successor.
+ * Reattaches only intents bound to the exact project, decision, fingerprint,
+ * and approval shown. Neither a predecessor nor another project can inherit it.
  */
 export function reattachReviewIntent(
   records: readonly ProjectReviewIntentRecord[],
+  projectId: string,
   decisionId: string,
   inputFingerprint: ContentFingerprint,
+  approvalId: string,
 ): ReviewIntentTransmissionState {
   const exact = records.filter((record) =>
+    record.intent.projectId === projectId &&
     record.intent.decisionId === decisionId &&
+    record.intent.approvalId === approvalId &&
     fingerprintsEqual(record.intent.inputFingerprint, inputFingerprint)
   ).sort(compareReviewIntentRecords).at(-1);
   return exact ? reviewIntentStateFromRecord(exact) : { kind: "idle" };
@@ -131,9 +180,15 @@ export function indexReviewIntentRecords(
 ): ReadonlyMap<string, ReviewIntentTransmissionState> {
   const grouped = new Map<string, ProjectReviewIntentRecord[]>();
   for (const record of records) {
+    const approvalId = record.intent.approvalId;
+    // Legacy journal entries remain readable history, but their missing
+    // approval attempt can never decorate or wake a current proposal.
+    if (approvalId === undefined) continue;
     const key = reviewIntentScopeKey(
+      record.intent.projectId,
       record.intent.decisionId,
       record.intent.inputFingerprint,
+      approvalId,
     );
     grouped.set(key, [...(grouped.get(key) ?? []), record]);
   }
@@ -150,15 +205,28 @@ export function indexReviewIntentRecords(
 /** Poll only while an exact still-proposed decision is awaiting agent receipt. */
 export function shouldPollReviewIntentReceipts(
   states: ReadonlyMap<string, ReviewIntentTransmissionState>,
-  decisions: readonly Pick<
-    EngineeringDecision,
-    "id" | "status" | "inputFingerprint"
-  >[],
+  projectId: string | undefined,
+  reviews: readonly {
+    readonly approvalId?: ProjectReviewRecord["approvalId"];
+    readonly decision?: Pick<
+      EngineeringDecision,
+      "id" | "status" | "inputFingerprint"
+    >;
+  }[],
 ): boolean {
+  if (!projectId) return false;
   const proposedScopes = new Set(
-    decisions.flatMap((decision) =>
-      decision.status === "proposed" && decision.inputFingerprint
-        ? [reviewIntentScopeKey(decision.id, decision.inputFingerprint)]
+    reviews.flatMap(({ approvalId, decision }) =>
+      approvalId && decision?.status === "proposed" &&
+        decision.inputFingerprint
+        ? [
+          reviewIntentScopeKey(
+            projectId,
+            decision.id,
+            decision.inputFingerprint,
+            approvalId,
+          ),
+        ]
         : []
     ),
   );

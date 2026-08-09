@@ -307,9 +307,9 @@ export interface ThreadComponentBinding {
 export interface ThreadComponentPreview {
   provider: "build123d";
   artifactId: string;
-  mediaType: "model/stl";
+  mediaType: "model/stl" | "model/gltf-binary";
   url: string;
-  /** Presentation mesh fingerprint, distinct from the authoritative CAD hash. */
+  /** Presentation asset fingerprint, distinct from the authoritative CAD hash. */
   sha256: string;
 }
 

@@ -80,8 +80,8 @@ export function correctionNodesForComponent(
  * A catalog evidence id can become stale when a run is recaptured. For an
  * assembly-level `artifact` binding, an exact URI match to a current build123d
  * artifact is sufficient to recover the authoritative record. A presentation
- * mesh is recovered only when its SHA-256 exactly matches the declared preview.
- * Neither rule creates links for assembly children.
+ * asset is recovered only when its SHA-256 and media shape exactly match the
+ * declared preview. Neither rule creates links for assembly children.
  */
 export function resolveCadSurface(
   snapshot: ThreadWorkbenchSnapshot,
@@ -115,7 +115,9 @@ export function resolveCadSurface(
       (artifact.id === component.preview?.artifactId ||
         fingerprintDigest(artifact.fingerprint) ===
           component.preview?.sha256) &&
-      (artifact.kind === "mesh" || artifact.uri?.endsWith(".stl"))
+      (component.preview?.mediaType === "model/stl"
+        ? artifact.kind === "mesh" || artifact.uri?.endsWith(".stl")
+        : artifact.kind === "cad-model" && artifact.uri?.endsWith(".glb"))
     )
     : undefined;
   const preview = component.preview && presentationArtifact
@@ -140,7 +142,7 @@ export function resolveCadSurface(
  * Geometry bundle v2 keeps the capture as the digital-thread evidence owner,
  * while the binding id names the exact STEP produced by build123d-sandbox.
  * Both identities and their explicit trace must resolve; labels never join the
- * records. This is an inspectable authoritative record, not a browser mesh.
+ * records. An optional GLB remains a presentation derivative of that STEP.
  */
 function resolveAuthoritativeStepSurface(
   snapshot: ThreadWorkbenchSnapshot,
@@ -173,20 +175,82 @@ function resolveAuthoritativeStepSurface(
       edge.from.id === sealed.captureArtifact.id &&
       edge.to.kind === "artifact" && edge.to.id === artifact.id
     );
-    return traced.length === 1 ? [{ binding, artifact }] : [];
+    return traced.length === 1 ? [{ binding, artifact, record }] : [];
   });
   if (candidates.length !== 1) return undefined;
   const resolved = candidates[0]!;
+  const presentation = component.kind === "part" &&
+      resolved.record.scope === "definition"
+    ? resolveExactPartDefinitionGlb(
+      snapshot,
+      component.preview,
+      sealed.captureArtifact,
+      captureDigest,
+      resolved.record.definitionIndex,
+    )
+    : undefined;
   return {
     scope: component.kind,
     representation: "authoritative-step",
     binding: resolved.binding,
     authoritativeArtifact: resolved.artifact,
+    ...(presentation
+      ? {
+        presentationArtifact: presentation.artifact,
+        preview: presentation.preview,
+      }
+      : {}),
     inspectionBinding: {
       ...resolved.binding,
       selection: { kind: "artifact", id: resolved.artifact.id },
     },
   };
+}
+
+/**
+ * Resolve a Product viewer only when the catalog-declared GLB belongs to the
+ * same server-owned v2 PartDefinition slot as the authoritative STEP. The
+ * browser rechecks the fingerprint-bound URL and unique capture trace; labels
+ * never participate in the join.
+ */
+function resolveExactPartDefinitionGlb(
+  snapshot: ThreadWorkbenchSnapshot,
+  preview: ThreadComponentPreview | undefined,
+  captureArtifact: ThreadArtifact,
+  captureDigest: string,
+  definitionIndex: number,
+):
+  | {
+    readonly artifact: ThreadArtifact;
+    readonly preview: ThreadComponentPreview;
+  }
+  | undefined {
+  if (!preview || preview.mediaType !== "model/gltf-binary") return undefined;
+  const urlMatch = preview.url.match(
+    /^\/api\/thread\/assets\/([a-f0-9]{64})\.glb$/,
+  );
+  if (!urlMatch || urlMatch[1] !== preview.sha256) return undefined;
+  const candidates = snapshot.artifacts.filter((artifact) =>
+    artifact.id === preview.artifactId
+  );
+  if (candidates.length !== 1) return undefined;
+  const artifact = candidates[0]!;
+  if (
+    artifact.system !== "build123d-sandbox" ||
+    artifact.uri !== preview.url ||
+    fingerprintDigest(artifact.fingerprint) !== preview.sha256
+  ) return undefined;
+  const record = classifyGeometryBinary(artifact, captureDigest);
+  if (
+    record?.generation !== "v2" || record.scope !== "definition" ||
+    record.definitionIndex !== definitionIndex || record.format !== "GLB"
+  ) return undefined;
+  const traces = snapshot.graph.edges.filter((edge) =>
+    edge.relation === "traces_to" && edge.from.kind === "artifact" &&
+    edge.from.id === captureArtifact.id && edge.to.kind === "artifact" &&
+    edge.to.id === artifact.id
+  );
+  return traces.length === 1 ? { artifact, preview } : undefined;
 }
 
 export function cadSurfaceCoverage(

@@ -1,6 +1,7 @@
 import {
   type ProjectReviewIntent,
   type ProjectReviewIntentRecord,
+  validateLegacyProjectReviewIntent,
   validateProjectReviewIntent,
   validateProjectReviewIntentAcknowledgement,
 } from "../../../domain/project/project-review-intent.ts";
@@ -131,7 +132,9 @@ export class HttpProjectReviewIntentClient
 function reviewIntentConflictChangesScope(code: string): boolean {
   return code === "review_intent_project_mismatch" ||
     code === "review_intent_decision_not_proposed" ||
-    code === "review_intent_fingerprint_mismatch";
+    code === "review_intent_fingerprint_mismatch" ||
+    code === "review_intent_approval_mismatch" ||
+    code === "review_intent_approval_not_pending";
 }
 
 function parseListResponse(value: unknown): ProjectReviewIntentListResponse {
@@ -167,7 +170,10 @@ function parseRecord(value: unknown, path: string): ProjectReviewIntentRecord {
   ) {
     throw new TypeError(`${path} has an unsupported contract.`);
   }
-  const intent = validateProjectReviewIntent(input.intent);
+  const intentInput = objectRecord(input.intent);
+  const intent = intentInput && Object.hasOwn(intentInput, "approvalId")
+    ? validateProjectReviewIntent(input.intent)
+    : validateLegacyProjectReviewIntent(input.intent);
   const acknowledgement = input.acknowledgement === undefined
     ? undefined
     : validateProjectReviewIntentAcknowledgement(input.acknowledgement);

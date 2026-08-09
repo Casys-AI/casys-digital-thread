@@ -127,6 +127,45 @@ Deno.test("component catalog keeps absent evidence visibly unverified", () => {
   assertEquals(resolved.components[0].bindings[0].status, "unverified");
 });
 
+Deno.test("component catalog accepts an exact GLB presentation beside authoritative CAD", () => {
+  const snapshot = sampleThreadSnapshot();
+  const catalog = validateThreadComponentCatalog({
+    schemaVersion: "thread-components/1.0",
+    authority: "workspace-declared",
+    subjectId: snapshot.subject.id,
+    rationale: "Reviewed exact STEP identity and GLB presentation bytes.",
+    systemViews: {},
+    components: [{
+      id: "support",
+      label: "Support",
+      kind: "part",
+      quantity: 1,
+      bindings: [{
+        provider: "build123d",
+        kind: "artifact",
+        id: "artifact",
+        label: "Authoritative support STEP",
+        evidenceArtifactId: "artifact",
+      }],
+      preview: {
+        provider: "build123d",
+        artifactId: "support-glb",
+        mediaType: "model/gltf-binary",
+        url: `/api/thread/assets/${"b".repeat(64)}.glb`,
+        sha256: "b".repeat(64),
+      },
+    }],
+  });
+
+  assertEquals(catalog.components[0]?.preview, {
+    provider: "build123d",
+    artifactId: "support-glb",
+    mediaType: "model/gltf-binary",
+    url: `/api/thread/assets/${"b".repeat(64)}.glb`,
+    sha256: "b".repeat(64),
+  });
+});
+
 Deno.test("component catalog rejects ambiguous and cyclic identities", () => {
   assertThrows(
     () =>

@@ -3,12 +3,7 @@ import { deepFreeze, exactRecord } from "../kernel/case-validation.ts";
 
 export type ProjectReviewIntentAction = "validate" | "request-revision";
 
-/**
- * A browser-originated request for the paired agent to run the existing
- * human-decision flow. It is deliberately not an EngineeringApproval and
- * carries no authority to mutate an EngineeringProjectSnapshot.
- */
-export interface ProjectReviewIntent {
+interface ProjectReviewIntentFields {
   readonly intentId: string;
   readonly projectId: string;
   readonly expectedRevision: number;
@@ -19,6 +14,28 @@ export interface ProjectReviewIntent {
   readonly submittedAt: string;
 }
 
+/**
+ * A browser-originated request for the paired agent to run the existing
+ * human-decision flow. It is deliberately not an EngineeringApproval and
+ * carries no authority to mutate an EngineeringProjectSnapshot.
+ */
+export interface ProjectReviewIntent extends ProjectReviewIntentFields {
+  /** Exact pending approval attempt shown when the reviewer submitted this relay. */
+  readonly approvalId: string;
+}
+
+/**
+ * Historical 1.0 journal payload. It remains readable, but its missing approval
+ * attempt means it can never be acknowledged or relayed as actionable work.
+ */
+export interface LegacyProjectReviewIntent extends ProjectReviewIntentFields {
+  readonly approvalId?: never;
+}
+
+export type StoredProjectReviewIntent =
+  | ProjectReviewIntent
+  | LegacyProjectReviewIntent;
+
 /** Agent receipt only: acknowledgement does not mean the decision was applied. */
 export interface ProjectReviewIntentAcknowledgement {
   readonly intentId: string;
@@ -28,25 +45,53 @@ export interface ProjectReviewIntentAcknowledgement {
 }
 
 export interface ProjectReviewIntentRecord {
-  readonly intent: ProjectReviewIntent;
+  readonly intent: StoredProjectReviewIntent;
   readonly acknowledgement?: ProjectReviewIntentAcknowledgement;
 }
 
 export function validateProjectReviewIntent(
   value: unknown,
 ): ProjectReviewIntent {
+  return validateProjectReviewIntentShape(value, true);
+}
+
+/** Decode only an already-persisted 1.0 payload; never use this for new POSTs. */
+export function validateLegacyProjectReviewIntent(
+  value: unknown,
+): LegacyProjectReviewIntent {
+  return validateProjectReviewIntentShape(value, false);
+}
+
+export function isApprovalBoundProjectReviewIntent(
+  intent: StoredProjectReviewIntent,
+): intent is ProjectReviewIntent {
+  return intent.approvalId !== undefined;
+}
+
+function validateProjectReviewIntentShape(
+  value: unknown,
+  approvalBound: true,
+): ProjectReviewIntent;
+function validateProjectReviewIntentShape(
+  value: unknown,
+  approvalBound: false,
+): LegacyProjectReviewIntent;
+function validateProjectReviewIntentShape(
+  value: unknown,
+  approvalBound: boolean,
+): StoredProjectReviewIntent {
   const candidate = value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined;
-  const keys = candidate && Object.hasOwn(candidate, "comment")
+  const requiredKeys = approvalBound
     ? [
       "intentId",
       "projectId",
       "expectedRevision",
       "decisionId",
+      "approvalId",
       "inputFingerprint",
       "action",
-      "comment",
       "submittedAt",
     ]
     : [
@@ -58,6 +103,9 @@ export function validateProjectReviewIntent(
       "action",
       "submittedAt",
     ];
+  const keys = candidate && Object.hasOwn(candidate, "comment")
+    ? [...requiredKeys, "comment"]
+    : requiredKeys;
   const input = exactRecord(value, keys, "ProjectReviewIntent");
   const intentId = identity(input.intentId, "ProjectReviewIntent.intentId");
   const projectId = identity(input.projectId, "ProjectReviewIntent.projectId");
@@ -66,9 +114,13 @@ export function validateProjectReviewIntent(
     "ProjectReviewIntent.expectedRevision",
   );
   const decisionId = identity(input.decisionId, "ProjectReviewIntent.decisionId");
+  const approvalId = approvalBound
+    ? identity(input.approvalId, "ProjectReviewIntent.approvalId")
+    : undefined;
   const inputFingerprint = fingerprint(
     input.inputFingerprint,
     "ProjectReviewIntent.inputFingerprint",
+    approvalBound,
   );
   const action = reviewAction(input.action, "ProjectReviewIntent.action");
   const submittedAt = isoDateTime(
@@ -88,6 +140,7 @@ export function validateProjectReviewIntent(
     projectId,
     expectedRevision,
     decisionId,
+    ...(approvalId === undefined ? {} : { approvalId }),
     inputFingerprint,
     action,
     ...(comment === undefined ? {} : { comment }),
@@ -147,13 +200,22 @@ function positiveInteger(value: unknown, path: string): number {
   return Number(value);
 }
 
-function fingerprint(value: unknown, path: string): ContentFingerprint {
+function fingerprint(
+  value: unknown,
+  path: string,
+  lowercaseOnly: boolean,
+): ContentFingerprint {
   const input = exactRecord(value, ["algorithm", "digest"], path);
   if (input.algorithm !== "sha256") {
     throw new TypeError(`${path}.algorithm must equal \"sha256\".`);
   }
-  if (typeof input.digest !== "string" || !/^[a-f0-9]{64}$/i.test(input.digest)) {
-    throw new TypeError(`${path}.digest must be 64 hexadecimal characters.`);
+  const pattern = lowercaseOnly ? /^[a-f0-9]{64}$/ : /^[a-f0-9]{64}$/i;
+  if (typeof input.digest !== "string" || !pattern.test(input.digest)) {
+    throw new TypeError(
+      `${path}.digest must be 64 ${
+        lowercaseOnly ? "lowercase " : ""
+      }hexadecimal characters.`,
+    );
   }
   return deepFreeze({ algorithm: "sha256", digest: input.digest });
 }

@@ -1,5 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
+  isApprovalBoundProjectReviewIntent,
+  validateLegacyProjectReviewIntent,
   validateProjectReviewIntent,
   validateProjectReviewIntentAcknowledgement,
 } from "./project-review-intent.ts";
@@ -9,6 +11,7 @@ const BASE = {
   projectId: "desk-lamp-dl01",
   expectedRevision: 41,
   decisionId: "decision:geometry-v2",
+  approvalId: "approval:decision:geometry-v2:proposal-2",
   inputFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
   action: "validate",
   submittedAt: "2026-08-09T10:45:00.000Z",
@@ -65,7 +68,41 @@ Deno.test("ProjectReviewIntent rejects unknown fields and malformed fingerprints
         inputFingerprint: { algorithm: "sha256", digest: "g".repeat(64) },
       }),
     TypeError,
-    "64 hexadecimal",
+    "64 lowercase hexadecimal",
+  );
+  assertThrows(
+    () =>
+      validateProjectReviewIntent({
+        ...BASE,
+        inputFingerprint: { algorithm: "sha256", digest: "A".repeat(64) },
+      }),
+    TypeError,
+    "64 lowercase hexadecimal",
+  );
+});
+
+Deno.test("ProjectReviewIntent requires an exact approval attempt while legacy decoding remains explicit", () => {
+  const { approvalId: _approvalId, ...legacyPayload } = BASE;
+  assertThrows(
+    () => validateProjectReviewIntent(legacyPayload),
+    TypeError,
+    "approvalId is required",
+  );
+
+  const legacy = validateLegacyProjectReviewIntent(legacyPayload);
+  assertEquals(isApprovalBoundProjectReviewIntent(legacy), false);
+  assertEquals(Object.hasOwn(legacy, "approvalId"), false);
+  assertThrows(
+    () => validateLegacyProjectReviewIntent(BASE),
+    TypeError,
+    "unsupported field approvalId",
+  );
+  assertEquals(
+    validateLegacyProjectReviewIntent({
+      ...legacyPayload,
+      inputFingerprint: { algorithm: "sha256", digest: "A".repeat(64) },
+    }).inputFingerprint.digest,
+    "A".repeat(64),
   );
 });
 

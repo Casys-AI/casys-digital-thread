@@ -1,13 +1,37 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import type { DockerObserver } from "../adapters/docker-observer.ts";
 import type { McpProbe } from "../adapters/mcp/http-mcp-probe.ts";
+import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
 import type {
   FleetManifest,
   ObservedContainer,
   RunDetail,
 } from "../domain/kernel/types.ts";
-import { createConsoleServer } from "../../server.ts";
+import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
+import { createConsoleServer, parseConsoleCli } from "../../server.ts";
+import { PROJECT_REVIEW_INTENTS_RESOURCE_URI } from "./project-review-intent-subscription.ts";
 import { CONSOLE_RESOURCE_URI } from "./register.ts";
+
+Deno.test("console CLI binds its durable review outbox independently of MCP port syntax", () => {
+  assertEquals(
+    parseConsoleCli([
+      "--hostname=localhost",
+      "--port",
+      "6202",
+      "--review-intent-dir=/var/tmp/casys-review-outbox",
+    ]),
+    {
+      hostname: "localhost",
+      port: 6202,
+      projectReviewIntentDirectory: "/var/tmp/casys-review-outbox",
+    },
+  );
+  assertThrows(
+    () => parseConsoleCli(["--review-intent-dir"]),
+    TypeError,
+    "requires a value",
+  );
+});
 
 Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
   const activeProjectDirectory = await Deno.makeTempDir({
@@ -44,6 +68,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_question_propose",
     "project_review_intent_acknowledge",
     "project_review_intent_list",
+    "project_review_intent_signal",
     "project_snapshot",
     "project_start",
     "project_work_item_reconcile_successor",
@@ -353,6 +378,102 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         tool.name === "cockpit_focus_snapshot",
       );
     }
+
+    const reviewIntent: ProjectReviewIntent = {
+      intentId: "review-intent-mcp-sse-1",
+      projectId: "coffee-machine-cm01",
+      expectedRevision: 2,
+      decisionId: "review-mechanical-proof-case",
+      approvalId: "approval:review-mechanical-proof-case:mcp-sse-1",
+      inputFingerprint: {
+        algorithm: "sha256",
+        digest: "b".repeat(64),
+      },
+      action: "validate",
+      submittedAt: "2026-08-09T12:00:00.000Z",
+    };
+    const reviewIntentStore = new FileProjectReviewIntentStore(
+      `${activeProjectDirectory}/review-intents`,
+    );
+    await reviewIntentStore.append(reviewIntent);
+
+    const beforeSignal = await client.call("tools/call", {
+      name: "project_snapshot",
+      arguments: { projectId: reviewIntent.projectId },
+    });
+    const firstSubscription = await client.listen([
+      PROJECT_REVIEW_INTENTS_RESOURCE_URI,
+    ]);
+    assertEquals(await firstSubscription.next(), {
+      jsonrpc: "2.0",
+      method: "notifications/subscriptions/acknowledged",
+      params: {
+        _meta: {
+          "io.modelcontextprotocol/subscriptionId": firstSubscription.subscriptionId,
+        },
+        notifications: {
+          resourceSubscriptions: [PROJECT_REVIEW_INTENTS_RESOURCE_URI],
+        },
+      },
+    });
+
+    const signal = await client.call("tools/call", {
+      name: "project_review_intent_signal",
+      arguments: {
+        projectId: reviewIntent.projectId,
+        intentId: reviewIntent.intentId,
+      },
+    });
+    assertEquals(signal.structuredContent, {
+      projectId: reviewIntent.projectId,
+      intentId: reviewIntent.intentId,
+      resourceUri: PROJECT_REVIEW_INTENTS_RESOURCE_URI,
+      signalled: true,
+    });
+    assertEquals(await firstSubscription.next(), {
+      jsonrpc: "2.0",
+      method: "notifications/resources/updated",
+      params: {
+        uri: PROJECT_REVIEW_INTENTS_RESOURCE_URI,
+        _meta: {
+          "io.modelcontextprotocol/subscriptionId": firstSubscription.subscriptionId,
+        },
+      },
+    });
+    await firstSubscription.cancel();
+
+    const reconnected = await client.listen([
+      PROJECT_REVIEW_INTENTS_RESOURCE_URI,
+    ]);
+    const reconnectAcknowledgement = await reconnected.next();
+    assertEquals(
+      reconnectAcknowledgement.method,
+      "notifications/subscriptions/acknowledged",
+    );
+    assertEquals(
+      ((reconnectAcknowledgement.params as Record<string, unknown>)._meta as Record<
+        string,
+        unknown
+      >)["io.modelcontextprotocol/subscriptionId"],
+      reconnected.subscriptionId,
+    );
+    const recovered = await client.call("resources/read", {
+      uri: PROJECT_REVIEW_INTENTS_RESOURCE_URI,
+    });
+    const resourceContent = (recovered.contents as Array<Record<string, unknown>>)[0];
+    assertEquals(resourceContent.uri, PROJECT_REVIEW_INTENTS_RESOURCE_URI);
+    assertEquals(resourceContent.mimeType, "application/json");
+    assertEquals(JSON.parse(resourceContent.text as string), {
+      schemaVersion: "project-review-intents-resource/1.0",
+      records: [{ intent: reviewIntent }],
+    });
+    await reconnected.cancel();
+
+    const afterSignal = await client.call("tools/call", {
+      name: "project_snapshot",
+      arguments: { projectId: reviewIntent.projectId },
+    });
+    assertEquals(afterSignal.structuredContent, beforeSignal.structuredContent);
   } finally {
     await http.shutdown();
     await Deno.remove(activeProjectDirectory, { recursive: true });
@@ -392,9 +513,36 @@ class TestMcpClient {
     return result;
   }
 
-  async #request(body: Record<string, unknown>): Promise<Response> {
+  async listen(resourceSubscriptions: string[]): Promise<TestSseSubscription> {
+    const subscriptionId = ++this.#id;
+    const response = await this.#request({
+      jsonrpc: "2.0",
+      id: subscriptionId,
+      method: "subscriptions/listen",
+      params: {
+        notifications: { resourceSubscriptions },
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {},
+          "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" },
+        },
+      },
+    }, "text/event-stream");
+    assertEquals(response.status, 200);
+    assertStringIncludes(
+      response.headers.get("content-type") ?? "",
+      "text/event-stream",
+    );
+    assert(response.body);
+    return new TestSseSubscription(subscriptionId, response.body);
+  }
+
+  async #request(
+    body: Record<string, unknown>,
+    accept = "application/json",
+  ): Promise<Response> {
     const headers: Record<string, string> = {
-      "accept": "application/json",
+      accept,
       "content-type": "application/json",
       "mcp-protocol-version": "2026-07-28",
       "mcp-method": String(body.method),
@@ -402,6 +550,9 @@ class TestMcpClient {
     const params = body.params as Record<string, unknown>;
     if (body.method === "tools/call" && typeof params.name === "string") {
       headers["mcp-name"] = params.name;
+    }
+    if (body.method === "resources/read" && typeof params.uri === "string") {
+      headers["mcp-name"] = params.uri;
     }
     const response = await fetch(this.url, {
       method: "POST",
@@ -411,6 +562,53 @@ class TestMcpClient {
     assertEquals(response.headers.get("mcp-session-id"), null);
     return response;
   }
+}
+
+class TestSseSubscription {
+  readonly #reader: ReadableStreamDefaultReader<Uint8Array>;
+  readonly #decoder = new TextDecoder();
+  #buffer = "";
+
+  constructor(
+    readonly subscriptionId: number,
+    stream: ReadableStream<Uint8Array>,
+  ) {
+    this.#reader = stream.getReader();
+  }
+
+  async next(): Promise<Record<string, unknown>> {
+    while (true) {
+      const boundary = this.#buffer.indexOf("\n\n");
+      if (boundary >= 0) {
+        const event = this.#buffer.slice(0, boundary);
+        this.#buffer = this.#buffer.slice(boundary + 2);
+        const data = event.split("\n").flatMap((line) =>
+          line.startsWith("data: ") ? [line.slice("data: ".length)] : []
+        );
+        if (data.length > 0) return JSON.parse(data.join("\n"));
+        continue;
+      }
+
+      const chunk = await withTimeout(this.#reader.read(), 5_000);
+      if (chunk.done) throw new Error("SSE subscription closed before next event");
+      this.#buffer += this.#decoder.decode(chunk.value, { stream: true });
+    }
+  }
+
+  async cancel(): Promise<void> {
+    await this.#reader.cancel();
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error(`Timed out after ${timeoutMs} ms`)),
+      timeoutMs,
+    );
+  });
+  return Promise.race([promise, expired]).finally(() => clearTimeout(timeout));
 }
 
 async function parseResponse(

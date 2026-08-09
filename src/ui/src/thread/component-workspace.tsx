@@ -551,7 +551,9 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
           <p>
             {surface?.representation === "authoritative-step"
               ? surface.scope === "part"
-                ? "PART-LEVEL CAD · AUTHORITATIVE STEP"
+                ? surface.preview?.mediaType === "model/gltf-binary"
+                  ? "PART-LEVEL CAD · STEP + GLB"
+                  : "PART-LEVEL CAD · AUTHORITATIVE STEP"
                 : "ASSEMBLY-LEVEL CAD · AUTHORITATIVE STEP"
               : surface?.scope === "assembly"
               ? "ASSEMBLY-LEVEL CAD · PRESENTATION MESH"
@@ -655,6 +657,16 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
             />
           </>
         )
+        : surface?.preview?.mediaType === "model/gltf-binary" &&
+            surface.scope === "part" && surface.presentationArtifact
+        ? (
+          <PartDefinitionGlbViewer
+            label={selected.label}
+            preview={surface.preview}
+            authoritativeArtifact={surface.authoritativeArtifact}
+            presentationArtifact={surface.presentationArtifact}
+          />
+        )
         : surface?.preview
         ? (
           <div class="cad-sealed-summary">
@@ -686,7 +698,7 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
               </h5>
               <p>
                 {surface.scope === "part"
-                  ? "This exact PartDefinition STEP is linked through the sealed geometry capture. No per-part viewer is created; the assembly remains the single visual review surface."
+                  ? "This exact PartDefinition STEP is linked through the sealed geometry capture. No exact PartDefinition GLB was published in this bundle, so Product keeps the authoritative record visible without inventing a preview."
                   : "This exact assembly STEP is linked through the sealed geometry capture. Use the published assembly preview for visual review."}
               </p>
               {surface.authoritativeArtifact.fingerprint && (
@@ -801,6 +813,58 @@ function SealedAssemblyGlbViewer({ asset, captureArtifact }: {
           <CompactIdentifier
             value={captureArtifact.fingerprint ?? captureArtifact.id}
             label="sealed capture fingerprint"
+          />
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function PartDefinitionGlbViewer({
+  label,
+  preview,
+  authoritativeArtifact,
+  presentationArtifact,
+}: {
+  label: string;
+  preview: ThreadComponentPreview;
+  authoritativeArtifact: ThreadArtifact;
+  presentationArtifact: ThreadArtifact;
+}): JSX.Element {
+  return (
+    <div class="cad-viewer-shell cad-part-gltf-viewer">
+      <header class="cad-part-gltf-heading">
+        <div>
+          <small>PARTDEFINITION PREVIEW · GLB</small>
+          <strong>{label}</strong>
+        </div>
+        <CompactIdentifier
+          value={presentationArtifact.fingerprint ?? presentationArtifact.id}
+          label={`${label} GLB fingerprint`}
+        />
+      </header>
+      <GltfAssetCanvas
+        url={preview.url}
+        ariaLabel={`Interactive ${label} PartDefinition geometry`}
+        loadingLabel={`Loading ${label}…`}
+        errorLabel={`${label} preview unavailable`}
+      />
+      <footer class="cad-viewer-evidence">
+        <div>
+          <small>VISUAL DERIVATIVE · GLB</small>
+          <strong>{presentationArtifact.label}</strong>
+          <CompactIdentifier
+            value={presentationArtifact.fingerprint ?? presentationArtifact.id}
+            label={`${label} exact visual asset fingerprint`}
+          />
+        </div>
+        <div>
+          <small>AUTHORITATIVE CAD · STEP</small>
+          <strong>{authoritativeArtifact.label}</strong>
+          <CompactIdentifier
+            value={authoritativeArtifact.fingerprint ??
+              authoritativeArtifact.id}
+            label={`${label} authoritative STEP fingerprint`}
           />
         </div>
       </footer>

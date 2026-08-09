@@ -12,6 +12,7 @@ const BASE_INTENT: ProjectReviewIntent = {
   projectId: "desk-lamp-dl01",
   expectedRevision: 41,
   decisionId: "decision:geometry-v2",
+  approvalId: "approval:decision:geometry-v2:proposal-2",
   inputFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
   action: "validate",
   comment: "Validated after exact preview inspection.",
@@ -27,6 +28,7 @@ Deno.test("FileProjectReviewIntentStore durably lists and acknowledges an exact 
     const appended = await writer.append(BASE_INTENT);
     assertEquals(appended, { intent: BASE_INTENT });
     assertEquals(await reader.list(BASE_INTENT.projectId), [appended]);
+    assertEquals(await reader.listAll(), [appended]);
 
     const acknowledgement = {
       intentId: BASE_INTENT.intentId,
@@ -37,6 +39,7 @@ Deno.test("FileProjectReviewIntentStore durably lists and acknowledges an exact 
     const acknowledged = await reader.acknowledge(acknowledgement);
     assertEquals(acknowledged, { intent: BASE_INTENT, acknowledgement });
     assertEquals(await writer.list(BASE_INTENT.projectId), [acknowledged]);
+    assertEquals(await writer.listAll(), [acknowledged]);
     assertEquals(await writer.acknowledge(acknowledgement), acknowledged);
   } finally {
     await Deno.remove(directory, { recursive: true });
@@ -65,7 +68,7 @@ Deno.test("FileProjectReviewIntentStore makes concurrent retries one idempotent 
   }
 });
 
-Deno.test("FileProjectReviewIntentStore serializes competing actions to one intent per exact proposal fingerprint", async () => {
+Deno.test("FileProjectReviewIntentStore serializes competing actions to one intent per exact approval attempt", async () => {
   const directory = await Deno.makeTempDir();
   try {
     const first = new FileProjectReviewIntentStore(directory);
@@ -103,6 +106,122 @@ Deno.test("FileProjectReviewIntentStore serializes competing actions to one inte
       `${directory}/project-review-intents.jsonl`,
     )).trim().split("\n");
     assertEquals(lines.length, 1);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("FileProjectReviewIntentStore permits the same proposal fingerprint for a new approval attempt", async () => {
+  const directory = await Deno.makeTempDir();
+  try {
+    const store = new FileProjectReviewIntentStore(directory);
+    await store.append(BASE_INTENT);
+    const successor = {
+      ...BASE_INTENT,
+      intentId: "intent-desk-lamp-geometry-v2-successor",
+      approvalId: "approval:decision:geometry-v2:proposal-3",
+      expectedRevision: 43,
+    };
+
+    await store.append(successor);
+    assertEquals(
+      (await store.list(BASE_INTENT.projectId)).map((record) => record.intent.intentId),
+      [BASE_INTENT.intentId, successor.intentId],
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("FileProjectReviewIntentStore reads legacy 1.0 intents without making them actionable or blocking an approval-bound successor", async () => {
+  const directory = await Deno.makeTempDir();
+  const path = `${directory}/project-review-intents.jsonl`;
+  const { approvalId: _approvalId, ...legacyIntent } = BASE_INTENT;
+  const legacy = {
+    ...legacyIntent,
+    intentId: "intent-desk-lamp-geometry-v1-legacy",
+  };
+  const legacyAcknowledgement = {
+    intentId: legacy.intentId,
+    projectId: legacy.projectId,
+    acknowledgedAt: "2026-08-09T10:46:00.000Z",
+    acknowledgedBy: "agent:historical-reviewer",
+  };
+  try {
+    await Deno.writeTextFile(
+      path,
+      `${
+        JSON.stringify({
+          schemaVersion: "project-review-intent-event/1.0",
+          kind: "intent",
+          intent: legacy,
+        })
+      }\n${
+        JSON.stringify({
+          schemaVersion: "project-review-intent-event/1.0",
+          kind: "acknowledgement",
+          acknowledgement: legacyAcknowledgement,
+        })
+      }\n`,
+    );
+    const store = new FileProjectReviewIntentStore(directory);
+
+    assertEquals(await store.list(BASE_INTENT.projectId), [{
+      intent: legacy,
+      acknowledgement: legacyAcknowledgement,
+    }]);
+    await assertRejects(
+      () =>
+        store.acknowledge({
+          intentId: legacy.intentId,
+          projectId: legacy.projectId,
+          acknowledgedAt: "2026-08-09T10:46:00.000Z",
+          acknowledgedBy: "agent:paired-reviewer",
+        }),
+      ProjectReviewIntentConflictError,
+      "has no approval binding",
+    );
+
+    await store.append(BASE_INTENT);
+    assertEquals((await store.list(BASE_INTENT.projectId)).length, 2);
+    const schemas = (await Deno.readTextFile(path)).trim().split("\n").map((line) =>
+      JSON.parse(line).schemaVersion
+    );
+    assertEquals(schemas, [
+      "project-review-intent-event/1.0",
+      "project-review-intent-event/1.0",
+      "project-review-intent-event/1.1",
+    ]);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("FileProjectReviewIntentStore ignores and truncates only an unterminated torn tail", async () => {
+  const directory = await Deno.makeTempDir();
+  const path = `${directory}/project-review-intents.jsonl`;
+  try {
+    const store = new FileProjectReviewIntentStore(directory);
+    await store.append(BASE_INTENT);
+    await Deno.writeTextFile(path, '{"schemaVersion":"project-review', {
+      append: true,
+    });
+
+    assertEquals(await store.list(BASE_INTENT.projectId), [{ intent: BASE_INTENT }]);
+    const successor = {
+      ...BASE_INTENT,
+      intentId: "intent-after-torn-tail",
+      approvalId: "approval:decision:geometry-v2:proposal-after-torn-tail",
+    };
+    await store.append(successor);
+    assertEquals((await store.list(BASE_INTENT.projectId)).length, 2);
+
+    await Deno.writeTextFile(path, "{not-json}\n", { append: true });
+    await assertRejects(
+      () => store.list(BASE_INTENT.projectId),
+      TypeError,
+      "invalid project review intent JSONL",
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

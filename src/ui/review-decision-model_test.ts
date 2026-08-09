@@ -162,6 +162,47 @@ Deno.test("architecture and requirements proposals become typed business preview
   }
 });
 
+Deno.test("a replayed proposal exposes only its exact current pending approval", () => {
+  const project = projectSnapshot();
+  const fingerprint = { algorithm: "sha256" as const, digest: HEX_A };
+  const decision = project.decisions.find((candidate) =>
+    candidate.id === "decision-architecture"
+  )!;
+  const record = buildProjectReviewRecords({
+    ...project,
+    decisions: project.decisions.map((candidate) =>
+      candidate.id === decision.id
+        ? {
+          ...candidate,
+          inputFingerprint: fingerprint,
+          approvalIds: ["approval-old", "approval-current"],
+        }
+        : candidate
+    ),
+    approvals: [{
+      id: "approval-old",
+      decisionId: decision.id,
+      status: "rejected",
+      requestedAt: "2026-08-03T00:00:00.000Z",
+      decidedAt: "2026-08-03T00:30:00.000Z",
+      decidedBy: "reviewer-1",
+      rationale: "Revise it.",
+      inputFingerprint: fingerprint,
+      inputEvidenceRefs: [],
+    }, {
+      id: "approval-current",
+      decisionId: decision.id,
+      status: "pending",
+      requestedAt: "2026-08-03T01:00:00.000Z",
+      inputFingerprint: fingerprint,
+      inputEvidenceRefs: [],
+    }],
+  }).find((candidate) => candidate.id === "architecture")!;
+
+  assertEquals(record.state, "needs-review");
+  assertEquals(record.approvalId, "approval-current");
+});
+
 Deno.test("a duplicate decision parameter makes the preview unavailable", () => {
   const project = projectSnapshot();
   const architecture = project.decisions.find((decision) =>
@@ -594,6 +635,82 @@ Deno.test("a sealed v2 review resolves four exact PartDefinition STEP assets", (
   );
 });
 
+Deno.test("a sealed v2 review exposes exact GLB paths without replacing authoritative STEP assets", () => {
+  const base = projectSnapshot({ publishedGeometry: true });
+  const geometryDecision = base.decisions.find((decision) =>
+    decision.id === "decision-geometry"
+  )!;
+  const stepDigests = [HEX_C, HEX_D, HEX_E, HEX_F];
+  const glbDigests = ["6", "7", "8", "9"].map((digit) => digit.repeat(64));
+  const thread = threadWithEvidence("geometry-artifact");
+  const v2Thread = {
+    ...thread,
+    artifacts: [
+      ...thread.artifacts,
+      ...stepDigests.map((digest, index) => ({
+        id: `part-step-${index}`,
+        label: `Part ${index} STEP`,
+        kind: "step" as const,
+        system: "build123d-sandbox",
+        revision: digest,
+        freshness: "fresh" as const,
+        fingerprint: `sha256:${digest}`,
+        uri: `/api/thread/assets/${digest}.step`,
+        dependsOn: [],
+      })),
+      ...glbDigests.map((digest, index) => ({
+        id: `part-glb-${index}`,
+        label: `Part ${index} GLB`,
+        kind: "cad-model" as const,
+        system: "build123d-sandbox",
+        revision: digest,
+        freshness: "fresh" as const,
+        fingerprint: `sha256:${digest}`,
+        uri: `/api/thread/assets/${digest}.glb`,
+        dependsOn: [],
+      })),
+    ],
+  } as ThreadWorkbenchSnapshot;
+  const record = buildProjectReviewRecords({
+    ...base,
+    decisions: base.decisions.map((decision) =>
+      decision.id === geometryDecision.id
+        ? {
+          ...geometryDecision,
+          proposal: {
+            ...geometryDecision.proposal!,
+            parameters: geometryV2Parameters(undefined, true),
+          },
+        }
+        : decision
+    ),
+  }, v2Thread).find((candidate) => candidate.id === "geometry")!;
+
+  if (record.preview.kind !== "geometry") {
+    throw new Error("expected geometry preview");
+  }
+  const stepAssets = record.preview.partAssets.filter((asset) =>
+    asset.format === "step"
+  );
+  const glbAssets = record.preview.partAssets.filter((asset) =>
+    asset.format === "gltf"
+  );
+  assertEquals(stepAssets.length, 4);
+  assertEquals(
+    stepAssets.map((asset) => asset.path),
+    stepDigests.map((digest) => `/api/thread/assets/${digest}.step`),
+  );
+  assertEquals(glbAssets.length, 4);
+  assertEquals(
+    glbAssets.map((asset) => asset.path),
+    glbDigests.map((digest) => `/api/thread/assets/${digest}.glb`),
+  );
+  assertEquals(
+    glbAssets.every((asset) => asset.authority === "sealed"),
+    true,
+  );
+});
+
 function projectSnapshot(
   options: {
     publishedGeometry?: boolean;
@@ -776,8 +893,10 @@ function geometryParameters() {
 
 function geometryV2Parameters(
   predecessor?: { artifactId: string; digest: string },
+  includePartGlb = false,
 ) {
   const digests = [HEX_C, HEX_D, HEX_E, HEX_F];
+  const glbDigests = ["6", "7", "8", "9"].map((digit) => digit.repeat(64));
   const entries: Array<[string, string | number | boolean]> = [
     ["geometry.draft.digest", HEX_F],
     ["geometry.manifest.schemaVersion", "geometry-manifest/2.0"],
@@ -800,7 +919,10 @@ function geometryV2Parameters(
       "geometry.manifest.placementConvention",
       "right-handed-mm-extrinsic-xyz-degrees",
     ],
-    ["geometry.manifest.partExportFormats", "step"],
+    [
+      "geometry.manifest.partExportFormats",
+      includePartGlb ? "step,gltf" : "step",
+    ],
     ["geometry.manifest.partDefinitions.count", 4],
     ["geometry.manifest.occurrences.count", 4],
   ];
@@ -821,13 +943,20 @@ function geometryV2Parameters(
       [`${definition}.elementId`, `definition-${index}`],
       [`${definition}.label`, `Part ${index}`],
       [`${definition}.scriptHash`, String(index + 2).repeat(64)],
-      [`${definition}.files.count`, 1],
+      [`${definition}.files.count`, includePartGlb ? 2 : 1],
       [`${definition}.files.0.format`, "step"],
       [`${definition}.files.0.name`, `part-${index}`],
       [`${definition}.files.0.fingerprint`, digests[index]!],
       [`${occurrence}.usageElementId`, `usage-${index}`],
       [`${occurrence}.partDefinitionElementId`, `definition-${index}`],
     );
+    if (includePartGlb) {
+      entries.push(
+        [`${definition}.files.1.format`, "gltf"],
+        [`${definition}.files.1.name`, `part-${index}`],
+        [`${definition}.files.1.fingerprint`, glbDigests[index]!],
+      );
+    }
     for (const vector of ["translationMm", "rotationDeg"]) {
       for (let axis = 0; axis < 3; axis++) {
         entries.push([`${occurrence}.${vector}.${axis}`, 0]);

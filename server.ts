@@ -209,6 +209,7 @@ import {
   type CockpitFocusToolDependencies,
   registerCockpitFocusTools,
 } from "./src/tools/cockpit-focus.ts";
+import { registerProjectReviewIntentSubscription } from "./src/tools/project-review-intent-subscription.ts";
 
 const DEFAULT_PORT = 3020;
 const DEFAULT_HOSTNAME = "127.0.0.1";
@@ -513,7 +514,12 @@ export async function createConsoleServer(
     });
   }
   registerControlPlaneTools(app, controlPlane);
-  if (projectControl) registerProjectControlTools(app, projectControl);
+  if (projectControl) {
+    registerProjectControlTools(app, projectControl);
+    if (projectControl.reviewIntents) {
+      registerProjectReviewIntentSubscription(app, projectControl.reviewIntents);
+    }
+  }
   if (projectBrief) registerProjectBriefTools(app, projectBrief);
   if (cockpitFocus) registerCockpitFocusTools(app, cockpitFocus);
   registerConsoleViewer(app);
@@ -1505,12 +1511,13 @@ export function registerConsoleViewer(app: McpApp): boolean {
 }
 
 if (import.meta.main) {
-  const cli = parseCli(Deno.args);
+  const cli = parseConsoleCli(Deno.args);
   const port = cli.port ?? integerEnv("MCP_PORT") ?? DEFAULT_PORT;
   const hostname = cli.hostname ?? env("MCP_HOSTNAME") ?? DEFAULT_HOSTNAME;
   const projectToolsEnabled = isExplicitLoopbackHostname(hostname);
   const { app } = await createConsoleServer({
     projectControl: projectToolsEnabled ? undefined : false,
+    projectReviewIntentDirectory: cli.projectReviewIntentDirectory,
   });
   await app.startHttp({
     port,
@@ -1529,13 +1536,14 @@ if (import.meta.main) {
   });
 }
 
-interface CliOptions {
+export interface ConsoleCliOptions {
   port?: number;
   hostname?: string;
+  projectReviewIntentDirectory?: string;
 }
 
-function parseCli(args: string[]): CliOptions {
-  const result: CliOptions = {};
+export function parseConsoleCli(args: string[]): ConsoleCliOptions {
+  const result: ConsoleCliOptions = {};
   for (let index = 0; index < args.length; index++) {
     const argument = args[index];
     if (argument === "--stdio") {
@@ -1548,10 +1556,26 @@ function parseCli(args: string[]): CliOptions {
       result.hostname = argument.slice("--hostname=".length);
     } else if (argument === "--hostname") {
       result.hostname = args[++index];
+    } else if (argument.startsWith("--review-intent-dir=")) {
+      result.projectReviewIntentDirectory = argument.slice(
+        "--review-intent-dir=".length,
+      );
+    } else if (argument === "--review-intent-dir") {
+      const directory = args[++index];
+      if (directory === undefined) {
+        throw new TypeError("--review-intent-dir requires a value");
+      }
+      result.projectReviewIntentDirectory = directory;
     }
   }
   if (result.hostname !== undefined && result.hostname.trim() === "") {
     throw new TypeError("--hostname must not be empty");
+  }
+  if (
+    result.projectReviewIntentDirectory !== undefined &&
+    result.projectReviewIntentDirectory.trim() === ""
+  ) {
+    throw new TypeError("--review-intent-dir must not be empty");
   }
   return result;
 }

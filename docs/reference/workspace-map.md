@@ -60,6 +60,7 @@
 | [`src/tools/project-control.ts`](../../src/tools/project-control.ts)                                                                                                                     | Agent MCP planning, elicitation, queueing, and bounded execution                                                                                                                                                        |
 | [`src/domain/project/project-review-intent.ts`](../../src/domain/project/project-review-intent.ts)                                                                                       | Strict browser-originated review-intent and agent-receipt contracts; neither is an engineering approval                                                                                                                 |
 | [`src/adapters/stores/file-project-review-intent-store.ts`](../../src/adapters/stores/file-project-review-intent-store.ts)                                                               | Durable append-only Workbench-to-agent outbox shared by the 5173 BFF and 3020 MCP server                                                                                                                                |
+| [`src/tools/project-review-intent-subscription.ts`](../../src/tools/project-review-intent-subscription.ts)                                                                               | Stable MCP review-intent resource plus best-effort `notifications/resources/updated`; reconnect recovery always rereads the durable outbox                                                                             |
 | [`src/adapters/projectors/engineering-workbench-projector.ts`](../../src/adapters/projectors/engineering-workbench-projector.ts)                                                         | Project/thread presentation composition and alignment                                                                                                                                                                   |
 | [`src/adapters/projectors/thread-workbench-projector.ts`](../../src/adapters/projectors/thread-workbench-projector.ts)                                                                   | Canonical-state to Workbench projection                                                                                                                                                                                 |
 | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                                                                         | Native read-only lineage feed, graph, inspectors, and SSE client                                                                                                                                                        |
@@ -172,8 +173,12 @@ therefore still exposes no project mutation or provider-call surface.
 `deno task start` exposes the MCP project surface used by the paired agent. Agents can
 inspect the same active project, propose an input, elicit an exact human decision in the
 conversation, queue a ready registered work item, and execute only that server-derived
-run. This is a durable outbox polled by the agent, not a session push notification.
-`project_snapshot` reports the actionable Workbench review-intent count;
+run. The same durable outbox is exposed as `casys://engineering/review-intents`. A
+connected MCP host may keep `subscriptions/listen` open and receive
+`notifications/resources/updated` after the BFF has durably appended an intent. The
+notification is only a best-effort wake-up: after a disconnect or restart, the host
+must reread the resource or the project-scoped list tool. `project_snapshot` reports
+the actionable Workbench review-intent count;
 `project_review_intent_list` returns the exact pending intents and
 `project_review_intent_acknowledge` records only agent receipt after rechecking the
 current revision, proposed decision, fingerprint, and action. An acknowledged intent

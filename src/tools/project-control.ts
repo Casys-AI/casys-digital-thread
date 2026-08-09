@@ -8,6 +8,7 @@ import type {
   ProjectReviewIntent,
   ProjectReviewIntentRecord,
 } from "../domain/project/project-review-intent.ts";
+import { isApprovalBoundProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {
   captureGeometryBundleDraft,
   captureGeometryDraft,
@@ -865,7 +866,7 @@ const FINGERPRINT_SCHEMA = {
 const projectSnapshotTool: MCPTool = {
   name: "project_snapshot",
   description:
-    "Read the durable EngineeringProject application state: work, decisions, approvals, agent runs, blockers, exact thread references, and command receipts. When the durable Workbench review outbox is configured, the text also reports its exact actionable count (including acknowledged intents still awaiting canonical decision) and directs the agent to project_review_intent_list; this is polling, not a session push notification, and structuredContent remains the unmodified EngineeringProjectSnapshot. This does not probe or execute engineering tools.",
+    "Read the durable EngineeringProject application state: work, decisions, approvals, agent runs, blockers, exact thread references, and command receipts. When the durable Workbench review outbox is configured, the text also reports its exact actionable count (including acknowledged intents still awaiting canonical decision) and directs the agent to project_review_intent_list. Connected hosts may subscribe to casys://engineering/review-intents for a best-effort resource-update signal, but reconnecting hosts must reread the durable resource or list tool; structuredContent remains the unmodified EngineeringProjectSnapshot. This does not probe or execute engineering tools.",
   inputSchema: {
     type: "object",
     properties: { projectId: PROJECT_ID },
@@ -879,7 +880,7 @@ const projectSnapshotTool: MCPTool = {
 const projectReviewIntentListTool: MCPTool = {
   name: "project_review_intent_list",
   description:
-    `Read the exact actionable review intents submitted from the Workbench for one engineering project. This is a durable outbox, not a push notification, project truth, or decision authority. An acknowledged intent remains listed until the exact proposed decision or input fingerprint changes, so unrelated project-revision drift and agent interruption do not lose it. For each pending intent, first acknowledge receipt with project_review_intent_acknowledge; for pending or acknowledged intents, use project_decision_approve for action=validate or project_decision_reject for action=request-revision, using the list result's current projectRevision as expectedRevision. Pass intent.comment verbatim as rationale. A validate intent without comment uses exactly this deterministic rationale: "${REVIEW_INTENT_NO_COMMENT_RATIONALE}". The existing signed MRTR elicitation retry remains mandatory.`,
+    `Read the exact actionable review intents submitted from the Workbench for one engineering project. This durable outbox is the recovery truth behind the best-effort casys://engineering/review-intents subscription signal; it is not project truth or decision authority. An acknowledged intent remains listed only while its exact approvalId is the pending approval attempt for the same proposed decision and input fingerprint, so disconnects, unrelated project-revision drift, and agent interruption do not lose it while rejection and reproposal cannot replay it. For each pending intent, first acknowledge receipt with project_review_intent_acknowledge; for pending or acknowledged intents, use project_decision_approve for action=validate or project_decision_reject for action=request-revision, using the list result's current projectRevision as expectedRevision. Pass intent.comment verbatim as rationale. A validate intent without comment uses exactly this deterministic rationale: "${REVIEW_INTENT_NO_COMMENT_RATIONALE}". The existing signed MRTR elicitation retry remains mandatory.`,
   inputSchema: {
     type: "object",
     properties: { projectId: PROJECT_ID },
@@ -893,7 +894,7 @@ const projectReviewIntentListTool: MCPTool = {
 const projectReviewIntentAcknowledgeTool: MCPTool = {
   name: "project_review_intent_acknowledge",
   description:
-    `Acknowledge agent receipt of one exact Workbench review intent after reading the current project revision and verifying that the same decision is still proposed with the same input fingerprint and requested action. The expectedRevision argument copies the click-time intent exactly; unrelated current-revision drift is allowed. This changes only the durable outbox receipt, never EngineeringProjectSnapshot, and the acknowledged intent remains actionable for interruption-safe replay until canonical truth changes. The result returns machine-readable projectRevision, rationale, and nextTool: pass projectRevision as expectedRevision and rationale verbatim to nextTool. A validate intent without comment uses exactly this deterministic rationale: "${REVIEW_INTENT_NO_COMMENT_RATIONALE}". Only that existing signed MRTR elicitation flow can record the human decision.`,
+    `Acknowledge agent receipt of one exact Workbench review intent after verifying that its approvalId is still the exact pending approval attempt for the same proposed decision, input fingerprint, and requested action. The expectedRevision argument copies the click-time intent exactly; unrelated current-revision drift is allowed. This changes only the durable outbox receipt, never EngineeringProjectSnapshot, and the acknowledged intent remains actionable for interruption-safe replay until canonical truth changes. The result returns machine-readable projectRevision, rationale, and nextTool: pass projectRevision as expectedRevision and rationale verbatim to nextTool. A validate intent without comment uses exactly this deterministic rationale: "${REVIEW_INTENT_NO_COMMENT_RATIONALE}". Only that existing signed MRTR elicitation flow can record the human decision.`,
   inputSchema: {
     type: "object",
     properties: {
@@ -904,8 +905,9 @@ const projectReviewIntentAcknowledgeTool: MCPTool = {
         description:
           "Exact project revision observed and stored in the Workbench intent; copy it verbatim. The current head may be newer if the same proposed decision and input fingerprint remain active.",
       },
-      intentId: { type: "string", minLength: 1, maxLength: 160 },
+      intentId: { type: "string", minLength: 1, maxLength: 256 },
       decisionId: { type: "string", minLength: 1 },
+      approvalId: { type: "string", minLength: 1, maxLength: 256 },
       inputFingerprint: FINGERPRINT_SCHEMA,
       action: {
         type: "string",
@@ -917,6 +919,7 @@ const projectReviewIntentAcknowledgeTool: MCPTool = {
       "expectedRevision",
       "intentId",
       "decisionId",
+      "approvalId",
       "inputFingerprint",
       "action",
     ],
@@ -1508,6 +1511,7 @@ async function handleReviewIntentAcknowledgement(
   );
   const intentId = requiredString(args.intentId, "intentId");
   const decisionId = requiredString(args.decisionId, "decisionId");
+  const approvalId = requiredString(args.approvalId, "approvalId");
   const inputFingerprint = fingerprintInput(
     args.inputFingerprint,
     "inputFingerprint",
@@ -1525,20 +1529,27 @@ async function handleReviewIntentAcknowledgement(
       `Workbench review intent not found: ${projectId}/${intentId}.`,
     );
   }
+  if (!isApprovalBoundProjectReviewIntent(record.intent)) {
+    throw new TypeError(
+      `Workbench review intent ${intentId} is legacy and has no exact approval binding; it cannot be acknowledged. Submit a new approval-bound intent from the current Workbench preview.`,
+    );
+  }
   assertExactReviewIntent(
     record.intent,
-    { projectId, expectedRevision, decisionId, inputFingerprint, action },
+    {
+      projectId,
+      expectedRevision,
+      decisionId,
+      approvalId,
+      inputFingerprint,
+      action,
+    },
   );
 
   const current = await requiredProject(dependencies.projects, projectId);
-  const decision = current.decisions.find((candidate) => candidate.id === decisionId);
-  if (
-    !decision || decision.status !== "proposed" || !decision.proposal ||
-    !decision.inputFingerprint ||
-    !sameFingerprint(decision.inputFingerprint, inputFingerprint)
-  ) {
+  if (!reviewIntentMatchesPendingApproval(current, record.intent)) {
     throw new TypeError(
-      `Workbench review intent ${intentId} is stale: decision ${decisionId} is not the exact proposed decision with the same input fingerprint at current project revision ${current.revision}.`,
+      `Workbench review intent ${intentId} is stale: approval ${approvalId} is not the exact pending approval attempt for proposed decision ${decisionId} with the same input fingerprint at current project revision ${current.revision}.`,
     );
   }
 
@@ -1584,13 +1595,9 @@ async function actionableProjectReviewIntents(
   snapshot: EngineeringProjectSnapshot,
 ): Promise<ActionableProjectReviewIntentRecord[]> {
   return (await journal.list(snapshot.project.id)).flatMap((record) => {
-    const decision = snapshot.decisions.find((candidate) =>
-      candidate.id === record.intent.decisionId
-    );
     if (
-      !decision || decision.status !== "proposed" || !decision.proposal ||
-      !decision.inputFingerprint ||
-      !sameFingerprint(decision.inputFingerprint, record.intent.inputFingerprint)
+      !isApprovalBoundProjectReviewIntent(record.intent) ||
+      !reviewIntentMatchesPendingApproval(snapshot, record.intent)
     ) return [];
     return [{
       ...record,
@@ -1606,6 +1613,7 @@ function assertExactReviewIntent(
     | "projectId"
     | "expectedRevision"
     | "decisionId"
+    | "approvalId"
     | "inputFingerprint"
     | "action"
   >,
@@ -1614,13 +1622,35 @@ function assertExactReviewIntent(
     intent.projectId !== expected.projectId ||
     intent.expectedRevision !== expected.expectedRevision ||
     intent.decisionId !== expected.decisionId ||
+    intent.approvalId !== expected.approvalId ||
     intent.action !== expected.action ||
     !sameFingerprint(intent.inputFingerprint, expected.inputFingerprint)
   ) {
     throw new TypeError(
-      `Workbench review intent ${intent.intentId} does not match the exact project revision, decision, fingerprint, and action supplied by the agent. Re-list the outbox and copy its fields verbatim.`,
+      `Workbench review intent ${intent.intentId} does not match the exact project revision, decision, approval, fingerprint, and action supplied by the agent. Re-list the outbox and copy its fields verbatim.`,
     );
   }
+}
+
+function reviewIntentMatchesPendingApproval(
+  snapshot: EngineeringProjectSnapshot,
+  intent: ProjectReviewIntent,
+): boolean {
+  const decision = snapshot.decisions.find((candidate) =>
+    candidate.id === intent.decisionId
+  );
+  if (
+    !decision || decision.status !== "proposed" || !decision.proposal ||
+    !decision.inputFingerprint ||
+    !sameFingerprint(decision.inputFingerprint, intent.inputFingerprint)
+  ) return false;
+  const approval = [...decision.approvalIds].reverse().map((approvalId) =>
+    snapshot.approvals.find((candidate) => candidate.id === approvalId)
+  ).find((candidate) => candidate?.status === "pending");
+  return approval?.id === intent.approvalId &&
+    approval.decisionId === decision.id &&
+    approval.inputFingerprint !== undefined &&
+    sameFingerprint(approval.inputFingerprint, intent.inputFingerprint);
 }
 
 function sameFingerprint(

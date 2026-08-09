@@ -33,9 +33,9 @@ export interface ThreadComponentBinding {
 export interface ThreadComponentPreview {
   provider: "build123d";
   artifactId: string;
-  mediaType: "model/stl";
+  mediaType: "model/stl" | "model/gltf-binary";
   url: string;
-  /** Hash of the presentation mesh. It is not the authoritative CAD hash. */
+  /** Hash of the presentation asset. It is not the authoritative CAD hash. */
   sha256: string;
 }
 
@@ -251,7 +251,11 @@ function componentPreview(
 ): ThreadComponentPreview {
   const input = record(value, path);
   literal(input.provider, "build123d", `${path}.provider`);
-  literal(input.mediaType, "model/stl", `${path}.mediaType`);
+  const mediaType = oneOf(
+    input.mediaType,
+    ["model/stl", "model/gltf-binary"],
+    `${path}.mediaType`,
+  );
   const sha256 = nonEmpty(input.sha256, `${path}.sha256`);
   if (!/^[a-f0-9]{64}$/.test(sha256)) {
     throw new Error(`${path}.sha256 must be a lowercase SHA-256 digest.`);
@@ -263,7 +267,7 @@ function componentPreview(
   return {
     provider: "build123d",
     artifactId: nonEmpty(input.artifactId, `${path}.artifactId`),
-    mediaType: "model/stl",
+    mediaType,
     url,
     sha256,
   };

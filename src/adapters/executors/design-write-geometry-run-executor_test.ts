@@ -1026,6 +1026,7 @@ async function buildGeoFixture(
     architectureArtifactDefect?: "producer";
     includeParallelSibling?: boolean;
     bundleV2?: boolean;
+    bundlePartGltf?: boolean;
     bundleCoverageDefect?: "omit-usage" | "omit-definition";
     bundleAssetDefect?: "empty" | "size-mismatch";
   },
@@ -1445,15 +1446,18 @@ async function buildGeoFixture(
       const definitionBytes = new TextEncoder().encode("reviewed frame STEP\n");
       const assemblyStlBytes = new TextEncoder().encode("reviewed assembly STL\n");
       const definitionStlBytes = new TextEncoder().encode("reviewed frame STL\n");
+      const definitionGlbBytes = new TextEncoder().encode("reviewed frame GLB\n");
       const assemblyDigest = await sha256Bytes(assemblyBytes);
       const definitionDigest = await sha256Bytes(definitionBytes);
       const assemblyStlDigest = await sha256Bytes(assemblyStlBytes);
       const definitionStlDigest = await sha256Bytes(definitionStlBytes);
+      const definitionGlbDigest = await sha256Bytes(definitionGlbBytes);
       const previewBytes = new Map([
         [assemblyDigest, assemblyBytes],
         [definitionDigest, definitionBytes],
         [assemblyStlDigest, assemblyStlBytes],
         [definitionStlDigest, definitionStlBytes],
+        [definitionGlbDigest, definitionGlbBytes],
       ]);
       const draftManifest: GeometryBundleManifest = {
         schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
@@ -1482,7 +1486,9 @@ async function buildGeoFixture(
         unitSystem: "mm",
         placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
         exportFormats: ["step", "stl"],
-        partExportFormats: ["step", "stl"],
+        partExportFormats: opts.bundlePartGltf
+          ? ["step", "stl", "gltf"]
+          : ["step", "stl"],
         partDefinitions: [{
           elementId: "part-definition:frame",
           label: "FrameDefinition",
@@ -1520,7 +1526,7 @@ async function buildGeoFixture(
             const args = call.arguments as Record<string, unknown>;
             const name = String(args.name);
             const isAssembly = name.endsWith("-assembly");
-            const formats = args.formats as Array<"step" | "stl">;
+            const formats = args.formats as Array<"step" | "stl" | "gltf">;
             return Promise.resolve({
               structuredContent: {
                 schemaVersion: "1.0",
@@ -1531,13 +1537,17 @@ async function buildGeoFixture(
                     ? format === "step" ? assemblyDigest : assemblyStlDigest
                     : format === "step"
                     ? definitionDigest
-                    : definitionStlDigest;
+                    : format === "stl"
+                    ? definitionStlDigest
+                    : definitionGlbDigest;
                   const bytes = previewBytes.get(digest)!;
+                  const extension = format === "gltf" ? "glb" : format;
                   return {
                     format,
-                    path: `/exports/${name}.${format}`,
+                    path: `/exports/${name}.${extension}`,
                     bytes: bytes.length,
                     sha256: digest,
+                    ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
                   };
                 }),
               },
@@ -2706,7 +2716,11 @@ Deno.test("a reviewed geometry draft becomes valid canonical thread evidence bou
 Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sources, then replays exactly", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-v2-e2e-" });
   try {
-    const fixture = await buildGeoFixture(tmpDir, { mode: "happy", bundleV2: true });
+    const fixture = await buildGeoFixture(tmpDir, {
+      mode: "happy",
+      bundleV2: true,
+      bundlePartGltf: true,
+    });
     const executor = makeExecutor(fixture, tmpDir);
     const command = executionCommand(fixture);
     const completed = await executor.execute(AGENT, command);
@@ -2765,15 +2779,29 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
         `cad-asset-${geometry.fingerprint.digest}-definition-0-1-`,
       )
     );
+    const definitionGlb = published.artifacts.find((artifact) =>
+      artifact.id.startsWith(
+        `cad-asset-${geometry.fingerprint.digest}-definition-0-2-`,
+      )
+    );
+    const boltGlb = published.artifacts.find((artifact) =>
+      artifact.id.startsWith(
+        `cad-asset-${geometry.fingerprint.digest}-definition-1-2-`,
+      )
+    );
     assertExists(assemblyStep);
     assertExists(definitionStep);
     assertExists(boltStep);
     assertExists(assemblyStl);
     assertExists(definitionStl);
+    assertExists(definitionGlb);
+    assertExists(boltGlb);
     assertEquals(assemblyStep.kind, "step");
     assertEquals(definitionStep.kind, "step");
     assertEquals(assemblyStl.kind, "cad-model");
     assertEquals(definitionStl.kind, "mesh");
+    assertEquals(definitionGlb.kind, "cad-model");
+    assertEquals(definitionGlb.mediaType, "model/gltf-binary");
     assertEquals(definitionStep.name, "Authoritative STEP: FrameDefinition");
     assertEquals(
       assemblyStep.fingerprint.digest === definitionStep.fingerprint.digest,
@@ -2829,6 +2857,35 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
         definitionId: "part-definition:bolt",
         cadId: boltStep.id,
       }],
+    );
+    const projectedPreviews = occurrences.map((component) => ({
+      definitionId: component.bindings.find((binding) =>
+        binding.provider === "syson" && binding.kind === "part-definition"
+      )!.id,
+      preview: component.preview,
+    }));
+    assertEquals(
+      projectedPreviews.filter((item) =>
+        item.definitionId === "part-definition:frame"
+      ).map((item) => item.preview),
+      Array.from({ length: 2 }, () => ({
+        provider: "build123d" as const,
+        artifactId: definitionGlb.id,
+        mediaType: "model/gltf-binary" as const,
+        url: definitionGlb.uri!,
+        sha256: definitionGlb.fingerprint.digest,
+      })),
+    );
+    assertEquals(
+      projectedPreviews.filter((item) => item.definitionId === "part-definition:bolt")
+        .map((item) => item.preview),
+      Array.from({ length: 2 }, () => ({
+        provider: "build123d" as const,
+        artifactId: boltGlb.id,
+        mediaType: "model/gltf-binary" as const,
+        url: boltGlb.uri!,
+        sha256: boltGlb.fingerprint.digest,
+      })),
     );
     const resolvedCatalog = resolveThreadComponentCatalog(published, catalog);
     assertEquals(
@@ -3015,6 +3072,49 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     const replayed = await executor.execute(AGENT, command);
     assertEquals(replayed.revision, revisionBeforeReplay);
     assertEquals(replayed.threadSnapshots.at(-1), completed.threadSnapshots.at(-1));
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("geometry bundle v2 keeps STEP-only PartDefinitions viewer-free", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-v2-step-only-" });
+  try {
+    const fixture = await buildGeoFixture(tmpDir, {
+      mode: "happy",
+      bundleV2: true,
+    });
+    const completed = await makeExecutor(fixture, tmpDir).execute(
+      AGENT,
+      executionCommand(fixture),
+    );
+    const run = completed.agentRuns.find((candidate) =>
+      candidate.id === fixture.queued.runId
+    );
+    assertExists(run?.resultSnapshot);
+    const published = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+    assertExists(published);
+    const catalog = await resolveGenericProductStructureCatalog(
+      published,
+      fixture.archCaptures,
+      fixture.geoCaptures,
+    );
+    assertExists(catalog);
+    const parts = catalog.components.filter((component) => component.kind === "part");
+    assertEquals(parts.length, 4);
+    assertEquals(
+      parts.every((component) =>
+        component.preview === undefined &&
+        component.bindings.some((binding) =>
+          binding.provider === "digital-thread" && binding.kind === "artifact"
+        )
+      ),
+      true,
+    );
+    assertStringIncludes(
+      catalog.rationale,
+      "No PartDefinition presentation asset is claimed",
+    );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }

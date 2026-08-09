@@ -4,8 +4,10 @@
  * This projector never infers CAD identity from a label or a content digest.
  * It rereads the active geometry-capture/2.0, verifies its exact sealed graph,
  * and attaches the seal-owned authoritative STEP artifact id to each exact
- * SysON PartUsage occurrence. Reused PartDefinitions therefore deliberately
- * produce the same CAD binding on more than one occurrence.
+ * SysON PartUsage occurrence. When the same signed bundle also includes GLB,
+ * that presentation asset follows the identical PartDefinition mapping.
+ * Reused PartDefinitions therefore deliberately produce the same CAD binding
+ * and preview on more than one occurrence.
  */
 
 import {
@@ -30,6 +32,7 @@ import {
 import {
   type ThreadComponentBinding,
   type ThreadComponentCatalog,
+  type ThreadComponentPreview,
   validateThreadComponentCatalog,
 } from "../../domain/thread/thread-component-catalog.ts";
 import {
@@ -58,6 +61,7 @@ interface VerifiedGeometryBundle {
   readonly primary: ThreadArtifact;
   readonly manifest: GeometryBundleManifest;
   readonly stepByDefinitionId: ReadonlyMap<string, ThreadArtifact>;
+  readonly glbByDefinitionId: ReadonlyMap<string, ThreadArtifact>;
   readonly assemblyStep: ThreadArtifact;
 }
 
@@ -216,17 +220,24 @@ async function verifyGeometryCapture(
     sealedAt,
   );
 
-  const { assemblyStep, stepByDefinitionId } = assertExactBundleArtifacts(
-    snapshot,
-    primary,
-    manifest,
-    previewProducer,
-    sealedAt,
-  );
+  const { assemblyStep, stepByDefinitionId, glbByDefinitionId } =
+    assertExactBundleArtifacts(
+      snapshot,
+      primary,
+      manifest,
+      previewProducer,
+      sealedAt,
+    );
   assertManifestMatchesCatalog(catalog, manifest);
   return {
     kind: "bundle",
-    bundle: { primary, manifest, stepByDefinitionId, assemblyStep },
+    bundle: {
+      primary,
+      manifest,
+      stepByDefinitionId,
+      glbByDefinitionId,
+      assemblyStep,
+    },
   };
 }
 
@@ -596,6 +607,7 @@ function assertExactBundleArtifacts(
 ): {
   readonly assemblyStep: ThreadArtifact;
   readonly stepByDefinitionId: ReadonlyMap<string, ThreadArtifact>;
+  readonly glbByDefinitionId: ReadonlyMap<string, ThreadArtifact>;
 } {
   assertExactActiveBundleFamily(snapshot, primary, manifest);
   const assemblyArtifacts = manifest.artifactHashes!.assemblyFiles.map((file, index) =>
@@ -620,6 +632,7 @@ function assertExactBundleArtifacts(
   }
 
   const stepByDefinitionId = new Map<string, ThreadArtifact>();
+  const glbByDefinitionId = new Map<string, ThreadArtifact>();
   manifest.partDefinitions.forEach((definition, definitionIndex) => {
     const artifacts = definition.files!.map((file, fileIndex) =>
       requireExactBinary(
@@ -644,8 +657,27 @@ function assertExactBundleArtifacts(
       );
     }
     stepByDefinitionId.set(definition.elementId, steps[0]!);
+    const glbs = artifacts.filter((_, index) =>
+      definition.files![index]!.format === "gltf"
+    );
+    if (manifest.partExportFormats.includes("gltf")) {
+      if (glbs.length !== 1) {
+        fail(
+          `PartDefinition ${definition.elementId} does not expose exactly one reviewed GLB.`,
+        );
+      }
+      glbByDefinitionId.set(definition.elementId, glbs[0]!);
+    } else if (glbs.length !== 0) {
+      fail(
+        `PartDefinition ${definition.elementId} exposes an unsigned GLB format.`,
+      );
+    }
   });
-  return { assemblyStep: assemblySteps[0]!, stepByDefinitionId };
+  return {
+    assemblyStep: assemblySteps[0]!,
+    stepByDefinitionId,
+    glbByDefinitionId,
+  };
 }
 
 /**
@@ -890,16 +922,39 @@ function attachExactCadBindings(
         ...component.bindings,
         cadBinding(step, `Authoritative STEP: ${definition.label}`, bundle.primary.id),
       ],
+      preview: bundle.glbByDefinitionId.has(definition.id)
+        ? glbPreview(bundle.glbByDefinitionId.get(definition.id)!)
+        : undefined,
     };
   });
+  const presentationRationale = bundle.glbByDefinitionId.size > 0
+    ? " Reviewed GLB presentation assets are attached through that same exact PartDefinition mapping; STEP remains authoritative."
+    : " No PartDefinition presentation asset is claimed when the signed bundle does not include GLB.";
   return validateThreadComponentCatalog({
     ...catalog,
     rationale:
       "This Product Structure is derived from the exact architecture capture and " +
       "the unique active geometry-capture/2.0. Each PartUsage maps by signed element " +
-      "identity to its PartDefinition and authoritative STEP; labels are never joins.",
+      "identity to its PartDefinition and authoritative STEP; labels are never joins." +
+      presentationRationale,
     components,
   });
+}
+
+function glbPreview(artifact: ThreadArtifact): ThreadComponentPreview {
+  if (
+    artifact.mediaType !== "model/gltf-binary" ||
+    !artifact.uri?.endsWith(".glb")
+  ) {
+    fail(`The reviewed PartDefinition GLB ${artifact.id} is not browser-safe.`);
+  }
+  return {
+    provider: "build123d",
+    artifactId: artifact.id,
+    mediaType: "model/gltf-binary",
+    url: artifact.uri,
+    sha256: artifact.fingerprint.digest,
+  };
 }
 
 function cadBinding(

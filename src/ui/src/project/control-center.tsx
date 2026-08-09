@@ -16,9 +16,7 @@ import {
 } from "../thread/geometry-decision-model.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import {
-  type ActivityReviewStatus,
   activityReviewStatus,
-  activityReviewStatusLabel,
   buildProjectReviewRecords,
   currentProjectReview,
   type ProjectReviewKind,
@@ -26,7 +24,11 @@ import {
 } from "./review-decision-model.ts";
 import { buildArchitectureBindingRows } from "./review-architecture-model.ts";
 import {
+  type ActivityReviewDisplayStatus,
+  activityReviewDisplayStatusLabel,
+  effectiveActivityReviewStatus,
   normalizeReviewIntentComment,
+  REVIEW_INTENT_COMMENT_MAX_LENGTH,
   type ReviewIntentTransmissionState,
 } from "./review-intent-model.ts";
 
@@ -221,23 +223,39 @@ export function ActivityReviewFeedCard({
   );
   const [comment, setComment] = useState("");
   const [commentError, setCommentError] = useState<string>();
+  const [composerMode, setComposerMode] = useState<"choice" | "revision">(
+    "choice",
+  );
   const decisionId = record.decision?.id;
   const digest = record.decision?.inputFingerprint?.digest;
+  const approvalId = record.approvalId;
   useEffect(() => {
     setComment("");
     setCommentError(undefined);
-  }, [decisionId, digest]);
+    setComposerMode("choice");
+  }, [decisionId, digest, approvalId]);
   if (!status) return null;
+  const displayStatus = effectiveActivityReviewStatus(
+    status,
+    transmissionState,
+  )!;
   const commentId = `${record.anchorId}-review-comment`;
   const commentHelpId = `${commentId}-help`;
   const commentErrorId = `${commentId}-error`;
   const canCompose = status === "to-review" && decisionId !== undefined &&
-    digest !== undefined && onSubmitIntent !== undefined;
+    digest !== undefined && approvalId !== undefined &&
+    onSubmitIntent !== undefined;
   const isSending = transmissionState.kind === "sending";
-  const send = (action: ProjectReviewIntentAction) => {
+  const commentLength = [...comment].length;
+  const canSendRevision = comment.trim().length > 0 &&
+    commentLength <= REVIEW_INTENT_COMMENT_MAX_LENGTH;
+  const send = (
+    action: ProjectReviewIntentAction,
+    submittedComment?: string,
+  ) => {
     let exactComment: string | undefined;
     try {
-      exactComment = normalizeReviewIntentComment(action, comment);
+      exactComment = normalizeReviewIntentComment(action, submittedComment);
     } catch (error) {
       setCommentError(
         error instanceof Error ? error.message : "Check the review comment.",
@@ -258,7 +276,8 @@ export function ActivityReviewFeedCard({
   return (
     <details
       class="thread-feed-review-card"
-      data-review-status={status}
+      data-review-status={displayStatus}
+      data-canonical-review-status={status}
       data-representation={record.representation}
       data-superseded={record.supersededBy ? "true" : "false"}
       open={open}
@@ -267,11 +286,11 @@ export function ActivityReviewFeedCard({
     >
       <summary>
         <span class="thread-feed-review-mark" aria-hidden="true">
-          {reviewStatusIcon(status)}
+          {reviewStatusIcon(displayStatus)}
         </span>
         <span class="thread-feed-review-copy">
           <small>
-            {activityReviewStatusLabel(status)}
+            {activityReviewDisplayStatusLabel(displayStatus)}
             {record.supersededBy ? " · Superseded" : ""} ·{" "}
             {reviewKindLabel(record.id)}
           </small>
@@ -313,37 +332,10 @@ export function ActivityReviewFeedCard({
                 (transmissionState.kind === "error" &&
                   transmissionState.retryIntent !== undefined)
               ? (
-                <div class="decision-review-composer-fields">
-                  <label for={commentId}>Comment for the agent</label>
-                  <textarea
-                    id={commentId}
-                    value={comment}
-                    rows={3}
-                    placeholder="Optional for validation; required when requesting a revision."
-                    aria-describedby={`${commentHelpId}${
-                      commentError ? ` ${commentErrorId}` : ""
-                    }`}
-                    aria-invalid={commentError ? "true" : undefined}
-                    onInput={(event) => {
-                      setComment(event.currentTarget.value);
-                      if (commentError) setCommentError(undefined);
-                    }}
-                  />
-                  <div class="decision-review-comment-meta">
-                    <small id={commentHelpId}>
-                      Validation comment optional · revision reason required
-                    </small>
-                    <small>{[...comment].length} / 2000</small>
-                  </div>
-                  {commentError && (
-                    <p
-                      id={commentErrorId}
-                      class="decision-review-comment-error"
-                      role="alert"
-                    >
-                      {commentError}
-                    </p>
-                  )}
+                <div
+                  class="decision-review-composer-fields"
+                  data-composer-mode={composerMode}
+                >
                   {transmissionState.kind === "error" && (
                     <div
                       class="decision-review-transmission"
@@ -362,28 +354,106 @@ export function ActivityReviewFeedCard({
                       )}
                     </div>
                   )}
-                  <div
-                    class="decision-review-submit-actions"
-                    role="group"
-                    aria-label="Review response"
-                  >
-                    <button
-                      type="button"
-                      class="decision-review-validate-button"
-                      disabled={isSending}
-                      onClick={() => send("validate")}
+                  {commentError && (
+                    <p
+                      id={commentErrorId}
+                      class="decision-review-comment-error"
+                      role="alert"
                     >
-                      Validate
-                    </button>
-                    <button
-                      type="button"
-                      class="decision-review-revision-button"
-                      disabled={isSending}
-                      onClick={() => send("request-revision")}
-                    >
-                      Request revision
-                    </button>
-                  </div>
+                      {commentError}
+                    </p>
+                  )}
+                  {composerMode === "choice"
+                    ? (
+                      <>
+                        <p class="decision-review-choice-copy">
+                          Validate this exact proposal, or describe what must
+                          change.
+                        </p>
+                        <div
+                          class="decision-review-submit-actions"
+                          role="group"
+                          aria-label="Review response"
+                        >
+                          <button
+                            type="button"
+                            class="decision-review-validate-button"
+                            disabled={isSending}
+                            onClick={() => send("validate", undefined)}
+                          >
+                            Validate
+                          </button>
+                          <button
+                            type="button"
+                            class="decision-review-revision-button"
+                            disabled={isSending}
+                            onClick={() => {
+                              setCommentError(undefined);
+                              setComposerMode("revision");
+                            }}
+                          >
+                            Request revision
+                          </button>
+                        </div>
+                      </>
+                    )
+                    : (
+                      <>
+                        <label for={commentId}>
+                          What should change? <span>Required</span>
+                        </label>
+                        <textarea
+                          id={commentId}
+                          value={comment}
+                          rows={3}
+                          required
+                          aria-required="true"
+                          placeholder="Describe the exact revision needed."
+                          aria-describedby={`${commentHelpId}${
+                            commentError ? ` ${commentErrorId}` : ""
+                          }`}
+                          aria-invalid={commentError ? "true" : undefined}
+                          onInput={(event) => {
+                            setComment(event.currentTarget.value);
+                            if (commentError) setCommentError(undefined);
+                          }}
+                        />
+                        <div class="decision-review-comment-meta">
+                          <small id={commentHelpId}>
+                            This text is sent exactly as written.
+                          </small>
+                          <small>
+                            {commentLength} / {REVIEW_INTENT_COMMENT_MAX_LENGTH}
+                          </small>
+                        </div>
+                        <div
+                          class="decision-review-submit-actions"
+                          role="group"
+                          aria-label="Revision request"
+                        >
+                          <button
+                            type="button"
+                            class="decision-review-revision-button"
+                            disabled={isSending || !canSendRevision}
+                            onClick={() => send("request-revision", comment)}
+                          >
+                            Send revision request
+                          </button>
+                          <button
+                            type="button"
+                            class="decision-review-back-button"
+                            disabled={isSending}
+                            onClick={() => {
+                              setComment("");
+                              setCommentError(undefined);
+                              setComposerMode("choice");
+                            }}
+                          >
+                            Back
+                          </button>
+                        </div>
+                      </>
+                    )}
                 </div>
               )
               : (
@@ -422,7 +492,7 @@ export function ActivityReviewFeedCard({
         <dl class="decision-notification-scope">
           <div>
             <dt>Review</dt>
-            <dd>{activityReviewStatusLabel(status)}</dd>
+            <dd>{activityReviewDisplayStatusLabel(displayStatus)}</dd>
           </div>
           <div>
             <dt>Scope</dt>
@@ -484,9 +554,9 @@ function ReviewIntentTransmissionBadge(
       class="decision-review-transmission-badge"
       data-transmission-state={state.kind}
       aria-label={state.kind === "queued"
-        ? "Sent to agent · signed confirmation pending"
+        ? "Sent to review queue · agent receipt pending"
         : state.kind === "acknowledged"
-        ? "Received by agent · signed confirmation pending"
+        ? "Received by agent · signed decision pending"
         : label}
     >
       {label}
@@ -518,7 +588,11 @@ function ReviewIntentTransmissionNotice({
         aria-live="polite"
       >
         <strong>{state.kind === "queued" ? "Sent" : "Received"}</strong>
-        <span>Awaiting signed decision.</span>
+        <span>
+          {state.kind === "queued"
+            ? "Waiting for agent receipt."
+            : "Waiting for signed decision."}
+        </span>
       </div>
     );
   }
@@ -665,8 +739,11 @@ function reviewKindLabel(kind: ProjectReviewKind): string {
   return "Geometry";
 }
 
-function reviewStatusIcon(status: ActivityReviewStatus): string {
+function reviewStatusIcon(status: ActivityReviewDisplayStatus): string {
   if (status === "to-review") return "!";
+  if (status === "sending") return "···";
+  if (status === "sent") return "↑";
+  if (status === "received") return "↓";
   if (status === "validated") return "✓";
   return "↺";
 }
@@ -820,6 +897,11 @@ function GeometryDecisionDetails(
       definition,
     ) => [definition.elementId, definition]),
   );
+  const partDefinitionIds = new Set(definitionById.keys());
+  const hasPreviewablePartGlb = partAssets.some((asset) =>
+    partDefinitionIds.has(asset.partDefinitionElementId) &&
+    asset.format === "gltf" && asset.path !== undefined && asset.path.length > 0
+  );
   return (
     <>
       {view.schemaVersion === "geometry-manifest/2.0" && (
@@ -833,6 +915,13 @@ function GeometryDecisionDetails(
                 included in this review
               </strong>
             </header>
+            {hasPreviewablePartGlb && (
+              <PartDefinitionGlbReview
+                view={view}
+                partAssets={partAssets}
+                mode={mode}
+              />
+            )}
             <div class="geometry-part-artifact-grid">
               {view.partDefinitions.map((definition) => {
                 const assets = partAssets.filter((asset) =>
@@ -881,11 +970,21 @@ function GeometryDecisionDetails(
                 );
               })}
             </div>
-            <p>
-              These files are validated by the same bundle decision. STEP is
-              downloadable for downstream part work; no per-part browser viewer
-              is claimed.
-            </p>
+            {hasPreviewablePartGlb
+              ? (
+                <p>
+                  These files share the same bundle decision. STEP remains the
+                  authoritative per-part CAD; the selected GLB is its visual
+                  review derivative. Every exact file stays downloadable above.
+                </p>
+              )
+              : (
+                <p>
+                  These files are validated by the same bundle decision. STEP is
+                  downloadable for downstream part work; no per-part browser
+                  viewer is claimed.
+                </p>
+              )}
           </section>
           <section class="geometry-occurrence-table">
             <header>
@@ -1006,6 +1105,152 @@ function GeometryDecisionDetails(
       </details>
     </>
   );
+}
+
+function PartDefinitionGlbReview(
+  { view, partAssets, mode }: {
+    view: GeometryDecisionValid;
+    partAssets: Extract<
+      ProjectReviewRecord["preview"],
+      { kind: "geometry" }
+    >["partAssets"];
+    mode: "draft" | "approved" | "sealed" | "historical" | "superseded";
+  },
+): JSX.Element | null {
+  const previews = view.partDefinitions.flatMap((definition) => {
+    const asset = partAssets.find((candidate) =>
+      candidate.partDefinitionElementId === definition.elementId &&
+      candidate.format === "gltf" && candidate.path !== undefined &&
+      candidate.path.length > 0
+    );
+    return asset?.path
+      ? [{ definition, asset: { ...asset, path: asset.path } }]
+      : [];
+  });
+  const previewIdentity = previews.map(({ definition, asset }) =>
+    `${definition.elementId}:${asset.digest}:${asset.path}`
+  ).join("|");
+  const [selectedDefinitionId, setSelectedDefinitionId] = useState(
+    previews[0]?.definition.elementId,
+  );
+  useEffect(() => {
+    setSelectedDefinitionId(previews[0]?.definition.elementId);
+  }, [previewIdentity]);
+  const selected =
+    previews.find(({ definition }) =>
+      definition.elementId === selectedDefinitionId
+    ) ?? previews[0];
+  if (!selected) return null;
+  const copy = partDefinitionPreviewCopy(mode);
+
+  return (
+    <section
+      class="geometry-part-visual-review"
+      data-geometry-review-mode={mode}
+      aria-label="PartDefinition visual review"
+    >
+      <header>
+        <span>PARTDEFINITION VISUAL CHECK</span>
+        <strong>
+          {previews.length} preview{previews.length === 1 ? "" : "s"} available
+        </strong>
+      </header>
+      <div class="geometry-part-visual-layout">
+        <ul
+          class="geometry-part-visual-list"
+          aria-label="PartDefinition GLB previews"
+        >
+          {previews.map((preview) => {
+            const isSelected = preview.definition.elementId ===
+              selected.definition.elementId;
+            return (
+              <li key={preview.definition.elementId}>
+                <button
+                  type="button"
+                  data-selected={isSelected ? "true" : "false"}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    setSelectedDefinitionId(preview.definition.elementId)}
+                >
+                  <strong>{preview.definition.label}</strong>
+                  <small>SysML PartDefinition</small>
+                  <code>GLB · {shortDigest(preview.asset.digest)}</code>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div class="geometry-part-visual-current">
+          <p class="geometry-part-visual-label">{copy.label}</p>
+          <header>
+            <strong>{selected.definition.label}</strong>
+            <small>
+              SysML PartDefinition · {selected.definition.elementId}
+            </small>
+          </header>
+          <GltfAssetCanvas
+            url={selected.asset.path}
+            ariaLabel={`${copy.ariaLabel}: ${selected.definition.label}`}
+            loadingLabel={copy.loadingLabel}
+            errorLabel={copy.errorLabel}
+          />
+          <footer>
+            <span>GLB visual derivative · STEP remains authoritative</span>
+            <code>{shortDigest(selected.asset.digest)}</code>
+          </footer>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function partDefinitionPreviewCopy(
+  mode: "draft" | "approved" | "sealed" | "historical" | "superseded",
+): {
+  label: string;
+  ariaLabel: string;
+  loadingLabel: string;
+  errorLabel: string;
+} {
+  if (mode === "sealed") {
+    return {
+      label: "SEALED PART PRESENTATION · EXACT RECORDED GLB",
+      ariaLabel: "Interactive sealed PartDefinition presentation",
+      loadingLabel: "Loading sealed part presentation…",
+      errorLabel: "Sealed part presentation unavailable",
+    };
+  }
+  if (mode === "approved") {
+    return {
+      label: "VALIDATED PART PROPOSAL · RESULT PENDING · GLB",
+      ariaLabel: "Interactive validated PartDefinition proposal",
+      loadingLabel: "Loading validated part proposal…",
+      errorLabel: "Validated part proposal unavailable",
+    };
+  }
+  if (mode === "superseded") {
+    return {
+      label: "VALIDATED HISTORICAL PART PROPOSAL · SUPERSEDED · GLB",
+      ariaLabel: "Interactive superseded PartDefinition proposal",
+      loadingLabel: "Loading superseded part proposal…",
+      errorLabel: "Superseded part proposal unavailable",
+    };
+  }
+  if (mode === "historical") {
+    return {
+      label:
+        "VALIDATED HISTORICAL PART PROPOSAL · RESULT NOT IN CURRENT GRAPH · GLB",
+      ariaLabel: "Interactive historical PartDefinition proposal",
+      loadingLabel: "Loading historical part proposal…",
+      errorLabel: "Historical part proposal unavailable",
+    };
+  }
+  return {
+    label: "DRAFT PART PROPOSAL · GLB · NOT CANONICAL",
+    ariaLabel: "Interactive proposed PartDefinition geometry",
+    loadingLabel: "Loading proposed part geometry…",
+    errorLabel: "Proposed part geometry unavailable",
+  };
 }
 
 function shortDigest(digest: string): string {

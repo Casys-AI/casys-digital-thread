@@ -7,8 +7,10 @@ import { validateEngineeringProjectThreadReferences } from "../../src/domain/pro
 import { fingerprintsEqual } from "../../src/domain/kernel/deterministic-json.ts";
 import {
   type ProjectReviewIntent,
+  type ProjectReviewIntentRecord,
   validateProjectReviewIntent,
 } from "../../src/domain/project/project-review-intent.ts";
+import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   FileProjectReviewIntentStore,
@@ -32,6 +34,8 @@ import {
 import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/captures/geometry-draft-capture.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
+import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
   type EngineeringWorkbenchSnapshot,
   projectEngineeringPlanningWorkbenchSnapshot,
@@ -111,7 +115,8 @@ export async function resolveSnapshotComponentCatalog(
 
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
-  projectStore: EngineeringProjectRevisionStore;
+  /** Read-side capability only; project commands stay in the paired MCP. */
+  projectStore: Pick<EngineeringProjectRevisionStore, "get">;
   /** EngineeringProject identity; defaults to subjectId only for CM-01 compatibility. */
   projectId?: string;
   /** Agent-selected durable target. The BFF reads it, never mutates it. */
@@ -119,7 +124,8 @@ export interface NativeWorkbenchHandlerOptions {
   workspaceId?: string;
   /** Active store plus optional exact, versioned project baselines. */
   projectSnapshots?: ExactThreadSnapshotReader;
-  subjectId: string;
+  /** Optional for a focused workspace whose durable focus supplies the project. */
+  subjectId?: string;
   html: string;
   componentCatalog?: ThreadComponentCatalog;
   componentCatalogForSubject?: (
@@ -139,6 +145,15 @@ export interface NativeWorkbenchHandlerOptions {
   draftAssetReader?: (digest: string) => Promise<Uint8Array | undefined>;
   /** Durable reviewer-to-agent outbox. It has no project mutation method. */
   reviewIntents?: ProjectReviewIntentStore;
+  /**
+   * Best-effort MCP wake-up emitted only after the durable outbox append has
+   * completed. The outbox remains authoritative when no host is subscribed.
+   */
+  reviewIntentSignal?: {
+    notify(record: ProjectReviewIntentRecord): Promise<void>;
+  };
+  /** Testable/loggable failure seam; signalling never rolls back the outbox. */
+  onReviewIntentSignalError?: (error: unknown) => void;
   /** Polling only observes persisted snapshots; it never executes a tool. */
   pollIntervalMs?: number;
 }
@@ -155,6 +170,58 @@ export function resolveNativeWorkbenchProjectId(
 ): string {
   return explicitProjectId ?? explicitSubjectId ??
     NATIVE_WORKBENCH_LEGACY_PROJECT_ID;
+}
+
+export interface NativeWorkbenchStartupTarget {
+  readonly hostname: string;
+  readonly port: number;
+  readonly noSeed: boolean;
+  readonly workspaceId?: string;
+  readonly projectId?: string;
+  readonly explicitSubjectId?: string;
+}
+
+/**
+ * Resolve the BFF's startup target without touching project state.
+ *
+ * The historical fixed preview still defaults to CM-01 and seeds its active
+ * revision when absent. A focused `--no-seed` cockpit instead waits for the
+ * MCP-owned durable focus and therefore has no static project/subject fallback.
+ */
+export function resolveNativeWorkbenchStartupTarget(
+  cliArgs: Readonly<Record<string, string | undefined>>,
+): NativeWorkbenchStartupTarget {
+  const hostname = cliArgs["host"] ?? "127.0.0.1";
+  if (!isExplicitLoopbackHostname(hostname)) {
+    throw new TypeError(
+      "--host must be an explicit loopback hostname (127.0.0.1, localhost, or ::1).",
+    );
+  }
+  const noSeed = booleanFlag("no-seed", cliArgs);
+  const workspaceId = cliArgs["workspace-id"];
+  const explicitProjectId = cliArgs["project-id"];
+  const explicitSubjectId = cliArgs["subject"];
+  if (
+    noSeed && workspaceId === undefined && explicitProjectId === undefined &&
+    explicitSubjectId === undefined
+  ) {
+    throw new TypeError(
+      "--no-seed requires --workspace-id, --project-id, or --subject.",
+    );
+  }
+  const focusOnly = noSeed && workspaceId !== undefined &&
+    explicitProjectId === undefined && explicitSubjectId === undefined;
+  return {
+    hostname,
+    port: integerArgument("port", cliArgs) ?? 5173,
+    noSeed,
+    workspaceId,
+    projectId: focusOnly ? undefined : resolveNativeWorkbenchProjectId(
+      explicitProjectId,
+      explicitSubjectId,
+    ),
+    explicitSubjectId,
+  };
 }
 
 type ResolvedActiveProject = {
@@ -176,7 +243,9 @@ async function resolveActiveProject(
   const projectId = focus?.target.projectId ?? configuredProjectId(options);
   const project = await options.projectStore.get(projectId);
   if (!project) throw new NativeWorkbenchProjectNotFoundError(projectId);
-  const subjectId = focus ? project.project.subjectId : options.subjectId;
+  const subjectId = focus
+    ? project.project.subjectId
+    : options.subjectId ?? project.project.subjectId;
   if (project.project.subjectId !== subjectId) {
     throw new Error(
       `Engineering project subject ${project.project.subjectId} does not match resolved Workbench subject ${subjectId}.`,
@@ -222,6 +291,10 @@ export function createNativeWorkbenchHandler(
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
+    if (url.pathname === "/healthz") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return json({ status: "ok", service: "native-workbench" }, 200);
+    }
     if (url.pathname.startsWith("/api/thread/assets/")) {
       if (request.method !== "GET") return methodNotAllowed();
       return serveThreadAsset(url.pathname, options.assetReader);
@@ -390,13 +463,37 @@ async function appendProjectReviewIntent(
       context,
     );
   }
+  const approval = [...decision.approvalIds].reverse().map((approvalId) =>
+    context.project.approvals.find((candidate) => candidate.id === approvalId)
+  ).find((candidate) => candidate?.status === "pending");
+  if (
+    !approval || approval.id !== intent.approvalId ||
+    approval.decisionId !== decision.id || !approval.inputFingerprint ||
+    !fingerprintsEqual(approval.inputFingerprint, intent.inputFingerprint)
+  ) {
+    return reviewIntentConflict(
+      "review_intent_approval_mismatch",
+      context,
+    );
+  }
 
   try {
     const record = await options.reviewIntents.append(intent);
+    let signal: "not-configured" | "sent" | "deferred" = "not-configured";
+    if (options.reviewIntentSignal) {
+      try {
+        await options.reviewIntentSignal.notify(record);
+        signal = "sent";
+      } catch (error) {
+        signal = "deferred";
+        options.onReviewIntentSignalError?.(error);
+      }
+    }
     return json({
       status: "accepted",
       projectId: context.projectId,
       projectRevision: context.project.revision,
+      signal,
       record,
     }, 202);
   } catch (error) {
@@ -878,17 +975,20 @@ function waitForPoll(milliseconds: number): Promise<void> {
 
 if (import.meta.main) {
   const cliArgs = parseArgs(Deno.args);
-  const hostname = cliArgs["host"] ?? "127.0.0.1";
-  const port = integerArgument("port", cliArgs) ?? 5173;
+  const startup = resolveNativeWorkbenchStartupTarget(cliArgs);
+  const {
+    explicitSubjectId,
+    hostname,
+    noSeed,
+    port,
+    projectId,
+    workspaceId,
+  } = startup;
   const snapshotDirectory = cliArgs["snapshot-dir"] ??
     "state/local/thread-snapshots";
-  const explicitSubjectId = cliArgs["subject"];
-  const projectId = resolveNativeWorkbenchProjectId(
-    cliArgs["project-id"],
-    explicitSubjectId,
-  );
-  const projectPath = cliArgs["project"] ??
-    `config/projects/${projectId}.project.json`;
+  const projectPath = projectId === undefined
+    ? undefined
+    : cliArgs["project"] ?? `config/projects/${projectId}.project.json`;
   const activeProjectDirectory = cliArgs["active-project-dir"] ??
     "state/local/engineering-projects";
   const projectBaselineDirectory = cliArgs["project-baseline-dir"] ??
@@ -902,8 +1002,9 @@ if (import.meta.main) {
     "state/local/live-thread-updates";
   const reviewIntentDirectory = cliArgs["review-intent-dir"] ??
     "state/local/project-review-intents";
+  const reviewIntentMcpUrl = cliArgs["review-intent-mcp-url"] ??
+    "http://127.0.0.1:3020/mcp";
   const focusDirectory = cliArgs["focus-dir"] ?? "state/local/cockpit-focus";
-  const workspaceId = cliArgs["workspace-id"];
   const approvedBriefCaptureDirectory = cliArgs["approved-brief-capture-dir"] ??
     "state/local/approved-brief-captures";
   const cm01ArchitectureCaptureDirectory = cliArgs["cm01-architecture-capture-dir"] ??
@@ -956,38 +1057,60 @@ if (import.meta.main) {
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: geometryCaptureDirectory,
   });
-  const projectRuntime = await createEngineeringProjectCommandRuntime({
-    projectId,
-    trackedManifestPath: projectPath,
-    activeDirectory: activeProjectDirectory,
-    evidenceSnapshots: projectSnapshots,
-    planning: {
-      operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
-    },
-    initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
-      store,
-      captures,
-    ),
-  });
-  const subjectId = await resolveNativeWorkbenchSubjectId(
-    projectId,
-    explicitSubjectId,
-    projectRuntime.projects,
-  );
+  let projectStore: EngineeringProjectRevisionStore;
+  if (noSeed) {
+    // The paired MCP owns all project commands and initialisation. The cockpit
+    // opens the same immutable revisions directly and never seeds a fallback.
+    projectStore = new FileEngineeringProjectRevisionStore(
+      activeProjectDirectory,
+    );
+  } else {
+    if (projectId === undefined || projectPath === undefined) {
+      throw new Error("Seeded Workbench startup requires a fixed project.");
+    }
+    projectStore = (await createEngineeringProjectCommandRuntime({
+      projectId,
+      trackedManifestPath: projectPath,
+      activeDirectory: activeProjectDirectory,
+      evidenceSnapshots: projectSnapshots,
+      planning: {
+        operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+      },
+      initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
+        store,
+        captures,
+      ),
+    })).projects;
+  }
+  const subjectId = projectId === undefined
+    ? undefined
+    : await resolveNativeWorkbenchSubjectId(
+      projectId,
+      explicitSubjectId,
+      projectStore,
+    );
   const componentCatalogPath = cliArgs["component-catalog"] ??
-    `config/thread-subjects/${subjectId}.components.json`;
-  const componentCatalog = await readOptionalComponentCatalog(
-    componentCatalogPath,
-  );
+    (subjectId === undefined
+      ? undefined
+      : `config/thread-subjects/${subjectId}.components.json`);
+  const componentCatalog = componentCatalogPath === undefined
+    ? undefined
+    : await readOptionalComponentCatalog(componentCatalogPath);
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(assetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
   const liveUpdates = new FileLiveThreadUpdateStore(liveUpdateDirectory);
   const reviewIntents = new FileProjectReviewIntentStore(reviewIntentDirectory);
+  const reviewIntentMcp = new HttpMcpToolClient({
+    mcpUrl: reviewIntentMcpUrl,
+    // The durable append already succeeded; keep this best-effort wake-up
+    // short so a stopped MCP host cannot hold the Workbench in "Sending".
+    timeoutMs: 1_000,
+  });
   const handler = createNativeWorkbenchHandler({
     store,
-    projectStore: projectRuntime.projects,
+    projectStore,
     projectId,
     cockpitFocus,
     workspaceId,
@@ -1017,6 +1140,24 @@ if (import.meta.main) {
       ),
     liveUpdates,
     reviewIntents,
+    reviewIntentSignal: {
+      notify: async (record) => {
+        await reviewIntentMcp.callTool({
+          name: "project_review_intent_signal",
+          arguments: {
+            projectId: record.intent.projectId,
+            intentId: record.intent.intentId,
+          },
+        });
+      },
+    },
+    onReviewIntentSignalError: (error) => {
+      console.error(
+        `Workbench review intent remains durable, but its MCP resource signal was deferred: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    },
     assetReader: (filename) => assetReader.read(filename),
   });
   const workspaceHandler = workspaceId === undefined || !cockpitFocus
@@ -1032,19 +1173,39 @@ if (import.meta.main) {
     port,
     onListen: ({ hostname, port }) => {
       console.log(`Native Workbench: http://${hostname}:${port}/`);
-      console.log(`Snapshot subject: ${subjectId}`);
-      console.log(`Engineering project id: ${projectId}`);
-      console.log(`Engineering project: ${projectPath}`);
+      console.log(
+        subjectId === undefined
+          ? "Snapshot subject: selected by durable cockpit focus"
+          : `Snapshot subject: ${subjectId}`,
+      );
+      console.log(
+        projectId === undefined
+          ? "Engineering project id: selected by durable cockpit focus"
+          : `Engineering project id: ${projectId}`,
+      );
+      if (projectPath !== undefined) {
+        console.log(`Engineering project: ${projectPath}`);
+      }
       console.log(`Active project revisions: ${activeProjectDirectory}`);
       console.log(`Versioned project baselines: ${projectBaselineDirectory}`);
       console.log(
         `Versioned presentation baselines: ${projectBaselineAssetDirectory}`,
       );
-      console.log(`Component identities: ${componentCatalogPath}`);
+      console.log(
+        componentCatalogPath === undefined
+          ? "Component identities: resolved from the focused subject"
+          : `Component identities: ${componentCatalogPath}`,
+      );
       console.log(`Live activity journal: ${liveUpdateDirectory}`);
       console.log(`Reviewer intent outbox: ${reviewIntentDirectory}`);
+      console.log(`Reviewer intent MCP signal: ${reviewIntentMcpUrl}`);
       if (workspaceId) {
         console.log(`Agent-selected cockpit workspace: ${workspaceId}`);
+      }
+      if (noSeed) {
+        console.log(
+          "Project state: read-only active revisions (no fallback seeding)",
+        );
       }
       console.log(
         `Documentary baseline captures: ${approvedBriefCaptureDirectory}`,
@@ -1071,6 +1232,7 @@ export function createFocusedWorkspaceHandler(
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
+    if (url.pathname === "/healthz") return await options.native(request);
     const focus = await options.focus.get(options.workspaceId);
     if (!focus) return cockpitFocusUnavailable(options.workspaceId, request);
     if (
@@ -1171,12 +1333,28 @@ function cockpitFocusUnavailable(
 }
 
 function configuredProjectId(options: NativeWorkbenchHandlerOptions): string {
-  return options.projectId ?? options.subjectId;
+  const projectId = options.projectId ?? options.subjectId;
+  if (projectId === undefined) {
+    throw new Error(
+      "Native Workbench requires a durable cockpit focus or a fixed project.",
+    );
+  }
+  return projectId;
+}
+
+function booleanFlag(
+  name: string,
+  cliArgs: Readonly<Record<string, string | undefined>>,
+): boolean {
+  const value = cliArgs[name];
+  if (value === undefined || value === "false") return false;
+  if (value === "true") return true;
+  throw new TypeError(`--${name} must be a boolean flag.`);
 }
 
 function integerArgument(
   name: string,
-  cliArgs: Record<string, string | undefined>,
+  cliArgs: Readonly<Record<string, string | undefined>>,
 ): number | undefined {
   const value = cliArgs[name];
   if (value === undefined) return undefined;

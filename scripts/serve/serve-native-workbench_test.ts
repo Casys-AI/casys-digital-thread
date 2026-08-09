@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import type { CockpitFocusStore } from "../../src/adapters/stores/file-cockpit-focus-store.ts";
 import {
   FileProjectReviewIntentStore,
@@ -20,9 +20,11 @@ import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts"
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
 import {
+  createFocusedWorkspaceHandler,
   createNativeWorkbenchHandler,
   NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
   resolveNativeWorkbenchProjectId,
+  resolveNativeWorkbenchStartupTarget,
   resolveNativeWorkbenchSubjectId,
 } from "./serve-native-workbench.ts";
 
@@ -57,6 +59,87 @@ Deno.test("native Workbench resolves an agent-selected project and its subject",
     await resolveNativeWorkbenchSubjectId("project-one", "subject-override", projects),
     "subject-override",
   );
+});
+
+Deno.test("native Workbench no-seed startup can rely only on durable focus", () => {
+  assertEquals(
+    resolveNativeWorkbenchStartupTarget({
+      "no-seed": "true",
+      "workspace-id": "primary",
+    }),
+    {
+      hostname: "127.0.0.1",
+      port: 5173,
+      noSeed: true,
+      workspaceId: "primary",
+      projectId: undefined,
+      explicitSubjectId: undefined,
+    },
+  );
+  assertEquals(
+    resolveNativeWorkbenchStartupTarget({}).projectId,
+    NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
+  );
+  assertThrows(
+    () => resolveNativeWorkbenchStartupTarget({ "no-seed": "true" }),
+    TypeError,
+    "--no-seed requires --workspace-id, --project-id, or --subject.",
+  );
+});
+
+Deno.test("native Workbench rejects a non-loopback bind host", () => {
+  for (const hostname of ["0.0.0.0", "workbench.test"]) {
+    assertThrows(
+      () => resolveNativeWorkbenchStartupTarget({ host: hostname }),
+      TypeError,
+      "--host must be an explicit loopback hostname",
+    );
+  }
+  assertEquals(
+    resolveNativeWorkbenchStartupTarget({ host: "localhost" }).hostname,
+    "localhost",
+  );
+});
+
+Deno.test("native Workbench health is independent of focus and project state", async () => {
+  let focusReads = 0;
+  const focus: CockpitFocusStore = {
+    get: () => {
+      focusReads += 1;
+      return Promise.resolve(undefined);
+    },
+    select: (snapshot) => Promise.resolve(snapshot),
+  };
+  const native = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([]),
+    html: "unused",
+  });
+  const handler = createFocusedWorkspaceHandler({
+    focus,
+    workspaceId: "primary",
+    native,
+  });
+
+  const response = await handler(new Request("http://localhost/healthz"));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    status: "ok",
+    service: "native-workbench",
+  });
+  assertEquals(focusReads, 0);
+  const rejected = await handler(
+    new Request("http://localhost/healthz", { method: "POST" }),
+  );
+  assertEquals(rejected.status, 405);
+  assertEquals(focusReads, 0);
+
+  const unavailable = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  assertEquals(unavailable.status, 409);
+  assertEquals((await unavailable.json()).error, "cockpit_focus_not_selected");
+  assertEquals(focusReads, 1);
 });
 
 Deno.test("native Workbench serves a planning-only project without borrowing a thread", async () => {
@@ -163,14 +246,13 @@ Deno.test("native Workbench hides durable unattached generic requirements and ge
   }
 });
 
-Deno.test("native Workbench follows the durable focus selected by the agent", async () => {
+Deno.test("native Workbench follows durable focus without a static target", async () => {
   const first = projectFixture("project-one", "subject-one");
   const second = projectFixture("project-two", "subject-two");
   const focus = new MutableFocus(focusSnapshot("project-one"));
   const handler = createNativeWorkbenchHandler({
     store: new EmptyThreadStore(),
     projectStore: new ProjectStore([first, second]),
-    subjectId: "subject-one",
     cockpitFocus: focus,
     workspaceId: "primary",
     html: "unused",
@@ -245,6 +327,67 @@ Deno.test("native Workbench durably accepts an exact review intent without mutat
   );
   assertEquals(listed.status, 200);
   assertEquals((await listed.json()).intents, [{ intent }]);
+});
+
+Deno.test("native Workbench signals MCP only after the exact review intent is durable", async () => {
+  const project = proposedDecisionProject();
+  const projects = new ProjectStore([project]);
+  const reviewIntents = new MemoryReviewIntentStore();
+  const observed: string[] = [];
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: projects,
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    reviewIntents,
+    reviewIntentSignal: {
+      notify: async (record) => {
+        observed.push(record.intent.intentId);
+        assertEquals(
+          await reviewIntents.list(project.project.id),
+          [record],
+        );
+      },
+    },
+  });
+  const intent = reviewIntent(project);
+
+  const response = await handler(reviewIntentRequest(intent));
+  const body = await response.json();
+
+  assertEquals(response.status, 202);
+  assertEquals(body.signal, "sent");
+  assertEquals(observed, [intent.intentId]);
+  assertEquals(await projects.get(project.project.id), project);
+});
+
+Deno.test("native Workbench keeps a review intent durable when the MCP signal is unavailable", async () => {
+  const project = proposedDecisionProject();
+  const reviewIntents = new MemoryReviewIntentStore();
+  const failures: unknown[] = [];
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    reviewIntents,
+    reviewIntentSignal: {
+      notify: () => Promise.reject(new Error("subscriber disconnected")),
+    },
+    onReviewIntentSignalError: (error) => failures.push(error),
+  });
+  const intent = reviewIntent(project);
+
+  const response = await handler(reviewIntentRequest(intent));
+  const body = await response.json();
+
+  assertEquals(response.status, 202);
+  assertEquals(body.signal, "deferred");
+  assertEquals(await reviewIntents.list(project.project.id), [{ intent }]);
+  assertEquals(failures.length, 1);
+  assertEquals((failures[0] as Error).message, "subscriber disconnected");
 });
 
 Deno.test("native Workbench accepts only one active intent for an exact proposed decision", async () => {
@@ -325,6 +468,68 @@ Deno.test("native Workbench review-intent POST rejects stale revisions and finge
     "review_intent_fingerprint_mismatch",
   );
   assertEquals(await reviewIntents.list(project.project.id), []);
+});
+
+Deno.test("native Workbench binds a same-fingerprint reproposal to its new pending approval attempt", async () => {
+  const directory = await Deno.makeTempDir();
+  try {
+    const original = proposedDecisionProject();
+    const reviewIntents = new FileProjectReviewIntentStore(directory);
+    await reviewIntents.append(reviewIntent(original));
+    const successorApprovalId = "approval:decision:geometry-v2:proposal-3";
+    const current = {
+      ...original,
+      id: `${original.project.id}:r${original.revision + 1}`,
+      revision: original.revision + 1,
+      decisions: original.decisions.map((decision) => ({
+        ...decision,
+        approvalIds: [...decision.approvalIds, successorApprovalId],
+      })),
+      approvals: [
+        ...original.approvals.map((approval) => ({
+          ...approval,
+          status: "rejected" as const,
+          decidedAt: "2026-08-09T10:46:00.000Z",
+          decidedBy: "human:reviewer",
+          decidedByOrigin: "human" as const,
+          rationale: "Revise and propose again.",
+        })),
+        {
+          ...original.approvals[0],
+          id: successorApprovalId,
+          status: "pending" as const,
+          requestedAt: "2026-08-09T10:47:00.000Z",
+        },
+      ],
+    } satisfies EngineeringProjectSnapshot;
+    const handler = reviewIntentHandler(current, reviewIntents);
+    const successor = {
+      ...reviewIntent(current),
+      intentId: "intent:geometry-v2:reviewer-successor",
+    };
+
+    const oldAttempt = await handler(reviewIntentRequest({
+      ...successor,
+      intentId: "intent:geometry-v2:stale-approval",
+      approvalId: REVIEW_APPROVAL_ID,
+    }));
+    assertEquals(oldAttempt.status, 409);
+    assertEquals(
+      (await oldAttempt.json()).error,
+      "review_intent_approval_mismatch",
+    );
+
+    const accepted = await handler(reviewIntentRequest(successor));
+    assertEquals(accepted.status, 202);
+    assertEquals(
+      (await reviewIntents.list(current.project.id)).map((record) =>
+        record.intent.approvalId
+      ),
+      [REVIEW_APPROVAL_ID, successorApprovalId],
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
 });
 
 Deno.test("native Workbench review-intent POST requires an exact bounded revision comment", async () => {
@@ -477,6 +682,7 @@ Deno.test("native Workbench reports an unknown selected project without substitu
 });
 
 const REVIEW_DECISION_DIGEST = "a".repeat(64);
+const REVIEW_APPROVAL_ID = "approval:decision:geometry-v2:proposal-2";
 
 function proposedDecisionProject(): EngineeringProjectSnapshot {
   const project = projectFixture("desk-lamp-dl01", "desk-lamp-dl01-thread");
@@ -494,7 +700,18 @@ function proposedDecisionProject(): EngineeringProjectSnapshot {
         digest: REVIEW_DECISION_DIGEST,
       },
       inputEvidenceRefs: [],
-      approvalIds: [],
+      approvalIds: [REVIEW_APPROVAL_ID],
+    }],
+    approvals: [{
+      id: REVIEW_APPROVAL_ID,
+      decisionId: "decision:geometry-v2",
+      status: "pending",
+      requestedAt: "2026-08-09T10:30:00.000Z",
+      inputFingerprint: {
+        algorithm: "sha256",
+        digest: REVIEW_DECISION_DIGEST,
+      },
+      inputEvidenceRefs: [],
     }],
   };
 }
@@ -505,6 +722,10 @@ function reviewIntent(project: EngineeringProjectSnapshot): ProjectReviewIntent 
     projectId: project.project.id,
     expectedRevision: project.revision,
     decisionId: "decision:geometry-v2",
+    approvalId:
+      [...project.approvals].reverse().find((approval) =>
+        approval.decisionId === "decision:geometry-v2" && approval.status === "pending"
+      )!.id,
     inputFingerprint: {
       algorithm: "sha256",
       digest: REVIEW_DECISION_DIGEST,
@@ -1020,6 +1241,10 @@ class MemoryReviewIntentStore implements ProjectReviewIntentStore {
     return Promise.resolve(structuredClone(
       this.#records.filter((record) => record.intent.projectId === projectId),
     ));
+  }
+
+  listAll(): Promise<ProjectReviewIntentRecord[]> {
+    return Promise.resolve(structuredClone(this.#records));
   }
 
   acknowledge(

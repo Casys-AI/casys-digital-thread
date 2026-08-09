@@ -1,18 +1,20 @@
-import {
-  deterministicJson,
-  fingerprintsEqual,
-} from "../../domain/kernel/deterministic-json.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { exactRecord } from "../../domain/kernel/case-validation.ts";
 import {
+  isApprovalBoundProjectReviewIntent,
+  type LegacyProjectReviewIntent,
   type ProjectReviewIntent,
   type ProjectReviewIntentAcknowledgement,
   type ProjectReviewIntentRecord,
+  type StoredProjectReviewIntent,
+  validateLegacyProjectReviewIntent,
   validateProjectReviewIntent,
   validateProjectReviewIntentAcknowledgement,
   validateProjectReviewIntentProjectId,
 } from "../../domain/project/project-review-intent.ts";
 
-const JOURNAL_EVENT_SCHEMA = "project-review-intent-event/1.0" as const;
+const LEGACY_JOURNAL_EVENT_SCHEMA = "project-review-intent-event/1.0" as const;
+const JOURNAL_EVENT_SCHEMA = "project-review-intent-event/1.1" as const;
 
 type ProjectReviewIntentJournalEvent =
   | {
@@ -21,7 +23,14 @@ type ProjectReviewIntentJournalEvent =
     readonly intent: ProjectReviewIntent;
   }
   | {
-    readonly schemaVersion: typeof JOURNAL_EVENT_SCHEMA;
+    readonly schemaVersion: typeof LEGACY_JOURNAL_EVENT_SCHEMA;
+    readonly kind: "intent";
+    readonly intent: LegacyProjectReviewIntent;
+  }
+  | {
+    readonly schemaVersion:
+      | typeof LEGACY_JOURNAL_EVENT_SCHEMA
+      | typeof JOURNAL_EVENT_SCHEMA;
     readonly kind: "acknowledgement";
     readonly acknowledgement: ProjectReviewIntentAcknowledgement;
   };
@@ -29,6 +38,8 @@ type ProjectReviewIntentJournalEvent =
 export interface ProjectReviewIntentStore {
   append(intent: ProjectReviewIntent): Promise<ProjectReviewIntentRecord>;
   list(projectId: string): Promise<ProjectReviewIntentRecord[]>;
+  /** Complete durable outbox, used to recover MCP review work after reconnect. */
+  listAll(): Promise<ProjectReviewIntentRecord[]>;
   acknowledge(
     acknowledgement: ProjectReviewIntentAcknowledgement,
   ): Promise<ProjectReviewIntentRecord>;
@@ -76,7 +87,7 @@ export class FileProjectReviewIntentStore implements ProjectReviewIntentStore {
       );
       if (existingScope) {
         throw new ProjectReviewIntentConflictError(
-          `Decision ${intent.decisionId} already has review intent ${existingScope.intent.intentId} for project ${intent.projectId} and the same proposal fingerprint.`,
+          `Approval ${intent.approvalId} for decision ${intent.decisionId} already has review intent ${existingScope.intent.intentId} in project ${intent.projectId}.`,
         );
       }
       return {
@@ -92,6 +103,17 @@ export class FileProjectReviewIntentStore implements ProjectReviewIntentStore {
 
   async list(projectId: string): Promise<ProjectReviewIntentRecord[]> {
     const validatedProjectId = validateProjectReviewIntentProjectId(projectId);
+    return (await this.listAll()).filter((record) =>
+      record.intent.projectId === validatedProjectId
+    );
+  }
+
+  /**
+   * Read the complete durable outbox for the stable MCP review-intent resource.
+   * Project-scoped tools continue to use list(); this broader read exists only so
+   * a reconnecting MCP client can recover every exact record after a lossy signal.
+   */
+  async listAll(): Promise<ProjectReviewIntentRecord[]> {
     let file: Deno.FsFile;
     try {
       file = await Deno.open(this.#path(), { read: true });
@@ -101,11 +123,7 @@ export class FileProjectReviewIntentStore implements ProjectReviewIntentStore {
     }
     await file.lock(false);
     try {
-      return structuredClone(
-        (await this.#readUnlocked()).filter((record) =>
-          record.intent.projectId === validatedProjectId
-        ),
-      );
+      return structuredClone(await this.#readUnlocked());
     } finally {
       await file.unlock();
       file.close();
@@ -123,6 +141,11 @@ export class FileProjectReviewIntentStore implements ProjectReviewIntentStore {
       if (!existing || existing.intent.projectId !== acknowledgement.projectId) {
         throw new ProjectReviewIntentConflictError(
           `Review intent ${acknowledgement.intentId} does not exist for project ${acknowledgement.projectId}.`,
+        );
+      }
+      if (!isApprovalBoundProjectReviewIntent(existing.intent)) {
+        throw new ProjectReviewIntentConflictError(
+          `Legacy review intent ${acknowledgement.intentId} has no approval binding and cannot be acknowledged.`,
         );
       }
       if (existing.acknowledgement) {
@@ -164,6 +187,7 @@ export class FileProjectReviewIntentStore implements ProjectReviewIntentStore {
     });
     await file.lock(true);
     try {
+      await this.#discardTornTailUnlocked(file);
       const result = update(await this.#readUnlocked());
       if (result.event) {
         const bytes = new TextEncoder().encode(
@@ -184,7 +208,11 @@ export class FileProjectReviewIntentStore implements ProjectReviewIntentStore {
 
   async #readUnlocked(): Promise<ProjectReviewIntentRecord[]> {
     const text = await Deno.readTextFile(this.#path());
-    const events = text.split("\n").flatMap((line, index) => {
+    const lines = text.split("\n");
+    // Every committed writer event ends in LF. A non-empty final fragment
+    // without LF can only be an interrupted append; it never becomes an event.
+    if (!text.endsWith("\n") && lines.at(-1)?.length) lines.pop();
+    const events = lines.flatMap((line, index) => {
       if (line.trim().length === 0) return [];
       let value: unknown;
       try {
@@ -199,18 +227,33 @@ export class FileProjectReviewIntentStore implements ProjectReviewIntentStore {
     return foldJournal(events);
   }
 
+  async #discardTornTailUnlocked(file: Deno.FsFile): Promise<void> {
+    const bytes = await Deno.readFile(this.#path());
+    if (bytes.length === 0 || bytes.at(-1) === 0x0a) return;
+    let lastNewline = -1;
+    for (let index = bytes.length - 1; index >= 0; index -= 1) {
+      if (bytes[index] === 0x0a) {
+        lastNewline = index;
+        break;
+      }
+    }
+    await file.truncate(lastNewline + 1);
+    await file.syncData();
+  }
+
   #path(): string {
     return `${this.#directory}/project-review-intents.jsonl`;
   }
 }
 
 function sameDecisionReviewScope(
-  left: ProjectReviewIntent,
+  left: StoredProjectReviewIntent,
   right: ProjectReviewIntent,
 ): boolean {
-  return left.projectId === right.projectId &&
+  return isApprovalBoundProjectReviewIntent(left) &&
+    left.projectId === right.projectId &&
     left.decisionId === right.decisionId &&
-    fingerprintsEqual(left.inputFingerprint, right.inputFingerprint);
+    left.approvalId === right.approvalId;
 }
 
 function decodeJournalEvent(
@@ -227,16 +270,23 @@ function decodeJournalEvent(
       ["schemaVersion", "kind", "intent"],
       `ProjectReviewIntentJournalEvent[${line}]`,
     );
-    if (event.schemaVersion !== JOURNAL_EVENT_SCHEMA) {
-      throw new TypeError(
-        `unsupported project review intent schema at line ${line}`,
-      );
+    if (event.schemaVersion === LEGACY_JOURNAL_EVENT_SCHEMA) {
+      return {
+        schemaVersion: LEGACY_JOURNAL_EVENT_SCHEMA,
+        kind: "intent",
+        intent: validateLegacyProjectReviewIntent(event.intent),
+      };
     }
-    return {
-      schemaVersion: JOURNAL_EVENT_SCHEMA,
-      kind: "intent",
-      intent: validateProjectReviewIntent(event.intent),
-    };
+    if (event.schemaVersion === JOURNAL_EVENT_SCHEMA) {
+      return {
+        schemaVersion: JOURNAL_EVENT_SCHEMA,
+        kind: "intent",
+        intent: validateProjectReviewIntent(event.intent),
+      };
+    }
+    throw new TypeError(
+      `unsupported project review intent schema at line ${line}`,
+    );
   }
   if (candidate.kind === "acknowledgement") {
     const event = exactRecord(
@@ -244,13 +294,16 @@ function decodeJournalEvent(
       ["schemaVersion", "kind", "acknowledgement"],
       `ProjectReviewIntentJournalEvent[${line}]`,
     );
-    if (event.schemaVersion !== JOURNAL_EVENT_SCHEMA) {
+    if (
+      event.schemaVersion !== LEGACY_JOURNAL_EVENT_SCHEMA &&
+      event.schemaVersion !== JOURNAL_EVENT_SCHEMA
+    ) {
       throw new TypeError(
         `unsupported project review intent schema at line ${line}`,
       );
     }
     return {
-      schemaVersion: JOURNAL_EVENT_SCHEMA,
+      schemaVersion: event.schemaVersion,
       kind: "acknowledgement",
       acknowledgement: validateProjectReviewIntentAcknowledgement(
         event.acknowledgement,
