@@ -3,7 +3,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../adapters/mcp/http-mcp-tool-client.ts";
+} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import { compileThreadWorkflowValue } from "./compiler.ts";
 import { WorkflowExecutor } from "./executor.ts";
 import { InternalThreadToolClient } from "./internal-thread-tools.ts";
@@ -269,7 +269,7 @@ Deno.test("coffee workflow blocks SysON evaluation when CalculiX attests differe
     ],
   ]);
   const workflow = await loadAndCompileThreadWorkflow(
-    "config/thread-workflows/coffee-machine-mechanical-v1.yaml",
+    "experiments/thread-workflow/coffee-machine-mechanical-v1.yaml",
   );
 
   const execution = await executor(clients).execute(workflow, {

@@ -767,7 +767,7 @@ const KITS = [
         },
         {
           kind: "reviewed-configuration",
-          path: "config/thread-workflows/coffee-machine-mechanical-v1.yaml",
+          path: "experiments/thread-workflow/coffee-machine-mechanical-v1.yaml",
           purpose: "Defines the reviewed CAD-to-analysis evidence sequence.",
         },
       ],

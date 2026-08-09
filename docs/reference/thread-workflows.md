@@ -1,7 +1,11 @@
 # Reference: native thread workflow YAML
 
 > **Diátaxis category: reference.** This page documents the reviewed authoring format in
-> [`config/thread-workflows/`](../../config/thread-workflows/).
+> [`experiments/thread-workflow/`](../../experiments/thread-workflow/).
+>
+> **Frozen prototype (reviewed decision, 2026-08-09).** The engine and its YAML are an
+> authoring prototype with no production caller; an architecture test forbids any
+> production import. Execution belongs to the server-fixed registered executors.
 
 A thread workflow declares a causal engineering DAG. YAML is the human- and
 agent-friendly authoring form; the loader validates it and the compiler produces a
@@ -122,7 +126,7 @@ pattern.
 
 ## Historical r6 mechanical slice
 
-[`coffee-machine-mechanical-v1.yaml`](../../config/thread-workflows/coffee-machine-mechanical-v1.yaml)
+[`coffee-machine-mechanical-v1.yaml`](../../experiments/thread-workflow/coffee-machine-mechanical-v1.yaml)
 drives the retained r6 provenance only. The current CM-01 V3 golden path uses its own
 registered code-owned executors and captures, not a generic YAML operation; see the
 [golden-run guide](../how-to/run-cm01-v3-golden-local.md).
@@ -173,7 +177,7 @@ Active project revision 10 records the bound run and verification work item as
 
 ## Presentation separation
 
-`config/thread-workflows/*.yaml` describes data dependencies and explicit engineering
+`experiments/thread-workflow/*.yaml` describes data dependencies and explicit engineering
 operations. It has no areas, columns, component keys, CSS, or live UI state. A product
 UI reads a persisted snapshot; it does not execute this YAML merely because a page
 opened.

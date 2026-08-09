@@ -7,7 +7,7 @@ import {
 import { loadAndCompileThreadWorkflow, loadThreadWorkflow } from "./loader.ts";
 import type { CompiledBinding } from "./types.ts";
 
-const COFFEE_WORKFLOW = "config/thread-workflows/coffee-machine-mechanical-v1.yaml";
+const COFFEE_WORKFLOW = "experiments/thread-workflow/coffee-machine-mechanical-v1.yaml";
 
 Deno.test("coffee workflow compiles the canonical STEP to FEA to normalization to SysON data chain", async () => {
   const workflow = await loadAndCompileThreadWorkflow(COFFEE_WORKFLOW);

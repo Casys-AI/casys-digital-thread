@@ -21,9 +21,9 @@
 | Provider topology          | [`docker-compose.yml`](../../docker-compose.yml)                                                           |
 | Desired fleet              | [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                     |
 | CM-01 subject binding      | [`config/thread-subjects/coffee-machine-cm01.json`](../../config/thread-subjects/coffee-machine-cm01.json) |
-| Native workflow            | [`config/thread-workflows/`](../../config/thread-workflows/)                                               |
+| Native workflow (frozen)   | [`experiments/thread-workflow/`](../../experiments/thread-workflow/)                                       |
 | Canonical linked state     | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                     |
-| Workflow compiler/executor | [`src/workflow/`](../../src/workflow/)                                                                     |
+| Workflow compiler/executor | [`experiments/thread-workflow/`](../../experiments/thread-workflow/) (frozen prototype)                    |
 | Workbench projection       | [`src/adapters/projectors/thread-workbench-projector.ts`](../../src/adapters/projectors/thread-workbench-projector.ts) |
 | Native Workbench UI        | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                           |
 | Modelica evidence          | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                   |

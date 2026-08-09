@@ -96,7 +96,6 @@ Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 | `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/`                                                                                                                                                                                               |
 | `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning                                                                                                                                                                                                                                                                                                 |
 | `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                                                                                                                                                                                                                                                                                                         |
-| `src/workflow/`                 | Loader → compiler → executor des DAG YAML de `config/thread-workflows/`                                                                                                                                                                                                                                                                                                      |
 | `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                                                                                                                                                                                                                                                                                                               |
 | `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)                                                                                                                                                                                                                                                                                      |
 | `src/testing/`                  | Fixtures partagées entre suites                                                                                                                                                                                                                                                                                                                                              |
@@ -236,10 +235,12 @@ en donne ensuite une projection passive ; ce passage ne crée ni modèle SysON, 
 `ThreadSnapshot` technique. Aucun moteur réglementaire ne fait partie du Golden Path
 actuel.
 
-Le backend compose les données par un DAG explicite sous `config/thread-workflows/` ; la
-YAML ne décrit ni layout ni composant. Ouvrir la page ne lance aucun solver. Les MCP
-Apps restent des réponses riches unitaires pour les agents, jamais des panneaux du
-produit. Ports, contrats et frontières exacts : `docs/reference/workspace-map.md`.
+Ouvrir la page ne lance aucun solver. Les MCP Apps restent des réponses riches
+unitaires pour les agents, jamais des panneaux du produit. Le moteur de DAG YAML
+(`experiments/thread-workflow/`) est un prototype d'authoring gelé — décision revue du
+2026-08-09 : aucun code de production ne l'importe, un test d'architecture l'interdit,
+et la voie d'exécution reste les executors serveur-fixes du registre. Ports, contrats
+et frontières exacts : `docs/reference/workspace-map.md`.
 
 Le projet CM-01 suivi vit sous `config/projects/`. Il référence des IDs de snapshots
 exacts, jamais `latest`. `config/projects/baselines/` contient une capture observée r5

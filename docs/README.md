@@ -53,8 +53,8 @@ categories deliberately answer different questions.
 - [Cross-tool component identity](reference/thread-components.md) defines the reviewed
   SysON PartUsage, build123d artifact, and ERPNext Item bindings used by the native
   **Parts** workspace, including visible trace gaps.
-- [Native thread workflow YAML](reference/thread-workflows.md) defines the reviewed DAG
-  authoring grammar, backend-only explicit execution, and typed bindings.
+- [Native thread workflow YAML](reference/thread-workflows.md) documents the frozen
+  DAG authoring prototype: reviewed grammar and typed bindings, no production caller.
 
 ## Explanation — understand why the boundaries exist
 

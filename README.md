@@ -232,9 +232,10 @@ substitute evidence, its recovered R3 successor is the current bounded proof, an
 R12 requirement lineage is what lets the project close. Adding or replacing model-owned
 criteria is always an explicit domain mutation, never a UI workaround.
 
-[`config/thread-workflows/`](config/thread-workflows/) describes typed causal DAGs. No
-dashboard-layout YAML, iframe host, or presentation-only MCP sits between the backend
-and provider-native MCP tools. See the
+[`experiments/thread-workflow/`](experiments/thread-workflow/) holds the frozen YAML
+DAG authoring prototype (spec and engine; no production caller). No dashboard-layout
+YAML, iframe host, or presentation-only MCP sits between the backend and
+provider-native MCP tools. See the
 [workflow reference](docs/reference/thread-workflows.md).
 
 The four tracked r5 branches share the system subject only through
@@ -275,7 +276,7 @@ model, and security boundary.
 | `server.ts`, `src/`                           | Console, project control plane, thread contracts, and orchestration                |
 | `config/mcp-fleet.json`                       | Desired fleet, topology, tools, views, and trust boundaries                        |
 | `config/projects/`                            | Versioned project intent plus exact observed baseline captures                     |
-| `config/thread-workflows/`                    | Reviewed YAML authoring prototypes compiled into typed causal DAGs                 |
+| `experiments/thread-workflow/`                | Frozen YAML authoring prototype (reviewed spec + engine, no production caller)     |
 | `config/thread-subjects/`                     | Reviewed explicit provider-to-product identity bindings                            |
 | `config/verification-plans/`                  | Versioned provisional scenario-contract plans                                      |
 | `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                            |
