@@ -39,9 +39,9 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import { renderDripTrayPrintabilityScript } from "../../../domain/cm01/cm01-drip-tray-analysis-scripts.ts";
 import {
   type PrintabilityCheckCase,
-  renderDripTrayPrintabilityScript,
   validatePrintabilityCheckCase,
 } from "../../../domain/analysis/printability-case.ts";
 import type {

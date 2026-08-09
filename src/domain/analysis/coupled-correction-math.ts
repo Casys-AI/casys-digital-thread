@@ -76,23 +76,6 @@ export interface CoupledSystemComposition {
 }
 
 // ---------------------------------------------------------------------------
-// Server-fixed mapping: oracle feature paths → sensitivity metric ids
-//
-// WHY THIS TABLE — the oracle requirements element (DripTrayMechanicalRequirements)
-// uses SysML-idiomatic camelCase attribute names (e.g. "maximumDisplacementMm"),
-// while the sensitivity study records derivatives under provider-native snake_case
-// keys (e.g. "assembly_max_displacement"). This explicit map is the join key used
-// by composeCoupledSystem. When a new oracle metric is added, a matching sensitivity
-// derivative metric must be registered here.
-// ---------------------------------------------------------------------------
-
-export const ORACLE_FEATURE_TO_SENSITIVITY_METRIC: ReadonlyMap<string, string> =
-  new Map([
-    ["maximumDisplacementMm", "assembly_max_displacement"],
-    ["maximumVonMisesPa", "assembly_max_von_mises"],
-  ]);
-
-// ---------------------------------------------------------------------------
 // Unit conversion
 // ---------------------------------------------------------------------------
 
@@ -216,12 +199,14 @@ export function composeCoupledSystem(
   step: number,
   paramUnit: string,
   /**
-   * Optional custom mapping from oracle feature-path names to sensitivity metric ids.
-   * Defaults to ORACLE_FEATURE_TO_SENSITIVITY_METRIC. Pass a custom map in tests
-   * that use fixture oracle feature paths that match the sensitivity metric ids directly.
+   * Explicit mapping from oracle feature-path names to sensitivity metric ids.
+   *
+   * WHY REQUIRED — this join table is CM-01-specific (SysML camelCase attribute names
+   * vs. provider-native snake_case metric ids). Keeping it mandatory here forces each
+   * call site to own its join contract rather than silently inheriting a domain default
+   * that does not belong in this pure-math module.
    */
-  oracleToSensitivityMetric: ReadonlyMap<string, string> =
-    ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
+  oracleToSensitivityMetric: ReadonlyMap<string, string>,
 ): CoupledSystemComposition {
   // ── 1. Validity bounds as-is (from SysON model) ────────────────────────────
   const validityConstraints: Z3Constraint[] = validityBounds.map((b) => ({
@@ -283,7 +268,7 @@ export function composeCoupledSystem(
     if (!sensitivityMetric) {
       throw new Error(
         `composeCoupledSystem: no derivative for oracle metric "${req.metric}". ` +
-          `Register a mapping in ORACLE_FEATURE_TO_SENSITIVITY_METRIC.`,
+          `Add an entry to the oracleToSensitivityMetric map passed by the caller.`,
       );
     }
     const deriv = derivByMetric.get(sensitivityMetric);

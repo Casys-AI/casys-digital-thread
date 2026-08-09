@@ -8,6 +8,7 @@ Deno.test("SysON inventory remains evidence of a missing criterion, never a requ
   const extension = await sysonModelInventoryExtension(
     capture(),
     "state/local/syson-inventory/capture.json",
+    "coffee-machine-cm01",
   );
   assertEquals(
     extension.artifacts[0].name,
@@ -22,7 +23,7 @@ Deno.test("SysON inventory rejects a claimed count which differs from captured e
   const value = capture();
   value.inventory.count = 3;
   await assertRejects(
-    () => sysonModelInventoryExtension(value, "capture.json"),
+    () => sysonModelInventoryExtension(value, "capture.json", "coffee-machine-cm01"),
     Error,
     "must equal",
   );
@@ -33,7 +34,7 @@ Deno.test("SysON inventory rejects duplicate model element identities", async ()
   value.inventory.results.push(value.inventory.results[0]);
   value.inventory.count++;
   await assertRejects(
-    () => sysonModelInventoryExtension(value, "capture.json"),
+    () => sysonModelInventoryExtension(value, "capture.json", "coffee-machine-cm01"),
     Error,
     "duplicate",
   );

@@ -1,9 +1,5 @@
-import { assertThrows } from "@std/assert";
-import {
-  renderDripTrayPrintabilityScript,
-  validatePrintabilityCheckCase,
-} from "./printability-case.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
+import { validatePrintabilityCheckCase } from "./printability-case.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -172,24 +168,6 @@ Deno.test("validatePrintabilityCheckCase rejects extra field in thresholds", () 
 
 // ── Test 11 ───────────────────────────────────────────────────────────────────
 
-Deno.test("renderDripTrayPrintabilityScript is deterministic and contains the R2 30 mm height", () => {
-  const first = renderDripTrayPrintabilityScript();
-  const second = renderDripTrayPrintabilityScript();
-  assertEquals(first, second, "same call must produce identical bytes");
-  assertEquals(
-    first.includes("30"),
-    true,
-    "script must embed the 30 mm R2 height",
-  );
-  assertEquals(
-    first.includes("Box(190, 135, 30"),
-    true,
-    "script must embed the DripTray plan geometry",
-  );
-});
-
-// ── Test 12 ───────────────────────────────────────────────────────────────────
-
 Deno.test(
   "validatePrintabilityCheckCase rejects a wrong provider tool name",
   () => {
@@ -204,7 +182,7 @@ Deno.test(
   },
 );
 
-// ── Test 13 ───────────────────────────────────────────────────────────────────
+// ── Test 12 ───────────────────────────────────────────────────────────────────
 
 Deno.test("validatePrintabilityCheckCase rejects a case missing meshSizeMm", () => {
   const input = validCaseInput();
@@ -239,7 +217,7 @@ Deno.test("validatePrintabilityCheckCase rejects meshSizeMm <= 0", () => {
   );
 });
 
-// ── Test 14 ───────────────────────────────────────────────────────────────────
+// ── Test 13 ───────────────────────────────────────────────────────────────────
 
 Deno.test("validatePrintabilityCheckCase rejects a case missing buildDirection", () => {
   const input = validCaseInput();

@@ -104,6 +104,7 @@ entry-point registry contains:
 | Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`      |
 | Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`      |
 | Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`         |
+| Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`        |
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
 `architecture.seed-syson-model@2` may be added by one append-only project change. The
@@ -119,7 +120,7 @@ blocker, concrete decision proposal, or completed/cancelled work exists. After t
 point it may append a bounded change, but cannot use either command to erase execution
 or review history.
 
-Five generic operations have trusted executors in the current V3 idea/spec slice.
+Six generic operations have trusted executors in the current V3 idea/spec slice.
 `baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
 registered work item, the backend records the exact approved brief and reviewed plan as
 canonical JSON, fingerprints its bytes with SHA-256, stores them immutably, and cites
@@ -178,6 +179,17 @@ records `derived_from` plus `supersedes`; ambiguity fails before canonical write
 Product projection rereads the v2 capture and attaches the seal-owned authoritative STEP
 artifact to each exact SysML occurrence. Reused definitions share that binding; labels
 are never joins and no `build123d` provider identity is invented.
+
+`record.archive-lineage@1` is the governed retirement step. No constant in its executor
+names a product: project identity comes from the exact run basis, and the work item
+binds one or more exact thread-entity targets. Execution requires a human-approved MRTR
+decision whose sealed evidence refs equal those exact targets and basis, and the
+approval elicitation renders the server-stamped refs as canonical JSON — an injective
+encoding, so no ID can forge another target list — and the approver sees precisely what
+will be retired. The executor computes the
+domain-pure archive cascade, refuses a fully redundant closure, and publishes the
+successor snapshot with CAS readback. It makes no provider call; history stays readable
+while current views exclude the retired lines.
 
 The fixed `coffee-machine-cm01-v3` reference path is a separate code-owned catalog, not
 a generic project template. After the documentary baseline and SysON seed, it supplies
@@ -456,7 +468,7 @@ is currently process-local, so a shared signing key alone is not sufficient for
 multi-instance operation. That deployment needs a shared, durable replay store with
 atomic consume semantics.
 
-The source dispatcher materializes five generic V3 operations, the reviewed
+The source dispatcher materializes six generic V3 operations, the reviewed
 `inspection-drone-v4` qualitative-architecture and product-structure operations, and the
 fixed CM-01 catalog. `baseline.from-approved-brief@1` has no provider invocation and
 persists its canonical capture before publishing the cited root snapshot.
@@ -470,7 +482,9 @@ renders only reviewed, server-parsed integer model thresholds. `design.write-geo
 promotes only a matching human-reviewed draft after exact hash and architecture checks;
 for v2, the manifest must cover every captured PartUsage and every distinct targeted
 PartDefinition. The provider execution occurred earlier in the isolated preview
-boundary. `architecture.author-inspection-drone@3` is restricted to the exact
+boundary. `record.archive-lineage@1` runs the governed retirement cascade with no
+provider call, gated by a human-approved decision sealing the exact thread-entity
+targets. `architecture.author-inspection-drone@3` is restricted to the exact
 `inspection-drone-v4` r2 basis and has published r3: five typed usages and four
 qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
 or verdict claims. Its read-only successor,

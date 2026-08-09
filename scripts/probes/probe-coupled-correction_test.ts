@@ -20,9 +20,9 @@ import {
   composeCoupledSystem,
   deriveSizeZBound,
   normalizeValue,
-  ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
 } from "../../src/domain/analysis/coupled-correction-math.ts";
 import {
+  ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
   parseOracleConstraints,
   parseValidityBounds,
 } from "./probe-coupled-correction.ts";
@@ -274,6 +274,7 @@ Deno.test("composeCoupledSystem SAT constraints include validity bounds and deri
     FIXTURE_Z0,
     FIXTURE_STEP,
     FIXTURE_PARAM_UNIT,
+    ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
   );
 
   // SAT constraints: 2 validity + 2 derived (one per oracle requirement).
@@ -309,6 +310,7 @@ Deno.test("composeCoupledSystem UNSAT constraints contain a tight bound above va
     FIXTURE_Z0,
     FIXTURE_STEP,
     FIXTURE_PARAM_UNIT,
+    ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
   );
 
   const validityUpperBound = 31;
@@ -342,6 +344,7 @@ Deno.test("composeCoupledSystem tight limit is the displacement one step beyond 
     FIXTURE_Z0,
     FIXTURE_STEP,
     FIXTURE_PARAM_UNIT,
+    ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
   );
 
   // tight_limit = u0 + k * (step_upper + step) = 0.08529 + (-0.008018) * 2

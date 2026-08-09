@@ -12,10 +12,8 @@
  * product-path proof chain.
  */
 
-import {
-  renderDripTraySensitivityScriptForHeight,
-  type SensitivityStudyCase,
-} from "../../src/domain/analysis/sensitivity-study.ts";
+import { renderDripTraySensitivityScriptForHeight } from "../../src/domain/cm01/cm01-drip-tray-analysis-scripts.ts";
+import type { SensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
 import {
   parseBuild123dSensitivityExport,
   parseCalculixSensitivitySolve,

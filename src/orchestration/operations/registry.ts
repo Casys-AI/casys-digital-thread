@@ -327,6 +327,52 @@ const OPERATIONS = [
       allowedSourceKinds: ["approved-brief"],
     }],
   },
+  /**
+   * Generic governed lineage retirement. Records the retirement of any named
+   * set of thread entities and their downstream production closure (artifacts →
+   * observations → evaluations → violations, never traces_to) as an append-only
+   * "archived" change in a new snapshot revision. No provider is called; no
+   * SysML is modified. Requires a human-approved MRTR decision (decidedByOrigin
+   * === "human") bound to the exact thread-entity targets and run basis.
+   *
+   * The decision evidence scope "thread-entity-bindings" makes the registry
+   * validation propagate the archiveTarget bindings into the decision's
+   * inputEvidenceRefs — which the executor re-checks in requireArchiveMrtrApproval.
+   */
+  {
+    id: "record.archive-lineage",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Archive the lineage of a named entity set",
+    description:
+      "Retire the named thread entities and their downstream production closure " +
+      "(artifacts → observations → evaluations → violations, never traces_to) as an " +
+      'append-only "archived" change in a new snapshot revision. No provider is called.',
+    workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [
+      {
+        name: "approvedBrief",
+        allowedSourceKinds: ["approved-brief"],
+      },
+      {
+        name: "archiveTarget",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one-or-more",
+        allowedThreadEntityKinds: [
+          "artifact",
+          "requirement",
+          "observation",
+          "evaluation",
+          "violation",
+        ],
+        uniqueThreadEntityReferences: true,
+      },
+    ],
+  },
   // CM-01 is the static golden-path reference for future oracle onboarding.
   // These descriptors are reviewed planning data only until a server-owned
   // executor is explicitly registered for each one.

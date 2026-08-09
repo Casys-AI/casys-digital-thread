@@ -27,8 +27,10 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import {
   assertBaseValueMatchesDripTrayRecipeR2,
-  computeSensitivities,
   renderDripTraySensitivityScriptForHeight,
+} from "../../../domain/cm01/cm01-drip-tray-analysis-scripts.ts";
+import {
+  computeSensitivities,
   type SensitivityDerivatives,
   type SensitivityMetricMeasurement,
   type SensitivityStudyCase,

@@ -1,9 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
-  assertBaseValueMatchesDripTrayRecipeR2,
   computeSensitivities,
-  DRIP_TRAY_SIZE_Z_R2_BASE_MM,
-  renderDripTraySensitivityScriptForHeight,
   SENSITIVITY_STUDY_CASE_SCHEMA,
   type SensitivityMetricMeasurement,
   validateSensitivityStudyCase,
@@ -124,7 +121,7 @@ Deno.test("validateSensitivityStudyCase accepts the committed config case file",
   assertEquals(sc.schemaVersion, SENSITIVITY_STUDY_CASE_SCHEMA);
   assertEquals(sc.target.componentKey, "drip-tray");
   assertEquals(sc.target.semanticKey, "size-z");
-  assertEquals(sc.baseValue.value, DRIP_TRAY_SIZE_Z_R2_BASE_MM);
+  assertEquals(sc.baseValue.value, 30);
   assertEquals(sc.step.value, 1);
   assertEquals(sc.step.unit, "mm");
   assertEquals(sc.metrics.length, 2);
@@ -195,48 +192,6 @@ Deno.test("validateSensitivityStudyCase rejects Poisson ratio >= 0.5", () => {
   };
   assertThrows(() => validateSensitivityStudyCase(bad), TypeError, "0.5");
 });
-
-// ---------------------------------------------------------------------------
-// assertBaseValueMatchesDripTrayRecipeR2
-// ---------------------------------------------------------------------------
-
-Deno.test(
-  "assertBaseValueMatchesDripTrayRecipeR2 accepts the reviewed R2 base value",
-  () => {
-    const sc = validateSensitivityStudyCase(minimalCaseJson());
-    // Must not throw.
-    assertBaseValueMatchesDripTrayRecipeR2(sc);
-  },
-);
-
-Deno.test(
-  "assertBaseValueMatchesDripTrayRecipeR2 rejects a divergent base value",
-  () => {
-    const bad = { ...minimalCaseJson(), baseValue: { value: 28, unit: "mm" } };
-    const sc = validateSensitivityStudyCase(bad);
-    assertThrows(
-      () => assertBaseValueMatchesDripTrayRecipeR2(sc),
-      TypeError,
-      "30",
-    );
-  },
-);
-
-Deno.test(
-  "assertBaseValueMatchesDripTrayRecipeR2 rejects wrong target component",
-  () => {
-    const bad = {
-      ...minimalCaseJson(),
-      target: { componentKey: "boiler", semanticKey: "size-z" },
-    };
-    const sc = validateSensitivityStudyCase(bad);
-    assertThrows(
-      () => assertBaseValueMatchesDripTrayRecipeR2(sc),
-      TypeError,
-      "drip-tray",
-    );
-  },
-);
 
 // ---------------------------------------------------------------------------
 // computeSensitivities
@@ -317,60 +272,5 @@ Deno.test("computeSensitivities rejects a missing stepped measurement", () => {
     () => computeSensitivities(sc, baseMap(), partial),
     TypeError,
     "stepped measurement not found",
-  );
-});
-
-// ---------------------------------------------------------------------------
-// renderDripTraySensitivityScriptForHeight
-// ---------------------------------------------------------------------------
-
-Deno.test("renderDripTraySensitivityScriptForHeight is deterministic for the same height", () => {
-  const a = renderDripTraySensitivityScriptForHeight(30);
-  const b = renderDripTraySensitivityScriptForHeight(30);
-  assertEquals(a, b);
-});
-
-Deno.test("renderDripTraySensitivityScriptForHeight produces distinct scripts for base and perturbed", () => {
-  const base = renderDripTraySensitivityScriptForHeight(30);
-  const perturbed = renderDripTraySensitivityScriptForHeight(31);
-  assertEquals(base !== perturbed, true);
-  assertEquals(base.includes("30"), true);
-  assertEquals(perturbed.includes("31"), true);
-});
-
-Deno.test("renderDripTraySensitivityScriptForHeight emits a valid build123d Box call", () => {
-  const script = renderDripTraySensitivityScriptForHeight(30);
-  assertEquals(script.startsWith("from build123d import Align, Box"), true);
-  assertEquals(
-    script.includes(
-      "result = Box(190, 135, 30, align=(Align.CENTER, Align.CENTER, Align.CENTER))",
-    ),
-    true,
-  );
-});
-
-Deno.test("renderDripTraySensitivityScriptForHeight rejects a non-positive height", () => {
-  assertThrows(
-    () => renderDripTraySensitivityScriptForHeight(0),
-    TypeError,
-    "finite positive",
-  );
-  assertThrows(
-    () => renderDripTraySensitivityScriptForHeight(-5),
-    TypeError,
-    "finite positive",
-  );
-});
-
-Deno.test("renderDripTraySensitivityScriptForHeight rejects a non-finite height", () => {
-  assertThrows(
-    () => renderDripTraySensitivityScriptForHeight(NaN),
-    TypeError,
-    "finite positive",
-  );
-  assertThrows(
-    () => renderDripTraySensitivityScriptForHeight(Infinity),
-    TypeError,
-    "finite positive",
   );
 });

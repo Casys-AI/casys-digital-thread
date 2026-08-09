@@ -4,8 +4,9 @@
  *
  * Why this boundary exists: the printability case is a reviewed configuration
  * file; the agent never supplies provider names, thresholds, or geometry. The
- * executor reads thresholds from the case; the CAD script comes from this
- * module. No verdict, no evaluation — only observations with units.
+ * executor reads thresholds from the case. No verdict, no evaluation — only
+ * observations with units. Project-specific CAD script renderers live in
+ * domain/cm01/.
  *
  * Threshold provenance: the values in the reviewed case are declared as
  * PROVISIONAL candidates. They were chosen from typical FDM desktop-printer
@@ -16,9 +17,8 @@
  * limit ». A finer mesh would improve min-thickness sample coverage but
  * significantly increases solve time; 2.0 mm is the reviewed starting point.
  *
- * buildDirection — [0, 0, 1] : bac imprimé à plat, +Z up. The DripTray Box
- * geometry has its largest face in the XY plane; printing flat minimises
- * support material and is the natural orientation for a shallow tray.
+ * buildDirection — conventionally [0, 0, 1] when printing flat with +Z up;
+ * the executor passes it verbatim to dfm_check_overhangs.
  */
 
 import {
@@ -135,22 +135,6 @@ export function validatePrintabilityCheckCase(value: unknown): PrintabilityCheck
     limitations,
     provenance,
   });
-}
-
-/**
- * Render the server-fixed DripTray isolation script for a printability STL
- * export.
- *
- * Pure and deterministic: the same output every time. The 30 mm height is the
- * reviewed R2 baseline (same geometry as the sensitivity study base point).
- * The agent never supplies this script — the server owns the geometry.
- */
-export function renderDripTrayPrintabilityScript(): string {
-  return [
-    "from build123d import Align, Box",
-    "",
-    "result = Box(190, 135, 30, align=(Align.CENTER, Align.CENTER, Align.CENTER))",
-  ].join("\n");
 }
 
 // --- private parsers -----------------------------------------------------------

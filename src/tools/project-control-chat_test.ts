@@ -599,6 +599,77 @@ Deno.test("project decision approval and rejection require a verified human elic
   }]);
 });
 
+Deno.test("decision elicitation spells out the exact evidence targets the approval seals", async () => {
+  const targets = (
+    refs: EngineeringProjectSnapshot["decisions"][number]["inputEvidenceRefs"],
+  ): EngineeringProjectSnapshot => {
+    const snapshot = projectSnapshot({ withDecision: true });
+    return {
+      ...snapshot,
+      decisions: snapshot.decisions.map((decision) => ({
+        ...decision,
+        inputEvidenceRefs: refs,
+      })),
+    };
+  };
+  const elicit = async (
+    snapshot: EngineeringProjectSnapshot,
+  ): Promise<string> => {
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      dependencies(snapshot),
+    );
+    const first = await app.handler("project_decision_approve")({
+      ...COMMON,
+      decisionId: "airframe-material",
+      inputFingerprint: FINGERPRINT,
+      rationale: "The person accepted this trade-off in the paired conversation.",
+    }, clientContext()) as Record<string, unknown>;
+    const request = (first.inputRequests as Record<string, unknown>)
+      .decision_confirmation as Record<string, unknown>;
+    return (request.params as Record<string, unknown>).message as string;
+  };
+
+  const refA = {
+    snapshotId: "chat-first-subject:thread:r7",
+    snapshotRevision: 7,
+    kind: "artifact",
+    id: "drip-eval-a",
+  } as const;
+  const refB = { ...refA, id: "drip-eval-b" } as const;
+
+  const messageA = await elicit(targets([refA]));
+  assertStringIncludes(
+    messageA,
+    'Exact evidence targets: [{"id":"drip-eval-a","kind":"artifact",' +
+      '"snapshotId":"chat-first-subject:thread:r7","snapshotRevision":7}]',
+  );
+
+  // Two proposals differing only by their sealed targets must never present
+  // the same text to the approver — otherwise the human seals a choice they
+  // cannot see and the target selection silently belongs to the agent.
+  const messageB = await elicit(targets([refB]));
+  assertStringIncludes(messageB, "drip-eval-b");
+  assertEquals(messageA === messageB, false);
+
+  // IDs are only constrained to be non-empty, so an ID may embed whatever
+  // separator a naive rendering would use. These two target sets collide
+  // under `kind id @ snapshot rN; ...` formatting; canonical JSON keeps the
+  // rendering injective.
+  const forged = (first: string, second: string) =>
+    targets([
+      { snapshotId: "S", snapshotRevision: 1, kind: "artifact", id: first },
+      { snapshotId: "S", snapshotRevision: 1, kind: "artifact", id: second },
+    ]);
+  const collisionA = await elicit(forged("x", "y @ S r1; artifact z"));
+  const collisionB = await elicit(forged("x @ S r1; artifact y", "z"));
+  assertEquals(collisionA === collisionB, false);
+
+  const messageEmpty = await elicit(targets([]));
+  assertEquals(messageEmpty.includes("Exact evidence targets"), false);
+});
+
 Deno.test("project queued-run cancellation requires a verified human elicitation retry", async () => {
   const snapshot = queuedRunSnapshot();
   const app = new CapturingApp();

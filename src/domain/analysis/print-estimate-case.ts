@@ -6,7 +6,8 @@
  * file; the agent never supplies provider names, profile parameters, geometry,
  * or density. The executor reads all values from the case; the profile content
  * comes from the committed INI file. No verdict, no evaluation, no pricing —
- * only observations with units.
+ * only observations with units. Project-specific CAD script renderers live in
+ * domain/cm01/.
  *
  * Profile provenance: the committed INI file at case.profile.repoPath is the
  * sole authority on print parameters. The server reads it, verifies its sha256
@@ -157,45 +158,6 @@ export function validatePrintEstimateCase(value: unknown): PrintEstimateCase {
   return deepFreeze(
     filamentDensityGCm3 !== undefined ? { ...base, filamentDensityGCm3 } : base,
   );
-}
-
-/**
- * Render the server-fixed DripTray print-estimate script for build123d.
- *
- * Pure and deterministic: the same output every time for the same inputs.
- * The Python script:
- *   1. Decodes the base64 profile content and writes it to /exports.
- *   2. Exports the 30 mm DripTray Box as STL.
- *
- * The profileContentB64 parameter must be a standard (not URL-safe) base64
- * encoding of the UTF-8 profile content. The executor is responsible for
- * encoding; this function only renders the deterministic script.
- *
- * The 30 mm height is the reviewed R2 baseline (same geometry as the
- * sensitivity study base point). The agent never supplies this script —
- * the server owns the geometry and the profile embedding.
- */
-export function renderDripTrayPrintEstimateScript(
-  profileContentB64: string,
-  profileExportName: string,
-): string {
-  if (!profileContentB64.trim()) {
-    throw new TypeError(
-      "profileContentB64 must be a non-empty base64 string.",
-    );
-  }
-  if (!profileExportName.trim() || !/^[A-Za-z0-9._-]+$/.test(profileExportName)) {
-    throw new TypeError(
-      "profileExportName must be a non-empty alphanumeric string (letters, digits, ._-).",
-    );
-  }
-  return [
-    "import base64, pathlib",
-    "from build123d import Align, Box",
-    `_profile_bytes = base64.b64decode(${JSON.stringify(profileContentB64)})`,
-    `pathlib.Path("/exports/${profileExportName}.ini").write_bytes(_profile_bytes)`,
-    "result = Box(190, 135, 30, align=(Align.CENTER, Align.CENTER, Align.CENTER))",
-  ].join("\n");
 }
 
 // --- private parsers -----------------------------------------------------------

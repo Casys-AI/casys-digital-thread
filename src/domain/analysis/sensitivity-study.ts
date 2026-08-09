@@ -6,6 +6,7 @@
  * verdict, no threshold, no provider detail can enter here. The reviewed case
  * file declares the step, mesh, and base value; the executor only reads them.
  * Keeping this in the domain layer enforces that invariant structurally.
+ * Project-specific script renderers and recipe guards live in domain/cm01/.
  */
 
 import {
@@ -21,13 +22,6 @@ import {
 } from "../kernel/case-validation.ts";
 
 export const SENSITIVITY_STUDY_CASE_SCHEMA = "sensitivity-study-case/1.0" as const;
-
-/**
- * The one canonical base value for DripTray size-z in the reviewed R2 recipe.
- * An executor that checks against this constant is checking against the reviewed
- * component geometry, not a free parameter.
- */
-export const DRIP_TRAY_SIZE_Z_R2_BASE_MM = 30 as const;
 
 export interface SensitivityStudyCase {
   readonly schemaVersion: typeof SENSITIVITY_STUDY_CASE_SCHEMA;
@@ -206,37 +200,6 @@ export function validateSensitivityStudyCase(value: unknown): SensitivityStudyCa
 }
 
 /**
- * Assert that the declared base value matches the reviewed R2 recipe's DripTray
- * size-z value. A divergent base means the derivative would describe a point
- * that does not correspond to the reviewed component geometry — that is a lie
- * about the starting condition, not a measurement error.
- */
-export function assertBaseValueMatchesDripTrayRecipeR2(
-  sensitivityCase: SensitivityStudyCase,
-): void {
-  if (
-    sensitivityCase.target.componentKey !== "drip-tray" ||
-    sensitivityCase.target.semanticKey !== "size-z"
-  ) {
-    throw new TypeError(
-      "assertBaseValueMatchesDripTrayRecipeR2 requires target " +
-        "componentKey drip-tray and semanticKey size-z.",
-    );
-  }
-  if (sensitivityCase.baseValue.unit !== "mm") {
-    throw new TypeError(
-      "$case.baseValue.unit must be mm for drip-tray/size-z against the R2 recipe.",
-    );
-  }
-  if (sensitivityCase.baseValue.value !== DRIP_TRAY_SIZE_Z_R2_BASE_MM) {
-    throw new TypeError(
-      `$case.baseValue.value must equal the reviewed R2 recipe value ` +
-        `${DRIP_TRAY_SIZE_Z_R2_BASE_MM} mm; got ${sensitivityCase.baseValue.value}.`,
-    );
-  }
-}
-
-/**
  * Compute first-order forward finite differences for all declared metrics.
  *
  * Pure arithmetic: (stepped[m] − base[m]) / step.value, with the composed unit
@@ -298,28 +261,6 @@ export function computeSensitivities(
       parameterUnit: sensitivityCase.baseValue.unit,
     },
   });
-}
-
-/**
- * Render a build123d DripTray isolation script for a given height in mm.
- *
- * Pure and deterministic: the same height always produces the same script bytes.
- * The caller is responsible for supplying either case.baseValue.value or
- * case.baseValue.value + case.step.value — both come from the validated case,
- * never from a free agent input. The plan geometry (190 × 135 mm, centred
- * origin) is fixed; only the height varies between the two sensitivity runs.
- */
-export function renderDripTraySensitivityScriptForHeight(heightMm: number): string {
-  if (!Number.isFinite(heightMm) || heightMm <= 0) {
-    throw new TypeError(
-      "DripTray sensitivity height must be a finite positive number.",
-    );
-  }
-  return [
-    "from build123d import Align, Box",
-    "",
-    `result = Box(190, 135, ${heightMm}, align=(Align.CENTER, Align.CENTER, Align.CENTER))`,
-  ].join("\n");
 }
 
 // --- internal parsers ---------------------------------------------------------

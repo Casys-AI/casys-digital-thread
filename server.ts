@@ -94,6 +94,10 @@ import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
 } from "./src/adapters/executors/model-write-requirements-run-executor.ts";
+import {
+  ARCHIVE_LINEAGE_OPERATION,
+  ArchiveLineageRunExecutor,
+} from "./src/adapters/executors/archive-lineage-run-executor.ts";
 import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
 import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/captures/file-capture-store.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
@@ -839,7 +843,14 @@ async function createProjectControl(
       lease,
     })
     : undefined;
-  // Archive-lineage requires no provider — always available.
+  // Generic archive-lineage requires no provider — always available.
+  const genericArchiveLineage = new ArchiveLineageRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+  });
+  // CM-01 archive-lineage requires no provider — always available.
   const cm01ArchiveLineage = new CoffeeMachineCm01V3ArchiveLineageRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1251,6 +1262,10 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted generic model.write-requirements@1 executor " +
               "configured for this run (SysON provider is required).",
+          },
+          {
+            operation: ARCHIVE_LINEAGE_OPERATION,
+            executor: genericArchiveLineage,
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,

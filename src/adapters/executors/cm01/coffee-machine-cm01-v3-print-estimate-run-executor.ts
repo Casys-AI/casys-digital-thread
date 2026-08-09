@@ -44,9 +44,9 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import { renderDripTrayPrintEstimateScript } from "../../../domain/cm01/cm01-drip-tray-analysis-scripts.ts";
 import {
   type PrintEstimateCase,
-  renderDripTrayPrintEstimateScript,
   validatePrintEstimateCase,
 } from "../../../domain/analysis/print-estimate-case.ts";
 import type {

@@ -49,6 +49,22 @@ import {
 const DEFAULT_SYSON_ENDPOINT = "http://127.0.0.1:3009/mcp";
 const DEFAULT_CAPTURES_DIR = "state/local";
 
+/**
+ * Join table: SysML-idiomatic camelCase oracle feature-path names
+ * (DripTrayMechanicalRequirements attributes) → provider-native snake_case
+ * sensitivity metric ids (CalculiX/sensitivity-study output).
+ *
+ * WHY HERE — this mapping is intrinsically CM-01 / DripTray. It has no place in the
+ * generic pure-math module (coupled-correction-math.ts), which must remain
+ * project-agnostic. The probe is the only production consumer of this join key;
+ * tests that exercise the full composition with fixture data import it from here.
+ */
+export const ORACLE_FEATURE_TO_SENSITIVITY_METRIC: ReadonlyMap<string, string> =
+  new Map([
+    ["maximumDisplacementMm", "assembly_max_displacement"],
+    ["maximumVonMisesPa", "assembly_max_von_mises"],
+  ]);
+
 // ---------------------------------------------------------------------------
 // Types — captures CAS
 // ---------------------------------------------------------------------------
@@ -436,6 +452,7 @@ export async function probeCoupledCorrection(
     sensitivityCapture.domain.base,
     sensitivityCapture.domain.step,
     sensitivityCapture.domain.parameterUnit,
+    ORACLE_FEATURE_TO_SENSITIVITY_METRIC,
   );
 
   // ── Step 5: SAT case (MCP call #3) ────────────────────────────────────────

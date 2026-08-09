@@ -1,4 +1,5 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
+import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
 import type { McpToolClient } from "../adapters/mcp/http-mcp-tool-client.ts";
@@ -1783,6 +1784,23 @@ function decisionConfirmationRequest(
       parameter.unit ? ` ${parameter.unit}` : ""
     }`
   ).join("; ");
+  /**
+   * WHY THE EVIDENCE REFS ARE SPELLED OUT — the approval cryptographically
+   * seals the server-stamped inputEvidenceRefs, and executors (e.g.
+   * record.archive-lineage@1) refuse to run unless the approved refs equal
+   * their bindings exactly. If the elicitation only showed summary and
+   * parameters, two proposals targeting different entities could read
+   * identically, and the human would seal an exact choice they never saw.
+   *
+   * WHY CANONICAL JSON — the ref fields are only constrained to be non-empty,
+   * so any hand-rolled separator could be forged by an ID that embeds it,
+   * letting two different target sets render the same message. JSON escaping
+   * makes the rendering injective. The refs are rendered from the decision,
+   * never from agent input.
+   */
+  const evidenceRefs = decision.inputEvidenceRefs.length > 0
+    ? deterministicJson(decision.inputEvidenceRefs)
+    : "";
   return {
     resultType: "input_required",
     inputRequests: {
@@ -1793,6 +1811,8 @@ function decisionConfirmationRequest(
           message:
             `The agent proposes to ${disposition} “${decision.title}”. Proposal: ${proposal.summary}${
               parameters ? `. Parameters: ${parameters}` : ""
+            }${
+              evidenceRefs ? `. Exact evidence targets: ${evidenceRefs}` : ""
             }. Recorded rationale: ${rationale}. Confirm this exact ${disposition} action, or decline and continue the conversation.`,
           requestedSchema: {
             type: "object",
