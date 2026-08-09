@@ -1,4 +1,5 @@
 import { assertEquals } from "@std/assert";
+import type { EngineeringThreadEntityRef } from "../domain/project/engineering-project.ts";
 import {
   activityFeedNodes,
   AMBIGUOUS_FEED_SCOPE,
@@ -6,6 +7,7 @@ import {
   buildFeedComponentCounts,
   buildFilterOptions,
   compactLineageCounters,
+  compactLineageProjection,
   filterFeedNodesByScope,
   isActivityEntryExpanded,
   ORPHAN_FEED_SCOPE,
@@ -187,7 +189,7 @@ Deno.test("published review enriches its exact feed fact without a duplicate car
     decisionId: "decision-geometry-v2",
     state: "published",
     recordedAt: "2026-08-05T09:59:00.000Z",
-    resultEvidence: result.ref,
+    resultEvidence: canonicalResultRef(result),
   });
 
   const timeline = buildActivityTimeline([result], [review]);
@@ -246,12 +248,12 @@ Deno.test("ambiguous result ownership fails closed instead of choosing a review"
   const first = reviewRecord({
     decisionId: "decision-a",
     state: "published",
-    resultEvidence: result.ref,
+    resultEvidence: canonicalResultRef(result),
   });
   const second = reviewRecord({
     decisionId: "decision-b",
     state: "published",
-    resultEvidence: result.ref,
+    resultEvidence: canonicalResultRef(result),
   });
 
   const timeline = buildActivityTimeline([result], [first, second]);
@@ -269,7 +271,7 @@ Deno.test("part filtering keeps exact attached reviews but omits unscoped review
   const attached = reviewRecord({
     decisionId: "decision-geometry",
     state: "published",
-    resultEvidence: visible.ref,
+    resultEvidence: canonicalResultRef(visible),
   });
   const waiting = reviewRecord({
     decisionId: "decision-requirements",
@@ -294,7 +296,7 @@ Deno.test("part filtering keeps exact attached reviews but omits unscoped review
 //
 // These tests verify the specific invariants of the sigma local view used by
 // FeedLineageGraph:
-//   - the focus node is ALWAYS included in the bounded neighborhood
+//   - the focus node is ALWAYS included in the filtered bounded projection
 //   - nodes more than 2 hops away are EXCLUDED (compact = bounded depth)
 //   - building the sigma model from the same neighborhood is DETERMINISTIC
 //   - an isolated focus node (no edges in the visible graph) falls back to an
@@ -329,7 +331,7 @@ Deno.test(
     };
 
     const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
-    const neighborhood = evidenceModel.boundedNeighborhood(focus.ref, 2);
+    const neighborhood = compactLineageProjection(evidenceModel, focus.ref);
 
     // Focus must be present.
     assertEquals(
@@ -360,7 +362,7 @@ Deno.test(
 
     const evidenceModel = buildEvidenceGraphModel(rawGraph, EMPTY_FAMILY, {});
     // FeedLineageGraph uses depth 2.
-    const neighborhood = evidenceModel.boundedNeighborhood(nodeB.ref, 2);
+    const neighborhood = compactLineageProjection(evidenceModel, nodeB.ref);
 
     const ids = neighborhood.nodes.map((n) => n.ref.id).sort();
     // B (focus), A (1 hop upstream), C (1 hop downstream), D (2 hops downstream).
@@ -386,7 +388,10 @@ Deno.test(
       EMPTY_FAMILY,
       {},
     );
-    const neighborhood = evidenceModel.boundedNeighborhood(nodes[0].ref, 2);
+    const neighborhood = compactLineageProjection(
+      evidenceModel,
+      nodes[0].ref,
+    );
 
     const ids = neighborhood.nodes.map((n) => n.ref.id).sort();
     // A (focus), B (1 hop), C (2 hops). D and E are at 3+ hops — excluded.
@@ -420,8 +425,8 @@ Deno.test(
     // Simulate FeedLineageGraph preparation twice — same inputs → same positions.
     // The projection is built from the *neighborhood* (not the full model),
     // mirroring the useMemo in FeedLineageGraph exactly.
-    const neighborhood1 = evidenceModel.boundedNeighborhood(nodeCAD.ref, 2);
-    const neighborhood2 = evidenceModel.boundedNeighborhood(nodeCAD.ref, 2);
+    const neighborhood1 = compactLineageProjection(evidenceModel, nodeCAD.ref);
+    const neighborhood2 = compactLineageProjection(evidenceModel, nodeCAD.ref);
 
     const projection1: EvidenceCanvasProjection = {
       nodes: neighborhood1.nodes,
@@ -498,7 +503,7 @@ Deno.test(
     });
 
     // B is folded out — querying it must return empty (component renders fallback).
-    const nb = evidenceModel.boundedNeighborhood(nodeB.ref, 2);
+    const nb = compactLineageProjection(evidenceModel, nodeB.ref);
     assertEquals(
       nb.nodes.length,
       0,
@@ -542,6 +547,229 @@ function link(
   };
 }
 
+function structureLink(
+  id: string,
+  from: ThreadGraphRef,
+  to: ThreadGraphRef,
+  relation: ThreadGraphEdge["relation"],
+): ThreadGraphEdge {
+  return {
+    ...link(id, from, to, relation),
+    origin: "structure",
+  };
+}
+
+function deskLampActivityEvidence(): {
+  evidenceModel: ReturnType<typeof buildEvidenceGraphModel>;
+  refs: {
+    architecture: ThreadGraphRef;
+    geometry: ThreadGraphRef;
+    baseStep: ThreadGraphRef;
+  };
+} {
+  const architecture = node(
+    "architecture",
+    "artifact",
+    "2026-08-01T08:00:00.000Z",
+    "sysml-model",
+    "syson",
+  );
+  const geometry = node(
+    "geometry",
+    "artifact",
+    "2026-08-01T08:01:00.000Z",
+    "cad-model",
+    "digital-thread",
+  );
+  const sourceHub = node(
+    "source-hub",
+    "artifact",
+    "2026-08-01T07:59:00.000Z",
+    "cad-model",
+    "digital-thread",
+  );
+  const unrelatedCapture = node(
+    "unrelated-capture",
+    "artifact",
+    "2026-08-01T08:01:00.000Z",
+    "cad-model",
+    "digital-thread",
+  );
+  const script = node(
+    "raw-script",
+    "artifact",
+    "2026-08-01T08:02:00.000Z",
+    "script",
+    "build123d",
+  );
+
+  const definitionIds = [
+    "def-system",
+    "def-base",
+    "def-stem",
+    "def-head",
+    "def-socket",
+  ];
+  const usageIds = [
+    "usage-base",
+    "usage-stem",
+    "usage-head",
+    "usage-socket",
+  ];
+  const definitions = new Map(
+    definitionIds.map((id) =>
+      [
+        id,
+        node(
+          id,
+          "part-definition",
+          "2026-08-01T08:00:00.000Z",
+          undefined,
+          "syson",
+        ),
+      ] as const
+    ),
+  );
+  const usages = new Map(
+    usageIds.map((id) =>
+      [
+        id,
+        node(
+          id,
+          "part-usage",
+          "2026-08-01T08:00:00.000Z",
+          undefined,
+          "syson",
+        ),
+      ] as const
+    ),
+  );
+  const stepIds = ["assembly", "base", "stem", "head", "socket"];
+  const steps = new Map(
+    stepIds.map((id) =>
+      [
+        id,
+        node(
+          `step-${id}`,
+          "artifact",
+          "2026-08-01T08:02:00.000Z",
+          "step",
+          "build123d",
+        ),
+      ] as const
+    ),
+  );
+  const required = <T>(value: T | undefined, label: string): T => {
+    if (!value) throw new Error(`Missing Desk Lamp fixture node ${label}.`);
+    return value;
+  };
+  const definition = (id: string) => required(definitions.get(id), id);
+  const usage = (id: string) => required(usages.get(id), id);
+  const step = (id: string) => required(steps.get(id), id);
+
+  const edges: ThreadGraphEdge[] = [
+    link("hub-geometry", sourceHub.ref, geometry.ref),
+    link("hub-unrelated", sourceHub.ref, unrelatedCapture.ref),
+    structureLink(
+      "architecture-geometry",
+      architecture.ref,
+      geometry.ref,
+      "input_to",
+    ),
+    structureLink(
+      "architecture-root",
+      architecture.ref,
+      definition("def-system").ref,
+      "contains",
+    ),
+    structureLink(
+      "root-base-usage",
+      definition("def-system").ref,
+      usage("usage-base").ref,
+      "contains",
+    ),
+    structureLink(
+      "root-stem-usage",
+      definition("def-system").ref,
+      usage("usage-stem").ref,
+      "contains",
+    ),
+    structureLink(
+      "stem-head-usage",
+      definition("def-stem").ref,
+      usage("usage-head").ref,
+      "contains",
+    ),
+    structureLink(
+      "head-socket-usage",
+      definition("def-head").ref,
+      usage("usage-socket").ref,
+      "contains",
+    ),
+    ...[
+      ["base", "usage-base", "def-base"],
+      ["stem", "usage-stem", "def-stem"],
+      ["head", "usage-head", "def-head"],
+      ["socket", "usage-socket", "def-socket"],
+    ].map(([id, usageId, definitionId]) =>
+      structureLink(
+        `typed-${id}`,
+        usage(required(usageId, "usage id")).ref,
+        definition(required(definitionId, "definition id")).ref,
+        "typed_by",
+      )
+    ),
+    ...stepIds.map((id) =>
+      structureLink(
+        `geometry-${id}`,
+        geometry.ref,
+        step(id).ref,
+        "input_to",
+      )
+    ),
+    ...[
+      ["assembly", "def-system"],
+      ["base", "def-base"],
+      ["stem", "def-stem"],
+      ["head", "def-head"],
+      ["socket", "def-socket"],
+    ].map(([stepId, definitionId]) =>
+      structureLink(
+        `represented-${stepId}`,
+        definition(required(definitionId, "definition id")).ref,
+        step(required(stepId, "STEP id")).ref,
+        "represented_by",
+      )
+    ),
+    structureLink("geometry-script", geometry.ref, script.ref, "input_to"),
+  ];
+
+  return {
+    evidenceModel: buildEvidenceGraphModel(
+      {
+        nodes: [
+          sourceHub,
+          unrelatedCapture,
+          architecture,
+          geometry,
+          script,
+          ...definitions.values(),
+          ...usages.values(),
+          ...steps.values(),
+        ],
+        edges,
+      },
+      EMPTY_FAMILY,
+      {},
+    ),
+    refs: {
+      architecture: architecture.ref,
+      geometry: geometry.ref,
+      baseStep: step("base").ref,
+    },
+  };
+}
+
 function node(
   id: string,
   kind: ThreadGraphRef["kind"] = "artifact",
@@ -572,7 +800,7 @@ function reviewRecord(
     decisionId: string;
     state: ProjectReviewRecord["state"];
     recordedAt?: string;
-    resultEvidence?: ThreadGraphRef;
+    resultEvidence?: Pick<EngineeringThreadEntityRef, "kind" | "id">;
   },
 ): ProjectReviewRecord {
   return {
@@ -596,6 +824,18 @@ function reviewRecord(
       }
       : undefined,
   };
+}
+
+function canonicalResultRef(
+  node: ThreadGraphNode,
+): Pick<EngineeringThreadEntityRef, "kind" | "id"> {
+  const reference = node.ref;
+  if (reference.kind === "part-definition" || reference.kind === "part-usage") {
+    throw new Error(
+      "A browser-only SysML element cannot be review result evidence.",
+    );
+  }
+  return { kind: reference.kind, id: reference.id };
 }
 
 function ref(id: string): ThreadGraphRef {
@@ -715,6 +955,110 @@ Deno.test(
     assertEquals(counters.total, 3, "A (focus) + B + C — D is beyond depth 2");
     assertEquals(counters.upstream, 0, "no upstream from A");
     assertEquals(counters.downstream, 2, "B and C are downstream (D excluded)");
+  },
+);
+
+Deno.test(
+  "Activity geometry context compacts unique SysML pairs, folds plumbing, and excludes hub siblings",
+  () => {
+    const { evidenceModel, refs } = deskLampActivityEvidence();
+
+    const projection = compactLineageProjection(evidenceModel, refs.geometry);
+    const counters = compactLineageCounters(evidenceModel, refs.geometry);
+
+    assertEquals(
+      projection.nodes
+        .filter((candidate) =>
+          candidate.entityKind === "part-definition" ||
+          candidate.entityKind === "part-usage"
+        )
+        .map((candidate) => candidate.ref.id)
+        .sort(),
+      [
+        "def-base",
+        "def-head",
+        "def-socket",
+        "def-stem",
+        "def-system",
+      ],
+      "the geometry card keeps the root plus four definition-backed composites",
+    );
+    assertEquals(
+      projection.nodes
+        .filter((candidate) => candidate.entityKind === "part-definition")
+        .map((candidate) => candidate.label)
+        .sort(),
+      [
+        "def-system",
+        "usage-base : def-base",
+        "usage-head : def-head",
+        "usage-socket : def-socket",
+        "usage-stem : def-stem",
+      ],
+    );
+    assertEquals(
+      projection.nodes.some((candidate) => candidate.ref.id === "raw-script"),
+      false,
+      "the shared essential mask must fold a dead-end build script",
+    );
+    assertEquals(projection.hiddenSupportingCount, 1);
+    assertEquals(
+      projection.nodes.some((candidate) => candidate.ref.id === "unrelated-capture"),
+      false,
+      "lineage must not cross the upstream hub and fan out to its sibling",
+    );
+    assertEquals(
+      counters.total,
+      projection.nodes.length,
+      "the Activity counter must equal the nodes handed to its renderer",
+    );
+
+    const partProjection = compactLineageProjection(
+      evidenceModel,
+      refs.baseStep,
+    );
+    assertEquals(
+      partProjection.nodes
+        .filter((candidate) => candidate.artifactKind === "step")
+        .map((candidate) => candidate.ref.id)
+        .sort(),
+      ["step-base"],
+      "selecting one part STEP must not pull the four sibling STEP files",
+    );
+  },
+);
+
+Deno.test(
+  "Activity architecture context renders four composites plus the root and shares its count",
+  () => {
+    const { evidenceModel, refs } = deskLampActivityEvidence();
+
+    const projection = compactLineageProjection(
+      evidenceModel,
+      refs.architecture,
+    );
+    const counters = compactLineageCounters(evidenceModel, refs.architecture);
+
+    assertEquals(
+      projection.nodes.filter((candidate) => candidate.entityKind === "part-definition")
+        .length,
+      5,
+    );
+    assertEquals(
+      projection.nodes.filter((candidate) => candidate.entityKind === "part-usage")
+        .length,
+      0,
+    );
+    assertEquals(
+      projection.nodes.some((candidate) => candidate.ref.id === "raw-script"),
+      false,
+      "the architecture vignette must apply the essential mask too",
+    );
+    assertEquals(
+      counters.total,
+      projection.nodes.length,
+      "the Activity header and rendered architecture projection must agree",
+    );
   },
 );
 

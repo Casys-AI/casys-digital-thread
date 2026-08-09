@@ -3,6 +3,7 @@ import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   graphNodeForSelection,
   resolveSelectedGraphEdge,
+  resolveToolFacetInventory,
   resolveToolInspectorContext,
   resolveToolInspectorTarget,
 } from "./src/thread/tool-inspector-model.ts";
@@ -88,6 +89,136 @@ Deno.test("graph node system owns model records without relying on flow aliases"
 
   assertEquals(context.owner.id, "syson");
   assertEquals(context.requirements.map((item) => item.id), ["REQ-MECH-014"]);
+});
+
+Deno.test("SysON facet inventory adds graph-only parts without counting artifact aliases twice", () => {
+  const snapshot: ThreadWorkbenchSnapshot = structuredClone(
+    COFFEE_MACHINE_THREAD_FIXTURE,
+  );
+  const duplicateModelStage = snapshot.flow.find((stage) =>
+    stage.selection.kind === "artifact" &&
+    stage.selection.id === "ART-SYSML-018"
+  )!;
+  snapshot.flow.push({
+    ...duplicateModelStage,
+    id: "flow-system-duplicate",
+    label: "Same system model, second presentation stage",
+  });
+  snapshot.graph.nodes.push(
+    {
+      id: "graph:part-definition:def-coffee-machine",
+      ref: { kind: "part-definition", id: "def-coffee-machine" },
+      entityKind: "part-definition",
+      label: "CoffeeMachine",
+      system: "syson",
+      freshness: "fresh",
+      summary: "PartDefinition · def-coffee-machine",
+      selection: { kind: "artifact", id: "ART-SYSML-018" },
+    },
+    {
+      id: "graph:part-usage:usage-drip-tray",
+      ref: { kind: "part-usage", id: "usage-drip-tray" },
+      entityKind: "part-usage",
+      label: "dripTray",
+      system: "syson",
+      freshness: "fresh",
+      summary: "PartUsage · typed by DripTray",
+      selection: { kind: "artifact", id: "ART-SYSML-018" },
+    },
+    {
+      id: "graph:part-usage:usage-drip-tray-alias",
+      ref: { kind: "part-usage", id: "usage-drip-tray" },
+      entityKind: "part-usage",
+      label: "dripTray",
+      system: "syson",
+      freshness: "fresh",
+      summary: "PartUsage · typed by DripTray",
+      selection: { kind: "artifact", id: "ART-SYSML-018" },
+    },
+  );
+
+  const inventory = resolveToolFacetInventory(snapshot, "syson");
+
+  assertEquals(inventory.records, [
+    { kind: "artifact", id: "ART-SYSML-018" },
+    { kind: "violation", id: "VIO-MECH-014" },
+  ]);
+  assertEquals(
+    inventory.graphOnlyNodes.map((node) => node.ref),
+    [
+      { kind: "part-definition", id: "def-coffee-machine" },
+      { kind: "part-usage", id: "usage-drip-tray" },
+    ],
+  );
+  assertEquals(inventory.itemCount, 4);
+});
+
+Deno.test("a graph-only SysML selection lists the structure and exposes its model artifact once", () => {
+  const snapshot: ThreadWorkbenchSnapshot = structuredClone(
+    COFFEE_MACHINE_THREAD_FIXTURE,
+  );
+  const definition: ThreadGraphNode = {
+    id: "graph:part-definition:def-coffee-machine",
+    ref: { kind: "part-definition", id: "def-coffee-machine" },
+    entityKind: "part-definition",
+    label: "CoffeeMachine",
+    system: "syson",
+    freshness: "fresh",
+    summary: "PartDefinition · def-coffee-machine",
+    selection: { kind: "artifact", id: "ART-SYSML-018" },
+  };
+  const usage: ThreadGraphNode = {
+    id: "graph:part-usage:usage-drip-tray",
+    ref: { kind: "part-usage", id: "usage-drip-tray" },
+    entityKind: "part-usage",
+    label: "dripTray",
+    system: "syson",
+    freshness: "fresh",
+    summary: "PartUsage · typed by DripTray",
+    selection: { kind: "artifact", id: "ART-SYSML-018" },
+  };
+  snapshot.graph.nodes.push(definition, usage);
+  snapshot.graph.edges.push(
+    {
+      id: "model-to-definition",
+      from: { kind: "artifact", id: "ART-SYSML-018" },
+      to: definition.ref,
+      relation: "source_of",
+      rationale: "The exact model artifact records this definition.",
+      origin: "structure",
+    },
+    {
+      id: "definition-to-step",
+      from: definition.ref,
+      to: { kind: "artifact", id: "ART-STEP-018" },
+      relation: "represented_by",
+      rationale: "The reviewed catalog maps the definition to this STEP.",
+      origin: "structure",
+    },
+  );
+
+  const context = resolveToolInspectorContext(snapshot, {
+    node: definition,
+    record: definition.selection,
+  });
+
+  assertEquals(context.owner.id, "syson");
+  assertEquals(
+    context.graphOnlyNodes.map((node) => node.ref),
+    [
+      { kind: "part-definition", id: "def-coffee-machine" },
+      { kind: "part-usage", id: "usage-drip-tray" },
+    ],
+  );
+  assertEquals(
+    context.artifacts.map((artifact) => artifact.id),
+    ["ART-SYSML-018", "ART-STEP-018"],
+  );
+  assertEquals(
+    context.artifacts.filter((artifact) => artifact.id === "ART-SYSML-018")
+      .length,
+    1,
+  );
 });
 
 Deno.test("edge routing does not leak the previous record into its handoff panel", () => {
@@ -180,6 +311,37 @@ Deno.test(
     const result = graphNodeForSelection(COFFEE_MACHINE_THREAD_FIXTURE, ref);
 
     assertEquals(result?.selection, ref);
+  },
+);
+
+Deno.test(
+  "graphNodeForSelection prefers the exact evidence node over SysML aliases sharing its selection",
+  () => {
+    const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+    const artifactRef = { kind: "artifact" as const, id: "ART-CAD-018" };
+    snapshot.graph.nodes.push({
+      id: "graph:part-definition:def-bracket",
+      ref: { kind: "part-definition", id: "def-bracket" },
+      entityKind: "part-definition",
+      label: "SupportBracket",
+      system: "syson",
+      freshness: "fresh",
+      summary: "PartDefinition · def-bracket",
+      selection: artifactRef,
+    }, {
+      id: "graph:part-usage:usage-bracket",
+      ref: { kind: "part-usage", id: "usage-bracket" },
+      entityKind: "part-usage",
+      label: "bracket",
+      system: "syson",
+      freshness: "fresh",
+      summary: "PartUsage · typed by SupportBracket",
+      selection: artifactRef,
+    });
+
+    const result = graphNodeForSelection(snapshot, artifactRef);
+
+    assertEquals(result?.ref, artifactRef);
   },
 );
 

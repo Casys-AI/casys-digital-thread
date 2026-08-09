@@ -203,6 +203,7 @@ export function ThreadWorkbench({
     "change": false,
     "consumption": false,
     "action": true,
+    "sysml-element": true,
   });
   // Type visibility for the local Exploration view (in-place sigma reducer,
   // no re-layout). Defaults: all kinds visible.
@@ -218,6 +219,7 @@ export function ThreadWorkbench({
     "change": true,
     "consumption": true,
     "action": true,
+    "sysml-element": true,
   });
   // Feed component filter: a catalog component, an explicit non-anchored
   // scope, or undefined ("Tout le projet").
@@ -1100,6 +1102,7 @@ export function ThreadWorkbench({
                   node={selectedGraphNode}
                   selection={inspectorRecord}
                   onSelect={selectThreadElement}
+                  onSelectGraphNode={selectGraphNode}
                   onOpenToolView={openToolView}
                   availableFullViews={["syson", "build123d", "erpnext"]}
                 />
@@ -1401,13 +1404,13 @@ export function ThreadWorkbench({
                                 evidenceMode === "exploration"
                                   ? explorationLocalVisibleCount
                                   : carteLocalVisibleCount
-                              } facts shown · local view · depth ${localDepth}`
+                              } items shown · local view · depth ${localDepth}`
                               : evidenceMode === "exploration"
                               ? (() => {
                                 const kp = explorationKindProjectionMemo ??
                                   evidenceCanvas;
                                 const parts: string[] = [
-                                  `${kp.displayedCount} facts shown`,
+                                  `${kp.displayedCount} items shown`,
                                 ];
                                 const totalFolded = kp.foldedInstrumentCount +
                                   versionedProvenance.collapsedVersionCount;
@@ -1430,7 +1433,7 @@ export function ThreadWorkbench({
                                   evidenceCanvas.foldedInstrumentCount +
                                   versionedProvenance.collapsedVersionCount;
                                 const parts: string[] = [
-                                  `${essentialCount} facts shown`,
+                                  `${essentialCount} items shown`,
                                 ];
                                 if (totalFolded > 0) {
                                   parts.push(`${totalFolded} folded`);

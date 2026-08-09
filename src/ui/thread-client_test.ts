@@ -258,6 +258,55 @@ Deno.test("the Workbench contract requires a typed native graph", () => {
   assertEquals(isThreadWorkbenchSnapshot(unsupportedRelation), false);
 });
 
+Deno.test("the Workbench contract accepts exact SysML structure nodes and rejects malformed model kinds", () => {
+  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  snapshot.graph.nodes.push({
+    id: "graph:part-definition:def-system",
+    ref: { kind: "part-definition", id: "def-system" },
+    entityKind: "part-definition",
+    label: "CoffeeMachine",
+    system: "syson",
+    freshness: "fresh",
+    summary: "PartDefinition · def-system",
+    selection: { kind: "artifact", id: "ART-SYSML-017" },
+  }, {
+    id: "graph:part-usage:usage-tray",
+    ref: { kind: "part-usage", id: "usage-tray" },
+    entityKind: "part-usage",
+    label: "tray",
+    system: "syson",
+    freshness: "fresh",
+    summary: "PartUsage · typed by DripTray",
+    selection: { kind: "artifact", id: "ART-SYSML-017" },
+  });
+  snapshot.graph.edges.push({
+    id: "structure:contains:def-system:usage-tray",
+    from: { kind: "part-definition", id: "def-system" },
+    to: { kind: "part-usage", id: "usage-tray" },
+    relation: "contains",
+    rationale: "CoffeeMachine contains tray.",
+    origin: "structure",
+  }, {
+    id: "structure:typed-by:usage-tray:def-tray",
+    from: { kind: "part-usage", id: "usage-tray" },
+    to: { kind: "part-definition", id: "def-system" },
+    relation: "typed_by",
+    rationale: "tray is typed by the exact definition.",
+    origin: "structure",
+  }, {
+    id: "structure:represented-by:def-system:ART-STEP-018",
+    from: { kind: "part-definition", id: "def-system" },
+    to: { kind: "artifact", id: "ART-STEP-018" },
+    relation: "represented_by",
+    rationale: "The exact STEP represents this PartDefinition.",
+    origin: "structure",
+  });
+  assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
+
+  snapshot.graph.nodes.at(-1)!.entityKind = "artifact";
+  assertEquals(isThreadWorkbenchSnapshot(snapshot), false);
+});
+
 Deno.test("the Workbench contract accepts only its explicit activity role", () => {
   const milestone = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
   milestone.graph.nodes[0]!.activityRole = "milestone";

@@ -13,7 +13,13 @@ export interface ThreadRef {
   id: string;
 }
 
-/** Every canonical entity kind which can participate in the native graph. */
+/**
+ * Every entity kind which can participate in the native graph.
+ *
+ * `part-definition` and `part-usage` are browser-safe structural read-model
+ * nodes projected from exact reviewed SysON bindings. They are not promoted
+ * back into the canonical ThreadSnapshot entity vocabulary.
+ */
 export interface ThreadGraphRef {
   kind:
     | "artifact"
@@ -23,11 +29,13 @@ export interface ThreadGraphRef {
     | "evaluation"
     | "violation"
     | "change"
-    | "action";
+    | "action"
+    | "part-definition"
+    | "part-usage";
   id: string;
 }
 
-/** Canonical provenance relations plus two explicit structural facts. */
+/** Canonical provenance relations plus explicit browser-safe structural facts. */
 export type ThreadGraphRelation =
   | "changes"
   | "derived_from"
@@ -39,7 +47,10 @@ export type ThreadGraphRelation =
   | "addresses"
   | "supersedes"
   | "input_to"
-  | "source_of";
+  | "source_of"
+  | "contains"
+  | "typed_by"
+  | "represented_by";
 
 export interface ThreadGraphNode {
   /** Stable browser key, distinct from the canonical entity id. */

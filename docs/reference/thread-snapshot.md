@@ -125,6 +125,26 @@ matching is allowed. A CAD-to-solver edge may carry the corresponding consumptio
 attestation so the UI can distinguish a semantic relation from matching producer and
 consumer bytes.
 
+The same Evidence canvas may also receive browser-only SysML structure nodes from the
+reviewed component catalog: `part-definition`, `part-usage`, `contains`, `typed_by`, and
+`represented_by`. They are emitted only from unique verified provider identities, an
+exact active STEP, and—when declared—its hash-matched GLB presentation derivative. The
+STEP remains authoritative. These nodes do not extend the canonical ThreadSnapshot
+entity vocabulary, create causal provenance, or introduce a second graph mode.
+
+The architecture artifact anchors the root definition. Focused Activity and Evidence
+views follow bounded upstream and downstream lineage, then add only the matching SysML
+structural context. They do not walk backward through a shared geometry capture and out
+to every sibling CAD asset; the same essential display mask drives both the rendered
+projection and its node counter.
+
+Rendering may compact one unambiguous `PartUsage --typed_by--> PartDefinition` pair into
+the component label `usage : Definition`. This quotient is browser-only: the canonical
+pair and relation stay present in `graph`, selection expands the pair for inspection,
+and a definition with multiple distinct usages always remains expanded. Display counts
+describe the compact items actually rendered, while the provider inspector continues to
+count the exact SysML identities.
+
 Every projected graph node may expose `recordedAt`, copied from the closest canonical
 timestamp for that entity: applied change time, freshness change time, consumption
 verification, observation capture, evaluation, or violation detection. It only orders

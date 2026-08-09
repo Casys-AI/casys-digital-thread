@@ -110,6 +110,66 @@ export interface EvidenceGraphModel {
 }
 
 /**
+ * Returns the bounded ancestors and bounded descendants of one fact without
+ * walking through the fact's parent and back out to its siblings.
+ *
+ * A plain undirected BFS is useful for topology inspection, but it is the
+ * wrong projection for a contextual lineage: selecting one STEP would walk
+ * STEP -> geometry bundle -> every sibling STEP.  The Activity vignette and
+ * focused Evidence view need the union of the two directional traversals
+ * instead.  Structural branches (`contains`, `typed_by`, `represented_by`)
+ * remain visible when they are genuinely upstream or downstream of the
+ * selected fact.
+ */
+export function boundedLineageNeighborhood(
+  model: EvidenceGraphModel,
+  ref: ThreadGraphRef,
+  depth: number,
+): EvidenceGraphNeighborhood {
+  const upstream = model.boundedNeighborhood(ref, depth, "upstream");
+  const downstream = model.boundedNeighborhood(ref, depth, "downstream");
+  const nodeKeys = new Set([
+    ...upstream.nodes.map((node) => refKey(node.ref)),
+    ...downstream.nodes.map((node) => refKey(node.ref)),
+  ]);
+  // Add a bounded structural halo around the selected result and its
+  // consequences. This lets a geometry bundle reveal the PartDefinition /
+  // PartUsage identities of the CAD assets it published, while deliberately
+  // avoiding a direction change through an upstream capture hub.
+  let frontier = new Set([
+    refKey(ref),
+    ...downstream.nodes.map((node) => refKey(node.ref)),
+  ]);
+  for (let hop = 0; hop < depth && frontier.size > 0; hop += 1) {
+    const next = new Set<string>();
+    for (const edge of model.edges) {
+      if (!isContextStructureRelation(edge.relation)) continue;
+      const from = refKey(edge.from);
+      const to = refKey(edge.to);
+      if (frontier.has(from) && !nodeKeys.has(to)) next.add(to);
+      if (frontier.has(to) && !nodeKeys.has(from)) next.add(from);
+    }
+    for (const key of next) nodeKeys.add(key);
+    frontier = next;
+  }
+  const nodes = model.nodes.filter((node) => nodeKeys.has(refKey(node.ref)));
+  const edgeKeys = new Set<string>();
+  const edges = [
+    ...model.edges.filter((edge) =>
+      nodeKeys.has(refKey(edge.from)) && nodeKeys.has(refKey(edge.to))
+    ),
+    ...upstream.edges.filter((edge) => edge.id.startsWith("stub:")),
+    ...downstream.edges.filter((edge) => edge.id.startsWith("stub:")),
+  ].filter((edge) => {
+    const key = edgeOccurrenceKey(edge);
+    if (edgeKeys.has(key)) return false;
+    edgeKeys.add(key);
+    return true;
+  });
+  return { nodes, edges };
+}
+
+/**
  * Configuration for the evidence graph model.
  *
  * isAnalyzeInstrumentNode is the structural criterion for the analyze.* family.
@@ -398,6 +458,23 @@ export function buildEvidenceGraphModel(
 
 function refKey(ref: ThreadGraphRef): string {
   return `${ref.kind}:${ref.id}`;
+}
+
+function edgeOccurrenceKey(edge: ThreadGraphEdge): string {
+  return [
+    edge.id,
+    refKey(edge.from),
+    refKey(edge.to),
+    edge.relation,
+    edge.origin,
+  ].join("\u0000");
+}
+
+function isContextStructureRelation(
+  relation: ThreadGraphRelation,
+): boolean {
+  return relation === "contains" || relation === "typed_by" ||
+    relation === "represented_by";
 }
 
 function firstSorted(set: Set<string>): string | undefined {

@@ -22,6 +22,7 @@ import {
   displayedGraphEdgeOccurrenceKey,
   graphEdgeSelectionMatches,
 } from "./graph-selection-model.ts";
+import { isUiOnlySysmlCompositeEdge } from "./sysml-composite-projection.ts";
 
 const NODE_WIDTH = 216;
 const NODE_HEIGHT = 82;
@@ -484,6 +485,7 @@ export function ThreadGraph({
     if (item.node.selection) onInspect?.(item.node.selection, item.node);
   };
   const selectEdge = (item: PositionedThreadGraphEdge) => {
+    if (isUiOnlySysmlCompositeEdge(item.edge)) return;
     const keyboardOccurrenceKey = edgeOccurrenceKey(item, layout.edges);
     const selectionOccurrenceKey = displayedGraphEdgeOccurrenceKey(item.edge);
     setKeyboardEdge(keyboardOccurrenceKey);
@@ -515,15 +517,18 @@ export function ThreadGraph({
     item: PositionedThreadGraphEdge,
     direction: "previous" | "next" | "first" | "last",
   ) => {
-    const currentIndex = layout.edges.indexOf(item);
+    const selectableEdges = layout.edges.filter((candidate) =>
+      !isUiOnlySysmlCompositeEdge(candidate.edge)
+    );
+    const currentIndex = selectableEdges.indexOf(item);
     const targetIndex = direction === "first"
       ? 0
       : direction === "last"
-      ? layout.edges.length - 1
+      ? selectableEdges.length - 1
       : direction === "previous"
       ? Math.max(0, currentIndex - 1)
-      : Math.min(layout.edges.length - 1, currentIndex + 1);
-    const target = layout.edges[targetIndex];
+      : Math.min(selectableEdges.length - 1, currentIndex + 1);
+    const target = selectableEdges[targetIndex];
     if (!target) return;
     const targetKey = edgeOccurrenceKey(target, layout.edges);
     setKeyboardEdge(targetKey);
@@ -762,34 +767,37 @@ export function ThreadGraph({
           <g class="thread-graph-edges" aria-label="Explicit relations">
             {layout.edges.map((item, index) => {
               const occurrenceKey = edgeOccurrenceKey(item, layout.edges);
+              const selectable = !isUiOnlySysmlCompositeEdge(item.edge);
               const selected = selection?.kind === "edge" &&
                 selectedEdgeMatches(selection, item.edge);
               const state = edgeImpactState(item, impact, focusedRef);
-              const isKeyboardEdge = keyboardEdge
+              const isKeyboardEdge = selectable && (keyboardEdge
                 ? keyboardEdge === occurrenceKey
                 : selectedEdgeVisible
                 ? selected
-                : index === 0;
+                : layout.edges.findIndex((candidate) =>
+                  !isUiOnlySysmlCompositeEdge(candidate.edge)
+                ) === index);
               const attestation = item.edge.attestation?.status ?? "none";
               return (
                 <g
                   key={occurrenceKey}
                   ref={(element) => {
-                    if (element) {
+                    if (element && selectable) {
                       edgeElements.current.set(occurrenceKey, element);
                     } else {
                       edgeElements.current.delete(occurrenceKey);
                     }
                   }}
                   class="thread-graph-edge"
-                  role="button"
-                  tabindex={isKeyboardEdge ? 0 : -1}
+                  role={selectable ? "button" : undefined}
+                  tabindex={selectable ? (isKeyboardEdge ? 0 : -1) : undefined}
                   aria-label={`${
                     relationLabel(item.edge.relation)
                   }: ${item.source.node.label} to ${item.target.node.label}. ${item.edge.rationale}${
                     attestationDescription(attestation)
                   }`}
-                  aria-pressed={selected}
+                  aria-pressed={selectable ? selected : undefined}
                   data-relation={item.edge.relation}
                   data-origin={item.edge.origin}
                   data-attestation={attestation}
@@ -798,32 +806,36 @@ export function ThreadGraph({
                   style={animate
                     ? { animationDelay: `${Math.min(index * 55, 440)}ms` }
                     : undefined}
-                  onClick={() => selectEdge(item)}
-                  onFocus={() => setKeyboardEdge(occurrenceKey)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      selectEdge(item);
-                    } else if (
-                      event.key === "ArrowLeft" || event.key === "ArrowUp"
-                    ) {
-                      event.preventDefault();
-                      moveEdgeFocus(item, "previous");
-                    } else if (
-                      event.key === "ArrowRight" || event.key === "ArrowDown"
-                    ) {
-                      event.preventDefault();
-                      moveEdgeFocus(item, "next");
-                    } else if (event.key === "Home") {
-                      event.preventDefault();
-                      moveEdgeFocus(item, "first");
-                    } else if (event.key === "End") {
-                      event.preventDefault();
-                      moveEdgeFocus(item, "last");
-                    } else if (event.key === "Escape") {
-                      onSelectionChange?.(undefined);
+                  onClick={selectable ? () => selectEdge(item) : undefined}
+                  onFocus={selectable
+                    ? () => setKeyboardEdge(occurrenceKey)
+                    : undefined}
+                  onKeyDown={selectable
+                    ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        selectEdge(item);
+                      } else if (
+                        event.key === "ArrowLeft" || event.key === "ArrowUp"
+                      ) {
+                        event.preventDefault();
+                        moveEdgeFocus(item, "previous");
+                      } else if (
+                        event.key === "ArrowRight" || event.key === "ArrowDown"
+                      ) {
+                        event.preventDefault();
+                        moveEdgeFocus(item, "next");
+                      } else if (event.key === "Home") {
+                        event.preventDefault();
+                        moveEdgeFocus(item, "first");
+                      } else if (event.key === "End") {
+                        event.preventDefault();
+                        moveEdgeFocus(item, "last");
+                      } else if (event.key === "Escape") {
+                        onSelectionChange?.(undefined);
+                      }
                     }
-                  }}
+                    : undefined}
                 >
                   <title>
                     {`${item.edge.rationale}${

@@ -336,6 +336,296 @@ Deno.test("the Workbench keeps an exact component identity across provider facet
   }]);
 });
 
+Deno.test("Evidence projects the exact SysML hierarchy and authoritative STEP identities without changing the canvas contract", () => {
+  const { canonical, catalog } = componentStructureFixture();
+
+  const projection = projectThreadWorkbenchSnapshot(canonical, catalog);
+  const modelNodes = projection.graph.nodes
+    .filter((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    )
+    .map((node) => `${node.ref.kind}:${node.ref.id}:${node.label}`)
+    .sort();
+  assertEquals(modelNodes, [
+    "part-definition:def-base:WeightedBase",
+    "part-definition:def-head:LampHead",
+    "part-definition:def-socket:BulbSocket",
+    "part-definition:def-stem:FixedStem",
+    "part-definition:def-system:DeskLamp",
+    "part-usage:usage-base:base",
+    "part-usage:usage-head:head",
+    "part-usage:usage-socket:socket",
+    "part-usage:usage-stem:stem",
+  ]);
+  const structure = projection.graph.edges
+    .filter((edge) =>
+      edge.relation === "contains" || edge.relation === "typed_by" ||
+      edge.relation === "represented_by"
+    )
+    .map((edge) =>
+      `${edge.relation}:${edge.from.kind}:${edge.from.id}->${edge.to.kind}:${edge.to.id}`
+    )
+    .sort();
+  assertEquals(structure, [
+    "contains:artifact:architecture->part-definition:def-system",
+    "contains:part-definition:def-head->part-usage:usage-socket",
+    "contains:part-definition:def-stem->part-usage:usage-head",
+    "contains:part-definition:def-system->part-usage:usage-base",
+    "contains:part-definition:def-system->part-usage:usage-stem",
+    "represented_by:part-definition:def-base->artifact:glb-base",
+    "represented_by:part-definition:def-base->artifact:step-base",
+    "represented_by:part-definition:def-head->artifact:glb-head",
+    "represented_by:part-definition:def-head->artifact:step-head",
+    "represented_by:part-definition:def-socket->artifact:glb-socket",
+    "represented_by:part-definition:def-socket->artifact:step-socket",
+    "represented_by:part-definition:def-stem->artifact:glb-stem",
+    "represented_by:part-definition:def-stem->artifact:step-stem",
+    "represented_by:part-definition:def-system->artifact:step-assembly",
+    "typed_by:part-usage:usage-base->part-definition:def-base",
+    "typed_by:part-usage:usage-head->part-definition:def-head",
+    "typed_by:part-usage:usage-socket->part-definition:def-socket",
+    "typed_by:part-usage:usage-stem->part-definition:def-stem",
+  ]);
+  assertEquals(
+    projection.evidenceFamilyGraph.families.some((family) =>
+      family.currentRefs.some((reference) =>
+        reference.kind === "part-definition" || reference.kind === "part-usage"
+      )
+    ),
+    false,
+  );
+
+  const reordered = cloneCatalog(catalog);
+  reordered.components.forEach((component) => component.bindings.reverse());
+  const reorderedProjection = projectThreadWorkbenchSnapshot(canonical, reordered);
+  assertEquals(
+    reorderedProjection.graph.nodes.filter((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    ),
+    projection.graph.nodes.filter((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    ),
+  );
+});
+
+Deno.test("Evidence deduplicates one reused PartDefinition and refuses ambiguous reviewed bindings", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const reused = cloneCatalog(catalog);
+  const head = reused.components.find((component) =>
+    component.id === "component-head"
+  )!;
+  const socket = reused.components.find((component) =>
+    component.id === "component-socket"
+  )!;
+  const headDefinition = head.bindings.find((binding) =>
+    binding.kind === "part-definition"
+  )!;
+  const socketDefinition = socket.bindings.find((binding) =>
+    binding.kind === "part-definition"
+  )!;
+  socketDefinition.id = headDefinition.id;
+  socketDefinition.label = headDefinition.label;
+  const headCad = head.bindings.find((binding) =>
+    binding.provider === "digital-thread"
+  )!;
+  const socketCad = socket.bindings.find((binding) =>
+    binding.provider === "digital-thread"
+  )!;
+  socketCad.id = headCad.id;
+  socket.preview = { ...head.preview! };
+  const reusedProjection = projectThreadWorkbenchSnapshot(canonical, reused);
+  assertEquals(
+    reusedProjection.graph.nodes.filter((node) => node.entityKind === "part-definition")
+      .length,
+    4,
+  );
+  assertEquals(
+    reusedProjection.graph.nodes.filter((node) => node.entityKind === "part-usage")
+      .length,
+    4,
+  );
+  assertEquals(
+    reusedProjection.graph.edges.filter((edge) => edge.relation === "represented_by")
+      .length,
+    7,
+  );
+  assertEquals(
+    reusedProjection.graph.edges.filter((edge) =>
+      edge.relation === "represented_by" && edge.from.kind === "part-definition" &&
+      edge.from.id === "def-head"
+    ).map((edge) => edge.to.id).sort(),
+    ["glb-head", "step-head"],
+  );
+
+  const ambiguous = cloneCatalog(catalog);
+  ambiguous.components[1]!.bindings.push({
+    provider: "syson",
+    kind: "part-definition",
+    id: "def-base-other",
+    label: "Other base definition",
+    evidenceArtifactId: "architecture",
+  });
+  const ambiguousProjection = projectThreadWorkbenchSnapshot(canonical, ambiguous);
+  assertEquals(
+    ambiguousProjection.graph.nodes.some((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    ),
+    false,
+  );
+});
+
+Deno.test("Evidence fails closed when a reused PartDefinition disagrees on its exact GLB preview", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const inconsistent = cloneCatalog(catalog);
+  const head = inconsistent.components.find((component) =>
+    component.id === "component-head"
+  )!;
+  const socket = inconsistent.components.find((component) =>
+    component.id === "component-socket"
+  )!;
+  socket.bindings.find((binding) => binding.kind === "part-definition")!.id =
+    head.bindings.find((binding) => binding.kind === "part-definition")!.id;
+  socket.bindings.find((binding) => binding.provider === "digital-thread")!.id =
+    head.bindings.find((binding) => binding.provider === "digital-thread")!.id;
+
+  assertNoComponentStructure(
+    projectThreadWorkbenchSnapshot(canonical, inconsistent),
+    "one reused PartDefinition cannot claim two GLB previews",
+  );
+});
+
+Deno.test("Evidence fails closed when a GLB preview diverges from its canonical artifact", () => {
+  const cases: Array<{
+    name: string;
+    mutate: (
+      canonical: ThreadSnapshot,
+      catalog: ThreadComponentCatalog,
+    ) => void;
+  }> = [{
+    name: "digest",
+    mutate: (_canonical, catalog) => {
+      catalog.components.find((component) => component.id === "component-base")!
+        .preview!.sha256 = "0".repeat(64);
+    },
+  }, {
+    name: "provider",
+    mutate: (canonical, catalog) => {
+      const previewId = catalog.components.find((component) =>
+        component.id === "component-base"
+      )!.preview!.artifactId;
+      canonical.artifacts.find((artifact) => artifact.id === previewId)!
+        .producer.serverId = "build123d";
+    },
+  }];
+
+  for (const testCase of cases) {
+    const { canonical, catalog } = componentStructureFixture();
+    testCase.mutate(canonical, catalog);
+    assertNoComponentStructure(
+      projectThreadWorkbenchSnapshot(canonical, catalog),
+      `invalid preview ${testCase.name}`,
+    );
+  }
+});
+
+Deno.test("Evidence emits one PartUsage node when one semantic usage is repeated on expanded occurrence paths", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const reused = cloneCatalog(catalog);
+  repeatStemOccurrencePath(reused);
+
+  const projection = projectThreadWorkbenchSnapshot(canonical, reused);
+  const usageRefs = projection.graph.nodes
+    .filter((node) => node.entityKind === "part-usage")
+    .map((node) => `${node.ref.kind}:${node.ref.id}`);
+  assertEquals(
+    usageRefs.filter((reference) => reference === "part-usage:usage-head"),
+    ["part-usage:usage-head"],
+  );
+  assertEquals(
+    usageRefs.filter((reference) => reference === "part-usage:usage-socket"),
+    ["part-usage:usage-socket"],
+  );
+  assertEquals(new Set(usageRefs).size, usageRefs.length);
+  assertEquals(
+    projection.graph.edges
+      .filter((edge) =>
+        (edge.from.kind === "part-usage" && edge.from.id === "usage-head") ||
+        (edge.to.kind === "part-usage" && edge.to.id === "usage-head")
+      )
+      .map((edge) =>
+        `${edge.relation}:${edge.from.kind}:${edge.from.id}->${edge.to.kind}:${edge.to.id}`
+      )
+      .sort(),
+    [
+      "contains:part-definition:def-stem->part-usage:usage-head",
+      "typed_by:part-usage:usage-head->part-definition:def-head",
+    ],
+  );
+});
+
+Deno.test("Evidence suppresses the SysML overlay when one PartUsage id targets conflicting exact definitions across occurrence paths", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const inconsistent = cloneCatalog(catalog);
+  const repeatedHead = repeatStemOccurrencePath(inconsistent);
+  const conflictingDefinition = repeatedHead.bindings.find((binding) =>
+    binding.provider === "syson" && binding.kind === "part-definition"
+  )!;
+  // Keep the friendly label identical: exact provider ids, never labels, decide
+  // whether the repeated semantic PartUsage has one coherent target.
+  conflictingDefinition.id = "def-head-conflict";
+
+  const projection = projectThreadWorkbenchSnapshot(canonical, inconsistent);
+  assertEquals(
+    projection.graph.nodes.some((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    ),
+    false,
+  );
+  assertEquals(
+    projection.graph.edges.some((edge) =>
+      edge.relation === "contains" || edge.relation === "typed_by" ||
+      edge.relation === "represented_by"
+    ),
+    false,
+  );
+});
+
+Deno.test("Evidence keeps exact SysML structure before CAD and suppresses a declared invalid CAD mapping", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const beforeCad = cloneCatalog(catalog);
+  beforeCad.components.forEach((component) => {
+    component.bindings = component.bindings.filter((binding) =>
+      binding.provider !== "digital-thread"
+    );
+    delete component.preview;
+  });
+  const beforeCadProjection = projectThreadWorkbenchSnapshot(canonical, beforeCad);
+  assertEquals(
+    beforeCadProjection.graph.nodes.filter((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    ).length,
+    9,
+  );
+  assertEquals(
+    beforeCadProjection.graph.edges.filter((edge) => edge.relation === "represented_by")
+      .length,
+    0,
+  );
+
+  const invalidCad = cloneCatalog(catalog);
+  const baseCad = invalidCad.components[1]!.bindings.find((binding) =>
+    binding.provider === "digital-thread"
+  )!;
+  baseCad.id = "fea-r2";
+  const invalidProjection = projectThreadWorkbenchSnapshot(canonical, invalidCad);
+  assertEquals(
+    invalidProjection.graph.nodes.some((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    ),
+    false,
+  );
+});
+
 Deno.test("the bounded DripTray correction anchors only to its verified V3 product identity", () => {
   const canonical = linkedSnapshot();
   canonical.changeSet.changes[0]!.id =
@@ -381,6 +671,202 @@ Deno.test("the bounded DripTray correction anchors only to its verified V3 produ
     .graph.nodes.find((node) => node.entityKind === "change");
   assertEquals(unverifiedAnchor?.affectedComponentId, undefined);
 });
+
+function componentStructureFixture(): {
+  canonical: ThreadSnapshot;
+  catalog: ThreadComponentCatalog;
+} {
+  const canonical = linkedSnapshot();
+  canonical.artifacts.push(
+    {
+      id: "architecture",
+      name: "Architecture: DeskLamp",
+      kind: "sysml-model",
+      version: "1",
+      fingerprint: fingerprint("1"),
+      producer: operation("syson", "architecture-readback", "architecture-run"),
+      inputArtifactIds: [],
+      freshness: fresh(),
+    },
+    {
+      id: "geometry-capture",
+      name: "Geometry: DeskLamp",
+      kind: "cad-model",
+      version: "2",
+      fingerprint: fingerprint("2"),
+      producer: operation("digital-thread", "geometry-seal", "geometry-run"),
+      inputArtifactIds: ["architecture"],
+      freshness: fresh(),
+    },
+    ...["assembly", "base", "stem", "head", "socket"].map((name, index) => ({
+      id: `step-${name}`,
+      name: `Authoritative STEP: ${name}`,
+      kind: "step" as const,
+      version: "1",
+      fingerprint: fingerprint(String(index + 3)),
+      producer: operation("build123d-sandbox", "build123d_export", `cad-${name}`),
+      inputArtifactIds: ["geometry-capture"],
+      freshness: fresh(),
+    })),
+    ...["base", "stem", "head", "socket"].map((name, index) => {
+      const digest = ["8", "9", "a", "b"][index]!.repeat(64);
+      return {
+        id: `glb-${name}`,
+        name: `GLTF: ${name}`,
+        kind: "cad-model" as const,
+        version: digest,
+        fingerprint: fingerprint(digest[0]!),
+        uri: `/api/thread/assets/${digest}.glb`,
+        mediaType: "model/gltf-binary",
+        producer: operation(
+          "build123d-sandbox",
+          "build123d_export",
+          `cad-${name}`,
+        ),
+        inputArtifactIds: [],
+        freshness: fresh(),
+      };
+    }),
+  );
+  const syson = (
+    kind: "part-definition" | "part-usage",
+    id: string,
+    label: string,
+  ) => ({
+    provider: "syson" as const,
+    kind,
+    id,
+    label,
+    evidenceArtifactId: "architecture",
+  });
+  const cad = (id: string, label: string) => ({
+    provider: "digital-thread" as const,
+    kind: "artifact" as const,
+    id,
+    label,
+    evidenceArtifactId: "geometry-capture",
+  });
+  const preview = (name: "base" | "stem" | "head" | "socket") => {
+    const index = ["base", "stem", "head", "socket"].indexOf(name);
+    const digest = ["8", "9", "a", "b"][index]!.repeat(64);
+    return {
+      provider: "build123d" as const,
+      artifactId: `glb-${name}`,
+      mediaType: "model/gltf-binary" as const,
+      url: `/api/thread/assets/${digest}.glb`,
+      sha256: digest,
+    };
+  };
+  return {
+    canonical,
+    catalog: {
+      schemaVersion: "thread-components/1.0",
+      authority: "workspace-declared",
+      subjectId: canonical.subject.id,
+      rationale: "Exact reviewed DeskLamp SysML and CAD identity.",
+      systemViews: {},
+      components: [{
+        id: "component-system",
+        label: "DeskLamp",
+        kind: "assembly",
+        quantity: 1,
+        bindings: [
+          syson("part-definition", "def-system", "DeskLamp"),
+          cad("step-assembly", "Authoritative assembly STEP"),
+        ],
+      }, {
+        id: "component-base",
+        label: "WeightedBase",
+        kind: "part",
+        quantity: 1,
+        parentId: "component-system",
+        bindings: [
+          syson("part-definition", "def-base", "WeightedBase"),
+          syson("part-usage", "usage-base", "base"),
+          cad("step-base", "Authoritative STEP: WeightedBase"),
+        ],
+        preview: preview("base"),
+      }, {
+        id: "component-stem",
+        label: "FixedStem",
+        kind: "part",
+        quantity: 1,
+        parentId: "component-system",
+        bindings: [
+          syson("part-definition", "def-stem", "FixedStem"),
+          syson("part-usage", "usage-stem", "stem"),
+          cad("step-stem", "Authoritative STEP: FixedStem"),
+        ],
+        preview: preview("stem"),
+      }, {
+        id: "component-head",
+        label: "LampHead",
+        kind: "part",
+        quantity: 1,
+        parentId: "component-stem",
+        bindings: [
+          syson("part-definition", "def-head", "LampHead"),
+          syson("part-usage", "usage-head", "head"),
+          cad("step-head", "Authoritative STEP: LampHead"),
+        ],
+        preview: preview("head"),
+      }, {
+        id: "component-socket",
+        label: "BulbSocket",
+        kind: "part",
+        quantity: 1,
+        parentId: "component-head",
+        bindings: [
+          syson("part-definition", "def-socket", "BulbSocket"),
+          syson("part-usage", "usage-socket", "socket"),
+          cad("step-socket", "Authoritative STEP: BulbSocket"),
+        ],
+        preview: preview("socket"),
+      }],
+    },
+  };
+}
+
+function cloneCatalog(catalog: ThreadComponentCatalog): ThreadComponentCatalog {
+  return JSON.parse(JSON.stringify(catalog)) as ThreadComponentCatalog;
+}
+
+function repeatStemOccurrencePath(
+  catalog: ThreadComponentCatalog,
+): ThreadComponentCatalog["components"][number] {
+  const stem = catalog.components.find((component) =>
+    component.id === "component-stem"
+  )!;
+  const head = catalog.components.find((component) =>
+    component.id === "component-head"
+  )!;
+  const socket = catalog.components.find((component) =>
+    component.id === "component-socket"
+  )!;
+  const repeatedStem: ThreadComponentCatalog["components"][number] = {
+    ...stem,
+    id: "component-stem-secondary",
+    bindings: stem.bindings.map((binding) =>
+      binding.provider === "syson" && binding.kind === "part-usage"
+        ? { ...binding, id: "usage-stem-secondary", label: "secondaryStem" }
+        : { ...binding }
+    ),
+  };
+  const repeatedHead: ThreadComponentCatalog["components"][number] = {
+    ...head,
+    id: "component-head-secondary",
+    parentId: repeatedStem.id,
+    bindings: head.bindings.map((binding) => ({ ...binding })),
+  };
+  const repeatedSocket: ThreadComponentCatalog["components"][number] = {
+    ...socket,
+    id: "component-socket-secondary",
+    parentId: repeatedHead.id,
+    bindings: socket.bindings.map((binding) => ({ ...binding })),
+  };
+  catalog.components.push(repeatedStem, repeatedHead, repeatedSocket);
+  return repeatedHead;
+}
 
 function linkedSnapshot(): ThreadSnapshot {
   const cad = operation("mcp-build123d", "build123d_export", "cad-run-r2");
@@ -587,6 +1073,27 @@ function graphEdgeSignatures(
 ): string[] {
   return projection.graph.edges.map((edge) =>
     `${edge.relation}:${edge.from.kind}:${edge.from.id}->${edge.to.kind}:${edge.to.id}:${edge.origin}`
+  );
+}
+
+function assertNoComponentStructure(
+  projection: ReturnType<typeof projectThreadWorkbenchSnapshot>,
+  message: string,
+): void {
+  assertEquals(
+    projection.graph.nodes.some((node) =>
+      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+    ),
+    false,
+    message,
+  );
+  assertEquals(
+    projection.graph.edges.some((edge) =>
+      edge.relation === "contains" || edge.relation === "typed_by" ||
+      edge.relation === "represented_by"
+    ),
+    false,
+    message,
   );
 }
 

@@ -1,5 +1,14 @@
-import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
+import {
+  boundedLineageNeighborhood,
+  type EvidenceGraphModel,
+  type EvidenceGraphNeighborhood,
+} from "./evidence-graph-model.ts";
 import type { ProjectReviewRecord } from "../project/review-decision-model.ts";
+import { applyEssentialFilter } from "./essential-graph-filter.ts";
+import {
+  compactSysmlPartPairs,
+  graphRefKey,
+} from "./sysml-composite-projection.ts";
 import type {
   PartAnchorageResolution,
   PartTarget,
@@ -374,6 +383,40 @@ export interface CompactLineageCounters {
   downstream: number;
 }
 
+export interface CompactLineageProjection extends EvidenceGraphNeighborhood {
+  /** Supporting facts folded by the shared essential display mask. */
+  readonly hiddenSupportingCount: number;
+  /** Exact identity aliases used only to keep directional counters truthful. */
+  readonly compositeRefByMemberRefKey: ReadonlyMap<string, ThreadGraphRef>;
+}
+
+/**
+ * Builds the one Activity lineage projection consumed by both the vignette and
+ * its counters: directional depth-two context first, then the same essential
+ * display mask as Evidence.
+ */
+export function compactLineageProjection(
+  evidenceModel: EvidenceGraphModel,
+  focusRef: ThreadGraphRef,
+): CompactLineageProjection {
+  const neighborhood = boundedLineageNeighborhood(evidenceModel, focusRef, 2);
+  const filtered = applyEssentialFilter(
+    neighborhood.nodes,
+    neighborhood.edges,
+  );
+  const compacted = compactSysmlPartPairs(
+    evidenceModel,
+    filtered,
+    focusRef,
+  );
+  return {
+    nodes: compacted.nodes,
+    edges: compacted.edges,
+    hiddenSupportingCount: filtered.hiddenCount,
+    compositeRefByMemberRefKey: compacted.compositeRefByMemberRefKey,
+  };
+}
+
 /**
  * Computes the truthful counters for the feed lineage bandeau.
  *
@@ -390,14 +433,33 @@ export function compactLineageCounters(
   evidenceModel: EvidenceGraphModel,
   focusRef: ThreadGraphRef,
 ): CompactLineageCounters {
-  const all = evidenceModel.boundedNeighborhood(focusRef, 2);
+  const all = compactLineageProjection(evidenceModel, focusRef);
+  const visible = new Set(all.nodes.map((node) => graphRefKey(node.ref)));
   const up = evidenceModel.boundedNeighborhood(focusRef, 2, "upstream");
   const down = evidenceModel.boundedNeighborhood(focusRef, 2, "downstream");
+  const focusKey = renderedKey(focusRef);
   return {
     total: all.nodes.length,
-    upstream: Math.max(0, up.nodes.length - 1),
-    downstream: Math.max(0, down.nodes.length - 1),
+    upstream: renderedDirectionalKeys(up.nodes).size,
+    downstream: renderedDirectionalKeys(down.nodes).size,
   };
+
+  function renderedKey(ref: ThreadGraphRef): string {
+    return graphRefKey(
+      all.compositeRefByMemberRefKey.get(graphRefKey(ref)) ?? ref,
+    );
+  }
+
+  function renderedDirectionalKeys(
+    nodes: readonly ThreadGraphNode[],
+  ): ReadonlySet<string> {
+    const keys = new Set<string>();
+    for (const node of nodes) {
+      const key = renderedKey(node.ref);
+      if (key !== focusKey && visible.has(key)) keys.add(key);
+    }
+    return keys;
+  }
 }
 
 // ---------------------------------------------------------------------------

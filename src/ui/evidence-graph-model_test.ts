@@ -11,7 +11,10 @@
  */
 
 import { assertEquals, assertNotEquals } from "@std/assert";
-import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
+import {
+  boundedLineageNeighborhood,
+  buildEvidenceGraphModel,
+} from "./src/thread/evidence-graph-model.ts";
 import { buildVersionedProvenanceProjection } from "./src/thread/versioned-provenance-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
@@ -244,6 +247,203 @@ Deno.test("boundedNeighborhood for invisible node returns empty", () => {
   const nb = model.boundedNeighborhood(ref("B", "evaluation"), 2);
   assertEquals(nb.nodes.length, 0);
   assertEquals(nb.edges.length, 0);
+});
+
+Deno.test("boundedLineageNeighborhood keeps ancestors and descendants without hub siblings", () => {
+  // source -> hub -> focus and source -> hub -> sibling is the exact shape of
+  // one geometry capture publishing several CAD assets. A contextual lineage
+  // for focus must not pull sibling into view through the shared hub.
+  const nodes = ["source", "hub", "focus", "sibling", "result"].map((id) =>
+    nodeFor(id, "artifact", "digital-thread")
+  );
+  const graph = {
+    nodes,
+    edges: [
+      edgeFor(
+        "source-hub",
+        "source",
+        "artifact",
+        "hub",
+        "artifact",
+        "derived_from",
+      ),
+      edgeFor(
+        "hub-focus",
+        "hub",
+        "artifact",
+        "focus",
+        "artifact",
+        "derived_from",
+      ),
+      edgeFor(
+        "hub-sibling",
+        "hub",
+        "artifact",
+        "sibling",
+        "artifact",
+        "derived_from",
+      ),
+      edgeFor(
+        "focus-result",
+        "focus",
+        "artifact",
+        "result",
+        "artifact",
+        "derived_from",
+      ),
+    ],
+  };
+  const model = buildEvidenceGraphModel(graph, emptyFamilyGraph());
+
+  const lineage = boundedLineageNeighborhood(
+    model,
+    ref("focus", "artifact"),
+    2,
+  );
+
+  assertEquals(
+    lineage.nodes.map((node) => node.ref.id).sort(),
+    ["focus", "hub", "result", "source"],
+  );
+  assertEquals(
+    lineage.edges.map((edge) => edge.id).sort(),
+    ["focus-result", "hub-focus", "source-hub"],
+  );
+});
+
+Deno.test("boundedLineageNeighborhood adds the exact SysML identity of one STEP without sibling CAD", () => {
+  const nodes = [
+    nodeFor("capture", "artifact", "digital-thread"),
+    nodeFor("step-assembly", "artifact", "build123d"),
+    nodeFor("step-base", "artifact", "build123d"),
+    nodeFor("step-stem", "artifact", "build123d"),
+    nodeFor("def-root", "part-definition", "syson"),
+    nodeFor("def-base", "part-definition", "syson"),
+    nodeFor("def-stem", "part-definition", "syson"),
+    nodeFor("usage-base", "part-usage", "syson"),
+    nodeFor("usage-stem", "part-usage", "syson"),
+  ];
+  const graph = {
+    nodes,
+    edges: [
+      edgeFor(
+        "capture-step-assembly",
+        "capture",
+        "artifact",
+        "step-assembly",
+        "artifact",
+        "traces_to",
+      ),
+      edgeFor(
+        "capture-step-base",
+        "capture",
+        "artifact",
+        "step-base",
+        "artifact",
+        "traces_to",
+      ),
+      edgeFor(
+        "capture-step-stem",
+        "capture",
+        "artifact",
+        "step-stem",
+        "artifact",
+        "traces_to",
+      ),
+      edgeFor(
+        "def-root-step-assembly",
+        "def-root",
+        "part-definition",
+        "step-assembly",
+        "artifact",
+        "represented_by",
+      ),
+      edgeFor(
+        "def-base-step-base",
+        "def-base",
+        "part-definition",
+        "step-base",
+        "artifact",
+        "represented_by",
+      ),
+      edgeFor(
+        "def-stem-step-stem",
+        "def-stem",
+        "part-definition",
+        "step-stem",
+        "artifact",
+        "represented_by",
+      ),
+      edgeFor(
+        "usage-base-def-base",
+        "usage-base",
+        "part-usage",
+        "def-base",
+        "part-definition",
+        "typed_by",
+      ),
+      edgeFor(
+        "usage-stem-def-stem",
+        "usage-stem",
+        "part-usage",
+        "def-stem",
+        "part-definition",
+        "typed_by",
+      ),
+      edgeFor(
+        "root-usage-base",
+        "def-root",
+        "part-definition",
+        "usage-base",
+        "part-usage",
+        "contains",
+      ),
+      edgeFor(
+        "root-usage-stem",
+        "def-root",
+        "part-definition",
+        "usage-stem",
+        "part-usage",
+        "contains",
+      ),
+    ],
+  };
+  const model = buildEvidenceGraphModel(graph, emptyFamilyGraph());
+
+  const lineage = boundedLineageNeighborhood(
+    model,
+    ref("step-base", "artifact"),
+    2,
+  );
+
+  assertEquals(
+    lineage.nodes.map((node) => node.ref.id).sort(),
+    ["capture", "def-base", "step-base", "usage-base"],
+  );
+  assertEquals(
+    lineage.nodes.some((node) => node.ref.id === "step-stem"),
+    false,
+  );
+  assertEquals(lineage.nodes.some((node) => node.ref.id === "def-stem"), false);
+  assertEquals(
+    lineage.nodes.some((node) => node.ref.id === "usage-stem"),
+    false,
+  );
+
+  const bundleLineage = boundedLineageNeighborhood(
+    model,
+    ref("capture", "artifact"),
+    2,
+  );
+  assertEquals(
+    bundleLineage.nodes
+      .filter((node) =>
+        node.ref.kind === "part-definition" || node.ref.kind === "part-usage"
+      )
+      .map((node) => node.ref.id)
+      .sort(),
+    ["def-base", "def-root", "def-stem", "usage-base", "usage-stem"],
+  );
 });
 
 // ---------------------------------------------------------------------------

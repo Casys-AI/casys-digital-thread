@@ -19,12 +19,17 @@ import type {
   EvidenceGraphModel,
   EvidenceGraphStub,
 } from "./evidence-graph-model.ts";
+import { boundedLineageNeighborhood } from "./evidence-graph-model.ts";
 import {
   applyEssentialFilter,
   type DisplayKind,
   displayKindOf,
   isSupportingNode,
 } from "./essential-graph-filter.ts";
+import {
+  compactSysmlPartPairs,
+  graphRefKey,
+} from "./sysml-composite-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -260,10 +265,11 @@ export function buildEvidenceCanvasProjection(
       model.nodes as ThreadGraphNode[],
       allEdges,
     );
+    const compacted = compactSysmlPartPairs(model, filtered);
     return {
-      nodes: filtered.nodes,
-      edges: filtered.edges,
-      displayedCount: filtered.nodes.length,
+      nodes: compacted.nodes,
+      edges: compacted.edges,
+      displayedCount: compacted.nodes.length,
       foldedInstrumentCount,
       isFiltered: false,
       // hiddenCount = supporting nodes removed by the filter; used by the
@@ -274,24 +280,32 @@ export function buildEvidenceCanvasProjection(
 
   // Focus on a visible node: bounded neighbourhood, always computed at the
   // MAX depth — the visible depth is a display filter over localDepthByRefKey.
-  const neighborhood = model.boundedNeighborhood(
+  const neighborhood = boundedLineageNeighborhood(
+    model,
     focusRef,
     LOCAL_VIEW_MAX_DEPTH,
   );
   if (neighborhood.nodes.length > 0) {
-    return localProjection(focusRef, neighborhood, foldedInstrumentCount);
+    return localProjection(
+      model,
+      focusRef,
+      neighborhood,
+      foldedInstrumentCount,
+    );
   }
 
   // Historical node: map to visible representative.
   const focusKey = `${focusRef.kind}:${focusRef.id}`;
   const visibleRef = visibleRefByMemberRef.get(focusKey);
   if (visibleRef) {
-    const repNeighborhood = model.boundedNeighborhood(
+    const repNeighborhood = boundedLineageNeighborhood(
+      model,
       visibleRef,
       LOCAL_VIEW_MAX_DEPTH,
     );
     if (repNeighborhood.nodes.length > 0) {
       return localProjection(
+        model,
         visibleRef,
         repNeighborhood,
         foldedInstrumentCount,
@@ -308,10 +322,11 @@ export function buildEvidenceCanvasProjection(
     model.nodes as ThreadGraphNode[],
     allEdgesFallback,
   );
+  const compactedFallback = compactSysmlPartPairs(model, filteredFallback);
   return {
-    nodes: filteredFallback.nodes,
-    edges: filteredFallback.edges,
-    displayedCount: filteredFallback.nodes.length,
+    nodes: compactedFallback.nodes,
+    edges: compactedFallback.edges,
+    displayedCount: compactedFallback.nodes.length,
     foldedInstrumentCount,
     isFiltered: false,
     supportingNodeCount: filteredFallback.hiddenCount,
@@ -380,6 +395,7 @@ function bfsDepths(
  *     node, which is the natural reading the operator asked for.
  */
 function localProjection(
+  model: EvidenceGraphModel,
   focusRef: ThreadGraphRef,
   neighborhood: {
     readonly nodes: readonly ThreadGraphNode[];
@@ -388,19 +404,33 @@ function localProjection(
   foldedInstrumentCount: number,
 ): EvidenceCanvasProjection {
   const depths = bfsDepths(focusRef, neighborhood);
+  const compacted = compactSysmlPartPairs(model, neighborhood, focusRef);
+  const compactedDepths = new Map<string, number>();
+  for (const node of compacted.nodes) {
+    const key = graphRefKey(node.ref);
+    const memberKeys = compacted.memberRefKeysByCompositeRefKey.get(key) ??
+      [key];
+    const memberDepths = memberKeys.flatMap((memberKey) => {
+      const depth = depths.get(memberKey);
+      return depth === undefined ? [] : [depth];
+    });
+    if (memberDepths.length > 0) {
+      compactedDepths.set(key, Math.min(...memberDepths));
+    }
+  }
   const supportingRefKeys = new Set<string>(
-    neighborhood.nodes
+    compacted.nodes
       .filter((node) => isSupportingNode(node))
-      .map((node) => `${node.ref.kind}:${node.ref.id}`),
+      .map((node) => graphRefKey(node.ref)),
   );
 
   return {
-    nodes: neighborhood.nodes,
-    edges: neighborhood.edges,
-    displayedCount: neighborhood.nodes.length,
+    nodes: compacted.nodes,
+    edges: compacted.edges,
+    displayedCount: compacted.nodes.length,
     foldedInstrumentCount,
     isFiltered: true,
-    localDepthByRefKey: depths,
+    localDepthByRefKey: compactedDepths,
     localSupportingRefKeys: supportingRefKeys,
     supportingNodeCount: 0,
   };
@@ -503,6 +533,10 @@ export function buildExplorationKindProjection(
     visibleKeys.has(`${edge.to.kind}:${edge.to.id}`)
   );
   const hiddenByKind = essential.nodes.length - visibleNodes.length;
+  const compacted = compactSysmlPartPairs(model, {
+    nodes: visibleNodes,
+    edges: visibleEdges,
+  });
 
   // foldedInstrumentCount: how many analyze.* instruments were folded by the
   // model pipeline. The model's raw count also includes historical versions
@@ -514,9 +548,9 @@ export function buildExplorationKindProjection(
   );
 
   return {
-    nodes: visibleNodes,
-    edges: visibleEdges,
-    displayedCount: visibleNodes.length,
+    nodes: compacted.nodes,
+    edges: compacted.edges,
+    displayedCount: compacted.nodes.length,
     foldedInstrumentCount,
     isFiltered: false,
     // supportingNodeCount carries the count of nodes hidden by type filter.

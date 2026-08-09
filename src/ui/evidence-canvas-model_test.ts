@@ -282,6 +282,102 @@ Deno.test("buildEvidenceCanvasProjection — no focus returns full visible graph
   assertEquals(stubEdge !== undefined, true);
 });
 
+Deno.test("Evidence Map and Exploration share the same definition-backed SysML composites", () => {
+  const root = node("def-root", "part-definition", "syson");
+  const usage = node("usage-stem", "part-usage", "syson");
+  const definition = node("def-stem", "part-definition", "syson");
+  const step = node("step-stem", "artifact", "build123d");
+  usage.label = "stem";
+  definition.label = "FixedStem";
+  const structural = (
+    id: string,
+    from: ThreadGraphRef,
+    to: ThreadGraphRef,
+    relation: ThreadGraphEdge["relation"],
+  ): ThreadGraphEdge => ({
+    id,
+    from,
+    to,
+    relation,
+    rationale: id,
+    origin: "structure",
+  });
+  const model = buildEvidenceGraphModel({
+    nodes: [root, usage, definition, step],
+    edges: [
+      structural("contains", root.ref, usage.ref, "contains"),
+      structural("typed", usage.ref, definition.ref, "typed_by"),
+      structural("represented", definition.ref, step.ref, "represented_by"),
+    ],
+  }, emptyFamilyGraph);
+
+  const map = buildEvidenceCanvasProjection(model, 0, undefined, new Map());
+  const exploration = buildExplorationKindProjection(
+    model,
+    ALL_KINDS_VISIBLE,
+  );
+  const signature = (projection: typeof map) =>
+    projection.nodes.map((candidate) =>
+      `${candidate.ref.kind}:${candidate.ref.id}:${candidate.label}`
+    ).sort();
+
+  assertEquals(signature(map), signature(exploration));
+  assertEquals(signature(map), [
+    "artifact:step-stem:step-stem",
+    "part-definition:def-root:def-root",
+    "part-definition:def-stem:stem : FixedStem",
+  ]);
+  assertEquals(map.displayedCount, 3);
+});
+
+Deno.test("focusing a compact SysML member restores the exact usage-definition pair", () => {
+  const root = node("def-root", "part-definition", "syson");
+  const usage = node("usage-stem", "part-usage", "syson");
+  const definition = node("def-stem", "part-definition", "syson");
+  const edges: ThreadGraphEdge[] = [{
+    id: "contains",
+    from: root.ref,
+    to: usage.ref,
+    relation: "contains",
+    rationale: "root contains stem",
+    origin: "structure",
+  }, {
+    id: "typed",
+    from: usage.ref,
+    to: definition.ref,
+    relation: "typed_by",
+    rationale: "stem is typed by FixedStem",
+    origin: "structure",
+  }];
+  const model = buildEvidenceGraphModel(
+    { nodes: [root, usage, definition], edges },
+    emptyFamilyGraph,
+  );
+
+  for (const focus of [usage.ref, definition.ref]) {
+    const detail = buildEvidenceCanvasProjection(
+      model,
+      0,
+      focus,
+      new Map(),
+    );
+    assertEquals(detail.isFiltered, true);
+    assertEquals(
+      detail.nodes.map((candidate) => `${candidate.ref.kind}:${candidate.ref.id}`)
+        .sort(),
+      [
+        "part-definition:def-root",
+        "part-definition:def-stem",
+        "part-usage:usage-stem",
+      ],
+    );
+    assertEquals(
+      detail.edges.some((candidate) => candidate.id === "typed"),
+      true,
+    );
+  }
+});
+
 Deno.test("buildEvidenceCanvasProjection — focus on visible node returns bounded neighbourhood", () => {
   const { model, refA } = instrumentBridgeFixture();
   const projection = buildEvidenceCanvasProjection(
@@ -629,6 +725,7 @@ const ALL_KINDS_VISIBLE: Record<DisplayKind, boolean> = {
   "change": true,
   "consumption": true,
   "action": true,
+  "sysml-element": true,
 };
 
 /** Default map-mode kinds (matching workbench defaults). */
@@ -642,6 +739,7 @@ const DEFAULT_MAP_KINDS: Record<DisplayKind, boolean> = {
   "change": false,
   "consumption": false,
   "action": true,
+  "sysml-element": true,
 };
 
 Deno.test(

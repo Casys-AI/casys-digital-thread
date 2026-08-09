@@ -66,6 +66,27 @@ SysON PartUsage <-> Workbench component <-> ERPNext Item
                               +-> build123d artifact, when reviewed
 ```
 
+The Evidence read model projects the exact SysON identity pair as separate `PartUsage`
+and `PartDefinition` nodes, preserves the catalog parent hierarchy, and links the
+definition to its authoritative STEP when that reviewed CAD binding exists. This is a
+structural overlay in the existing Evidence canvas; it is never reconstructed from
+labels and does not replace the Product component workspace.
+
+The architecture artifact anchors the root `PartDefinition`. Each parent definition then
+`contains` its exact usage, each usage is `typed_by` its definition, and each definition
+may be `represented_by` its authoritative STEP and exact GLB presentation derivative.
+The GLB remains inspectable presentation evidence, not CAD authority. A reused
+definition therefore keeps several usage occurrences but one exact pair of definition
+assets; the browser never invents a direct usage-to-file relation.
+
+The default Evidence and Activity canvases display a UI-only quotient of that exact
+structure. A definition used by one occurrence appears as one component node using the
+typed-usage notation `stem : FixedStem`; selecting it restores the exact `PartUsage`,
+`typed_by`, and `PartDefinition` records in the local detail. A definition referenced by
+two or more distinct usages is never compacted: the shared definition and every usage
+remain separate so reuse is visible. The raw Workbench graph and the SysON inspector
+inventory always retain both identities regardless of this presentation.
+
 The **Parts** workspace keeps the component selected while switching provider facets.
 The right inspector follows the selected provider evidence. No iframe or provider UI
 runtime is mounted.

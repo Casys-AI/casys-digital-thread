@@ -23,9 +23,9 @@ import type {
 } from "./types.ts";
 import {
   type InspectorContext,
+  resolveToolFacetInventory,
   resolveToolInspectorContext,
   TOOL_FACETS,
-  toolId,
   type WorkbenchToolId,
   type WorkbenchToolIdentity,
 } from "./tool-inspector-model.ts";
@@ -42,6 +42,8 @@ export interface ToolInspectorPanelProps {
   /** Optional richer record for tabs and native full-view navigation. */
   selection?: ThreadRef;
   onSelect?: (selection: ThreadRef) => void;
+  /** Selects an exact graph-only entity such as PartDefinition or PartUsage. */
+  onSelectGraphNode?: (node: ThreadGraphNode) => void;
   /**
    * Navigation only. The panel never mounts a provider app or fetches data.
    * The Workbench shell decides whether a trusted native full view exists.
@@ -64,6 +66,7 @@ export function ToolInspectorPanel({
   node,
   selection,
   onSelect,
+  onSelectGraphNode,
   onOpenToolView,
   availableFullViews,
 }: ToolInspectorPanelProps): JSX.Element {
@@ -79,7 +82,11 @@ export function ToolInspectorPanel({
           Choose a node or an edge to inspect the owning tool and the evidence
           it contributes to {snapshot.subject.label}.
         </p>
-        <ToolFacetRail snapshot={snapshot} onSelect={onSelect} />
+        <ToolFacetRail
+          snapshot={snapshot}
+          onSelect={onSelect}
+          onSelectGraphNode={onSelectGraphNode}
+        />
         <EmptyState>
           No engineering tool is selected. The Workbench will not execute a tool
           while you browse the graph.
@@ -126,6 +133,7 @@ export function ToolInspectorPanel({
         snapshot={snapshot}
         activeTool={context.owner.id}
         onSelect={onSelect}
+        onSelectGraphNode={onSelectGraphNode}
       />
 
       <MetricGrid className="tool-inspector-metrics" items={metrics} />
@@ -135,6 +143,10 @@ export function ToolInspectorPanel({
       {context.owner.id !== "digital-thread" && (
         <>
           <div class="tool-inspector-sections">
+            <GraphOnlySummary
+              nodes={context.graphOnlyNodes}
+              onSelect={onSelectGraphNode}
+            />
             <ArtifactSummary
               artifacts={context.artifacts}
               onSelect={onSelect}
@@ -177,37 +189,69 @@ export function ToolInspectorPanel({
   );
 }
 
-function ToolFacetRail({ snapshot, activeTool, onSelect }: {
+function ToolFacetRail({
+  snapshot,
+  activeTool,
+  onSelect,
+  onSelectGraphNode,
+}: {
   snapshot: ThreadWorkbenchSnapshot;
   activeTool?: WorkbenchToolId;
   onSelect?: (selection: ThreadRef) => void;
+  onSelectGraphNode?: (node: ThreadGraphNode) => void;
 }): JSX.Element {
   return (
     <nav class="tool-facet-rail" aria-label="Engineering tool facets">
       {TOOL_FACETS.map((tool) => {
-        const stages = snapshot.flow.filter((stage) =>
-          toolId(stage.system) === tool.id
+        const inventory = resolveToolFacetInventory(snapshot, tool.id);
+        const recordTarget = inventory.records.find((record) =>
+          record.kind !== "change"
         );
-        const target = stages.find((stage) => stage.selection.kind !== "change")
-          ?.selection;
+        const graphTarget = inventory.graphOnlyNodes[0];
+        const canSelect = recordTarget ? Boolean(onSelect) : Boolean(
+          graphTarget && onSelectGraphNode,
+        );
         return (
           <button
             type="button"
             key={tool.id}
             data-active={activeTool === tool.id}
-            data-present={stages.length > 0}
+            data-present={inventory.itemCount > 0}
             aria-pressed={activeTool === tool.id}
-            disabled={!target || !onSelect}
-            onClick={() => target && onSelect?.(target)}
+            disabled={!canSelect}
+            onClick={() => {
+              if (recordTarget) onSelect?.(recordTarget);
+              else if (graphTarget) onSelectGraphNode?.(graphTarget);
+            }}
             title={tool.role}
           >
             <span>{toolMonogram(tool)}</span>
             <strong>{tool.label}</strong>
-            <small>{stages.length} item{stages.length === 1 ? "" : "s"}</small>
+            <small>
+              {inventory.itemCount} item{inventory.itemCount === 1 ? "" : "s"}
+            </small>
           </button>
         );
       })}
     </nav>
+  );
+}
+
+function GraphOnlySummary({ nodes, onSelect }: {
+  nodes: ThreadGraphNode[];
+  onSelect?: (node: ThreadGraphNode) => void;
+}): JSX.Element | null {
+  if (!nodes.length) return null;
+  return (
+    <InspectorSection title="SysML structure" count={nodes.length}>
+      {nodes.map((node) => (
+        <GraphContextRow
+          key={`${node.ref.kind}:${node.ref.id}`}
+          node={node}
+          onSelect={onSelect}
+        />
+      ))}
+    </InspectorSection>
   );
 }
 
@@ -361,6 +405,34 @@ function ContextRow({ target, eyebrow, title, detail, onSelect }: {
         class="tool-inspector-row"
         type="button"
         onClick={() => onSelect(target)}
+      >
+        {content}
+        <b aria-hidden="true">↗</b>
+      </button>
+    )
+    : <div class="tool-inspector-row">{content}</div>;
+}
+
+function GraphContextRow({ node, onSelect }: {
+  node: ThreadGraphNode;
+  onSelect?: (node: ThreadGraphNode) => void;
+}): JSX.Element {
+  const entityLabel = node.ref.kind === "part-definition"
+    ? "PartDefinition"
+    : "PartUsage";
+  const content = (
+    <>
+      <small>SysON · {entityLabel}</small>
+      <strong>{node.label}</strong>
+      <span>{node.summary}</span>
+    </>
+  );
+  return onSelect
+    ? (
+      <button
+        class="tool-inspector-row"
+        type="button"
+        onClick={() => onSelect(node)}
       >
         {content}
         <b aria-hidden="true">↗</b>

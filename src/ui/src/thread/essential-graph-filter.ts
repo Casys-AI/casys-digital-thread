@@ -60,7 +60,8 @@ export type DisplayKind =
   | "violation"
   | "change"
   | "consumption"
-  | "action";
+  | "action"
+  | "sysml-element";
 
 /**
  * Human-readable English labels for each DisplayKind.
@@ -76,6 +77,7 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
   "change": "Changes",
   "consumption": "Consumptions",
   "action": "Actions",
+  "sysml-element": "SysML component view",
 };
 
 /**
@@ -90,6 +92,12 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
  * model continue to work without a circular dependency.
  */
 export function displayKindOf(node: ThreadGraphNode): DisplayKind {
+  if (
+    node.entityKind === "part-definition" ||
+    node.entityKind === "part-usage"
+  ) {
+    return "sysml-element";
+  }
   if (
     node.entityKind === "artifact" &&
     node.artifactKind !== undefined &&

@@ -46,12 +46,22 @@ export type ToolInspectorGraphSelection =
 export interface InspectorContext {
   owner: WorkbenchToolIdentity;
   target?: ThreadGraphRef | ThreadRef;
+  /** Exact read-model entities which exist only in the graph projection. */
+  graphOnlyNodes: ThreadGraphNode[];
   artifacts: ThreadArtifact[];
   observations: ThreadObservation[];
   requirements: ThreadRequirement[];
   violations: ThreadViolation[];
   actions: ThreadAction[];
   connection: "thread" | "connected" | "independent";
+}
+
+export interface ToolFacetInventory {
+  /** Canonical records exposed by the flow, deduplicated by exact reference. */
+  records: ThreadRef[];
+  /** Structural read-model entities which have no canonical ThreadRef. */
+  graphOnlyNodes: ThreadGraphNode[];
+  itemCount: number;
 }
 
 export const TOOL_FACETS: readonly WorkbenchToolIdentity[] = [
@@ -92,6 +102,48 @@ export const THREAD_OWNER: WorkbenchToolIdentity = {
   label: "Digital thread",
   role: "Change propagation and linked evidence across the engineering subject",
 };
+
+/**
+ * Builds the drawer inventory for one provider facet.
+ *
+ * Canonical records come from the flow because it already owns the reviewed
+ * provider attribution. PartDefinition and PartUsage are added from the graph
+ * because they deliberately have no canonical ThreadRef. Their optional
+ * `selection` aliases are not counted as extra artifacts: the flow record and
+ * the graph-only entity remain two distinct engineering items, while a shared
+ * artifact is counted only once.
+ */
+export function resolveToolFacetInventory(
+  snapshot: ThreadWorkbenchSnapshot,
+  provider: WorkbenchToolId,
+): ToolFacetInventory {
+  const recordsByRef = new Map<string, ThreadRef>();
+  for (const stage of snapshot.flow) {
+    if (toolId(stage.system) !== provider) continue;
+    const key = graphRefKey(stage.selection);
+    if (!recordsByRef.has(key)) recordsByRef.set(key, stage.selection);
+  }
+
+  const graphOnlyByRef = new Map<string, ThreadGraphNode>();
+  for (const node of snapshot.graph.nodes) {
+    if (
+      toolId(node.system) !== provider ||
+      (node.ref.kind !== "part-definition" && node.ref.kind !== "part-usage")
+    ) continue;
+    const key = graphRefKey(node.ref);
+    if (!graphOnlyByRef.has(key)) graphOnlyByRef.set(key, node);
+  }
+  const graphOnlyNodes = [...graphOnlyByRef.values()].sort(
+    compareGraphOnlyNodes,
+  );
+  const records = [...recordsByRef.values()];
+
+  return {
+    records,
+    graphOnlyNodes,
+    itemCount: records.length + graphOnlyNodes.length,
+  };
+}
 
 /** Prevents a graph-only selection from inheriting an unrelated old record. */
 export function resolveToolInspectorTarget(
@@ -146,6 +198,10 @@ export function resolveToolInspectorContext(
   const targetRef = target.node?.ref ?? target.record;
 
   if (targetRef) addRef(targetRef);
+  // Graph-only SysML entities retain a richer canonical artifact selection.
+  // Add it through the same sets as every other record so a shared model
+  // artifact is exposed once even when many parts point to it.
+  if (target.node?.selection) addRef(target.node.selection);
   if (target.node) {
     for (const edge of snapshot.graph.edges) {
       if (sameGraphRef(edge.from, target.node.ref)) addRef(edge.to);
@@ -247,6 +303,8 @@ export function resolveToolInspectorContext(
   return {
     owner,
     target: targetRef,
+    graphOnlyNodes:
+      resolveToolFacetInventory(snapshot, owner.id).graphOnlyNodes,
     artifacts,
     observations,
     requirements,
@@ -279,6 +337,8 @@ export function resolveToolInspectorContext(
       case "change":
       case "consumption":
       case "evaluation":
+      case "part-definition":
+      case "part-usage":
         break;
     }
   }
@@ -315,6 +375,10 @@ export function graphNodeForSelection(
   snapshot: ThreadWorkbenchSnapshot,
   selection: ThreadRef,
 ): ThreadGraphNode | undefined {
+  const exact = snapshot.graph.nodes.find((node) =>
+    node.ref.kind === selection.kind && node.ref.id === selection.id
+  );
+  if (exact) return exact;
   return snapshot.graph.nodes.findLast(
     (node) => node.selection && sameRef(node.selection, selection),
   );
@@ -403,4 +467,16 @@ function sameGraphRef(left: ThreadGraphRef, right: ThreadGraphRef): boolean {
 
 function graphRefKey(ref: ThreadGraphRef): string {
   return `${ref.kind}:${ref.id}`;
+}
+
+function compareGraphOnlyNodes(
+  left: ThreadGraphNode,
+  right: ThreadGraphNode,
+): number {
+  const kindOrder = left.ref.kind.localeCompare(right.ref.kind);
+  if (kindOrder !== 0) return kindOrder;
+  const labelOrder = left.label.localeCompare(right.label);
+  return labelOrder !== 0
+    ? labelOrder
+    : left.ref.id.localeCompare(right.ref.id);
 }

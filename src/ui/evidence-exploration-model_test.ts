@@ -140,6 +140,20 @@ Deno.test(
 );
 
 Deno.test(
+  "normalizeEdgeDirection preserves the recorded SysML hierarchy and CAD representation directions",
+  () => {
+    for (
+      const relation of ["contains", "typed_by", "represented_by"] as const
+    ) {
+      assertEquals(normalizeEdgeDirection("A", "B", relation), {
+        from: "A",
+        to: "B",
+      });
+    }
+  },
+);
+
+Deno.test(
   "normalizeEdgeDirection: changes conserve la direction (from=événement, to=artefact)",
   () => {
     const result = normalizeEdgeDirection("CHG", "ART", "changes");
@@ -148,15 +162,12 @@ Deno.test(
   },
 );
 
-Deno.test(
-  "normalizeEdgeDirection: supersedes est inversé (les données font nouveau --supersedes--> ancien)",
-  () => {
-    const result = normalizeEdgeDirection("V2", "V1", "supersedes");
-    // V2 --supersedes--> V1 (lecture anglaise : le nouveau remplace l'ancien) :
-    // l'ancien V1 est en amont (gauche), inversion requise.
-    assertEquals(result, { from: "V1", to: "V2" });
-  },
-);
+Deno.test("normalizeEdgeDirection preserves projected supersession direction", () => {
+  assertEquals(normalizeEdgeDirection("V1", "V2", "supersedes"), {
+    from: "V1",
+    to: "V2",
+  });
+});
 
 Deno.test(
   "normalizeEdgeDirection: derived_from conserve la direction stockée (convention réelle : source --derived_from--> dérivé)",
@@ -198,32 +209,26 @@ Deno.test(
   },
 );
 
-Deno.test(
-  "normalizeEdgeDirection: traces_to est inversé (from=impl, to=exigence → exigence en amont)",
-  () => {
-    const result = normalizeEdgeDirection("IMPL", "REQ", "traces_to");
-    // IMPL --traces_to--> REQ : REQ est en amont, inversion.
-    assertEquals(result, { from: "REQ", to: "IMPL" });
-  },
-);
+Deno.test("normalizeEdgeDirection preserves projected trace direction", () => {
+  assertEquals(normalizeEdgeDirection("SOURCE", "RESULT", "traces_to"), {
+    from: "SOURCE",
+    to: "RESULT",
+  });
+});
 
-Deno.test(
-  "normalizeEdgeDirection: caused_by est inversé (from=effet, to=cause → cause en amont)",
-  () => {
-    const result = normalizeEdgeDirection("EFFECT", "CAUSE", "caused_by");
-    // EFFECT --caused_by--> CAUSE : CAUSE est en amont, inversion.
-    assertEquals(result, { from: "CAUSE", to: "EFFECT" });
-  },
-);
+Deno.test("normalizeEdgeDirection preserves projected cause direction", () => {
+  assertEquals(normalizeEdgeDirection("CAUSE", "EFFECT", "caused_by"), {
+    from: "CAUSE",
+    to: "EFFECT",
+  });
+});
 
-Deno.test(
-  "normalizeEdgeDirection: addresses est inversé (from=action, to=violation → violation en amont)",
-  () => {
-    const result = normalizeEdgeDirection("ACTION", "VIOLATION", "addresses");
-    // ACTION --addresses--> VIOLATION : VIOLATION est en amont, inversion.
-    assertEquals(result, { from: "VIOLATION", to: "ACTION" });
-  },
-);
+Deno.test("normalizeEdgeDirection preserves projected remediation direction", () => {
+  assertEquals(normalizeEdgeDirection("VIOLATION", "ACTION", "addresses"), {
+    from: "VIOLATION",
+    to: "ACTION",
+  });
+});
 
 // ---------------------------------------------------------------------------
 // 2. Source strictement à gauche de ce qui en dérive sur la topologie réelle
@@ -497,6 +502,35 @@ Deno.test(
       "#123456",
       "La couleur du nœud syson doit utiliser tokens.cyan",
     );
+  },
+);
+
+Deno.test(
+  "build123d-sandbox uses the existing CAD color instead of the muted fallback",
+  () => {
+    const sandboxCad = node(
+      "CAD-SANDBOX",
+      "artifact",
+      "build123d-sandbox",
+      "artifact",
+    );
+    const customTokens: CssTokens = {
+      ...FALLBACK_TOKENS,
+      amber: "#a15c00",
+      muted: "#777777",
+    };
+    const model = buildMinimalModel([sandboxCad], [], customTokens);
+
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:CAD-SANDBOX", "color"),
+      "#a15c00",
+    );
+    assertEquals(model.systemLegend, [{
+      system: "build123d-sandbox",
+      label: "build123d · CAD",
+      color: "#a15c00",
+      count: 1,
+    }]);
   },
 );
 
@@ -791,6 +825,8 @@ Deno.test(
       ["change", "change"],
       ["consumption", "consumption"],
       ["action", "action"],
+      ["part-definition", "sysml-element"],
+      ["part-usage", "sysml-element"],
     ];
     for (const [entityKind, expected] of cases) {
       const n = node(
@@ -821,6 +857,7 @@ Deno.test(
       "change",
       "consumption",
       "action",
+      "sysml-element",
     ];
     for (const kind of expectedKinds) {
       const label = DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];

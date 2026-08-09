@@ -14,9 +14,9 @@
  *   The component stays thin and testable. This module imports no browser APIs;
  *   colors come in as a CssTokens parameter so Deno tests can pass mock values.
  *
- * Layout strategy: every relation type is normalized to a canonical
- * upstream → downstream direction (see normalizeEdgeDirection) before dagre
- * receives the graph. dagre (rankdir: LR) assigns x = causal depth, y =
+ * Layout strategy: the BFF already projects every relation in visual
+ * dependency/source → result/consumer direction. The browser preserves that
+ * exact direction before dagre receives the graph. dagre (rankdir: LR) assigns x = causal depth, y =
  * barycentric within each rank. The layout is synchronous and deterministic:
  * same inputs always yield the same positions. forceatlas2 is no longer used.
  */
@@ -169,13 +169,10 @@ export interface ExplorationModel {
 // ---------------------------------------------------------------------------
 
 /**
- * Normalizes a directed edge to the canonical causal direction for the dagre
- * layout. Returns { from, to } where `from` is always causally UPSTREAM
- * (rendered on the LEFT) and `to` is always causally DOWNSTREAM (rendered on
- * the RIGHT).
- *
- * Every relation type is documented explicitly. Direction is never inferred
- * from heuristics or guessed — each case names who is upstream of whom.
+ * Returns the visual direction already established by the BFF projection.
+ * `ThreadGraphEdge.from` is dependency/source and `to` is result/consumer;
+ * re-reading English relation names here used to reverse `traces_to` twice and
+ * made geometry bundles absorb every build123d asset into a false star.
  *
  * This function is exported so tests can verify each relation's direction
  * independently of dagre internals.
@@ -183,60 +180,9 @@ export interface ExplorationModel {
 export function normalizeEdgeDirection(
   fromKey: string,
   toKey: string,
-  relation: ThreadGraphEdge["relation"],
+  _relation: ThreadGraphEdge["relation"],
 ): { from: string; to: string } {
-  switch (relation) {
-    /**
-     * Data convention verified on the live r104 graph (2026-08-06): these
-     * relations are already stored flow-oriented — edge.from is causally
-     * UPSTREAM, edge.to is DOWNSTREAM. No reversal.
-     *
-     * input_to     : model-container --input_to-->     architecture-model
-     * source_of    : computed-evidence --source_of-->  observation
-     * changes      : change-record --changes-->        produced-artifact
-     * derived_from : model-container --derived_from--> architecture-model
-     *                (the relation NAME reads backwards; the stored direction
-     *                 is source → derived — verified on all 65 live edges)
-     * uses         : source-artifact --uses-->         input-attestation
-     * evaluates    : requirement --evaluates-->        evaluation-record
-     * evidences    : result-artifact --evidences-->    evaluation-record
-     */
-    case "input_to":
-    case "source_of":
-    case "changes":
-    case "derived_from":
-    case "uses":
-    case "evaluates":
-    case "evidences":
-      return { from: fromKey, to: toKey };
-
-    /**
-     * These relations are stored downstream → upstream and must be reversed
-     * so the causal origin lands on the left.
-     *
-     * supersedes : newer --supersedes--> older (English reading; verified:
-     *              the @2 CAD plan supersedes the r8 correction record).
-     *              Version history reads left → right, so dagre gets
-     *              older → newer.
-     * traces_to  : implementation-artifact --traces_to--> requirement.
-     *              The requirement is the upstream specification.
-     * caused_by  : effect --caused_by--> cause (no live occurrence on r104;
-     *              direction from the relation's English reading).
-     * addresses  : fix --addresses--> issue (no live occurrence on r104;
-     *              direction from the relation's English reading).
-     */
-    case "supersedes":
-    case "traces_to":
-    case "caused_by":
-    case "addresses":
-      return { from: toKey, to: fromKey };
-
-    /**
-     * Unknown relation: keep the stored direction rather than guessing.
-     */
-    default:
-      return { from: fromKey, to: toKey };
-  }
+  return { from: fromKey, to: toKey };
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +432,7 @@ export function buildExplorationModel(
 const SYSTEM_LEGEND_LABEL: Record<string, string> = {
   "syson": "SysON · model",
   "build123d": "build123d · CAD",
+  "build123d-sandbox": "build123d · CAD",
   "calculix": "CalculiX · FEA",
   "modelica": "Modelica · simulation",
   "openmodelica": "Modelica · simulation",
@@ -618,6 +565,7 @@ function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
     case "syson":
       return tokens.cyan;
     case "build123d":
+    case "build123d-sandbox":
       return tokens.amber;
     case "calculix":
       return tokens.red;

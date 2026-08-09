@@ -822,7 +822,9 @@ function isThreadGraphRef(value: unknown): value is ThreadGraphRef {
       reference.kind === "evaluation" ||
       reference.kind === "violation" ||
       reference.kind === "change" ||
-      reference.kind === "action");
+      reference.kind === "action" ||
+      reference.kind === "part-definition" ||
+      reference.kind === "part-usage");
 }
 
 function isThreadRef(value: unknown): value is ThreadRef {
@@ -847,7 +849,10 @@ function isThreadGraphRelation(value: unknown): value is ThreadGraphRelation {
     value === "addresses" ||
     value === "supersedes" ||
     value === "input_to" ||
-    value === "source_of";
+    value === "source_of" ||
+    value === "contains" ||
+    value === "typed_by" ||
+    value === "represented_by";
 }
 
 function isThreadFreshness(value: unknown): value is ThreadFreshness {

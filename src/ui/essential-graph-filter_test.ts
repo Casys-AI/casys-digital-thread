@@ -157,6 +157,21 @@ Deno.test("isSupportingNode: observation is essential (never supporting)", () =>
   assertEquals(isSupportingNode(observationNode("obs-1")), false);
 });
 
+Deno.test("isSupportingNode keeps SysML PartDefinition and PartUsage nodes essential", () => {
+  for (const kind of ["part-definition", "part-usage"] as const) {
+    const node: ThreadGraphNode = {
+      id: `graph:${kind}:element`,
+      ref: ref("element", kind),
+      label: kind,
+      summary: kind,
+      system: "syson",
+      entityKind: kind,
+      freshness: "fresh",
+    };
+    assertEquals(isSupportingNode(node), false);
+  }
+});
+
 Deno.test("isSupportingNode: artifact with non-supporting artifactKind is essential", () => {
   assertEquals(isSupportingNode(artifactNode("a", "step", "calculix")), false);
   assertEquals(isSupportingNode(artifactNode("a", "stl", "build123d")), false);

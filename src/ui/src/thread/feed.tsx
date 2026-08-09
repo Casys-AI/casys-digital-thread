@@ -21,6 +21,7 @@ import {
   buildFeedComponentCounts,
   buildFilterOptions,
   compactLineageCounters,
+  compactLineageProjection,
   filterFeedNodesByScope,
   isActivityEntryExpanded,
   refKey,
@@ -404,7 +405,7 @@ export function ThreadFeed({
                         {compact
                           ? (
                             <span>
-                              {compact.total} facts · depth 2 ·{" "}
+                              {compact.total} items · depth 2 ·{" "}
                               {compact.upstream} upstream / {compact.downstream}
                               {" "}
                               downstream
@@ -544,9 +545,10 @@ function FeedLineageGraph({
   ariaLabel,
 }: FeedLineageGraphProps): JSX.Element {
   // Bounded neighborhood depth 2: direct neighbours + their direct neighbours.
-  // Keeps the card-level sigma view compact (profondeur bornée à 2 sauts).
+  // The shared essential mask then folds display-only plumbing exactly as it
+  // does for the counters in the card header.
   const neighborhood = useMemo(
-    () => evidenceModel.boundedNeighborhood(focusRef, 2),
+    () => compactLineageProjection(evidenceModel, focusRef),
     [evidenceModel, focusRef],
   );
 
@@ -558,7 +560,7 @@ function FeedLineageGraph({
       displayedCount: neighborhood.nodes.length,
       foldedInstrumentCount: 0,
       isFiltered: true,
-      supportingNodeCount: 0,
+      supportingNodeCount: neighborhood.hiddenSupportingCount,
     };
   }, [neighborhood]);
 

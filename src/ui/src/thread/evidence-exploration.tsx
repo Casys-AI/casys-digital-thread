@@ -30,6 +30,7 @@ import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type { ThreadGraphRef } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
 import { graphRelationAccessibleLabel } from "./graph-selection-model.ts";
+import { isUiOnlySysmlCompositeEdge } from "./sysml-composite-projection.ts";
 
 export interface EvidenceExplorationProps {
   evidenceModel: EvidenceGraphModel;
@@ -160,7 +161,7 @@ export function EvidenceExploration({
     if (!compact) {
       sigma.on("clickEdge", ({ edge: edgeKey }) => {
         const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
-        if (!attrs) return;
+        if (!attrs || isUiOnlySysmlCompositeEdge(attrs.edge)) return;
         onSelectionChangeRef.current?.({
           kind: "edge",
           id: attrs.edgeId,
@@ -360,6 +361,7 @@ export function EvidenceExploration({
     }> = [];
     explorationModel.graph.forEachEdge((key, attrs, source, target) => {
       if (!visibleNodeKeys.has(source) || !visibleNodeKeys.has(target)) return;
+      if (isUiOnlySysmlCompositeEdge(attrs.edge)) return;
       relationRecords.push({
         key,
         occurrenceKey: attrs.occurrenceKey,
@@ -418,7 +420,7 @@ export function EvidenceExploration({
                 <span
                   key={item.system}
                   class="evidence-exploration-legend-chip"
-                  aria-label={`${item.label} — ${item.count} facts`}
+                  aria-label={`${item.label} — ${item.count} visible items`}
                 >
                   <span
                     class="evidence-exploration-legend-chip-dot"
@@ -442,7 +444,7 @@ export function EvidenceExploration({
                 <span
                   key={item.kind}
                   class="evidence-exploration-legend-chip"
-                  aria-label={`${item.label} — ${item.count} facts`}
+                  aria-label={`${item.label} — ${item.count} visible items`}
                 >
                   <span class="evidence-exploration-legend-chip-name">
                     {item.label}
@@ -497,14 +499,14 @@ function ExplorationKeyboardNavigation({
   return (
     <details class="evidence-exploration-relations">
       <summary>
-        ACCESSIBLE EVIDENCE TABLE ({nodes.length} facts · {edges.length}{" "}
+        ACCESSIBLE EVIDENCE TABLE ({nodes.length} items · {edges.length}{" "}
         relations)
       </summary>
       <p>Use Tab to reach a record, then press Enter to inspect it.</p>
       <div class="evidence-exploration-table-wrap">
         <table>
           <caption class="sr-only">
-            Visible evidence facts and relations
+            Visible evidence items and relations
           </caption>
           <thead>
             <tr>
@@ -516,7 +518,7 @@ function ExplorationKeyboardNavigation({
           <tbody>
             {nodes.map((node) => (
               <tr key={node.key}>
-                <td>Fact</td>
+                <td>Item</td>
                 <td>{node.label}</td>
                 <td>
                   <button
