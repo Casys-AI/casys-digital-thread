@@ -44,6 +44,10 @@
 | [`src/adapters/executors/model-write-architecture-run-executor.ts`](../../src/adapters/executors/model-write-architecture-run-executor.ts)                                               | Generic trusted executor for `model.write-architecture@1`                                                                                                                                                               |
 | [`src/adapters/wal/file-architecture-attempt-store.ts`](../../src/adapters/wal/file-architecture-attempt-store.ts)                                                                       | Write-ahead no-blind-retry store for generic architecture insertions                                                                                                                                                    |
 | [`src/adapters/projectors/product-structure-catalog.ts`](../../src/adapters/projectors/product-structure-catalog.ts)                                                                     | Generic projector reading strict `architecture-capture/2.0`: causal tip, PartUsage occurrence hierarchy, exact seed/predecessor evidence; quantity is one reviewed occurrence, never inferred BOM/provider multiplicity |
+| [`src/domain/platform/requirements-proposal.ts`](../../src/domain/platform/requirements-proposal.ts)                                                                                     | Generic integer scalar-requirements proposal grammar, target derivation, enrichment plan, and fail-closed parser                                                                                                        |
+| [`src/adapters/extractors/syson-requirements-extractor.ts`](../../src/adapters/extractors/syson-requirements-extractor.ts)                                                               | Re-extracts SysON constraints and verifies their exact metric, operator, threshold, and unit                                                                                                                            |
+| [`src/adapters/executors/model-write-requirements-run-executor.ts`](../../src/adapters/executors/model-write-requirements-run-executor.ts)                                               | Generic trusted executor for `model.write-requirements@1`                                                                                                                                                               |
+| [`src/adapters/wal/file-requirements-attempt-store.ts`](../../src/adapters/wal/file-requirements-attempt-store.ts)                                                                       | Write-ahead no-blind-retry and quarantine state for generic requirements writes                                                                                                                                         |
 | [`src/adapters/captures/file-capture-store.ts`](../../src/adapters/captures/file-capture-store.ts)                                                                                       | One content-addressed capture engine, typed per evidence family                                                                                                                                                         |
 | [`src/adapters/wal/file-syson-model-seed-attempt-store.ts`](../../src/adapters/wal/file-syson-model-seed-attempt-store.ts)                                                               | Write-ahead no-blind-retry state for non-idempotent SysON writes                                                                                                                                                        |
 | [`src/domain/platform/geometry-proposal.ts`](../../src/domain/platform/geometry-proposal.ts)                                                                                             | Generic geometry manifest types, `encodeGeometryDecisionParameters`, and MRTR parameter encoding for `design.write-geometry@1`                                                                                          |
@@ -66,35 +70,37 @@
 | `deno task thread:capture-syson-inventory`                                                                                                                                               | Read-only SysON inventory capture; writes immutable local capture file                                                                                                                                                  |
 | [`state/fixtures/`](../../state/fixtures/)                                                                                                                                               | Explicitly labelled demo evidence                                                                                                                                                                                       |
 | `state/local/engineering-projects/`                                                                                                                                                      | Ignored immutable active project revisions and CAS claims                                                                                                                                                               |
-| `state/local/engineering-project-run-leases/`                                                                                                                                            | Empty local OS lock targets for one trusted run; not evidence                                                                                                                                                           |
+| `state/local/engineering-project-run-leases/`                                                                                                                                            | Empty local OS lock targets for executor-owned scopes; generic Thread writers share an exact-basis scope; not evidence                                                                                                  |
 | `state/local/syson-model-seed-captures/`                                                                                                                                                 | Content-addressed normalized r2 container captures                                                                                                                                                                      |
 | `state/local/syson-model-seed-attempts/`                                                                                                                                                 | Recovery control state for uncertain SysON writes; not evidence                                                                                                                                                         |
 | `state/local/architecture-captures/`                                                                                                                                                     | Generic architecture-capture/2.0 CAS captures (model.write-architecture@1): hashed parent-to-usage-to-type graph and causal predecessor chain                                                                           |
 | `state/local/architecture-attempts/`                                                                                                                                                     | Recovery control state for uncertain generic SysON architecture writes                                                                                                                                                  |
-| `state/local/geometry-draft-captures/`                                                                                                                                                   | Content-addressed draft capture JSON files (one per `build123d_export` call); never in `ThreadSnapshot`; keyed by SHA-256 of the serialized draft manifest                                                              |
-| `state/local/geometry-draft-assets/<sha256>`                                                                                                                                             | Raw binary geometry assets (STEP/STL/glTF) produced by `build123d_export`; file name is the SHA-256 digest of the bytes; served read-only by `/api/draft-assets/<digest>`                                               |
-| `state/local/geometry-captures/`                                                                                                                                                         | Content-addressed geometry-artifact/1.0 CAS captures written by `design.write-geometry@1` after human MRTR approval; monotony ratchet prevents silently dropping a sealed geometry artifact                             |
+| `state/local/requirements-captures/`                                                                                                                                                     | Content-addressed `requirements-capture/2.0` records bound to the exact target PartDefinition, native RequirementUsage readback, and architecture basis; predecessor lineage is carried by the Thread extension         |
+| `state/local/requirements-attempts/`                                                                                                                                                     | Recovery control and quarantine state for uncertain generic SysON requirements writes                                                                                                                                   |
+| `state/local/geometry-draft-captures/`                                                                                                                                                   | Content-addressed `geometry-draft-capture/1.1` JSON files, one per preview; records the exact `build123d-sandbox` run and never enters a `ThreadSnapshot`                                                               |
+| `state/local/geometry-draft-assets/<sha256>`                                                                                                                                             | Raw STEP, STL, or binary GLB preview bytes keyed by their recomputed SHA-256; served read-only by `/api/draft-assets/<digest>`                                                                                          |
+| `state/local/geometry-captures/`                                                                                                                                                         | Content-addressed `geometry-capture/1.1` records written by `design.write-geometry@1`; separates local seal provenance from sandbox binary provenance and retains the monotony ratchet                                  |
 
 ## Local endpoints
 
-| Endpoint                     | Owner                       | Purpose                                                                      |
-| ---------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
-| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                            |
-| `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                           |
-| `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                     |
-| `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | CAD execution and exports                                                    |
-| `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Agent-proposed geometry, private export volume                               |
-| `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Meshing and static FEA                                                       |
-| `http://127.0.0.1:3016/mcp`  | `mcp-modelica`              | Approved simulations and run records                                         |
-| `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | FDM printability checks on produced STL                                      |
-| `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                              |
-| `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                     |
-| `http://127.0.0.1:3023/mcp`  | `mcp-spice`                 | ngspice operating points and transients                                      |
-| `http://127.0.0.1:3020/mcp`  | `deno task start`           | Fleet reads plus agent project control                                       |
-| `http://127.0.0.1:3021/`     | `deno task preview:browser` | Console MCP App browser harness                                              |
-| `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Canonical project cockpit and live Project tab                               |
-| `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Direct engineering-view development preview                                  |
-| `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft binary; 404 if not present; Cache-Control: no-store |
+| Endpoint                     | Owner                       | Purpose                                                                                   |
+| ---------------------------- | --------------------------- | ----------------------------------------------------------------------------------------- |
+| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                                         |
+| `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                                        |
+| `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                                  |
+| `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | CAD execution and exports                                                                 |
+| `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Agent-proposed geometry, private export volume                                            |
+| `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Meshing and static FEA                                                                    |
+| `http://127.0.0.1:3016/mcp`  | `mcp-modelica`              | Approved simulations and run records                                                      |
+| `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | FDM printability checks on produced STL                                                   |
+| `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                                           |
+| `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                                  |
+| `http://127.0.0.1:3023/mcp`  | `mcp-spice`                 | ngspice operating points and transients                                                   |
+| `http://127.0.0.1:3020/mcp`  | `deno task start`           | Fleet reads plus agent project control                                                    |
+| `http://127.0.0.1:3021/`     | `deno task preview:browser` | Console MCP App browser harness                                                           |
+| `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Canonical project cockpit and live Project tab                                            |
+| `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Direct engineering-view development preview                                               |
+| `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft bytes; 404 if absent or hash-mismatched; Cache-Control: no-store |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
@@ -160,16 +166,25 @@ inspect the same active project, propose an input, elicit an exact human decisio
 conversation, queue a ready registered work item, and execute only that server-derived
 run. They cannot confirm their own proposal or choose arbitrary provider calls. New V3
 projects are created from first intent and the server-owned baseline executor creates
-the immutable, pre-technical approved-brief r1. The current provider-backed executor,
-`architecture.seed-syson-model@2`, accepts only that exact r1 and its brief-bound
-project-change lineage, then uses fixed SysON calls to create a blank project, document,
-and root package; it reads the root back, normalizes its identities into
-`syson-model-seed-capture/2.0`, and publishes r2. Callers supply no arbitrary arguments
-or SysML text; uncertain writes are not blindly retried. r2 is a container identity, not
-an architecture, requirements, CAD, simulation, measurement, or verdict. The generic
-route stops there. The distinct CM-01 V3 catalog owns the current product-specific
-operations and their capture/evidence contracts; it does not make a generic
-architecture, CAD, or verification operation available.
+the immutable, pre-technical approved-brief r1. The provider-backed
+`architecture.seed-syson-model@2` executor accepts only that exact r1 and its
+brief-bound project-change lineage, then uses fixed SysON calls to create a blank
+project, document, and root package; it reads the root back, normalizes its identities
+into `syson-model-seed-capture/2.0`, and publishes r2. Callers supply no arbitrary
+arguments or SysML text; uncertain writes are not blindly retried. r2 remains a
+container identity, not an architecture, requirements, CAD, simulation, measurement, or
+verdict.
+
+From that exact technical basis, the generic route can execute three further reviewed
+contracts. `model.write-architecture@1` renders and verifies one human-approved SysML
+architecture proposal. `model.write-requirements@1` renders and re-extracts
+human-approved integer scalar constraints against an exact architecture basis; decimal
+literals are rejected before SysON until the provider can round-trip `LiteralRational`.
+`design.write-geometry@1` seals the hashes from a separately previewed and
+human-approved sandbox draft; it never re-executes build123d. These operations are
+product-independent but deliberately bounded: they do not provide a generic simulator,
+measurement source, requirement evaluator, manufacturing decision, or certification
+verdict. The distinct CM-01 V3 catalog owns those product-specific evidence contracts.
 
 The generic geometry boundary separates preview from seal, and it separates two _natures
 of execution_ across two instances of the same provider. `mcp-build123d` only ever runs
@@ -185,14 +200,16 @@ fail-closed SHA-256 verification, exactly as it does for attested assets.
 
 `project_geometry_preview` (registered only when the `build123d-sandbox` fleet entry is
 configured) calls `build123d_export` on the sandbox instance, attests each binary's
-SHA-256, and stores the draft JSON capture in `state/local/geometry-draft-captures/`
-with the raw binaries under `state/local/geometry-draft-assets/<digest>`. It returns a
+SHA-256, and stores the draft JSON capture in `state/local/geometry-draft-captures/` with the
+raw binaries under `state/local/geometry-draft-assets/<digest>`. It returns a
 `draftDigest` and the flat `decisionParameters` for an MRTR proposal. The Workbench BFF
-serves these binaries at `/api/draft-assets/<digest>` (read-only,
-`Cache-Control: no-store`). Nothing from this path enters a `ThreadSnapshot`. Only
-`design.write-geometry@1` can promote a draft: it requires a matching MRTR decision with
-`decidedByOrigin === "human"`, verifies the SHA-256 of every file, and writes a sealed
-geometry artifact into the evidence thread. The monotony ratchet
+recomputes the requested digest before serving these binaries at
+`/api/draft-assets/<digest>` (read-only, `Cache-Control: no-store`). Nothing from this
+path enters a `ThreadSnapshot`. Only `design.write-geometry@1` can promote a draft: it
+requires a matching MRTR decision with `decidedByOrigin === "human"`, an exact
+architecture snapshot/revision, and the true provider basename (`gltf` maps to binary
+`.glb`). It verifies every SHA-256 and writes a sealed geometry capture plus
+context-specific binary artifacts into the evidence thread. The monotony ratchet
 (`geometry_artifact_removed`) then prevents a later snapshot from silently omitting that
 artifact. The write executor makes no provider calls — it seals bytes already present in
 the draft store.

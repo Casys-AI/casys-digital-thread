@@ -177,6 +177,35 @@ Deno.test("parseGeometryDecisionParameters rejects an unknown export format", ()
   assertEquals(err?.code, "invalid_format");
 });
 
+Deno.test("parseGeometryDecisionParameters rejects duplicate export formats", () => {
+  const mut = new Map(buildParams());
+  mut.set("geometry.manifest.exportFormats", "gltf,gltf");
+  assertThrows(
+    () => parseGeometryDecisionParameters(mut),
+    GeometryProposalError,
+    "must not contain duplicates",
+  );
+});
+
+Deno.test("encodeGeometryDecisionParameters rejects colliding binary artifact digests", () => {
+  const manifest: GeometryManifest = {
+    ...VALID_MANIFEST,
+    artifactHashes: {
+      assemblyFiles: VALID_MANIFEST.artifactHashes!.assemblyFiles,
+      partMeshes: [{
+        semanticKey: "drip-tray",
+        name: "drip-tray",
+        fingerprint: { algorithm: "sha256", digest: HEX64_C },
+      }],
+    },
+  };
+  assertThrows(
+    () => encodeGeometryDecisionParameters(HEX64, manifest),
+    GeometryProposalError,
+    "fingerprints must be unique",
+  );
+});
+
 Deno.test("parseGeometryDecisionParameters accepts zero assembly files", () => {
   const params = buildParams();
   const mut = new Map(params);
@@ -227,6 +256,38 @@ Deno.test("round-trip with zero components preserves empty component list", () =
   const params = new Map(encoded.map(({ key, value }) => [key, value]));
   const result = parseGeometryDecisionParameters(params);
   assertEquals(result.manifest.components.length, 0);
+});
+
+Deno.test("geometry manifest accepts scoped homonymous usages with distinct provider IDs", () => {
+  const manifest: GeometryManifest = {
+    ...VALID_MANIFEST,
+    components: [
+      { usageName: "drive_motor", elementId: "usage-left", label: "Left motor" },
+      { usageName: "drive_motor", elementId: "usage-right", label: "Right motor" },
+    ],
+  };
+  const encoded = encodeGeometryDecisionParameters(HEX64, manifest);
+  const result = parseGeometryDecisionParameters(
+    new Map(encoded.map(({ key, value }) => [key, value])),
+  );
+
+  assertEquals(result.manifest.components, manifest.components);
+});
+
+Deno.test("geometry manifest rejects a provider element bound more than once", () => {
+  const manifest: GeometryManifest = {
+    ...VALID_MANIFEST,
+    components: [
+      { usageName: "leftMotor", elementId: "usage-shared", label: "Left motor" },
+      { usageName: "rightMotor", elementId: "usage-shared", label: "Right motor" },
+    ],
+  };
+
+  assertThrows(
+    () => encodeGeometryDecisionParameters(HEX64, manifest),
+    GeometryProposalError,
+    "duplicate provider element IDs",
+  );
 });
 
 Deno.test("round-trip with multiple part meshes preserves all entries", () => {

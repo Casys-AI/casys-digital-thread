@@ -3,7 +3,7 @@
  *
  * Convention: test names describe the invariant, not the method.
  */
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
   derivePartDefName,
   fingerprintRequirementsEnvelope,
@@ -40,7 +40,7 @@ function minimalParams(
     param("requirement.r1.name", override.reqName ?? "Max displacement"),
     param("requirement.r1.metric", override.metric ?? "maxDisplacement"),
     param("requirement.r1.operator", override.operator ?? "<="),
-    param("requirement.r1.threshold", override.threshold ?? 1.5, override.unit ?? "mm"),
+    param("requirement.r1.threshold", override.threshold ?? 15, override.unit ?? "mm"),
   ];
 }
 
@@ -54,7 +54,7 @@ Deno.test("parseRequirementsProposalParameters returns a valid proposal for mini
   const req = proposal.requirements[0]!;
   assertEquals(req.metric, "maxDisplacement");
   assertEquals(req.operator, "<=");
-  assertEquals(req.threshold.value, 1.5);
+  assertEquals(req.threshold.value, 15);
   assertEquals(req.threshold.unit, "mm");
   assertEquals(req.name, "Max displacement");
 });
@@ -65,7 +65,7 @@ Deno.test("parseRequirementsProposalParameters accepts two requirements with dis
     param("requirement.r1.name", "Max displacement"),
     param("requirement.r1.metric", "maxDisplacement"),
     param("requirement.r1.operator", "<="),
-    param("requirement.r1.threshold", 1.5, "mm"),
+    param("requirement.r1.threshold", 15, "mm"),
     param("requirement.r2.name", "Max von Mises stress"),
     param("requirement.r2.metric", "maxVonMises"),
     param("requirement.r2.operator", "<="),
@@ -85,7 +85,7 @@ Deno.test("parseRequirementsProposalParameters sorts requirements by metric for 
     param("requirement.r2.name", "Displacement"),
     param("requirement.r2.metric", "displacement"),
     param("requirement.r2.operator", "<="),
-    param("requirement.r2.threshold", 1.5, "mm"),
+    param("requirement.r2.threshold", 15, "mm"),
   ];
   const proposal = parseRequirementsProposalParameters(params);
   // "displacement" sorts before "vonMises"
@@ -251,11 +251,11 @@ Deno.test(
           param("requirement.r1.name", "Disp"),
           param("requirement.r1.metric", "maxDisplacement"),
           param("requirement.r1.operator", "<="),
-          param("requirement.r1.threshold", 1.5, "mm"),
+          param("requirement.r1.threshold", 15, "mm"),
           param("requirement.r2.name", "Also Disp"),
           param("requirement.r2.metric", "maxDisplacement"),
           param("requirement.r2.operator", "<="),
-          param("requirement.r2.threshold", 2.0, "mm"),
+          param("requirement.r2.threshold", 20, "mm"),
         ]),
       RequirementsProposalParseError,
     );
@@ -284,6 +284,24 @@ Deno.test(
   },
 );
 
+for (const decimal of [0.5, 1.5]) {
+  Deno.test(
+    `parseRequirementsProposalParameters rejects decimal threshold ${decimal} for the SysON 0.5.1 round-trip`,
+    () => {
+      try {
+        parseRequirementsProposalParameters(minimalParams({ threshold: decimal }));
+        throw new Error("Expected decimal threshold rejection.");
+      } catch (error) {
+        assertEquals(
+          (error as RequirementsProposalParseError).code,
+          "invalid_threshold_value",
+        );
+        assertStringIncludes((error as Error).message, "safe integer");
+      }
+    },
+  );
+}
+
 Deno.test(
   "parseRequirementsProposalParameters rejects a missing name field with missing_requirement_field",
   () => {
@@ -294,7 +312,7 @@ Deno.test(
           // no name
           param("requirement.r1.metric", "maxDisplacement"),
           param("requirement.r1.operator", "<="),
-          param("requirement.r1.threshold", 1.5, "mm"),
+          param("requirement.r1.threshold", 15, "mm"),
         ]),
       RequirementsProposalParseError,
     );
@@ -320,7 +338,7 @@ Deno.test("requirementEntriesToOracleRequirements maps metric to both id and met
   assertEquals(oracle.length, 1);
   assertEquals(oracle[0]!.id, "maxDisplacement");
   assertEquals(oracle[0]!.metric, "maxDisplacement");
-  assertEquals(oracle[0]!.limit.value, 1.5);
+  assertEquals(oracle[0]!.limit.value, 15);
   assertEquals(oracle[0]!.limit.unit, "mm");
 });
 
@@ -351,7 +369,7 @@ Deno.test("planRequirementsEnrichment adopts an identical requirement from the p
       name: "Max displacement",
       metric: "maxDisplacement",
       operator: "<=",
-      limit: { value: 1.5, unit: "mm" },
+      limit: { value: 15, unit: "mm" },
     },
   ];
   const plan = planRequirementsEnrichment(proposal, prior);
@@ -364,7 +382,7 @@ Deno.test("planRequirementsEnrichment adopts an identical requirement from the p
 
 Deno.test("planRequirementsEnrichment detects a threshold conflict when value differs", () => {
   const proposal = parseRequirementsProposalParameters(
-    minimalParams({ threshold: 2.0 }),
+    minimalParams({ threshold: 20 }),
   );
   const prior: OracleRequirement[] = [
     {
@@ -372,14 +390,14 @@ Deno.test("planRequirementsEnrichment detects a threshold conflict when value di
       name: "Max displacement",
       metric: "maxDisplacement",
       operator: "<=",
-      limit: { value: 1.5, unit: "mm" },
+      limit: { value: 15, unit: "mm" },
     },
   ];
   const plan = planRequirementsEnrichment(proposal, prior);
   assertEquals(plan.conflicts.length, 1);
   assertEquals(plan.conflicts[0]!.metric, "maxDisplacement");
-  assertEquals(plan.conflicts[0]!.proposed.value, 2.0);
-  assertEquals(plan.conflicts[0]!.prior.value, 1.5);
+  assertEquals(plan.conflicts[0]!.proposed.value, 20);
+  assertEquals(plan.conflicts[0]!.prior.value, 15);
 });
 
 Deno.test("planRequirementsEnrichment detects a threshold conflict when unit differs", () => {
@@ -407,14 +425,14 @@ Deno.test("planRequirementsEnrichment detects disappeared metrics for the clique
       name: "Max displacement",
       metric: "maxDisplacement",
       operator: "<=",
-      limit: { value: 1.5, unit: "mm" },
+      limit: { value: 15, unit: "mm" },
     },
     {
       id: "minThickness",
       name: "Min thickness",
       metric: "minThickness",
       operator: ">=",
-      limit: { value: 3.0, unit: "mm" },
+      limit: { value: 30, unit: "mm" },
     },
   ];
   const plan = planRequirementsEnrichment(proposal, prior);
@@ -428,12 +446,12 @@ Deno.test("planRequirementsEnrichment correctly classifies insert, adopt and con
     param("requirement.r1.name", "Max displacement"),
     param("requirement.r1.metric", "maxDisplacement"),
     param("requirement.r1.operator", "<="),
-    param("requirement.r1.threshold", 1.5, "mm"),
+    param("requirement.r1.threshold", 15, "mm"),
     // r2: in prior but different value → conflict
     param("requirement.r2.name", "Min wall"),
     param("requirement.r2.metric", "minWall"),
     param("requirement.r2.operator", ">="),
-    param("requirement.r2.threshold", 3.0, "mm"),
+    param("requirement.r2.threshold", 30, "mm"),
     // r3: new → insert
     param("requirement.r3.name", "Max stress"),
     param("requirement.r3.metric", "maxStress"),
@@ -447,7 +465,7 @@ Deno.test("planRequirementsEnrichment correctly classifies insert, adopt and con
       name: "Max displacement",
       metric: "maxDisplacement",
       operator: "<=",
-      limit: { value: 1.5, unit: "mm" },
+      limit: { value: 15, unit: "mm" },
     },
     {
       id: "minWall",
@@ -470,7 +488,11 @@ Deno.test(
   "fingerprintRequirementsEnvelope produces a deterministic SHA-256 fingerprint",
   async () => {
     const envelope = {
-      target: { usageName: "dripTray", elementId: "element-123" },
+      target: {
+        kind: "part-definition" as const,
+        label: "DripTray",
+        elementId: "element-123",
+      },
       architectureBasis: { snapshotId: "snap-abc", revision: 4, fingerprint: "abc123" },
       partDefName: "DripTrayRequirements",
       requirements: requirementEntriesToOracleRequirements(
@@ -491,7 +513,11 @@ Deno.test(
       parseRequirementsProposalParameters(minimalParams()).requirements,
     );
     const base = {
-      target: { usageName: "dripTray", elementId: "element-123" },
+      target: {
+        kind: "part-definition" as const,
+        label: "DripTray",
+        elementId: "element-123",
+      },
       architectureBasis: { snapshotId: "snap-abc", revision: 4, fingerprint: "abc123" },
       partDefName: "DripTrayRequirements",
       requirements,

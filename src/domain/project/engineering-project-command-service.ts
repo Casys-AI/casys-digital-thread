@@ -311,6 +311,25 @@ export interface EngineeringProjectReconciliationSnapshotValidator {
   ): Promise<void>;
 }
 
+/**
+ * Injected, code-owned authorization for a full-closeout transition whose
+ * successor deliberately carries a different registered operation.
+ *
+ * The generic command service cannot infer that `repair.*` is a valid
+ * replacement for a particular `verify.*`. A bounded caller must therefore
+ * prove the exact transition and its closeout snapshot before it is persisted.
+ */
+export interface EngineeringProjectReconciliationOperationPolicy {
+  authorize(input: {
+    readonly failedWorkItemId: string;
+    readonly failedOperation: EngineeringOperationRef;
+    readonly successorWorkItemId: string;
+    readonly successorOperation: EngineeringOperationRef | undefined;
+    readonly successorRunSnapshot: EngineeringThreadSnapshotRef;
+    readonly successorSnapshot: EngineeringThreadSnapshotRef;
+  }): Promise<void>;
+}
+
 export const ENGINEERING_PROJECT_COMMAND_POLICY = {
   human: [
     "decision.propose",
@@ -357,6 +376,8 @@ export class EngineeringProjectCommandService {
       EngineeringProjectInitialCompletionEvidenceValidator,
     private readonly reconciliationSnapshotValidator?:
       EngineeringProjectReconciliationSnapshotValidator,
+    private readonly reconciliationOperationPolicy?:
+      EngineeringProjectReconciliationOperationPolicy,
   ) {}
 
   /**
@@ -1105,32 +1126,42 @@ export class EngineeringProjectCommandService {
             `Completed successor run ${successor.id} has inconsistent work-item evidence.`,
           );
         }
-        // Equivalence guard — DIRECT FORM ONLY.
-        //
-        // The direct path is agent-only and lightweight: without this guard an
-        // agent could close a work item with the evidence of any unrelated
-        // completed run. The full closeout form is different — it carries a
-        // durable closeout snapshot checked by the reconciliation snapshot
-        // validator, and its successor is deliberately allowed to be another
-        // registered operation: CM-01's bounded identity repair closes a failed
-        // mechanical verification with a `repair.*` operation, the documented
-        // correction pattern. Enforcing equivalence there made an existing,
-        // legitimate project unreadable.
-        if (
-          command.successorSnapshot === undefined &&
-          failedWork.operation !== undefined
-        ) {
-          if (
-            successorWork.operation?.id !== failedWork.operation.id ||
-            successorWork.operation?.version !== failedWork.operation.version ||
-            deterministicJson(successorWork.operation.bindings) !==
-              deterministicJson(failedWork.operation.bindings)
-          ) {
+        // Equivalent operations are always safe. A different operation is
+        // forbidden on the MCP-exposed direct form and requires a code-owned,
+        // injected proof on the full closeout form. The mere presence of a
+        // direct-child snapshot proves topology, not semantic compatibility.
+        if (failedWork.operation !== undefined) {
+          const operationsMatch =
+            successorWork.operation?.id === failedWork.operation.id &&
+            successorWork.operation?.version === failedWork.operation.version &&
+            deterministicJson(successorWork.operation.bindings) ===
+              deterministicJson(failedWork.operation.bindings);
+          if (!operationsMatch && command.successorSnapshot === undefined) {
             invalidInput(
               `Successor work item ${successorWork.id} does not carry the same operation ` +
                 `(id, version, bindings) as the failed work item ${failedWork.id}. ` +
                 `Use the exact registered operation the failed work was supposed to execute.`,
             );
+          }
+          if (!operationsMatch && command.successorSnapshot !== undefined) {
+            if (!this.reconciliationOperationPolicy) {
+              invalidInput(
+                `Full closeout from operation ${failedWork.operation.id}@${failedWork.operation.version} ` +
+                  `to ${successorWork.operation?.id ?? "an undeclared operation"}@${
+                    successorWork.operation?.version ?? "unknown"
+                  } requires an injected operation-transition policy.`,
+              );
+            }
+            await this.reconciliationOperationPolicy.authorize({
+              failedWorkItemId: failedWork.id,
+              failedOperation: structuredClone(failedWork.operation),
+              successorWorkItemId: successorWork.id,
+              successorOperation: successorWork.operation
+                ? structuredClone(successorWork.operation)
+                : undefined,
+              successorRunSnapshot: structuredClone(command.successorRunSnapshot),
+              successorSnapshot: structuredClone(command.successorSnapshot),
+            });
           }
         }
         // Lineage guard: the successor run must have been executed against a snapshot

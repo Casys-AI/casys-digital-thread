@@ -24,12 +24,14 @@ import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/o
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
+  type EngineeringProjectRevisionStore,
 } from "../../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  ARCHITECTURE_CAPTURE_URI_PREFIX,
   FileCaptureStore,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
@@ -59,9 +61,13 @@ import {
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { resolveGenericProductStructureCatalog } from "../projectors/product-structure-catalog.ts";
-import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import type {
+  ThreadArtifact,
+  ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
+import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -84,6 +90,21 @@ const DRONE_ENRICHMENT_PARAMS = [
   { key: "component.motor.name", label: "Motor name", value: "Motor" },
   { key: "component.motor.usage", label: "Motor usage", value: "motor" },
   { key: "component.motor.parent", label: "Motor parent", value: "DroneSystem" },
+];
+
+const SCOPED_HOMONYM_PROPOSAL_PARAMS = [
+  { key: "architecture.package", label: "Package name", value: "DroneV4" },
+  { key: "system.name", label: "System name", value: "DroneSystem" },
+  { key: "component.leftWing.name", label: "Left wing", value: "LeftWing" },
+  { key: "component.leftWing.usage", label: "Left wing", value: "leftWing" },
+  { key: "component.rightWing.name", label: "Right wing", value: "RightWing" },
+  { key: "component.rightWing.usage", label: "Right wing", value: "rightWing" },
+  { key: "component.leftMotor.name", label: "Motor type", value: "Motor" },
+  { key: "component.leftMotor.usage", label: "Left motor", value: "motor" },
+  { key: "component.leftMotor.parent", label: "Parent", value: "LeftWing" },
+  { key: "component.rightMotor.name", label: "Motor type", value: "Motor" },
+  { key: "component.rightMotor.usage", label: "Right motor", value: "motor" },
+  { key: "component.rightMotor.parent", label: "Parent", value: "RightWing" },
 ];
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -299,6 +320,155 @@ class InitialArchSyson implements McpToolClient {
     return Promise.reject(
       new Error(`Unexpected tool call in InitialArchSyson: ${call.name}`),
     );
+  }
+}
+
+/** Final readback reuses the Wing PartDefinition id for the wing PartUsage. */
+class CrossKindSemanticIdCollisionInitialArchSyson extends InitialArchSyson {
+  override async callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (
+      call.name === "syson_query_aql" &&
+      call.arguments?.object_id === "wing-def-001"
+    ) {
+      this.calls.push(structuredClone(call));
+      return {
+        text: "feature-typing-aql",
+        structuredContent: {
+          objectId: "wing-def-001",
+          expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+          type: "objects",
+          results: [{
+            id: "wing-def-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "Wing",
+          }],
+          count: 1,
+        },
+      };
+    }
+
+    const result = await super.callTool(call);
+    if (
+      call.name !== "syson_element_children" ||
+      call.arguments?.element_id !== "sys-def-001"
+    ) return result;
+    const content = result.structuredContent as {
+      parentId: string;
+      children: Record<string, unknown>[];
+    };
+    const children = content.children.map((child) => ({
+      ...child,
+      id: "wing-def-001",
+    }));
+    return {
+      ...result,
+      structuredContent: { ...content, children, count: children.length },
+    };
+  }
+}
+
+/** Initial readback with two locally-scoped `motor` usages sharing one Motor type. */
+class ScopedHomonymInitialArchSyson extends InitialArchSyson {
+  #rootReads = 0;
+
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+    if (call.name === "syson_element_insert_sysml") {
+      return Promise.resolve({
+        text: "inserted",
+        structuredContent: {
+          inserted: true,
+          parentId: call.arguments?.parent_id,
+        },
+      });
+    }
+    if (call.name === "syson_element_children") {
+      const elementId = call.arguments?.element_id as string;
+      if (elementId === "root-pkg-drone") {
+        this.#rootReads++;
+        const children = this.#rootReads === 1 ? [] : [{
+          id: "arch-pkg-001",
+          kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+          label: "DroneV4",
+        }];
+        return Promise.resolve({
+          text: "root",
+          structuredContent: {
+            parentId: elementId,
+            children,
+            count: children.length,
+          },
+        });
+      }
+      if (elementId === "arch-pkg-001") {
+        const labels = [
+          ["sys-def-001", "DroneSystem"],
+          ["left-wing-def-001", "LeftWing"],
+          ["right-wing-def-001", "RightWing"],
+          ["motor-def-001", "Motor"],
+        ];
+        const children = labels.map(([id, label]) => ({
+          id,
+          kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+          label,
+        }));
+        return Promise.resolve({
+          text: "definitions",
+          structuredContent: {
+            parentId: elementId,
+            children,
+            count: children.length,
+          },
+        });
+      }
+      const usagesByParent: Record<string, Array<{ id: string; label: string }>> = {
+        "sys-def-001": [
+          { id: "left-wing-usage-001", label: "leftWing" },
+          { id: "right-wing-usage-001", label: "rightWing" },
+        ],
+        "left-wing-def-001": [{ id: "left-motor-usage-001", label: "motor" }],
+        "right-wing-def-001": [{ id: "right-motor-usage-001", label: "motor" }],
+        "motor-def-001": [],
+      };
+      const children = (usagesByParent[elementId] ?? []).map((usage) => ({
+        ...usage,
+        kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+      }));
+      return Promise.resolve({
+        text: "usages",
+        structuredContent: {
+          parentId: elementId,
+          children,
+          count: children.length,
+        },
+      });
+    }
+    if (call.name === "syson_query_aql") {
+      const objectId = call.arguments?.object_id as string;
+      const targets: Record<string, { id: string; label: string }> = {
+        "left-wing-usage-001": { id: "left-wing-def-001", label: "LeftWing" },
+        "right-wing-usage-001": { id: "right-wing-def-001", label: "RightWing" },
+        "left-motor-usage-001": { id: "motor-def-001", label: "Motor" },
+        "right-motor-usage-001": { id: "motor-def-001", label: "Motor" },
+      };
+      const target = targets[objectId];
+      if (target) {
+        return Promise.resolve({
+          text: "feature-typing",
+          structuredContent: {
+            objectId,
+            expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+            type: "objects",
+            results: [{
+              ...target,
+              kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            }],
+            count: 1,
+          },
+        });
+      }
+    }
+    return Promise.reject(new Error(`Unexpected scoped-homonym tool: ${call.name}`));
   }
 }
 
@@ -827,21 +997,53 @@ function makeExecutor(
     leaseSubdir?: string;
     snapshots?: ThreadSnapshotStore;
     attempts?: FileArchitectureAttemptStore;
+    captures?: FileCaptureStore<"architecture-capture">;
+    projects?: EngineeringProjectRevisionStore;
+    liveUpdates?: LiveThreadUpdateMilestoneJournal;
   },
 ): ModelWriteArchitectureRunExecutor {
   return new ModelWriteArchitectureRunExecutor({
-    projects: fixture.projects,
+    projects: options.projects ?? fixture.projects,
     commands: fixture.commands,
     snapshots: options.snapshots ?? fixture.snapshots,
     seedCaptures: fixture.seedCaptures,
-    captures: fixture.archCaptures,
+    captures: options.captures ?? fixture.archCaptures,
     attempts: options.attempts ?? fixture.archAttempts,
     syson: options.syson,
     lease: new FileEngineeringProjectRunLease(
       `${options.directory}/${options.leaseSubdir ?? "arch-leases"}`,
     ),
+    liveUpdates: options.liveUpdates,
     now: () => options.nowStr ?? "2026-08-08T12:15:00.000Z",
   });
+}
+
+function replaceStringDeep<T>(value: T, from: string, to: string): T {
+  const replace = (candidate: unknown): unknown => {
+    if (typeof candidate === "string") return candidate.replaceAll(from, to);
+    if (Array.isArray(candidate)) return candidate.map(replace);
+    if (candidate && typeof candidate === "object") {
+      return Object.fromEntries(
+        Object.entries(candidate).map(([key, item]) => [key, replace(item)]),
+      );
+    }
+    return candidate;
+  };
+  return replace(value) as T;
+}
+
+function reconciliationProbe(): {
+  readonly calls: Array<{ subjectId: string; runId: string }>;
+  readonly journal: LiveThreadUpdateMilestoneJournal;
+} {
+  const calls: Array<{ subjectId: string; runId: string }> = [];
+  const journal = {
+    reconcileRunOnce(subjectId: string, runId: string) {
+      calls.push({ subjectId, runId });
+      return Promise.resolve(undefined);
+    },
+  } as unknown as LiveThreadUpdateMilestoneJournal;
+  return { calls, journal };
 }
 
 /** Execution command for the queued architecture run. */
@@ -1023,6 +1225,96 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "model.write-architecture rejects a cross-kind semantic id collision before capture save or snapshot promotion",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-id-collision-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      let snapshotSaveCalls = 0;
+      const snapshots: ThreadSnapshotStore = {
+        get: (snapshotId) => fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        save: async (snapshot) => {
+          snapshotSaveCalls++;
+          await fixture.snapshots.save(snapshot);
+        },
+      };
+      const syson = new CrossKindSemanticIdCollisionInitialArchSyson();
+
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory, snapshots }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "repeats a semantic identity",
+      );
+
+      assertEquals(snapshotSaveCalls, 0, "no ThreadSnapshot may be promoted");
+      let captureFileCount = 0;
+      try {
+        for await (const entry of Deno.readDir(`${directory}/arch-captures`)) {
+          if (entry.isFile) captureFileCount++;
+        }
+      } catch (error) {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+      }
+      assertEquals(captureFileCount, 0, "no architecture capture may be saved");
+
+      const failed = await fixture.projects.get(PROJECT_ID);
+      const run = failed?.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertEquals(run?.status, "failed");
+      assertEquals(run?.resultSnapshot, undefined);
+      assertEquals(run?.evidenceRefs, []);
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        true,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture completes with scoped homonyms and a shared PartDefinition",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-occurrences-" });
+    try {
+      const fixture = await queuedArchitectureFixture(
+        directory,
+        SCOPED_HOMONYM_PROPOSAL_PARAMS,
+      );
+      const syson = new ScopedHomonymInitialArchSyson();
+
+      const result = await makeExecutor(fixture, { syson, directory }).execute(
+        AGENT,
+        executionCommand(fixture),
+      );
+
+      assertEquals(
+        result.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+        "completed",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        false,
+      );
+      const inserted = syson.calls.find((call) =>
+        call.name === "syson_element_insert_sysml"
+      )?.arguments?.sysml_text as string;
+      assertEquals(inserted.match(/part def Motor/g)?.length, 1);
+      assertEquals(inserted.match(/part motor : Motor;/g)?.length, 2);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── Validated acknowledgement boundary ──────────────────────────────────────
 
 Deno.test(
@@ -1108,6 +1400,437 @@ Deno.test(
 );
 
 Deno.test(
+  "model.write-architecture completed replay rejects artifact and capture mutations before provider access",
+  async () => {
+    class MutatedCaptureReadStore extends FileCaptureStore<"architecture-capture"> {
+      constructor(
+        directory: string,
+        private readonly source: FileCaptureStore<"architecture-capture">,
+        private readonly mutate: (record: Record<string, unknown>) => void,
+      ) {
+        super({
+          ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/mutated-read-captures`,
+        });
+      }
+
+      override async read(
+        fingerprint: ContentFingerprint,
+      ): Promise<string | undefined> {
+        const text = await this.source.read(fingerprint);
+        if (!text) return undefined;
+        const record = JSON.parse(text) as Record<string, unknown>;
+        this.mutate(record);
+        return deterministicJson(record);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-guard-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const command = executionCommand(fixture);
+      const completed = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, command);
+      const run = completed.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertExists(run?.resultSnapshot);
+      const resultSnapshot = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+      assertExists(resultSnapshot);
+      const resultArtifact = resultSnapshot.artifacts.find((artifact) =>
+        artifact.producer.runId === fixture.queued.runId &&
+        artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
+      );
+      assertExists(resultArtifact);
+
+      const cases: readonly {
+        name: string;
+        mutateArtifact?: (artifact: ThreadArtifact) => ThreadArtifact;
+        mutateCapture?: (record: Record<string, unknown>) => void;
+        mutateSnapshot?: (snapshot: ThreadSnapshot) => ThreadSnapshot;
+      }[] = [{
+        name: "URI",
+        mutateArtifact: (artifact) => ({
+          ...artifact,
+          uri: `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${"e".repeat(64)}`,
+        }),
+      }, {
+        name: "producer",
+        mutateArtifact: (artifact) => ({
+          ...artifact,
+          producer: { ...artifact.producer, serverId: "untrusted-syson" },
+        }),
+      }, {
+        name: "input",
+        mutateArtifact: (artifact) => ({
+          ...artifact,
+          inputArtifactIds: [...artifact.inputArtifactIds, "artifact:unreviewed-extra"],
+        }),
+      }, {
+        name: "schema",
+        mutateCapture: (record) => {
+          record.schemaVersion = "architecture-capture/forged";
+        },
+      }, {
+        name: "trustedRunId",
+        mutateCapture: (record) => {
+          record.trustedRunId = "run:forged";
+        },
+      }, {
+        name: "subject",
+        mutateSnapshot: (snapshot) => ({
+          ...snapshot,
+          subject: { ...snapshot.subject, id: "project:foreign" },
+        }),
+      }, {
+        name: "previous",
+        mutateSnapshot: (snapshot) => ({
+          ...snapshot,
+          previous: {
+            snapshotId: "snapshot:foreign-basis",
+            revision: snapshot.previous?.revision ?? 1,
+          },
+        }),
+      }, {
+        name: "historicalRename",
+        mutateSnapshot: (snapshot) => ({
+          ...snapshot,
+          artifacts: snapshot.artifacts.map((artifact) =>
+            artifact.producer.tool === "syson_model_create"
+              ? { ...artifact, name: "Renamed historical seed" }
+              : artifact
+          ),
+        }),
+      }];
+
+      for (const testCase of cases) {
+        const artifactMutatedSnapshot: ThreadSnapshot = testCase.mutateArtifact
+          ? {
+            ...resultSnapshot,
+            artifacts: resultSnapshot.artifacts.map((artifact) =>
+              artifact.id === resultArtifact.id
+                ? testCase.mutateArtifact!(artifact)
+                : artifact
+            ),
+          }
+          : resultSnapshot;
+        const replaySnapshot = testCase.mutateSnapshot
+          ? testCase.mutateSnapshot(artifactMutatedSnapshot)
+          : artifactMutatedSnapshot;
+        const snapshots: ThreadSnapshotStore = {
+          get: (snapshotId) =>
+            snapshotId === replaySnapshot.id
+              ? Promise.resolve(replaySnapshot)
+              : fixture.snapshots.get(snapshotId),
+          latest: (subjectId) => fixture.snapshots.latest(subjectId),
+          save: (snapshot) => fixture.snapshots.save(snapshot),
+        };
+        const captures = testCase.mutateCapture
+          ? new MutatedCaptureReadStore(
+            directory,
+            fixture.archCaptures,
+            testCase.mutateCapture,
+          )
+          : fixture.archCaptures;
+        const syson = new InitialArchSyson();
+
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, {
+              syson,
+              directory,
+              snapshots,
+              captures,
+              leaseSubdir: `replay-${testCase.name}`,
+            }).execute(AGENT, {
+              ...command,
+              expectedRevision: completed.revision,
+            }),
+          EngineeringProjectCommandError,
+          "Completed architecture",
+        );
+        assertEquals(syson.calls, [], `${testCase.name} must stop before SysON`);
+      }
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture completed replay rejects coordinated capture and result rewrites with unchanged MRTR",
+  async () => {
+    class CoordinatedCaptureReadStore extends FileCaptureStore<"architecture-capture"> {
+      constructor(
+        directory: string,
+        private readonly fingerprint: ContentFingerprint,
+        private readonly text: string,
+        private readonly source: FileCaptureStore<"architecture-capture">,
+      ) {
+        super({
+          ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/coordinated-captures`,
+        });
+      }
+
+      override read(
+        fingerprint: ContentFingerprint,
+      ): Promise<string | undefined> {
+        return fingerprint.digest === this.fingerprint.digest
+          ? Promise.resolve(this.text)
+          : this.source.read(fingerprint);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-seal-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const command = executionCommand(fixture);
+      const completed = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, command);
+      const run = completed.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertExists(run?.resultSnapshot);
+      assertExists(run.startedAt);
+      const resultSnapshot = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+      assertExists(resultSnapshot);
+      const artifact = resultSnapshot.artifacts.find((candidate) =>
+        candidate.producer.runId === run.id &&
+        candidate.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
+      );
+      assertExists(artifact);
+      const captureText = await fixture.archCaptures.read(artifact.fingerprint);
+      assertExists(captureText);
+      const originalCapture = JSON.parse(captureText) as Record<string, unknown>;
+      const forgedTime = "2026-08-08T12:16:00.000Z";
+      const cases: ReadonlyArray<{
+        readonly name: string;
+        readonly mutateCapture: (capture: Record<string, unknown>) => void;
+        readonly mutateSnapshot?: (snapshot: ThreadSnapshot) => ThreadSnapshot;
+      }> = [{
+        name: "package",
+        mutateCapture: (capture) => {
+          capture.packageName = "ForgedDroneV4";
+          (capture.package as Record<string, unknown>).label = "ForgedDroneV4";
+        },
+        mutateSnapshot: (snapshot) => ({
+          ...snapshot,
+          artifacts: snapshot.artifacts.map((candidate) =>
+            candidate.producer.runId === run.id
+              ? { ...candidate, name: "Architecture: ForgedDroneV4" }
+              : candidate
+          ),
+        }),
+      }, {
+        name: "system",
+        mutateCapture: (capture) => {
+          capture.systemName = "Wing";
+        },
+      }, {
+        name: "graph",
+        mutateCapture: (capture) => {
+          (capture.partDefinitions as Array<Record<string, unknown>>).push({
+            id: "forged-extra-def",
+            kind: "PartDefinition",
+            label: "ForgedExtra",
+            usages: [],
+          });
+        },
+      }, {
+        name: "startedAt",
+        mutateCapture: (capture) => {
+          capture.insertedAt = forgedTime;
+        },
+        mutateSnapshot: (snapshot) =>
+          replaceStringDeep(snapshot, run.startedAt!, forgedTime),
+      }];
+
+      for (const testCase of cases) {
+        const forgedCapture = structuredClone(originalCapture);
+        testCase.mutateCapture(forgedCapture);
+        const forgedFingerprint = await sha256Fingerprint(forgedCapture);
+        const forgedText = deterministicJson(forgedCapture);
+        let forgedSnapshot = replaceStringDeep(
+          resultSnapshot,
+          artifact.fingerprint.digest,
+          forgedFingerprint.digest,
+        );
+        forgedSnapshot = testCase.mutateSnapshot?.(forgedSnapshot) ?? forgedSnapshot;
+        const forgedProject = replaceStringDeep(
+          completed,
+          artifact.fingerprint.digest,
+          forgedFingerprint.digest,
+        );
+
+        let snapshotWrites = 0;
+        const snapshots: ThreadSnapshotStore = {
+          get: (snapshotId) =>
+            snapshotId === forgedSnapshot.id
+              ? Promise.resolve(forgedSnapshot)
+              : fixture.snapshots.get(snapshotId),
+          latest: (subjectId) => fixture.snapshots.latest(subjectId),
+          save: (_snapshot) => {
+            snapshotWrites++;
+            return Promise.reject(new Error("unexpected replay snapshot write"));
+          },
+        };
+        let projectWrites = 0;
+        const projects: EngineeringProjectRevisionStore = {
+          get: (projectId) =>
+            projectId === PROJECT_ID
+              ? Promise.resolve(forgedProject)
+              : Promise.resolve(undefined),
+          getRevision: (projectId, revision) =>
+            fixture.projects.getRevision(projectId, revision),
+          createInitial: (_snapshot) => {
+            projectWrites++;
+            return Promise.reject(new Error("unexpected replay project write"));
+          },
+          commit: (_snapshot, _expectedRevision) => {
+            projectWrites++;
+            return Promise.reject(new Error("unexpected replay project write"));
+          },
+        };
+        const captures = new CoordinatedCaptureReadStore(
+          directory,
+          forgedFingerprint,
+          forgedText,
+          fixture.archCaptures,
+        );
+        const syson = new InitialArchSyson();
+        const live = reconciliationProbe();
+
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, {
+              syson,
+              directory,
+              projects,
+              snapshots,
+              captures,
+              liveUpdates: live.journal,
+              leaseSubdir: `coordinated-replay-${testCase.name}`,
+            }).execute(AGENT, {
+              ...command,
+              expectedRevision: completed.revision,
+            }),
+          EngineeringProjectCommandError,
+          "Completed architecture",
+        );
+        assertEquals(syson.calls, [], `${testCase.name}: provider calls`);
+        assertEquals(snapshotWrites, 0, `${testCase.name}: snapshot writes`);
+        assertEquals(projectWrites, 0, `${testCase.name}: project writes`);
+        assertEquals(live.calls, [], `${testCase.name}: reconciliations`);
+      }
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture completed replay requires one exact completed v2 WAL acknowledgement",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-wal-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const command = executionCommand(fixture);
+      const completed = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, command);
+      const run = completed.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertExists(run?.startedAt);
+
+      const absent = new FileArchitectureAttemptStore(`${directory}/wal-absent`);
+      const dispatched = new FileArchitectureAttemptStore(
+        `${directory}/wal-dispatched`,
+      );
+      await dispatched.begin({
+        projectId: PROJECT_ID,
+        runId: run.id,
+        planDigest: "d".repeat(64),
+        dispatchedAt: run.startedAt,
+      });
+      const wrongPackage = new FileArchitectureAttemptStore(
+        `${directory}/wal-wrong-package`,
+      );
+      const wrongPackageInput = {
+        projectId: PROJECT_ID,
+        runId: run.id,
+        planDigest: "e".repeat(64),
+        dispatchedAt: run.startedAt,
+      };
+      await wrongPackage.begin(wrongPackageInput);
+      await wrongPackage.complete({
+        ...wrongPackageInput,
+        architecturePackageId: "forged-package-id",
+      });
+
+      for (
+        const [name, attempts] of [
+          ["absent", absent],
+          ["dispatched", dispatched],
+          ["wrong-package", wrongPackage],
+        ] as const
+      ) {
+        const beforeAttempt = await attempts.readRun(PROJECT_ID, run.id);
+        let snapshotWrites = 0;
+        const snapshots: ThreadSnapshotStore = {
+          get: (snapshotId) => fixture.snapshots.get(snapshotId),
+          latest: (subjectId) => fixture.snapshots.latest(subjectId),
+          save: (_snapshot) => {
+            snapshotWrites++;
+            return Promise.reject(new Error("unexpected replay snapshot write"));
+          },
+        };
+        const syson = new InitialArchSyson();
+        const live = reconciliationProbe();
+
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, {
+              syson,
+              directory,
+              snapshots,
+              attempts,
+              liveUpdates: live.journal,
+              leaseSubdir: `wal-replay-${name}`,
+            }).execute(AGENT, {
+              ...command,
+              expectedRevision: completed.revision,
+            }),
+          EngineeringProjectCommandError,
+          "Completed architecture evidence is not backed",
+        );
+        assertEquals(syson.calls, [], `${name}: provider calls`);
+        assertEquals(snapshotWrites, 0, `${name}: snapshot writes`);
+        assertEquals(live.calls, [], `${name}: reconciliations`);
+        assertEquals(
+          await attempts.readRun(PROJECT_ID, run.id),
+          beforeAttempt,
+          `${name}: WAL writes`,
+        );
+        assertEquals(
+          (await fixture.projects.get(PROJECT_ID))?.revision,
+          completed.revision,
+          `${name}: project writes`,
+        );
+      }
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   "model.write-architecture serializes concurrent same-basis siblings before SysON",
   async () => {
     class BarrierInitialArchSyson extends InitialArchSyson {
@@ -1165,7 +1888,7 @@ Deno.test(
       await assertRejects(
         () => loser,
         EngineeringProjectCommandError,
-        "published result",
+        "Thread write basis is unavailable",
       );
       assertEquals(
         syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
@@ -1207,7 +1930,7 @@ Deno.test(
             runId: sibling.runId,
           }),
         EngineeringProjectCommandError,
-        "published result",
+        "Thread write basis is unavailable",
       );
       assertEquals(blockedSyson.calls, []);
     } finally {
@@ -1526,7 +2249,7 @@ Deno.test(
             runId: "run:architecture-enrichment-sibling",
           }),
         EngineeringProjectCommandError,
-        "separately reviewed recovery",
+        "Thread write basis is unavailable",
       );
       assertEquals(
         blockedSyson.calls,
@@ -1585,7 +2308,7 @@ Deno.test(
               runId: `run:retry:${code}`,
             }),
           EngineeringProjectCommandError,
-          "separately reviewed recovery",
+          "Thread write basis is unavailable",
         );
         assertEquals(syson.calls, [], `${code} must stop before SysON`);
       } finally {
@@ -1639,14 +2362,27 @@ Deno.test(
     const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-resume-" });
     try {
       const fixture = await queuedArchitectureFixture(directory);
+      const command = executionCommand(fixture);
+      const claimed = await fixture.commands.claimRun(AGENT, {
+        ...command,
+        commandId: `${command.commandId}:model-write-architecture:claim`,
+        summary: "Started the generic model-write-architecture run.",
+      });
+      const claimedRun = claimed.agentRuns.find((run) =>
+        run.id === fixture.queued.runId
+      );
+      assertExists(claimedRun?.startedAt);
       const persisted = {
         projectId: PROJECT_ID,
         runId: fixture.queued.runId,
         planDigest: "c".repeat(64),
-        dispatchedAt: "2026-08-08T12:15:00.000Z",
+        dispatchedAt: claimedRun.startedAt,
       };
       await fixture.archAttempts.begin(persisted);
-      await fixture.archAttempts.complete(persisted);
+      await fixture.archAttempts.complete({
+        ...persisted,
+        architecturePackageId: "arch-pkg-001",
+      });
 
       const syson = new InitialArchSyson();
       // Consume only the mock's artificial preflight response. The executor
@@ -1662,7 +2398,7 @@ Deno.test(
 
       const result = await makeExecutor(fixture, { syson, directory }).execute(
         AGENT,
-        executionCommand(fixture),
+        command,
       );
       assertEquals(
         result.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
@@ -1672,6 +2408,82 @@ Deno.test(
         syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
         0,
       );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture refuses completed-WAL recovery when the live Package id replaced the pinned id",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-package-pin-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const persisted = {
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest: "a".repeat(64),
+        dispatchedAt: "2026-08-08T12:15:00.000Z",
+      };
+      await fixture.archAttempts.begin(persisted);
+      await fixture.archAttempts.complete({
+        ...persisted,
+        architecturePackageId: "arch-pkg-acknowledged-A",
+      });
+
+      const syson = new InitialArchSyson();
+      // Consume only the mock's artificial absent-package preflight. Recovery
+      // then observes the homonymous replacement package B.
+      await syson.callTool({
+        name: "syson_element_children",
+        arguments: {
+          editing_context_id: "editing-context-drone",
+          element_id: "root-pkg-drone",
+        },
+      });
+      syson.calls.length = 0;
+      let snapshotSaveCalls = 0;
+      const snapshots: ThreadSnapshotStore = {
+        get: (snapshotId) => fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        save: async (snapshot) => {
+          snapshotSaveCalls++;
+          await fixture.snapshots.save(snapshot);
+        },
+      };
+
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory, snapshots }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "does not match the exact architecturePackageId",
+      );
+
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        0,
+      );
+      assertEquals(snapshotSaveCalls, 0, "replacement Package B must not be promoted");
+      let captureFileCount = 0;
+      try {
+        for await (const entry of Deno.readDir(`${directory}/arch-captures`)) {
+          if (entry.isFile) captureFileCount++;
+        }
+      } catch (error) {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+      }
+      assertEquals(captureFileCount, 0);
+      const failed = await fixture.projects.get(PROJECT_ID);
+      const run = failed?.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertEquals(run?.status, "failed");
+      assertEquals(run?.resultSnapshot, undefined);
+      assertEquals(run?.evidenceRefs, []);
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -1708,6 +2520,89 @@ Deno.test(
 );
 
 // ── Refusal — non-agent origin ────────────────────────────────────────────────
+
+Deno.test(
+  "model.write-architecture rejects persisted MRTR summary or parameter mutation before SysON",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-mrtr-seal-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const mutations: ReadonlyArray<[
+        string,
+        (decision: Record<string, unknown>) => void,
+      ]> = [
+        ["summary", (decision) => {
+          const proposal = decision.proposal as Record<string, unknown>;
+          proposal.summary = "Persisted summary changed after approval";
+        }],
+        ["parameters", (decision) => {
+          const proposal = decision.proposal as Record<string, unknown>;
+          const parameters = proposal.parameters as Array<Record<string, unknown>>;
+          parameters[0]!.value = "MutatedPackage";
+        }],
+      ];
+
+      for (const [name, mutate] of mutations) {
+        const before = await fixture.projects.get(PROJECT_ID);
+        assertExists(before);
+        const projects = {
+          async get(projectId: string) {
+            const project = await fixture.projects.get(projectId);
+            if (!project) return undefined;
+            const altered = structuredClone(project);
+            const decision = altered.decisions.find((candidate) =>
+              candidate.id === "decision:arch-params"
+            );
+            assertExists(decision);
+            mutate(decision as unknown as Record<string, unknown>);
+            return altered;
+          },
+          getRevision(projectId: string, revision: number) {
+            return fixture.projects.getRevision(projectId, revision);
+          },
+          createInitial(
+            snapshot: Parameters<typeof fixture.projects.createInitial>[0],
+          ) {
+            return fixture.projects.createInitial(snapshot);
+          },
+          commit(
+            snapshot: Parameters<typeof fixture.projects.commit>[0],
+            expectedRevision: number,
+          ) {
+            return fixture.projects.commit(snapshot, expectedRevision);
+          },
+        } as unknown as FileEngineeringProjectRevisionStore;
+        const syson = new InitialArchSyson();
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, projects }, {
+              syson,
+              directory,
+              leaseSubdir: `mrtr-seal-${name}`,
+            }).execute(AGENT, executionCommand(fixture)),
+          EngineeringProjectCommandError,
+          "decision input fingerprint no longer seals",
+        );
+        assertEquals(syson.calls, [], name);
+        assertEquals(
+          await fixture.archAttempts.readRun(PROJECT_ID, fixture.queued.runId),
+          undefined,
+          name,
+        );
+        const unchanged = await fixture.projects.get(PROJECT_ID);
+        assertEquals(unchanged?.revision, before.revision, name);
+        assertEquals(
+          unchanged?.agentRuns.find((run) => run.id === fixture.queued.runId)
+            ?.status,
+          "queued",
+          name,
+        );
+      }
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
 
 Deno.test(
   "model.write-architecture executor rejects a non-agent origin",
@@ -2128,6 +3023,8 @@ Deno.test(
       kind: "sysml-model" as const,
       version: "v1",
       fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+      uri: "casys://syson-model-seed-capture/sha256/" + "a".repeat(64),
+      mediaType: "application/json",
       producer: { serverId: "syson", tool: "syson_model_create", runId: "run:seed" },
       inputArtifactIds: [],
       freshness,
@@ -2144,7 +3041,7 @@ Deno.test(
         tool: "syson_element_insert_sysml",
         runId: "run:arch",
       },
-      inputArtifactIds: [],
+      inputArtifactIds: [baseArtifact.id],
       freshness,
     };
     const subject = {
@@ -2512,6 +3409,135 @@ Deno.test(
 );
 
 // ── Basis lineage integrity before provider dispatch ──────────────────────────
+
+Deno.test(
+  "model.write-architecture rejects an architecture merge input before WAL or provider access",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-merge-lineage-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const initial = await makeExecutor(fixture, {
+        syson: new InitialArchSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const queued = await queueArchitectureEnrichment(fixture, initial);
+      const initialRun = initial.agentRuns.find((run) =>
+        run.id === fixture.queued.runId
+      );
+      assertExists(initialRun?.resultSnapshot);
+      const base = await fixture.snapshots.get(initialRun.resultSnapshot.snapshotId);
+      assertExists(base);
+      const seed = base.artifacts.find((artifact) =>
+        artifact.producer.tool === "syson_model_create"
+      );
+      const architectureA = findArchitectureArtifact(base);
+      assertExists(seed);
+      assertExists(architectureA);
+
+      const digestC = "c".repeat(64);
+      const architectureC = {
+        ...architectureA,
+        id: `architecture-${digestC}`,
+        name: "Architecture C",
+        version: digestC,
+        fingerprint: { algorithm: "sha256" as const, digest: digestC },
+        uri: `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${digestC}`,
+        producer: { ...architectureA.producer, runId: "run:architecture-c" },
+        inputArtifactIds: [seed.id],
+      };
+      const digestB = "d".repeat(64);
+      const architectureB = {
+        ...architectureA,
+        id: `architecture-${digestB}`,
+        name: "Architecture B merge",
+        version: digestB,
+        fingerprint: { algorithm: "sha256" as const, digest: digestB },
+        uri: `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${digestB}`,
+        producer: { ...architectureA.producer, runId: "run:architecture-b" },
+        inputArtifactIds: [seed.id, architectureA.id, architectureC.id],
+      };
+      const inputEvidence = (
+        consumer: ThreadArtifact,
+        input: ThreadArtifact,
+      ) => ({
+        consumption: {
+          id: `consume-${input.id}-by-${consumer.id}`,
+          artifactId: input.id,
+          consumer: consumer.producer,
+          observedFingerprint: input.fingerprint,
+          verifiedAt: base.generatedAt,
+          status: "verified" as const,
+        },
+        provenance: [{
+          id: `derived-${consumer.id}-from-${input.id}`,
+          relation: "derived_from" as const,
+          from: { kind: "artifact" as const, id: consumer.id },
+          to: { kind: "artifact" as const, id: input.id },
+          rationale:
+            "Synthetic valid merge lineage used to exercise the executor guard.",
+        }, {
+          id: `uses-consume-${input.id}-by-${consumer.id}`,
+          relation: "uses" as const,
+          from: {
+            kind: "consumption" as const,
+            id: `consume-${input.id}-by-${consumer.id}`,
+          },
+          to: { kind: "artifact" as const, id: input.id },
+          rationale: "Synthetic verified consumption for the lineage guard test.",
+        }],
+      });
+      const addedEvidence = [
+        inputEvidence(architectureC, seed),
+        inputEvidence(architectureB, seed),
+        inputEvidence(architectureB, architectureA),
+        inputEvidence(architectureB, architectureC),
+      ];
+      const mergedBasis: ThreadSnapshot = {
+        ...base,
+        artifacts: [...base.artifacts, architectureC, architectureB],
+        consumptions: [
+          ...base.consumptions,
+          ...addedEvidence.map((item) => item.consumption),
+        ],
+        provenance: [
+          ...base.provenance,
+          ...addedEvidence.flatMap((item) => item.provenance),
+        ],
+      };
+      const snapshots: ThreadSnapshotStore = {
+        get: (snapshotId) =>
+          snapshotId === base.id
+            ? Promise.resolve(mergedBasis)
+            : fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        save: (snapshot) => fixture.snapshots.save(snapshot),
+      };
+      const syson = new EnrichmentArchSyson();
+
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory, snapshots }).execute(AGENT, {
+            commandId: "agent-reject-architecture-merge",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:20:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "input lineage is not exact",
+      );
+
+      assertEquals(syson.calls, [], "invalid lineage must stop before provider access");
+      assertEquals(
+        await fixture.archAttempts.readRun(PROJECT_ID, queued.runId),
+        undefined,
+        "invalid lineage must stop before WAL reservation",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
 
 Deno.test(
   "model.write-architecture rejects a cross-subject predecessor before any SysON call",

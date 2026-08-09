@@ -106,7 +106,11 @@ Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid scri
       client,
       { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
       store,
-      { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
+      {
+        build123dService: "mcp-build123d-sandbox",
+        materializeAsset: noopMaterialize,
+        previewRunId: "preview:test-001",
+      },
     );
 
     assertEquals(callCount, 1, "exactly one build123d_export call for assembly-only");
@@ -114,8 +118,9 @@ Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid scri
     assertEquals(capture.kind, "geometry-draft");
     assertEquals(capture.subject.snapshotId, "snap-001");
     assertEquals(capture.subject.revision, 2);
-    assertEquals(capture.producer.serverId, "build123d");
+    assertEquals(capture.producer.serverId, "build123d-sandbox");
     assertEquals(capture.producer.tool, "build123d_export");
+    assertEquals(capture.producer.runId, "preview:test-001");
     assertEquals(capture.script, VALID_SCRIPT);
     assertEquals(capture.exportFormats, ["gltf"]);
     assertEquals(capture.assemblyFiles.length, 1);
@@ -156,10 +161,166 @@ Deno.test("captureGeometryDraft uses server-fixed name 'geometry-preview-assembl
       client,
       { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
       store,
-      { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
+      {
+        build123dService: "mcp-build123d-sandbox",
+        materializeAsset: noopMaterialize,
+      },
     );
 
     assertEquals(observedNames, ["geometry-preview-assembly"]);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("captureGeometryDraft refuses a provider path whose extension contradicts the requested export", async () => {
+  const [store, tmpDir] = await makeTempDraftStore();
+  try {
+    const client = {
+      callTool: (): Promise<McpToolResult> => {
+        const response = assemblyGltfResponse();
+        const file = response.structuredContent.files as Array<Record<string, unknown>>;
+        file[0]!.path = "/exports/geometry-preview-assembly.gltf";
+        return Promise.resolve(response);
+      },
+      callToolTextResult: () => Promise.reject(new Error("unexpected")),
+    };
+
+    await assertRejects(
+      () =>
+        captureGeometryDraft(
+          client,
+          { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
+          store,
+          {
+            build123dService: "mcp-build123d-sandbox",
+            materializeAsset: noopMaterialize,
+          },
+        ),
+      Error,
+      'fixed basename "geometry-preview-assembly.glb"',
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("captureGeometryDraft rejects duplicate formats before the provider call", async () => {
+  const [store, tmpDir] = await makeTempDraftStore();
+  try {
+    let providerCalled = false;
+    const client = {
+      callTool: (): Promise<McpToolResult> => {
+        providerCalled = true;
+        return Promise.resolve(assemblyGltfResponse());
+      },
+      callToolTextResult: () => Promise.reject(new Error("unexpected")),
+    };
+    await assertRejects(
+      () =>
+        captureGeometryDraft(
+          client,
+          {
+            script: VALID_SCRIPT,
+            manifest: { ...VALID_MANIFEST, exportFormats: ["gltf", "gltf"] },
+          },
+          store,
+          {
+            build123dService: "mcp-build123d-sandbox",
+            materializeAsset: noopMaterialize,
+          },
+        ),
+      Error,
+      "must not contain duplicates",
+    );
+    assertEquals(providerCalled, false);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("captureGeometryDraft rejects colliding provider digests before materialization", async () => {
+  const [store, tmpDir] = await makeTempDraftStore();
+  try {
+    let materialized = false;
+    const client = {
+      callTool: (): Promise<McpToolResult> =>
+        Promise.resolve({
+          structuredContent: {
+            schemaVersion: "1.0",
+            kind: "export",
+            metrics: {},
+            files: [
+              {
+                format: "step",
+                path: "/exports/geometry-preview-assembly.step",
+                bytes: 10,
+                sha256: HEX64,
+              },
+              {
+                format: "stl",
+                path: "/exports/geometry-preview-assembly.stl",
+                bytes: 10,
+                sha256: HEX64,
+              },
+            ],
+          },
+          text: "",
+        }),
+      callToolTextResult: () => Promise.reject(new Error("unexpected")),
+    };
+    await assertRejects(
+      () =>
+        captureGeometryDraft(
+          client,
+          {
+            script: VALID_SCRIPT,
+            manifest: { ...VALID_MANIFEST, exportFormats: ["step", "stl"] },
+          },
+          store,
+          {
+            build123dService: "mcp-build123d-sandbox",
+            materializeAsset: () => {
+              materialized = true;
+              return Promise.resolve();
+            },
+          },
+        ),
+      Error,
+      "fingerprints must be unique",
+    );
+    assertEquals(materialized, false);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("captureGeometryDraft refuses the trusted build123d volume before provider dispatch", async () => {
+  const [store, tmpDir] = await makeTempDraftStore();
+  try {
+    let providerCalled = false;
+    const client = {
+      callTool: (): Promise<McpToolResult> => {
+        providerCalled = true;
+        return Promise.resolve(assemblyGltfResponse());
+      },
+      callToolTextResult: () => Promise.reject(new Error("unexpected")),
+    };
+    await assertRejects(
+      () =>
+        captureGeometryDraft(
+          client,
+          { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
+          store,
+          {
+            build123dService: "mcp-build123d" as unknown as "mcp-build123d-sandbox",
+            materializeAsset: noopMaterialize,
+          },
+        ),
+      TypeError,
+      "must be materialized from mcp-build123d-sandbox",
+    );
+    assertEquals(providerCalled, false);
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
@@ -203,7 +364,10 @@ Deno.test(
         client,
         { script: VALID_SCRIPT, manifest },
         store,
-        { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
+        {
+          build123dService: "mcp-build123d-sandbox",
+          materializeAsset: noopMaterialize,
+        },
       );
 
       // Only the assembly call — no per-part calls.
@@ -239,7 +403,10 @@ Deno.test("captureGeometryDraft rejects a script with a forbidden identifier bef
             manifest: VALID_MANIFEST,
           },
           store,
-          { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
+          {
+            build123dService: "mcp-build123d-sandbox",
+            materializeAsset: noopMaterialize,
+          },
         ),
       GeometryScriptValidationError,
     );
@@ -272,7 +439,10 @@ Deno.test("captureGeometryDraft rejects a provider response with a missing requi
           client,
           { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
           store,
-          { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
+          {
+            build123dService: "mcp-build123d-sandbox",
+            materializeAsset: noopMaterialize,
+          },
         ),
       Error,
     );
@@ -309,7 +479,10 @@ Deno.test("captureGeometryDraft rejects a provider response with an unexpected s
           client,
           { script: VALID_SCRIPT, manifest: VALID_MANIFEST },
           store,
-          { build123dService: "mcp-build123d", materializeAsset: noopMaterialize },
+          {
+            build123dService: "mcp-build123d-sandbox",
+            materializeAsset: noopMaterialize,
+          },
         ),
       Error,
       "unsupported structuredContent contract",

@@ -20,13 +20,16 @@
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 
 export type RequirementsWriteAttempt = {
-  readonly schemaVersion: "requirements-write-attempt/1.0";
+  readonly schemaVersion: "requirements-write-attempt/1.1";
   readonly projectId: string;
   readonly runId: string;
   readonly planDigest: string;
   readonly status: "dispatched" | "completed";
   readonly dispatchedAt: string;
-  readonly result?: { readonly inserted: "true" };
+  readonly result?: {
+    readonly inserted: "true";
+    readonly requirementsElementId: string;
+  };
 };
 
 export class RequirementsWriteOutcomeUnknownError extends Error {
@@ -75,7 +78,10 @@ export class FileRequirementsAttemptStore {
     readonly runId: string;
     readonly planDigest: string;
     readonly dispatchedAt: string;
-  }): Promise<{ readonly action: "dispatch" } | { readonly action: "completed" }> {
+  }): Promise<
+    | { readonly action: "dispatch" }
+    | { readonly action: "completed"; readonly requirementsElementId: string }
+  > {
     const fresh = buildAttempt(input);
     await Deno.mkdir(this.directory, { recursive: true });
 
@@ -85,7 +91,7 @@ export class FileRequirementsAttemptStore {
     } catch {
       throw new RequirementsWriteOutcomeUnknownError();
     }
-    if (current) return actionFor(current);
+    if (current) return actionFor(current, fresh.planDigest);
 
     const path = await this.pathFor(fresh.projectId, fresh.runId);
     try {
@@ -96,18 +102,23 @@ export class FileRequirementsAttemptStore {
     }
     const existing = await this.requiredRun(fresh.projectId, fresh.runId);
     await syncDirectoryChain(this.directory);
-    return actionFor(existing);
+    return actionFor(existing, fresh.planDigest);
   }
 
-  /** Mark the immutable run record completed after SysON acknowledged it. */
+  /**
+   * Mark the immutable run record completed only after the inserted element's
+   * identity, target typing, and constraints have all been proved by readback.
+   */
   async complete(input: {
     readonly projectId: string;
     readonly runId: string;
     readonly planDigest: string;
+    readonly requirementsElementId: string;
   }): Promise<void> {
     nonEmpty(input.projectId, "projectId");
     nonEmpty(input.runId, "runId");
     nonEmpty(input.planDigest, "planDigest");
+    nonEmpty(input.requirementsElementId, "requirementsElementId");
     const existing = await this.requiredRun(input.projectId, input.runId);
     if (existing.planDigest !== input.planDigest) {
       throw new RequirementsWriteOutcomeUnknownError();
@@ -115,7 +126,10 @@ export class FileRequirementsAttemptStore {
     const completed: RequirementsWriteAttempt = {
       ...existing,
       status: "completed",
-      result: { inserted: "true" },
+      result: {
+        inserted: "true",
+        requirementsElementId: input.requirementsElementId,
+      },
     };
     if (existing.status === "completed") {
       if (deterministicJson(existing) !== deterministicJson(completed)) {
@@ -249,7 +263,7 @@ function buildAttempt(input: {
   readonly dispatchedAt: string;
 }): RequirementsWriteAttempt {
   return {
-    schemaVersion: "requirements-write-attempt/1.0",
+    schemaVersion: "requirements-write-attempt/1.1",
     projectId: nonEmpty(input.projectId, "projectId"),
     runId: nonEmpty(input.runId, "runId"),
     planDigest: nonEmpty(input.planDigest, "planDigest"),
@@ -260,11 +274,18 @@ function buildAttempt(input: {
 
 function actionFor(
   attempt: RequirementsWriteAttempt,
-): { readonly action: "completed" } {
-  if (attempt.status !== "completed" || !attempt.result) {
+  expectedPlanDigest: string,
+): { readonly action: "completed"; readonly requirementsElementId: string } {
+  if (
+    attempt.planDigest !== expectedPlanDigest || attempt.status !== "completed" ||
+    !attempt.result
+  ) {
     throw new RequirementsWriteOutcomeUnknownError();
   }
-  return { action: "completed" };
+  return {
+    action: "completed",
+    requirementsElementId: attempt.result.requirementsElementId,
+  };
 }
 
 async function writeNewDurably(
@@ -346,7 +367,7 @@ function parseAttempt(
   const record = parseObject(text, "Requirements insertion marker");
   const keys = Object.keys(record).sort();
   if (
-    record.schemaVersion !== "requirements-write-attempt/1.0" ||
+    record.schemaVersion !== "requirements-write-attempt/1.1" ||
     record.projectId !== projectId || record.runId !== runId ||
     (typeof record.planDigest !== "string" || !record.planDigest.trim()) ||
     (record.status !== "dispatched" && record.status !== "completed") ||
@@ -375,16 +396,28 @@ function parseAttempt(
     (!record.result || typeof record.result !== "object" ||
       Array.isArray(record.result) ||
       (record.result as Record<string, unknown>).inserted !== "true" ||
-      Object.keys(record.result as Record<string, unknown>).length !== 1)
+      typeof (record.result as Record<string, unknown>).requirementsElementId !==
+        "string" ||
+      !((record.result as Record<string, unknown>).requirementsElementId as string)
+        .trim() ||
+      Object.keys(record.result as Record<string, unknown>).length !== 2)
   ) throw new Error("Completed requirements insertion marker has an invalid result.");
   return {
-    schemaVersion: "requirements-write-attempt/1.0",
+    schemaVersion: "requirements-write-attempt/1.1",
     projectId,
     runId,
     planDigest: record.planDigest,
     status: record.status,
     dispatchedAt: record.dispatchedAt,
-    ...(record.status === "completed" ? { result: { inserted: "true" } } : {}),
+    ...(record.status === "completed"
+      ? {
+        result: {
+          inserted: "true" as const,
+          requirementsElementId: (record.result as Record<string, unknown>)
+            .requirementsElementId as string,
+        },
+      }
+      : {}),
   };
 }
 

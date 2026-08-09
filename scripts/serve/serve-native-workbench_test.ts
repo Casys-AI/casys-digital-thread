@@ -5,6 +5,8 @@ import type { EngineeringProjectRevisionStore } from "../../src/domain/project/e
 import type { CockpitFocusSnapshot } from "../../src/domain/platform/cockpit-focus.ts";
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/platform/cockpit-focus.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/platform/architecture-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/platform/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/platform/requirements-proposal.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
@@ -14,6 +16,13 @@ import {
   resolveNativeWorkbenchProjectId,
   resolveNativeWorkbenchSubjectId,
 } from "./serve-native-workbench.ts";
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 Deno.test("native Workbench resolves an agent-selected project and its subject", async () => {
   const project = projectFixture("project-one", "subject-one");
@@ -111,6 +120,40 @@ Deno.test("native Workbench keeps a durable unattached generic architecture snap
   assertEquals(await previewThreadId(handler), r3.id);
 });
 
+Deno.test("native Workbench hides durable unattached generic requirements and geometry snapshots", async () => {
+  for (
+    const operation of [
+      MODEL_WRITE_REQUIREMENTS_OPERATION,
+      DESIGN_WRITE_GEOMETRY_OPERATION,
+    ]
+  ) {
+    const r2 = genericArchitectureThreadSnapshot(2);
+    const r3 = genericArchitectureThreadSnapshot(3, r2);
+    const projects = new ProjectStore([
+      projectWithOperation(genericArchitectureProject("queued", r2, r3), operation),
+    ]);
+    const handler = createNativeWorkbenchHandler({
+      store: new ThreadStore([r2, r3]),
+      projectStore: projects,
+      projectId: "generic-architecture-project",
+      subjectId: r2.subject.id,
+      html: "unused",
+    });
+
+    for (const status of ["queued", "running", "publishing", "failed"] as const) {
+      projects.replace(
+        projectWithOperation(genericArchitectureProject(status, r2, r3), operation),
+      );
+      assertEquals(await previewThreadId(handler), r2.id, operation.id);
+    }
+
+    projects.replace(
+      projectWithOperation(genericArchitectureProject("completed", r2, r3), operation),
+    );
+    assertEquals(await previewThreadId(handler), r3.id, operation.id);
+  }
+});
+
 Deno.test("native Workbench follows the durable focus selected by the agent", async () => {
   const first = projectFixture("project-one", "subject-one");
   const second = projectFixture("project-two", "subject-two");
@@ -180,6 +223,68 @@ Deno.test("native Workbench refuses mutated canonical content-addressed bytes", 
     new Request(`http://localhost/api/thread/assets/${digest}.gltf`),
   );
   assertEquals(response.status, 404);
+});
+
+Deno.test("native Workbench serves exact canonical GLB bytes with their binary media type", async () => {
+  const bytes = new TextEncoder().encode("exact-glb-bytes");
+  const digest = await sha256Hex(bytes);
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    assetReader: () => Promise.resolve(bytes),
+  });
+
+  const response = await handler(
+    new Request(`http://localhost/api/thread/assets/${digest}.glb`),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(response.headers.get("Content-Type"), "model/gltf-binary");
+  assertEquals(new Uint8Array(await response.arrayBuffer()), bytes);
+});
+
+Deno.test("native Workbench refuses mutated draft bytes under a signed digest", async () => {
+  const digest = "a".repeat(64);
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    draftAssetReader: () => Promise.resolve(new TextEncoder().encode("mutated")),
+  });
+
+  const response = await handler(
+    new Request(`http://localhost/api/draft-assets/${digest}`),
+  );
+  assertEquals(response.status, 404);
+});
+
+Deno.test("native Workbench serves only exact draft bytes under their SHA-256", async () => {
+  const bytes = new TextEncoder().encode("reviewed-draft-bytes");
+  const digest = await sha256Hex(bytes);
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    draftAssetReader: (observedDigest) => {
+      assertEquals(observedDigest, digest);
+      return Promise.resolve(bytes);
+    },
+  });
+
+  const response = await handler(
+    new Request(`http://localhost/api/draft-assets/${digest}`),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(new Uint8Array(await response.arrayBuffer()), bytes);
 });
 
 Deno.test("native Workbench reports an unknown selected project without substituting another one", async () => {
@@ -399,6 +504,19 @@ function genericArchitectureProject(
     decisions: [],
     approvals: [],
     blockers: [],
+  };
+}
+
+function projectWithOperation(
+  project: EngineeringProjectSnapshot,
+  operation: { readonly id: string; readonly version: string },
+): EngineeringProjectSnapshot {
+  return {
+    ...project,
+    workItems: project.workItems.map((item) => ({
+      ...item,
+      operation: { ...operation, bindings: item.operation?.bindings ?? [] },
+    })),
   };
 }
 

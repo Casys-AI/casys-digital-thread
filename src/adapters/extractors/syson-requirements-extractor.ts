@@ -210,6 +210,22 @@ export function verifyExtractedConstraint(row: unknown, req: OracleRequirement):
   const item = asRecord(row, "$constraint");
   const expr = asRecord(item.expression, "$constraint.expression");
 
+  if (expr.kind !== "binary") {
+    throw new RequirementExtractionError(
+      "requirement_tampered",
+      `Requirement "${req.id}": expression kind in model is "${String(expr.kind)}", ` +
+        `expected "binary".`,
+      {
+        requirementId: req.id,
+        field: "expression.kind",
+        expected: "binary",
+        actual: expr.kind,
+      },
+      `The expression shape for requirement "${req.id}" was altered in the model. ` +
+        "Stop for review; do not retry automatically.",
+    );
+  }
+
   // Operator
   const op = expr.op;
   if (op !== req.operator) {
@@ -228,13 +244,46 @@ export function verifyExtractedConstraint(row: unknown, req: OracleRequirement):
     );
   }
 
-  // Metric (featurePath[0])
+  // Metric reference: exactly one reviewed feature in the path.
   const left = asRecord(expr.left, "$constraint.expression.left");
+  if (left.kind !== "ref") {
+    throw new RequirementExtractionError(
+      "requirement_tampered",
+      `Requirement "${req.id}": left operand kind in model is "${
+        String(left.kind)
+      }", ` +
+        `expected "ref".`,
+      {
+        requirementId: req.id,
+        field: "expression.left.kind",
+        expected: "ref",
+        actual: left.kind,
+      },
+      `The metric reference for requirement "${req.id}" was altered in the model. ` +
+        "Stop for review; do not retry automatically.",
+    );
+  }
+
   const featurePath = left.featurePath;
-  const actualMetric = Array.isArray(featurePath) && featurePath.length > 0 &&
-      typeof featurePath[0] === "string"
-    ? featurePath[0]
-    : undefined;
+  if (
+    !Array.isArray(featurePath) || featurePath.length !== 1 ||
+    typeof featurePath[0] !== "string"
+  ) {
+    throw new RequirementExtractionError(
+      "requirement_tampered",
+      `Requirement "${req.id}": feature path in model does not exactly match the reviewed path.`,
+      {
+        requirementId: req.id,
+        field: "expression.left.featurePath",
+        expected: [req.metric],
+        actual: featurePath,
+      },
+      `The metric reference for requirement "${req.id}" was altered in the model. ` +
+        "Stop for review; do not retry automatically.",
+    );
+  }
+
+  const actualMetric = featurePath[0];
   if (actualMetric !== req.metric) {
     throw new RequirementExtractionError(
       "requirement_tampered",
@@ -253,6 +302,24 @@ export function verifyExtractedConstraint(row: unknown, req: OracleRequirement):
 
   // Threshold value and unit
   const right = asRecord(expr.right, "$constraint.expression.right");
+
+  if (right.kind !== "literal") {
+    throw new RequirementExtractionError(
+      "requirement_tampered",
+      `Requirement "${req.id}": right operand kind in model is "${
+        String(right.kind)
+      }", ` +
+        `expected "literal".`,
+      {
+        requirementId: req.id,
+        field: "expression.right.kind",
+        expected: "literal",
+        actual: right.kind,
+      },
+      `The threshold expression for requirement "${req.id}" was altered in the model. ` +
+        "Stop for review; do not retry automatically.",
+    );
+  }
 
   const actualValue = right.value;
   if (actualValue !== req.limit.value) {

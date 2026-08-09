@@ -38,6 +38,8 @@ import {
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
 } from "../../src/orchestration/operations/inspection-drone-v4.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/platform/architecture-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/platform/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/platform/requirements-proposal.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/platform/syson-model-seed.ts";
 import {
   Base64EngineeringAssetReader,
@@ -116,6 +118,8 @@ export interface NativeWorkbenchHandlerOptions {
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
+  /** Testable boundary for content-addressed, non-canonical geometry previews. */
+  draftAssetReader?: (digest: string) => Promise<Uint8Array | undefined>;
   /** Polling only observes persisted snapshots; it never executes a tool. */
   pollIntervalMs?: number;
 }
@@ -205,7 +209,7 @@ export function createNativeWorkbenchHandler(
     }
     if (url.pathname.startsWith("/api/draft-assets/")) {
       if (request.method !== "GET") return methodNotAllowed();
-      return serveDraftAsset(url.pathname);
+      return serveDraftAsset(url.pathname, options.draftAssetReader);
     }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -516,6 +520,8 @@ const PROVIDER_DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
+  MODEL_WRITE_REQUIREMENTS_OPERATION,
+  DESIGN_WRITE_GEOMETRY_OPERATION,
 ] as const;
 
 function hasUnattachedProviderDurableProjectOperation(
@@ -595,7 +601,7 @@ async function serveThreadAsset(
   }
   const bytes = await reader(filename);
   if (!bytes) return new Response("Not found", { status: 404 });
-  const addressed = /^([a-f0-9]{64})\.(step|gltf|stl)$/.exec(filename);
+  const addressed = /^([a-f0-9]{64})\.(step|glb|gltf|stl)$/.exec(filename);
   if (addressed && await sha256Hex(bytes) !== addressed[1]) {
     return new Response("Not found", { status: 404 });
   }
@@ -603,6 +609,8 @@ async function serveThreadAsset(
     headers: {
       "Content-Type": filename.endsWith(".step")
         ? "model/step"
+        : filename.endsWith(".glb")
+        ? "model/gltf-binary"
         : filename.endsWith(".gltf")
         ? "model/gltf+json"
         : "model/stl",
@@ -631,20 +639,28 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * The path segment after the prefix is the bare hex digest.  Only
  * well-formed 64-char hex digests are accepted; any other path returns 400.
  */
-async function serveDraftAsset(pathname: string): Promise<Response> {
+async function serveDraftAsset(
+  pathname: string,
+  reader?: (digest: string) => Promise<Uint8Array | undefined>,
+): Promise<Response> {
   const digest = pathname.slice("/api/draft-assets/".length);
   if (!/^[a-f0-9]{64}$/.test(digest)) {
     return new Response("Invalid draft asset digest", { status: 400 });
   }
-  const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${digest}`;
-  let bytes: Uint8Array;
-  try {
-    bytes = await Deno.readFile(localPath);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
-      return new Response("Draft asset not found", { status: 404 });
+  let bytes: Uint8Array | undefined;
+  if (reader) {
+    bytes = await reader(digest);
+  } else {
+    const localPath = `${GEOMETRY_DRAFT_ASSETS_DIR}/${digest}`;
+    try {
+      bytes = await Deno.readFile(localPath);
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
     }
-    throw error;
+  }
+  if (!bytes) return new Response("Draft asset not found", { status: 404 });
+  if (await sha256Hex(bytes) !== digest) {
+    return new Response("Draft asset fingerprint mismatch", { status: 404 });
   }
   return new Response(Uint8Array.from(bytes).buffer, {
     headers: {

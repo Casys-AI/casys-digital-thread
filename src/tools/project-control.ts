@@ -66,6 +66,10 @@ const OBJECT_OUTPUT_SCHEMA = {
   additionalProperties: true,
 } as const;
 
+// Unbounded lists bloat the capture JSON and, once per-part exports are added
+// in v2, would multiply provider dispatch time proportionally.
+const MAX_GEOMETRY_COMPONENTS_V1 = 32;
+
 const COMMAND_ID = {
   type: "string",
   minLength: 1,
@@ -197,10 +201,11 @@ export interface ProjectControlToolDependencies {
     readonly client: McpToolClient;
     readonly draftCaptures: FileCaptureStore<"geometry-draft">;
     /**
-     * Docker Compose service name that owns the /exports volume.
-     * Server-fixed: never supplied by an agent.  Defaults to "mcp-build123d".
+     * Exact Docker Compose service that owns the private preview /exports volume.
+     * Server-fixed and required: never supplied by an agent and never the trusted
+     * shared-volume instance.
      */
-    readonly build123dService?: string;
+    readonly build123dService: "mcp-build123d-sandbox";
   };
 }
 
@@ -396,18 +401,13 @@ export function registerProjectControlTools(
 
   // Hard bound on components list length.
   // WHY 32 — each component is metadata stored in the draft record and manifest.
-  // Unbounded lists bloat the capture JSON and, once per-part exports are added
-  // in v2, would multiply the provider dispatch time proportionally.  32 covers
-  // any foreseeable sub-system decomposition at concept-design stage.
-  const MAX_GEOMETRY_COMPONENTS_V1 = 32;
-
-  // Regex for a valid component usageName slug.
+  // Regex for a valid SysML part-usage identifier.
   // WHY STRICT — usageName is stored in the manifest and the draft capture, and
   // will be used as part of server-fixed export names in v2.  Restricting to
-  // [a-zA-Z][a-zA-Z0-9_-]* now prevents accumulation of names that would be
+  // [a-z][A-Za-z0-9_]* prevents accumulation of names that would be
   // impossible to use safely later, and defends against injection if the
   // restriction is ever relaxed without a review.
-  const USAGE_NAME_SLUG = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+  const SYSML_USAGE_NAME = /^[a-z][A-Za-z0-9_]*$/;
 
   if (dependencies.geometryPreview) {
     const geo = dependencies.geometryPreview;
@@ -452,10 +452,10 @@ export function registerProjectControlTools(
           }
           const obj = c as Record<string, unknown>;
           const usageName = requiredString(obj.usageName, `components[${i}].usageName`);
-          if (!USAGE_NAME_SLUG.test(usageName)) {
+          if (!SYSML_USAGE_NAME.test(usageName)) {
             throw new TypeError(
               `components[${i}].usageName '${usageName}' does not match the ` +
-                `required slug pattern [a-zA-Z][a-zA-Z0-9_-]{0,63}.`,
+                `required SysML usage pattern [a-z][A-Za-z0-9_]*.`,
             );
           }
           return {
@@ -465,16 +465,18 @@ export function registerProjectControlTools(
           };
         },
       );
-      // Uniqueness check: usageName must be distinct within the list.
-      const seenUsageNames = new Set<string>();
+      // SysML usage names are scoped by their owning PartDefinition, so two
+      // reviewed occurrences may legitimately share one label. The provider
+      // element identity is global and is therefore the only safe list key.
+      const seenElementIds = new Set<string>();
       for (let i = 0; i < components.length; i++) {
-        const name = components[i]!.usageName;
-        if (seenUsageNames.has(name)) {
+        const elementId = components[i]!.elementId;
+        if (seenElementIds.has(elementId)) {
           throw new TypeError(
-            `components contains duplicate usageName '${name}' at index ${i}.`,
+            `components contains duplicate elementId '${elementId}' at index ${i}.`,
           );
         }
-        seenUsageNames.add(name);
+        seenElementIds.add(elementId);
       }
 
       // Build a manifest without scriptHash/artifactHashes — the draft-capture
@@ -498,7 +500,7 @@ export function registerProjectControlTools(
         geo.client,
         { script, manifest },
         geo.draftCaptures,
-        { build123dService: geo.build123dService ?? "mcp-build123d" },
+        { build123dService: geo.build123dService },
       );
 
       // Build the completed manifest for the MRTR proposal.
@@ -945,10 +947,12 @@ const projectGeometryPreviewTool: MCPTool = {
         type: "array",
         items: { type: "string", enum: ["step", "gltf", "stl"] },
         minItems: 1,
+        uniqueItems: true,
         description: 'Export formats for the assembly call (e.g. ["gltf"]).',
       },
       components: {
         type: "array",
+        maxItems: MAX_GEOMETRY_COMPONENTS_V1,
         items: {
           type: "object",
           properties: {
@@ -960,7 +964,8 @@ const projectGeometryPreviewTool: MCPTool = {
             usageName: {
               type: "string",
               minLength: 1,
-              description: "SysML part-usage label (e.g. dripTray).",
+              pattern: "^[a-z][A-Za-z0-9_]*$",
+              description: "SysML part-usage label (e.g. driveUnit).",
             },
             label: {
               type: "string",
@@ -972,7 +977,7 @@ const projectGeometryPreviewTool: MCPTool = {
           additionalProperties: false,
         },
         description:
-          "Optional part-usage bindings. Each entry triggers a per-component STL export.",
+          "Optional reviewed part-usage binding metadata. V1 exports only the assembly; it does not create per-component STL files.",
       },
     },
     required: [

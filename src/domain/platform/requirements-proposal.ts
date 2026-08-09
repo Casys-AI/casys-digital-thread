@@ -17,10 +17,10 @@
  * and the identity key for enrichment diffing. Keeping them equal makes the
  * capture self-describing without a second ID field.
  *
- * WHY partDefName IS SERVER-DERIVED (D3) — the agent proposes only
- * containerComponent. partDefName = `${containerComponent}Requirements` is
- * computed here from the proposal, never supplied by the agent. Any agent-
- * supplied partDefName would be an unauthorised naming authority.
+ * WHY partDefName IS SERVER-DERIVED (D3) — this legacy field now names the
+ * native RequirementUsage, not a PartDefinition. The agent proposes only the
+ * reviewed parameter values; `${containerComponent}Requirements` is computed
+ * here and the trusted renderer alone owns the resulting SysML text.
  */
 
 import type { EngineeringDecisionProposalParameter } from "../project/engineering-project.ts";
@@ -63,8 +63,8 @@ export interface RequirementEntry {
 /**
  * Parsed, hierarchy-typed representation of the human-reviewed MRTR proposal.
  *
- * partDefName is always server-derived — never agent-supplied (D3):
- *   `${containerComponent}Requirements`
+ * partDefName is the legacy property name for the server-derived
+ * RequirementUsage name `${containerComponent}Requirements`.
  */
 export interface RequirementsProposal {
   readonly containerComponent: string;
@@ -76,21 +76,28 @@ export interface RequirementsProposal {
  * Resolved envelope used for the D1 fingerprint.
  *
  * The fingerprint covers target (resolved at runtime from the architecture
- * capture), architectureBasis, server-derived partDefName, and requirements[].
+ * capture), architectureBasis, the server-derived RequirementUsage name held
+ * in the legacy `partDefName` field, and requirements[].
  * This broader scope means any change to the live model, the architecture
  * basis revision, or the requirements list invalidates the fingerprint — which
  * is exactly the boundary the human approved.
  */
+/** Exact reusable SysML type constrained by a requirements declaration. */
+export interface RequirementsTarget {
+  readonly kind: "part-definition";
+  readonly label: string;
+  readonly elementId: string;
+}
+
 export interface RequirementsEnvelope {
-  readonly target: {
-    readonly usageName: string;
-    readonly elementId: string;
-  };
+  /** Requirements constrain the reusable type, not one arbitrary occurrence. */
+  readonly target: RequirementsTarget;
   readonly architectureBasis: {
     readonly snapshotId: string;
     readonly revision: number;
     readonly fingerprint: string;
   };
+  /** Legacy field name: server-derived RequirementUsage name. */
   readonly partDefName: string;
   readonly requirements: readonly OracleRequirement[];
 }
@@ -175,7 +182,7 @@ export class RequirementsProposalParseError extends Error {
 
 /**
  * PascalCase SysML identifier: starts with a letter, continues with letters,
- * digits or underscores. This is the shape of containerComponent (e.g. "DripTray").
+ * digits or underscores. This is the shape of containerComponent (e.g. "Subsystem").
  */
 const SYSML_PASCAL_IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*$/;
 
@@ -281,6 +288,15 @@ export function parseRequirementsProposalParameters(
         throw new RequirementsProposalParseError(
           "invalid_threshold_value",
           `Requirement "${slug!}" threshold must be a finite number.`,
+          { key: param.key, slug, value: param.value },
+        );
+      }
+      if (!Number.isSafeInteger(param.value)) {
+        throw new RequirementsProposalParseError(
+          "invalid_threshold_value",
+          `Requirement "${slug!}" threshold must be a safe integer in this ` +
+            "release because SysON 0.5.1 cannot round-trip decimal literals " +
+            "through syson_constraint_extract.",
           { key: param.key, slug, value: param.value },
         );
       }
@@ -440,7 +456,7 @@ export function parseRequirementsProposalParameters(
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Derive the server-fixed partDefName from the containerComponent (D3).
+ * Derive the server-fixed RequirementUsage name from containerComponent (D3).
  *
  * Pattern: `${containerComponent}Requirements`
  * The agent never supplies this name — it is always computed here.
@@ -553,9 +569,9 @@ export function planRequirementsEnrichment(
  * Compute a deterministic SHA-256 fingerprint of the full requirements
  * envelope (D1).
  *
- * The envelope covers: resolved target {usageName, elementId},
- * architectureBasis {snapshotId, revision, fingerprint}, server-derived
- * partDefName, and requirements[].
+ * The envelope covers the resolved target PartDefinition identity,
+ * architectureBasis {snapshotId, revision, fingerprint}, the server-derived
+ * RequirementUsage name in legacy `partDefName`, and requirements[].
  *
  * This is broader than fingerprintOracleRequirements (requirements[] only)
  * because the human approved the specific component target and architecture

@@ -191,14 +191,14 @@ It answers “what approved project did we start from?”, not “what has engin
 proved?”
 
 The standard technical `"surface": "evidence"` is used only once a later operation has
-created and validated technical evidence. The generic provider-backed V3 result is
-`architecture.seed-syson-model@2`: it adds r2 with normalized identities for one blank,
-read-back SysON project container, SysML document, and root package, bound to the exact
-approved brief and documentary artifact. It makes no CAD, simulation, measurement,
-requirement evaluation, or physical verdict appear. The fixed CM-01 V3 catalog is the
-current technical path beyond this bootstrap; it publishes its own evidence surface with
-fresh identities. No surface receives an automatic schema conversion or thread-head
-fallback.
+created and validated technical evidence. `architecture.seed-syson-model@2` first adds
+r2 with normalized identities for one blank, read-back SysON project container, SysML
+document, and root package, bound to the exact approved brief and documentary artifact.
+It makes no CAD, simulation, measurement, requirement evaluation, or physical verdict
+appear by itself. From that basis, the generic architecture, integer-requirements, and
+geometry-seal operations may publish their own exact reviewed descendants. The fixed
+CM-01 V3 catalog remains a separate product-specific evidence path. No surface receives
+an automatic schema conversion or thread-head fallback.
 
 Before serving planning, documentary, or evidence state, the BFF resolves every declared
 project snapshot by exact ID and validates its entity references. A missing exact
@@ -263,10 +263,23 @@ ordered interaction:
    surface. Its durable write-ahead record means an uncertain SysON creation is held for
    review, not blindly retried. r2 is only an editable container identity, not a system
    architecture, requirements, CAD, simulation, measurement, or verdict.
-7. The generic route stops at r2. To see a full evidence path, open the separately
-   selected `coffee-machine-cm01-v3` project after its registered operations have
-   published fresh CM-01 evidence; use the
-   [golden-run guide](run-cm01-v3-golden-local.md) for its exact scope and closeout.
+7. Through a new bounded change and an exact human MRTR decision, the agent may queue
+   `model.write-architecture@1`. The server renders the reviewed package/system/usage
+   grammar, journals the SysON insertion, re-reads the typed structure, and attaches
+   only the content-addressed verified descendant.
+8. A later reviewed change may queue `model.write-requirements@1` against that exact
+   architecture. It records and re-extracts the approved integer scalar constraints
+   without inventing observations, evaluations, or a verdict.
+9. Geometry remains a separate two-step decision. `project_geometry_preview` creates an
+   isolated, hash-attested `build123d-sandbox` draft for review; only a matching human
+   MRTR decision and `design.write-geometry@1` can seal those exact bytes into the
+   evidence thread. Binary glTF exports are served and published as `.glb`, never as
+   JSON `.gltf`.
+
+These are explicit bounded work items, not an automatic pipeline. To inspect the
+separate full CM-01 evidence path, open `coffee-machine-cm01-v3` and use the
+[golden-run guide](run-cm01-v3-golden-local.md) for its product-specific scope and
+closeout.
 
 If the technical seed stops before attachment, the project remains on its documentary r1
 surface. The UI must not claim an r2 model or evidence merely because a provider write,
@@ -306,13 +319,14 @@ name, arguments, result snapshot, or evidence payload.
 The V3 executor resolves its operation, basis, bindings, capture, root snapshot, and
 completion evidence from server-owned state; callers cannot submit a tool name, raw tool
 arguments, result snapshot, or evidence payload. The generic route can record the
-approved-brief documentary baseline and create the fixed brief-bound SysON container
-from exact r1. These operations persist and read back their closed captures and refuse
-an uncertain non-idempotent write instead of retrying it blindly. Any future
-requirements, CAD, simulation, measurement, or verification step still needs its own
-reviewed executor, output validator, materializer, and evidence contract. The fixed
-CM-01 V3 catalog is the current exception; its historical r5/r6 proof is provenance, not
-a generic agent lifecycle recipe.
+approved-brief documentary baseline, create the fixed brief-bound SysON container, then
+execute the exact reviewed architecture, integer-requirements, and geometry-seal
+contracts. These operations persist and read back their closed captures and refuse an
+uncertain non-idempotent write instead of retrying it blindly. Generic simulation,
+measurement, requirement evaluation, manufacturing, and certification still need their
+own reviewed executors and evidence contracts. The fixed CM-01 V3 catalog remains a
+product-specific reference; its historical proof is provenance, not a generic agent
+lifecycle recipe.
 
 The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
 attention, and where to go next. The five product sections have distinct jobs:

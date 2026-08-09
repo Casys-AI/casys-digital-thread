@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import type { McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import type { OracleRequirement } from "../../domain/analysis/proof-case.ts";
 import {
@@ -248,6 +248,75 @@ Deno.test("verifyExtractedConstraint accepts a row that matches the canonical re
   const req = CANONICAL[0]!;
   // Must not throw.
   verifyExtractedConstraint(faithfulConstraint(0), req);
+});
+
+Deno.test("verifyExtractedConstraint rejects wrong AST discriminants", () => {
+  const req = CANONICAL[0]!;
+  const cases: readonly {
+    mutate: (row: Record<string, unknown>) => void;
+    field: string;
+    expected: string;
+    actual: string;
+  }[] = [
+    {
+      mutate: (row) => {
+        (row.expression as Record<string, unknown>).kind = "unary";
+      },
+      field: "expression.kind",
+      expected: "binary",
+      actual: "unary",
+    },
+    {
+      mutate: (row) => {
+        const expression = row.expression as Record<string, unknown>;
+        (expression.left as Record<string, unknown>).kind = "literal";
+      },
+      field: "expression.left.kind",
+      expected: "ref",
+      actual: "literal",
+    },
+    {
+      mutate: (row) => {
+        const expression = row.expression as Record<string, unknown>;
+        (expression.right as Record<string, unknown>).kind = "ref";
+      },
+      field: "expression.right.kind",
+      expected: "literal",
+      actual: "ref",
+    },
+  ];
+
+  for (const testCase of cases) {
+    const row = faithfulConstraint(0);
+    testCase.mutate(row);
+    const error = assertThrows(
+      () => verifyExtractedConstraint(row, req),
+      RequirementExtractionError,
+    );
+    assertEquals(error.code, "requirement_tampered");
+    assertEquals(error.context.field, testCase.field);
+    assertEquals(error.context.expected, testCase.expected);
+    assertEquals(error.context.actual, testCase.actual);
+  }
+});
+
+Deno.test("verifyExtractedConstraint rejects an extra feature-path segment", () => {
+  const req = CANONICAL[0]!;
+  const row = faithfulConstraint(0);
+  const expression = row.expression as Record<string, unknown>;
+  (expression.left as Record<string, unknown>).featurePath = [
+    req.metric,
+    "nested_feature",
+  ];
+
+  const error = assertThrows(
+    () => verifyExtractedConstraint(row, req),
+    RequirementExtractionError,
+  );
+  assertEquals(error.code, "requirement_tampered");
+  assertEquals(error.context.field, "expression.left.featurePath");
+  assertEquals(error.context.expected, [req.metric]);
+  assertEquals(error.context.actual, [req.metric, "nested_feature"]);
 });
 
 Deno.test("verifyExtractedConstraint rejects a divergent operator with code requirement_tampered", () => {

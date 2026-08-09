@@ -1,12 +1,13 @@
 /**
- * Mutual exclusion for one durable project run. The file is retained as an
- * empty lock target; the operating system releases an advisory lock if its
+ * Mutual exclusion for one executor-owned project scope. Most executors use a
+ * run id; linear generic Thread writers share an exact-basis scope. The file is
+ * retained as an empty lock target and the OS releases its advisory lock if the
  * owning process exits, so no stale lock record can block a later retry.
  */
 export interface EngineeringProjectRunLease {
   withLease<T>(
     projectId: string,
-    runId: string,
+    scope: string,
     operation: () => Promise<T>,
   ): Promise<T>;
 }
@@ -25,10 +26,10 @@ export class FileEngineeringProjectRunLease implements EngineeringProjectRunLeas
 
   async withLease<T>(
     projectId: string,
-    runId: string,
+    scope: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const path = await this.#path(projectId, runId);
+    const path = await this.#path(projectId, scope);
     await Deno.mkdir(this.#directory, { recursive: true });
     const file = await Deno.open(path, { create: true, read: true, write: true });
     let locked = false;
@@ -45,14 +46,14 @@ export class FileEngineeringProjectRunLease implements EngineeringProjectRunLeas
     }
   }
 
-  async #path(projectId: string, runId: string): Promise<string> {
+  async #path(projectId: string, scope: string): Promise<string> {
     nonEmpty(projectId, "projectId");
-    nonEmpty(runId, "runId");
+    nonEmpty(scope, "scope");
     // The former escaped tuple can exceed NAME_MAX for valid 160-character
-    // project and run ids. There is deliberately no legacy-path fallback:
+    // project ids and executor scopes. There is deliberately no legacy-path fallback:
     // advisory locks cannot safely span two path schemes. Deployments must
     // restart coordinated lease holders when moving to this key format.
-    const key = await sha256Hex(JSON.stringify([projectId, runId]));
+    const key = await sha256Hex(JSON.stringify([projectId, scope]));
     return `${this.#directory}/${key}.lock`;
   }
 }

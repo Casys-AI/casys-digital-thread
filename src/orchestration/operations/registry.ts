@@ -194,7 +194,7 @@ const OPERATIONS = [
     description:
       "Insert the human-approved SysML architecture package into the existing SysON model container. " +
       "The exact package structure is derived from the MRTR-approved decision parameters — " +
-      "no SysML text or product name is supplied by the agent.",
+      "no raw SysML or code-owned product template is supplied by the agent.",
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
@@ -218,17 +218,18 @@ const OPERATIONS = [
    * for human MRTR consent.  No provider I/O is dispatched at this stage.
    */
   /**
-   * Generic requirements authoring — inserts the reviewed SysML PartDef from
-   * an MRTR-approved decision into an existing SysON model container. The
-   * server derives the PartDef name from the containerComponent, renders all
-   * SysML, and verifies by re-extraction. No SysML text or requirement value
-   * is supplied by the agent.
+   * Generic requirements authoring — inserts a native RequirementUsage from
+   * an MRTR-approved decision below an exact SysON PartDefinition. The server
+   * derives the RequirementUsage name from containerComponent, renders all
+   * SysML, and verifies the subject typing and constraints by re-extraction.
+   * The agent proposes reviewed integer scalar values, but never supplies SysML text.
    *
    * WHAT THE HUMAN ACTUALLY SIGNS — the canonical decision fingerprint over
    * {baseSnapshot, inputEvidenceRefs, proposal}, computed by the command
    * service and by it alone. There is no separate "envelope" fingerprint to
-   * sign, and no tool could produce one: the resolved target (usageName,
-   * elementId), the architecture basis and the server-derived partDefName are
+   * sign, and no tool could produce one: the resolved target (PartDefinition
+   * label and elementId), the architecture basis and the server-derived
+   * RequirementUsage name are
    * DERIVED deterministically from those signed inputs. The executor proves
    * both halves before any SysON write — that the decision carries the
    * service's own fingerprint, and that its derivation matches — so the
@@ -242,10 +243,10 @@ const OPERATIONS = [
     allowedBasisKinds: ["thread-snapshot"],
     title: "Author reviewed requirements in the system model",
     description:
-      "Insert the human-approved SysML requirements PartDef into the existing SysON " +
-      "model container, anchor each metric as a SysML attribute with its unit, and " +
-      "verify the full set by re-extraction. The exact PartDef name is server-derived " +
-      "from the approved containerComponent; no SysML text is supplied by the agent.",
+      "Insert a human-approved native SysML RequirementUsage below the exact target " +
+      "PartDefinition, anchor each integer metric threshold as a typed attribute and required constraint, " +
+      "then verify subject typing and the full set by re-extraction. The RequirementUsage " +
+      "name is server-derived from containerComponent; no SysML text is supplied by the agent.",
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
@@ -286,9 +287,9 @@ const OPERATIONS = [
     version: DESIGN_PREVIEW_GEOMETRY_OPERATION.version,
     startingPoint: "idea-or-spec",
     allowedBasisKinds: ["thread-snapshot"],
-    title: "Preview the reviewed geometry script",
+    title: "Preview the proposed geometry script",
     description:
-      "Execute the human-approved build123d script against the current architecture basis, " +
+      "Execute the agent-proposed build123d script in the isolated preview sandbox against the current architecture basis, " +
       "materialize a draft with binary assets, and propose a geometry MRTR for human review. " +
       "Does not publish to the ThreadSnapshot — the draft is a workspace artefact only.",
     workItemKind: "design",

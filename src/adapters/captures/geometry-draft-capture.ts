@@ -7,7 +7,7 @@
  * (Invariant 4 + D2 decision).  This module materialises the provider result
  * into two stores:
  *
- *   a) `state/local/geometry-drafts/`       — content-addressed JSON captures
+ *   a) `state/local/geometry-draft-captures/` — content-addressed JSON captures
  *      (FileCaptureStore<"geometry-draft">)
  *   b) `state/local/geometry-draft-assets/` — raw binary files keyed by their
  *      SHA-256, served by `/api/draft-assets/<digest>`
@@ -18,9 +18,10 @@
  * before promoting anything into the canonical thread.
  *
  * SCRIPT EXECUTION — `validateGeometryScript` is called before any provider
- * dispatch (D4).  A single assembly `build123d_export` call is made; N
- * per-component STL calls follow when the manifest lists components.
- * All names are server-fixed; no agent-supplied string reaches the provider.
+ * dispatch (D4).  A single assembly `build123d_export` call is made. Per-component
+ * STL export is deliberately deferred until a provider-fixed isolation recipe exists.
+ * The Python script is agent-proposed and validated before dispatch; every
+ * provider-side export name and identity is server-fixed.
  *
  * BINARY MATERIALIZATION — each file returned by the provider carries a
  * `sha256` field we treat as the expected digest.  We verify by re-computing
@@ -44,13 +45,22 @@ import type {
   GeometryExportFormat,
   GeometryManifest,
 } from "../../domain/platform/geometry-proposal.ts";
+import { assertGeometryManifestArtifactIdentities } from "../../domain/platform/geometry-proposal.ts";
 import { validateGeometryScript } from "../../domain/platform/geometry-script-validation.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { FileCaptureStore } from "./file-capture-store.ts";
 
 // ── Schema constant ───────────────────────────────────────────────────────────
 
-export const GEOMETRY_DRAFT_CAPTURE_SCHEMA = "geometry-draft-capture/1.0" as const;
+/**
+ * v1.1 adds the orchestrator-assigned preview run identity.  The write executor
+ * still accepts v1.0 records so already reviewed local drafts remain sealable,
+ * but only v1.1 drafts can attribute their binary producer to an exact preview
+ * invocation.
+ */
+export const LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA =
+  "geometry-draft-capture/1.0" as const;
+export const GEOMETRY_DRAFT_CAPTURE_SCHEMA = "geometry-draft-capture/1.1" as const;
 
 /** Server-fixed name prefix used for all geometry preview exports. */
 const PREVIEW_ASSEMBLY_NAME = "geometry-preview-assembly" as const;
@@ -96,15 +106,17 @@ export interface GeometryDraftCapture {
     readonly artifactFingerprint: ContentFingerprint;
   };
   readonly producer: {
-    readonly serverId: "build123d";
+    readonly serverId: "build123d-sandbox";
     readonly tool: "build123d_export";
+    /** Orchestrator identity assigned to this exact preview dispatch. */
+    readonly runId: string;
   };
   /** Validated Python script that was submitted to the provider. */
   readonly script: string;
   readonly scriptHash: ContentFingerprint;
   /** Export formats requested for the assembly call. */
   readonly exportFormats: ReadonlyArray<GeometryExportFormat>;
-  /** Components listed in the manifest (used for per-part STL calls). */
+  /** Reviewed component bindings retained as metadata; v1 exports no per-part mesh. */
   readonly components: ReadonlyArray<GeometryComponentBinding>;
   readonly assemblyFiles: ReadonlyArray<GeometryDraftAssemblyFile>;
   readonly partMeshes: ReadonlyArray<GeometryDraftPartMesh>;
@@ -114,16 +126,17 @@ export interface GeometryDraftCapture {
 export interface GeometryDraftCaptureInput {
   /** Python geometry script — validated with validateGeometryScript before dispatch. */
   readonly script: string;
-  /** Manifest built from the operation parameters; components drive part-mesh calls. */
+  /** Manifest built from the operation parameters; components remain binding metadata. */
   readonly manifest: GeometryManifest;
 }
 
 export interface GeometryDraftCaptureOptions {
   /**
-   * Docker Compose service that owns the `/exports` volume, e.g. "mcp-build123d".
+   * Docker Compose service that owns the private preview `/exports` volume,
+   * e.g. "mcp-build123d-sandbox".
    * Server-fixed: never supplied by an agent.
    */
-  readonly build123dService: string;
+  readonly build123dService: "mcp-build123d-sandbox";
   /**
    * Path to the directory containing `docker-compose.yml`.
    * Passed as `--project-directory` to `docker compose cp`.
@@ -139,6 +152,11 @@ export interface GeometryDraftCaptureOptions {
    * daemon; the materializer is the only I/O beyond the MCP client mock.
    */
   readonly materializeAsset?: (sha256: string, containerPath: string) => Promise<void>;
+  /**
+   * Exact preview-dispatch identity. Production generates one per invocation;
+   * tests may inject a stable value without impersonating the later seal run.
+   */
+  readonly previewRunId?: string;
 }
 
 // ── Materialization errors ────────────────────────────────────────────────────
@@ -176,7 +194,7 @@ export class GeometryDraftMaterializationError extends Error {
  *  1. `validateGeometryScript` — fail-closed, D4.
  *  2. `sha256Fingerprint` on the script bytes (for the signed MRTR proposal).
  *  3. `build123d_export` for the assembly in the requested formats.
- *  4. For each manifest component, `build123d_export` for a per-part STL.
+ *  4. Keep component bindings as metadata; per-part export is deferred to v2.
  *  5. Materialise every binary to `state/local/geometry-draft-assets/{sha256}`.
  *  6. Build + save the JSON draft capture to the FileCaptureStore.
  *  7. Return the typed capture (whose `fingerprint.digest` = the draftDigest).
@@ -190,6 +208,19 @@ export async function captureGeometryDraft(
 ): Promise<GeometryDraftCapture> {
   const { script, manifest } = input;
   const { build123dService, composeProjectDirectory = "." } = options;
+  if (build123dService !== "mcp-build123d-sandbox") {
+    throw new TypeError(
+      "Geometry preview assets must be materialized from mcp-build123d-sandbox.",
+    );
+  }
+  // This is also enforced by the MRTR parser. Keep it here so the planning-only
+  // preview refuses an invalid request before the provider sees any call.
+  assertGeometryManifestArtifactIdentities(manifest);
+  const previewRunId = options.previewRunId ??
+    `geometry-preview:${crypto.randomUUID()}`;
+  if (previewRunId.trim() === "") {
+    throw new TypeError("previewRunId must be a non-empty string.");
+  }
   const materialize = options.materializeAsset ??
     ((sha256: string, containerPath: string) =>
       materializeToDraftAssets(
@@ -220,6 +251,10 @@ export async function captureGeometryDraft(
     assemblyResult.structuredContent,
     manifest.exportFormats,
   );
+  assertGeometryManifestArtifactIdentities({
+    ...manifest,
+    artifactHashes: { assemblyFiles, partMeshes: [] },
+  });
 
   // Materialise assembly binary assets immediately after the call.
   for (const file of assemblyFiles) {
@@ -251,8 +286,9 @@ export async function captureGeometryDraft(
       artifactFingerprint: manifest.architectureBasis.artifactFingerprint,
     },
     producer: {
-      serverId: "build123d" as const,
+      serverId: "build123d-sandbox" as const,
       tool: "build123d_export" as const,
+      runId: previewRunId,
     },
     script,
     scriptHash,
@@ -333,16 +369,70 @@ function normalizeAssemblyExport(
         `build123d_export assembly file ${index}: expected format "${format}", got "${item.format}".`,
       );
     }
+    const containerPath = requireNonEmptyString(
+      item.path,
+      `assembly file ${index} path`,
+    );
+    assertAssemblyExportBasename(containerPath, format, index);
     return {
       format: format as GeometryExportFormat,
       name: PREVIEW_ASSEMBLY_NAME,
-      containerPath: requireNonEmptyString(item.path, `assembly file ${index} path`),
+      containerPath,
       bytes: requirePositiveInt(item.bytes, `assembly file ${index} bytes`),
       fingerprint: {
         algorithm: "sha256" as const,
         digest: requireSha256Digest(item.sha256, `assembly file ${index} sha256`),
       },
     };
+  });
+}
+
+/**
+ * Bind the provider's generic `gltf` format token to the binary GLB container
+ * it actually exports. The later seal may choose a media type only after this
+ * path-level contract has been proved.
+ */
+function assertAssemblyExportBasename(
+  path: string,
+  format: GeometryExportFormat,
+  index: number,
+): void {
+  if (path.includes("\0")) {
+    throw new Error(`build123d_export assembly file ${index} path contains NUL.`);
+  }
+  const extension = format === "gltf" ? "glb" : format;
+  const expected = `${PREVIEW_ASSEMBLY_NAME}.${extension}`;
+  const basename = path.split(/[\\/]/).at(-1) ?? "";
+  if (basename !== expected) {
+    throw new Error(
+      `build123d_export assembly file ${index} did not preserve the fixed ` +
+        `basename "${expected}".`,
+    );
+  }
+}
+
+/**
+ * Revalidate persisted draft paths at seal time as well as at preview time.
+ * This is intentionally `unknown`-based because v1.0 captures predate the
+ * typed v1.1 producer identity but must not bypass the GLB/container contract.
+ */
+export function assertGeometryDraftAssemblyPaths(value: unknown): void {
+  if (!Array.isArray(value)) {
+    throw new Error("Geometry draft assemblyFiles must be an array.");
+  }
+  value.forEach((candidate, index) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error(`Geometry draft assembly file ${index} must be an object.`);
+    }
+    const file = candidate as Record<string, unknown>;
+    if (file.format !== "step" && file.format !== "gltf" && file.format !== "stl") {
+      throw new Error(`Geometry draft assembly file ${index} has invalid format.`);
+    }
+    const path = requireNonEmptyString(
+      file.containerPath,
+      `geometry draft assembly file ${index} containerPath`,
+    );
+    assertAssemblyExportBasename(path, file.format, index);
   });
 }
 

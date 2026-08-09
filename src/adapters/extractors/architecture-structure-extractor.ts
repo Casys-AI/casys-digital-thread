@@ -279,6 +279,7 @@ async function resolveFeatureTypingTarget(
   if (
     !content ||
     typeof content !== "object" ||
+    content.objectId !== usage.id ||
     content.expression !== ARCHITECTURE_FEATURE_TYPING_AQL ||
     content.type !== "objects" ||
     !Array.isArray(content.results) ||

@@ -3,6 +3,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotRef,
 } from "../project/engineering-project.ts";
+import { deterministicJson } from "../kernel/deterministic-json.ts";
 import { applyThreadSnapshotExtension } from "../thread/thread-snapshot-extension.ts";
 import type {
   RequirementEvaluation,
@@ -104,8 +105,16 @@ export function assertR12RequirementFamilyCloseout(snapshot: ThreadSnapshot): vo
   }
   const links = deriveCoffeeMachineCm01V3R12RequirementFamilyLinks(snapshot);
   for (const link of links) {
-    if (!snapshot.provenance.some((candidate) => candidate.id === link.id)) {
-      throw new Error(`CM-01 R12 is missing requirement supersession ${link.id}.`);
+    const candidates = snapshot.provenance.filter((candidate) =>
+      candidate.id === link.id
+    );
+    if (
+      candidates.length !== 1 ||
+      deterministicJson(candidates[0]) !== deterministicJson(link)
+    ) {
+      throw new Error(
+        `CM-01 R12 requirement supersession ${link.id} is absent, ambiguous, or not exact.`,
+      );
     }
   }
 }

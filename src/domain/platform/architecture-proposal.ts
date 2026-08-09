@@ -23,13 +23,16 @@ export const MODEL_WRITE_ARCHITECTURE_OPERATION = {
 
 // ── Proposal types ───────────────────────────────────────────────────────────
 
-/** One declared component in the architecture proposal. */
+/** One reviewed PartUsage occurrence and the PartDefinition it targets. */
 export interface ArchitectureComponent {
-  /** PascalCase SysML identifier for the part definition, e.g. "Wing". */
+  /**
+   * PascalCase SysML identifier for the target part definition, e.g. "Motor".
+   * Several occurrences may intentionally share this name.
+   */
   readonly name: string;
   /**
    * camelCase SysML usage identifier, e.g. "wing". Must differ from `name` to
-   * prevent the `DripTray`/`dripTray` ambiguity lesson.
+   * prevent the `Motor`/`motor` definition-versus-occurrence ambiguity.
    */
   readonly usageName: string;
   /** Name of the parent component (another name or system.name). */
@@ -54,7 +57,7 @@ export type ArchitectureProposalParseErrorCode =
   | "invalid_usage_identifier"
   | "usage_same_as_name"
   | "non_string_value"
-  | "duplicate_component"
+  | "duplicate_usage"
   | "missing_parent"
   | "cycle_detected";
 
@@ -189,7 +192,6 @@ export function parseArchitectureProposalParameters(
   }
 
   const components: ArchitectureComponent[] = [];
-  const componentNames = new Set<string>();
 
   for (const [slug, fields] of componentFields) {
     if (!fields.name || !fields.name.trim()) {
@@ -227,14 +229,6 @@ export function parseArchitectureProposalParameters(
         { slug, value: fields.usage },
       );
     }
-    if (componentNames.has(fields.name)) {
-      throw new ArchitectureProposalParseError(
-        "duplicate_component",
-        `Duplicate component name "${fields.name}" in the proposal.`,
-        { name: fields.name },
-      );
-    }
-    componentNames.add(fields.name);
     components.push({
       name: fields.name,
       usageName: fields.usage,
@@ -261,6 +255,22 @@ export function parseArchitectureProposalParameters(
     }
   }
 
+  // A PartUsage name is scoped by its owning PartDefinition. Reusing `motor`
+  // under LeftWing and RightWing is valid; declaring it twice under LeftWing is
+  // not, regardless of whether both rows target the same PartDefinition.
+  const occurrenceKeys = new Set<string>();
+  for (const component of components) {
+    const key = `${component.parentName}\u0000${component.usageName}`;
+    if (occurrenceKeys.has(key)) {
+      throw new ArchitectureProposalParseError(
+        "duplicate_usage",
+        `Duplicate usage "${component.usageName}" under parent "${component.parentName}" in the proposal.`,
+        { parentName: component.parentName, usageName: component.usageName },
+      );
+    }
+    occurrenceKeys.add(key);
+  }
+
   detectCycles(systemName, components);
 
   return { packageName, system: { name: systemName }, components };
@@ -270,24 +280,45 @@ function detectCycles(
   systemName: string,
   components: readonly ArchitectureComponent[],
 ): void {
-  const parentByName = new Map<string, string>(
-    components.map((c) => [c.name, c.parentName]),
-  );
+  const childrenByParent = new Map<string, Set<string>>();
   for (const component of components) {
-    const visited = new Set<string>();
-    let current: string | undefined = component.name;
-    while (current !== undefined && current !== systemName) {
-      if (visited.has(current)) {
+    const children = childrenByParent.get(component.parentName) ?? new Set<string>();
+    children.add(component.name);
+    childrenByParent.set(component.parentName, children);
+  }
+
+  const visited = new Set<string>();
+  const active = new Set<string>();
+  const visit = (name: string): void => {
+    if (active.has(name)) {
+      throw new ArchitectureProposalParseError(
+        "cycle_detected",
+        `Cycle detected in component hierarchy at "${name}".`,
+        { component: name },
+      );
+    }
+    if (visited.has(name)) return;
+    active.add(name);
+    for (const child of childrenByParent.get(name) ?? []) {
+      if (child === systemName) {
         throw new ArchitectureProposalParseError(
           "cycle_detected",
-          `Cycle detected in component hierarchy at "${current}".`,
-          { component: current },
+          `Cycle detected in component hierarchy at "${child}".`,
+          { component: child },
         );
       }
-      visited.add(current);
-      current = parentByName.get(current);
+      visit(child);
     }
-  }
+    active.delete(name);
+    visited.add(name);
+  };
+
+  for (
+    const name of [
+      systemName,
+      ...components.flatMap((component) => [component.parentName, component.name]),
+    ]
+  ) visit(name);
 }
 
 // ── Renderer ─────────────────────────────────────────────────────────────────
@@ -313,12 +344,16 @@ export function renderArchitectureSysml(proposal: ArchitectureProposal): string 
   }
   lines.push("  }");
 
-  for (const component of proposal.components) {
-    const usages = proposal.components.filter((c) => c.parentName === component.name);
+  const definitionNames = [
+    ...new Set(proposal.components.map((component) => component.name)),
+  ];
+  for (const definitionName of definitionNames) {
+    if (definitionName === proposal.system.name) continue;
+    const usages = proposal.components.filter((c) => c.parentName === definitionName);
     if (usages.length === 0) {
-      lines.push(`  part def ${component.name} {}`);
+      lines.push(`  part def ${definitionName} {}`);
     } else {
-      lines.push(`  part def ${component.name} {`);
+      lines.push(`  part def ${definitionName} {`);
       for (const usage of usages) {
         lines.push(`    part ${usage.usageName} : ${usage.name};`);
       }
@@ -402,10 +437,6 @@ export interface AdoptedItem {
 /**
  * A named structural conflict that prevents automatic insertion.
  *
- * "same-name-different-parent" — the usage already exists under a different
- *   parent. Insertion would create a duplicate usage name across parents, which
- *   SysON does not allow without an explicit relocation step.
- *
  * "mistyped_usage" — the usage exists under the correct parent but its
  *   FeatureTyping points to the wrong PartDef. Insertion cannot fix a typing;
  *   that requires a separate model operation (rewrite of the FeatureTyping
@@ -416,11 +447,6 @@ export interface AdoptedItem {
  *   model no longer has a unique parent→usage→target relationship to adopt.
  */
 export type ArchitectureInsertionConflict =
-  | {
-    readonly code: "same-name-different-parent";
-    readonly componentName: string;
-    readonly message: string;
-  }
   | {
     readonly code: "mistyped_usage";
     readonly componentName: string;
@@ -466,8 +492,9 @@ export interface ArchitectureInsertionPlan {
  * Initial mode: the package is absent — one full-package item covers everything.
  * Enrichment mode: diff the proposal against the existing model. Components
  * present and conformant are adopted; new components generate part-def and usage
- * items in topological order (parents before children). A PartDef with the same
- * name but its usage under a different parent is an unresolvable conflict.
+ * items in topological order (parents before children). PartUsage names are
+ * local to their parent PartDefinition; the same name under another parent is
+ * an independent occurrence and is not a conflict.
  *
  * An empty `toInsert` with no conflicts means all components are already adopted.
  * The executor must reject this as `invalid_transition` — no empty writes.
@@ -504,56 +531,28 @@ export function planArchitectureInsertion(
     existing.partDefs.map((pd) => [pd.label, pd]),
   );
 
-  // Process in topological order: system first, then components (parents first).
-  const orderedNames = topologicalOrder(proposal);
-
   const toInsert: InsertionItem[] = [];
   const adopted: AdoptedItem[] = [];
   const conflicts: ArchitectureInsertionConflict[] = [];
 
-  for (const name of orderedNames) {
-    const isSystem = name === proposal.system.name;
-    const existingPartDef = partDefByLabel.get(name);
-
-    if (isSystem) {
-      if (!existingPartDef) {
-        toInsert.push({ kind: "part-def", componentName: name });
-      }
-      continue;
+  // Definitions and occurrences have distinct identities. Insert each target
+  // PartDefinition at most once, then plan every reviewed PartUsage occurrence.
+  for (const name of topologicalPartDefinitionOrder(proposal)) {
+    if (!partDefByLabel.has(name)) {
+      toInsert.push({ kind: "part-def", componentName: name });
     }
+  }
 
-    // A usage name belongs to exactly one parent in this operation's model
-    // contract. Check every existing parent BEFORE deciding whether to adopt a
-    // PartDef or to create one: otherwise an absent component PartDef can add a
-    // second usage, and an already-conformant local usage can hide a homonym
-    // under another parent.
-    const component = proposal.components.find(
-      (candidate) => candidate.name === name,
-    )!;
+  for (const component of proposal.components) {
+    const existingPartDef = partDefByLabel.get(component.name);
     const parentPartDef = partDefByLabel.get(component.parentName);
-    const conflictingParents = existing.partDefs.filter(
-      (pd) =>
-        pd.label !== component.parentName &&
-        pd.usages.some((usage) => usage.label === component.usageName),
-    );
-    if (conflictingParents.length > 0) {
-      conflicts.push({
-        code: "same-name-different-parent",
-        componentName: name,
-        message: `Component "${name}" usage "${component.usageName}" exists under ` +
-          `${conflictingParents.map((parent) => `"${parent.label}"`).join(", ")} ` +
-          `instead of the proposed "${component.parentName}".`,
-      });
-      continue;
-    }
-
     const usagesWithProposedName = parentPartDef
       ? parentPartDef.usages.filter((usage) => usage.label === component.usageName)
       : [];
     if (usagesWithProposedName.length > 1) {
       conflicts.push({
         code: "ambiguous_usage",
-        componentName: name,
+        componentName: component.name,
         message:
           `Usage "${component.usageName}" appears ${usagesWithProposedName.length} times ` +
           `under "${component.parentName}". A unique parent→usage→target relationship ` +
@@ -562,44 +561,27 @@ export function planArchitectureInsertion(
       continue;
     }
 
-    if (!existingPartDef) {
-      // PartDef doesn't exist → insert it.
-      toInsert.push({ kind: "part-def", componentName: name });
-
-      // A matching usage is already occupied under the intended parent. Even
-      // though the PartDef is absent, inserting a new usage would create a
-      // homonym rather than repair the existing FeatureTyping.
-      const existingUsage = usagesWithProposedName[0];
-      if (existingUsage) {
-        toInsert.pop();
-        conflicts.push({
-          code: "mistyped_usage",
-          componentName: name,
-          message: `Usage "${component.usageName}" under "${component.parentName}" ` +
-            `already types "${existingUsage.targetLabel}" while proposed PartDef ` +
-            `"${name}" is absent. A FeatureTyping correction requires a separate ` +
-            "model operation before this architecture run can proceed.",
-        });
-        continue;
-      }
-      toInsert.push({
-        kind: "usage",
-        componentName: name,
-        usageName: component.usageName,
-        parentName: component.parentName,
-      });
-      continue;
-    }
-
-    // PartDef exists. Adopt or detect conflicts for non-system components.
     if (parentPartDef) {
       // Finding 2 — adoption requires both the correct usage label AND the
       // correct target PartDef (targetLabel). A usage "wing" that types "Motor"
       // is NOT a conformant adoption of component Wing.
       const existingUsage = usagesWithProposedName[0];
       if (existingUsage?.targetLabel === component.name) {
+        if (!existingPartDef) {
+          conflicts.push({
+            code: "mistyped_usage",
+            componentName: component.name,
+            message: `Usage "${component.usageName}" under "${component.parentName}" ` +
+              `targets "${component.name}", but that PartDefinition is absent from ` +
+              "the architecture package. Manual model repair is required.",
+          });
+          continue;
+        }
         // Both PartDef and usage under correct parent exist, typed correctly → adopted.
-        adopted.push({ componentName: name, existingPartDefId: existingPartDef.id });
+        adopted.push({
+          componentName: component.name,
+          existingPartDefId: existingPartDef.id,
+        });
         continue;
       }
       // Usage is missing or mis-typed under the correct parent. Diagnose in
@@ -615,9 +597,9 @@ export function planArchitectureInsertion(
       if (existingUsage) {
         conflicts.push({
           code: "mistyped_usage",
-          componentName: name,
+          componentName: component.name,
           message: `Usage "${component.usageName}" under "${component.parentName}" ` +
-            `types "${existingUsage.targetLabel}" instead of proposed "${name}". ` +
+            `types "${existingUsage.targetLabel}" instead of proposed "${component.name}". ` +
             `A FeatureTyping correction requires a separate model operation before ` +
             `this architecture run can proceed.`,
         });
@@ -626,7 +608,7 @@ export function planArchitectureInsertion(
       // Usage is simply absent → insert it.
       toInsert.push({
         kind: "usage",
-        componentName: name,
+        componentName: component.name,
         usageName: component.usageName,
         parentName: component.parentName,
       });
@@ -636,7 +618,7 @@ export function planArchitectureInsertion(
       // Insert usage too.
       toInsert.push({
         kind: "usage",
-        componentName: name,
+        componentName: component.name,
         usageName: component.usageName,
         parentName: component.parentName,
       });
@@ -647,22 +629,25 @@ export function planArchitectureInsertion(
 }
 
 /**
- * Return proposal component names in topological order: parents before children.
- * System is always first, followed by components sorted so a parent always
- * precedes any of its children.
+ * Return unique PartDefinition names in deterministic topological order.
+ * Reusing one definition for several occurrences never duplicates its insertion.
  */
-function topologicalOrder(proposal: ArchitectureProposal): readonly string[] {
+function topologicalPartDefinitionOrder(
+  proposal: ArchitectureProposal,
+): readonly string[] {
   const order: string[] = [proposal.system.name];
   const added = new Set<string>([proposal.system.name]);
-  const byName = new Map<string, ArchitectureComponent>(
-    proposal.components.map((c) => [c.name, c]),
-  );
+  const parentsByName = new Map<string, Set<string>>();
+  for (const component of proposal.components) {
+    const parents = parentsByName.get(component.name) ?? new Set<string>();
+    parents.add(component.parentName);
+    parentsByName.set(component.name, parents);
+  }
 
   function visit(name: string): void {
     if (added.has(name)) return;
-    const component = byName.get(name);
-    if (component && !added.has(component.parentName)) {
-      visit(component.parentName);
+    for (const parentName of parentsByName.get(name) ?? []) {
+      if (!added.has(parentName)) visit(parentName);
     }
     if (!added.has(name)) {
       order.push(name);

@@ -50,7 +50,7 @@ export type GeometryExportFormat = "step" | "gltf" | "stl";
 /**
  * Binding from a manifest component entry to the exact SysON element.
  *
- * `usageName` is the SysML part-usage label (e.g. "dripTray").
+ * `usageName` is the SysML part-usage label (e.g. "driveUnit").
  * `elementId`  is the opaque SysON element UUID.  Both must match what the
  * architecture executor extracted and stored in the architecture capture.
  *
@@ -359,6 +359,8 @@ export function parseGeometryDecisionParameters(
     artifactHashes: { assemblyFiles, partMeshes },
   };
 
+  assertGeometryManifestArtifactIdentities(manifest);
+
   return { draftDigest, manifest };
 }
 
@@ -404,6 +406,7 @@ export function encodeGeometryDecisionParameters(
       "Cannot encode decision parameters from a manifest without scriptHash and artifactHashes.",
     );
   }
+  assertGeometryManifestArtifactIdentities(manifest);
   const params: Array<
     { key: string; label: string; value: string | number | boolean }
   > = [];
@@ -504,7 +507,7 @@ export function encodeGeometryDecisionParameters(
 
 const FINGERPRINT_RE = /^[a-f0-9]{64}$/;
 const NON_EMPTY_RE = /^.+$/s;
-const SYSML_NAME_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+const SYSML_NAME_RE = /^[a-z][A-Za-z0-9_]*$/;
 const SEMANTIC_KEY_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const VALID_FORMATS = new Set<string>(["step", "gltf", "stl"]);
 
@@ -580,5 +583,50 @@ function parseExportFormats(raw: string): ReadonlyArray<GeometryExportFormat> {
       );
     }
   }
+  if (new Set(parts).size !== parts.length) {
+    throw new GeometryProposalError(
+      "invalid_format",
+      "exportFormats must not contain duplicates",
+    );
+  }
   return parts as ReadonlyArray<GeometryExportFormat>;
+}
+
+/**
+ * Prove that each reviewed component has one provider identity and each binary
+ * maps to one ThreadArtifact identity. Duplicate IDs or content digests would
+ * otherwise become ambiguous after provider acknowledgement and promotion.
+ */
+export function assertGeometryManifestArtifactIdentities(
+  manifest: GeometryManifest,
+): void {
+  const componentElementIds = manifest.components.map((component) =>
+    component.elementId
+  );
+  if (new Set(componentElementIds).size !== componentElementIds.length) {
+    throw new GeometryProposalError(
+      "invalid_format",
+      "Geometry components must not contain duplicate provider element IDs.",
+    );
+  }
+  if (new Set(manifest.exportFormats).size !== manifest.exportFormats.length) {
+    throw new GeometryProposalError(
+      "invalid_format",
+      "exportFormats must not contain duplicates",
+    );
+  }
+  const fingerprints = [
+    ...(manifest.artifactHashes?.assemblyFiles ?? []).map((file) =>
+      file.fingerprint.digest
+    ),
+    ...(manifest.artifactHashes?.partMeshes ?? []).map((mesh) =>
+      mesh.fingerprint.digest
+    ),
+  ];
+  if (new Set(fingerprints).size !== fingerprints.length) {
+    throw new GeometryProposalError(
+      "invalid_fingerprint",
+      "Geometry artifact fingerprints must be unique across assembly files and part meshes.",
+    );
+  }
 }

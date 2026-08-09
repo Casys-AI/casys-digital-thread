@@ -3,18 +3,25 @@ import { ExactThreadReconciliationSnapshotValidator } from "../../src/adapters/v
 import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
 import {
   assertR12RequirementFamilyCloseout,
+  CM01_V3_FAILED_R2_WORK_ITEM_ID,
   CM01_V3_PROJECT_ID,
   CM01_V3_R12_REQUIREMENT_CLOSEOUT_EXTENSION_ID,
+  CM01_V3_R3_RECOVERY_WORK_ITEM_ID,
   inspectCoffeeMachineCm01V3R11Closeout,
   materializeCoffeeMachineCm01V3R12RequirementCloseout,
 } from "../../src/domain/cm01/cm01-v3-r11-closeout.ts";
 import {
   deriveEngineeringProjectStatus,
+  type EngineeringOperationInputBinding,
   type EngineeringThreadSnapshotRef,
 } from "../../src/domain/project/engineering-project.ts";
+import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 import {
+  EngineeringProjectCommandError,
   EngineeringProjectCommandService,
+  type EngineeringProjectReconciliationOperationPolicy,
 } from "../../src/domain/project/engineering-project-command-service.ts";
+import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../src/orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { validateThreadSnapshot } from "../../src/domain/thread/thread-snapshot-validation.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 
@@ -27,6 +34,99 @@ const SNAPSHOT_DIRECTORY = "state/local/thread-snapshots";
 const APPLIED_AT = "2026-08-03T14:00:00.000Z";
 const COMMAND_ID = "cm01-v3-r11-r12-reconcile-failed-r2";
 const ACTOR = { kind: "agent" as const, actorId: "script:cm01-v3-r11-closeout" };
+const CM01_V3_R12_FAILED_OPERATION_BINDINGS = [
+  { name: "approvedBrief", source: { kind: "approved-brief" } },
+  {
+    name: "dripTrayHeightCorrection",
+    source: {
+      kind: "thread-entity",
+      reference: {
+        id: "coffee-machine-cm01-v3-drip-tray-height-28-to-30:record",
+        kind: "artifact",
+        snapshotId:
+          "project:coffee-machine-cm01-v3:r9:coffee-machine-cm01-v3-cad-r2-07d462b111ea4cfe36b2bf94749e3f3117e84554e5d6416bc85a08fad049231d-extension",
+        snapshotRevision: 9,
+      },
+    },
+  },
+  {
+    name: "revisedCadStep",
+    source: {
+      kind: "thread-entity",
+      reference: {
+        id:
+          "coffee-machine-cm01-v3-cad-r2-07d462b111ea4cfe36b2bf94749e3f3117e84554e5d6416bc85a08fad049231d-step",
+        kind: "artifact",
+        snapshotId:
+          "project:coffee-machine-cm01-v3:r9:coffee-machine-cm01-v3-cad-r2-07d462b111ea4cfe36b2bf94749e3f3117e84554e5d6416bc85a08fad049231d-extension",
+        snapshotRevision: 9,
+      },
+    },
+  },
+] as const satisfies readonly EngineeringOperationInputBinding[];
+const CM01_V3_R12_SUCCESSOR_OPERATION_BINDINGS = [
+  { name: "approvedBrief", source: { kind: "approved-brief" } },
+  {
+    name: "historicalMechanicalR3Result",
+    source: {
+      kind: "thread-entity",
+      reference: {
+        id:
+          "coffee-machine-cm01-v3-mechanical-r2-ec23ad25f52a9a467bfc8e8fa07e62ee8da1efb48c570c0554c1066b21d48297-solve",
+        kind: "artifact",
+        snapshotId:
+          "project:coffee-machine-cm01-v3:r10:coffee-machine-cm01-v3-mechanical-r2-ec23ad25f52a9a467bfc8e8fa07e62ee8da1efb48c570c0554c1066b21d48297-extension",
+        snapshotRevision: 10,
+      },
+    },
+  },
+] as const satisfies readonly EngineeringOperationInputBinding[];
+
+/**
+ * Exact capability for the one reviewed CM-01 verify@2 -> identity-repair@1
+ * transition. It also re-reads and proves the code-owned R12 closeout, so an
+ * operation pair alone can never authorize reconciliation.
+ */
+export function coffeeMachineCm01R12ReconciliationOperationPolicy(
+  snapshots: ThreadSnapshotStore,
+): EngineeringProjectReconciliationOperationPolicy {
+  return {
+    async authorize(input): Promise<void> {
+      const failed = COFFEE_MACHINE_CM01_V3_OPERATION_REFS
+        .mechanicalDripTrayHeight30;
+      const successor = COFFEE_MACHINE_CM01_V3_OPERATION_REFS
+        .mechanicalDripTrayHeight30R3IdentityRecovery;
+      if (
+        input.failedWorkItemId !== CM01_V3_FAILED_R2_WORK_ITEM_ID ||
+        input.successorWorkItemId !== CM01_V3_R3_RECOVERY_WORK_ITEM_ID ||
+        input.failedOperation.id !== failed.id ||
+        input.failedOperation.version !== failed.version ||
+        deterministicJson(input.failedOperation.bindings) !==
+          deterministicJson(CM01_V3_R12_FAILED_OPERATION_BINDINGS) ||
+        input.successorOperation?.id !== successor.id ||
+        input.successorOperation.version !== successor.version ||
+        deterministicJson(input.successorOperation.bindings) !==
+          deterministicJson(CM01_V3_R12_SUCCESSOR_OPERATION_BINDINGS)
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "CM-01 R12 authorizes only the exact retained verify@2 to identity-repair@1 transition.",
+        );
+      }
+      const closeout = await requireExactSnapshot(snapshots, input.successorSnapshot);
+      try {
+        assertR12RequirementFamilyCloseout(closeout);
+      } catch (error) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `CM-01 operation transition requires the exact proven R12 closeout: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    },
+  };
+}
 
 export interface CloseCoffeeMachineCm01V3R11Options {
   readonly execute?: boolean;
@@ -115,6 +215,7 @@ export async function closeCoffeeMachineCm01V3R11(
     undefined,
     undefined,
     new ExactThreadReconciliationSnapshotValidator(snapshots),
+    coffeeMachineCm01R12ReconciliationOperationPolicy(snapshots),
   );
   const reconciled = await commands.reconcileWorkItemWithSuccessor(ACTOR, {
     commandId: COMMAND_ID,
@@ -155,7 +256,8 @@ async function requireExactSnapshot(
 ) {
   const snapshot = await snapshots.get(reference.snapshotId);
   if (
-    !snapshot || snapshot.revision !== reference.revision ||
+    !snapshot || snapshot.id !== reference.snapshotId ||
+    snapshot.revision !== reference.revision ||
     snapshot.subject.id !== reference.subjectId
   ) {
     throw new Error(`Exact declared ThreadSnapshot ${reference.snapshotId} is absent.`);

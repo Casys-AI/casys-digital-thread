@@ -97,10 +97,13 @@ operation revisions and declared binding names/source kinds; it also supplies th
 durable work title, description, and classification shown to the reviewer. The generic
 entry-point registry contains:
 
-| Starting point                                                 | Exact operation reference         |
-| -------------------------------------------------------------- | --------------------------------- |
-| New V3 idea or specification                                   | `baseline.from-approved-brief@1`  |
-| Post-baseline change; exact documentary r1 required at runtime | `architecture.seed-syson-model@2` |
+| Starting point or exact prerequisite                                          | Exact operation reference         |
+| ----------------------------------------------------------------------------- | --------------------------------- |
+| New V3 idea or specification                                                  | `baseline.from-approved-brief@1`  |
+| Post-baseline change; exact documentary r1 required at runtime                | `architecture.seed-syson-model@2` |
+| Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`      |
+| Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`      |
+| Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`         |
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
 `architecture.seed-syson-model@2` may be added by one append-only project change. The
@@ -116,7 +119,7 @@ blocker, concrete decision proposal, or completed/cancelled work exists. After t
 point it may append a bounded change, but cannot use either command to erase execution
 or review history.
 
-Two generic operations have trusted executors in the current V3 idea/spec slice.
+Five generic operations have trusted executors in the current V3 idea/spec slice.
 `baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
 registered work item, the backend records the exact approved brief and reviewed plan as
 canonical JSON, fingerprints its bytes with SHA-256, stores them immutably, and cites
@@ -129,6 +132,36 @@ with a root package, then root-package readback through `syson_element_get`. Its
 documentary-artifact lineage alongside normalized provider identities before publishing
 revision 2. The agent supplies no provider name, tool name, provider arguments, or SysML
 text.
+
+`model.write-architecture@1` consumes an exact technical basis carrying that seed and
+one human-approved MRTR proposal. The proposal names a package, a system, and typed
+component usages through the flat `architecture.package`, `system.name`, and
+`component.<slug>.(name|usage|parent)` grammar. Each component row is one `PartUsage`
+occurrence: `name` selects its reusable `PartDefinition`, while `usage` is unique only
+inside the named parent. The server renders each definition once, journals the
+non-idempotent insertion, re-reads every parent-to-usage-to-type relationship, and
+publishes only the verified content-addressed capture. The agent cannot supply raw SysML
+or a provider call.
+
+`model.write-requirements@1` starts only from an exact generic architecture artifact.
+Its MRTR proposal identifies the reviewed target and declares named integer scalar
+thresholds through `requirements.*` and `requirement.<slug>.*` parameters. The server
+derives the native `RequirementUsage` below the exact target `PartDefinition`, verifies
+its `subject target` typing and constraints by provider readback, and persists a
+`requirements-capture/2.0`. The Thread receives one `TracedRequirement` per verified
+integer scalar criterion and preserves the exact architecture and prior-requirements
+lineage. Legacy detached `requirements-capture/1.0` records are not silently enriched.
+This operation records model requirements; it does not evaluate them, invent
+measurements, or publish a pass/fail verdict.
+
+Geometry is a two-step boundary. `project_geometry_preview` is planning-only: it runs an
+agent-proposed, validated script only in `build123d-sandbox`, verifies the provider
+basenames and exported bytes, and records the exact preview-run identity in a
+`geometry-draft-capture/1.1`. build123d's `gltf` token is accepted only with its actual
+binary `.glb` output. The tool returns the exact decision parameters for human review.
+Only `design.write-geometry@1` may then seal those same human-approved hashes into the
+canonical `geometry-capture/1.1`; the seal performs no provider re-execution and records
+its local operation separately from the sandbox producer.
 
 The fixed `coffee-machine-cm01-v3` reference path is a separate code-owned catalog, not
 a generic project template. After the documentary baseline and SysON seed, it supplies
@@ -264,11 +297,12 @@ Every work item belongs to exactly one phase and declares:
 An optional `operation` is a reviewed, versioned capability reference, never a raw tool
 call or agent-authored workflow. It is present on work created by `project_plan_publish`
 or `project_change_append`; older immutable revisions may lack it and are never promoted
-into the new execution path by implication. The generic V3 route has only the
-provider-free documentary executor and the fixed brief-bound SysON model-container
-executor. The separate CM-01 V3 catalog supplies its reviewed product-specific
-operations. No generic technical executor exists; any operation outside those exact
-contracts remains planning-only until a separate reviewed executor exists.
+into the new execution path by implication. The generic V3 route has trusted executors
+for the documentary baseline, the brief-bound SysON container, reviewed architecture,
+reviewed integer scalar requirements, and the sealing of an exact reviewed geometry
+draft. The separate CM-01 V3 catalog supplies its reviewed product-specific simulation,
+verification, ERP, correction, and closeout operations. Any operation outside those
+exact contracts remains planning-only until a separate reviewed executor exists.
 
 `waiting-for-decision` requires at least one linked unresolved decision. A phase lists
 all work items assigned to it, exactly once.
@@ -406,16 +440,23 @@ is currently process-local, so a shared signing key alone is not sufficient for
 multi-instance operation. That deployment needs a shared, durable replay store with
 atomic consume semantics.
 
-The source dispatcher materializes two generic V3 operations, the reviewed
+The source dispatcher materializes five generic V3 operations, the reviewed
 `inspection-drone-v4` qualitative-architecture and product-structure operations, and the
 fixed CM-01 catalog. `baseline.from-approved-brief@1` has no provider invocation and
 persists its canonical capture before publishing the cited root snapshot.
 `architecture.seed-syson-model@2` owns only the fixed SysON
 project/document/root-package sequence, closed capture, materializer, and result
-validator before publishing revision 2. `architecture.author-inspection-drone@3` is
-restricted to the exact `inspection-drone-v4` r2 basis and has published r3: five typed
-usages and four qualitative requirements with explicit TBDs, without CAD, physics, cost,
-certification, or verdict claims. Its read-only successor,
+validator before publishing revision 2. `model.write-architecture@1` and
+`model.write-requirements@1` each perform a closed SysON write/readback sequence and
+publish content-addressed evidence. The architecture writer renders the reviewed
+package, reusable PartDefinitions, and scoped PartUsages; the requirements writer
+renders only reviewed, server-parsed integer model thresholds. `design.write-geometry@1`
+promotes only a matching human-reviewed draft after exact hash and architecture checks;
+the provider execution occurred earlier in the isolated preview boundary.
+`architecture.author-inspection-drone@3` is restricted to the exact
+`inspection-drone-v4` r2 basis and has published r3: five typed usages and four
+qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
+or verdict claims. Its read-only successor,
 `model.capture-inspection-drone-part-definitions@1`, has completed
 `run:queue-drone-v4-product-structure-20260808` and published project revision 23's r4
 snapshot,
@@ -430,8 +471,8 @@ certification, nor a verdict. The CM-01 catalog adds its own architecture, CAD,
 Modelica, ERP, correction, governed lineage retirement, PartDefinition, and mechanical
 capture/materializer contracts; see the
 [CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). Neither MCP planning
-nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint, and no
-generic provider execution is available.
+nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint: execution is
+available only through these exact reviewed operations and their server-owned contracts.
 
 ## CM-01 baseline
 
@@ -570,10 +611,13 @@ the Workbench holds the declared documentary r1 and renders only its closed live
 activity sequence. The evidence surface can promote r2 only after the immutable project
 revision has attached it.
 
-`FileEngineeringProjectRunLease` additionally holds one local advisory lock for the
-exact `(projectId, runId)` while a trusted executor runs. Its retained empty file under
-`state/local/engineering-project-run-leases/` is coordination state only: it is not a
-capture, artifact, result, or engineering claim. A duplicate execution waits and then
-reads the durable outcome instead of creating a competing capture or lifecycle
-transition. The lease serializes local writers but cannot itself prove remote-provider
-idempotence; the write-ahead attempt journal supplies the fail-closed recovery boundary.
+`FileEngineeringProjectRunLease` additionally holds one local advisory lock for an
+executor-owned `(projectId, scope)` while a trusted executor runs. Generic architecture,
+requirements, and geometry publication share the exact Thread basis as their scope: two
+queued work items cannot both create the single legal `basis + 1` subject revision. Its
+retained empty file under `state/local/engineering-project-run-leases/` is coordination
+state only: it is not a capture, artifact, result, or engineering claim. A duplicate
+execution waits and then re-checks the declared head and active or uncertain sibling
+writes before any effect. The lease serializes local writers but cannot itself prove
+remote-provider idempotence; the write-ahead attempt journal supplies the fail-closed
+recovery boundary.

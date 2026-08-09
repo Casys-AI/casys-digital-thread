@@ -8,6 +8,10 @@ import type {
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import {
+  FileCaptureStore,
+  GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+} from "../adapters/captures/file-capture-store.ts";
+import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
 } from "./project-control.ts";
@@ -19,6 +23,113 @@ const COMMON = {
   expectedRevision: 4,
   issuedAt: "2026-08-03T12:00:00.000Z",
 };
+
+const GEOMETRY_PREVIEW_ARGS = {
+  script: "from build123d import Box\nresult = Box(1, 1, 1)\n",
+  architectureSnapshotId: "thread:r2",
+  architectureSnapshotRevision: 2,
+  architectureArtifactDigest: "b".repeat(64),
+  exportFormats: ["gltf"],
+};
+
+Deno.test("project_geometry_preview accepts scoped homonymous usages with distinct provider identities", async () => {
+  const draftDirectory = await Deno.makeTempDir();
+  const app = new CapturingApp();
+  let providerCalls = 0;
+  const sentinel = new Error("provider reached");
+  try {
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      {
+        ...dependencies(projectSnapshot()),
+        geometryPreview: {
+          client: {
+            callTool: () => {
+              providerCalls++;
+              return Promise.reject(sentinel);
+            },
+            callToolTextResult: () => Promise.reject(new Error("unexpected")),
+          },
+          draftCaptures: new FileCaptureStore({
+            ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+            directory: draftDirectory,
+          }),
+          build123dService: "mcp-build123d-sandbox",
+        },
+      },
+    );
+
+    await assertRejects(
+      async () => {
+        await app.handler("project_geometry_preview")({
+          ...GEOMETRY_PREVIEW_ARGS,
+          components: [
+            {
+              elementId: "usage-left",
+              usageName: "drive_motor",
+              label: "Left motor",
+            },
+            {
+              elementId: "usage-right",
+              usageName: "drive_motor",
+              label: "Right motor",
+            },
+          ],
+        }, clientContext());
+      },
+      Error,
+      sentinel.message,
+    );
+    assertEquals(providerCalls, 1);
+  } finally {
+    await Deno.remove(draftDirectory, { recursive: true });
+  }
+});
+
+Deno.test("project_geometry_preview rejects a duplicate provider element before dispatch", async () => {
+  const draftDirectory = await Deno.makeTempDir();
+  const app = new CapturingApp();
+  let providerCalls = 0;
+  try {
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      {
+        ...dependencies(projectSnapshot()),
+        geometryPreview: {
+          client: {
+            callTool: () => {
+              providerCalls++;
+              return Promise.reject(new Error("must not dispatch"));
+            },
+            callToolTextResult: () => Promise.reject(new Error("unexpected")),
+          },
+          draftCaptures: new FileCaptureStore({
+            ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+            directory: draftDirectory,
+          }),
+          build123dService: "mcp-build123d-sandbox",
+        },
+      },
+    );
+
+    await assertRejects(
+      async () => {
+        await app.handler("project_geometry_preview")({
+          ...GEOMETRY_PREVIEW_ARGS,
+          components: [
+            { elementId: "usage-shared", usageName: "leftMotor", label: "Left" },
+            { elementId: "usage-shared", usageName: "rightMotor", label: "Right" },
+          ],
+        }, clientContext());
+      },
+      TypeError,
+      "duplicate elementId",
+    );
+    assertEquals(providerCalls, 0);
+  } finally {
+    await Deno.remove(draftDirectory, { recursive: true });
+  }
+});
 
 Deno.test("project_agent_run_queue derives its server-owned run command from one ready work item", async () => {
   const snapshot = projectSnapshot();

@@ -1,0 +1,130 @@
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/platform/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
+import {
+  EngineeringProjectCommandError,
+} from "../../domain/project/engineering-project-command-service.ts";
+import type {
+  EngineeringAgentRun,
+  EngineeringProjectSnapshot,
+  EngineeringThreadSnapshotBasis,
+} from "../../domain/project/engineering-project.ts";
+
+const THREAD_WRITE_OPERATIONS = new Set([
+  `${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}`,
+  `${MODEL_WRITE_REQUIREMENTS_OPERATION.id}@${MODEL_WRITE_REQUIREMENTS_OPERATION.version}`,
+  `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
+]);
+const GEOMETRY_WRITE_OPERATION =
+  `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`;
+
+const TERMINAL_THREAD_WRITE_FAILURES = new Set([
+  "model-write-architecture-provider-outcome-unknown",
+  "model-write-architecture-post-acknowledgement-quarantined",
+  "model-write-architecture-quarantine-write-failed",
+  "model-write-requirements-provider-outcome-unknown",
+  "model-write-requirements-post-acknowledgement-quarantined",
+  "model-write-requirements-quarantine-write-failed",
+]);
+
+/**
+ * One linear Thread subject has only one legal `basis.revision + 1` successor.
+ * Every trusted generic Thread writer therefore shares this exact lease key,
+ * regardless of operation, work item, target component, or run id.
+ */
+export function threadWriteBasisLeaseScope(run: EngineeringAgentRun): string {
+  const basis = requireThreadBasis(run);
+  return deterministicJson({
+    threadWriteBasis: {
+      subjectId: basis.subjectId,
+      snapshotId: basis.snapshotId,
+      revision: basis.revision,
+    },
+  });
+}
+
+/**
+ * Re-check the append boundary while the shared basis lease is held.
+ *
+ * Queued siblings do not block: one is allowed to win the lease. Once that
+ * writer attaches its successor, every other queued sibling becomes stale at
+ * this gate before capture, provider, asset, or ThreadSnapshot writes. A live
+ * or terminal-uncertain sibling remains blocking after process death.
+ */
+export function assertThreadWriteBasisAvailable(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+): void {
+  const basis = requireThreadBasis(run);
+  const subjectReferences = project.threadSnapshots.filter((reference) =>
+    reference.subjectId === basis.subjectId
+  );
+  const highestRevision = subjectReferences.reduce(
+    (highest, reference) => Math.max(highest, reference.revision),
+    -1,
+  );
+  const declaredHeads = subjectReferences.filter((reference) =>
+    reference.revision === highestRevision
+  );
+  if (
+    project.project.subjectId !== basis.subjectId ||
+    declaredHeads.length !== 1 ||
+    declaredHeads[0]!.snapshotId !== basis.snapshotId ||
+    declaredHeads[0]!.revision !== basis.revision
+  ) {
+    throw unavailableBasis(
+      "its queued basis is no longer the unique declared project Thread head",
+    );
+  }
+
+  const workItems = new Map(project.workItems.map((item) => [item.id, item]));
+  for (const sibling of project.agentRuns) {
+    if (sibling.id === run.id || !sameThreadBasis(sibling.basis, basis)) continue;
+    const operation = workItems.get(sibling.workItemId)?.operation;
+    const operationKey = operation ? `${operation.id}@${operation.version}` : undefined;
+    if (
+      !operationKey ||
+      !THREAD_WRITE_OPERATIONS.has(operationKey)
+    ) continue;
+    if (
+      sibling.status === "running" || sibling.status === "publishing" ||
+      sibling.status === "completed" ||
+      (sibling.status === "failed" && sibling.failure &&
+        (operationKey === GEOMETRY_WRITE_OPERATION ||
+          TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code)))
+    ) {
+      throw unavailableBasis(
+        `sibling run ${sibling.id} has an active, completed, or uncertain durable write`,
+      );
+    }
+  }
+}
+
+function requireThreadBasis(run: EngineeringAgentRun): EngineeringThreadSnapshotBasis {
+  if (run.basis?.kind !== "thread-snapshot") {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Run ${run.id} does not have a ThreadSnapshot write basis.`,
+    );
+  }
+  return run.basis;
+}
+
+function sameThreadBasis(
+  candidate: EngineeringAgentRun["basis"],
+  expected: EngineeringThreadSnapshotBasis,
+): boolean {
+  return candidate?.kind === "thread-snapshot" &&
+    candidate.snapshotId === expected.snapshotId &&
+    candidate.revision === expected.revision &&
+    candidate.subjectId === expected.subjectId;
+}
+
+function unavailableBasis(reason: string): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError(
+    "invalid_transition",
+    `Thread write basis is unavailable because ${reason}. Requeue the work from ` +
+      "the current declared Thread head after resolving any uncertain writer.",
+  );
+}

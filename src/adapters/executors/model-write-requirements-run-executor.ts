@@ -24,11 +24,11 @@
  * 14.  Guard: conflicts → invalid_transition; disappeared → cliquet violation.
  * 15.  Guard: toInsert.length === 0 → invalid_transition (no-op write).
  * 16.  WAL begin (quarantine check before planDigest WAL).
- * 17.  renderOracleRequirementsSysml → syson_element_insert_sysml.
+ * 17.  Render native RequirementUsage → insert under target PartDefinition.
  * 18.  providerAcknowledged = true.
- * 19.  WAL complete.
- * 20.  Identify element by label = partDefName in package children (D5).
- * 21.  extractAndVerifyOracleRequirements: fail-closed fidelity check.
+ * 19.  Identify RequirementUsage in target children; verify subject typing.
+ * 20.  extractAndVerifyOracleRequirements: fail-closed constraint fidelity.
+ * 21.  WAL complete with the verified provider element identity.
  * 22.  Build capture record → sha256Fingerprint → save → CAS readback.
  * 23.  Build thread extension → applyThreadSnapshotExtensionIfNew →
  *       validateThreadSnapshot.
@@ -61,26 +61,32 @@ import {
   planRequirementsEnrichment,
   requirementEntriesToOracleRequirements,
   type RequirementsProposal,
+  type RequirementsTarget,
 } from "../../domain/platform/requirements-proposal.ts";
 import {
   ORACLE_REQUIREMENT_OPERATORS,
   type OracleRequirement,
-  renderOracleRequirementsSysml,
+  renderTargetedOracleRequirementsSysml,
   SUPPORTED_ORACLE_UNITS,
 } from "../../domain/analysis/proof-case.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadArtifactConsumption,
+  ThreadEntityRef,
   ThreadFreshness,
   ThreadOperationRef,
+  ThreadProvenanceLink,
   ThreadSnapshot,
+  TracedRequirement,
 } from "../../domain/thread/thread-snapshot.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
+import { computeArchiveCascade } from "../../domain/thread/thread-retirement.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
+  ARCHITECTURE_CAPTURE_URI_PREFIX,
   type FileCaptureStore,
   REQUIREMENTS_CAPTURE_URI_PREFIX,
 } from "../captures/file-capture-store.ts";
@@ -97,10 +103,17 @@ import {
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
+  ARCHITECTURE_FEATURE_TYPING_AQL,
+} from "../extractors/architecture-structure-extractor.ts";
+import {
   extractAndVerifyOracleRequirements,
   RequirementExtractionError,
 } from "../extractors/syson-requirements-extractor.ts";
-import { findArchitectureArtifact } from "./model-write-architecture-run-executor.ts";
+import {
+  ARCHITECTURE_CAPTURE_SCHEMA,
+  findArchitectureArtifact,
+  MODEL_WRITE_ARCHITECTURE_OPERATION,
+} from "./model-write-architecture-run-executor.ts";
 import {
   requireBasis,
   requiredStart,
@@ -108,13 +121,17 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "./executor-run-helpers.ts";
+import {
+  assertThreadWriteBasisAvailable,
+  threadWriteBasisLeaseScope,
+} from "./thread-write-basis-guard.ts";
 
 // ── Public re-exports ────────────────────────────────────────────────────────
 
 export { MODEL_WRITE_REQUIREMENTS_OPERATION };
 
 /** Stable schema version for every requirements capture record. */
-export const REQUIREMENTS_CAPTURE_SCHEMA = "requirements-capture/1.0" as const;
+export const REQUIREMENTS_CAPTURE_SCHEMA = "requirements-capture/2.0" as const;
 
 // ── Cliquet: requirements artifact removed ───────────────────────────────────
 
@@ -153,13 +170,9 @@ export interface ModelWriteRequirementsRunExecutorDependencies {
   readonly commands: EngineeringProjectCommandService;
   readonly snapshots: ThreadSnapshotStore;
   /** Seed captures produced by `architecture.seed-syson-model@2`. */
-  readonly seedCaptures: {
-    read(fingerprint: ContentFingerprint): Promise<string | undefined>;
-  };
+  readonly seedCaptures: FileCaptureStore<"syson-model-seed">;
   /** Generic architecture captures — read-only for target resolution. */
-  readonly architectureCaptures: {
-    read(fingerprint: ContentFingerprint): Promise<string | undefined>;
-  };
+  readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
   readonly captures: FileCaptureStore<"requirements-capture">;
   readonly attempts: FileRequirementsAttemptStore;
   /** Fixed server-owned MCP client. No agent value reaches this boundary. */
@@ -175,14 +188,71 @@ export interface ModelWriteRequirementsRunExecutorDependencies {
  * Locate the active requirements artifact for a specific containerComponent.
  *
  * Returns undefined if no requirements artifact for this component exists yet,
- * which is the initial-write signal for the executor.
+ * which is the initial-write signal for the executor. Throws on an ambiguous
+ * active lineage; ambiguity must never be collapsed into absence.
  */
 export function findRequirementsArtifact(
   snapshot: ThreadSnapshot,
   containerComponent: string,
 ): ThreadArtifact | undefined {
+  return requireRequirementsTip(snapshot, containerComponent);
+}
+
+/**
+ * Resolve the unique active requirements tip used by the write executor.
+ * Ambiguity is never an initial-write signal: continuing would fork an
+ * append-only requirements lineage and could overwrite an arbitrary SysON
+ * element during enrichment.
+ */
+export function requireRequirementsTip(
+  snapshot: ThreadSnapshot,
+  containerComponent: string,
+): ThreadArtifact | undefined {
   const selected = selectRequirementsTip(snapshot, containerComponent);
+  if (selected.kind === "ambiguous") {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Ambiguous requirements tip for "${containerComponent}": the basis does not ` +
+        "identify one unique active requirements predecessor. Resolve or archive the " +
+        "competing tips before writing SysON.",
+    );
+  }
   return selected.kind === "one" ? selected.artifact : undefined;
+}
+
+/** Resolve one component label to its exact reusable PartDefinition identity. */
+export function resolveRequirementsPartDefinitionTarget(
+  partDefinitions: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly usages?: readonly unknown[];
+  }[],
+  containerComponent: string,
+): RequirementsTarget {
+  const matches = partDefinitions.filter((partDefinition) =>
+    partDefinition.label === containerComponent
+  );
+  if (matches.length === 0) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "requirements_envelope_derivation_mismatch: " +
+        `component "${containerComponent}" is not present in the generic ` +
+        "architecture capture. Run model.write-architecture@1 to add it first.",
+    );
+  }
+  if (matches.length > 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "requirements_envelope_derivation_mismatch: " +
+        `${matches.length} partDefs have label "${containerComponent}" ` +
+        "in the architecture capture. The model must have unique part-definition labels.",
+    );
+  }
+  return {
+    kind: "part-definition",
+    label: matches[0]!.label,
+    elementId: matches[0]!.id,
+  };
 }
 
 /**
@@ -279,13 +349,13 @@ export class ModelWriteRequirementsRunExecutor {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
     requireShape(project, run);
-    const { decision, proposal: rawProposal } = await requireMrtrApproval(project, run);
+    const { proposal: rawProposal } = await requireMrtrApproval(project, run);
     const proposal = parseRequirementsProposal(rawProposal);
 
     return await this.#lease.withLease(
       command.projectId,
-      command.runId,
-      () => this.#executeLeased(origin, command, proposal, decision),
+      threadWriteBasisLeaseScope(run),
+      () => this.#executeLeased(origin, command, proposal),
     );
   }
 
@@ -293,7 +363,6 @@ export class ModelWriteRequirementsRunExecutor {
     origin: EngineeringProjectCommandOrigin,
     command: ModelWriteRequirementsRunExecutorCommand,
     proposal: RequirementsProposal,
-    decision: EngineeringDecision,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
     let providerAcknowledged = false;
@@ -306,11 +375,23 @@ export class ModelWriteRequirementsRunExecutor {
       requireShape(preClaim, requireRun(preClaim, command.runId));
 
       // Idempotent path: if already completed by this exact command, return.
-      const alreadyCompleted = await this.#completedFor(command);
+      const alreadyCompleted = await this.#completedFor(command, proposal);
       if (alreadyCompleted) {
         await this.#reconcileLive(alreadyCompleted.project.subjectId, command.runId);
         return alreadyCompleted;
       }
+
+      assertThreadWriteBasisAvailable(
+        preClaim,
+        requireRun(preClaim, command.runId),
+      );
+
+      await assertNoBlockedRequirementsSibling(
+        preClaim,
+        requireRun(preClaim, command.runId),
+        proposal.containerComponent,
+        this.#attempts,
+      );
 
       await this.#commands.claimRun(origin, {
         ...command,
@@ -359,6 +440,13 @@ export class ModelWriteRequirementsRunExecutor {
         this.#snapshots,
       );
 
+      // Ambiguity is a lineage error, never an initial-write signal. Resolve
+      // it before any WAL entry or provider call can be made.
+      const priorArtifact = requireRequirementsTip(
+        base,
+        proposal.containerComponent,
+      );
+
       // Step 9: find the architecture artifact and resolve the target component.
       const architectureArtifact = findArchitectureArtifact(base);
       if (!architectureArtifact) {
@@ -368,35 +456,21 @@ export class ModelWriteRequirementsRunExecutor {
             "Run model.write-architecture@1 before authoring requirements.",
         );
       }
-      const { archCapture, editingContextId, architecturePackageId, target } =
-        await this.#resolveTargetFromArchitecture(
+      const { archCapture, editingContextId, target } = await this
+        .#resolveTargetFromArchitecture(
+          base,
           architectureArtifact,
           proposal,
         );
 
-      // Step 11a: the decision must still seal exactly what the command service
-      // presented to the human. No executor-specific fingerprint is accepted.
-      const signedInputFingerprint = await sha256Fingerprint({
-        baseSnapshot: decision.baseSnapshot,
-        inputEvidenceRefs: decision.inputEvidenceRefs,
-        proposal: {
-          summary: decision.proposal!.summary,
-          parameters: decision.proposal!.parameters,
-        },
-      });
-      if (!fingerprintsEqual(signedInputFingerprint, decision.inputFingerprint)) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          "requirements_decision_fingerprint_mismatch: the decision fingerprint no " +
-            "longer seals its exact base snapshot, evidence references, and proposal.",
-        );
-      }
-
-      // Step 11b: #resolveTargetFromArchitecture has derived this envelope only
+      // Step 11: #resolveTargetFromArchitecture has derived this envelope only
       // from the exact signed basis and proposal: the basis selects the content-
-      // addressed architecture capture, the proposal selects one unique partDef,
-      // and that partDef must have one unique typing usage. Keep the values
-      // together here so later publication cannot substitute another derivation.
+      // addressed architecture capture and the proposal selects one unique
+      // PartDefinition identity. Requirements intentionally constrain that
+      // reusable type, so root definitions (zero inbound usages) and reused
+      // definitions (multiple inbound usages) have the same unambiguous target.
+      // Keep the values together here so later publication cannot substitute
+      // another derivation.
       const derivedEnvelope = {
         target,
         architectureBasis: {
@@ -408,12 +482,14 @@ export class ModelWriteRequirementsRunExecutor {
         requirements: requirementEntriesToOracleRequirements(proposal.requirements),
       };
 
-      assertNoBlockedRequirementsSibling(project, run);
-
-      // Step 12: find the prior requirements artifact (enrichment path).
-      const priorArtifact = findRequirementsArtifact(base, proposal.containerComponent);
+      // Step 12: read the unique prior requirements artifact (enrichment path).
       const priorCapture = priorArtifact
-        ? await this.#readPriorRequirements(priorArtifact, proposal)
+        ? await this.#readPriorRequirements(
+          base,
+          priorArtifact,
+          proposal,
+          target,
+        )
         : undefined;
 
       // Step 13: enrichment plan.
@@ -454,7 +530,7 @@ export class ModelWriteRequirementsRunExecutor {
       // Build the full requirements list to render.
       //
       // syson_element_insert_sysml PROBE (2026-08-08, SysON 0.5.1):
-      //   Inserting the same partDef name twice into the same parent package
+      //   Inserting the same declaration name twice into the same parent
       //   produces TWO distinct elements with the same label — it is a pure
       //   insert, NOT a replace. Enrichment cannot call insert twice; D5
       //   identification would find two matches and fail with ambiguity.
@@ -462,7 +538,7 @@ export class ModelWriteRequirementsRunExecutor {
       // ENRICHMENT STRATEGY — delete + reinsert:
       //   Before WAL begin, we locate the prior element by label (below). In the
       //   dispatch path, we delete it with syson_element_delete, then insert a
-      //   NEW element containing the full set (toInsert + adopted). After the
+      //   NEW RequirementUsage containing the full set (toInsert + adopted). After the
       //   insert, D5 finds exactly one element. The verification step
       //   (extractAndVerifyOracleRequirements) confirms all metrics are present.
       //   If delete succeeds but insert fails the WAL is still "dispatched" and
@@ -474,64 +550,114 @@ export class ModelWriteRequirementsRunExecutor {
         ? requirementEntriesToOracleRequirements(enrichmentPlan.adopted)
         : [];
       // renderRequirements = full set: initial mode ⇒ toInsert only;
-      // enrichment mode ⇒ toInsert + adopted (re-renders entire partDef).
+      // enrichment mode ⇒ toInsert + adopted (re-renders the RequirementUsage).
       const renderRequirements = [
         ...insertOracleRequirements,
         ...adoptedOracleRequirements,
       ];
 
-      // Pre-WAL enrichment lookup: find the existing partDef element to delete.
-      // This must happen before WAL begin so quarantine protects delete+insert atomicity.
-      let priorRequirementsElementId: string | undefined;
-      if (enrichmentPlan.adopted.length > 0) {
-        priorRequirementsElementId = await this.#findElementByLabelOrUndefined(
-          editingContextId,
-          architecturePackageId,
-          proposal.partDefName,
-        );
-        // Identity guard (BLOQUANT — delete+reinsert makes it structurally necessary):
-        // the element found by label MUST be the exact element the prior capture
-        // recorded. A homonyme inserted by a foreign path would be silently deleted
-        // without provenance proof. Refuse before WAL begin — no state is written.
-        // Error key: "foreign_requirements_element".
-        if (priorRequirementsElementId !== undefined && priorCapture !== undefined) {
-          if (priorRequirementsElementId !== priorCapture.requirementsElementId) {
-            throw new EngineeringProjectCommandError(
-              "invalid_transition",
-              `foreign_requirements_element: element found by label "${proposal.partDefName}" ` +
-                `is "${priorRequirementsElementId}" but the prior capture recorded ` +
-                `"${priorCapture.requirementsElementId}". A foreign element with the ` +
-                "same name must not be deleted without provenance. Manual inspection required.",
-            );
-          }
-        }
-        // If already absent (e.g. manual deletion), enrichment continues with
-        // pure insert of all metrics — the verification step will confirm.
-      }
-
-      // Compute planDigest for the WAL (covers the requirements to render + target).
       const planDigest = await requirementsPlanDigest(
         renderRequirements,
         proposal.partDefName,
-        architecturePackageId,
+        target,
       );
-
-      // Step 16: WAL begin (quarantine check inside).
       const existingAttempt = await this.#runAttemptOrFail(
         project.project.id,
         command.runId,
       );
+      if (
+        existingAttempt?.status === "completed" &&
+        existingAttempt.planDigest !== planDigest
+      ) {
+        throw new RequirementsWriteOutcomeUnknownError();
+      }
+      const recoveryElementId = existingAttempt?.status === "completed"
+        ? existingAttempt.result?.requirementsElementId
+        : undefined;
+      if (existingAttempt?.status === "completed" && !recoveryElementId) {
+        throw new RequirementsWriteOutcomeUnknownError();
+      }
+
+      // Pre-WAL lookup runs in every mode. An initial/re-authoring run may not
+      // silently create a homonym, while enrichment must prove the exact live
+      // predecessor before it is irreversibly deleted.
+      const liveRequirementsElementId = await this.#findElementByLabelOrUndefined(
+        editingContextId,
+        target.elementId,
+        proposal.partDefName,
+      );
+      let priorRequirementsElementId: string | undefined;
+      if (recoveryElementId !== undefined) {
+        providerAcknowledged = true;
+        if (liveRequirementsElementId !== recoveryElementId) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            `Completed requirements WAL identifies "${recoveryElementId}", but the ` +
+              `unique live child is "${String(liveRequirementsElementId)}". ` +
+              "Refusing to adopt a homonym during recovery.",
+          );
+        }
+      } else if (!priorCapture) {
+        if (liveRequirementsElementId !== undefined) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            `foreign_requirements_element: live RequirementUsage ` +
+              `"${proposal.partDefName}" (${liveRequirementsElementId}) already exists ` +
+              `under target "${target.label}" without an active Thread predecessor. ` +
+              "Refusing to create a homonym.",
+          );
+        }
+      } else {
+        if (liveRequirementsElementId === undefined) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            `prior_requirements_live_mismatch: the predecessor capture records ` +
+              `"${proposal.partDefName}" (${priorCapture.requirementsElementId}), but no ` +
+              "such live RequirementUsage exists under the target PartDefinition.",
+          );
+        }
+        if (liveRequirementsElementId !== priorCapture.requirementsElementId) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            `foreign_requirements_element: element found by label "${proposal.partDefName}" ` +
+              `is "${liveRequirementsElementId}" but the prior capture recorded ` +
+              `"${priorCapture.requirementsElementId}". A foreign element with the ` +
+              "same name must not be deleted without provenance. Manual inspection required.",
+          );
+        }
+        priorRequirementsElementId = liveRequirementsElementId;
+        try {
+          await this.#verifyTargetedRequirementUsage(
+            editingContextId,
+            liveRequirementsElementId,
+            proposal.partDefName,
+            target,
+          );
+          await extractAndVerifyOracleRequirements(
+            this.#syson,
+            editingContextId,
+            liveRequirementsElementId,
+            priorCapture.requirements,
+          );
+        } catch (error) {
+          if (error instanceof RequirementsWriteOutcomeUnknownError) throw error;
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            `prior_requirements_live_mismatch: the live predecessor no longer ` +
+              `matches its trusted capture (${
+                error instanceof Error ? error.message : String(error)
+              }). Refusing deletion.`,
+          );
+        }
+      }
 
       let requirementsElementId: string;
+      let completeAttemptAfterProof = false;
       if (existingAttempt?.status === "completed") {
-        // A completed WAL record means SysON already acknowledged the insertion.
-        // Only readback is needed — no second insertion.
+        // Recovery is pinned to the provider identity proven before WAL
+        // completion. Never rediscover or adopt an element by label here.
         providerAcknowledged = true;
-        requirementsElementId = await this.#identifyByLabelOrFail(
-          editingContextId,
-          architecturePackageId,
-          proposal.partDefName,
-        );
+        requirementsElementId = existingAttempt.result!.requirementsElementId;
       } else {
         const walResult = await this.#walBeginOrFail(
           project.project.id,
@@ -541,16 +667,12 @@ export class ModelWriteRequirementsRunExecutor {
         );
         if (walResult.action === "completed") {
           providerAcknowledged = true;
-          requirementsElementId = await this.#identifyByLabelOrFail(
-            editingContextId,
-            architecturePackageId,
-            proposal.partDefName,
-          );
+          requirementsElementId = walResult.requirementsElementId;
         } else {
           // Step 17: (enrichment) delete prior element, then insert full set;
           //           (initial) insert directly.
           //
-          // For enrichment with adopted metrics: delete the prior partDef element
+          // For enrichment with adopted metrics: delete the prior RequirementUsage
           // first (irreversible via syson_element_delete) so that re-insertion of
           // the complete set (toInsert + adopted) does not create a duplicate label.
           // The WAL entry is "dispatched" until step 19 (complete); if delete
@@ -560,8 +682,15 @@ export class ModelWriteRequirementsRunExecutor {
             try {
               await this.#syson.callTool({
                 name: "syson_element_delete",
-                arguments: { element_id: priorRequirementsElementId },
+                arguments: {
+                  editing_context_id: editingContextId,
+                  element_id: priorRequirementsElementId,
+                },
               });
+              // Deletion is an irreversible provider acknowledgement too. From
+              // here, a failed insert or readback must block every sibling run
+              // on the same basis instead of inviting a second dispatch.
+              providerAcknowledged = true;
             } catch (error) {
               if (!(error instanceof EngineeringProjectCommandError)) {
                 throw new RequirementsWriteOutcomeUnknownError();
@@ -569,8 +698,9 @@ export class ModelWriteRequirementsRunExecutor {
               throw error;
             }
           }
-          const sysmlText = renderOracleRequirementsSysml(
+          const sysmlText = renderTargetedOracleRequirementsSysml(
             proposal.partDefName,
+            target.label,
             renderRequirements,
           );
           try {
@@ -578,11 +708,11 @@ export class ModelWriteRequirementsRunExecutor {
               name: "syson_element_insert_sysml",
               arguments: {
                 editing_context_id: editingContextId,
-                parent_id: architecturePackageId,
+                parent_id: target.elementId,
                 sysml_text: sysmlText,
               },
             });
-            verifyInsertionAck(insertResult.structuredContent, architecturePackageId);
+            verifyInsertionAck(insertResult.structuredContent, target.elementId);
             // Step 18: from this point any error takes the post-acknowledgement path.
             providerAcknowledged = true;
           } catch (error) {
@@ -592,31 +722,22 @@ export class ModelWriteRequirementsRunExecutor {
             throw error;
           }
 
-          // Step 19: WAL complete.
-          try {
-            await this.#attempts.complete({
-              projectId: project.project.id,
-              runId: command.runId,
-              planDigest,
-            });
-          } catch {
-            const durable = await this.#runAttemptOrFail(
-              project.project.id,
-              command.runId,
-            );
-            if (durable?.status !== "completed" || durable.planDigest !== planDigest) {
-              throw new RequirementsWriteOutcomeUnknownError();
-            }
-          }
-
           // Step 20: identify element by label (D5 — never by exclusion).
           requirementsElementId = await this.#identifyByLabelOrFail(
             editingContextId,
-            architecturePackageId,
+            target.elementId,
             proposal.partDefName,
           );
+          completeAttemptAfterProof = true;
         }
       }
+
+      await this.#verifyTargetedRequirementUsage(
+        editingContextId,
+        requirementsElementId,
+        proposal.partDefName,
+        target,
+      );
 
       // Step 21: extractAndVerifyOracleRequirements — fail-closed fidelity check.
       let verifiedRequirements: readonly OracleRequirement[];
@@ -635,6 +756,31 @@ export class ModelWriteRequirementsRunExecutor {
           );
         }
         throw error;
+      }
+
+      // WAL completion is proof-bearing, not merely provider-ACK-bearing. Keep
+      // the attempt dispatched until exact identity, target typing, and every
+      // constraint have survived readback.
+      if (completeAttemptAfterProof) {
+        try {
+          await this.#attempts.complete({
+            projectId: project.project.id,
+            runId: command.runId,
+            planDigest,
+            requirementsElementId,
+          });
+        } catch {
+          const durable = await this.#runAttemptOrFail(
+            project.project.id,
+            command.runId,
+          );
+          if (
+            durable?.status !== "completed" || durable.planDigest !== planDigest ||
+            durable.result?.requirementsElementId !== requirementsElementId
+          ) {
+            throw new RequirementsWriteOutcomeUnknownError();
+          }
+        }
       }
 
       // Step 22: build + save capture.
@@ -680,7 +826,6 @@ export class ModelWriteRequirementsRunExecutor {
         captureUri,
         requirements: verifiedRequirements,
         requirementsElementId,
-        packageId: architecturePackageId,
       });
       const { snapshot: materialized } = applyThreadSnapshotExtensionIfNew(
         base,
@@ -746,7 +891,7 @@ export class ModelWriteRequirementsRunExecutor {
       return complete;
     } catch (error) {
       if (snapshotPersisted && materializedSnapshot) {
-        const complete = await this.#completedFor(command);
+        const complete = await this.#completedFor(command, proposal);
         if (complete) return complete;
         throw new EngineeringProjectCommandError(
           "invalid_transition",
@@ -782,44 +927,43 @@ export class ModelWriteRequirementsRunExecutor {
         );
       }
       if (providerAcknowledged) {
-        if (
-          error instanceof EngineeringProjectCommandError ||
-          error instanceof RequirementExtractionError
-        ) {
-          // Structural failure after acknowledgement — quarantine the run.
-          try {
-            await this.#attempts.quarantine({
-              projectId: command.projectId,
-              runId: command.runId,
-              quarantinedAt: this.#now(),
-            });
-          } catch {
-            if (claimed) {
-              await this.#recordFailure(origin, command, {
-                code: "model-write-requirements-quarantine-write-failed",
-                message:
-                  "SysON acknowledged a requirements insertion, but the durable quarantine could not be recorded. Automatic retry is forbidden.",
-              }, true);
-            }
-            throw new EngineeringProjectCommandError(
-              "invalid_transition",
-              "The acknowledged SysON requirements insertion could not be durably quarantined. " +
-                "The run was failed; an operator must inspect SysON before any new run.",
-            );
-          }
+        // Any error after an acknowledged mutation is terminal for this basis:
+        // the provider can contain a deletion, a partial insertion, or evidence
+        // whose publication failed after a successful write.
+        try {
+          await this.#attempts.quarantine({
+            projectId: command.projectId,
+            runId: command.runId,
+            quarantinedAt: this.#now(),
+          });
+        } catch {
           if (claimed) {
             await this.#recordFailure(origin, command, {
-              code: "model-write-requirements-post-acknowledgement-quarantined",
+              code: "model-write-requirements-quarantine-write-failed",
               message:
-                "SysON acknowledged a requirements insertion, then structural verification failed; the run is quarantined.",
-            });
+                "SysON acknowledged a requirements mutation, but the durable quarantine could not be recorded. Automatic retry is forbidden.",
+            }, true);
           }
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            "The acknowledged SysON requirements mutation could not be durably quarantined. " +
+              "The run was failed; an operator must inspect SysON before any new run.",
+          );
+        }
+        if (claimed) {
+          await this.#recordFailure(origin, command, {
+            code: "model-write-requirements-post-acknowledgement-quarantined",
+            message:
+              "SysON acknowledged a requirements mutation, then evidence publication failed; the run is quarantined.",
+          });
+        }
+        if (error instanceof EngineeringProjectCommandError) {
           throw error;
         }
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          "The SysON requirements insertion was acknowledged but evidence was not published. " +
-            "Retry this exact command to resume read-back without another insertion.",
+          "The SysON requirements mutation was acknowledged but evidence was not published; " +
+            "the run is quarantined and may not be retried automatically.",
         );
       }
       if (claimed) await this.#recordFailure(origin, command);
@@ -831,19 +975,20 @@ export class ModelWriteRequirementsRunExecutor {
 
   /**
    * Parse the architecture capture for the given artifact and find the
-   * containerComponent's partDef elementId and usageName.
+   * containerComponent's unique PartDefinition identity.
    *
    * D5: identification is by label match, never by exclusion.
-   * D3: partDefName is already computed from containerComponent.
+   * The target is intentionally type-level: root PartDefinitions and reusable
+   * PartDefinitions with multiple usages remain unambiguous.
    */
   async #resolveTargetFromArchitecture(
+    base: ThreadSnapshot,
     architectureArtifact: ThreadArtifact,
     proposal: RequirementsProposal,
   ): Promise<{
     readonly archCapture: ParsedArchCapture;
     readonly editingContextId: string;
-    readonly architecturePackageId: string;
-    readonly target: { readonly usageName: string; readonly elementId: string };
+    readonly target: RequirementsTarget;
   }> {
     // Read the architecture capture.
     const archCaptureText = await this.#architectureCaptures.read(
@@ -868,46 +1013,101 @@ export class ModelWriteRequirementsRunExecutor {
       );
     }
 
-    const architecturePackageId = archCapture.package.id;
+    if (
+      architectureArtifact.id !==
+        `architecture-${architectureArtifact.fingerprint.digest}` ||
+      architectureArtifact.kind !== "sysml-model" ||
+      architectureArtifact.uri !==
+        `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${architectureArtifact.fingerprint.digest}` ||
+      architectureArtifact.mediaType !== "application/json" ||
+      architectureArtifact.producer.serverId !== "syson" ||
+      architectureArtifact.producer.tool !== "syson_element_insert_sysml" ||
+      archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
+      archCapture.operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
+      archCapture.operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
+      archCapture.trustedRunId !== architectureArtifact.producer.runId
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The generic architecture artifact/capture pair is not exact schema-v2 evidence.",
+      );
+    }
 
-    // Find the containerComponent partDef by label (D5).
-    const matches = archCapture.partDefinitions.filter(
-      (pd) => pd.label === proposal.containerComponent,
+    const seedArtifact = base.artifacts.find((artifact) =>
+      artifact.id === archCapture.seed.artifactId
     );
-    if (matches.length === 0) {
+    if (
+      !seedArtifact ||
+      !fingerprintsEqual(seedArtifact.fingerprint, archCapture.seed.fingerprint) ||
+      seedArtifact.id !== `syson-model-seed-${seedArtifact.fingerprint.digest}` ||
+      seedArtifact.kind !== "sysml-model" ||
+      seedArtifact.uri !==
+        `casys://syson-model-seed-capture/sha256/${seedArtifact.fingerprint.digest}` ||
+      seedArtifact.mediaType !== "application/json" ||
+      seedArtifact.producer.serverId !== "syson" ||
+      seedArtifact.producer.tool !== "syson_model_create" ||
+      seedArtifact.producer.runId !== archCapture.seed.producerRunId ||
+      !architectureArtifact.inputArtifactIds.includes(seedArtifact.id)
+    ) {
       throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "requirements_envelope_derivation_mismatch: " +
-          `component "${proposal.containerComponent}" is not present in the generic ` +
-          "architecture capture. Run model.write-architecture@1 to add it first.",
+        "invalid_input",
+        "The generic architecture capture is not anchored to its exact SysON seed artifact.",
       );
     }
-    if (matches.length > 1) {
+    const predecessorArtifact = archCapture.predecessor
+      ? base.artifacts.find((artifact) =>
+        artifact.id === archCapture.predecessor!.artifactId
+      )
+      : undefined;
+    if (
+      archCapture.predecessor &&
+      (!predecessorArtifact ||
+        predecessorArtifact.id !==
+          `architecture-${predecessorArtifact.fingerprint.digest}` ||
+        predecessorArtifact.kind !== "sysml-model" ||
+        predecessorArtifact.uri !==
+          `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${predecessorArtifact.fingerprint.digest}` ||
+        predecessorArtifact.mediaType !== "application/json" ||
+        predecessorArtifact.producer.serverId !== "syson" ||
+        predecessorArtifact.producer.tool !== "syson_element_insert_sysml" ||
+        !fingerprintsEqual(
+          predecessorArtifact.fingerprint,
+          archCapture.predecessor.fingerprint,
+        ) ||
+        predecessorArtifact.producer.runId !==
+          archCapture.predecessor.producerRunId)
+    ) {
       throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "requirements_envelope_derivation_mismatch: " +
-          `${matches.length} partDefs have label "${proposal.containerComponent}" ` +
-          "in the architecture capture. The model must have unique part-definition labels.",
+        "invalid_input",
+        "The generic architecture capture predecessor is not exact Thread evidence.",
       );
     }
-    const componentPartDef = matches[0]!;
-    const elementId = componentPartDef.id;
+    const expectedArchitectureInputs = [
+      seedArtifact.id,
+      ...(predecessorArtifact ? [predecessorArtifact.id] : []),
+    ];
+    if (
+      architectureArtifact.inputArtifactIds.length !==
+        expectedArchitectureInputs.length ||
+      new Set(architectureArtifact.inputArtifactIds).size !==
+        architectureArtifact.inputArtifactIds.length ||
+      expectedArchitectureInputs.some((id) =>
+        !architectureArtifact.inputArtifactIds.includes(id)
+      )
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The generic architecture capture predecessor does not match the artifact input lineage.",
+      );
+    }
 
-    // A usage "dripTray : DripTray" lives under the parent partDef's usages.
-    // The signed component name must resolve to exactly one occurrence: taking
-    // the first match would make the envelope depend on capture ordering.
-    const typingUsages = archCapture.partDefinitions.flatMap((pd) =>
-      pd.usages.filter((usage) => usage.targetLabel === proposal.containerComponent)
+    // Find the containerComponent PartDefinition by label (D5). Inbound usage
+    // count is deliberately irrelevant because the requirement constrains the
+    // reusable type itself.
+    const target = resolveRequirementsPartDefinitionTarget(
+      archCapture.partDefinitions,
+      proposal.containerComponent,
     );
-    if (typingUsages.length !== 1) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "requirements_envelope_derivation_mismatch: " +
-          `expected exactly one usage typing "${proposal.containerComponent}" in the ` +
-          `architecture capture selected by the signed basis, found ${typingUsages.length}.`,
-      );
-    }
-    const usageName = typingUsages[0]!.label;
 
     // Load the seed capture to get editingContextId.
     const seedFp = archCapture.seed.fingerprint;
@@ -929,21 +1129,28 @@ export class ModelWriteRequirementsRunExecutor {
         }`,
       );
     }
+    if (seedCapture.trustedRunId !== seedArtifact.producer.runId) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The SysON seed capture trustedRunId does not match its Thread artifact producer.",
+      );
+    }
     const editingContextId = seedCapture.normalizedResults.project.editingContextId;
 
     return {
       archCapture,
       editingContextId,
-      architecturePackageId,
-      target: { usageName, elementId },
+      target,
     };
   }
 
   // ── Private: read prior requirements ─────────────────────────────────────
 
   async #readPriorRequirements(
+    base: ThreadSnapshot,
     priorArtifact: ThreadArtifact,
     proposal: RequirementsProposal,
+    target: RequirementsTarget,
   ): Promise<{
     readonly requirements: readonly OracleRequirement[];
     readonly requirementsElementId: string;
@@ -965,11 +1172,26 @@ export class ModelWriteRequirementsRunExecutor {
       );
     }
     if (
+      record && typeof record === "object" && !Array.isArray(record) &&
+      (record as Record<string, unknown>).schemaVersion ===
+        "requirements-capture/1.0"
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "Legacy requirements-capture/1.0 cannot be enriched safely: it recorded " +
+          "an occurrence hint and a package-level helper PartDefinition, not a native " +
+          "RequirementUsage owned by an explicit target PartDefinition. Retire the " +
+          "legacy artifact through a reviewed archive transition, then re-author the " +
+          "requirements to establish a 2.0 capture.",
+      );
+    }
+    if (
       !record || typeof record !== "object" || Array.isArray(record) ||
       (record as Record<string, unknown>).schemaVersion !==
         REQUIREMENTS_CAPTURE_SCHEMA ||
       (record as Record<string, unknown>).containerComponent !==
         proposal.containerComponent ||
+      (record as Record<string, unknown>).partDefName !== proposal.partDefName ||
       !Array.isArray((record as Record<string, unknown>).requirements)
     ) {
       throw new EngineeringProjectCommandError(
@@ -977,10 +1199,282 @@ export class ModelWriteRequirementsRunExecutor {
         "The prior requirements capture does not match the expected schema or target component.",
       );
     }
+    const priorRecord = record as Record<string, unknown>;
+    assertExactKeys(
+      priorRecord,
+      [
+        "schemaVersion",
+        "operation",
+        "trustedRunId",
+        "containerComponent",
+        "partDefName",
+        "target",
+        "architectureBasis",
+        "requirements",
+        "seed",
+        "architecture",
+        "requirementsElementId",
+        "insertedAt",
+      ],
+      "Prior requirements capture",
+    );
+    const operation = priorRecord.operation as Record<string, unknown> | undefined;
+    if (operation) {
+      assertExactKeys(operation, ["id", "version"], "Prior requirements operation");
+    }
+    const architecture = priorRecord.architecture as
+      | Record<string, unknown>
+      | undefined;
+    const historicalArchitecture = architecture &&
+        typeof architecture.artifactId === "string"
+      ? base.artifacts.find((artifact) => artifact.id === architecture.artifactId)
+      : undefined;
+    const requirementsInputs = priorArtifact.inputArtifactIds.flatMap((id) => {
+      const artifact = base.artifacts.find((candidate) => candidate.id === id);
+      return artifact?.uri?.startsWith(
+          requirementsUriPrefix(proposal.containerComponent),
+        )
+        ? [artifact]
+        : [];
+    });
+    const predecessorRequirementsArtifact = requirementsInputs.length === 1
+      ? requirementsInputs[0]
+      : undefined;
+    const architectureBasis = priorRecord.architectureBasis as
+      | Record<string, unknown>
+      | undefined;
+    const priorSeed = priorRecord.seed as Record<string, unknown> | undefined;
+    if (architecture) {
+      assertExactKeys(
+        architecture,
+        ["artifactId", "fingerprint", "producerRunId"],
+        "Prior requirements architecture anchor",
+      );
+      if (isContentFingerprint(architecture.fingerprint)) {
+        assertExactKeys(
+          architecture.fingerprint as unknown as Record<string, unknown>,
+          ["algorithm", "digest"],
+          "Prior requirements architecture fingerprint",
+        );
+      }
+    }
+    if (architectureBasis) {
+      assertExactKeys(
+        architectureBasis,
+        ["snapshotId", "revision", "fingerprint"],
+        "Prior requirements architecture basis",
+      );
+    }
+    if (priorSeed) {
+      assertExactKeys(
+        priorSeed,
+        ["artifactId", "fingerprint", "producerRunId"],
+        "Prior requirements seed anchor",
+      );
+      if (isContentFingerprint(priorSeed.fingerprint)) {
+        assertExactKeys(
+          priorSeed.fingerprint as unknown as Record<string, unknown>,
+          ["algorithm", "digest"],
+          "Prior requirements seed fingerprint",
+        );
+      }
+    }
+    if (
+      priorArtifact.id !==
+        `requirements-${proposal.containerComponent}-${priorArtifact.fingerprint.digest}` ||
+      priorArtifact.kind !== "sysml-model" ||
+      priorArtifact.uri !== requirementsUriFor(
+          proposal.containerComponent,
+          priorArtifact.fingerprint,
+        ) ||
+      priorArtifact.mediaType !== "application/json" ||
+      priorArtifact.producer.serverId !== "syson" ||
+      priorArtifact.producer.tool !== "syson_element_insert_sysml" ||
+      operation?.id !== MODEL_WRITE_REQUIREMENTS_OPERATION.id ||
+      operation.version !== MODEL_WRITE_REQUIREMENTS_OPERATION.version ||
+      priorRecord.trustedRunId !== priorArtifact.producer.runId ||
+      typeof priorRecord.insertedAt !== "string" ||
+      !isExactIsoTimestamp(priorRecord.insertedAt) ||
+      !architecture || !historicalArchitecture ||
+      historicalArchitecture.id !==
+        `architecture-${historicalArchitecture.fingerprint.digest}` ||
+      historicalArchitecture.kind !== "sysml-model" ||
+      historicalArchitecture.uri !==
+        `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${historicalArchitecture.fingerprint.digest}` ||
+      historicalArchitecture.mediaType !== "application/json" ||
+      historicalArchitecture.producer.serverId !== "syson" ||
+      historicalArchitecture.producer.tool !== "syson_element_insert_sysml" ||
+      !isContentFingerprint(architecture.fingerprint) ||
+      !fingerprintsEqual(
+        architecture.fingerprint,
+        historicalArchitecture.fingerprint,
+      ) ||
+      architecture.producerRunId !== historicalArchitecture.producer.runId ||
+      new Set(priorArtifact.inputArtifactIds).size !==
+        priorArtifact.inputArtifactIds.length ||
+      requirementsInputs.length > 1 ||
+      priorArtifact.inputArtifactIds.length !==
+        1 + (predecessorRequirementsArtifact ? 1 : 0) ||
+      !priorArtifact.inputArtifactIds.includes(historicalArchitecture.id) ||
+      (predecessorRequirementsArtifact !== undefined &&
+        (predecessorRequirementsArtifact.id !==
+            `requirements-${proposal.containerComponent}-${predecessorRequirementsArtifact.fingerprint.digest}` ||
+          predecessorRequirementsArtifact.kind !== "sysml-model" ||
+          predecessorRequirementsArtifact.uri !== requirementsUriFor(
+              proposal.containerComponent,
+              predecessorRequirementsArtifact.fingerprint,
+            ) ||
+          predecessorRequirementsArtifact.mediaType !== "application/json" ||
+          predecessorRequirementsArtifact.producer.serverId !== "syson" ||
+          predecessorRequirementsArtifact.producer.tool !==
+            "syson_element_insert_sysml"))
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The prior requirements artifact/capture pair is not exact schema-v2 evidence " +
+          "anchored to its historical architecture artifact.",
+      );
+    }
+    const derivedInputs = base.provenance.filter((link) =>
+      link.relation === "derived_from" && link.from.kind === "artifact" &&
+      link.from.id === priorArtifact.id && link.to.kind === "artifact"
+    ).map((link) => link.to.id);
+    const expectedDerivedInputs = [
+      historicalArchitecture.id,
+      ...(predecessorRequirementsArtifact ? [predecessorRequirementsArtifact.id] : []),
+    ];
+    if (
+      derivedInputs.length !== expectedDerivedInputs.length ||
+      new Set(derivedInputs).size !== derivedInputs.length ||
+      expectedDerivedInputs.some((id) => !derivedInputs.includes(id))
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The prior requirements Thread lineage is not a bijective architecture plus " +
+          "optional single requirements-predecessor chain.",
+      );
+    }
+    const historicalCaptureText = await this.#architectureCaptures.read(
+      historicalArchitecture.fingerprint,
+    );
+    let historicalCapture: ParsedArchCapture;
+    try {
+      if (!historicalCaptureText) throw new Error("capture is absent");
+      historicalCapture = parseArchCapture(historicalCaptureText);
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `The historical architecture capture is not exact schema-v2 evidence: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    const basisSnapshot = architectureBasis &&
+        typeof architectureBasis.snapshotId === "string"
+      ? await this.#snapshots.get(architectureBasis.snapshotId)
+      : undefined;
+    const historicalSeedArtifact = basisSnapshot?.artifacts.find((artifact) =>
+      artifact.id === historicalCapture.seed.artifactId
+    );
+    const historicalPredecessor = historicalCapture.predecessor
+      ? basisSnapshot?.artifacts.find((artifact) =>
+        artifact.id === historicalCapture.predecessor!.artifactId
+      )
+      : undefined;
+    const expectedHistoricalInputs = historicalSeedArtifact
+      ? [
+        historicalSeedArtifact.id,
+        ...(historicalPredecessor ? [historicalPredecessor.id] : []),
+      ]
+      : [];
+    if (
+      !architectureBasis || typeof architectureBasis.snapshotId !== "string" ||
+      !Number.isSafeInteger(architectureBasis.revision) ||
+      architectureBasis.fingerprint !== historicalArchitecture.fingerprint.digest ||
+      !basisSnapshot || basisSnapshot.id !== architectureBasis.snapshotId ||
+      basisSnapshot.revision !== architectureBasis.revision ||
+      basisSnapshot.subject.id !== base.subject.id ||
+      !basisSnapshot.artifacts.some((artifact) =>
+        artifact.id === historicalArchitecture.id &&
+        deterministicJson(artifact) === deterministicJson(historicalArchitecture)
+      ) ||
+      historicalCapture.trustedRunId !== historicalArchitecture.producer.runId ||
+      !historicalSeedArtifact ||
+      historicalSeedArtifact.id !==
+        `syson-model-seed-${historicalSeedArtifact.fingerprint.digest}` ||
+      historicalSeedArtifact.kind !== "sysml-model" ||
+      historicalSeedArtifact.uri !==
+        `casys://syson-model-seed-capture/sha256/${historicalSeedArtifact.fingerprint.digest}` ||
+      historicalSeedArtifact.mediaType !== "application/json" ||
+      historicalSeedArtifact.producer.serverId !== "syson" ||
+      historicalSeedArtifact.producer.tool !== "syson_model_create" ||
+      historicalSeedArtifact.producer.runId !==
+        historicalCapture.seed.producerRunId ||
+      !fingerprintsEqual(
+        historicalSeedArtifact.fingerprint,
+        historicalCapture.seed.fingerprint,
+      ) ||
+      (historicalCapture.predecessor !== undefined &&
+        (!historicalPredecessor ||
+          historicalPredecessor.id !==
+            `architecture-${historicalPredecessor.fingerprint.digest}` ||
+          historicalPredecessor.kind !== "sysml-model" ||
+          historicalPredecessor.uri !==
+            `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${historicalPredecessor.fingerprint.digest}` ||
+          historicalPredecessor.mediaType !== "application/json" ||
+          historicalPredecessor.producer.serverId !== "syson" ||
+          historicalPredecessor.producer.tool !== "syson_element_insert_sysml" ||
+          historicalPredecessor.producer.runId !==
+            historicalCapture.predecessor.producerRunId ||
+          !fingerprintsEqual(
+            historicalPredecessor.fingerprint,
+            historicalCapture.predecessor.fingerprint,
+          ))) ||
+      historicalArchitecture.inputArtifactIds.length !==
+        expectedHistoricalInputs.length ||
+      new Set(historicalArchitecture.inputArtifactIds).size !==
+        historicalArchitecture.inputArtifactIds.length ||
+      expectedHistoricalInputs.some((id) =>
+        !historicalArchitecture.inputArtifactIds.includes(id)
+      ) ||
+      !priorSeed || typeof priorSeed.artifactId !== "string" ||
+      typeof priorSeed.producerRunId !== "string" ||
+      !isContentFingerprint(priorSeed.fingerprint) ||
+      priorSeed.artifactId !== historicalCapture.seed.artifactId ||
+      priorSeed.producerRunId !== historicalCapture.seed.producerRunId ||
+      !fingerprintsEqual(priorSeed.fingerprint, historicalCapture.seed.fingerprint)
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The prior requirements capture basis or seed anchor diverges from its " +
+          "historical architecture evidence.",
+      );
+    }
+    const rawTarget = priorRecord.target;
+    if (rawTarget && typeof rawTarget === "object" && !Array.isArray(rawTarget)) {
+      assertExactKeys(
+        rawTarget as Record<string, unknown>,
+        ["kind", "label", "elementId"],
+        "Prior requirements target",
+      );
+    }
+    if (
+      !rawTarget || typeof rawTarget !== "object" || Array.isArray(rawTarget) ||
+      (rawTarget as Record<string, unknown>).kind !== target.kind ||
+      (rawTarget as Record<string, unknown>).label !== target.label ||
+      (rawTarget as Record<string, unknown>).elementId !== target.elementId
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The prior requirements capture targets a different SysON PartDefinition " +
+          `than "${target.label}" (${target.elementId}). A target identity change ` +
+          "requires an explicit reviewed transition, not in-place enrichment.",
+      );
+    }
     // BLOQUANT identity anchor: the capture records which SysON element was
     // inserted. The enrichment path uses this to verify the element found by
     // label is the same one — a homonyme must be refused, not silently deleted.
-    const rawReqsElementId = (record as Record<string, unknown>).requirementsElementId;
+    const rawReqsElementId = priorRecord.requirementsElementId;
     if (typeof rawReqsElementId !== "string" || !rawReqsElementId.trim()) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
@@ -993,8 +1487,16 @@ export class ModelWriteRequirementsRunExecutor {
     // against the same invariants that the proposal parser enforces on new input.
     // RÉSERVE 3: derive operator set from the domain constant so that adding an
     // operator to ORACLE_REQUIREMENT_OPERATORS automatically extends this check.
-    const raw = (record as Record<string, unknown>).requirements as unknown[];
+    const raw = priorRecord.requirements as unknown[];
+    if (raw.length === 0) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The prior requirements capture contains no requirement.",
+      );
+    }
     const validated: OracleRequirement[] = [];
+    const ids = new Set<string>();
+    const metrics = new Set<string>();
     const allowedOperators: ReadonlySet<string> = new Set<string>(
       ORACLE_REQUIREMENT_OPERATORS,
     );
@@ -1007,6 +1509,11 @@ export class ModelWriteRequirementsRunExecutor {
         );
       }
       const r = req as Record<string, unknown>;
+      assertExactKeys(
+        r,
+        ["id", "name", "metric", "operator", "limit"],
+        `Prior requirements capture requirements[${index}]`,
+      );
       if (
         typeof r.id !== "string" || !r.id.trim() ||
         typeof r.name !== "string" || !r.name.trim() ||
@@ -1026,9 +1533,17 @@ export class ModelWriteRequirementsRunExecutor {
         );
       }
       const limit = r.limit;
+      if (limit && typeof limit === "object" && !Array.isArray(limit)) {
+        assertExactKeys(
+          limit as Record<string, unknown>,
+          ["value", "unit"],
+          `Prior requirements capture requirements[${index}].limit`,
+        );
+      }
       if (
         !limit || typeof limit !== "object" || Array.isArray(limit) ||
         typeof (limit as Record<string, unknown>).value !== "number" ||
+        !Number.isSafeInteger((limit as Record<string, unknown>).value) ||
         typeof (limit as Record<string, unknown>).unit !== "string"
       ) {
         throw new EngineeringProjectCommandError(
@@ -1043,6 +1558,14 @@ export class ModelWriteRequirementsRunExecutor {
           `Prior requirements capture requirements[${index}].limit.unit "${unit}" is not in the supported vocabulary.`,
         );
       }
+      if (ids.has(r.id as string) || metrics.has(r.metric as string)) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "The prior requirements capture repeats a requirement id or metric.",
+        );
+      }
+      ids.add(r.id as string);
+      metrics.add(r.metric as string);
       validated.push({
         id: r.id as string,
         name: r.name as string,
@@ -1053,6 +1576,177 @@ export class ModelWriteRequirementsRunExecutor {
           unit,
         },
       });
+    }
+
+    // The capture and active Thread projection are one indivisible predecessor
+    // proof. A valid JSON capture is insufficient if its TracedRequirement set
+    // is missing, extra, archived, or points at another architecture/element.
+    const archived = archivedRefKeys(base);
+    const projected = base.requirements.filter((requirement) =>
+      requirement.trace.sourceArtifactId === priorArtifact.id &&
+      !archived.has(`requirement:${requirement.id}`)
+    );
+    const expectedIds = new Set(
+      validated.map((requirement) =>
+        `requirement-${priorArtifact.fingerprint.digest}-${requirement.id}`
+      ),
+    );
+    if (projected.length !== validated.length) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The active Thread requirements projection is not one-to-one with its prior capture.",
+      );
+    }
+    const projectedById = new Map(projected.map((item) => [item.id, item]));
+    const expectedTraceLinks: ThreadProvenanceLink[] = [];
+    for (const expected of validated) {
+      const expectedId =
+        `requirement-${priorArtifact.fingerprint.digest}-${expected.id}`;
+      const expectedProjection: TracedRequirement = {
+        id: expectedId,
+        name: expected.name,
+        statement: `${expected.name}: ${expected.metric} ${expected.operator} ` +
+          `${expected.limit.value} ${expected.limit.unit}.`,
+        version: priorArtifact.fingerprint.digest,
+        criterion: {
+          metric: expected.metric,
+          operator: expected.operator,
+          limit: {
+            value: expected.limit.value,
+            unit: expected.limit.unit,
+          },
+        },
+        trace: {
+          sourceArtifactId: priorArtifact.id,
+          elementId: rawReqsElementId,
+          targetArtifactIds: [historicalArchitecture.id],
+        },
+        freshness: {
+          status: "fresh",
+          changedAt: priorRecord.insertedAt as string,
+          invalidatedByChangeIds: [],
+        },
+      };
+      const projectedRequirement = projectedById.get(expectedId);
+      if (
+        !projectedRequirement || !expectedIds.has(projectedRequirement.id) ||
+        deterministicJson(projectedRequirement) !==
+          deterministicJson(expectedProjection)
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "The active Thread requirements projection diverges from its prior capture.",
+        );
+      }
+      expectedTraceLinks.push({
+        id: `traces-to-target-${expectedId}`,
+        relation: "traces_to",
+        from: { kind: "requirement", id: expectedId },
+        to: { kind: "artifact", id: historicalArchitecture.id },
+        rationale: `The requirement constrains PartDefinition "${target.label}" ` +
+          `(${target.elementId}) inside this architecture artifact.`,
+      });
+    }
+    const observedTraceLinks = base.provenance.filter((link) =>
+      link.relation === "traces_to" && link.from.kind === "requirement" &&
+      expectedIds.has(link.from.id)
+    );
+    if (
+      observedTraceLinks.length !== expectedTraceLinks.length ||
+      expectedTraceLinks.some((expected) => {
+        const observed = observedTraceLinks.find((link) => link.id === expected.id);
+        return !observed ||
+          deterministicJson(observed) !== deterministicJson(expected);
+      })
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The active Thread requirements trace projection diverges from its prior capture.",
+      );
+    }
+
+    const expectedConsumptions: ThreadArtifactConsumption[] = [
+      {
+        id: `consume-${historicalArchitecture.id}-by-${priorArtifact.id}`,
+        artifactId: historicalArchitecture.id,
+        consumer: priorArtifact.producer,
+        observedFingerprint: historicalArchitecture.fingerprint,
+        verifiedAt: priorRecord.insertedAt as string,
+        status: "verified",
+      },
+      ...(predecessorRequirementsArtifact
+        ? [{
+          id: `consume-${predecessorRequirementsArtifact.id}-by-${priorArtifact.id}`,
+          artifactId: predecessorRequirementsArtifact.id,
+          consumer: priorArtifact.producer,
+          observedFingerprint: predecessorRequirementsArtifact.fingerprint,
+          verifiedAt: priorRecord.insertedAt as string,
+          status: "verified" as const,
+        }]
+        : []),
+    ];
+    const observedConsumptions = base.consumptions.filter((consumption) =>
+      deterministicJson(consumption.consumer) ===
+        deterministicJson(priorArtifact.producer)
+    );
+    if (
+      observedConsumptions.length !== expectedConsumptions.length ||
+      expectedConsumptions.some((expected) => {
+        const observed = observedConsumptions.find((item) => item.id === expected.id);
+        return !observed ||
+          deterministicJson(observed) !== deterministicJson(expected);
+      })
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The prior requirements consumption projection is not exact.",
+      );
+    }
+    const expectedUses: ThreadProvenanceLink[] = [
+      {
+        id: `uses-consume-${historicalArchitecture.id}-by-${priorArtifact.id}`,
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: `consume-${historicalArchitecture.id}-by-${priorArtifact.id}`,
+        },
+        to: { kind: "artifact", id: historicalArchitecture.id },
+        rationale:
+          "The executor read the exact architecture capture to resolve the target element.",
+      },
+      ...(predecessorRequirementsArtifact
+        ? [{
+          id: `uses-consume-prior-requirements-${priorArtifact.fingerprint.digest}`,
+          relation: "uses" as const,
+          from: {
+            kind: "consumption" as const,
+            id: `consume-${predecessorRequirementsArtifact.id}-by-${priorArtifact.id}`,
+          },
+          to: { kind: "artifact" as const, id: predecessorRequirementsArtifact.id },
+          rationale:
+            "The executor read the exact prior requirements capture to plan the enrichment.",
+        }]
+        : []),
+    ];
+    const expectedConsumptionIds = new Set(
+      expectedConsumptions.map((consumption) => consumption.id),
+    );
+    const observedUses = base.provenance.filter((link) =>
+      link.relation === "uses" && link.from.kind === "consumption" &&
+      expectedConsumptionIds.has(link.from.id)
+    );
+    if (
+      observedUses.length !== expectedUses.length ||
+      expectedUses.some((expected) => {
+        const observed = observedUses.find((link) => link.id === expected.id);
+        return !observed ||
+          deterministicJson(observed) !== deterministicJson(expected);
+      })
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The prior requirements uses provenance is not exact.",
+      );
     }
     return { requirements: validated, requirementsElementId: rawReqsElementId };
   }
@@ -1074,25 +1768,19 @@ export class ModelWriteRequirementsRunExecutor {
    */
   async #findElementByLabelOrUndefined(
     editingContextId: string,
-    packageId: string,
+    parentId: string,
     partDefName: string,
   ): Promise<string | undefined> {
-    let children: unknown[];
+    let children: readonly unknown[];
     try {
       const result = await this.#syson.callTool({
         name: "syson_element_children",
         arguments: {
           editing_context_id: editingContextId,
-          element_id: packageId,
+          element_id: parentId,
         },
       });
-      const c = result.structuredContent.children;
-      if (!Array.isArray(c)) {
-        throw new Error(
-          "syson_element_children: structuredContent.children must be an array.",
-        );
-      }
-      children = c;
+      children = parseProviderChildren(result.structuredContent, parentId);
     } catch (error) {
       if (!(error instanceof EngineeringProjectCommandError)) {
         throw new RequirementsWriteOutcomeUnknownError();
@@ -1109,7 +1797,7 @@ export class ModelWriteRequirementsRunExecutor {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `D5 ambiguity before enrichment: ${matches.length} elements with label "${partDefName}" ` +
-          `in package "${packageId}". Manual inspection required before enrichment.`,
+          `under target "${parentId}". Manual inspection required before enrichment.`,
       );
     }
     const match = matches[0] as Record<string, unknown>;
@@ -1121,25 +1809,19 @@ export class ModelWriteRequirementsRunExecutor {
 
   async #identifyByLabelOrFail(
     editingContextId: string,
-    packageId: string,
+    parentId: string,
     partDefName: string,
   ): Promise<string> {
-    let children: unknown[];
+    let children: readonly unknown[];
     try {
       const result = await this.#syson.callTool({
         name: "syson_element_children",
         arguments: {
           editing_context_id: editingContextId,
-          element_id: packageId,
+          element_id: parentId,
         },
       });
-      const c = result.structuredContent.children;
-      if (!Array.isArray(c)) {
-        throw new Error(
-          "syson_element_children: structuredContent.children must be an array.",
-        );
-      }
-      children = c;
+      children = parseProviderChildren(result.structuredContent, parentId);
     } catch (error) {
       if (!(error instanceof EngineeringProjectCommandError)) {
         throw new RequirementsWriteOutcomeUnknownError();
@@ -1156,14 +1838,14 @@ export class ModelWriteRequirementsRunExecutor {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `D5 identification failed: element with label "${partDefName}" not found ` +
-          `in children of package "${packageId}" after insertion.`,
+          `in children of target "${parentId}" after insertion.`,
       );
     }
     if (matches.length > 1) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `D5 identification ambiguous: ${matches.length} elements with label "${partDefName}" ` +
-          `in children of package "${packageId}". Manual inspection required.`,
+          `in children of target "${parentId}". Manual inspection required.`,
       );
     }
     const match = matches[0] as Record<string, unknown>;
@@ -1173,6 +1855,97 @@ export class ModelWriteRequirementsRunExecutor {
     return match.id;
   }
 
+  /**
+   * Prove the provider-native target binding after insertion/readback.
+   *
+   * The declaration must be a RequirementUsage owned by the resolved target
+   * PartDefinition, carry one `subject target` ReferenceUsage typed by that
+   * exact PartDefinition, and contain at least one required ConstraintUsage.
+   * The subsequent constraint extractor verifies the predicates themselves.
+   */
+  async #verifyTargetedRequirementUsage(
+    editingContextId: string,
+    requirementsElementId: string,
+    requirementName: string,
+    target: RequirementsTarget,
+  ): Promise<void> {
+    const element = await this.#syson.callTool({
+      name: "syson_element_get",
+      arguments: {
+        editing_context_id: editingContextId,
+        element_id: requirementsElementId,
+      },
+    });
+    const elementKind = element.structuredContent.kind;
+    if (
+      element.structuredContent.id !== requirementsElementId ||
+      element.structuredContent.label !== requirementName ||
+      !isSysmlEntityKind(elementKind, "RequirementUsage")
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Requirements target binding failed: SysON readback is not the exact " +
+          `RequirementUsage "${requirementName}" (${requirementsElementId}).`,
+      );
+    }
+
+    const childrenResult = await this.#syson.callTool({
+      name: "syson_element_children",
+      arguments: {
+        editing_context_id: editingContextId,
+        element_id: requirementsElementId,
+      },
+    });
+    const children = parseProviderChildren(
+      childrenResult.structuredContent,
+      requirementsElementId,
+    );
+    const subjects = children.filter((child) =>
+      isProviderChild(child, "target", "ReferenceUsage")
+    );
+    const constraints = children.filter((child) =>
+      isProviderChild(child, undefined, "ConstraintUsage")
+    );
+    if (subjects.length !== 1 || constraints.length === 0) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Requirements target binding failed: the native RequirementUsage must " +
+          "contain exactly one subject named target and at least one required constraint.",
+      );
+    }
+    const subjectId = (subjects[0] as Record<string, unknown>).id;
+    if (typeof subjectId !== "string" || !subjectId.trim()) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Requirements target binding failed: the subject has no provider identity.",
+      );
+    }
+
+    const typing = await this.#syson.callTool({
+      name: "syson_query_aql",
+      arguments: {
+        editing_context_id: editingContextId,
+        object_id: subjectId,
+        expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+      },
+    });
+    const response = typing.structuredContent;
+    const results = response.results;
+    if (
+      response.objectId !== subjectId ||
+      response.expression !== ARCHITECTURE_FEATURE_TYPING_AQL ||
+      response.type !== "objects" || response.count !== 1 ||
+      !Array.isArray(results) || results.length !== 1 ||
+      !isExactProviderTarget(results[0], target)
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Requirements target binding failed: subject target is not typed by the " +
+          `exact PartDefinition "${target.label}" (${target.elementId}).`,
+      );
+    }
+  }
+
   // ── Private: WAL helpers ──────────────────────────────────────────────────
 
   async #walBeginOrFail(
@@ -1180,7 +1953,7 @@ export class ModelWriteRequirementsRunExecutor {
     runId: string,
     planDigest: string,
     dispatchedAt: string,
-  ): Promise<{ readonly action: "dispatch" } | { readonly action: "completed" }> {
+  ): Promise<Awaited<ReturnType<FileRequirementsAttemptStore["begin"]>>> {
     // Check for quarantine BEFORE any new WAL entry — the enrichment preflight
     // produces a different planDigest after a partial insertion, so the original
     // entry would not be found and a second insertion would happen without this guard.
@@ -1221,6 +1994,7 @@ export class ModelWriteRequirementsRunExecutor {
 
   async #completedFor(
     command: ModelWriteRequirementsRunExecutorCommand,
+    proposal: RequirementsProposal,
   ): Promise<EngineeringProjectSnapshot | undefined> {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
@@ -1230,6 +2004,7 @@ export class ModelWriteRequirementsRunExecutor {
         (receipt) => receipt.commandId === commandStep(command.commandId, "complete"),
       )
     ) return undefined;
+    await this.#assertCompletedEvidenceExact(project, command, proposal);
     return project;
   }
 
@@ -1241,69 +2016,212 @@ export class ModelWriteRequirementsRunExecutor {
     const run = requireRun(project, command.runId);
     const result = run.resultSnapshot;
     if (!result) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Completed requirements run has no result snapshot.",
-      );
+      throw completedRequirementsIntegrityError("the run has no result snapshot");
     }
     const snapshot = await this.#snapshots.get(result.snapshotId);
     if (
       !snapshot || snapshot.id !== result.snapshotId ||
-      snapshot.revision !== result.revision
+      snapshot.revision !== result.revision ||
+      snapshot.subject.id !== result.subjectId ||
+      !project.threadSnapshots.some((reference) =>
+        reference.snapshotId === result.snapshotId &&
+        reference.revision === result.revision &&
+        reference.subjectId === result.subjectId
+      )
     ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Completed requirements result snapshot is not durably readable.",
+      throw completedRequirementsIntegrityError(
+        "the exact result snapshot is not durably attached to the project",
       );
     }
-    const uriPrefix = requirementsUriPrefix(proposal.containerComponent);
-    const artifacts = snapshot.artifacts.filter((artifact) =>
-      artifact.kind === "sysml-model" &&
-      artifact.uri?.startsWith(uriPrefix) &&
-      artifact.producer.runId === run.id
-    );
-    if (artifacts.length !== 1 || run.evidenceRefs.length !== 1) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Completed requirements run does not have exactly one result evidence artifact.",
+    try {
+      validateThreadSnapshot(snapshot);
+      await assertThreadSnapshotLineageIntact(snapshot, this.#snapshots);
+    } catch (error) {
+      throw completedRequirementsIntegrityError(
+        `the result snapshot or its lineage is invalid: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
-    const artifact = artifacts[0]!;
-    const evidence = run.evidenceRefs[0]!;
+
+    const basis = requireBasis(run);
     if (
-      evidence.kind !== "artifact" || evidence.id !== artifact.id ||
-      evidence.snapshotId !== snapshot.id ||
-      evidence.snapshotRevision !== snapshot.revision ||
-      artifact.id !==
-        `requirements-${proposal.containerComponent}-${artifact.fingerprint.digest}` ||
-      artifact.mediaType !== "application/json"
+      snapshot.previous?.snapshotId !== basis.snapshotId ||
+      snapshot.previous.revision !== basis.revision ||
+      snapshot.subject.id !== basis.subjectId
     ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Completed requirements evidence reference is not exactly bound to its result snapshot.",
+      throw completedRequirementsIntegrityError(
+        "the result snapshot does not directly extend the run's exact basis",
       );
     }
-    const text = await this.#captures.read(artifact.fingerprint);
+    const base = await exactSnapshot(this.#snapshots, basis);
+    if (
+      base.subject.id !== basis.subjectId ||
+      deterministicJson(snapshot.previous) !== deterministicJson({
+          snapshotId: base.id,
+          revision: base.revision,
+        })
+    ) {
+      throw completedRequirementsIntegrityError(
+        "the durable basis identity or direct predecessor link diverges",
+      );
+    }
+
+    const architectureArtifact = findArchitectureArtifact(base);
+    if (!architectureArtifact) {
+      throw completedRequirementsIntegrityError(
+        "the basis has no unique architecture artifact",
+      );
+    }
+    const { archCapture, target } = await this.#resolveTargetFromArchitecture(
+      base,
+      architectureArtifact,
+      proposal,
+    );
+    const priorRequirementsArtifact = requireRequirementsTip(
+      base,
+      proposal.containerComponent,
+    );
+    const requirements = requirementEntriesToOracleRequirements(
+      proposal.requirements,
+    );
+    const planDigest = await requirementsPlanDigest(
+      requirements,
+      proposal.partDefName,
+      target,
+    );
+    const attempt = await this.#runAttemptOrFail(project.project.id, run.id);
+    if (
+      attempt?.status !== "completed" || attempt.planDigest !== planDigest ||
+      !attempt.result?.requirementsElementId
+    ) {
+      throw completedRequirementsIntegrityError(
+        "the completed WAL does not carry the exact plan and RequirementUsage identity",
+      );
+    }
+    const requirementsElementId = attempt.result.requirementsElementId;
+    const capturedAt = requiredStart(run);
+    const expectedCapture = buildCaptureRecord({
+      proposal,
+      target,
+      architectureArtifact,
+      architectureBasis: basis,
+      archCaptureSchema: archCapture.schemaVersion,
+      seedArtifactId: archCapture.seed.artifactId,
+      seedFingerprint: archCapture.seed.fingerprint,
+      seedProducerRunId: archCapture.seed.producerRunId,
+      requirementsElementId,
+      requirements,
+      runId: run.id,
+      capturedAt,
+    });
+    const captureFp = await sha256Fingerprint(expectedCapture);
+    const captureUri = requirementsUriFor(
+      proposal.containerComponent,
+      captureFp,
+    );
+    const expectedExtension = buildExtension({
+      base,
+      proposal,
+      architectureArtifact,
+      priorRequirementsArtifact,
+      target,
+      runId: run.id,
+      capturedAt,
+      captureFp,
+      captureUri,
+      requirements,
+      requirementsElementId,
+    });
+    const reapplied = applyThreadSnapshotExtensionIfNew(base, expectedExtension);
+    if (
+      !reapplied.applied ||
+      deterministicJson(reapplied.snapshot) !== deterministicJson(snapshot)
+    ) {
+      throw completedRequirementsIntegrityError(
+        "the result is not the exact requirements extension of its immutable basis",
+      );
+    }
+
+    if (run.evidenceRefs.length !== 1) {
+      throw completedRequirementsIntegrityError(
+        "the run does not have exactly one requirements evidence reference",
+      );
+    }
+    const evidence = run.evidenceRefs[0]!;
+    const expectedArtifactId =
+      `requirements-${proposal.containerComponent}-${captureFp.digest}`;
+    if (
+      evidence.kind !== "artifact" || evidence.id !== expectedArtifactId ||
+      evidence.snapshotId !== snapshot.id ||
+      evidence.snapshotRevision !== snapshot.revision
+    ) {
+      throw completedRequirementsIntegrityError(
+        "the evidence reference is not exactly bound to the reconstructed result",
+      );
+    }
+    const artifact = snapshot.artifacts.find((candidate) =>
+      candidate.id === expectedArtifactId
+    );
+    if (!artifact) {
+      throw completedRequirementsIntegrityError(
+        "the reconstructed requirements artifact is absent",
+      );
+    }
+
+    let text: string | undefined;
+    try {
+      text = await this.#captures.read(captureFp);
+    } catch (error) {
+      throw completedRequirementsIntegrityError(
+        `the capture failed content-addressed readback: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     if (!text) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Completed requirements capture is not durably readable.",
+      throw completedRequirementsIntegrityError(
+        "the requirements capture is not durably readable",
       );
     }
     let record: unknown;
     try {
       record = JSON.parse(text);
     } catch {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Completed requirements capture is invalid JSON.",
+      throw completedRequirementsIntegrityError(
+        "the requirements capture is invalid JSON",
       );
     }
-    const actual = await sha256Fingerprint(record);
-    if (!fingerprintsEqual(actual, artifact.fingerprint)) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Completed requirements capture fingerprint no longer matches its exact evidence bytes.",
+    if (
+      !record || typeof record !== "object" || Array.isArray(record) ||
+      deterministicJson(record) !== deterministicJson(expectedCapture)
+    ) {
+      throw completedRequirementsIntegrityError(
+        "the capture no longer exactly seals its target, basis, seed, requirements, provider identity, and insertion time",
+      );
+    }
+    const observed = await sha256Fingerprint(record);
+    if (!fingerprintsEqual(observed, captureFp)) {
+      throw completedRequirementsIntegrityError(
+        "the capture fingerprint no longer matches its exact evidence bytes",
+      );
+    }
+
+    // Reuse the enrichment-grade parser against the result artifact itself.
+    // This independently proves exact artifact lineage, historical architecture
+    // and seed anchors, and the active TracedRequirement projection.
+    const parsedResult = await this.#readPriorRequirements(
+      snapshot,
+      artifact,
+      proposal,
+      target,
+    );
+    if (
+      parsedResult.requirementsElementId !== requirementsElementId ||
+      deterministicJson(parsedResult.requirements) !== deterministicJson(requirements)
+    ) {
+      throw completedRequirementsIntegrityError(
+        "the result capture and Thread projection diverge from the signed requirements or completed WAL identity",
       );
     }
   }
@@ -1370,14 +2288,22 @@ export class ModelWriteRequirementsRunExecutor {
  * We only read the fields the requirements executor needs.
  */
 interface ParsedArchCapture {
-  readonly schemaVersion: string;
+  readonly schemaVersion: typeof ARCHITECTURE_CAPTURE_SCHEMA;
+  readonly operation: typeof MODEL_WRITE_ARCHITECTURE_OPERATION;
+  readonly trustedRunId: string;
+  readonly packageName: string;
+  readonly systemName: string;
   readonly package: { readonly id: string; readonly label: string };
   readonly partDefinitions: ReadonlyArray<{
     readonly id: string;
+    readonly kind: "PartDefinition";
     readonly label: string;
     readonly usages: ReadonlyArray<{
-      readonly id?: string;
+      readonly id: string;
+      readonly kind: "PartUsage";
       readonly label: string;
+      readonly targetId: string;
+      readonly targetKind: "PartDefinition";
       readonly targetLabel: string;
     }>;
   }>;
@@ -1386,6 +2312,29 @@ interface ParsedArchCapture {
     readonly fingerprint: ContentFingerprint;
     readonly producerRunId: string;
   };
+  readonly predecessor?: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+    readonly producerRunId: string;
+  };
+  readonly insertedAt: string;
+}
+
+function assertExactKeys(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+): void {
+  const allowedKeys = new Set(allowed);
+  const unexpected = Object.keys(record).filter((key) => !allowedKeys.has(key));
+  if (unexpected.length > 0) {
+    throw new Error(`${path} has unexpected field(s): ${unexpected.join(", ")}.`);
+  }
+}
+
+function isExactIsoTimestamp(value: string): boolean {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 function parseArchCapture(text: string): ParsedArchCapture {
@@ -1399,15 +2348,49 @@ function parseArchCapture(text: string): ParsedArchCapture {
     throw new Error("Architecture capture is not an object.");
   }
   const r = record as Record<string, unknown>;
+  assertExactKeys(
+    r,
+    [
+      "schemaVersion",
+      "operation",
+      "trustedRunId",
+      "packageName",
+      "systemName",
+      "package",
+      "seed",
+      "predecessor",
+      "partDefinitions",
+      "insertedAt",
+    ],
+    "Architecture capture",
+  );
 
-  if (typeof r.schemaVersion !== "string") {
-    throw new Error("Architecture capture missing schemaVersion.");
+  const operation = r.operation as Record<string, unknown> | undefined;
+  if (
+    r.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
+    !operation || operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
+    operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
+    typeof r.trustedRunId !== "string" || !r.trustedRunId.trim() ||
+    typeof r.packageName !== "string" || !r.packageName.trim() ||
+    typeof r.systemName !== "string" || !r.systemName.trim() ||
+    typeof r.insertedAt !== "string" || !isExactIsoTimestamp(r.insertedAt)
+  ) {
+    throw new Error(
+      `Architecture capture must be exact ${ARCHITECTURE_CAPTURE_SCHEMA} evidence ` +
+        `for ${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}.`,
+    );
   }
+  assertExactKeys(operation, ["id", "version"], "Architecture capture operation");
   if (!r.package || typeof r.package !== "object" || Array.isArray(r.package)) {
     throw new Error("Architecture capture missing package.");
   }
   const pkg = r.package as Record<string, unknown>;
-  if (typeof pkg.id !== "string" || typeof pkg.label !== "string") {
+  assertExactKeys(pkg, ["id", "label"], "Architecture capture package");
+  if (
+    typeof pkg.id !== "string" || !pkg.id.trim() ||
+    typeof pkg.label !== "string" || !pkg.label.trim() ||
+    pkg.label !== r.packageName
+  ) {
     throw new Error("Architecture capture package missing id or label.");
   }
   if (!Array.isArray(r.partDefinitions)) {
@@ -1417,17 +2400,65 @@ function parseArchCapture(text: string): ParsedArchCapture {
     throw new Error("Architecture capture missing seed.");
   }
   const seed = r.seed as Record<string, unknown>;
+  assertExactKeys(
+    seed,
+    ["artifactId", "fingerprint", "producerRunId"],
+    "Architecture capture seed",
+  );
   if (
-    typeof seed.artifactId !== "string" ||
-    typeof seed.producerRunId !== "string" ||
+    typeof seed.artifactId !== "string" || !seed.artifactId.trim() ||
+    typeof seed.producerRunId !== "string" || !seed.producerRunId.trim() ||
     !seed.fingerprint || typeof seed.fingerprint !== "object" ||
     Array.isArray(seed.fingerprint) ||
-    typeof (seed.fingerprint as Record<string, unknown>).algorithm !== "string" ||
-    typeof (seed.fingerprint as Record<string, unknown>).digest !== "string"
+    (seed.fingerprint as Record<string, unknown>).algorithm !== "sha256" ||
+    typeof (seed.fingerprint as Record<string, unknown>).digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(
+      (seed.fingerprint as Record<string, unknown>).digest as string,
+    )
   ) {
     throw new Error("Architecture capture seed is missing required fields.");
   }
+  assertExactKeys(
+    seed.fingerprint as Record<string, unknown>,
+    ["algorithm", "digest"],
+    "Architecture capture seed fingerprint",
+  );
 
+  let predecessor: ParsedArchCapture["predecessor"];
+  if (r.predecessor !== undefined) {
+    if (
+      !r.predecessor || typeof r.predecessor !== "object" ||
+      Array.isArray(r.predecessor)
+    ) {
+      throw new Error("Architecture capture predecessor is malformed.");
+    }
+    const previous = r.predecessor as Record<string, unknown>;
+    assertExactKeys(
+      previous,
+      ["artifactId", "fingerprint", "producerRunId"],
+      "Architecture capture predecessor",
+    );
+    if (
+      typeof previous.artifactId !== "string" || !previous.artifactId.trim() ||
+      typeof previous.producerRunId !== "string" || !previous.producerRunId.trim() ||
+      !isContentFingerprint(previous.fingerprint)
+    ) {
+      throw new Error("Architecture capture predecessor is malformed.");
+    }
+    assertExactKeys(
+      previous.fingerprint as unknown as Record<string, unknown>,
+      ["algorithm", "digest"],
+      "Architecture capture predecessor fingerprint",
+    );
+    predecessor = {
+      artifactId: previous.artifactId,
+      fingerprint: previous.fingerprint,
+      producerRunId: previous.producerRunId,
+    };
+  }
+
+  const semanticIds = new Set<string>([pkg.id]);
+  const partLabels = new Set<string>();
   const partDefinitions = (r.partDefinitions as unknown[]).map((pd, index) => {
     if (!pd || typeof pd !== "object" || Array.isArray(pd)) {
       throw new Error(
@@ -1435,37 +2466,93 @@ function parseArchCapture(text: string): ParsedArchCapture {
       );
     }
     const p = pd as Record<string, unknown>;
-    if (typeof p.id !== "string" || typeof p.label !== "string") {
+    assertExactKeys(
+      p,
+      ["id", "kind", "label", "usages"],
+      `Architecture capture partDefinitions[${index}]`,
+    );
+    if (
+      typeof p.id !== "string" || !p.id.trim() ||
+      typeof p.label !== "string" || !p.label.trim() ||
+      p.kind !== "PartDefinition" || !Array.isArray(p.usages)
+    ) {
       throw new Error(
-        `Architecture capture partDefinitions[${index}] missing id or label.`,
+        `Architecture capture partDefinitions[${index}] is not an exact PartDefinition.`,
       );
     }
-    const usages = Array.isArray(p.usages)
-      ? (p.usages as unknown[]).map((u, ui) => {
-        if (!u || typeof u !== "object" || Array.isArray(u)) {
-          throw new Error(`partDefinitions[${index}].usages[${ui}] is not an object.`);
-        }
-        const usage = u as Record<string, unknown>;
-        if (
-          typeof usage.label !== "string" ||
-          typeof usage.targetLabel !== "string"
-        ) {
-          throw new Error(
-            `partDefinitions[${index}].usages[${ui}] missing label or targetLabel.`,
-          );
-        }
-        return {
-          id: typeof usage.id === "string" ? usage.id : undefined,
-          label: usage.label,
-          targetLabel: usage.targetLabel,
-        };
-      })
-      : [];
-    return { id: p.id, label: p.label, usages };
+    if (semanticIds.has(p.id) || partLabels.has(p.label)) {
+      throw new Error(
+        "Architecture capture repeats a PartDefinition id or label.",
+      );
+    }
+    semanticIds.add(p.id);
+    partLabels.add(p.label);
+    const usageLabels = new Set<string>();
+    const usages = (p.usages as unknown[]).map((u, ui) => {
+      if (!u || typeof u !== "object" || Array.isArray(u)) {
+        throw new Error(`partDefinitions[${index}].usages[${ui}] is not an object.`);
+      }
+      const usage = u as Record<string, unknown>;
+      assertExactKeys(
+        usage,
+        ["id", "kind", "label", "targetId", "targetKind", "targetLabel"],
+        `Architecture capture partDefinitions[${index}].usages[${ui}]`,
+      );
+      if (
+        typeof usage.id !== "string" || !usage.id.trim() ||
+        usage.kind !== "PartUsage" ||
+        typeof usage.label !== "string" || !usage.label.trim() ||
+        typeof usage.targetId !== "string" || !usage.targetId.trim() ||
+        usage.targetKind !== "PartDefinition" ||
+        typeof usage.targetLabel !== "string" || !usage.targetLabel.trim()
+      ) {
+        throw new Error(
+          `partDefinitions[${index}].usages[${ui}] is not an exact PartUsage.`,
+        );
+      }
+      if (semanticIds.has(usage.id) || usageLabels.has(usage.label)) {
+        throw new Error(
+          `partDefinitions[${index}] repeats a PartUsage id or label.`,
+        );
+      }
+      semanticIds.add(usage.id);
+      usageLabels.add(usage.label);
+      return {
+        id: usage.id,
+        kind: "PartUsage" as const,
+        label: usage.label,
+        targetId: usage.targetId,
+        targetKind: "PartDefinition" as const,
+        targetLabel: usage.targetLabel,
+      };
+    });
+    return { id: p.id, kind: "PartDefinition" as const, label: p.label, usages };
   });
 
+  const partById = new Map(partDefinitions.map((part) => [part.id, part]));
+  for (const part of partDefinitions) {
+    for (const usage of part.usages) {
+      const target = partById.get(usage.targetId);
+      if (!target || target.label !== usage.targetLabel) {
+        throw new Error(
+          `Architecture capture PartUsage "${usage.label}" does not target its ` +
+            "exact captured PartDefinition identity.",
+        );
+      }
+    }
+  }
+  if (!partDefinitions.some((part) => part.label === r.systemName)) {
+    throw new Error(
+      `Architecture capture systemName "${r.systemName}" is not a captured PartDefinition.`,
+    );
+  }
+
   return {
-    schemaVersion: r.schemaVersion,
+    schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
+    operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+    trustedRunId: r.trustedRunId,
+    packageName: r.packageName,
+    systemName: r.systemName,
     package: { id: pkg.id, label: pkg.label },
     partDefinitions,
     seed: {
@@ -1473,6 +2560,8 @@ function parseArchCapture(text: string): ParsedArchCapture {
       fingerprint: seed.fingerprint as ContentFingerprint,
       producerRunId: seed.producerRunId,
     },
+    ...(predecessor ? { predecessor } : {}),
+    insertedAt: r.insertedAt,
   };
 }
 
@@ -1480,7 +2569,7 @@ function parseArchCapture(text: string): ParsedArchCapture {
 
 function buildCaptureRecord(options: {
   proposal: RequirementsProposal;
-  target: { usageName: string; elementId: string };
+  target: RequirementsTarget;
   architectureArtifact: ThreadArtifact;
   architectureBasis: EngineeringThreadSnapshotBasis;
   archCaptureSchema: string;
@@ -1499,7 +2588,8 @@ function buildCaptureRecord(options: {
     containerComponent: options.proposal.containerComponent,
     partDefName: options.proposal.partDefName,
     target: {
-      usageName: options.target.usageName,
+      kind: options.target.kind,
+      label: options.target.label,
       elementId: options.target.elementId,
     },
     architectureBasis: {
@@ -1525,19 +2615,35 @@ function buildCaptureRecord(options: {
 
 // ── Private: thread extension builder ────────────────────────────────────────
 
+/**
+ * Compute the complete active retirement closure for a requirements capture.
+ * Evaluations and violations are current-state claims downstream of the prior
+ * TracedRequirement and must retire with it during supersession.
+ */
+export function computePriorRequirementsArchiveCascade(
+  base: ThreadSnapshot,
+  priorRequirementsArtifact: ThreadArtifact,
+): ReadonlyArray<ThreadEntityRef> {
+  const roots: ThreadEntityRef[] = base.requirements
+    .filter((requirement) =>
+      requirement.trace.sourceArtifactId === priorRequirementsArtifact.id
+    )
+    .map((requirement) => ({ kind: "requirement", id: requirement.id }));
+  return computeArchiveCascade(base, roots).map((entry) => entry.ref);
+}
+
 function buildExtension(options: {
   base: ThreadSnapshot;
   proposal: RequirementsProposal;
   architectureArtifact: ThreadArtifact;
   priorRequirementsArtifact: ThreadArtifact | undefined;
-  target: { usageName: string; elementId: string };
+  target: RequirementsTarget;
   runId: string;
   capturedAt: string;
   captureFp: ContentFingerprint;
   captureUri: string;
   requirements: readonly OracleRequirement[];
   requirementsElementId: string;
-  packageId: string;
 }) {
   const {
     base,
@@ -1608,15 +2714,50 @@ function buildExtension(options: {
     });
   }
 
-  const provenance = [
+  const tracedRequirements: TracedRequirement[] = options.requirements.map((
+    requirement,
+  ) => ({
+    id: `requirement-${captureFp.digest}-${requirement.id}`,
+    name: requirement.name,
+    statement: `${requirement.name}: ${requirement.metric} ${requirement.operator} ` +
+      `${requirement.limit.value} ${requirement.limit.unit}.`,
+    version: captureFp.digest,
+    criterion: {
+      metric: requirement.metric,
+      operator: requirement.operator,
+      limit: {
+        value: requirement.limit.value,
+        unit: requirement.limit.unit,
+      },
+    },
+    trace: {
+      sourceArtifactId: artifactId,
+      elementId: options.requirementsElementId,
+      targetArtifactIds: [architectureArtifact.id],
+    },
+    freshness,
+  }));
+  const priorRequirements = priorRequirementsArtifact
+    ? base.requirements.filter((requirement) =>
+      requirement.trace.sourceArtifactId === priorRequirementsArtifact.id
+    )
+    : [];
+  const priorByMetric = new Map(
+    priorRequirements.map((requirement) => [requirement.criterion.metric, requirement]),
+  );
+  const priorArchiveCascade = priorRequirementsArtifact
+    ? computePriorRequirementsArchiveCascade(base, priorRequirementsArtifact)
+    : [];
+
+  const provenance: ThreadProvenanceLink[] = [
     {
       id: `derived-from-architecture-${captureFp.digest}`,
       relation: "derived_from" as const,
       from: { kind: "artifact" as const, id: artifactId },
       to: { kind: "artifact" as const, id: architectureArtifact.id },
       rationale:
-        "The requirements were inserted into the SysON element identified by the " +
-        "reviewed architecture capture.",
+        `The native RequirementUsage is owned by PartDefinition "${options.target.label}" ` +
+        `(${options.target.elementId}) from the reviewed architecture capture.`,
     },
     {
       id: `uses-${archConsumptionId}`,
@@ -1653,6 +2794,29 @@ function buildExtension(options: {
         },
       ]
       : []),
+    ...tracedRequirements.map((requirement) => ({
+      id: `traces-to-target-${requirement.id}`,
+      relation: "traces_to" as const,
+      from: { kind: "requirement" as const, id: requirement.id },
+      to: { kind: "artifact" as const, id: architectureArtifact.id },
+      rationale:
+        `The requirement constrains PartDefinition "${options.target.label}" ` +
+        `(${options.target.elementId}) inside this architecture artifact.`,
+    })),
+    ...tracedRequirements.flatMap((requirement) => {
+      const prior = priorByMetric.get(requirement.criterion.metric);
+      return prior
+        ? [{
+          id: `supersedes-${prior.id}-by-${requirement.id}`,
+          relation: "supersedes" as const,
+          from: { kind: "requirement" as const, id: requirement.id },
+          to: { kind: "requirement" as const, id: prior.id },
+          rationale:
+            "This verified requirement projection replaces the prior capture version " +
+            "of the same metric.",
+        }]
+        : [];
+    }),
   ];
 
   return {
@@ -1663,16 +2827,29 @@ function buildExtension(options: {
     artifacts: [artifact],
     consumptions,
     observations: [],
-    requirements: [],
+    requirements: tracedRequirements,
     evaluations: [],
     violations: [],
     provenance,
     proposedActions: [],
+    ...(priorArchiveCascade.length > 0
+      ? {
+        archived: priorArchiveCascade.map((target) => ({
+          target,
+          summary: `Requirements enrichment retired prior ${target.kind} ${target.id}.`,
+        })),
+      }
+      : {}),
     bindingProofs: [
       {
         provider: "syson",
         kind: "element",
         id: options.requirementsElementId,
+      },
+      {
+        provider: "syson",
+        kind: "part-definition",
+        id: options.target.elementId,
       },
     ],
   };
@@ -1770,6 +2947,27 @@ async function requireMrtrApproval(
         : "Ambiguous requirements MRTR: exactly one human-approved decision must be bound to this run basis.",
     );
   }
+  const selected = candidates[0]!;
+  const expectedDecisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: selected.decision.baseSnapshot,
+    inputEvidenceRefs: selected.decision.inputEvidenceRefs,
+    proposal: {
+      summary: selected.proposal.summary,
+      parameters: selected.proposal.parameters,
+    },
+  });
+  if (
+    !fingerprintsEqual(
+      expectedDecisionFingerprint,
+      selected.decision.inputFingerprint,
+    )
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "requirements_decision_fingerprint_mismatch: the decision fingerprint no " +
+        "longer seals its exact base snapshot, evidence references, and proposal.",
+    );
+  }
   const approvedDecisions = workItem.decisionIds.map((id) => {
     const decision = project.decisions.find((candidate) => candidate.id === id);
     if (!decision?.inputFingerprint) {
@@ -1796,7 +2994,7 @@ async function requireMrtrApproval(
       "Requirements run input fingerprint no longer seals its exact MRTR decision and basis.",
     );
   }
-  return candidates[0]!;
+  return selected;
 }
 
 function sameSnapshotBasis(
@@ -1853,11 +3051,11 @@ function parseRequirementsProposal(
 async function requirementsPlanDigest(
   requirements: readonly OracleRequirement[],
   partDefName: string,
-  packageId: string,
+  target: RequirementsTarget,
 ): Promise<string> {
   const fp = await sha256Fingerprint({
     partDefName,
-    packageId,
+    target,
     requirements,
   });
   return fp.digest;
@@ -1865,33 +3063,78 @@ async function requirementsPlanDigest(
 
 // ── Private: sibling blocker check ───────────────────────────────────────────
 
-function assertNoBlockedRequirementsSibling(
+async function assertNoBlockedRequirementsSibling(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): void {
+  containerComponent: string,
+  attempts: FileRequirementsAttemptStore,
+): Promise<void> {
   const basis = requireBasis(run);
-  const blockers = project.agentRuns.filter((candidate) => {
-    if (candidate.id === run.id || candidate.status !== "failed") return false;
-    if (!candidate.failure || !sameSnapshotBasis(candidate.basis, basis)) return false;
+  const siblings = project.agentRuns.filter((candidate) => {
+    if (candidate.id === run.id || !sameSnapshotBasis(candidate.basis, basis)) {
+      return false;
+    }
     const operation = project.workItems.find((item) => item.id === candidate.workItemId)
       ?.operation;
+    const siblingContainer = requirementsRunContainer(project, candidate);
     return operation?.id === MODEL_WRITE_REQUIREMENTS_OPERATION.id &&
       operation.version === MODEL_WRITE_REQUIREMENTS_OPERATION.version &&
-      (candidate.failure.code ===
-          "model-write-requirements-provider-outcome-unknown" ||
-        candidate.failure.code ===
-          "model-write-requirements-post-acknowledgement-quarantined" ||
-        candidate.failure.code ===
-          "model-write-requirements-quarantine-write-failed");
+      (siblingContainer === undefined || siblingContainer === containerComponent);
   });
-  if (blockers.length > 0) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      "A prior requirements run on this exact basis has an unresolved provider outcome " +
-        "or post-acknowledgement quarantine. A separately reviewed recovery must advance " +
-        "the basis before another requirements run can write SysON.",
-    );
+  for (const sibling of siblings) {
+    if (
+      sibling.status === "completed" || sibling.status === "running" ||
+      sibling.status === "publishing" ||
+      (sibling.status === "failed" && isTerminalRequirementsFailure(sibling))
+    ) {
+      throw staleRequirementsBasisSibling();
+    }
+    try {
+      if (
+        await attempts.isQuarantined(project.project.id, sibling.id) ||
+        await attempts.readRun(project.project.id, sibling.id)
+      ) {
+        throw staleRequirementsBasisSibling();
+      }
+    } catch (error) {
+      if (error instanceof EngineeringProjectCommandError) throw error;
+      throw staleRequirementsBasisSibling();
+    }
   }
+}
+
+function requirementsRunContainer(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+): string | undefined {
+  const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  const decisions = (workItem?.decisionIds ?? []).flatMap((id) =>
+    project.decisions.filter((decision) => decision.id === id)
+  );
+  const values = decisions.flatMap((decision) =>
+    decision.proposal?.parameters.filter((parameter) =>
+      parameter.key === "requirements.containerComponent" &&
+      typeof parameter.value === "string"
+    ).map((parameter) => parameter.value as string) ?? []
+  );
+  return values.length === 1 ? values[0] : undefined;
+}
+
+function isTerminalRequirementsFailure(run: EngineeringAgentRun): boolean {
+  return run.failure?.code ===
+      "model-write-requirements-provider-outcome-unknown" ||
+    run.failure?.code ===
+      "model-write-requirements-post-acknowledgement-quarantined" ||
+    run.failure?.code === "model-write-requirements-quarantine-write-failed";
+}
+
+function staleRequirementsBasisSibling(): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError(
+    "invalid_transition",
+    "A prior requirements run for this target on the exact same basis has an " +
+      "active execution, published result, unresolved provider outcome, or durable WAL. " +
+      "A separately reviewed transition must advance the basis before another write.",
+  );
 }
 
 // ── Private: SysON response validation ───────────────────────────────────────
@@ -1908,6 +3151,88 @@ function verifyInsertionAck(value: unknown, expectedParentId: string): void {
       }). Parent: ${expectedParentId}`,
     );
   }
+  if (record.parentId !== expectedParentId) {
+    throw new Error(
+      `SysON requirements insert acknowledged parent "${String(record.parentId)}", ` +
+        `expected target PartDefinition "${expectedParentId}".`,
+    );
+  }
+}
+
+function parseProviderChildren(
+  value: unknown,
+  expectedParentId: string,
+): ReadonlyArray<Record<string, unknown>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "syson_element_children returned a non-object response.",
+    );
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.parentId !== expectedParentId || !Array.isArray(record.children) ||
+    !Number.isSafeInteger(record.count) || record.count !== record.children.length
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `syson_element_children response does not exactly echo parent ` +
+        `"${expectedParentId}" and its child count.`,
+    );
+  }
+  return record.children.map((child, index) => {
+    if (!child || typeof child !== "object" || Array.isArray(child)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `syson_element_children child[${index}] is not an object.`,
+      );
+    }
+    const entry = child as Record<string, unknown>;
+    if (
+      typeof entry.id !== "string" || !entry.id.trim() ||
+      typeof entry.kind !== "string" || !entry.kind.trim() ||
+      typeof entry.label !== "string"
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `syson_element_children child[${index}] is malformed.`,
+      );
+    }
+    return entry;
+  });
+}
+
+function isSysmlEntityKind(value: unknown, entity: string): boolean {
+  return typeof value === "string" &&
+    (value === entity || value.endsWith(`entity=${entity}`));
+}
+
+function isContentFingerprint(value: unknown): value is ContentFingerprint {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record.algorithm === "sha256" &&
+    typeof record.digest === "string" && /^[a-f0-9]{64}$/.test(record.digest);
+}
+
+function isProviderChild(
+  value: unknown,
+  label: string | undefined,
+  entity: string,
+): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const child = value as Record<string, unknown>;
+  return (label === undefined || child.label === label) &&
+    isSysmlEntityKind(child.kind, entity);
+}
+
+function isExactProviderTarget(
+  value: unknown,
+  target: RequirementsTarget,
+): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return candidate.id === target.elementId && candidate.label === target.label &&
+    isSysmlEntityKind(candidate.kind, "PartDefinition");
 }
 
 // ── Private: URI helpers ──────────────────────────────────────────────────────
@@ -1981,6 +3306,15 @@ function assertCompleted(
   }
 }
 
+function completedRequirementsIntegrityError(
+  detail: string,
+): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError(
+    "invalid_transition",
+    `Completed requirements evidence integrity failure: ${detail}.`,
+  );
+}
+
 function requirementsArtifactEntityRef(
   snapshot: ThreadSnapshot,
   runId: string,
@@ -2016,11 +3350,23 @@ async function exactSnapshot(
   const snapshot = await store.get(basis.snapshotId);
   if (
     !snapshot || snapshot.id !== basis.snapshotId ||
-    snapshot.revision !== basis.revision
+    snapshot.revision !== basis.revision ||
+    snapshot.subject.id !== basis.subjectId
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_input",
-      `Basis thread snapshot ${basis.snapshotId} r${basis.revision} is not durably readable.`,
+      `Basis thread snapshot ${basis.snapshotId} r${basis.revision} for subject ` +
+        `${basis.subjectId} is not durably readable as an exact identity.`,
+    );
+  }
+  try {
+    validateThreadSnapshot(snapshot);
+  } catch (error) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      `Basis thread snapshot ${basis.snapshotId} is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
   return snapshot;

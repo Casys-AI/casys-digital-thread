@@ -26,6 +26,7 @@ import type {
 function makeStub(
   children: Map<string, unknown>,
   aql: Map<string, string> = new Map(),
+  aqlObjectIdOverrides: Map<string, string> = new Map(),
 ): McpToolClient {
   return {
     callTool: (call: McpToolCall): Promise<McpToolResult> => {
@@ -51,12 +52,13 @@ function makeStub(
           );
         }
         const targetLabel = aql.get(objectId);
+        const responseObjectId = aqlObjectIdOverrides.get(objectId) ?? objectId;
         if (targetLabel === undefined) {
           // No entry → zero results (missing FeatureTyping).
           return Promise.resolve({
             text: "aql-empty",
             structuredContent: {
-              objectId,
+              objectId: responseObjectId,
               expression,
               type: "objects",
               results: [],
@@ -67,7 +69,7 @@ function makeStub(
         return Promise.resolve({
           text: "aql-result",
           structuredContent: {
-            objectId,
+            objectId: responseObjectId,
             expression,
             type: "objects",
             results: [{
@@ -223,6 +225,48 @@ Deno.test(
       ArchitectureStructureExtractionError,
     ) as ArchitectureStructureExtractionError;
     assertEquals(error.code, "missing_feature_typing");
+  },
+);
+
+Deno.test(
+  "extractArchitectureStructure: rejects a FeatureTyping response for another PartUsage",
+  async () => {
+    const children = new Map([
+      [
+        "root-1",
+        makeChildren("root-1", [
+          { id: "pkg-1", kind: PACKAGE_KIND, label: "DroneV4" },
+        ]),
+      ],
+      [
+        "pkg-1",
+        makeChildren("pkg-1", [
+          { id: "sys-1", kind: PART_DEF_KIND, label: "DroneSystem" },
+        ]),
+      ],
+      [
+        "sys-1",
+        makeChildren("sys-1", [
+          { id: "usage-1", kind: PART_USAGE_KIND, label: "wing" },
+        ]),
+      ],
+    ]);
+    const syson = makeStub(
+      children,
+      new Map([["usage-1", "Wing"]]),
+      new Map([["usage-1", "usage-from-another-query"]]),
+    );
+
+    const error = await assertRejects(
+      () => extractArchitectureStructure(syson, "ctx-1", "root-1", "DroneV4"),
+      ArchitectureStructureExtractionError,
+    ) as ArchitectureStructureExtractionError;
+
+    assertEquals(error.code, "invalid_aql_response");
+    assertEquals(error.context, {
+      elementId: "usage-1",
+      field: "structuredContent",
+    });
   },
 );
 

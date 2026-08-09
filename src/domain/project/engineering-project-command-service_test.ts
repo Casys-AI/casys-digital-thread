@@ -11,6 +11,7 @@ import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectCompletionEvidenceValidator,
+  type EngineeringProjectReconciliationOperationPolicy,
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
   type QueueRunCommand,
@@ -1160,6 +1161,7 @@ async function memoryStoreWithVerificationDependent(): Promise<MemoryRevisionSto
 function serviceFor(
   store: EngineeringProjectRevisionStore,
   validator?: EngineeringProjectCompletionEvidenceValidator,
+  reconciliationOperationPolicy?: EngineeringProjectReconciliationOperationPolicy,
 ) {
   let tick = 0;
   return new EngineeringProjectCommandService(
@@ -1180,6 +1182,7 @@ function serviceFor(
         return Promise.resolve();
       },
     },
+    reconciliationOperationPolicy,
   );
 }
 
@@ -1457,14 +1460,8 @@ Deno.test(
 );
 
 Deno.test(
-  "the full closeout form accepts a successor carrying a different registered operation",
+  "the full closeout form rejects a different operation without an injected policy",
   async () => {
-    // WHY THIS TEST EXISTS — the equivalence guard added for the direct form
-    // was briefly applied to every reconciliation, which made the real CM-01
-    // project unreadable: its bounded identity repair deliberately closes a
-    // failed `verify.*` work item with a `repair.*` operation, the documented
-    // correction pattern. A guard that invalidates existing durable state on
-    // read is a defect, not a protection.
     const base = structuredClone(
       await reconciliableProjectWithOperation(),
     ) as Mutable<EngineeringProjectSnapshot>;
@@ -1477,12 +1474,91 @@ Deno.test(
       bindings: [{ name: "project", source: { kind: "approved-brief" as const } }],
     };
     const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
 
-    // The full closeout form is the one that carries successorSnapshot; the
-    // snapshot itself remains subject to the reconciliation snapshot validator.
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-unproved-operation-transition", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: project.threadSnapshots.at(-1)!,
+          successorSnapshot: {
+            snapshotId: "coffee-machine-cm01:r6:reconciliation-closeout",
+            revision: 6,
+            subjectId: PROJECT_ID,
+          },
+          successorEvidenceRefs: evidence,
+          rationale: "A closeout snapshot alone does not authorize another operation.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
+Deno.test(
+  "the full closeout form executes a different operation only through its injected policy",
+  async () => {
+    const base = structuredClone(
+      await reconciliableProjectWithOperation(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const failedWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design"
+    )!;
+    const successorWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design-r3"
+    )!;
+    (failedWork as Mutable<typeof failedWork>).operation = {
+      id: "verify.reviewed-system",
+      version: "2",
+      bindings: [{ name: "project", source: { kind: "approved-brief" as const } }],
+    };
+    (successorWork as Mutable<typeof successorWork>).operation = {
+      id: "repair.reviewed-system-identity",
+      version: "1",
+      bindings: [{ name: "project", source: { kind: "approved-brief" as const } }],
+    };
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    let authorizations = 0;
+    const policy: EngineeringProjectReconciliationOperationPolicy = {
+      authorize(input) {
+        assertEquals(input.failedOperation.id, "verify.reviewed-system");
+        assertEquals(input.failedOperation.version, "2");
+        assertEquals(input.successorOperation?.id, "repair.reviewed-system-identity");
+        assertEquals(input.successorOperation?.version, "1");
+        assertEquals(input.successorSnapshot.revision, 6);
+        authorizations++;
+        return Promise.resolve();
+      },
+    };
+    const service = serviceFor(store, undefined, policy);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, {
+      ...context("accept-proved-operation-transition", project.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2-failed",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot: project.threadSnapshots.at(-1)!,
+      successorSnapshot: {
+        snapshotId: "coffee-machine-cm01:r6:reconciliation-closeout",
+        revision: 6,
+        subjectId: PROJECT_ID,
+      },
+      successorEvidenceRefs: evidence,
+      rationale: "The injected code-owned policy proves this exact repair transition.",
+    });
+
+    assertEquals(authorizations, 1);
     assertEquals(
-      findWorkItem(project, "verify-current-mechanical-design-r3").operation?.id,
-      "repair.mechanical-identity",
+      findWorkItem(reconciled, "verify-current-mechanical-design").status,
+      "cancelled",
     );
   },
 );

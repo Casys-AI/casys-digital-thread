@@ -68,7 +68,12 @@ import {
   type FileCaptureStore,
   GEOMETRY_CAPTURE_URI_PREFIX,
 } from "../captures/file-capture-store.ts";
-import { GEOMETRY_DRAFT_ASSETS_DIR } from "../captures/geometry-draft-capture.ts";
+import {
+  assertGeometryDraftAssemblyPaths,
+  GEOMETRY_DRAFT_ASSETS_DIR,
+  GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+  LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+} from "../captures/geometry-draft-capture.ts";
 import { assertThreadSnapshotLineageIntact } from "../stores/thread-snapshot-lineage.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
@@ -78,6 +83,15 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "./executor-run-helpers.ts";
+import {
+  assertThreadWriteBasisAvailable,
+  threadWriteBasisLeaseScope,
+} from "./thread-write-basis-guard.ts";
+import {
+  ARCHITECTURE_CAPTURE_SCHEMA,
+  findArchitectureArtifact,
+  MODEL_WRITE_ARCHITECTURE_OPERATION,
+} from "./model-write-architecture-run-executor.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 
 // ── Public constants ──────────────────────────────────────────────────────────
@@ -89,7 +103,8 @@ import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-upd
 export { DESIGN_WRITE_GEOMETRY_OPERATION };
 
 /** Schema version written into every canonical geometry capture. */
-export const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.0" as const;
+/** v1.1 distinguishes the preview producer from the local sealing operation. */
+export const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
 export const GEOMETRY_CANONICAL_ASSETS_DIR = "state/local/thread-assets" as const;
 
 // ── Cliquet error ─────────────────────────────────────────────────────────────
@@ -327,9 +342,15 @@ export class DesignWriteGeometryRunExecutor {
       );
     }
 
+    // A runId-scoped lease does not serialize two independently approved runs
+    // that extend the same immutable ThreadSnapshot. Both could materialize a
+    // different `base + 1` successor and only discover the collision while
+    // attaching it to the project. The exact Thread-basis scope is shared with
+    // generic architecture and requirements writers: only one `base + 1`
+    // successor can own the next subject revision.
     return await this.#lease.withLease(
       command.projectId,
-      command.runId,
+      threadWriteBasisLeaseScope(run),
       () => this.#executeLeased(origin, command, params),
     );
   }
@@ -347,11 +368,54 @@ export class DesignWriteGeometryRunExecutor {
       const preClaim = await this.#requiredProject(command.projectId);
       requireShape(preClaim, requireRun(preClaim, command.runId));
 
-      const alreadyCompleted = await this.#completedFor(command);
+      const alreadyCompleted = await this.#completedFor(command, params);
       if (alreadyCompleted) {
         await this.#reconcileLive(alreadyCompleted.project.subjectId, command.runId);
         return alreadyCompleted;
       }
+
+      // The shared basis lease makes this sibling scan authoritative. Refuse
+      // before claim, draft/capture reads, binary promotion, or snapshot writes
+      // if another run has already started, failed after possible durable
+      // effects, or published from this same immutable basis.
+      assertThreadWriteBasisAvailable(
+        preClaim,
+        requireRun(preClaim, command.runId),
+      );
+
+      // Reject malformed or stale persisted drafts before the run claim is
+      // recorded. In particular, legacy `format: gltf` records must prove the
+      // provider's binary `.glb` path contract before any project, capture,
+      // asset, or snapshot write occurs.
+      await loadReviewedGeometryDraft(params, this.#geometryDraftCaptures);
+
+      // The reviewed architecture is part of the MRTR input, so validate its
+      // exact active tip, capture bytes, seed/predecessor lineage, and component
+      // bindings before claiming the run. A stale or tampered architecture must
+      // leave the durable project lifecycle unchanged and retryable only after
+      // a newly reviewed decision.
+      const preClaimRun = requireRun(preClaim, command.runId);
+      const preClaimBasis = requireBasis(preClaimRun);
+      assertGeometryArchitectureBasisMatchesRun(
+        params.manifest.architectureBasis,
+        preClaimBasis,
+      );
+      const preClaimBase = await exactGeometryBasisSnapshot(
+        this.#snapshots,
+        preClaimBasis,
+      );
+      const preClaimArchitecture = requireArchitectureArtifact(
+        preClaimBase,
+        params.manifest.architectureBasis.artifactFingerprint,
+      );
+      await assertThreadSnapshotLineageIntact(preClaimBase, this.#snapshots);
+      await assertGeometryArtifactNotRemoved(preClaimBase, this.#snapshots);
+      await assertComponentBindingsMatchArchitecture(
+        params,
+        preClaimBase,
+        preClaimArchitecture,
+        this.#architectureCaptures,
+      );
 
       await this.#commands.claimRun(origin, {
         ...command,
@@ -365,6 +429,7 @@ export class DesignWriteGeometryRunExecutor {
 
       if (run.status === "completed") {
         assertCompleted(project, command);
+        await this.#assertCompletedEvidenceExact(project, command, params);
         await this.#reconcileLive(project.project.subjectId, run.id);
         return project;
       }
@@ -376,13 +441,12 @@ export class DesignWriteGeometryRunExecutor {
       const basis = requireBasis(run);
 
       // Step 6: load basis snapshot.
-      const base = await this.#snapshots.get(basis.snapshotId);
-      if (!base || base.revision !== basis.revision) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `Basis snapshot ${basis.snapshotId} revision ${basis.revision} not found.`,
-        );
-      }
+      const base = await exactGeometryBasisSnapshot(this.#snapshots, basis);
+
+      assertGeometryArchitectureBasisMatchesRun(
+        params.manifest.architectureBasis,
+        basis,
+      );
 
       // Step 7 (D5 part 1): architecture artifact must exist with matching fingerprint.
       const architectureArtifact = requireArchitectureArtifact(
@@ -394,36 +458,19 @@ export class DesignWriteGeometryRunExecutor {
       await assertThreadSnapshotLineageIntact(base, this.#snapshots);
       await assertGeometryArtifactNotRemoved(base, this.#snapshots);
 
-      // Step 9: reload draft JSON + byte-level fingerprint recomputation.
-      const draftFp: ContentFingerprint = {
-        algorithm: "sha256",
-        digest: params.draftDigest,
-      };
-      const draftText = await this.#geometryDraftCaptures.read(draftFp);
-      if (!draftText) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `Geometry draft ${params.draftDigest} not found in the draft store. ` +
-            "The draft may have been cleared before the human decision was executed.",
-        );
-      }
-      const draftRecord = JSON.parse(draftText);
-      const recomputedDraftFp = await sha256Fingerprint(draftRecord);
-      if (!fingerprintsEqual(recomputedDraftFp, draftFp)) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "Draft capture byte-level fingerprint mismatch: the bytes read from the draft " +
-            "store do not hash to the signed draft digest. Operator inspection required.",
-        );
-      }
-
-      // The signed decision is authoritative only if every manifest field is
-      // exactly reconstructible from the reviewed draft record.
-      assertMrtrManifestMatchesDraft(params.manifest, draftRecord);
+      // Step 9: reload after the claim so disappearance or corruption across
+      // the claim boundary still fails closed. FileCaptureStore is
+      // content-addressed, so a successful second read is the same reviewed
+      // object that passed the pre-claim validation above.
+      const { previewProducer } = await loadReviewedGeometryDraft(
+        params,
+        this.#geometryDraftCaptures,
+      );
 
       // Step 10 (D5 part 2): architecture capture load + per-component binding check.
       await assertComponentBindingsMatchArchitecture(
         params,
+        base,
         architectureArtifact,
         this.#architectureCaptures,
       );
@@ -444,6 +491,7 @@ export class DesignWriteGeometryRunExecutor {
           fingerprint: architectureArtifact.fingerprint,
           producerRunId: architectureArtifact.producer.runId,
         },
+        previewProducer: previewProducer ?? null,
         sealedAt: capturedAt,
       };
       const captureFp = await sha256Fingerprint(captureRecord);
@@ -465,7 +513,7 @@ export class DesignWriteGeometryRunExecutor {
           captureFp,
           assetFingerprint: file.fingerprint,
           name: `assembly file ${file.name}`,
-          extension: file.format,
+          extension: geometryAssetExtension(file.format),
           geometryCaptures: this.#geometryCaptures,
           draftDirectory: this.#draftAssetDirectory,
           canonicalDirectory: this.#canonicalAssetDirectory,
@@ -493,6 +541,7 @@ export class DesignWriteGeometryRunExecutor {
         captureFp,
         captureUri,
         params,
+        previewProducer,
       });
 
       const applied = applyThreadSnapshotExtensionIfNew(base, extension, {
@@ -552,6 +601,7 @@ export class DesignWriteGeometryRunExecutor {
 
       const complete = await this.#requiredProject(command.projectId);
       assertCompleted(complete, command);
+      await this.#assertCompletedEvidenceExact(complete, command, params);
       await this.#reconcileLive(complete.project.subjectId, command.runId);
       return complete;
     } catch (error) {
@@ -559,7 +609,7 @@ export class DesignWriteGeometryRunExecutor {
       // a retry with the same commandId will find and return the completed run
       // via #completedFor without re-promoting the draft.
       if (snapshotPersisted && materializedSnapshot) {
-        const complete = await this.#completedFor(command);
+        const complete = await this.#completedFor(command, params);
         if (complete) return complete;
         throw new EngineeringProjectCommandError(
           "invalid_transition",
@@ -586,11 +636,268 @@ export class DesignWriteGeometryRunExecutor {
 
   async #completedFor(
     command: DesignWriteGeometryRunExecutorCommand,
+    params: GeometryDecisionParameters,
   ): Promise<EngineeringProjectSnapshot | undefined> {
     const project = await this.#requiredProject(command.projectId);
-    const run = project.agentRuns.find((r) => r.id === command.runId);
-    if (run?.status === "completed") return project;
-    return undefined;
+    const run = requireRun(project, command.runId);
+    if (run.status !== "completed") return undefined;
+    assertCompleted(project, command);
+    await this.#assertCompletedEvidenceExact(project, command, params);
+    return project;
+  }
+
+  /**
+   * A completed lifecycle flag is not evidence. Re-open the exact result seal
+   * and prove its snapshot, capture, architecture input, Thread entities, and
+   * canonical binary bytes before treating a replay as idempotent success.
+   * This path is deliberately read-only: it never saves a capture, promotes an
+   * asset, or calls an external provider.
+   */
+  async #assertCompletedEvidenceExact(
+    project: EngineeringProjectSnapshot,
+    command: DesignWriteGeometryRunExecutorCommand,
+    params: GeometryDecisionParameters,
+  ): Promise<void> {
+    const run = requireRun(project, command.runId);
+    const result = run.resultSnapshot;
+    if (!result) {
+      throw completedGeometryIntegrityError(
+        "the run has no result snapshot",
+      );
+    }
+    const snapshot = await this.#snapshots.get(result.snapshotId);
+    if (
+      !snapshot || snapshot.id !== result.snapshotId ||
+      snapshot.revision !== result.revision ||
+      snapshot.subject.id !== result.subjectId ||
+      !project.threadSnapshots.some((reference) =>
+        reference.snapshotId === result.snapshotId &&
+        reference.revision === result.revision &&
+        reference.subjectId === result.subjectId
+      )
+    ) {
+      throw completedGeometryIntegrityError(
+        "the exact result snapshot is not durably attached to the project",
+      );
+    }
+    try {
+      validateThreadSnapshot(snapshot);
+      await assertThreadSnapshotLineageIntact(snapshot, this.#snapshots);
+    } catch (error) {
+      throw completedGeometryIntegrityError(
+        `the result snapshot or its lineage is invalid: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const basis = requireBasis(run);
+    if (
+      snapshot.previous?.snapshotId !== basis.snapshotId ||
+      snapshot.previous.revision !== basis.revision ||
+      snapshot.subject.id !== basis.subjectId
+    ) {
+      throw completedGeometryIntegrityError(
+        "the result snapshot does not directly extend the run's exact basis",
+      );
+    }
+    const baseSnapshot = await this.#snapshots.get(basis.snapshotId);
+    if (
+      !baseSnapshot || baseSnapshot.id !== basis.snapshotId ||
+      baseSnapshot.revision !== basis.revision ||
+      baseSnapshot.subject.id !== basis.subjectId
+    ) {
+      throw completedGeometryIntegrityError(
+        "the exact basis snapshot is not durably readable",
+      );
+    }
+    if (run.evidenceRefs.length !== 1) {
+      throw completedGeometryIntegrityError(
+        "the run does not have exactly one primary geometry evidence reference",
+      );
+    }
+    const evidence = run.evidenceRefs[0]!;
+    if (
+      evidence.kind !== "artifact" || evidence.snapshotId !== snapshot.id ||
+      evidence.snapshotRevision !== snapshot.revision
+    ) {
+      throw completedGeometryIntegrityError(
+        "the evidence reference is not exactly bound to the result snapshot",
+      );
+    }
+    const primary = snapshot.artifacts.find((artifact) => artifact.id === evidence.id);
+    if (!primary) {
+      throw completedGeometryIntegrityError(
+        "the primary geometry evidence artifact is absent",
+      );
+    }
+    const digest = primary.fingerprint.digest;
+    const expectedCaptureUri = `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${digest}`;
+    if (
+      primary.kind !== "cad-model" || primary.id !== `geometry-${digest}` ||
+      primary.version !== digest || primary.fingerprint.algorithm !== "sha256" ||
+      primary.uri !== expectedCaptureUri ||
+      primary.uri !== this.#geometryCaptures.uriFor(primary.fingerprint) ||
+      primary.mediaType !== "application/json" ||
+      primary.producer.serverId !== "digital-thread" ||
+      primary.producer.tool !==
+        `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
+      primary.producer.runId !== run.id || primary.inputArtifactIds.length !== 1
+    ) {
+      throw completedGeometryIntegrityError(
+        "the primary geometry artifact identity, URI, media type, producer, or inputs are not exact",
+      );
+    }
+
+    let architectureArtifact: ThreadArtifact;
+    try {
+      architectureArtifact = requireArchitectureArtifact(
+        baseSnapshot,
+        params.manifest.architectureBasis.artifactFingerprint,
+      );
+      if (primary.inputArtifactIds[0] !== architectureArtifact.id) {
+        throw new Error("primary artifact does not name the reviewed architecture");
+      }
+      await assertComponentBindingsMatchArchitecture(
+        params,
+        baseSnapshot,
+        architectureArtifact,
+        this.#architectureCaptures,
+      );
+    } catch (error) {
+      throw completedGeometryIntegrityError(
+        `the architecture input is not exact: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    let captureText: string | undefined;
+    try {
+      captureText = await this.#geometryCaptures.read(primary.fingerprint);
+    } catch (error) {
+      throw completedGeometryIntegrityError(
+        `the primary capture failed content-addressed readback: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    if (!captureText) {
+      throw completedGeometryIntegrityError(
+        "the primary geometry capture is not durably readable",
+      );
+    }
+    let capture: unknown;
+    try {
+      capture = JSON.parse(captureText);
+    } catch {
+      throw completedGeometryIntegrityError(
+        "the primary geometry capture is invalid JSON",
+      );
+    }
+    if (!capture || typeof capture !== "object" || Array.isArray(capture)) {
+      throw completedGeometryIntegrityError(
+        "the primary geometry capture is not an object",
+      );
+    }
+
+    const { previewProducer } = await loadReviewedGeometryDraft(
+      params,
+      this.#geometryDraftCaptures,
+    );
+    const capturedAt = requiredStart(run);
+    const expectedCapture = {
+      schemaVersion: GEOMETRY_CAPTURE_SCHEMA,
+      operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+      trustedRunId: run.id,
+      draftDigest: params.draftDigest,
+      manifest: params.manifest,
+      architectureBasis: {
+        artifactId: architectureArtifact.id,
+        fingerprint: architectureArtifact.fingerprint,
+        producerRunId: architectureArtifact.producer.runId,
+      },
+      previewProducer: previewProducer ?? null,
+      sealedAt: capturedAt,
+    };
+    const observedCaptureFingerprint = await sha256Fingerprint(capture);
+    if (
+      !fingerprintsEqual(observedCaptureFingerprint, primary.fingerprint) ||
+      deterministicJson(capture) !== deterministicJson(expectedCapture)
+    ) {
+      throw completedGeometryIntegrityError(
+        "the primary capture no longer exactly seals its schema, operation, trusted run, draft, or architecture input",
+      );
+    }
+
+    const expectedExtension = buildExtension({
+      base: baseSnapshot,
+      architectureArtifact,
+      runId: run.id,
+      capturedAt,
+      captureFp: primary.fingerprint,
+      captureUri: expectedCaptureUri,
+      params,
+      previewProducer,
+    });
+    const expectedArtifactIds = new Set(
+      expectedExtension.artifacts.map((artifact) => artifact.id),
+    );
+    const contextArtifacts = snapshot.artifacts.filter((artifact) =>
+      artifact.id === primary.id ||
+      artifact.id.startsWith(`cad-asset-${digest}-`) ||
+      artifact.id.startsWith(`mesh-${digest}-`)
+    );
+    if (
+      contextArtifacts.length !== expectedExtension.artifacts.length ||
+      contextArtifacts.some((artifact) => !expectedArtifactIds.has(artifact.id)) ||
+      expectedExtension.artifacts.some((expected) => {
+        const actual = snapshot.artifacts.find((artifact) =>
+          artifact.id === expected.id
+        );
+        return !actual || deterministicJson(actual) !== deterministicJson(expected);
+      }) ||
+      expectedExtension.consumptions.some((expected) => {
+        const actual = snapshot.consumptions.find((item) => item.id === expected.id);
+        return !actual || deterministicJson(actual) !== deterministicJson(expected);
+      }) ||
+      expectedExtension.provenance.some((expected) => {
+        const actual = snapshot.provenance.find((item) => item.id === expected.id);
+        return !actual || deterministicJson(actual) !== deterministicJson(expected);
+      })
+    ) {
+      throw completedGeometryIntegrityError(
+        "the result snapshot no longer contains the exact primary, binary, consumption, and trace projection of the seal",
+      );
+    }
+    const reapplied = applyThreadSnapshotExtensionIfNew(
+      baseSnapshot,
+      expectedExtension,
+      { appliedAt: capturedAt },
+    );
+    if (
+      !reapplied.applied ||
+      deterministicJson(reapplied.snapshot) !== deterministicJson(snapshot)
+    ) {
+      throw completedGeometryIntegrityError(
+        "the result is not the exact sealed extension of its immutable basis",
+      );
+    }
+
+    for (const file of params.manifest.artifactHashes?.assemblyFiles ?? []) {
+      await assertCanonicalGeometryAssetExact(
+        file.fingerprint,
+        geometryAssetExtension(file.format),
+        this.#canonicalAssetDirectory,
+      );
+    }
+    for (const mesh of params.manifest.artifactHashes?.partMeshes ?? []) {
+      await assertCanonicalGeometryAssetExact(
+        mesh.fingerprint,
+        "stl",
+        this.#canonicalAssetDirectory,
+      );
+    }
   }
 
   async #reconcileLive(subjectId: string, runId: string): Promise<void> {
@@ -602,9 +909,66 @@ export class DesignWriteGeometryRunExecutor {
 
 // ── Exported: cliquet check + architecture requirement (testable) ─────────────
 
-export { assertGeometryArtifactNotRemoved, requireArchitectureArtifact };
+export {
+  assertGeometryArchitectureBasisMatchesRun,
+  assertGeometryArtifactNotRemoved,
+  requireArchitectureArtifact,
+  requireDraftAssemblyPaths,
+  requireDraftPreviewProducer,
+};
 
 // ── D5: architecture artifact requirement ─────────────────────────────────────
+
+/**
+ * The reviewed manifest names an exact ThreadSnapshot, not merely an artifact
+ * that may still be retained in a later append-only revision.  Enforce that
+ * identity before any capture or asset write occurs.
+ */
+function assertGeometryArchitectureBasisMatchesRun(
+  architectureBasis: GeometryManifest["architectureBasis"],
+  runBasis: EngineeringThreadSnapshotBasis,
+): void {
+  if (
+    architectureBasis.snapshotId !== runBasis.snapshotId ||
+    architectureBasis.revision !== runBasis.revision
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Geometry architecture basis ${architectureBasis.snapshotId}@${architectureBasis.revision} ` +
+        `does not match run basis ${runBasis.snapshotId}@${runBasis.revision}. ` +
+        "Re-run the preview against the exact queued ThreadSnapshot.",
+    );
+  }
+}
+
+async function exactGeometryBasisSnapshot(
+  snapshots: ThreadSnapshotStore,
+  basis: EngineeringThreadSnapshotBasis,
+): Promise<ThreadSnapshot> {
+  const snapshot = await snapshots.get(basis.snapshotId);
+  if (
+    !snapshot || snapshot.id !== basis.snapshotId ||
+    snapshot.revision !== basis.revision ||
+    snapshot.subject.id !== basis.subjectId
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Basis snapshot ${basis.snapshotId} revision ${basis.revision} for subject ` +
+        `${basis.subjectId} is not exactly available.`,
+    );
+  }
+  try {
+    validateThreadSnapshot(snapshot);
+  } catch (error) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Basis snapshot ${basis.snapshotId} is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  return snapshot;
+}
 
 /**
  * Find the architecture artifact in the basis snapshot whose fingerprint
@@ -619,27 +983,16 @@ function requireArchitectureArtifact(
   base: ThreadSnapshot,
   expectedFingerprint: ContentFingerprint,
 ): ThreadArtifact {
-  const candidates = base.artifacts.filter(
-    (a) =>
-      a.kind === "sysml-model" &&
-      a.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX) &&
-      fingerprintsEqual(a.fingerprint, expectedFingerprint),
-  );
-  if (candidates.length === 0) {
+  const tip = findArchitectureArtifact(base);
+  if (!tip || !fingerprintsEqual(tip.fingerprint, expectedFingerprint)) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `D5 violation: the basis snapshot does not carry an architecture artifact with ` +
-        `fingerprint ${expectedFingerprint.digest}. ` +
-        "The geometry manifest must reference the current basis architecture.",
+      `D5 violation: the geometry manifest architecture fingerprint ` +
+        `${expectedFingerprint.digest} is not the unique active generic architecture tip. ` +
+        "The geometry manifest must reference the current basis architecture tip.",
     );
   }
-  if (candidates.length > 1) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      "D5 violation: multiple architecture artifacts match the basis fingerprint.",
-    );
-  }
-  return candidates[0]!;
+  return tip;
 }
 
 // ── D5: per-component binding verification ────────────────────────────────────
@@ -655,32 +1008,243 @@ function requireArchitectureArtifact(
  */
 async function assertComponentBindingsMatchArchitecture(
   params: GeometryDecisionParameters,
+  base: ThreadSnapshot,
   architectureArtifact: ThreadArtifact,
   architectureCaptures: FileCaptureStore<"architecture-capture">,
 ): Promise<void> {
-  if (params.manifest.components.length === 0) return;
-
-  const captureText = await architectureCaptures.read(architectureArtifact.fingerprint);
-  if (!captureText) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      "D5 violation: architecture capture not found for fingerprint " +
-        architectureArtifact.fingerprint.digest + ".",
+  const digest = architectureArtifact.fingerprint.digest;
+  if (
+    architectureArtifact.id !== `architecture-${digest}` ||
+    architectureArtifact.version !== digest ||
+    architectureArtifact.uri !==
+      `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${digest}` ||
+    architectureArtifact.mediaType !== "application/json" ||
+    architectureArtifact.producer.serverId !== "syson" ||
+    architectureArtifact.producer.tool !== "syson_element_insert_sysml" ||
+    architectureArtifact.producer.runId.trim() === ""
+  ) {
+    invalidArchitectureCapture(
+      "the architecture artifact identity, URI, media type, or producer is not exact",
     );
   }
 
-  const captureRecord = JSON.parse(captureText) as {
-    partDefinitions?: Array<{
-      id: string;
-      label: string;
-      usages?: Array<{ id: string; label: string }>;
-    }>;
-  };
+  let captureText: string | undefined;
+  try {
+    captureText = await architectureCaptures.read(architectureArtifact.fingerprint);
+  } catch (error) {
+    invalidArchitectureCapture(
+      `the content-addressed capture failed verification: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (!captureText) {
+    invalidArchitectureCapture(
+      `capture ${architectureArtifact.fingerprint.digest} is not durably readable`,
+    );
+  }
 
-  // Build a flat index of all PartUsage entries: { id, label }
-  const allUsages = new Map<string, string>(); // id → label
-  for (const pd of captureRecord.partDefinitions ?? []) {
-    for (const usage of pd.usages ?? []) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(captureText);
+  } catch {
+    invalidArchitectureCapture("capture is not valid JSON");
+  }
+  const captureRecord = architectureCaptureObject(parsed, "capture");
+  const recomputed = await sha256Fingerprint(captureRecord);
+  if (!fingerprintsEqual(recomputed, architectureArtifact.fingerprint)) {
+    invalidArchitectureCapture(
+      "capture fingerprint does not match the architecture artifact",
+    );
+  }
+  architectureCaptureOnlyKeys(captureRecord, [
+    "schemaVersion",
+    "operation",
+    "trustedRunId",
+    "packageName",
+    "systemName",
+    "package",
+    "seed",
+    "predecessor",
+    "partDefinitions",
+    "insertedAt",
+  ], "capture");
+  if (captureRecord.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA) {
+    invalidArchitectureCapture(
+      `unsupported schema ${String(captureRecord.schemaVersion)}`,
+    );
+  }
+  const operation = architectureCaptureObject(
+    captureRecord.operation,
+    "operation",
+  );
+  architectureCaptureOnlyKeys(operation, ["id", "version"], "operation");
+  if (
+    operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
+    operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version
+  ) {
+    invalidArchitectureCapture(
+      "operation is not model.write-architecture@1",
+    );
+  }
+  const trustedRunId = architectureCaptureNonEmptyString(
+    captureRecord.trustedRunId,
+    "trustedRunId",
+  );
+  if (trustedRunId !== architectureArtifact.producer.runId) {
+    invalidArchitectureCapture(
+      "trustedRunId does not match the architecture artifact producer",
+    );
+  }
+  const packageName = architectureCaptureNonEmptyString(
+    captureRecord.packageName,
+    "packageName",
+  );
+  const systemName = architectureCaptureNonEmptyString(
+    captureRecord.systemName,
+    "systemName",
+  );
+  const insertedAt = architectureCaptureNonEmptyString(
+    captureRecord.insertedAt,
+    "insertedAt",
+  );
+  if (
+    !Number.isFinite(Date.parse(insertedAt)) ||
+    new Date(insertedAt).toISOString() !== insertedAt
+  ) {
+    invalidArchitectureCapture("insertedAt is not a canonical instant");
+  }
+  const packageRecord = architectureCaptureObject(
+    captureRecord.package,
+    "package",
+  );
+  architectureCaptureOnlyKeys(packageRecord, ["id", "label"], "package");
+  const packageId = architectureCaptureNonEmptyString(
+    packageRecord.id,
+    "package.id",
+  );
+  if (
+    architectureCaptureNonEmptyString(packageRecord.label, "package.label") !==
+      packageName
+  ) {
+    invalidArchitectureCapture("package label does not match packageName");
+  }
+  const seed = assertArchitectureCaptureSource(captureRecord.seed, "seed");
+  const predecessor = captureRecord.predecessor === undefined
+    ? undefined
+    : assertArchitectureCaptureSource(captureRecord.predecessor, "predecessor");
+  assertArchitectureCaptureLineageExact(
+    base,
+    architectureArtifact,
+    seed,
+    predecessor,
+    insertedAt,
+  );
+  if (
+    !Array.isArray(captureRecord.partDefinitions) ||
+    captureRecord.partDefinitions.length === 0
+  ) {
+    invalidArchitectureCapture("partDefinitions must be a non-empty array");
+  }
+
+  const definitions = captureRecord.partDefinitions.map((raw, definitionIndex) => {
+    const definition = architectureCaptureObject(
+      raw,
+      `partDefinitions[${definitionIndex}]`,
+    );
+    architectureCaptureOnlyKeys(
+      definition,
+      ["id", "kind", "label", "usages"],
+      `partDefinitions[${definitionIndex}]`,
+    );
+    if (definition.kind !== "PartDefinition" || !Array.isArray(definition.usages)) {
+      invalidArchitectureCapture(
+        `partDefinitions[${definitionIndex}] is not a strict PartDefinition`,
+      );
+    }
+    return {
+      id: architectureCaptureNonEmptyString(
+        definition.id,
+        `partDefinitions[${definitionIndex}].id`,
+      ),
+      label: architectureCaptureNonEmptyString(
+        definition.label,
+        `partDefinitions[${definitionIndex}].label`,
+      ),
+      usages: definition.usages.map((rawUsage, usageIndex) => {
+        const context = `partDefinitions[${definitionIndex}].usages[${usageIndex}]`;
+        const usage = architectureCaptureObject(rawUsage, context);
+        architectureCaptureOnlyKeys(usage, [
+          "id",
+          "kind",
+          "label",
+          "targetId",
+          "targetKind",
+          "targetLabel",
+        ], context);
+        if (
+          usage.kind !== "PartUsage" ||
+          usage.targetKind !== "PartDefinition"
+        ) {
+          invalidArchitectureCapture(`${context} has invalid SysON kinds`);
+        }
+        return {
+          id: architectureCaptureNonEmptyString(usage.id, `${context}.id`),
+          label: architectureCaptureNonEmptyString(
+            usage.label,
+            `${context}.label`,
+          ),
+          targetId: architectureCaptureNonEmptyString(
+            usage.targetId,
+            `${context}.targetId`,
+          ),
+          targetLabel: architectureCaptureNonEmptyString(
+            usage.targetLabel,
+            `${context}.targetLabel`,
+          ),
+        };
+      }),
+    };
+  });
+  const semanticIds = new Set<string>([packageId]);
+  const definitionIds = new Set<string>();
+  const definitionLabels = new Set<string>();
+  for (const definition of definitions) {
+    if (
+      semanticIds.has(definition.id) ||
+      definitionLabels.has(definition.label)
+    ) {
+      invalidArchitectureCapture(
+        "Package and PartDefinition ids, and PartDefinition labels, must be unique",
+      );
+    }
+    semanticIds.add(definition.id);
+    definitionIds.add(definition.id);
+    definitionLabels.add(definition.label);
+  }
+  if (!definitionLabels.has(systemName)) {
+    invalidArchitectureCapture("systemName does not name a PartDefinition");
+  }
+  const definitionsById = new Map(
+    definitions.map((definition) => [definition.id, definition]),
+  );
+  const allUsages = new Map<string, string>();
+  for (const definition of definitions) {
+    const labelsUnderParent = new Set<string>();
+    for (const usage of definition.usages) {
+      if (semanticIds.has(usage.id) || labelsUnderParent.has(usage.label)) {
+        invalidArchitectureCapture(
+          "PartUsage ids must be globally unique and labels unique within their parent",
+        );
+      }
+      semanticIds.add(usage.id);
+      labelsUnderParent.add(usage.label);
+      const target = definitionsById.get(usage.targetId);
+      if (!target || target.label !== usage.targetLabel) {
+        invalidArchitectureCapture(
+          `PartUsage ${usage.id} does not target an exact captured PartDefinition`,
+        );
+      }
       allUsages.set(usage.id, usage.label);
     }
   }
@@ -702,6 +1266,365 @@ async function assertComponentBindingsMatchArchitecture(
           `it "${label}".`,
       );
     }
+  }
+}
+
+function invalidArchitectureCapture(detail: string): never {
+  throw new EngineeringProjectCommandError(
+    "invalid_transition",
+    `D5 violation: architecture capture is not exact schema-v2 evidence: ${detail}.`,
+  );
+}
+
+function architectureCaptureObject(
+  value: unknown,
+  context: string,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidArchitectureCapture(`${context} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function architectureCaptureNonEmptyString(
+  value: unknown,
+  context: string,
+): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    invalidArchitectureCapture(`${context} must be a non-empty string`);
+  }
+  return value;
+}
+
+function architectureCaptureOnlyKeys(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  context: string,
+): void {
+  const allowedKeys = new Set(allowed);
+  const unexpected = Object.keys(record).find((key) => !allowedKeys.has(key));
+  if (unexpected) {
+    invalidArchitectureCapture(`${context} has unsupported field ${unexpected}`);
+  }
+}
+
+interface ArchitectureCaptureSource {
+  readonly artifactId: string;
+  readonly fingerprint: ContentFingerprint;
+  readonly producerRunId: string;
+}
+
+function assertArchitectureCaptureSource(
+  value: unknown,
+  context: string,
+): ArchitectureCaptureSource {
+  const source = architectureCaptureObject(value, context);
+  architectureCaptureOnlyKeys(
+    source,
+    ["artifactId", "fingerprint", "producerRunId"],
+    context,
+  );
+  const artifactId = architectureCaptureNonEmptyString(
+    source.artifactId,
+    `${context}.artifactId`,
+  );
+  const producerRunId = architectureCaptureNonEmptyString(
+    source.producerRunId,
+    `${context}.producerRunId`,
+  );
+  const fingerprint = architectureCaptureObject(
+    source.fingerprint,
+    `${context}.fingerprint`,
+  );
+  architectureCaptureOnlyKeys(
+    fingerprint,
+    ["algorithm", "digest"],
+    `${context}.fingerprint`,
+  );
+  if (
+    fingerprint.algorithm !== "sha256" ||
+    typeof fingerprint.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fingerprint.digest)
+  ) {
+    invalidArchitectureCapture(`${context}.fingerprint is not SHA-256`);
+  }
+  return {
+    artifactId,
+    fingerprint: {
+      algorithm: "sha256",
+      digest: fingerprint.digest as string,
+    },
+    producerRunId,
+  };
+}
+
+function assertArchitectureCaptureLineageExact(
+  base: ThreadSnapshot,
+  architectureArtifact: ThreadArtifact,
+  seed: ArchitectureCaptureSource,
+  predecessor: ArchitectureCaptureSource | undefined,
+  insertedAt: string,
+): void {
+  const expectedInputIds = [
+    seed.artifactId,
+    ...(predecessor ? [predecessor.artifactId] : []),
+  ];
+  if (
+    new Set(architectureArtifact.inputArtifactIds).size !==
+      architectureArtifact.inputArtifactIds.length ||
+    deterministicJson(architectureArtifact.inputArtifactIds) !==
+      deterministicJson(expectedInputIds)
+  ) {
+    invalidArchitectureCapture(
+      "architecture artifact inputs are not exactly [seed, optional predecessor]",
+    );
+  }
+
+  const seedArtifact = base.artifacts.find((artifact) =>
+    artifact.id === seed.artifactId
+  );
+  if (!seedArtifact) {
+    invalidArchitectureCapture("seed artifact is absent from the exact basis");
+  }
+  assertArchitectureSourceArtifactExact(seedArtifact, seed, "seed");
+
+  let predecessorArtifact: ThreadArtifact | undefined;
+  if (predecessor) {
+    predecessorArtifact = base.artifacts.find((artifact) =>
+      artifact.id === predecessor.artifactId
+    );
+    if (!predecessorArtifact) {
+      invalidArchitectureCapture(
+        "predecessor architecture artifact is absent from the exact basis",
+      );
+    }
+    assertArchitectureSourceArtifactExact(
+      predecessorArtifact,
+      predecessor,
+      "predecessor",
+    );
+  }
+
+  const inputs = [
+    { source: seed, artifact: seedArtifact, kind: "seed" as const },
+    ...(predecessor && predecessorArtifact
+      ? [{
+        source: predecessor,
+        artifact: predecessorArtifact,
+        kind: "predecessor" as const,
+      }]
+      : []),
+  ];
+  for (const input of inputs) {
+    const consumptionId = `consume-${input.artifact.id}-by-${architectureArtifact.id}`;
+    const expectedConsumption: ThreadArtifactConsumption = {
+      id: consumptionId,
+      artifactId: input.artifact.id,
+      consumer: architectureArtifact.producer,
+      observedFingerprint: input.source.fingerprint,
+      verifiedAt: insertedAt,
+      status: "verified",
+    };
+    const consumption = base.consumptions.find((item) => item.id === consumptionId);
+    if (
+      !consumption ||
+      deterministicJson(consumption) !== deterministicJson(expectedConsumption)
+    ) {
+      invalidArchitectureCapture(
+        `${input.kind} consumption is absent or not exact`,
+      );
+    }
+
+    const usesId = `uses-${consumptionId}`;
+    const uses = base.provenance.find((link) => link.id === usesId);
+    const expectedUses = {
+      id: usesId,
+      relation: "uses" as const,
+      from: { kind: "consumption" as const, id: consumptionId },
+      to: { kind: "artifact" as const, id: input.artifact.id },
+      rationale: input.kind === "seed"
+        ? "The executor re-read the exact seed capture before inserting the architecture package."
+        : "The executor re-read the exact previous generic architecture capture before enriching it.",
+    };
+    if (
+      !uses || deterministicJson(uses) !== deterministicJson(expectedUses)
+    ) {
+      invalidArchitectureCapture(
+        `${input.kind} uses provenance is absent or not exact`,
+      );
+    }
+
+    const derivedId = input.kind === "seed"
+      ? `derived-from-seed-${architectureArtifact.fingerprint.digest}`
+      : `derived-from-architecture-${architectureArtifact.fingerprint.digest}`;
+    const derived = base.provenance.find((link) => link.id === derivedId);
+    const expectedDerived = {
+      id: derivedId,
+      relation: "derived_from" as const,
+      from: { kind: "artifact" as const, id: architectureArtifact.id },
+      to: { kind: "artifact" as const, id: input.artifact.id },
+      rationale: input.kind === "seed"
+        ? "The architecture package was inserted into the SysON model container created by the seed run."
+        : "The exact previous generic architecture capture was re-read as the predecessor of this enrichment.",
+    };
+    if (
+      !derived || deterministicJson(derived) !== deterministicJson(expectedDerived)
+    ) {
+      invalidArchitectureCapture(
+        `${input.kind} derivation provenance is absent or not exact`,
+      );
+    }
+  }
+}
+
+function assertArchitectureSourceArtifactExact(
+  artifact: ThreadArtifact,
+  source: ArchitectureCaptureSource,
+  kind: "seed" | "predecessor",
+): void {
+  const digest = source.fingerprint.digest;
+  const expectedId = kind === "seed"
+    ? `syson-model-seed-${digest}`
+    : `architecture-${digest}`;
+  const expectedUri = kind === "seed"
+    ? `casys://syson-model-seed-capture/sha256/${digest}`
+    : `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${digest}`;
+  const expectedTool = kind === "seed"
+    ? "syson_model_create"
+    : "syson_element_insert_sysml";
+  if (
+    source.artifactId !== expectedId || artifact.id !== expectedId ||
+    artifact.kind !== "sysml-model" || artifact.version !== digest ||
+    !fingerprintsEqual(artifact.fingerprint, source.fingerprint) ||
+    artifact.uri !== expectedUri || artifact.mediaType !== "application/json" ||
+    artifact.producer.serverId !== "syson" ||
+    artifact.producer.tool !== expectedTool ||
+    artifact.producer.runId !== source.producerRunId
+  ) {
+    invalidArchitectureCapture(
+      `${kind} artifact identity, version, URI, media type, producer, run, or fingerprint is not exact`,
+    );
+  }
+}
+
+/** Load and validate the exact human-reviewed draft without mutating state. */
+async function loadReviewedGeometryDraft(
+  params: GeometryDecisionParameters,
+  draftCaptures: FileCaptureStore<"geometry-draft">,
+): Promise<{ readonly previewProducer: ThreadOperationRef | undefined }> {
+  const draftFp: ContentFingerprint = {
+    algorithm: "sha256",
+    digest: params.draftDigest,
+  };
+  const draftText = await draftCaptures.read(draftFp);
+  if (!draftText) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Geometry draft ${params.draftDigest} not found in the draft store. ` +
+        "The draft may have been cleared before the human decision was executed.",
+    );
+  }
+  const draftRecord = JSON.parse(draftText);
+  const recomputedDraftFp = await sha256Fingerprint(draftRecord);
+  if (!fingerprintsEqual(recomputedDraftFp, draftFp)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "Draft capture byte-level fingerprint mismatch: the bytes read from the draft " +
+        "store do not hash to the signed draft digest. Operator inspection required.",
+    );
+  }
+
+  // The signed decision is authoritative only if every manifest field is
+  // exactly reconstructible from the reviewed draft record.
+  assertMrtrManifestMatchesDraft(params.manifest, draftRecord);
+  const previewProducer = requireDraftPreviewProducer(draftRecord);
+  requireDraftAssemblyPaths(draftRecord);
+  return { previewProducer };
+}
+
+/**
+ * Recover the actual preview invocation from a signed draft capture.
+ *
+ * v1.0 did not record a run id. Those existing drafts remain readable, but the
+ * resulting canonical binary must then be attributed to the local seal instead
+ * of inventing a build123d run. v1.1 requires the exact preview run identity.
+ */
+function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "Geometry draft capture must be an object.",
+    );
+  }
+  const draft = value as Record<string, unknown>;
+  const schemaVersion = draft.schemaVersion;
+  if (
+    schemaVersion !== GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
+    schemaVersion !== LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Unsupported geometry draft capture schema: ${String(schemaVersion)}.`,
+    );
+  }
+  const rawProducer = draft.producer;
+  if (!rawProducer || typeof rawProducer !== "object" || Array.isArray(rawProducer)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "Geometry draft capture has no valid preview producer.",
+    );
+  }
+  const producer = rawProducer as Record<string, unknown>;
+  if (schemaVersion === LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA) {
+    if (producer.serverId !== "build123d" || producer.tool !== "build123d_export") {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Legacy geometry draft capture producer is not build123d/build123d_export.",
+      );
+    }
+    return undefined;
+  }
+  if (
+    producer.serverId !== "build123d-sandbox" ||
+    producer.tool !== "build123d_export"
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "Geometry draft capture producer is not build123d-sandbox/build123d_export.",
+    );
+  }
+  if (typeof producer.runId === "string" && producer.runId.trim() !== "") {
+    return {
+      serverId: "build123d-sandbox",
+      tool: "build123d_export",
+      runId: producer.runId,
+    };
+  }
+  throw new EngineeringProjectCommandError(
+    "invalid_transition",
+    "Geometry draft capture/1.1 requires an exact preview producer runId.",
+  );
+}
+
+/** Fail closed on legacy and current draft paths before canonical capture writes. */
+function requireDraftAssemblyPaths(value: unknown): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "Geometry draft capture must be an object.",
+    );
+  }
+  try {
+    assertGeometryDraftAssemblyPaths(
+      (value as Record<string, unknown>).assemblyFiles,
+    );
+  } catch (error) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Geometry draft export path contract mismatch: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
 }
 
@@ -926,6 +1849,44 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
+async function assertCanonicalGeometryAssetExact(
+  fingerprint: ContentFingerprint,
+  extension: string,
+  canonicalDirectory: string,
+): Promise<void> {
+  const path = `${canonicalDirectory}/${fingerprint.digest}.${extension}`;
+  const bytes = await readCanonicalAsset(path);
+  if (!bytes) {
+    throw completedGeometryIntegrityError(
+      `canonical binary ${fingerprint.digest}.${extension} is absent`,
+    );
+  }
+  const observed = await sha256Hex(bytes);
+  if (fingerprint.algorithm !== "sha256" || observed !== fingerprint.digest) {
+    throw completedGeometryIntegrityError(
+      `canonical binary ${fingerprint.digest}.${extension} no longer matches its content digest`,
+    );
+  }
+}
+
+function geometryAssetExtension(
+  format: GeometryManifest["exportFormats"][number],
+): string {
+  // build123d's `gltf` export is the binary GLB container, as evidenced by the
+  // provider path contract (`*.glb`). Never advertise those bytes as JSON glTF.
+  return format === "gltf" ? "glb" : format;
+}
+
+function geometryAssetMediaType(
+  format: GeometryManifest["exportFormats"][number],
+): "model/step" | "model/gltf-binary" | "model/stl" {
+  return format === "step"
+    ? "model/step"
+    : format === "gltf"
+    ? "model/gltf-binary"
+    : "model/stl";
+}
+
 // ── Thread extension ──────────────────────────────────────────────────────────
 
 function buildExtension(options: {
@@ -936,6 +1897,7 @@ function buildExtension(options: {
   captureFp: ContentFingerprint;
   captureUri: string;
   params: GeometryDecisionParameters;
+  previewProducer: ThreadOperationRef | undefined;
 }) {
   const {
     base,
@@ -945,6 +1907,7 @@ function buildExtension(options: {
     captureFp,
     captureUri,
     params,
+    previewProducer,
   } = options;
 
   const artifactId = `geometry-${captureFp.digest}`;
@@ -953,11 +1916,15 @@ function buildExtension(options: {
     changedAt: capturedAt,
     invalidatedByChangeIds: [],
   };
-  const producer: ThreadOperationRef = {
-    serverId: "build123d",
-    tool: "build123d_export",
+  const sealProducer: ThreadOperationRef = {
+    serverId: "digital-thread",
+    tool:
+      `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
     runId,
   };
+  // Legacy draft-capture/1.0 records had no preview run identity. In that case
+  // the only exact operation we can truthfully attribute is this local seal.
+  const binaryProducer = previewProducer ?? sealProducer;
 
   // Primary geometry artifact: the sealed geometry capture (JSON).
   const primaryArtifact: ThreadArtifact = {
@@ -972,7 +1939,7 @@ function buildExtension(options: {
     fingerprint: captureFp,
     uri: captureUri,
     mediaType: "application/json",
-    producer,
+    producer: sealProducer,
     inputArtifactIds: [architectureArtifact.id],
     freshness,
   };
@@ -980,34 +1947,32 @@ function buildExtension(options: {
   // Per-part-mesh artifacts: one "mesh" artifact per sealed part mesh.
   const partMeshArtifacts: ThreadArtifact[] =
     (params.manifest.artifactHashes?.partMeshes ?? []).map((mesh) => ({
-      id: `mesh-${mesh.fingerprint.digest}`,
+      id: `mesh-${captureFp.digest}-${mesh.fingerprint.digest}`,
       name: `Mesh: ${mesh.semanticKey}`,
       kind: "mesh" as const,
       version: mesh.fingerprint.digest,
       fingerprint: mesh.fingerprint,
       uri: `/api/thread/assets/${mesh.fingerprint.digest}.stl`,
       mediaType: "model/stl",
-      producer,
-      inputArtifactIds: [artifactId],
+      producer: binaryProducer,
+      inputArtifactIds: previewProducer ? [] : [artifactId],
       freshness,
     }));
 
   // Per-assembly-file artifacts: one artifact per exported format (step, gltf, stl).
   const assemblyFileArtifacts: ThreadArtifact[] =
     (params.manifest.artifactHashes?.assemblyFiles ?? []).map((file) => ({
-      id: `cad-asset-${file.fingerprint.digest}`,
+      id: `cad-asset-${captureFp.digest}-${file.fingerprint.digest}`,
       name: `${file.format.toUpperCase()}: ${file.name}`,
       kind: (file.format === "step" ? "step" : "cad-model") as ThreadArtifact["kind"],
       version: file.fingerprint.digest,
       fingerprint: file.fingerprint,
-      uri: `/api/thread/assets/${file.fingerprint.digest}.${file.format}`,
-      mediaType: file.format === "step"
-        ? "model/step"
-        : file.format === "gltf"
-        ? "model/gltf+json"
-        : "model/stl",
-      producer,
-      inputArtifactIds: [artifactId],
+      uri: `/api/thread/assets/${file.fingerprint.digest}.${
+        geometryAssetExtension(file.format)
+      }`,
+      mediaType: geometryAssetMediaType(file.format),
+      producer: binaryProducer,
+      inputArtifactIds: previewProducer ? [] : [artifactId],
       freshness,
     }));
 
@@ -1015,7 +1980,7 @@ function buildExtension(options: {
   const consumption: ThreadArtifactConsumption = {
     id: consumptionId,
     artifactId: architectureArtifact.id,
-    consumer: producer,
+    consumer: sealProducer,
     observedFingerprint: architectureArtifact.fingerprint,
     verifiedAt: capturedAt,
     status: "verified",
@@ -1025,7 +1990,7 @@ function buildExtension(options: {
     (artifact) => ({
       id: `consume-${artifactId}-by-${artifact.id}`,
       artifactId,
-      consumer: artifact.producer,
+      consumer: sealProducer,
       observedFingerprint: captureFp,
       verifiedAt: capturedAt,
       status: "verified" as const,
@@ -1066,12 +2031,15 @@ function buildExtension(options: {
       ...binaryArtifacts.flatMap((artifact, index) => {
         const binaryConsumption = binaryConsumptions[index]!;
         return [{
-          id: `derived-${artifact.id}-from-${artifactId}`,
-          relation: "derived_from" as const,
+          id: `${
+            previewProducer ? "traces" : "derived"
+          }-${artifact.id}-from-${artifactId}`,
+          relation: previewProducer ? "traces_to" as const : "derived_from" as const,
           from: { kind: "artifact" as const, id: artifact.id },
           to: { kind: "artifact" as const, id: artifactId },
-          rationale:
-            "The published binary is an exact content-addressed export carried by the sealed geometry capture.",
+          rationale: previewProducer
+            ? "The preview-produced binary is recorded by exact SHA-256 in the sealed geometry capture; this is a trace, not a claim that the later capture produced the bytes."
+            : "This legacy draft had no preview run identity; the local seal produced the canonical binary from the exact content-addressed capture.",
         }, {
           id: `uses-${binaryConsumption.id}`,
           relation: "uses" as const,
@@ -1096,14 +2064,27 @@ function assertCompleted(
   project: EngineeringProjectSnapshot,
   command: DesignWriteGeometryRunExecutorCommand,
 ): void {
-  const run = project.agentRuns.find((r) => r.id === command.runId);
-  if (run?.status !== "completed") {
+  const run = requireRun(project, command.runId);
+  if (
+    run.status !== "completed" || !run.resultSnapshot ||
+    !project.commandReceipts?.some(
+      (receipt) => receipt.commandId === commandStep(command.commandId, "complete"),
+    )
+  ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `Geometry run ${command.runId} is expected to be completed but has status ` +
-        `"${run?.status ?? "not found"}".`,
+      `Geometry run ${command.runId} did not complete through this exact execution command.`,
     );
   }
+}
+
+function completedGeometryIntegrityError(
+  detail: string,
+): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError(
+    "invalid_transition",
+    `Completed geometry evidence integrity failure: ${detail}.`,
+  );
 }
 
 function geometryArtifactEntityRef(
@@ -1150,9 +2131,16 @@ function requireShape(
   run: EngineeringAgentRun,
 ): void {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  const operation = workItem?.operation;
   if (
-    workItem?.operation?.id !== DESIGN_WRITE_GEOMETRY_OPERATION.id ||
-    workItem.operation.version !== DESIGN_WRITE_GEOMETRY_OPERATION.version
+    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    !workItem || operation?.id !== DESIGN_WRITE_GEOMETRY_OPERATION.id ||
+    operation.version !== DESIGN_WRITE_GEOMETRY_OPERATION.version ||
+    operation.bindings.length !== 1 ||
+    deterministicJson(operation.bindings[0]) !== deterministicJson({
+        name: "approvedBrief",
+        source: { kind: "approved-brief" },
+      })
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
@@ -1222,6 +2210,28 @@ async function requireMrtrApproval(
     );
   }
 
+  const selected = candidates[0]!;
+  const expectedDecisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: selected.decision.baseSnapshot,
+    inputEvidenceRefs: selected.decision.inputEvidenceRefs,
+    proposal: {
+      summary: selected.proposal.summary,
+      parameters: selected.proposal.parameters,
+    },
+  });
+  if (
+    !fingerprintsEqual(
+      expectedDecisionFingerprint,
+      selected.decision.inputFingerprint,
+    )
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "Geometry decision input fingerprint no longer seals its exact base snapshot, " +
+        "evidence references, summary, and parameters.",
+    );
+  }
+
   // Verify run input fingerprint matches queue-time seal.
   const approvedDecisions = workItem.decisionIds.map((id) => {
     const decision = project.decisions.find((candidate) => candidate.id === id);
@@ -1249,7 +2259,7 @@ async function requireMrtrApproval(
       "Geometry run input fingerprint no longer seals its exact MRTR decision and basis.",
     );
   }
-  return candidates[0]!;
+  return selected;
 }
 
 function sameSnapshotBasis(
@@ -1282,7 +2292,7 @@ function sameEvidenceRefs(
   }[],
 ): boolean {
   const key = (ref: typeof left[number]) =>
-    `${ref.snapshotId} ${ref.snapshotRevision} ${ref.kind} ${ref.id}`;
+    `${ref.snapshotId}\u0000${ref.snapshotRevision}\u0000${ref.kind}\u0000${ref.id}`;
   return (
     left.length === right.length &&
     left.map(key).sort().every((item, index) => item === right.map(key).sort()[index])

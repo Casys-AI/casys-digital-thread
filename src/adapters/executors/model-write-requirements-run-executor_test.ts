@@ -28,6 +28,7 @@ import {
   type EngineeringProjectCompletionEvidenceValidator,
 } from "../../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
@@ -61,9 +62,11 @@ import { ExactThreadCompletionEvidenceValidator } from "../validators/engineerin
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import {
   assertRequirementsArtifactNotRemoved,
+  computePriorRequirementsArchiveCascade,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
   RequirementsArtifactRemovedError,
+  resolveRequirementsPartDefinitionTarget,
   selectRequirementsTip,
 } from "./model-write-requirements-run-executor.ts";
 import {
@@ -121,10 +124,16 @@ const WING_REQS_PARAMS_INITIAL = [
   {
     key: "requirement.max-mass.threshold",
     label: "Threshold",
-    value: 0.5,
+    value: 5,
     unit: "kg",
   },
 ];
+
+const ROOT_REQS_PARAMS_INITIAL = WING_REQS_PARAMS_INITIAL.map((parameter) =>
+  parameter.key === "requirements.containerComponent"
+    ? { ...parameter, value: "DroneSystem" }
+    : parameter
+);
 
 const UNKNOWN_TARGET_REQS_PARAMS = WING_REQS_PARAMS_INITIAL.map((parameter) =>
   parameter.key === "requirements.containerComponent"
@@ -158,7 +167,7 @@ const WING_REQS_PARAMS_ENRICHMENT = [
   },
 ];
 
-// Conflict proposal: same metric "maxMass" but different threshold (0.8 vs 0.5).
+// Conflict proposal: same metric "maxMass" but different threshold (8 vs 5).
 const WING_REQS_PARAMS_CONFLICT = [
   {
     key: "requirements.containerComponent",
@@ -183,7 +192,7 @@ const WING_REQS_PARAMS_CONFLICT = [
   {
     key: "requirement.max-mass.threshold",
     label: "Threshold",
-    value: 0.8,
+    value: 8,
     unit: "kg",
   },
 ];
@@ -411,12 +420,21 @@ class InitialArchSyson implements McpToolClient {
  * SysON mock for the initial requirements write.
  *
  * Call sequence:
- *  1. syson_element_insert_sysml(arch-pkg-001, WingRequirements) → { inserted: true }
- *  2. syson_element_children(arch-pkg-001) → [WingRequirements elem]  [D5 identify]
- *  3. syson_constraint_extract(wing-reqs-elem-001) → [maxMass constraint]
+ *  1. insert_sysml(wing-def-001, native WingRequirements RequirementUsage)
+ *  2. children(wing-def-001) → WingRequirements [D5 identity]
+ *  3. element_get + children(wing-reqs-elem-001) → native shape
+ *  4. query_aql(wing-reqs-subject-001) → exact Wing FeatureTyping
+ *  5. constraint_extract(wing-reqs-elem-001) → maxMass predicate
  */
 class InitialReqsSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
+  #inserted = false;
+
+  constructor(
+    readonly targetId = "wing-def-001",
+    readonly targetLabel = "Wing",
+    readonly requirementName = "WingRequirements",
+  ) {}
 
   callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
     return Promise.reject(
@@ -428,6 +446,7 @@ class InitialReqsSyson implements McpToolClient {
     this.calls.push(structuredClone(call));
 
     if (call.name === "syson_element_insert_sysml") {
+      this.#inserted = true;
       return Promise.resolve({
         text: "inserted",
         structuredContent: {
@@ -438,14 +457,75 @@ class InitialReqsSyson implements McpToolClient {
     }
 
     if (call.name === "syson_element_children") {
+      const elementId = call.arguments?.element_id;
+      if (elementId === "wing-reqs-elem-001") {
+        return Promise.resolve({
+          text: "native-requirement-members",
+          structuredContent: {
+            parentId: elementId,
+            children: [
+              {
+                id: "wing-reqs-subject-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=ReferenceUsage",
+                label: "target",
+              },
+              {
+                id: "wing-reqs-attribute-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+                label: "maxMass",
+              },
+              {
+                id: "wing-reqs-constraint-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=ConstraintUsage",
+                label: "max_mass_limit",
+              },
+            ],
+            count: 3,
+          },
+        });
+      }
+      if (!this.#inserted) {
+        return Promise.resolve({
+          text: "empty",
+          structuredContent: { parentId: elementId, children: [], count: 0 },
+        });
+      }
       return Promise.resolve({
         text: "children",
         structuredContent: {
-          parentId: call.arguments?.element_id,
+          parentId: elementId,
           children: [{
             id: "wing-reqs-elem-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=RequirementUsage",
+            label: this.requirementName,
+          }],
+          count: 1,
+        },
+      });
+    }
+
+    if (call.name === "syson_element_get") {
+      return Promise.resolve({
+        text: "requirement",
+        structuredContent: {
+          id: "wing-reqs-elem-001",
+          kind: "siriusComponents://semantic?domain=sysml&entity=RequirementUsage",
+          label: this.requirementName,
+        },
+      });
+    }
+
+    if (call.name === "syson_query_aql") {
+      return Promise.resolve({
+        text: "subject typing",
+        structuredContent: {
+          objectId: "wing-reqs-subject-001",
+          expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+          type: "objects",
+          results: [{
+            id: this.targetId,
             kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
-            label: "WingRequirements",
+            label: this.targetLabel,
           }],
           count: 1,
         },
@@ -458,9 +538,10 @@ class InitialReqsSyson implements McpToolClient {
         structuredContent: {
           constraints: [{
             expression: {
+              kind: "binary",
               op: "<=",
-              left: { featurePath: ["maxMass"] },
-              right: { value: 0.5, unit: "kg" },
+              left: { kind: "ref", featurePath: ["maxMass"] },
+              right: { kind: "literal", value: 5, unit: "kg" },
             },
           }],
         },
@@ -473,15 +554,34 @@ class InitialReqsSyson implements McpToolClient {
   }
 }
 
+/** Provider acknowledges text but reads it back as the old detached PartDefinition. */
+class DetachedPartDefReadbackSyson extends InitialReqsSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (call.name === "syson_element_get") {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "detached helper",
+        structuredContent: {
+          id: "wing-reqs-elem-001",
+          kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+          label: "WingRequirements",
+        },
+      });
+    }
+    return super.callTool(call);
+  }
+}
+
 /**
  * SysON mock for the enrichment requirements write (delete + reinsert).
  *
  * Call sequence:
- *  1. syson_element_children(arch-pkg-001) → prior element [pre-WAL lookup]
+ *  1. syson_element_children(wing-def-001) → prior element [pre-WAL lookup]
  *  2. syson_element_delete(wing-reqs-elem-001) → ok
- *  3. syson_element_insert_sysml(arch-pkg-001, WingRequirements with both) → ok
- *  4. syson_element_children(arch-pkg-001) → new element [D5 identify]
- *  5. syson_constraint_extract(wing-reqs-elem-002) → [maxForce, maxMass]
+ *  3. insert_sysml(wing-def-001, native RequirementUsage with both) → ok
+ *  4. children(wing-def-001) → new element [D5 identify]
+ *  5. native shape + subject FeatureTyping readback
+ *  6. constraint_extract(wing-reqs-elem-002) → maxForce + maxMass
  */
 class EnrichmentReqsSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
@@ -497,6 +597,69 @@ class EnrichmentReqsSyson implements McpToolClient {
     this.calls.push(structuredClone(call));
 
     if (call.name === "syson_element_children") {
+      const elementId = call.arguments?.element_id;
+      if (elementId === "wing-reqs-elem-001") {
+        return Promise.resolve({
+          text: "prior-native-requirement-members",
+          structuredContent: {
+            parentId: elementId,
+            children: [
+              {
+                id: "wing-reqs-subject-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=ReferenceUsage",
+                label: "target",
+              },
+              {
+                id: "wing-reqs-attribute-mass-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+                label: "maxMass",
+              },
+              {
+                id: "wing-reqs-constraint-mass-001",
+                kind: "siriusComponents://semantic?domain=sysml&entity=ConstraintUsage",
+                label: "max_mass_limit",
+              },
+            ],
+            count: 3,
+          },
+        });
+      }
+      if (elementId === "wing-reqs-elem-002") {
+        return Promise.resolve({
+          text: "native-requirement-members",
+          structuredContent: {
+            parentId: elementId,
+            children: [
+              {
+                id: "wing-reqs-subject-002",
+                kind: "siriusComponents://semantic?domain=sysml&entity=ReferenceUsage",
+                label: "target",
+              },
+              {
+                id: "wing-reqs-attribute-force-002",
+                kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+                label: "maxForce",
+              },
+              {
+                id: "wing-reqs-attribute-mass-002",
+                kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+                label: "maxMass",
+              },
+              {
+                id: "wing-reqs-constraint-force-002",
+                kind: "siriusComponents://semantic?domain=sysml&entity=ConstraintUsage",
+                label: "max_force_limit",
+              },
+              {
+                id: "wing-reqs-constraint-mass-002",
+                kind: "siriusComponents://semantic?domain=sysml&entity=ConstraintUsage",
+                label: "max_mass_limit",
+              },
+            ],
+            count: 5,
+          },
+        });
+      }
       this.#childrenCallCount++;
       // Pre-WAL lookup (call 1) returns the PRIOR element to be deleted.
       // D5 identify (call 2, after insert) returns the NEW element.
@@ -509,8 +672,38 @@ class EnrichmentReqsSyson implements McpToolClient {
           parentId: call.arguments?.element_id,
           children: [{
             id,
-            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            kind: "siriusComponents://semantic?domain=sysml&entity=RequirementUsage",
             label: "WingRequirements",
+          }],
+          count: 1,
+        },
+      });
+    }
+
+    if (call.name === "syson_element_get") {
+      const elementId = call.arguments?.element_id;
+      return Promise.resolve({
+        text: "requirement",
+        structuredContent: {
+          id: elementId,
+          kind: "siriusComponents://semantic?domain=sysml&entity=RequirementUsage",
+          label: "WingRequirements",
+        },
+      });
+    }
+
+    if (call.name === "syson_query_aql") {
+      const objectId = call.arguments?.object_id;
+      return Promise.resolve({
+        text: "subject typing",
+        structuredContent: {
+          objectId,
+          expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+          type: "objects",
+          results: [{
+            id: "wing-def-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "Wing",
           }],
           count: 1,
         },
@@ -532,6 +725,21 @@ class EnrichmentReqsSyson implements McpToolClient {
     }
 
     if (call.name === "syson_constraint_extract") {
+      if (call.arguments?.element_id === "wing-reqs-elem-001") {
+        return Promise.resolve({
+          text: "prior constraints",
+          structuredContent: {
+            constraints: [{
+              expression: {
+                kind: "binary",
+                op: "<=",
+                left: { kind: "ref", featurePath: ["maxMass"] },
+                right: { kind: "literal", value: 5, unit: "kg" },
+              },
+            }],
+          },
+        });
+      }
       // Must return BOTH metrics (maxForce sorted before maxMass alphabetically).
       return Promise.resolve({
         text: "constraints",
@@ -539,16 +747,18 @@ class EnrichmentReqsSyson implements McpToolClient {
           constraints: [
             {
               expression: {
+                kind: "binary",
                 op: "<=",
-                left: { featurePath: ["maxForce"] },
-                right: { value: 100, unit: "Pa" },
+                left: { kind: "ref", featurePath: ["maxForce"] },
+                right: { kind: "literal", value: 100, unit: "Pa" },
               },
             },
             {
               expression: {
+                kind: "binary",
                 op: "<=",
-                left: { featurePath: ["maxMass"] },
-                right: { value: 0.5, unit: "kg" },
+                left: { kind: "ref", featurePath: ["maxMass"] },
+                right: { kind: "literal", value: 5, unit: "kg" },
               },
             },
           ],
@@ -568,6 +778,7 @@ class EnrichmentReqsSyson implements McpToolClient {
  */
 class AmbiguousD5ReqsSyson implements McpToolClient {
   readonly calls: McpToolCall[] = [];
+  #inserted = false;
 
   callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
     return Promise.reject(
@@ -579,6 +790,7 @@ class AmbiguousD5ReqsSyson implements McpToolClient {
     this.calls.push(structuredClone(call));
 
     if (call.name === "syson_element_insert_sysml") {
+      this.#inserted = true;
       return Promise.resolve({
         text: "inserted",
         structuredContent: {
@@ -589,6 +801,16 @@ class AmbiguousD5ReqsSyson implements McpToolClient {
     }
 
     if (call.name === "syson_element_children") {
+      if (!this.#inserted) {
+        return Promise.resolve({
+          text: "empty",
+          structuredContent: {
+            parentId: call.arguments?.element_id,
+            children: [],
+            count: 0,
+          },
+        });
+      }
       // Two elements with the same "WingRequirements" label → D5 ambiguous.
       return Promise.resolve({
         text: "ambiguous",
@@ -665,34 +887,10 @@ class ForeignElementEnrichmentSyson implements McpToolClient {
  * The delete call throws an EngineeringProjectCommandError so the run fails
  * before providerAcknowledged is set — WAL stays "dispatched".
  */
-class DeleteFailsEnrichmentSyson implements McpToolClient {
-  readonly calls: McpToolCall[] = [];
-
-  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
-    return Promise.reject(
-      new Error(`callToolTextResult not implemented (${call.name})`),
-    );
-  }
-
-  callTool(call: McpToolCall): Promise<McpToolResult> {
-    this.calls.push(structuredClone(call));
-
-    if (call.name === "syson_element_children") {
-      return Promise.resolve({
-        text: "children",
-        structuredContent: {
-          parentId: call.arguments?.element_id,
-          children: [{
-            id: "wing-reqs-elem-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
-            label: "WingRequirements",
-          }],
-          count: 1,
-        },
-      });
-    }
-
+class DeleteFailsEnrichmentSyson extends EnrichmentReqsSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
     if (call.name === "syson_element_delete") {
+      this.calls.push(structuredClone(call));
       return Promise.reject(
         new EngineeringProjectCommandError(
           "invalid_input",
@@ -700,10 +898,7 @@ class DeleteFailsEnrichmentSyson implements McpToolClient {
         ),
       );
     }
-
-    return Promise.reject(
-      new Error(`Unexpected tool in DeleteFailsEnrichmentSyson: ${call.name}`),
-    );
+    return super.callTool(call);
   }
 }
 
@@ -714,38 +909,15 @@ class DeleteFailsEnrichmentSyson implements McpToolClient {
  * before the delete, so a retry on a re-queued run will see the dispatched
  * entry and raise RequirementsWriteOutcomeUnknownError.
  */
-class DeleteSuccessInsertFailEnrichmentSyson implements McpToolClient {
-  readonly calls: McpToolCall[] = [];
-
-  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
-    return Promise.reject(
-      new Error(`callToolTextResult not implemented (${call.name})`),
-    );
-  }
-
-  callTool(call: McpToolCall): Promise<McpToolResult> {
-    this.calls.push(structuredClone(call));
-
-    if (call.name === "syson_element_children") {
-      return Promise.resolve({
-        text: "children",
-        structuredContent: {
-          parentId: call.arguments?.element_id,
-          children: [{
-            id: "wing-reqs-elem-001",
-            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
-            label: "WingRequirements",
-          }],
-          count: 1,
-        },
-      });
-    }
-
+class DeleteSuccessInsertFailEnrichmentSyson extends EnrichmentReqsSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
     if (call.name === "syson_element_delete") {
+      this.calls.push(structuredClone(call));
       return Promise.resolve({ text: "deleted", structuredContent: {} });
     }
 
     if (call.name === "syson_element_insert_sysml") {
+      this.calls.push(structuredClone(call));
       return Promise.reject(
         new EngineeringProjectCommandError(
           "invalid_input",
@@ -753,16 +925,145 @@ class DeleteSuccessInsertFailEnrichmentSyson implements McpToolClient {
         ),
       );
     }
+    return super.callTool(call);
+  }
+}
 
-    return Promise.reject(
-      new Error(
-        `Unexpected tool in DeleteSuccessInsertFailEnrichmentSyson: ${call.name}`,
-      ),
-    );
+class StaleThresholdEnrichmentSyson extends EnrichmentReqsSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (
+      call.name === "syson_constraint_extract" &&
+      call.arguments?.element_id === "wing-reqs-elem-001"
+    ) {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "divergent prior constraint",
+        structuredContent: {
+          constraints: [{
+            expression: {
+              kind: "binary",
+              op: "<=",
+              left: { kind: "ref", featurePath: ["maxMass"] },
+              right: { kind: "literal", value: 6, unit: "kg" },
+            },
+          }],
+        },
+      });
+    }
+    return super.callTool(call);
+  }
+}
+
+class ExistingHomonymInitialSyson implements McpToolClient {
+  readonly calls: McpToolCall[] = [];
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(new Error(`Unexpected text call ${call.name}`));
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+    if (call.name === "syson_element_children") {
+      return Promise.resolve({
+        text: "existing homonym",
+        structuredContent: {
+          parentId: call.arguments?.element_id,
+          children: [{
+            id: "untraced-wing-requirements",
+            kind: "siriusComponents://semantic?domain=sysml&entity=RequirementUsage",
+            label: "WingRequirements",
+          }],
+          count: 1,
+        },
+      });
+    }
+    return Promise.reject(new Error(`Unexpected provider mutation ${call.name}`));
+  }
+}
+
+class WrongPreflightEchoSyson implements McpToolClient {
+  readonly calls: McpToolCall[] = [];
+
+  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>> {
+    return Promise.reject(new Error(`Unexpected text call ${call.name}`));
+  }
+
+  callTool(call: McpToolCall): Promise<McpToolResult> {
+    this.calls.push(structuredClone(call));
+    return Promise.resolve({
+      text: "wrong echo",
+      structuredContent: { parentId: "wrong-parent", children: [], count: 0 },
+    });
+  }
+}
+
+class WrongPostAckEchoSyson extends InitialReqsSyson {
+  #targetChildrenCalls = 0;
+
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (
+      call.name === "syson_element_children" &&
+      call.arguments?.element_id === "wing-def-001"
+    ) {
+      this.calls.push(structuredClone(call));
+      this.#targetChildrenCalls++;
+      if (this.#targetChildrenCalls === 1) {
+        return Promise.resolve({
+          text: "empty",
+          structuredContent: {
+            parentId: "wing-def-001",
+            children: [],
+            count: 0,
+          },
+        });
+      }
+      return Promise.resolve({
+        text: "wrong post-ack echo",
+        structuredContent: {
+          parentId: "wrong-parent",
+          children: [],
+          count: 0,
+        },
+      });
+    }
+    return super.callTool(call);
+  }
+}
+
+class WrongAqlEchoSyson extends InitialReqsSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (call.name === "syson_query_aql") {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "wrong AQL echo",
+        structuredContent: {
+          objectId: "foreign-subject",
+          expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+          type: "objects",
+          results: [{
+            id: "wing-def-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+            label: "Wing",
+          }],
+          count: 1,
+        },
+      });
+    }
+    return super.callTool(call);
   }
 }
 
 // ── Helper: ctx ───────────────────────────────────────────────────────────────
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 function ctx(
   commandId: string,
@@ -793,6 +1094,7 @@ interface ReqsFixture {
   readonly reqsCaptures: FileCaptureStore<"requirements-capture">;
   readonly reqsAttempts: FileRequirementsAttemptStore;
   readonly queued: { readonly revision: number; readonly runId: string };
+  readonly parallel?: { readonly revision: number; readonly runId: string };
 }
 
 class RequirementsMcpApp {
@@ -820,6 +1122,7 @@ async function queuedRequirementsFixture(
   directory: string,
   proposalParams: readonly EngineeringDecisionProposalParameter[] =
     WING_REQS_PARAMS_INITIAL,
+  includeParallelSibling = false,
 ): Promise<ReqsFixture> {
   const projects = new FileEngineeringProjectRevisionStore(
     `${directory}/projects`,
@@ -1077,23 +1380,51 @@ async function queuedRequirementsFixture(
     ...ctx("append-reqs", afterArch.revision),
     baseSnapshot: archBasisRef,
     phases: [{ id: "reqs", name: "Requirements", description: "Author requirements." }],
-    workItems: [{
-      id: "wi:requirements",
-      phaseId: "reqs",
-      owner: "agent",
-      dependsOnWorkItemIds: ["wi:architecture"],
-      decisionIds: ["decision:reqs-params"],
-      operation: {
-        ...MODEL_WRITE_REQUIREMENTS_OPERATION,
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+    workItems: [
+      {
+        id: "wi:requirements",
+        phaseId: "reqs",
+        owner: "agent",
+        dependsOnWorkItemIds: ["wi:architecture"],
+        decisionIds: ["decision:reqs-params"],
+        operation: {
+          ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        },
       },
-    }],
-    requiredDecisions: [{
-      id: "decision:reqs-params",
-      phaseId: "reqs",
-      title: "Requirements declaration",
-      question: "Which requirements are proposed for Wing?",
-    }],
+      ...(includeParallelSibling
+        ? [{
+          id: "wi:requirements-parallel",
+          phaseId: "reqs",
+          owner: "agent" as const,
+          dependsOnWorkItemIds: ["wi:architecture"],
+          decisionIds: ["decision:reqs-parallel"],
+          operation: {
+            ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+            bindings: [{
+              name: "approvedBrief",
+              source: { kind: "approved-brief" as const },
+            }],
+          },
+        }]
+        : []),
+    ],
+    requiredDecisions: [
+      {
+        id: "decision:reqs-params",
+        phaseId: "reqs",
+        title: "Requirements declaration",
+        question: "Which requirements are proposed for Wing?",
+      },
+      ...(includeParallelSibling
+        ? [{
+          id: "decision:reqs-parallel",
+          phaseId: "reqs",
+          title: "Parallel requirements declaration",
+          question: "Which requirements are proposed for Wing?",
+        }]
+        : []),
+    ],
   });
   // WHY THE REGISTERED HANDLER AND NOT commands.proposeDecision DIRECTLY — the
   // defect this fixture exists to prevent was invisible precisely because tests
@@ -1113,6 +1444,17 @@ async function queuedRequirementsFixture(
     clientInfo: { name: "paired-chat", version: "1" },
   });
   project = (await projects.get(PROJECT_ID))!;
+  if (includeParallelSibling) {
+    await mcp.handler("project_decision_propose")({
+      ...ctx("propose-reqs-parallel", project.revision),
+      decisionId: "decision:reqs-parallel",
+      proposal: { summary: "Parallel Wing requirements", parameters: proposalParams },
+    }, {
+      toolName: "project_decision_propose",
+      clientInfo: { name: "paired-chat", version: "1" },
+    });
+    project = (await projects.get(PROJECT_ID))!;
+  }
   const reqsApproval = project.approvals.find((a) =>
     a.decisionId === "decision:reqs-params"
   )!;
@@ -1122,13 +1464,35 @@ async function queuedRequirementsFixture(
     rationale: "Approved Wing requirements.",
     inputFingerprint: reqsApproval.inputFingerprint!,
   });
-  const queued = await commands.queueRun(AGENT, {
+  if (includeParallelSibling) {
+    const parallelApproval = project.approvals.find((approval) =>
+      approval.decisionId === "decision:reqs-parallel"
+    )!;
+    project = await commands.approveDecision(HUMAN, {
+      ...ctx("approve-reqs-parallel", project.revision),
+      decisionId: "decision:reqs-parallel",
+      rationale: "Approved parallel Wing requirements.",
+      inputFingerprint: parallelApproval.inputFingerprint!,
+    });
+  }
+  let queued = await commands.queueRun(AGENT, {
     ...ctx("queue-reqs", project.revision),
     runId: "run:requirements",
     workItemId: "wi:requirements",
     summary: "Author Wing requirements.",
     basis: archBasis,
   });
+  let parallel: ReqsFixture["parallel"];
+  if (includeParallelSibling) {
+    queued = await commands.queueRun(AGENT, {
+      ...ctx("queue-reqs-parallel", queued.revision),
+      runId: "run:requirements-parallel",
+      workItemId: "wi:requirements-parallel",
+      summary: "Author parallel Wing requirements.",
+      basis: archBasis,
+    });
+    parallel = { revision: queued.revision, runId: "run:requirements-parallel" };
+  }
 
   return {
     projects,
@@ -1139,6 +1503,7 @@ async function queuedRequirementsFixture(
     reqsCaptures,
     reqsAttempts,
     queued: { revision: queued.revision, runId: "run:requirements" },
+    parallel,
   };
 }
 
@@ -1394,6 +1759,77 @@ function makeReqsArtifact(
   };
 }
 
+Deno.test(
+  "requirements supersession archives the prior requirement, evaluation, and violation cascade",
+  () => {
+    const prior = makeReqsArtifact(
+      `requirements-Wing-${FAKE_DIGEST_A}`,
+      "Wing",
+      FAKE_DIGEST_A,
+    );
+    const freshness = {
+      status: "fresh" as const,
+      changedAt: "2026-08-08T00:00:00.000Z",
+      invalidatedByChangeIds: [],
+    };
+    const base: ThreadSnapshot = {
+      ...minimalSnapshot("snapshot:cascade", [prior]),
+      requirements: [{
+        id: "requirement:old",
+        name: "Old mass limit",
+        statement: "maxMass <= 5 kg",
+        version: FAKE_DIGEST_A,
+        criterion: {
+          metric: "maxMass",
+          operator: "<=",
+          limit: { value: 5, unit: "kg" },
+        },
+        trace: {
+          sourceArtifactId: prior.id,
+          elementId: "wing-reqs-elem-001",
+          targetArtifactIds: [MINIMAL_SNAPSHOT_MODEL_ARTIFACT.id],
+        },
+        freshness,
+      }],
+      evaluations: [{
+        id: "evaluation:old",
+        name: "Old evaluation",
+        requirementId: "requirement:old",
+        observationIds: [],
+        status: "fail",
+        evaluatedAt: "2026-08-08T00:00:00.000Z",
+        evaluator: {
+          serverId: "casys",
+          tool: "evaluate",
+          runId: "run:evaluate",
+        },
+        evidenceArtifactIds: [],
+        message: "Failed.",
+        freshness,
+      }],
+      violations: [{
+        id: "violation:old",
+        name: "Old violation",
+        requirementId: "requirement:old",
+        evaluationId: "evaluation:old",
+        severity: "error",
+        status: "open",
+        detectedAt: "2026-08-08T00:00:00.000Z",
+        observationIds: [],
+        evidenceArtifactIds: [],
+        summary: "Old failure.",
+        freshness,
+      }],
+    };
+
+    assertEquals(computePriorRequirementsArchiveCascade(base, prior), [
+      { kind: "evaluation", id: "evaluation:old" },
+      { kind: "requirement", id: "requirement:old" },
+      { kind: "violation", id: "violation:old" },
+    ]);
+  },
+);
+
 const FAKE_DIGEST_A = "a".repeat(64);
 const FAKE_DIGEST_B = "b".repeat(64);
 const FAKE_DIGEST_C = "c".repeat(64);
@@ -1493,6 +1929,33 @@ Deno.test(
     const snapshot = minimalSnapshot("snap:1", [artifactA, artifactB, artifactC]);
     const result = selectRequirementsTip(snapshot, "Wing");
     assertEquals(result.kind, "ambiguous");
+  },
+);
+
+Deno.test(
+  "requirements target identity is stable for a reused PartDefinition",
+  () => {
+    const target = resolveRequirementsPartDefinitionTarget(
+      [
+        {
+          id: "system-def",
+          label: "System",
+          usages: [
+            { label: "portWing", targetLabel: "Wing" },
+            { label: "starboardWing", targetLabel: "Wing" },
+          ],
+        },
+        { id: "wing-def", label: "Wing" },
+      ],
+      "Wing",
+    );
+    // Two usages type wing-def; occurrence count cannot change this explicit
+    // type-level identity.
+    assertEquals(target, {
+      kind: "part-definition",
+      label: "Wing",
+      elementId: "wing-def",
+    });
   },
 );
 
@@ -1678,6 +2141,68 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "model.write-requirements fails closed on an ambiguous tip before WAL or SysON",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-tip-ambiguous-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const project = await fixture.projects.get(PROJECT_ID);
+      const run = project?.agentRuns.find((candidate) =>
+        candidate.id === "run:requirements"
+      );
+      assertExists(run?.basis);
+      if (run.basis.kind !== "thread-snapshot") {
+        throw new Error("Expected a thread-snapshot basis.");
+      }
+      const basis = await fixture.snapshots.get(run.basis.snapshotId);
+      assertExists(basis);
+      const ambiguousBasis: ThreadSnapshot = {
+        ...structuredClone(basis),
+        artifacts: [
+          ...basis.artifacts,
+          makeReqsArtifact("reqs-Wing-fork-a", "Wing", FAKE_DIGEST_A),
+          makeReqsArtifact("reqs-Wing-fork-b", "Wing", FAKE_DIGEST_B),
+        ],
+      };
+      const ambiguousSnapshots = {
+        get(id: string) {
+          return id === ambiguousBasis.id
+            ? Promise.resolve(structuredClone(ambiguousBasis))
+            : fixture.snapshots.get(id);
+        },
+        latest(subjectId: string) {
+          return fixture.snapshots.latest(subjectId);
+        },
+        save(snapshot: ThreadSnapshot) {
+          return fixture.snapshots.save(snapshot);
+        },
+      } as unknown as FileThreadSnapshotStore;
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/ambiguous-tip-attempts`,
+      );
+      const syson = new InitialReqsSyson();
+
+      await assertRejects(
+        () =>
+          makeExecutor(
+            { ...fixture, snapshots: ambiguousSnapshots },
+            { syson, directory, attempts, leaseSubdir: "ambiguous-tip-leases" },
+          ).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "Ambiguous requirements tip",
+      );
+      assertEquals(syson.calls, []);
+      assertEquals(
+        await attempts.readRun(PROJECT_ID, "run:requirements"),
+        undefined,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── Signed-input envelope derivation ─────────────────────────────────────────
 
 Deno.test(
@@ -1707,6 +2232,147 @@ Deno.test(
 );
 
 // ── Service-owned decision fingerprint ───────────────────────────────────────
+
+Deno.test(
+  "model.write-requirements rejects persisted MRTR summary or parameter mutation before lifecycle or provider effects",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-mrtr-seal-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const before = await fixture.projects.get(PROJECT_ID);
+      assertExists(before);
+      const mutations: ReadonlyArray<[
+        string,
+        (decision: Record<string, unknown>) => void,
+      ]> = [
+        ["summary", (decision) => {
+          const proposal = decision.proposal as Record<string, unknown>;
+          proposal.summary = "Persisted requirements summary changed after approval";
+        }],
+        ["parameters", (decision) => {
+          const proposal = decision.proposal as Record<string, unknown>;
+          const parameters = proposal.parameters as Array<Record<string, unknown>>;
+          parameters[0]!.value = "Persisted parameter changed after approval";
+        }],
+      ];
+
+      for (const [name, mutate] of mutations) {
+        const projects = {
+          async get(projectId: string) {
+            const project = await fixture.projects.get(projectId);
+            if (!project) return undefined;
+            const altered = structuredClone(project);
+            const decision = altered.decisions.find((candidate) =>
+              candidate.id === "decision:reqs-params"
+            );
+            assertExists(decision);
+            mutate(decision as unknown as Record<string, unknown>);
+            return altered;
+          },
+          getRevision(projectId: string, revision: number) {
+            return fixture.projects.getRevision(projectId, revision);
+          },
+          createInitial(
+            snapshot: Parameters<typeof fixture.projects.createInitial>[0],
+          ) {
+            return fixture.projects.createInitial(snapshot);
+          },
+          commit(
+            snapshot: Parameters<typeof fixture.projects.commit>[0],
+            expectedRevision: number,
+          ) {
+            return fixture.projects.commit(snapshot, expectedRevision);
+          },
+        } as unknown as FileEngineeringProjectRevisionStore;
+        const syson = new InitialReqsSyson();
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, projects }, {
+              syson,
+              directory,
+              leaseSubdir: `mrtr-seal-${name}`,
+            }).execute(AGENT, executionCommand(fixture)),
+          EngineeringProjectCommandError,
+          "requirements_decision_fingerprint_mismatch",
+        );
+        assertEquals(syson.calls, [], name);
+        assertEquals(
+          await fixture.reqsAttempts.readRun(PROJECT_ID, fixture.queued.runId),
+          undefined,
+          name,
+        );
+        const unchanged = await fixture.projects.get(PROJECT_ID);
+        assertEquals(unchanged?.revision, before.revision, name);
+        assertEquals(
+          unchanged?.agentRuns.find((run) => run.id === fixture.queued.runId)
+            ?.status,
+          "queued",
+          name,
+        );
+      }
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements rejects a same-id revision snapshot from another subject before WAL or provider access",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-cross-subject-basis-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const project = await fixture.projects.get(PROJECT_ID);
+      const run = project?.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertExists(run?.basis);
+      if (run.basis.kind !== "thread-snapshot") {
+        throw new Error("Unexpected basis.");
+      }
+      const basis = run.basis;
+      const snapshots = {
+        async get(id: string) {
+          const snapshot = await fixture.snapshots.get(id);
+          if (!snapshot || id !== basis.snapshotId) return snapshot;
+          const transplanted = structuredClone(snapshot);
+          transplanted.subject.id = "subject:foreign-requirements";
+          return transplanted;
+        },
+        latest(subjectId: string) {
+          return fixture.snapshots.latest(subjectId);
+        },
+        save(snapshot: ThreadSnapshot) {
+          return fixture.snapshots.save(snapshot);
+        },
+      } as unknown as FileThreadSnapshotStore;
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/cross-subject-attempts`,
+      );
+      const syson = new InitialReqsSyson();
+      await assertRejects(
+        () =>
+          makeExecutor({ ...fixture, snapshots }, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "cross-subject-leases",
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "exact identity",
+      );
+      assertEquals(syson.calls, []);
+      assertEquals(
+        await attempts.readRun(PROJECT_ID, fixture.queued.runId),
+        undefined,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
 
 Deno.test(
   "decision service ignores an untrusted fingerprint-shaped extra and keeps its canonical fingerprint",
@@ -1786,7 +2452,11 @@ Deno.test(
         wrongProposal.requirements,
       );
       const wrongFp = await fingerprintRequirementsEnvelope({
-        target: { usageName: "wing", elementId: "wing-def-001" },
+        target: {
+          kind: "part-definition",
+          label: "Wing",
+          elementId: "wing-def-001",
+        },
         architectureBasis: {
           snapshotId: helperArchSnap.id,
           revision: helperArchSnap.revision,
@@ -1947,15 +2617,119 @@ Deno.test(
       const captureText = await fixture.reqsCaptures.read(reqsArtifact.fingerprint);
       assertExists(captureText, "requirements capture must be readable");
       const capture = JSON.parse(captureText) as Record<string, unknown>;
-      assertEquals(capture.schemaVersion, "requirements-capture/1.0");
+      assertEquals(capture.schemaVersion, "requirements-capture/2.0");
       assertEquals(capture.containerComponent, "Wing");
       assertEquals(capture.partDefName, "WingRequirements");
+      assertEquals(capture.target, {
+        kind: "part-definition",
+        label: "Wing",
+        elementId: "wing-def-001",
+      });
+
+      // The canonical Thread carries one real TracedRequirement, whose source
+      // is the requirements artifact and whose target is the architecture
+      // artifact containing the exact PartDefinition identity.
+      assertEquals(snap.requirements.length, 1);
+      const traced = snap.requirements[0]!;
+      assertEquals(traced.criterion.metric, "maxMass");
+      assertEquals(traced.trace.sourceArtifactId, reqsArtifact.id);
+      assertEquals(traced.trace.elementId, "wing-reqs-elem-001");
+      const architectureArtifact = findArchitectureArtifact(snap);
+      assertExists(architectureArtifact);
+      assertEquals(traced.trace.targetArtifactIds, [architectureArtifact.id]);
+      assertEquals(
+        snap.provenance.some((link) =>
+          link.relation === "traces_to" &&
+          link.from.kind === "requirement" && link.from.id === traced.id &&
+          link.to.kind === "artifact" && link.to.id === architectureArtifact.id
+        ),
+        true,
+      );
 
       // The SysON mock must have been called with insert.
       const insertCalls = syson.calls.filter(
         (c) => c.name === "syson_element_insert_sysml",
       );
       assertEquals(insertCalls.length, 1);
+      assertEquals(insertCalls[0]!.arguments?.parent_id, "wing-def-001");
+      const sysmlText = String(insertCalls[0]!.arguments?.sysml_text);
+      assertEquals(sysmlText.startsWith("requirement WingRequirements {"), true);
+      assertEquals(sysmlText.includes("subject target : Wing;"), true);
+      assertEquals(sysmlText.includes("require constraint maxMass_limit"), true);
+
+      // Provider readback proves RequirementUsage + subject typing + required
+      // constraint before the capture or ThreadSnapshot is published.
+      assertEquals(
+        syson.calls.some((call) =>
+          call.name === "syson_element_get" &&
+          call.arguments?.element_id === "wing-reqs-elem-001"
+        ),
+        true,
+      );
+      assertEquals(
+        syson.calls.some((call) =>
+          call.name === "syson_element_children" &&
+          call.arguments?.element_id === "wing-reqs-elem-001"
+        ),
+        true,
+      );
+      assertEquals(
+        syson.calls.some((call) =>
+          call.name === "syson_query_aql" &&
+          call.arguments?.object_id === "wing-reqs-subject-001" &&
+          call.arguments?.expression === ARCHITECTURE_FEATURE_TYPING_AQL
+        ),
+        true,
+      );
+      const completedAttempt = await fixture.reqsAttempts.readRun(
+        PROJECT_ID,
+        fixture.queued.runId,
+      );
+      assertEquals(completedAttempt?.schemaVersion, "requirements-write-attempt/1.1");
+      assertEquals(completedAttempt?.status, "completed");
+      assertEquals(
+        completedAttempt?.result?.requirementsElementId,
+        "wing-reqs-elem-001",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements targets a root PartDefinition with no inbound usage",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-root-target-" });
+    try {
+      const fixture = await queuedRequirementsFixture(
+        directory,
+        ROOT_REQS_PARAMS_INITIAL,
+      );
+      const syson = new InitialReqsSyson(
+        "sys-def-001",
+        "DroneSystem",
+        "DroneSystemRequirements",
+      );
+      const result = await makeExecutor(fixture, { syson, directory }).execute(
+        AGENT,
+        executionCommand(fixture),
+      );
+      const run = result.agentRuns.find((candidate) =>
+        candidate.id === "run:requirements"
+      );
+      assertEquals(run?.status, "completed");
+      const insert = syson.calls.find((call) =>
+        call.name === "syson_element_insert_sysml"
+      );
+      assertExists(insert);
+      assertEquals(insert.arguments?.parent_id, "sys-def-001");
+      assertEquals(
+        String(insert.arguments?.sysml_text).includes(
+          "subject target : DroneSystem;",
+        ),
+        true,
+      );
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -2043,6 +2817,13 @@ Deno.test(
           .filter((a) => a.uri?.startsWith("casys://requirements-capture/Wing/"))
           .map((a) => a.id),
       );
+      const removedRequirementIds = new Set(
+        firstSnap.requirements
+          .filter((requirement) =>
+            removedArtifactIds.has(requirement.trace.sourceArtifactId)
+          )
+          .map((requirement) => requirement.id),
+      );
       const strippedSnap: ThreadSnapshot = {
         ...firstSnap,
         id: "snap:stripped",
@@ -2054,17 +2835,25 @@ Deno.test(
         artifacts: firstSnap.artifacts.filter(
           (a) => !removedArtifactIds.has(a.id),
         ),
+        requirements: firstSnap.requirements.filter(
+          (requirement) => !removedRequirementIds.has(requirement.id),
+        ),
         changeSet: {
           ...firstSnap.changeSet,
           changes: firstSnap.changeSet.changes.filter(
             (c) =>
-              !(c.target.kind === "artifact" && removedArtifactIds.has(c.target.id)),
+              !(c.target.kind === "artifact" && removedArtifactIds.has(c.target.id)) &&
+              !(c.target.kind === "requirement" &&
+                removedRequirementIds.has(c.target.id)),
           ),
         },
         provenance: firstSnap.provenance.filter(
           (p) =>
             !(p.from.kind === "artifact" && removedArtifactIds.has(p.from.id)) &&
-            !(p.to.kind === "artifact" && removedArtifactIds.has(p.to.id)),
+            !(p.to.kind === "artifact" && removedArtifactIds.has(p.to.id)) &&
+            !(p.from.kind === "requirement" &&
+              removedRequirementIds.has(p.from.id)) &&
+            !(p.to.kind === "requirement" && removedRequirementIds.has(p.to.id)),
         ),
       };
       await fixture.snapshots.save(strippedSnap);
@@ -2299,6 +3088,38 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "model.write-requirements quarantines a non-RequirementUsage provider readback",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-native-shape-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const syson = new DetachedPartDefReadbackSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "not the exact RequirementUsage",
+      );
+      assertEquals(
+        await fixture.reqsAttempts.isQuarantined(PROJECT_ID, "run:requirements"),
+        true,
+      );
+      const project = await fixture.projects.get(PROJECT_ID);
+      const failedRun = project?.agentRuns.find((run) => run.id === "run:requirements");
+      assertEquals(
+        failedRun?.failure?.code,
+        "model-write-requirements-post-acknowledgement-quarantined",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── Enrichment mode ───────────────────────────────────────────────────────────
 
 Deno.test(
@@ -2345,6 +3166,63 @@ Deno.test(
         EngineeringProjectCommandError,
         "conflict",
       );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements refuses legacy 1.0 captures before enrichment",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-legacy-capture-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const first = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const queued = await queueEnrichmentRun(fixture, first);
+      const legacyCaptures = {
+        async read(fingerprint: ThreadArtifact["fingerprint"]) {
+          const text = await fixture.reqsCaptures.read(fingerprint);
+          if (!text) return undefined;
+          const record = JSON.parse(text) as Record<string, unknown>;
+          record.schemaVersion = "requirements-capture/1.0";
+          record.target = { usageName: "wing", elementId: "wing-def-001" };
+          return JSON.stringify(record);
+        },
+        save: fixture.reqsCaptures.save.bind(fixture.reqsCaptures),
+      } as unknown as FileCaptureStore<"requirements-capture">;
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/legacy-capture-attempts`,
+      );
+      const syson = new EnrichmentReqsSyson();
+      const legacyFixture: ReqsFixture = {
+        ...fixture,
+        reqsCaptures: legacyCaptures,
+        queued,
+      };
+
+      await assertRejects(
+        () =>
+          makeExecutor(legacyFixture, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "legacy-capture-leases",
+          }).execute(AGENT, {
+            commandId: "agent-legacy-capture",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:25:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "Legacy requirements-capture/1.0 cannot be enriched safely",
+      );
+      assertEquals(syson.calls, []);
+      assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -2690,7 +3568,7 @@ Deno.test(
 );
 
 Deno.test(
-  "model.write-requirements executor fails when enrichment delete succeeds but insert fails (WAL stays dispatched)",
+  "model.write-requirements quarantines when enrichment delete succeeds but insert fails",
   async () => {
     const directory = await Deno.makeTempDir({
       prefix: "casys-reqs-insert-fail-",
@@ -2716,7 +3594,8 @@ Deno.test(
         `${directory}/insert-fail-attempts`,
       );
 
-      // Delete succeeds; insert fails.  providerAcknowledged stays false.
+      // Delete succeeds and is acknowledged; insert then fails. The dispatched
+      // WAL remains outcome-unknown and the run is terminally quarantined.
       await assertRejects(
         () =>
           makeExecutor(insertFailFixture, {
@@ -2794,6 +3673,1017 @@ Deno.test(
         failedRun?.failure?.code,
         "model-write-requirements-provider-outcome-unknown",
         "run must be failed with the unknown-outcome failure code",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements rejects decimal thresholds before WAL or requirements provider calls",
+  async () => {
+    for (const decimal of [0.5, 1.5]) {
+      const directory = await Deno.makeTempDir({ prefix: "casys-reqs-decimal-" });
+      try {
+        const parameters = WING_REQS_PARAMS_INITIAL.map((parameter) =>
+          parameter.key === "requirement.max-mass.threshold"
+            ? { ...parameter, value: decimal }
+            : parameter
+        );
+        const fixture = await queuedRequirementsFixture(directory, parameters);
+        const syson = new InitialReqsSyson();
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, { syson, directory }).execute(
+              AGENT,
+              executionCommand(fixture),
+            ),
+          EngineeringProjectCommandError,
+          "safe integer",
+        );
+        assertEquals(syson.calls, []);
+        assertEquals(
+          await fixture.reqsAttempts.readRun(PROJECT_ID, fixture.queued.runId),
+          undefined,
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
+Deno.test(
+  "initial requirements write refuses an untraced live homonym before WAL or insert",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-homonym-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const syson = new ExistingHomonymInitialSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "foreign_requirements_element",
+      );
+      assertEquals(
+        syson.calls.some((call) => call.name === "syson_element_insert_sysml"),
+        false,
+      );
+      assertEquals(
+        await fixture.reqsAttempts.readRun(PROJECT_ID, fixture.queued.runId),
+        undefined,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "children response identity is checked before WAL and after ACK",
+  async () => {
+    const preflightDirectory = await Deno.makeTempDir({
+      prefix: "casys-reqs-wrong-preflight-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(preflightDirectory);
+      const syson = new WrongPreflightEchoSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory: preflightDirectory }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "exactly echo parent",
+      );
+      assertEquals(
+        syson.calls.some((call) => call.name === "syson_element_insert_sysml"),
+        false,
+      );
+      assertEquals(
+        await fixture.reqsAttempts.readRun(PROJECT_ID, fixture.queued.runId),
+        undefined,
+      );
+    } finally {
+      await Deno.remove(preflightDirectory, { recursive: true });
+    }
+
+    for (
+      const [name, syson] of [
+        ["children", new WrongPostAckEchoSyson()],
+        ["AQL", new WrongAqlEchoSyson()],
+      ] as const
+    ) {
+      const directory = await Deno.makeTempDir({
+        prefix: `casys-reqs-wrong-${name.toLowerCase()}-`,
+      });
+      try {
+        const fixture = await queuedRequirementsFixture(directory);
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, { syson, directory }).execute(
+              AGENT,
+              executionCommand(fixture),
+            ),
+          EngineeringProjectCommandError,
+        );
+        assertEquals(
+          await fixture.reqsAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+          true,
+        );
+        const project = await fixture.projects.get(PROJECT_ID);
+        assertEquals(
+          project?.agentRuns.find((run) => run.id === fixture.queued.runId)?.failure
+            ?.code,
+          "model-write-requirements-post-acknowledgement-quarantined",
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
+Deno.test(
+  "enrichment refuses a live predecessor with a divergent threshold before delete or WAL",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-live-stale-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const first = await executeInitialRequirementsRun(fixture, directory);
+      const queued = await queueEnrichmentRun(fixture, first);
+      const attempts = new FileRequirementsAttemptStore(`${directory}/stale-attempts`);
+      const syson = new StaleThresholdEnrichmentSyson();
+      await assertRejects(
+        () =>
+          makeExecutor({ ...fixture, queued }, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "stale-leases",
+          }).execute(AGENT, {
+            commandId: "agent-stale-live",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:25:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+        "prior_requirements_live_mismatch",
+      );
+      assertEquals(
+        syson.calls.some((call) => call.name === "syson_element_delete"),
+        false,
+      );
+      assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "same-basis target siblings serialize and only one run may write a requirements WAL",
+  async () => {
+    class BarrierInitialReqsSyson extends InitialReqsSyson {
+      readonly insertionEntered = deferred<void>();
+      readonly releaseInsertion = deferred<void>();
+
+      override async callTool(call: McpToolCall): Promise<McpToolResult> {
+        if (call.name === "syson_element_insert_sysml") {
+          this.insertionEntered.resolve();
+          await this.releaseInsertion.promise;
+        }
+        return await super.callTool(call);
+      }
+    }
+
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-concurrent-" });
+    try {
+      const fixture = await queuedRequirementsFixture(
+        directory,
+        WING_REQS_PARAMS_INITIAL,
+        true,
+      );
+      assertExists(fixture.parallel);
+      const winnerSyson = new BarrierInitialReqsSyson();
+      const loserSyson = new InitialReqsSyson();
+      const winner = makeExecutor(fixture, {
+        syson: winnerSyson,
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      await winnerSyson.insertionEntered.promise;
+
+      const loser = makeExecutor(fixture, {
+        syson: loserSyson,
+        directory,
+      }).execute(AGENT, {
+        commandId: "agent-author-requirements-parallel",
+        projectId: PROJECT_ID,
+        expectedRevision: fixture.parallel.revision,
+        issuedAt: "2026-08-08T12:20:01.000Z",
+        runId: fixture.parallel.runId,
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 20));
+
+      assertEquals(
+        (await fixture.reqsAttempts.readRun(PROJECT_ID, fixture.queued.runId))
+          ?.status,
+        "dispatched",
+      );
+      assertEquals(loserSyson.calls, []);
+      const during = await fixture.projects.get(PROJECT_ID);
+      assertEquals(
+        during?.agentRuns.find((run) => run.id === fixture.parallel!.runId)?.status,
+        "queued",
+      );
+
+      winnerSyson.releaseInsertion.resolve();
+      await winner;
+      await assertRejects(
+        () => loser,
+        EngineeringProjectCommandError,
+        "Thread write basis is unavailable",
+      );
+      assertEquals(loserSyson.calls, []);
+      assertEquals(
+        winnerSyson.calls.filter((call) => call.name === "syson_element_insert_sysml")
+          .length,
+        1,
+      );
+      assertEquals(
+        await fixture.reqsAttempts.readRun(PROJECT_ID, fixture.parallel.runId),
+        undefined,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "delete ACK plus insert failure terminally blocks a new same-basis sibling",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-delete-ack-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const first = await executeInitialRequirementsRun(fixture, directory);
+      const queued = await queueEnrichmentRun(fixture, first);
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/delete-ack-attempts`,
+      );
+      await assertRejects(
+        () =>
+          makeExecutor({ ...fixture, queued }, {
+            syson: new DeleteSuccessInsertFailEnrichmentSyson(),
+            directory,
+            attempts,
+            leaseSubdir: "delete-ack-leases",
+          }).execute(AGENT, {
+            commandId: "agent-delete-ack",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:25:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+      );
+      const failed = await fixture.projects.get(PROJECT_ID);
+      assertEquals(
+        failed?.agentRuns.find((run) => run.id === queued.runId)?.failure?.code,
+        "model-write-requirements-post-acknowledgement-quarantined",
+      );
+
+      const failedRun = failed?.agentRuns.find((run) => run.id === queued.runId);
+      assertExists(failedRun?.basis);
+      const siblingQueued = await fixture.commands.queueRun(AGENT, {
+        ...ctx("queue-delete-ack-sibling", failed!.revision),
+        runId: "run:requirements-enrichment-sibling",
+        workItemId: "wi:requirements-enrichment",
+        summary: "Attempt same-basis recovery.",
+        basis: failedRun.basis,
+      });
+      const siblingSyson = new EnrichmentReqsSyson();
+      await assertRejects(
+        () =>
+          makeExecutor({
+            ...fixture,
+            queued: {
+              revision: siblingQueued.revision,
+              runId: "run:requirements-enrichment-sibling",
+            },
+          }, {
+            syson: siblingSyson,
+            directory,
+            attempts,
+            leaseSubdir: "delete-ack-leases",
+          }).execute(AGENT, {
+            commandId: "agent-delete-ack-sibling",
+            projectId: PROJECT_ID,
+            expectedRevision: siblingQueued.revision,
+            issuedAt: "2026-08-08T12:26:00.000Z",
+            runId: "run:requirements-enrichment-sibling",
+          }),
+        EngineeringProjectCommandError,
+        "Thread write basis is unavailable",
+      );
+      assertEquals(siblingSyson.calls, []);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "completed WAL recovery refuses a different live RequirementUsage identity",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-wal-id-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const proposal = parseRequirementsProposalParameters(WING_REQS_PARAMS_INITIAL);
+      const requirements = requirementEntriesToOracleRequirements(
+        proposal.requirements,
+      );
+      const plan = await sha256Fingerprint({
+        partDefName: proposal.partDefName,
+        target: {
+          kind: "part-definition",
+          label: "Wing",
+          elementId: "wing-def-001",
+        },
+        requirements,
+      });
+      await fixture.reqsAttempts.begin({
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest: plan.digest,
+        dispatchedAt: "2026-08-08T12:19:00.000Z",
+      });
+      await fixture.reqsAttempts.complete({
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest: plan.digest,
+        requirementsElementId: "wing-reqs-elem-A",
+      });
+      const syson = new ExistingHomonymInitialSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "Refusing to adopt a homonym",
+      );
+      const project = await fixture.projects.get(PROJECT_ID);
+      assertEquals(
+        project?.agentRuns.find((run) => run.id === fixture.queued.runId)
+          ?.resultSnapshot,
+        undefined,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "architecture captures with non-canonical schema, semantics, ids, or predecessor are refused before WAL and SysON",
+  async () => {
+    const mutations: ReadonlyArray<[
+      string,
+      (record: Record<string, unknown>) => void,
+    ]> = [
+      ["legacy schema", (record) => {
+        record.schemaVersion = "architecture-capture/1.0";
+      }],
+      ["missing systemName", (record) => {
+        delete record.systemName;
+      }],
+      ["extra root field", (record) => {
+        record.untrusted = true;
+      }],
+      ["wrong PartDefinition kind", (record) => {
+        const parts = record.partDefinitions as Array<Record<string, unknown>>;
+        parts[0]!.kind = "PartUsage";
+      }],
+      ["cross-kind id collision", (record) => {
+        const parts = record.partDefinitions as Array<Record<string, unknown>>;
+        const usages = parts[0]!.usages as Array<Record<string, unknown>>;
+        usages[0]!.id = parts[1]!.id;
+      }],
+      ["predecessor/input mismatch", (record) => {
+        record.predecessor = {
+          artifactId: `architecture-${"a".repeat(64)}`,
+          fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+          producerRunId: "run:foreign-architecture",
+        };
+      }],
+    ];
+
+    for (const [name, mutate] of mutations) {
+      const directory = await Deno.makeTempDir({ prefix: "casys-reqs-arch-exact-" });
+      try {
+        const fixture = await queuedRequirementsFixture(directory);
+        const captures = {
+          async read(fingerprint: ThreadArtifact["fingerprint"]) {
+            const text = await fixture.archCaptures.read(fingerprint);
+            if (!text) return undefined;
+            const record = JSON.parse(text) as Record<string, unknown>;
+            mutate(record);
+            return JSON.stringify(record);
+          },
+        } as unknown as FileCaptureStore<"architecture-capture">;
+        const syson = new InitialReqsSyson();
+        const attempts = new FileRequirementsAttemptStore(
+          `${directory}/arch-exact-attempts`,
+        );
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, archCaptures: captures }, {
+              syson,
+              directory,
+              attempts,
+              leaseSubdir: "arch-exact-leases",
+            }).execute(AGENT, executionCommand(fixture)),
+          EngineeringProjectCommandError,
+          "architecture",
+        );
+        assertEquals(syson.calls, [], name);
+        assertEquals(
+          await attempts.readRun(PROJECT_ID, fixture.queued.runId),
+          undefined,
+          name,
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
+Deno.test(
+  "completed replay revalidates its exact capture before returning idempotent success",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-replay-proof-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const command = executionCommand(fixture);
+      const first = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, command);
+      const unavailableCaptures = {
+        read() {
+          return Promise.resolve(undefined);
+        },
+      } as unknown as FileCaptureStore<"requirements-capture">;
+      const syson = new InitialReqsSyson();
+      await assertRejects(
+        () =>
+          makeExecutor({ ...fixture, reqsCaptures: unavailableCaptures }, {
+            syson,
+            directory,
+          }).execute(AGENT, { ...command, expectedRevision: first.revision }),
+        EngineeringProjectCommandError,
+        "not durably readable",
+      );
+      assertEquals(syson.calls, []);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "completed replay rejects mutated requirement, target, and basis capture fields without SysON calls",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-replay-capture-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const command = executionCommand(fixture);
+      const completed = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, command);
+      const mutations: ReadonlyArray<[
+        string,
+        (record: Record<string, unknown>) => void,
+      ]> = [
+        ["threshold", (record) => {
+          const requirements = record.requirements as Array<Record<string, unknown>>;
+          const limit = requirements[0]!.limit as Record<string, unknown>;
+          limit.value = 99;
+        }],
+        ["target", (record) => {
+          const target = record.target as Record<string, unknown>;
+          target.elementId = "part-definition:foreign";
+        }],
+        ["architecture basis", (record) => {
+          const basis = record.architectureBasis as Record<string, unknown>;
+          basis.revision = (basis.revision as number) + 1;
+        }],
+      ];
+
+      for (const [name, mutate] of mutations) {
+        const captures = {
+          async read(fingerprint: ThreadArtifact["fingerprint"]) {
+            const text = await fixture.reqsCaptures.read(fingerprint);
+            if (!text) return undefined;
+            const record = JSON.parse(text) as Record<string, unknown>;
+            mutate(record);
+            return JSON.stringify(record);
+          },
+        } as unknown as FileCaptureStore<"requirements-capture">;
+        const syson = new InitialReqsSyson();
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, reqsCaptures: captures }, {
+              syson,
+              directory,
+              leaseSubdir: `replay-capture-${name}`,
+            }).execute(AGENT, {
+              ...command,
+              expectedRevision: completed.revision,
+            }),
+          EngineeringProjectCommandError,
+          "Completed requirements evidence integrity failure",
+        );
+        assertEquals(syson.calls, [], name);
+      }
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "completed replay rejects requirement drift and rewritten historical entities in its result snapshot",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-replay-result-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const command = executionCommand(fixture);
+      const completed = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, command);
+      const run = completed.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertExists(run?.resultSnapshot);
+      const mutations: ReadonlyArray<[
+        string,
+        (snapshot: ThreadSnapshot) => void,
+      ]> = [
+        ["projected threshold", (snapshot) => {
+          snapshot.requirements[0]!.criterion.limit.value = 99;
+        }],
+        ["historical architecture name", (snapshot) => {
+          const architecture = snapshot.artifacts.find((artifact) =>
+            artifact.id.startsWith("architecture-")
+          );
+          assertExists(architecture);
+          architecture.name = "Rewritten historical architecture";
+        }],
+      ];
+
+      for (const [name, mutate] of mutations) {
+        let snapshotWrites = 0;
+        const snapshots = {
+          async get(id: string) {
+            const snapshot = await fixture.snapshots.get(id);
+            if (!snapshot || id !== run.resultSnapshot!.snapshotId) return snapshot;
+            const altered = structuredClone(snapshot);
+            mutate(altered);
+            return altered;
+          },
+          latest(subjectId: string) {
+            return fixture.snapshots.latest(subjectId);
+          },
+          save(snapshot: ThreadSnapshot) {
+            snapshotWrites += 1;
+            return fixture.snapshots.save(snapshot);
+          },
+        } as unknown as FileThreadSnapshotStore;
+        const syson = new InitialReqsSyson();
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, snapshots }, {
+              syson,
+              directory,
+              leaseSubdir: `replay-result-${name}`,
+            }).execute(AGENT, {
+              ...command,
+              expectedRevision: completed.revision,
+            }),
+          EngineeringProjectCommandError,
+          "Completed requirements evidence integrity failure",
+        );
+        assertEquals(snapshotWrites, 0, name);
+        assertEquals(syson.calls, [], name);
+      }
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "prior requirements capture basis and seed anchors are exact before live readback",
+  async () => {
+    const mutations: ReadonlyArray<[
+      string,
+      (record: Record<string, unknown>) => void,
+    ]> = [
+      ["wrong architecture basis", (record) => {
+        (record.architectureBasis as Record<string, unknown>).fingerprint = "f".repeat(
+          64,
+        );
+      }],
+      ["wrong seed", (record) => {
+        (record.seed as Record<string, unknown>).producerRunId = "run:foreign-seed";
+      }],
+      ["extra root field", (record) => {
+        record.agentSuppliedSysml = "requirement Foreign {}";
+      }],
+    ];
+
+    for (const [name, mutate] of mutations) {
+      const directory = await Deno.makeTempDir({ prefix: "casys-reqs-prior-exact-" });
+      try {
+        const fixture = await queuedRequirementsFixture(directory);
+        const first = await executeInitialRequirementsRun(fixture, directory);
+        const queued = await queueEnrichmentRun(fixture, first);
+        const captures = {
+          async read(fingerprint: ThreadArtifact["fingerprint"]) {
+            const text = await fixture.reqsCaptures.read(fingerprint);
+            if (!text) return undefined;
+            const record = JSON.parse(text) as Record<string, unknown>;
+            mutate(record);
+            return JSON.stringify(record);
+          },
+        } as unknown as FileCaptureStore<"requirements-capture">;
+        const attempts = new FileRequirementsAttemptStore(
+          `${directory}/prior-exact-attempts`,
+        );
+        const syson = new EnrichmentReqsSyson();
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, queued, reqsCaptures: captures }, {
+              syson,
+              directory,
+              attempts,
+              leaseSubdir: "prior-exact-leases",
+            }).execute(AGENT, {
+              commandId: `agent-prior-exact-${name}`,
+              projectId: PROJECT_ID,
+              expectedRevision: queued.revision,
+              issuedAt: "2026-08-08T12:25:00.000Z",
+              runId: queued.runId,
+            }),
+          Error,
+        );
+        assertEquals(syson.calls, [], name);
+        assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
+Deno.test(
+  "historical architecture trusted run and seed/input lineage are exact before live readback",
+  async () => {
+    const mutations: ReadonlyArray<[
+      string,
+      (record: Record<string, unknown>) => void,
+    ]> = [
+      ["wrong historical trusted run", (record) => {
+        record.trustedRunId = "run:foreign-architecture";
+      }],
+      ["historical seed/input mismatch", (record) => {
+        const seed = record.seed as Record<string, unknown>;
+        seed.artifactId = `syson-model-seed-${"f".repeat(64)}`;
+        seed.fingerprint = { algorithm: "sha256", digest: "f".repeat(64) };
+      }],
+    ];
+
+    for (const [name, mutate] of mutations) {
+      const directory = await Deno.makeTempDir({
+        prefix: "casys-reqs-historical-arch-exact-",
+      });
+      try {
+        const fixture = await queuedRequirementsFixture(directory);
+        const first = await executeInitialRequirementsRun(fixture, directory);
+        const queued = await queueEnrichmentRun(fixture, first);
+        let reads = 0;
+        const captures = {
+          async read(fingerprint: ThreadArtifact["fingerprint"]) {
+            const text = await fixture.archCaptures.read(fingerprint);
+            if (!text) return undefined;
+            reads += 1;
+            // The first read validates the active architecture. Mutate only
+            // the second read made by #readPriorRequirements so this case
+            // specifically exercises historical evidence revalidation.
+            if (reads === 1) return text;
+            const record = JSON.parse(text) as Record<string, unknown>;
+            mutate(record);
+            return JSON.stringify(record);
+          },
+        } as unknown as FileCaptureStore<"architecture-capture">;
+        const attempts = new FileRequirementsAttemptStore(
+          `${directory}/historical-arch-exact-attempts`,
+        );
+        const syson = new EnrichmentReqsSyson();
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, queued, archCaptures: captures }, {
+              syson,
+              directory,
+              attempts,
+              leaseSubdir: "historical-arch-exact-leases",
+            }).execute(AGENT, {
+              commandId: `agent-historical-arch-exact-${name}`,
+              projectId: PROJECT_ID,
+              expectedRevision: queued.revision,
+              issuedAt: "2026-08-08T12:25:00.000Z",
+              runId: queued.runId,
+            }),
+          EngineeringProjectCommandError,
+          "historical architecture",
+        );
+        assertEquals(reads, 2, name);
+        assertEquals(syson.calls, [], name);
+        assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
+Deno.test(
+  "prior capture requires exact TracedRequirement fields and trace provenance",
+  async () => {
+    const mutations: ReadonlyArray<[
+      string,
+      (snapshot: ThreadSnapshot) => void,
+    ]> = [
+      ["name", (snapshot) => {
+        snapshot.requirements[0]!.name = "Renamed after publication";
+      }],
+      ["statement", (snapshot) => {
+        snapshot.requirements[0]!.statement = "Rewritten statement.";
+      }],
+      ["version", (snapshot) => {
+        snapshot.requirements[0]!.version = "f".repeat(64);
+      }],
+      ["freshness", (snapshot) => {
+        snapshot.requirements[0]!.freshness.changedAt = "2026-08-08T12:59:59.000Z";
+      }],
+      ["traces_to link", (snapshot) => {
+        const trace = snapshot.provenance.find((link) =>
+          link.relation === "traces_to" && link.from.kind === "requirement"
+        );
+        assertExists(trace);
+        trace.rationale = "Rewritten trace provenance.";
+      }],
+      ["consumption", (snapshot) => {
+        const artifact = snapshot.artifacts.find((candidate) =>
+          candidate.producer.runId === "run:requirements"
+        );
+        assertExists(artifact);
+        const consumption = snapshot.consumptions.find((candidate) =>
+          candidate.consumer.runId === artifact.producer.runId
+        );
+        assertExists(consumption);
+        consumption.verifiedAt = "2026-08-08T12:59:59.000Z";
+      }],
+      ["uses link", (snapshot) => {
+        const artifact = snapshot.artifacts.find((candidate) =>
+          candidate.producer.runId === "run:requirements"
+        );
+        assertExists(artifact);
+        const consumption = snapshot.consumptions.find((candidate) =>
+          candidate.consumer.runId === artifact.producer.runId
+        );
+        assertExists(consumption);
+        const uses = snapshot.provenance.find((link) =>
+          link.relation === "uses" && link.from.kind === "consumption" &&
+          link.from.id === consumption.id
+        );
+        assertExists(uses);
+        uses.rationale = "Rewritten consumption provenance.";
+      }],
+    ];
+
+    for (const [name, mutate] of mutations) {
+      const directory = await Deno.makeTempDir({
+        prefix: "casys-reqs-thread-projection-",
+      });
+      try {
+        const fixture = await queuedRequirementsFixture(directory);
+        const first = await executeInitialRequirementsRun(fixture, directory);
+        const queued = await queueEnrichmentRun(fixture, first);
+        const project = await fixture.projects.get(PROJECT_ID);
+        const run = project?.agentRuns.find((candidate) =>
+          candidate.id === queued.runId
+        );
+        assertExists(run?.basis);
+        if (run.basis.kind !== "thread-snapshot") {
+          throw new Error("Unexpected basis.");
+        }
+        const basis = await fixture.snapshots.get(run.basis.snapshotId);
+        assertExists(basis);
+        const divergent = structuredClone(basis);
+        mutate(divergent);
+        const snapshots = {
+          get(id: string) {
+            return id === divergent.id
+              ? Promise.resolve(structuredClone(divergent))
+              : fixture.snapshots.get(id);
+          },
+          latest(subjectId: string) {
+            return fixture.snapshots.latest(subjectId);
+          },
+          save(snapshot: ThreadSnapshot) {
+            return fixture.snapshots.save(snapshot);
+          },
+        } as unknown as FileThreadSnapshotStore;
+        const attempts = new FileRequirementsAttemptStore(
+          `${directory}/projection-attempts`,
+        );
+        const syson = new EnrichmentReqsSyson();
+        await assertRejects(
+          () =>
+            makeExecutor({ ...fixture, queued, snapshots }, {
+              syson,
+              directory,
+              attempts,
+              leaseSubdir: "projection-leases",
+            }).execute(AGENT, {
+              commandId: `agent-projection-divergent-${name}`,
+              projectId: PROJECT_ID,
+              expectedRevision: queued.revision,
+              issuedAt: "2026-08-08T12:25:00.000Z",
+              runId: queued.runId,
+            }),
+          EngineeringProjectCommandError,
+        );
+        assertEquals(syson.calls, [], name);
+        assertEquals(
+          await attempts.readRun(PROJECT_ID, queued.runId),
+          undefined,
+          name,
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
+Deno.test(
+  "a unique requirements tip may not merge two requirements predecessors",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-merge-tip-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const first = await executeInitialRequirementsRun(fixture, directory);
+      const queued = await queueEnrichmentRun(fixture, first);
+      const project = await fixture.projects.get(PROJECT_ID);
+      const run = project?.agentRuns.find((candidate) => candidate.id === queued.runId);
+      assertExists(run?.basis);
+      if (run.basis.kind !== "thread-snapshot") throw new Error("Unexpected basis.");
+      const basis = await fixture.snapshots.get(run.basis.snapshotId);
+      assertExists(basis);
+      const merged = structuredClone(basis);
+      const tip = merged.artifacts.find((artifact) =>
+        artifact.producer.runId === "run:requirements"
+      );
+      assertExists(tip);
+      const architectureId = tip.inputArtifactIds[0]!;
+      const left = makeReqsArtifact(
+        `requirements-Wing-${FAKE_DIGEST_B}`,
+        "Wing",
+        FAKE_DIGEST_B,
+      );
+      const right = makeReqsArtifact(
+        `requirements-Wing-${FAKE_DIGEST_C}`,
+        "Wing",
+        FAKE_DIGEST_C,
+      );
+      merged.artifacts.push(left, right);
+      tip.inputArtifactIds = [architectureId, left.id, right.id];
+      merged.provenance.push(
+        {
+          id: "derived-from-merge-left",
+          relation: "derived_from",
+          from: { kind: "artifact", id: tip.id },
+          to: { kind: "artifact", id: left.id },
+          rationale: "Malformed merge fixture.",
+        },
+        {
+          id: "derived-from-merge-right",
+          relation: "derived_from",
+          from: { kind: "artifact", id: tip.id },
+          to: { kind: "artifact", id: right.id },
+          rationale: "Malformed merge fixture.",
+        },
+      );
+      const snapshots = {
+        get(id: string) {
+          return id === merged.id
+            ? Promise.resolve(structuredClone(merged))
+            : fixture.snapshots.get(id);
+        },
+        latest(subjectId: string) {
+          return fixture.snapshots.latest(subjectId);
+        },
+        save(snapshot: ThreadSnapshot) {
+          return fixture.snapshots.save(snapshot);
+        },
+      } as unknown as FileThreadSnapshotStore;
+      const attempts = new FileRequirementsAttemptStore(`${directory}/merge-attempts`);
+      const syson = new EnrichmentReqsSyson();
+      await assertRejects(
+        () =>
+          makeExecutor({ ...fixture, queued, snapshots }, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "merge-leases",
+          }).execute(AGENT, {
+            commandId: "agent-merge-tip",
+            projectId: PROJECT_ID,
+            expectedRevision: queued.revision,
+            issuedAt: "2026-08-08T12:25:00.000Z",
+            runId: queued.runId,
+          }),
+        EngineeringProjectCommandError,
+      );
+      assertEquals(syson.calls, []);
+      assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "legacy completed requirements WAL 1.0 fails closed before provider recovery",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-reqs-wal-legacy-" });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const attemptsDirectory = `${directory}/legacy-wal-attempts`;
+      await Deno.mkdir(attemptsDirectory, { recursive: true });
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(JSON.stringify([PROJECT_ID, fixture.queued.runId])),
+      );
+      const key = [...new Uint8Array(digest)].map((byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join("");
+      await Deno.writeTextFile(
+        `${attemptsDirectory}/run-${key}.json`,
+        JSON.stringify({
+          schemaVersion: "requirements-write-attempt/1.0",
+          projectId: PROJECT_ID,
+          runId: fixture.queued.runId,
+          planDigest: "legacy-plan",
+          status: "completed",
+          dispatchedAt: "2026-08-08T12:19:00.000Z",
+          result: { inserted: "true" },
+        }) + "\n",
+      );
+      const attempts = new FileRequirementsAttemptStore(attemptsDirectory);
+      const syson = new InitialReqsSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "legacy-wal-leases",
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "outcome is unknown",
+      );
+      assertEquals(syson.calls, []);
+      const project = await fixture.projects.get(PROJECT_ID);
+      assertEquals(
+        project?.agentRuns.find((run) => run.id === fixture.queued.runId)?.failure
+          ?.code,
+        "model-write-requirements-provider-outcome-unknown",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });

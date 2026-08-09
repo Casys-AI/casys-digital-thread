@@ -223,15 +223,53 @@ const UNIT_TO_SYSML_TYPE: ReadonlyMap<string, string> = new Map([
  * type mapping (currently: mm, Pa, kg, W, V). All
  * constraints are validated fail-closed before the first character is written.
  *
- * The caller is always a server-fixed executor that hard-codes partDefName.
- * Agents never reach this boundary — invariant 6: the server owns the SysML
- * text, not the agent.
+ * The trusted executor derives the declaration name and renders reviewed
+ * requirement values. Agents never supply SysML text at this boundary.
  */
 export function renderOracleRequirementsSysml(
   partDefName: string,
   requirements: readonly OracleRequirement[],
 ): string {
   sysmlIdentifier(partDefName, "partDefName");
+  const members = renderOracleRequirementMembers(requirements, "constraint");
+  return [
+    `part def ${partDefName} {`,
+    "  private import SI::*;",
+    ...members,
+    "}",
+  ].join("\n");
+}
+
+/**
+ * Render a native SysML RequirementUsage owned by one target PartDefinition.
+ *
+ * SysON 0.5.1 materializes this exact form as a RequirementUsage child of the
+ * `parent_id` supplied to `syson_element_insert_sysml`.  The explicit subject
+ * is typed by the same PartDefinition identity and each oracle predicate is a
+ * required constraint, rather than a generic ConstraintUsage in a detached
+ * helper PartDefinition.
+ */
+export function renderTargetedOracleRequirementsSysml(
+  requirementName: string,
+  targetPartDefName: string,
+  requirements: readonly OracleRequirement[],
+): string {
+  sysmlIdentifier(requirementName, "requirementName");
+  sysmlIdentifier(targetPartDefName, "targetPartDefName");
+  const members = renderOracleRequirementMembers(requirements, "require constraint");
+  return [
+    `requirement ${requirementName} {`,
+    "  private import SI::*;",
+    `  subject target : ${targetPartDefName};`,
+    ...members,
+    "}",
+  ].join("\n");
+}
+
+function renderOracleRequirementMembers(
+  requirements: readonly OracleRequirement[],
+  constraintKeyword: "constraint" | "require constraint",
+): string[] {
   if (requirements.length === 0) {
     throw new Error("requirements must not be empty.");
   }
@@ -253,19 +291,18 @@ export function renderOracleRequirementsSysml(
       "requirements produce duplicate SysML attribute names after sorting.",
     );
   }
-  const lines: string[] = [`part def ${partDefName} {`, `  private import SI::*;`];
+  const lines: string[] = [];
   for (const { attrName, attrType } of sorted) {
     lines.push(`  attribute ${attrName} : ${attrType};`);
   }
   for (const { req, attrName, constraintName } of sorted) {
     lines.push(
-      `  constraint ${constraintName} { ${attrName} ${req.operator} ${
+      `  ${constraintKeyword} ${constraintName} { ${attrName} ${req.operator} ${
         String(req.limit.value)
       } [${req.limit.unit}] }`,
     );
   }
-  lines.push("}");
-  return lines.join("\n");
+  return lines;
 }
 
 /**

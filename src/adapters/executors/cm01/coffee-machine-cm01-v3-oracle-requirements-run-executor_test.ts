@@ -710,9 +710,11 @@ class ConstraintExtractSyson implements McpToolClient {
           constraints: canonical.map((req, index) => ({
             id: req.id,
             expression: {
+              kind: "binary",
               op: req.operator,
-              left: { featurePath: [req.metric] },
+              left: { kind: "ref", featurePath: [req.metric] },
               right: {
+                kind: "literal",
                 value: (this.#tamperedValue !== undefined && index === 0)
                   ? this.#tamperedValue
                   : req.limit.value,
@@ -1137,9 +1139,11 @@ class OracleRequirementsSyson implements McpToolClient {
           constraints: canonical.map((req, index) => ({
             id: req.id,
             expression: {
+              kind: "binary",
               op: req.operator,
-              left: { featurePath: [req.metric] },
+              left: { kind: "ref", featurePath: [req.metric] },
               right: {
+                kind: "literal",
                 // If tamperedValue is set, use it for the first requirement.
                 value: (this.#opts.tamperedValue !== undefined && index === 0)
                   ? this.#opts.tamperedValue

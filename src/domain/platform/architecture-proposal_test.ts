@@ -119,20 +119,48 @@ Deno.test("parseArchitectureProposalParameters: non-string parameter value is re
   assertEquals(error.code, "non_string_value");
 });
 
-Deno.test("parseArchitectureProposalParameters: duplicate component names are rejected", () => {
+Deno.test("parseArchitectureProposalParameters: one PartDefinition may type several occurrences", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.leftMotor.name", label: "Left motor type", value: "Motor" },
+    { key: "component.leftMotor.usage", label: "Left motor", value: "leftMotor" },
+    { key: "component.rightMotor.name", label: "Right motor type", value: "Motor" },
+    { key: "component.rightMotor.usage", label: "Right motor", value: "rightMotor" },
+  ]);
+
+  assertEquals(proposal.components.map((component) => component.name), [
+    "Motor",
+    "Motor",
+  ]);
+  assertEquals(
+    renderArchitectureSysml(proposal).match(/part def Motor/g)?.length,
+    1,
+  );
+  assertEquals(
+    renderArchitectureSysml(proposal).includes("part leftMotor : Motor;"),
+    true,
+  );
+  assertEquals(
+    renderArchitectureSysml(proposal).includes("part rightMotor : Motor;"),
+    true,
+  );
+});
+
+Deno.test("parseArchitectureProposalParameters: a usage name is unique within its parent", () => {
   const error = assertThrows(
     () =>
       parseArchitectureProposalParameters([
         { key: "architecture.package", label: "Package", value: "DroneV4" },
         { key: "system.name", label: "System", value: "DroneSystem" },
-        { key: "component.wing.name", label: "Wing name", value: "Wing" },
-        { key: "component.wing.usage", label: "Wing usage", value: "wing" },
-        { key: "component.wing2.name", label: "Wing2 name", value: "Wing" },
-        { key: "component.wing2.usage", label: "Wing2 usage", value: "wing2" },
+        { key: "component.left.name", label: "Left type", value: "LeftMotor" },
+        { key: "component.left.usage", label: "Motor", value: "motor" },
+        { key: "component.right.name", label: "Right type", value: "RightMotor" },
+        { key: "component.right.usage", label: "Motor", value: "motor" },
       ]),
     ArchitectureProposalParseError,
   ) as ArchitectureProposalParseError;
-  assertEquals(error.code, "duplicate_component");
+  assertEquals(error.code, "duplicate_usage");
 });
 
 Deno.test("parseArchitectureProposalParameters: missing parent reference is rejected", () => {
@@ -272,6 +300,28 @@ Deno.test("renderArchitectureSysml: usages appear inside the correct part def", 
   assertEquals(subUsageLine < subDefLine, true);
 });
 
+Deno.test("renderArchitectureSysml: usage names are scoped by their parent PartDefinition", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.left.name", label: "Left", value: "LeftWing" },
+    { key: "component.left.usage", label: "Left", value: "leftWing" },
+    { key: "component.right.name", label: "Right", value: "RightWing" },
+    { key: "component.right.usage", label: "Right", value: "rightWing" },
+    { key: "component.leftMotor.name", label: "Left motor", value: "LeftMotor" },
+    { key: "component.leftMotor.usage", label: "Motor", value: "motor" },
+    { key: "component.leftMotor.parent", label: "Parent", value: "LeftWing" },
+    { key: "component.rightMotor.name", label: "Right motor", value: "RightMotor" },
+    { key: "component.rightMotor.usage", label: "Motor", value: "motor" },
+    { key: "component.rightMotor.parent", label: "Parent", value: "RightWing" },
+  ]);
+
+  const sysml = renderArchitectureSysml(proposal);
+  assertEquals(sysml.match(/part motor :/g)?.length, 2);
+  assertEquals(sysml.includes("part motor : LeftMotor;"), true);
+  assertEquals(sysml.includes("part motor : RightMotor;"), true);
+});
+
 // ── Insertion plan invariants ────────────────────────────────────────────────
 
 Deno.test("planArchitectureInsertion: absent existing structure yields initial mode", () => {
@@ -354,7 +404,39 @@ Deno.test("planArchitectureInsertion: new component in existing package generate
   assertEquals(usageItem !== undefined, true);
 });
 
-Deno.test("planArchitectureInsertion: same-name-different-parent is a named conflict", () => {
+Deno.test("planArchitectureInsertion: a shared PartDefinition is inserted once for two usages", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.left.name", label: "Left motor", value: "Motor" },
+    { key: "component.left.usage", label: "Left motor", value: "leftMotor" },
+    { key: "component.right.name", label: "Right motor", value: "Motor" },
+    { key: "component.right.usage", label: "Right motor", value: "rightMotor" },
+  ]);
+  const existing: ExistingArchitectureStructure = {
+    packageId: "pkg-1",
+    packageLabel: "DroneV4",
+    partDefs: [{ id: "sys-1", label: "DroneSystem", usages: [] }],
+  };
+
+  const plan = planArchitectureInsertion(existing, proposal);
+
+  assertEquals(plan.conflicts, []);
+  assertEquals(
+    plan.toInsert.filter((item) =>
+      item.kind === "part-def" && item.componentName === "Motor"
+    ).length,
+    1,
+  );
+  assertEquals(
+    plan.toInsert.filter((item) => item.kind === "usage").map((item) =>
+      item.kind === "usage" ? item.usageName : ""
+    ),
+    ["leftMotor", "rightMotor"],
+  );
+});
+
+Deno.test("planArchitectureInsertion: a scoped homonym under another parent is independent", () => {
   const proposal = parseArchitectureProposalParameters([
     { key: "architecture.package", label: "Package", value: "DroneV4" },
     { key: "system.name", label: "System", value: "DroneSystem" },
@@ -364,7 +446,8 @@ Deno.test("planArchitectureInsertion: same-name-different-parent is a named conf
     { key: "component.motor.usage", label: "Motor usage", value: "motor" },
     { key: "component.motor.parent", label: "Motor parent", value: "Wing" },
   ]);
-  // Motor's usage "motor" exists under DroneSystem (not Wing) — conflict.
+  // Another `motor` occurrence already exists under DroneSystem. The proposal's
+  // occurrence is scoped to Wing and must be inserted independently.
   const existing: ExistingArchitectureStructure = {
     packageId: "pkg-1",
     packageLabel: "DroneV4",
@@ -383,9 +466,13 @@ Deno.test("planArchitectureInsertion: same-name-different-parent is a named conf
   };
   const plan = planArchitectureInsertion(existing, proposal);
   assertEquals(plan.mode, "enrichment");
-  assertEquals(plan.conflicts.length, 1);
-  assertEquals(plan.conflicts[0]?.code, "same-name-different-parent");
-  assertEquals(plan.conflicts[0]?.componentName, "Motor");
+  assertEquals(plan.conflicts.length, 0);
+  assertEquals(
+    plan.toInsert.some((item) =>
+      item.kind === "usage" && item.parentName === "Wing" && item.usageName === "motor"
+    ),
+    true,
+  );
 });
 
 Deno.test("planArchitectureInsertion: pure enrichment has no full-package item", () => {
@@ -527,7 +614,7 @@ Deno.test(
 );
 
 Deno.test(
-  "planArchitectureInsertion: absent PartDef still refuses a usage homonym under another parent",
+  "planArchitectureInsertion: an unrelated homonym does not block a new PartDef occurrence",
   () => {
     const proposal = parseArchitectureProposalParameters([
       { key: "architecture.package", label: "Package", value: "DroneV4" },
@@ -550,14 +637,25 @@ Deno.test(
 
     const plan = planArchitectureInsertion(existing, proposal);
 
-    assertEquals(plan.conflicts.length, 1);
-    assertEquals(plan.conflicts[0]?.code, "same-name-different-parent");
-    assertEquals(plan.toInsert.length, 0, "must not add PartDef or usage");
+    assertEquals(plan.conflicts.length, 0);
+    assertEquals(
+      plan.toInsert.some((item) =>
+        item.kind === "part-def" && item.componentName === "Wing"
+      ),
+      true,
+    );
+    assertEquals(
+      plan.toInsert.some((item) =>
+        item.kind === "usage" && item.parentName === "DroneSystem" &&
+        item.usageName === "wing"
+      ),
+      true,
+    );
   },
 );
 
 Deno.test(
-  "planArchitectureInsertion: conformant usage does not hide a homonym under another parent",
+  "planArchitectureInsertion: a conformant local usage is adopted despite a scoped homonym",
   () => {
     const proposal = parseArchitectureProposalParameters([
       { key: "architecture.package", label: "Package", value: "DroneV4" },
@@ -585,20 +683,16 @@ Deno.test(
 
     const plan = planArchitectureInsertion(existing, proposal);
 
-    assertEquals(plan.adopted.length, 0);
-    assertEquals(plan.conflicts.length, 1);
-    assertEquals(plan.conflicts[0]?.code, "same-name-different-parent");
+    assertEquals(plan.adopted.length, 1);
+    assertEquals(plan.conflicts.length, 0);
   },
 );
 
-// ── Finding 4: conflict named when parent is outside the proposal ─────────────
-
 Deno.test(
-  "planArchitectureInsertion: usage under a parent outside the proposal is a named conflict",
+  "planArchitectureInsertion: a usage outside the proposal does not claim the local name",
   () => {
-    // Proposal: Wing under DroneSystem. Wing's usage "wing" exists but under
-    // "OtherSystem" — a PartDef that is NOT in the proposal. Finding 4: this must
-    // be a named conflict, not a silent second insertion.
+    // Proposal: Wing under DroneSystem. A separate owner outside the proposal
+    // already has its own scoped `wing` occurrence.
     const proposal = parseArchitectureProposalParameters([
       { key: "architecture.package", label: "Package", value: "DroneV4" },
       { key: "system.name", label: "System", value: "DroneSystem" },
@@ -620,9 +714,16 @@ Deno.test(
       ],
     };
     const plan = planArchitectureInsertion(existing, proposal);
-    assertEquals(plan.conflicts.length, 1, "must report exactly one conflict");
-    assertEquals(plan.conflicts[0]?.code, "same-name-different-parent");
-    assertEquals(plan.conflicts[0]?.componentName, "Wing");
+    assertEquals(plan.conflicts.length, 0);
+    assertEquals(
+      plan.toInsert,
+      [{
+        kind: "usage",
+        componentName: "Wing",
+        usageName: "wing",
+        parentName: "DroneSystem",
+      }],
+    );
   },
 );
 

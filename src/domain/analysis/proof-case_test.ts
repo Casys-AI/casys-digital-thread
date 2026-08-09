@@ -4,6 +4,7 @@ import {
   fingerprintOracleRequirements,
   type OracleRequirement,
   renderOracleRequirementsSysml,
+  renderTargetedOracleRequirementsSysml,
   validateOracleRequirements,
 } from "./proof-case.ts";
 
@@ -356,6 +357,26 @@ Deno.test(
       ),
       true,
     );
+  },
+);
+
+Deno.test(
+  "renderTargetedOracleRequirementsSysml emits a native requirement subject and required constraints",
+  () => {
+    const text = renderTargetedOracleRequirementsSysml(
+      "DripTrayRequirements",
+      "DripTray",
+      MECH_REQS,
+    );
+    assertEquals(text.startsWith("requirement DripTrayRequirements {"), true);
+    assertEquals(text.includes("subject target : DripTray;"), true);
+    assertEquals(
+      text.includes(
+        "require constraint assembly_max_displacement_limit { assembly_max_displacement <= 1 [mm] }",
+      ),
+      true,
+    );
+    assertEquals(text.includes("part def DripTrayRequirements"), false);
   },
 );
 

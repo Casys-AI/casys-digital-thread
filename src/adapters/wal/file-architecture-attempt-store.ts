@@ -9,15 +9,25 @@
 
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 
-export type ArchitectureWriteAttempt = {
-  readonly schemaVersion: "architecture-write-attempt/1.0";
+type ArchitectureWriteAttemptBase = {
+  readonly schemaVersion: "architecture-write-attempt/2.0";
   readonly projectId: string;
   readonly runId: string;
   readonly planDigest: string;
-  readonly status: "dispatched" | "completed";
   readonly dispatchedAt: string;
-  readonly result?: { readonly inserted: "true" };
 };
+
+export type ArchitectureWriteAttempt =
+  | ArchitectureWriteAttemptBase & {
+    readonly status: "dispatched";
+  }
+  | ArchitectureWriteAttemptBase & {
+    readonly status: "completed";
+    readonly result: {
+      readonly inserted: "true";
+      readonly architecturePackageId: string;
+    };
+  };
 
 export class ArchitectureWriteOutcomeUnknownError extends Error {
   constructor() {
@@ -57,15 +67,18 @@ export class FileArchitectureAttemptStore {
    * Atomically reserve the sole provider dispatch allowed for this run.
    *
    * The returned completed action intentionally ignores the caller's current
-   * planDigest: it is a recovery signal, so the executor must read back and
-   * publish without inserting again.
+   * planDigest: it is a recovery signal, so the executor must read back the
+   * exact Package id pinned after acknowledgement and never insert again.
    */
   async begin(input: {
     readonly projectId: string;
     readonly runId: string;
     readonly planDigest: string;
     readonly dispatchedAt: string;
-  }): Promise<{ readonly action: "dispatch" } | { readonly action: "completed" }> {
+  }): Promise<
+    | { readonly action: "dispatch" }
+    | { readonly action: "completed"; readonly architecturePackageId: string }
+  > {
     const fresh = attempt(input);
     await Deno.mkdir(this.directory, { recursive: true });
 
@@ -92,15 +105,20 @@ export class FileArchitectureAttemptStore {
     return actionFor(existing);
   }
 
-  /** Mark the immutable run record completed after SysON acknowledged it. */
+  /** Mark the run completed only after exact readback pinned the Package id. */
   async complete(input: {
     readonly projectId: string;
     readonly runId: string;
     readonly planDigest: string;
+    readonly architecturePackageId: string;
   }): Promise<void> {
     nonEmpty(input.projectId, "projectId");
     nonEmpty(input.runId, "runId");
     nonEmpty(input.planDigest, "planDigest");
+    const architecturePackageId = nonEmpty(
+      input.architecturePackageId,
+      "architecturePackageId",
+    );
     const existing = await this.requiredRun(input.projectId, input.runId);
     if (existing.planDigest !== input.planDigest) {
       throw new ArchitectureWriteOutcomeUnknownError();
@@ -108,7 +126,7 @@ export class FileArchitectureAttemptStore {
     const completed: ArchitectureWriteAttempt = {
       ...existing,
       status: "completed",
-      result: { inserted: "true" },
+      result: { inserted: "true", architecturePackageId },
     };
     if (existing.status === "completed") {
       if (deterministicJson(existing) !== deterministicJson(completed)) {
@@ -141,13 +159,11 @@ export class FileArchitectureAttemptStore {
     );
     if (current) return current;
 
-    // Before run-scoped filenames were introduced, the plan digest was part
-    // of the filename. A retry after an upgrade cannot safely know that old
-    // digest from its current live preflight: inspecting only the new digest
-    // would let an already acknowledged legacy run open a second dispatch.
-    // Scan only filenames that decode to the legacy identity tuple, and make
-    // every matching record part of the decision. A current hash record above
-    // remains authoritative during a mixed-format deployment.
+    // Before run-scoped filenames and Package-id pinning were introduced, the
+    // plan digest was part of the filename and a completed marker carried no
+    // architecturePackageId. Such a record can block a second dispatch but can
+    // never authorize publication. A current v2 hash record above remains
+    // authoritative during a mixed-format deployment.
     return await this.readLegacyRun(projectId, runId);
   }
 
@@ -264,40 +280,15 @@ export class FileArchitectureAttemptStore {
       throw error;
     }
 
-    const matches: ArchitectureWriteAttempt[] = [];
     for (const entry of entries) {
       if (!entry.isFile) continue;
       const identity = legacyAttemptIdentity(entry.name);
       if (!identity || identity.projectId !== projectId || identity.runId !== runId) {
         continue;
       }
-      const record = await this.readPath(
-        `${root(this.directory)}/${entry.name}`,
-        projectId,
-        runId,
-        identity.planDigest,
-      );
-      if (!record) {
-        throw new ArchitectureWriteOutcomeUnknownError();
-      }
-      matches.push(record);
-    }
-    if (matches.length === 0) return undefined;
-
-    // A legacy journal could contain more than one digest because the old
-    // implementation keyed attempts by plan. They are safe to resume only
-    // when they are duplicate encodings of the exact same completed record.
-    // Any dispatched marker or divergent completed marker proves that the
-    // remotely-mutating history is ambiguous and must never be redispatched.
-    const canonical = deterministicJson(matches[0]!);
-    if (
-      matches.some((record) =>
-        record.status !== "completed" || deterministicJson(record) !== canonical
-      )
-    ) {
       throw new ArchitectureWriteOutcomeUnknownError();
     }
-    return matches[0]!;
+    return undefined;
   }
 
   private async readQuarantinePath(
@@ -342,7 +333,7 @@ function attempt(input: {
   readonly dispatchedAt: string;
 }): ArchitectureWriteAttempt {
   return {
-    schemaVersion: "architecture-write-attempt/1.0",
+    schemaVersion: "architecture-write-attempt/2.0",
     projectId: nonEmpty(input.projectId, "projectId"),
     runId: nonEmpty(input.runId, "runId"),
     planDigest: nonEmpty(input.planDigest, "planDigest"),
@@ -353,11 +344,14 @@ function attempt(input: {
 
 function actionFor(
   attempt: ArchitectureWriteAttempt,
-): { readonly action: "completed" } {
-  if (attempt.status !== "completed" || !attempt.result) {
+): { readonly action: "completed"; readonly architecturePackageId: string } {
+  if (attempt.status !== "completed") {
     throw new ArchitectureWriteOutcomeUnknownError();
   }
-  return { action: "completed" };
+  return {
+    action: "completed",
+    architecturePackageId: attempt.result.architecturePackageId,
+  };
 }
 
 async function writeNewDurably(
@@ -445,7 +439,7 @@ function parseAttempt(
   const record = parseObject(text, "Architecture insertion marker");
   const keys = Object.keys(record).sort();
   if (
-    record.schemaVersion !== "architecture-write-attempt/1.0" ||
+    record.schemaVersion !== "architecture-write-attempt/2.0" ||
     record.projectId !== projectId || record.runId !== runId ||
     (typeof record.planDigest !== "string" || !record.planDigest.trim()) ||
     (expectedPlanDigest !== undefined && record.planDigest !== expectedPlanDigest) ||
@@ -475,17 +469,30 @@ function parseAttempt(
     (!record.result || typeof record.result !== "object" ||
       Array.isArray(record.result) ||
       (record.result as Record<string, unknown>).inserted !== "true" ||
-      Object.keys(record.result as Record<string, unknown>).length !== 1)
+      typeof (record.result as Record<string, unknown>).architecturePackageId !==
+        "string" ||
+      !(record.result as Record<string, unknown>).architecturePackageId ||
+      Object.keys(record.result as Record<string, unknown>).sort().join("\u0000") !==
+        "architecturePackageId\u0000inserted")
   ) throw new Error("Completed architecture insertion marker has an invalid result.");
-  return {
-    schemaVersion: "architecture-write-attempt/1.0",
+  const base: ArchitectureWriteAttemptBase = {
+    schemaVersion: "architecture-write-attempt/2.0",
     projectId,
     runId,
     planDigest: record.planDigest,
-    status: record.status,
     dispatchedAt: record.dispatchedAt,
-    ...(record.status === "completed" ? { result: { inserted: "true" } } : {}),
   };
+  return record.status === "completed"
+    ? {
+      ...base,
+      status: "completed",
+      result: {
+        inserted: "true",
+        architecturePackageId: (record.result as Record<string, unknown>)
+          .architecturePackageId as string,
+      },
+    }
+    : { ...base, status: "dispatched" };
 }
 
 function parseQuarantine(

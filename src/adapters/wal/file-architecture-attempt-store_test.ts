@@ -7,9 +7,14 @@ import {
 
 const AT = "2026-08-08T12:00:00.000Z";
 const ID = { projectId: "project:architecture", runId: "run:architecture" };
+const PACKAGE_ID = "architecture-package-001";
 
 function input(planDigest = "a".repeat(64)) {
   return { ...ID, planDigest, dispatchedAt: AT };
+}
+
+function completion(planDigest = "a".repeat(64)) {
+  return { ...ID, planDigest, architecturePackageId: PACKAGE_ID };
 }
 
 async function withStore(
@@ -26,18 +31,21 @@ async function withStore(
 Deno.test("architecture WAL permits exactly one plan digest for a run", async () => {
   await withStore(async (_directory, store) => {
     assertEquals(await store.begin(input()), { action: "dispatch" });
-    await store.complete(input());
+    await store.complete(completion());
 
     // A changed live preflight must recover from the original acknowledged
     // mutation instead of opening a second dispatch for this run.
-    assertEquals(await store.begin(input("b".repeat(64))), { action: "completed" });
+    assertEquals(await store.begin(input("b".repeat(64))), {
+      action: "completed",
+      architecturePackageId: PACKAGE_ID,
+    });
     assertEquals(await store.readRun(ID.projectId, ID.runId), {
-      schemaVersion: "architecture-write-attempt/1.0",
+      schemaVersion: "architecture-write-attempt/2.0",
       ...ID,
       planDigest: "a".repeat(64),
       status: "completed",
       dispatchedAt: AT,
-      result: { inserted: "true" },
+      result: { inserted: "true", architecturePackageId: PACKAGE_ID },
     });
   });
 });
@@ -128,10 +136,13 @@ Deno.test("architecture quarantine validates an EEXIST sentinel before trusting 
   });
 });
 
-Deno.test("architecture WAL resumes a completed legacy run after its plan digest changed", async () => {
+Deno.test("architecture WAL fails closed for a completed legacy run without a pinned Package id", async () => {
   await withStore(async (directory, store) => {
     await writeLegacy(directory, completedLegacy("a".repeat(64)));
-    assertEquals(await store.begin(input("b".repeat(64))), { action: "completed" });
+    await assertRejects(
+      () => store.begin(input("b".repeat(64))),
+      ArchitectureWriteOutcomeUnknownError,
+    );
     assertEquals((await Array.fromAsync(Deno.readDir(directory))).length, 1);
   });
 });
@@ -159,7 +170,7 @@ Deno.test("architecture WAL fails closed for a malformed matching legacy marker"
   });
 });
 
-Deno.test("architecture WAL resumes only duplicate encodings of one completed legacy marker", async () => {
+Deno.test("architecture WAL fails closed even for duplicate completed legacy encodings", async () => {
   await withStore(async (directory, store) => {
     const record = completedLegacy("a".repeat(64));
     await writeLegacy(directory, record);
@@ -169,7 +180,10 @@ Deno.test("architecture WAL resumes only duplicate encodings of one completed le
       `${directory}/${legacyName(record.planDigest).replace(/%3A/g, ":")}`,
       `${deterministicJson(record)}\n`,
     );
-    assertEquals(await store.begin(input("b".repeat(64))), { action: "completed" });
+    await assertRejects(
+      () => store.begin(input("b".repeat(64))),
+      ArchitectureWriteOutcomeUnknownError,
+    );
   });
 });
 
@@ -187,11 +201,14 @@ Deno.test("architecture WAL fails closed for contradictory completed legacy mark
 Deno.test("architecture WAL gives a hash-format record priority over legacy debris", async () => {
   await withStore(async (directory, store) => {
     await store.begin(input("c".repeat(64)));
-    await store.complete(input("c".repeat(64)));
+    await store.complete(completion("c".repeat(64)));
     await writeLegacy(directory, dispatchedLegacy("a".repeat(64)));
     await Deno.writeTextFile(`${directory}/${legacyName("b".repeat(64))}`, "{");
 
-    assertEquals(await store.begin(input("d".repeat(64))), { action: "completed" });
+    assertEquals(await store.begin(input("d".repeat(64))), {
+      action: "completed",
+      architecturePackageId: PACKAGE_ID,
+    });
   });
 });
 
