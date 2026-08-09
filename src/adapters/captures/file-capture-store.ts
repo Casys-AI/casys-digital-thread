@@ -392,6 +392,123 @@ export const REQUIREMENTS_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
 
 export const REQUIREMENTS_CAPTURE_URI_PREFIX = "casys://requirements-capture/" as const;
 
+/**
+ * Content-addressed store for `fea-proof-case-capture/1.0` envelopes produced
+ * by `verify.seal-proof-case@1`.
+ *
+ * URI: `casys://fea-proof-case-capture/sha256/<captureFp>`.
+ * The captureFp IS the FileCaptureStore key (sha256 of the full envelope JSON).
+ */
+export const FEA_PROOF_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "fea-proof-case"
+> = {
+  kind: "fea-proof-case",
+  directory: "state/local/fea-proof-case-captures",
+  uriNamespace: "fea-proof-case-capture",
+  label: "FEA proof case",
+};
+
+/**
+ * Content-addressed store for `fea-solver-result-capture/1.0` envelopes
+ * produced by `verify.run-fea-static-proof@1` after a successful CalculiX
+ * dispatch.
+ *
+ * URI: `casys://fea-solver-result-capture/sha256/<solverCaptureFp>`.
+ */
+export const FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "fea-solver-result"
+> = {
+  kind: "fea-solver-result",
+  directory: "state/local/fea-solver-result-captures",
+  uriNamespace: "fea-solver-result-capture",
+  label: "FEA solver result",
+};
+
+/**
+ * Content-addressed store for `fea-verdict-capture/1.0` envelopes produced
+ * by `verify.run-fea-static-proof@1` after the oracle evaluates the
+ * CalculiX metrics against the proof requirements.
+ *
+ * URI: `casys://fea-verdict-capture/sha256/<verdictCaptureFp>`.
+ * Thread artifact URIs encode the proofDigest for ratchet detection:
+ *   `casys://fea-verdict-capture/proof/<proofDigest>/sha256/<verdictCaptureFp>`.
+ */
+export const FEA_VERDICT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "fea-verdict"
+> = {
+  kind: "fea-verdict",
+  directory: "state/local/fea-verdict-captures",
+  uriNamespace: "fea-verdict-capture",
+  label: "FEA verdict",
+};
+
+/** Shared URI prefix for FEA verdict artifacts; proofDigest segment discriminates proof. */
+export const FEA_VERDICT_ARTIFACT_URI_ROOT =
+  "casys://fea-verdict-capture/proof/" as const;
+
+/**
+ * Content-addressed store for `modelica-scenario-run-capture/1.0` envelopes
+ * produced by `simulate.run-modelica-scenario@1` after a successful provider
+ * dispatch.  Each envelope embeds both the normalized simulate and run_get
+ * provider responses, enabling offline double-attestation.
+ *
+ * URI: `casys://modelica-scenario-run-capture/sha256/<providerRunRecordFp>`.
+ */
+export const MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "modelica-scenario-run"
+> = {
+  kind: "modelica-scenario-run",
+  directory: "state/local/modelica-scenario-run-captures",
+  uriNamespace: "modelica-scenario-run-capture",
+  label: "Modelica scenario run",
+};
+
+/**
+ * Content-addressed store for `modelica-scenario-execution-receipt/1.0` envelopes
+ * produced by `simulate.run-modelica-scenario@1` after both CAS objects are saved.
+ * The receipt asserts the lineage between the human-signed simulation case and the
+ * concrete provider run record.
+ *
+ * URI: `casys://modelica-scenario-receipt-capture/sha256/<receiptFp>`.
+ */
+export const MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "modelica-scenario-receipt"
+> = {
+  kind: "modelica-scenario-receipt",
+  directory: "state/local/modelica-scenario-receipt-captures",
+  uriNamespace: "modelica-scenario-receipt-capture",
+  label: "Modelica scenario receipt",
+};
+
+/**
+ * Content-addressed store for `simulation-case-capture/1.0` envelopes produced
+ * by `simulate.seal-simulation-case@1`. The sealed case is the execution
+ * authority every `simulate.run-modelica-scenario@1` run re-reads by
+ * content-address; the authoring JSON never reaches the run path.
+ *
+ * URI: `casys://simulation-case-capture/sha256/<captureFp>`.
+ */
+export const SIMULATION_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "simulation-case"
+> = {
+  kind: "simulation-case",
+  directory: "state/local/simulation-case-captures",
+  uriNamespace: "simulation-case-capture",
+  label: "Simulation case",
+};
+
+/**
+ * Shared URI prefix for all simulation-case capture artifacts.
+ *
+ * Used by `simulate.seal-simulation-case@1` (to build the artifact URI) and
+ * by `simulate.run-modelica-scenario@1` (to identify simulation-case artifacts
+ * in ancestor snapshots by URI prefix). Must remain stable — changing it would
+ * invalidate URIs already written in immutable proof files.
+ * Must be consistent with SIMULATION_CASE_CAPTURE_DESCRIPTOR.uriNamespace.
+ */
+export const SIMULATION_CASE_CAPTURE_URI_PREFIX =
+  "casys://simulation-case-capture/" as const;
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

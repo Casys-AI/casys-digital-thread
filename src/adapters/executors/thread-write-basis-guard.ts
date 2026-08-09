@@ -1,4 +1,12 @@
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
+  VERIFY_SEAL_PROOF_CASE_OPERATION,
+} from "../../domain/analysis/fea-proof-proposal.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+} from "../../domain/analysis/simulation-case-proposal.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/platform/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
@@ -15,6 +23,10 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}`,
   `${MODEL_WRITE_REQUIREMENTS_OPERATION.id}@${MODEL_WRITE_REQUIREMENTS_OPERATION.version}`,
   `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
+  `${VERIFY_SEAL_PROOF_CASE_OPERATION.id}@${VERIFY_SEAL_PROOF_CASE_OPERATION.version}`,
+  `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
+  `${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.version}`,
+  `${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.id}@${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.version}`,
 ]);
 const GEOMETRY_WRITE_OPERATION =
   `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`;
@@ -26,6 +38,11 @@ const TERMINAL_THREAD_WRITE_FAILURES = new Set([
   "model-write-requirements-provider-outcome-unknown",
   "model-write-requirements-post-acknowledgement-quarantined",
   "model-write-requirements-quarantine-write-failed",
+  "verify-run-fea-static-proof-provider-outcome-unknown",
+  "verify-run-fea-static-proof-post-acknowledgement-quarantined",
+  "verify-run-fea-static-proof-quarantine-write-failed",
+  "simulate-modelica-scenario-outcome-unknown",
+  "simulate-modelica-scenario-post-acknowledgement-quarantined",
 ]);
 
 /**

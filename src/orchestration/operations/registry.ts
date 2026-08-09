@@ -328,6 +328,139 @@ const OPERATIONS = [
     }],
   },
   /**
+   * FEA proof-case seal — trusted executor `verify.seal-proof-case@1`.
+   *
+   * Turns a reviewed authoring JSON (mechanical-proof-case/1.0, resolved through
+   * the server-owned FEA_PROOF_CASE_SOURCES catalog — the agent never supplies a
+   * path) into a content-addressed Thread artifact: the execution authority for
+   * any later FEA run. The signed MRTR parameters spell out every consequential
+   * input in clear text; the executor recrosses each one against the canonical
+   * proof bytes. No provider is called.
+   */
+  {
+    id: "verify.seal-proof-case",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed FEA proof case into the evidence thread",
+    description:
+      "Resolve the reviewed proof-case JSON through the server-owned catalog, verify the " +
+      "operator-signed digest and every clear-text parameter against the canonical bytes, " +
+      "prove the geometry, STEP and requirements-tip links against the basis snapshot, and " +
+      "publish the content-addressed proof-case artifact. No provider is called.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Generic FEA static proof run — trusted executor
+   * `verify.run-fea-static-proof@1`.
+   *
+   * Consumes exclusively the sealed proof-case artifact and the sealed geometry
+   * artifact (both bound as exact thread entities, propagated into the approval's
+   * inputEvidenceRefs via decisionEvidenceScope). The server stages the exact
+   * STEP bytes, dispatches CalculiX with cross-attestation, evaluates through the
+   * SysON oracle, and publishes a fail-closed verdict — a `fail` is publishable
+   * with named violations and proposed actions.
+   */
+  {
+    id: "verify.run-fea-static-proof",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run the sealed FEA static proof and publish the oracle verdict",
+    description:
+      "Re-read and re-validate the sealed proof case, re-verify the requirements tip and " +
+      "oracle fidelity on the execution basis, stage the exact STEP bytes into the solver " +
+      "volume, dispatch CalculiX with SHA-256 cross-attestation, evaluate the metrics " +
+      "through the SysON constraint oracle, and publish observations, evaluations and any " +
+      "named violations with proposed actions.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [
+      {
+        name: "proofCase",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+      {
+        name: "geometry",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+    ],
+  },
+  /**
+   * Simulation-case seal — trusted executor `simulate.seal-simulation-case@1`.
+   *
+   * Same seal discipline as the FEA proof case, for OpenModelica scenario
+   * simulation: the reviewed case (kit, scenario, explicit parameter overrides,
+   * expected metrics) becomes a content-addressed Thread artifact. The kit lives
+   * outside the thread, so the sealed {modelSha256, scenarioSha256} pair is the
+   * honest external boundary — no inputArtifactIds are claimed.
+   */
+  {
+    id: "simulate.seal-simulation-case",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed simulation case into the evidence thread",
+    description:
+      "Resolve the reviewed simulation-case JSON through the server-owned catalog, verify " +
+      "the operator-signed digest and every clear-text parameter against the canonical " +
+      "bytes, and publish the content-addressed simulation-case artifact. The kit and " +
+      "scenario are bound by their sealed SHA-256 identities. No provider is called.",
+    workItemKind: "simulate",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Generic Modelica scenario run — trusted executor
+   * `simulate.run-modelica-scenario@1`.
+   *
+   * Observation only, never a verdict: a successful simulation publishes unit-
+   * carrying observations and hashed artifacts with verdictStatus
+   * "not_evaluated"; evaluation belongs to SysON. riskClass "low" matches the
+   * reviewed CM-01 thermal kit — the run adds isolated evidence without touching
+   * any model. The WAL records the provider run_id durably before readback, so
+   * recovery only ever re-reads (`modelica_run_get`), never re-simulates.
+   */
+  {
+    id: "simulate.run-modelica-scenario",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run the sealed Modelica scenario and publish its observations",
+    description:
+      "Re-read and re-validate the sealed simulation case, verify kit availability and " +
+      "parameter bounds through modelica_kit_list, dispatch modelica_simulate with the " +
+      "sealed explicit overrides, re-read the run through modelica_run_get with double " +
+      "attestation, and publish unit-carrying observations and hashed artifacts. The " +
+      "provider never returns a verdict and none is derived.",
+    workItemKind: "simulate",
+    riskClass: "low",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "simulationCase",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
    * Generic governed lineage retirement. Records the retirement of any named
    * set of thread entities and their downstream production closure (artifacts →
    * observations → evaluations → violations, never traces_to) as an append-only

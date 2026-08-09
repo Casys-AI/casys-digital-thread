@@ -98,6 +98,34 @@ import {
   ARCHIVE_LINEAGE_OPERATION,
   ArchiveLineageRunExecutor,
 } from "./src/adapters/executors/archive-lineage-run-executor.ts";
+import {
+  VERIFY_SEAL_PROOF_CASE_OPERATION,
+  VerifySealProofCaseRunExecutor,
+} from "./src/adapters/executors/verify-seal-proof-case-run-executor.ts";
+import { VerifyRunFeaStaticProofRunExecutor } from "./src/adapters/executors/verify-run-fea-static-proof-run-executor.ts";
+import { VERIFY_RUN_FEA_STATIC_PROOF_OPERATION } from "./src/adapters/executors/verify-run-fea-static-proof-run-executor.ts";
+import {
+  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+  SimulateSealSimulationCaseRunExecutor,
+} from "./src/adapters/executors/simulate-seal-simulation-case-run-executor.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+  SimulateRunModelicaScenarioRunExecutor,
+} from "./src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts";
+import { validateFeaExecutionPolicy } from "./src/domain/analysis/fea-execution-policy.ts";
+import { validateSimulationExecutionPolicy } from "./src/domain/analysis/simulation-execution-policy.ts";
+import { FileCanonicalAssetReader } from "./src/adapters/executors/canonical-asset-reader.ts";
+import { DockerVolumeAssetStager } from "./src/adapters/executors/container-asset-stager.ts";
+import { FileFeaStaticProofAttemptStore } from "./src/adapters/wal/file-fea-static-proof-attempt-store.ts";
+import { FileModelicaScenarioAttemptStore } from "./src/adapters/wal/file-modelica-scenario-attempt-store.ts";
+import {
+  FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+  FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR,
+  FEA_VERDICT_CAPTURE_DESCRIPTOR,
+  MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
+  MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR,
+  SIMULATION_CASE_CAPTURE_DESCRIPTOR,
+} from "./src/adapters/captures/file-capture-store.ts";
 import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
 import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/captures/file-capture-store.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "./src/adapters/captures/cm01-nominal-modelica-capture.ts";
@@ -255,6 +283,36 @@ const DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY = "state/local/geometry-draft-cap
 const DEFAULT_GEOMETRY_CAPTURE_DIRECTORY = "state/local/geometry-captures";
 const DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY = "state/local/requirements-captures";
 const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempts";
+/**
+ * Canonical binary asset store shared with design.write-geometry@1 promotion.
+ * The FEA path reads sealed STEP bytes from here — never from the draft store:
+ * drafts are pre-approval material and must not reach a solver.
+ */
+const DEFAULT_CANONICAL_ASSET_DIRECTORY = "state/local/thread-assets";
+/**
+ * Reviewed initial FEA execution policy (fea-execution-policy/1). These bounds
+ * are a server-owned gate, not physics: below 0.5 mm target mesh a concept part
+ * meshes into memory exhaustion; 10 kN per load and 16 named selections exceed
+ * any reviewed concept case; 32 MiB bounds the staged STEP. Raising any bound
+ * is a reviewed change to this literal, never a runtime override.
+ */
+const FEA_EXECUTION_POLICY_INPUT = {
+  policyVersion: "fea-execution-policy/1",
+  meshTargetSizeMinMm: 0.5,
+  forceMagnitudeMaxN: 10_000,
+  stepBytesMax: 33_554_432,
+  selectionsMax: 16,
+} as const;
+/**
+ * Reviewed initial simulation execution policy. timeoutMaxMs mirrors the
+ * provider's own hard bound (120 s); the HTTP client timeout below is strictly
+ * larger (150 s) so the provider's timeout verdict always arrives instead of a
+ * client-side abort masking it.
+ */
+const SIMULATION_EXECUTION_POLICY_INPUT = {
+  policyVersion: "simulation-execution-policy/1",
+  timeoutMaxMs: 120_000,
+} as const;
 const DEFAULT_CM01_ERPNEXT_BOM_CAPTURE_DIRECTORY =
   "state/local/cm01-erpnext-bom-captures";
 const DEFAULT_CM01_ERPNEXT_BOM_RUN_CAPTURE_DIRECTORY =
@@ -857,6 +915,102 @@ async function createProjectControl(
     snapshots: activeThreadSnapshots,
     lease,
   });
+  const feaExecutionPolicy = validateFeaExecutionPolicy(FEA_EXECUTION_POLICY_INPUT);
+  const simulationExecutionPolicy = validateSimulationExecutionPolicy(
+    SIMULATION_EXECUTION_POLICY_INPUT,
+  );
+  /**
+   * Weak, timestamped observation of the CalculiX image — recorded in the
+   * verdict capture, never treated as exact provenance (the container can be
+   * swapped between observation and dispatch). Errors are swallowed by the
+   * executor by design.
+   */
+  const observeCalculixImage = async () => {
+    const command = new Deno.Command("docker", {
+      args: ["compose", "images", "mcp-calculix", "--format", "json"],
+      stdout: "piped",
+      stderr: "null",
+    });
+    const { stdout } = await command.output();
+    const parsed = JSON.parse(new TextDecoder().decode(stdout));
+    const row = Array.isArray(parsed) ? parsed[0] : parsed;
+    return {
+      image: `${row.Repository}:${row.Tag}`,
+      digest: String(row.ID ?? ""),
+      observedAt: new Date().toISOString(),
+    };
+  };
+  // FEA proof-case seal calls no provider — always available.
+  const genericVerifySealProofCase = new VerifySealProofCaseRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    proofCaseCaptures: new FileCaptureStore(FEA_PROOF_CASE_CAPTURE_DESCRIPTOR),
+    geometryCaptures: new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR),
+    requirementsCaptures: new FileCaptureStore({
+      ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
+      directory: DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
+    }),
+    seedCaptures: sysonModelSeedCaptures,
+    canonicalAssetReader: new FileCanonicalAssetReader({
+      directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+    }),
+    lease,
+  });
+  const genericVerifyRunFeaStaticProof = sysonMcpUrl && calculixMcpUrl
+    ? new VerifyRunFeaStaticProofRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      proofCaptures: new FileCaptureStore(FEA_PROOF_CASE_CAPTURE_DESCRIPTOR),
+      requirementsCaptures: new FileCaptureStore({
+        ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
+        directory: DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
+      }),
+      canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      solverCaptures: new FileCaptureStore(FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR),
+      verdictCaptures: new FileCaptureStore(FEA_VERDICT_CAPTURE_DESCRIPTOR),
+      attempts: new FileFeaStaticProofAttemptStore(),
+      stager: new DockerVolumeAssetStager({
+        service: "mcp-calculix",
+        containerDirectory: "/exports",
+      }),
+      assetReader: new FileCanonicalAssetReader({
+        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      }),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      calculix: new HttpMcpToolClient({ mcpUrl: calculixMcpUrl, timeoutMs: 180_000 }),
+      policy: feaExecutionPolicy,
+      solverImageObserver: observeCalculixImage,
+      lease,
+      liveUpdates,
+    })
+    : undefined;
+  // Simulation-case seal calls no provider — always available.
+  const genericSimulateSealSimulationCase = new SimulateSealSimulationCaseRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    simulationCaseCaptures: new FileCaptureStore(SIMULATION_CASE_CAPTURE_DESCRIPTOR),
+    lease,
+  });
+  const genericSimulateRunModelicaScenario = modelicaMcpUrl
+    ? new SimulateRunModelicaScenarioRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      caseCaptures: new FileCaptureStore(SIMULATION_CASE_CAPTURE_DESCRIPTOR),
+      recordCaptures: new FileCaptureStore(MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR),
+      receiptCaptures: new FileCaptureStore(
+        MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
+      ),
+      attempts: new FileModelicaScenarioAttemptStore(),
+      modelica: new HttpMcpToolClient({ mcpUrl: modelicaMcpUrl, timeoutMs: 150_000 }),
+      policy: simulationExecutionPolicy,
+      lease,
+      liveUpdates,
+    })
+    : undefined;
   const cm01NominalThermal = modelicaMcpUrl
     ? new CoffeeMachineCm01V3ThermalRunExecutor({
       projects: runtime.projects,
@@ -1266,6 +1420,28 @@ async function createProjectControl(
           {
             operation: ARCHIVE_LINEAGE_OPERATION,
             executor: genericArchiveLineage,
+          },
+          {
+            operation: VERIFY_SEAL_PROOF_CASE_OPERATION,
+            executor: genericVerifySealProofCase,
+          },
+          {
+            operation: VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
+            executor: genericVerifyRunFeaStaticProof,
+            unavailableMessage:
+              "The server has no trusted generic verify.run-fea-static-proof@1 executor " +
+              "configured for this run (SysON and CalculiX providers are required).",
+          },
+          {
+            operation: SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+            executor: genericSimulateSealSimulationCase,
+          },
+          {
+            operation: SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+            executor: genericSimulateRunModelicaScenario,
+            unavailableMessage:
+              "The server has no trusted generic simulate.run-modelica-scenario@1 executor " +
+              "configured for this run (Modelica provider is required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
