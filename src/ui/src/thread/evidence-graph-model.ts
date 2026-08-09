@@ -57,7 +57,7 @@ export interface EvidenceGraphComponent {
  * A synthetic connector edge that preserves a link severed by folding.
  *
  * When an analyze.* instrument node that is the only path between two clusters
- * is folded out, a stub is emitted so the canvas can render a "via … — replié"
+ * is folded out, a stub is emitted so the canvas can render a "via … — folded"
  * indicator instead of presenting a false island.
  */
 export interface EvidenceGraphStub {
@@ -474,27 +474,27 @@ function componentName(
 
   // Dominant entity kind heuristic.
   if (kinds.has("evaluation") || kinds.has("violation")) {
-    return `${systemLabel} · vérification`;
+    return `${systemLabel} · verification`;
   }
   if (kinds.has("observation")) {
-    return `${systemLabel} · mesures`;
+    return `${systemLabel} · measurements`;
   }
   if (kinds.has("requirement")) {
-    return `${systemLabel} · exigences`;
+    return `${systemLabel} · requirements`;
   }
   if (kinds.has("step") || kinds.has("stl") || kinds.has("glb")) {
-    return `${systemLabel} · géométrie`;
+    return `${systemLabel} · geometry`;
   }
   return systemLabel;
 }
 
 const SYSTEM_LABEL: Record<string, string> = {
-  "digital-thread": "Chaîne numérique",
+  "digital-thread": "Digital thread",
   "syson": "SysML",
   "build123d": "CAD",
   "calculix": "FEA",
-  "openmodelica": "Thermique",
-  "mcp-modelica": "Thermique",
+  "openmodelica": "Thermal",
+  "mcp-modelica": "Thermal",
   "erpnext": "ERP",
 };
 
@@ -522,7 +522,7 @@ function stubAsEdge(stub: EvidenceGraphStub): ThreadGraphEdge {
     from: stub.from,
     to: stub.to,
     relation: stub.relation,
-    rationale: `via ${stub.viaLabel} — replié`,
+    rationale: `via ${stub.viaLabel} — folded`,
     origin: stub.origin,
   };
 }

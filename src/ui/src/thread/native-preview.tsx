@@ -3,6 +3,7 @@
 import { render } from "preact";
 import type { JSX } from "preact";
 import { installMcpViewTheme } from "../mcp-view-primitives.ts";
+import { HttpProjectReviewIntentClient } from "../project/review-intent-client.ts";
 import { HttpThreadWorkbenchClient } from "./client.ts";
 import { ThreadWorkbench } from "./workbench.tsx";
 import "../styles.css";
@@ -16,6 +17,10 @@ const client = new HttpThreadWorkbenchClient(
   "/api/thread/workbench",
   globalThis.fetch.bind(globalThis),
   "/api/thread/workbench/events",
+);
+const reviewIntentClient = new HttpProjectReviewIntentClient(
+  "/api/review-intents",
+  globalThis.fetch.bind(globalThis),
 );
 
 /**
@@ -39,7 +44,10 @@ function NativeCockpit(): JSX.Element {
         </p>
       </header>
       <main>
-        <ThreadWorkbench client={client} />
+        <ThreadWorkbench
+          client={client}
+          reviewIntentClient={reviewIntentClient}
+        />
       </main>
     </div>
   );

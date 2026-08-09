@@ -138,6 +138,25 @@ Deno.test("SysON model seed capture parser rejects unreviewed fields", async () 
   );
 });
 
+Deno.test("SysON model seed preserves exact MCP actor identities in its lineage", async () => {
+  const base = documentaryBaseline();
+  const lineage = seedLineage(base);
+  lineage.plan.publishedBy.id = "mcp:codex-live-golden-path@1";
+  lineage.projectChange.publishedBy.id = "mcp:codex-live-golden-path@1";
+
+  const result = await materializeSysonModelSeed(seedInput(base, { lineage }));
+  const parsed = parseSysonModelSeedCapture(result.capture);
+
+  assertEquals(
+    parsed.lineage.plan.publishedBy.id,
+    "mcp:codex-live-golden-path@1",
+  );
+  assertEquals(
+    parsed.lineage.projectChange.publishedBy.id,
+    "mcp:codex-live-golden-path@1",
+  );
+});
+
 function seedInput(
   base: ThreadSnapshot,
   overrides: Partial<Parameters<typeof materializeSysonModelSeed>[0]> = {},

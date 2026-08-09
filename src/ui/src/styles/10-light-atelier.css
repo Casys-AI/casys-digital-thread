@@ -794,6 +794,43 @@
   background: linear-gradient(90deg, #f8f0e7, #fdfbf6);
 }
 
+.compact-identifier-copy,
+.cad-sealed-assembly-actions > a,
+.cad-sealed-assembly-actions > button {
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel);
+}
+
+.compact-identifier-copy:hover,
+.cad-sealed-assembly-actions > a:hover,
+.cad-sealed-assembly-actions > button:hover {
+  border-color: var(--thread-orange);
+  color: var(--thread-orange);
+  background: #fbf0e5;
+}
+
+.cad-sealed-assembly {
+  border-color: #9eb7a5;
+  border-left-color: var(--thread-green);
+  background: var(--green-dim);
+}
+
+.thread-workbench .cad-sealed-assembly-copy > span {
+  color: var(--thread-green);
+}
+
+.cad-geometry-blocker {
+  border-color: #c18b5a;
+  background: var(--amber-dim);
+}
+
+.cad-sealed-summary,
+.cad-mesh-pending {
+  border-color: var(--thread-border-strong);
+  background: var(--thread-panel-muted);
+}
+
 .component-revision-link {
   border-color: var(--thread-border);
   color: var(--thread-ink);

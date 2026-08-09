@@ -4,137 +4,159 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import type {
-  EngineeringDecision,
   EngineeringProjectSnapshot,
+  EngineeringThreadEntityRef,
 } from "../../../domain/project/engineering-project.ts";
+import type { ProjectReviewIntentAction } from "../../../domain/project/project-review-intent.ts";
+import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import {
   type GeometryDecisionValid,
-  parseGeometryDecisionView,
 } from "../thread/geometry-decision-model.ts";
+import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
+import {
+  type ActivityReviewStatus,
+  activityReviewStatus,
+  activityReviewStatusLabel,
+  buildProjectReviewRecords,
+  currentProjectReview,
+  type ProjectReviewKind,
+  type ProjectReviewRecord,
+} from "./review-decision-model.ts";
+import { buildArchitectureBindingRows } from "./review-architecture-model.ts";
+import {
+  normalizeReviewIntentComment,
+  type ReviewIntentTransmissionState,
+} from "./review-intent-model.ts";
 
 export interface ProjectReviewProps {
   readonly project: EngineeringProjectSnapshot;
+  readonly thread?: ThreadWorkbenchSnapshot;
   /** Opens the live activity feed, optionally focused on this decision. */
   readonly onOpenActivity?: (decisionId?: string) => void;
-  /** Opens the specification/SysML projection for the affected decision. */
-  readonly onOpenSpecification?: (decisionId: string) => void;
+  /** Opens one stable, read-only review deep link. */
+  readonly onOpenReview?: (kind: ProjectReviewKind) => void;
+  /** Opens a published result only when its exact capture is present. */
+  readonly onOpenEvidence?: (reference: EngineeringThreadEntityRef) => void;
 }
-
-export type ReviewNotificationsSurface = "inbox" | "activity";
 
 /** A compact overview handoff to the records that explain a decision. */
 export function DecisionCenter(props: ProjectReviewProps): JSX.Element {
-  return <ReviewNotifications {...props} surface="inbox" />;
+  return <ReviewNotifications {...props} />;
 }
 
 /**
- * The cockpit never asks the person to authorize work. It projects the
- * decision record and points back to the paired conversation, where the agent
- * can ask for intent, explain a recommendation and persist the outcome.
+ * The overview remains a compact handoff. Exact previews and the bounded
+ * reviewer-intent composer live in the chronological Activity feed.
  */
 export function ReviewNotifications({
   project,
+  thread,
   onOpenActivity,
-  onOpenSpecification,
-  surface = "inbox",
-}: ProjectReviewProps & {
-  readonly surface?: ReviewNotificationsSurface;
-}): JSX.Element {
-  const reviewable = project.decisions.filter((decision) =>
-    decision.status === "proposed"
-  );
-  const agentPreparing = project.decisions.filter((decision) =>
-    decision.status === "required" || decision.status === "rejected"
-  );
-  const isActivity = surface === "activity";
-
+  onOpenReview,
+}: ProjectReviewProps): JSX.Element {
+  const records = buildProjectReviewRecords(project, thread);
+  const nextReview = currentProjectReview(records);
+  const needsReviewCount =
+    records.filter((record) => record.state === "needs-review").length;
+  const pendingResultCount =
+    records.filter((record) => record.state === "approved-awaiting-result")
+      .length;
+  const revisionRequestedCount =
+    records.filter((record) => record.state === "revision-requested").length;
   return (
     <section
       class="decision-center"
-      data-surface={surface}
-      aria-labelledby={`review-notifications-title-${surface}`}
+      data-surface="inbox"
+      aria-labelledby="review-notifications-title-inbox"
     >
       <header class="decision-center-header">
         <div class="decision-center-index" aria-hidden="true">RN</div>
         <div>
-          <p>{isActivity ? "DECISION RECORD" : "PROJECT SIGNALS"}</p>
-          <h3 id={`review-notifications-title-${surface}`}>
-            {isActivity
-              ? "What the agent needs you to consider"
-              : "Attention, in context"}
+          <p>REVIEW NOW</p>
+          <h3 id="review-notifications-title-inbox">
+            {needsReviewCount > 0
+              ? `${needsReviewCount} exact proposal${
+                needsReviewCount === 1 ? " is" : "s are"
+              } ready`
+              : "No proposal is waiting for review"}
           </h3>
           <span>
-            {isActivity
-              ? "Read the recorded scope and evidence here; discuss the decision with the agent in your paired conversation."
-              : "The feed carries the engineering story. This summary only points to the decision records worth discussing with the agent."}
+            {nextReview
+              ? "Open Activity to inspect and respond to each exact proposal."
+              : "Published review records remain available in Activity."}
           </span>
         </div>
         <dl class="decision-center-meter">
-          <div data-tone={reviewable.length > 0 ? "attention" : "quiet"}>
-            <dt>To discuss</dt>
-            <dd>{reviewable.length}</dd>
+          <div data-tone={nextReview ? "attention" : "quiet"}>
+            <dt>To review</dt>
+            <dd>{needsReviewCount}</dd>
           </div>
-          <div data-tone={agentPreparing.length > 0 ? "preparing" : "quiet"}>
-            <dt>Preparing</dt>
-            <dd>{agentPreparing.length}</dd>
+          <div data-tone={pendingResultCount > 0 ? "preparing" : "quiet"}>
+            <dt>Result pending</dt>
+            <dd>{pendingResultCount}</dd>
+          </div>
+          <div data-tone={revisionRequestedCount > 0 ? "attention" : "quiet"}>
+            <dt>Revision requested</dt>
+            <dd>{revisionRequestedCount}</dd>
           </div>
         </dl>
       </header>
 
-      {isActivity
-        ? (
-          <ActivityDecisionRecord
-            project={project}
-            reviewable={reviewable}
-            agentPreparing={agentPreparing}
-            onOpenSpecification={onOpenSpecification}
-          />
-        )
-        : (
-          <ReviewInboxHandoff
-            reviewable={reviewable}
-            agentPreparing={agentPreparing}
-            onOpenActivity={onOpenActivity}
-          />
-        )}
+      <ReviewInboxHandoff
+        nextReview={nextReview}
+        pendingResultCount={pendingResultCount}
+        revisionRequestedCount={revisionRequestedCount}
+        onOpenActivity={onOpenActivity}
+        onOpenReview={onOpenReview}
+      />
     </section>
   );
 }
 
 function ReviewInboxHandoff({
-  reviewable,
-  agentPreparing,
+  nextReview,
+  pendingResultCount,
+  revisionRequestedCount,
   onOpenActivity,
+  onOpenReview,
 }: {
-  reviewable: readonly EngineeringDecision[];
-  agentPreparing: readonly EngineeringDecision[];
+  nextReview?: ProjectReviewRecord;
+  pendingResultCount: number;
+  revisionRequestedCount: number;
   onOpenActivity?: (decisionId?: string) => void;
+  onOpenReview?: (kind: ProjectReviewKind) => void;
 }): JSX.Element {
-  const nextReview = reviewable[0];
   const state = nextReview
     ? {
       tone: "proposed",
-      marker: "AGENT QUESTION",
-      title: reviewable.length === 1
-        ? "One recorded recommendation needs discussion"
-        : `${reviewable.length} recorded recommendations need discussion`,
+      marker: "REVIEW IN ACTIVITY",
+      title: nextReview.title,
       detail:
-        "Open Activity to inspect the lineage and evidence, then continue with the agent in your paired conversation.",
-      action: "Open activity",
+        "Inspect the exact preview, then validate it or request a revision from its feed card.",
+      action: "Inspect exact preview",
       icon: "!",
     }
-    : agentPreparing.length > 0
+    : pendingResultCount > 0
     ? {
       tone: "required",
-      marker: "AGENT PREPARING",
-      title: "The agent is preparing the next recommendation",
+      marker: "APPROVED · RESULT PENDING",
+      title: "A reviewed operation has not published its result yet",
       detail:
-        "Nothing is needed in the cockpit. The activity feed will show the record when it is ready to discuss.",
+        "Nothing is needed in the cockpit. Activity will show the exact result if and when it is published.",
       action: "See activity",
       icon: "···",
+    }
+    : revisionRequestedCount > 0
+    ? {
+      tone: "required",
+      marker: "REVISION REQUESTED",
+      title: "A proposal was returned for revision",
+      detail:
+        "The durable decision record does not by itself prove that an agent run is active.",
+      action: "See activity",
+      icon: "↺",
     }
     : {
       tone: "approved",
@@ -161,8 +183,9 @@ function ReviewInboxHandoff({
       <button
         type="button"
         class="decision-secondary-button"
-        onClick={() => onOpenActivity?.(nextReview?.id)}
-        disabled={!onOpenActivity}
+        onClick={() =>
+          nextReview ? onOpenReview?.(nextReview.id) : onOpenActivity?.()}
+        disabled={nextReview ? !onOpenReview : !onOpenActivity}
       >
         {state.action}
       </button>
@@ -170,137 +193,482 @@ function ReviewInboxHandoff({
   );
 }
 
-function ActivityDecisionRecord({
-  project,
-  reviewable,
-  agentPreparing,
-  onOpenSpecification,
+/** One human-review event rendered inside the chronological Activity rail. */
+export function ActivityReviewFeedCard({
+  record,
+  onOpenEvidence,
+  transmissionState = { kind: "idle" },
+  onSubmitIntent,
+  onRetryIntent,
+  onRefreshIntent,
+  initiallyOpen = false,
 }: {
-  project: EngineeringProjectSnapshot;
-  reviewable: readonly EngineeringDecision[];
-  agentPreparing: readonly EngineeringDecision[];
-  onOpenSpecification?: (decisionId: string) => void;
-}): JSX.Element {
-  if (!reviewable.length) {
-    return (
-      <section
-        class="decision-review-brief"
-        data-state={agentPreparing.length > 0 ? "required" : "approved"}
-        aria-label="Decision status"
-      >
-        <span aria-hidden="true">{agentPreparing.length ? "···" : "✓"}</span>
-        <div>
-          <p>
-            {agentPreparing.length ? "AGENT PREPARING" : "NO QUESTION WAITING"}
-          </p>
-          <strong>
-            {agentPreparing.length
-              ? "The agent has not recorded a recommendation yet"
-              : "There is no recorded decision awaiting discussion"}
-          </strong>
-          <small>
-            Follow the live feed, or ask the agent about the project context in
-            your paired conversation.
-          </small>
-        </div>
-      </section>
+  record: ProjectReviewRecord;
+  onOpenEvidence?: (reference: EngineeringThreadEntityRef) => void;
+  transmissionState?: ReviewIntentTransmissionState;
+  onSubmitIntent?: (
+    action: ProjectReviewIntentAction,
+    comment?: string,
+  ) => void | Promise<void>;
+  onRetryIntent?: () => void | Promise<void>;
+  onRefreshIntent?: () => void | Promise<void>;
+  initiallyOpen?: boolean;
+}): JSX.Element | null {
+  const status = activityReviewStatus(record);
+  const [open, setOpen] = useState(
+    initiallyOpen || status === "to-review" ||
+      status === "revision-requested",
+  );
+  const [comment, setComment] = useState("");
+  const [commentError, setCommentError] = useState<string>();
+  const decisionId = record.decision?.id;
+  const digest = record.decision?.inputFingerprint?.digest;
+  useEffect(() => {
+    setComment("");
+    setCommentError(undefined);
+  }, [decisionId, digest]);
+  if (!status) return null;
+  const commentId = `${record.anchorId}-review-comment`;
+  const commentHelpId = `${commentId}-help`;
+  const commentErrorId = `${commentId}-error`;
+  const canCompose = status === "to-review" && decisionId !== undefined &&
+    digest !== undefined && onSubmitIntent !== undefined;
+  const isSending = transmissionState.kind === "sending";
+  const send = (action: ProjectReviewIntentAction) => {
+    let exactComment: string | undefined;
+    try {
+      exactComment = normalizeReviewIntentComment(action, comment);
+    } catch (error) {
+      setCommentError(
+        error instanceof Error ? error.message : "Check the review comment.",
+      );
+      return;
+    }
+    setCommentError(undefined);
+    void Promise.resolve(onSubmitIntent?.(action, exactComment)).catch(
+      (error: unknown) => {
+        setCommentError(
+          error instanceof Error
+            ? error.message
+            : "The review intent could not be sent.",
+        );
+      },
     );
-  }
-
+  };
   return (
-    <ol class="decision-notification-list" aria-label="Recorded decisions">
-      {reviewable.map((decision) => (
-        <li key={decision.id}>
-          <DecisionRecord
-            project={project}
-            decision={decision}
-            onOpenSpecification={onOpenSpecification}
-          />
-        </li>
-      ))}
-    </ol>
+    <details
+      class="thread-feed-review-card"
+      data-review-status={status}
+      data-representation={record.representation}
+      data-superseded={record.supersededBy ? "true" : "false"}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      aria-label={`Review record: ${record.title}`}
+    >
+      <summary>
+        <span class="thread-feed-review-mark" aria-hidden="true">
+          {reviewStatusIcon(status)}
+        </span>
+        <span class="thread-feed-review-copy">
+          <small>
+            {activityReviewStatusLabel(status)}
+            {record.supersededBy ? " · Superseded" : ""} ·{" "}
+            {reviewKindLabel(record.id)}
+          </small>
+          <strong>{record.title}</strong>
+          <span>{record.question}</span>
+        </span>
+        <span class="thread-feed-review-toggle">
+          {open ? "Hide preview" : "Open exact preview"}
+        </span>
+      </summary>
+      <div class="thread-feed-review-body">
+        {record.supersededBy && (
+          <aside class="decision-review-superseded" role="note">
+            <div>
+              <strong>Superseded by the current geometry review</strong>
+              <span>{record.supersededBy.title}</span>
+            </div>
+            <a href={record.supersededBy.href}>Open replacement</a>
+          </aside>
+        )}
+        <p class="decision-notification-summary">{record.summary}</p>
+        <ReviewBusinessPreview record={record} />
+        {canCompose && (
+          <section
+            class="decision-review-composer"
+            aria-labelledby={`${commentId}-title`}
+            aria-busy={isSending}
+          >
+            <header>
+              <div>
+                <small>REVIEW THIS EXACT PROPOSAL</small>
+                <strong id={`${commentId}-title`}>
+                  Send your intent to the paired agent
+                </strong>
+              </div>
+              <ReviewIntentTransmissionBadge state={transmissionState} />
+            </header>
+            {transmissionState.kind === "idle" ||
+                (transmissionState.kind === "error" &&
+                  transmissionState.retryIntent !== undefined)
+              ? (
+                <div class="decision-review-composer-fields">
+                  <label for={commentId}>Comment for the agent</label>
+                  <textarea
+                    id={commentId}
+                    value={comment}
+                    rows={3}
+                    placeholder="Optional for validation; required when requesting a revision."
+                    aria-describedby={`${commentHelpId}${
+                      commentError ? ` ${commentErrorId}` : ""
+                    }`}
+                    aria-invalid={commentError ? "true" : undefined}
+                    onInput={(event) => {
+                      setComment(event.currentTarget.value);
+                      if (commentError) setCommentError(undefined);
+                    }}
+                  />
+                  <div class="decision-review-comment-meta">
+                    <small id={commentHelpId}>
+                      Validation comment optional · revision reason required
+                    </small>
+                    <small>{[...comment].length} / 2000</small>
+                  </div>
+                  {commentError && (
+                    <p
+                      id={commentErrorId}
+                      class="decision-review-comment-error"
+                      role="alert"
+                    >
+                      {commentError}
+                    </p>
+                  )}
+                  {transmissionState.kind === "error" && (
+                    <div
+                      class="decision-review-transmission"
+                      data-transmission-state="error"
+                      role="alert"
+                    >
+                      <strong>Send failed</strong>
+                      <span>{transmissionState.message}</span>
+                      {transmissionState.retryIntent && onRetryIntent && (
+                        <button
+                          type="button"
+                          onClick={() => void onRetryIntent()}
+                        >
+                          Retry exact send
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    class="decision-review-submit-actions"
+                    role="group"
+                    aria-label="Review response"
+                  >
+                    <button
+                      type="button"
+                      class="decision-review-validate-button"
+                      disabled={isSending}
+                      onClick={() => send("validate")}
+                    >
+                      Validate
+                    </button>
+                    <button
+                      type="button"
+                      class="decision-review-revision-button"
+                      disabled={isSending}
+                      onClick={() => send("request-revision")}
+                    >
+                      Request revision
+                    </button>
+                  </div>
+                </div>
+              )
+              : (
+                <ReviewIntentTransmissionNotice
+                  state={transmissionState}
+                  onRefresh={onRefreshIntent}
+                />
+              )}
+          </section>
+        )}
+        {record.outcome && (
+          <dl
+            class="decision-review-outcome"
+            aria-label="Recorded review outcome"
+          >
+            {record.outcome.rationale && (
+              <div>
+                <dt>Rationale</dt>
+                <dd>{record.outcome.rationale}</dd>
+              </div>
+            )}
+            {record.outcome.decidedBy && (
+              <div>
+                <dt>Decided by</dt>
+                <dd>{record.outcome.decidedBy}</dd>
+              </div>
+            )}
+            {record.outcome.decidedAt && (
+              <div>
+                <dt>Decided</dt>
+                <dd>{formatDateTime(record.outcome.decidedAt)}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+        <dl class="decision-notification-scope">
+          <div>
+            <dt>Review</dt>
+            <dd>{activityReviewStatusLabel(status)}</dd>
+          </div>
+          <div>
+            <dt>Scope</dt>
+            <dd>
+              {record.decision?.inputFingerprint
+                ? "Exact input bound"
+                : "Record only"}
+            </dd>
+          </div>
+          <div>
+            <dt>Recorded</dt>
+            <dd>
+              {record.recordedAt ? formatDateTime(record.recordedAt) : "—"}
+            </dd>
+          </div>
+        </dl>
+        {record.resultEvidence && onOpenEvidence && (
+          <div class="decision-review-actions">
+            <button
+              type="button"
+              class="decision-secondary-button"
+              onClick={() => onOpenEvidence(record.resultEvidence!)}
+            >
+              Trace exact result
+            </button>
+          </div>
+        )}
+        <small class="decision-review-guidance">
+          {status === "to-review" && canCompose
+            ? "A sent intent is not a validation. This card changes only when the canonical project records the signed decision."
+            : status === "to-review" || status === "revision-requested"
+            ? "This record has no browser decision action for its scope; continue in the paired conversation."
+            : record.supersededBy
+            ? "Validated historical review. The signed successor above is the current geometry result."
+            : record.resultEvidence
+            ? "Validated review attached to this exact published feed fact."
+            : "Validated review. No exact published result is recorded yet."}
+        </small>
+      </div>
+    </details>
   );
 }
 
-function DecisionRecord({
-  project,
-  decision,
-  onOpenSpecification,
-}: {
-  project: EngineeringProjectSnapshot;
-  decision: EngineeringDecision;
-  onOpenSpecification?: (decisionId: string) => void;
-}): JSX.Element {
-  const phase = project.phases.find((candidate) =>
-    candidate.id === decision.phaseId
-  );
-  const proposal = decision.proposal;
-
-  /**
-   * WHY TRY TO PARSE — every proposal's parameter list is flat key-value pairs.
-   * `parseGeometryDecisionView` returns `{ kind: "invalid" }` for any proposal
-   * that doesn't carry geometry keys, so non-geometry decisions are unaffected.
-   * Only a `{ kind: "valid" }` result triggers the draft viewer.
-   */
-  const geoView = proposal?.parameters.length
-    ? parseGeometryDecisionView(proposal.parameters)
-    : null;
-  const geoValid = geoView?.kind === "valid" ? geoView : null;
-
+function ReviewIntentTransmissionBadge(
+  { state }: { state: ReviewIntentTransmissionState },
+): JSX.Element | null {
+  if (state.kind === "idle") return null;
+  const label = state.kind === "sending"
+    ? "Sending"
+    : state.kind === "queued"
+    ? "Sent"
+    : state.kind === "acknowledged"
+    ? "Received"
+    : state.kind === "stale"
+    ? "Stale"
+    : "Send failed";
   return (
-    <article
-      class="decision-review-notification"
-      data-state={decision.status}
-      aria-label={`Decision record: ${decision.title}`}
+    <span
+      class="decision-review-transmission-badge"
+      data-transmission-state={state.kind}
+      aria-label={state.kind === "queued"
+        ? "Sent to agent · signed confirmation pending"
+        : state.kind === "acknowledged"
+        ? "Received by agent · signed confirmation pending"
+        : label}
     >
-      <header>
-        <div>
-          <span>AGENT RECOMMENDATION</span>
-          <strong>{decision.title}</strong>
-        </div>
-        <small>{phase?.name ?? decision.phaseId}</small>
-      </header>
-      <blockquote>{decision.question}</blockquote>
-      <p class="decision-notification-summary">
-        {proposal?.summary ??
-          "The recorded recommendation is available in the project activity."}
-      </p>
-      {geoValid && <GeometryDraftPreview view={geoValid} />}
-      <dl class="decision-notification-scope">
-        <div>
-          <dt>Evidence</dt>
-          <dd>{decision.inputEvidenceRefs.length} linked</dd>
-        </div>
-        <div>
-          <dt>Scope</dt>
-          <dd>
-            {decision.inputFingerprint ? "Exact input bound" : "Not ready"}
-          </dd>
-        </div>
-        <div>
-          <dt>Recorded</dt>
-          <dd>{formatDateTime(decision.requestedAt)}</dd>
-        </div>
-      </dl>
-      <div class="decision-review-actions">
-        <button
-          type="button"
-          class="decision-secondary-button"
-          onClick={() => onOpenSpecification?.(decision.id)}
-          disabled={!onOpenSpecification}
-          title={!onOpenSpecification
-            ? "The specification route is not available on this surface."
-            : undefined}
-        >
-          Inspect specification
-        </button>
-      </div>
-      <small class="decision-review-guidance">
-        Discuss this recommendation with the agent in your paired conversation.
-        The cockpit will update when the shared project record changes.
-      </small>
-    </article>
+      {label}
+    </span>
   );
+}
+
+function ReviewIntentTransmissionNotice({
+  state,
+  onRefresh,
+}: {
+  state: ReviewIntentTransmissionState;
+  onRefresh?: () => void | Promise<void>;
+}): JSX.Element | null {
+  if (state.kind === "idle") return null;
+  if (state.kind === "sending") {
+    return (
+      <p class="decision-review-transmission" role="status" aria-live="polite">
+        Sending review intent…
+      </p>
+    );
+  }
+  if (state.kind === "queued" || state.kind === "acknowledged") {
+    return (
+      <div
+        class="decision-review-transmission"
+        data-transmission-state={state.kind}
+        role="status"
+        aria-live="polite"
+      >
+        <strong>{state.kind === "queued" ? "Sent" : "Received"}</strong>
+        <span>Awaiting signed decision.</span>
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <div
+        class="decision-review-transmission"
+        data-transmission-state="error"
+        role="alert"
+      >
+        <strong>Refresh required</strong>
+        <span>{state.message}</span>
+        {onRefresh && (
+          <button type="button" onClick={() => void onRefresh()}>
+            Refresh preview
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div
+      class="decision-review-transmission"
+      data-transmission-state="stale"
+      role="alert"
+    >
+      <strong>Proposal changed</strong>
+      <span>{state.message}</span>
+      {onRefresh && (
+        <button type="button" onClick={() => void onRefresh()}>
+          Refresh preview
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function ReviewBusinessPreview(
+  { record }: { record: ProjectReviewRecord },
+): JSX.Element {
+  const preview = record.preview;
+  if (preview.kind === "unavailable") {
+    return (
+      <div class="review-preview-unavailable" role="status">
+        <strong>Preview unavailable</strong>
+        <span>{preview.reason}</span>
+      </div>
+    );
+  }
+  if (preview.kind === "brief") {
+    return (
+      <section class="review-business-preview review-brief-preview">
+        <header>
+          <span>ENGINEERING BRIEF · REVISION {preview.brief.revision}</span>
+          <strong>{preview.brief.items.length} explicit statements</strong>
+        </header>
+        <ul>
+          {preview.brief.items.map((item) => (
+            <li key={item.id}>
+              <small>{item.kind.replaceAll("-", " ")}</small>
+              <span>{item.statement}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+  if (preview.kind === "architecture") {
+    const bindingRows = buildArchitectureBindingRows(preview.value);
+    return (
+      <section class="review-business-preview review-architecture-preview">
+        <header>
+          <span>
+            PARTDEFINITION BINDING DIAGRAM · {preview.value.packageName}
+          </span>
+          <strong>{preview.value.system.name}</strong>
+        </header>
+        <ol>
+          {bindingRows.map(({ component, depth }, index) => (
+            <li
+              key={`${component.parentName}:${component.usageName}:${index}`}
+              style={{ paddingInlineStart: `${12 + depth * 22}px` }}
+              aria-label={`Nesting level ${
+                depth + 1
+              }: ${component.parentName} contains usage ${component.usageName} typed by ${component.name}`}
+            >
+              <code>{component.parentName}</code>
+              <span aria-hidden="true">→</span>
+              <strong>{component.usageName}</strong>
+              <small>: {component.name}</small>
+            </li>
+          ))}
+        </ol>
+      </section>
+    );
+  }
+  if (preview.kind === "requirements") {
+    return (
+      <section class="review-business-preview review-requirements-preview">
+        <header>
+          <span>REQUIREMENTS PROPOSAL · TARGET</span>
+          <strong>{preview.value.containerComponent}</strong>
+        </header>
+        <ul>
+          {preview.value.requirements.map((requirement) => (
+            <li key={requirement.metric}>
+              <div>
+                <strong>{requirement.name}</strong>
+                <code>{requirement.metric}</code>
+              </div>
+              <span>
+                {requirement.operator} {requirement.threshold.value}{" "}
+                {requirement.threshold.unit}
+              </span>
+              <small>Target only · no measurement</small>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+  return (
+    <GeometryDraftPreview
+      view={preview.value}
+      assetPath={preview.assetPath}
+      partAssets={preview.partAssets}
+      mode={record.supersededBy
+        ? "superseded"
+        : record.state === "published" && preview.assetAuthority === "sealed"
+        ? "sealed"
+        : record.state === "approved-awaiting-result"
+        ? "approved"
+        : record.state === "published"
+        ? "historical"
+        : "draft"}
+    />
+  );
+}
+
+function reviewKindLabel(kind: ProjectReviewKind): string {
+  if (kind === "brief") return "Brief";
+  if (kind === "architecture") return "Architecture";
+  if (kind === "requirements") return "Specification";
+  return "Geometry";
+}
+
+function reviewStatusIcon(status: ActivityReviewStatus): string {
+  if (status === "to-review") return "!";
+  if (status === "validated") return "✓";
+  return "↺";
 }
 
 // ── Geometry draft viewer ─────────────────────────────────────────────────────
@@ -308,46 +676,96 @@ function DecisionRecord({
 /**
  * WHY THIS COMPONENT EXISTS — the human must see the draft geometry before
  * signing the MRTR that authorises `design.write-geometry@1` to seal it.
- * "Signing what you have seen" is the contract.  The viewer is deliberately
- * labelled DRAFT to enforce contractual vocabulary: this is not a canonical
- * evidence artifact.
+ * "Signing what you have seen" is the contract. The same viewer also reopens
+ * the exact sealed bytes after publication, with explicit vocabulary for each
+ * state so a draft can never masquerade as canonical evidence.
  */
 function GeometryDraftPreview(
-  { view }: { view: GeometryDecisionValid },
+  {
+    view,
+    assetPath,
+    partAssets,
+    mode,
+  }: {
+    view: GeometryDecisionValid;
+    assetPath?: string;
+    partAssets: Extract<
+      ProjectReviewRecord["preview"],
+      { kind: "geometry" }
+    >["partAssets"];
+    mode: "draft" | "approved" | "sealed" | "historical" | "superseded";
+  },
 ): JSX.Element {
   const format = view.primaryAssetFormat;
-  const path = view.primaryAssetPreviewPath;
-
+  const path = assetPath;
   if (!path || !format) {
     return (
-      <p class="geometry-draft-no-preview">
-        No previewable geometry asset in this draft (
-        {view.assemblyFiles.length} file
-        {view.assemblyFiles.length === 1 ? "" : "s"} present).
-      </p>
+      <div class="geometry-review-preview" data-geometry-review-mode={mode}>
+        <p class="geometry-draft-no-preview">
+          No previewable {mode === "sealed" ? "sealed" : "reviewed"}{" "}
+          assembly is available (
+          {view.assemblyFiles.length} file
+          {view.assemblyFiles.length === 1 ? "" : "s"} present).
+        </p>
+        <GeometryDecisionDetails
+          view={view}
+          partAssets={partAssets}
+          mode={mode}
+        />
+      </div>
     );
   }
 
   if (format === "step") {
     return (
-      <div class="geometry-draft-viewer geometry-draft-viewer--text">
-        <p class="geometry-draft-label">DRAFT · GEOMETRY PROPOSAL</p>
+      <div
+        class="geometry-draft-viewer geometry-draft-viewer--text"
+        data-geometry-review-mode={mode}
+      >
+        <p class="geometry-draft-label">{geometryPreviewLabel(mode, format)}</p>
         <p>
-          STEP format — no in-browser preview. Discuss with the agent before
-          approving.
+          {mode === "sealed"
+            ? "Exact sealed STEP bytes are recorded; this format has no in-browser preview."
+            : mode === "approved"
+            ? "The STEP proposal was validated; its sealed result is still pending."
+            : "STEP format — no in-browser preview. Review the available assembly preview with the agent before approving."}
         </p>
         <code class="geometry-draft-digest">{view.draftDigest}</code>
+        <GeometryDecisionDetails
+          view={view}
+          partAssets={partAssets}
+          mode={mode}
+        />
       </div>
     );
   }
 
   return (
-    <div class="geometry-draft-viewer">
+    <div class="geometry-draft-viewer" data-geometry-review-mode={mode}>
       <p class="geometry-draft-label">
-        DRAFT · GEOMETRY PROPOSAL · {format.toUpperCase()} · NOT CANONICAL
+        {geometryPreviewLabel(mode, format)}
       </p>
       {format === "gltf"
-        ? <GltfDraftCanvas url={path} />
+        ? (
+          <GltfAssetCanvas
+            url={path}
+            ariaLabel={mode === "sealed"
+              ? "Interactive sealed geometry"
+              : mode === "superseded" || mode === "historical"
+              ? "Interactive validated historical geometry proposal"
+              : "Interactive proposed geometry"}
+            loadingLabel={mode === "sealed"
+              ? "Loading sealed model…"
+              : mode === "superseded" || mode === "historical"
+              ? "Loading historical reviewed model…"
+              : "Loading proposed model…"}
+            errorLabel={mode === "sealed"
+              ? "Sealed model unavailable"
+              : mode === "superseded" || mode === "historical"
+              ? "Historical reviewed model unavailable"
+              : "Proposed model unavailable"}
+          />
+        )
         : <StlDraftCanvas url={path} />}
       <footer class="geometry-draft-footer">
         <small>
@@ -356,12 +774,247 @@ function GeometryDraftPreview(
         </small>
         <code class="geometry-draft-digest">{view.draftDigest}</code>
       </footer>
+      <GeometryDecisionDetails
+        view={view}
+        partAssets={partAssets}
+        mode={mode}
+      />
     </div>
   );
 }
 
+function geometryPreviewLabel(
+  mode: "draft" | "approved" | "sealed" | "historical" | "superseded",
+  format: string,
+): string {
+  if (mode === "sealed") {
+    return `SEALED RESULT · EXACT RECORDED BYTES · ${format.toUpperCase()}`;
+  }
+  if (mode === "approved") {
+    return `VALIDATED PROPOSAL · RESULT PENDING · ${format.toUpperCase()}`;
+  }
+  if (mode === "superseded") {
+    return `VALIDATED HISTORICAL PROPOSAL · SUPERSEDED · ${format.toUpperCase()}`;
+  }
+  if (mode === "historical") {
+    return `VALIDATED HISTORICAL PROPOSAL · RESULT NOT IN CURRENT GRAPH · ${format.toUpperCase()}`;
+  }
+  return `DRAFT · GEOMETRY PROPOSAL · ${format.toUpperCase()} · NOT CANONICAL`;
+}
+
+function GeometryDecisionDetails(
+  { view, partAssets, mode }: {
+    view: GeometryDecisionValid;
+    partAssets: Extract<
+      ProjectReviewRecord["preview"],
+      { kind: "geometry" }
+    >["partAssets"];
+    mode: "draft" | "approved" | "sealed" | "historical" | "superseded";
+  },
+): JSX.Element {
+  const usageById = new Map(
+    view.components.map((component) => [component.elementId, component]),
+  );
+  const definitionById = new Map(
+    view.partDefinitions.map((
+      definition,
+    ) => [definition.elementId, definition]),
+  );
+  return (
+    <>
+      {view.schemaVersion === "geometry-manifest/2.0" && (
+        <>
+          <section class="geometry-part-artifacts">
+            <header>
+              <span>INDEPENDENT PARTDEFINITION CAD</span>
+              <strong>
+                {view.partDefinitions.length}{" "}
+                definition{view.partDefinitions.length === 1 ? "" : "s"}{" "}
+                included in this review
+              </strong>
+            </header>
+            <div class="geometry-part-artifact-grid">
+              {view.partDefinitions.map((definition) => {
+                const assets = partAssets.filter((asset) =>
+                  asset.partDefinitionElementId === definition.elementId
+                );
+                return (
+                  <article key={definition.elementId}>
+                    <div>
+                      <strong>{definition.label}</strong>
+                      <small>
+                        SysML PartDefinition · {definition.elementId}
+                      </small>
+                    </div>
+                    {assets.map((asset) => (
+                      <div
+                        class="geometry-part-artifact-file"
+                        key={`${asset.digest}:${asset.format}`}
+                      >
+                        <span>
+                          {asset.format.toUpperCase()} ·{" "}
+                          {shortDigest(asset.digest)}
+                        </span>
+                        {asset.path
+                          ? (
+                            <a
+                              href={asset.path}
+                              download={`${asset.name}.${
+                                asset.format === "gltf" ? "glb" : asset.format
+                              }`}
+                            >
+                              {mode === "sealed"
+                                ? "Download sealed file"
+                                : mode === "draft"
+                                ? "Download proposal file"
+                                : "Download reviewed proposal"}
+                            </a>
+                          )
+                          : (
+                            <small>
+                              Exact file unavailable in this projection
+                            </small>
+                          )}
+                      </div>
+                    ))}
+                  </article>
+                );
+              })}
+            </div>
+            <p>
+              These files are validated by the same bundle decision. STEP is
+              downloadable for downstream part work; no per-part browser viewer
+              is claimed.
+            </p>
+          </section>
+          <section class="geometry-occurrence-table">
+            <header>
+              <span>PARTUSAGE → PARTDEFINITION</span>
+              <strong>{view.occurrences.length} placed occurrences</strong>
+            </header>
+            <div role="table" aria-label="Geometry occurrence placements">
+              {view.occurrences.map((occurrence) => {
+                const usage = usageById.get(occurrence.usageElementId);
+                const definition = definitionById.get(
+                  occurrence.partDefinitionElementId,
+                );
+                return (
+                  <div
+                    role="row"
+                    key={occurrence.usageElementId}
+                  >
+                    <span role="cell">
+                      <strong>
+                        {usage?.usageName ?? occurrence.usageElementId}
+                      </strong>
+                      <small>{usage?.label ?? "Recorded occurrence"}</small>
+                    </span>
+                    <i aria-hidden="true">→</i>
+                    <span role="cell">
+                      <strong>
+                        {definition?.label ??
+                          occurrence.partDefinitionElementId}
+                      </strong>
+                      <small>
+                        T [{occurrence.translationMm.join(", ")}] mm · R
+                        [{occurrence.rotationDeg.join(", ")}]°
+                      </small>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
+      {view.schemaVersion === "geometry-manifest/1.0" && (
+        <p class="geometry-legacy-scope">
+          Legacy assembly-only review · no independent PartDefinition CAD was
+          included in this decision.
+        </p>
+      )}
+      <details class="geometry-review-trace">
+        <summary>Formats, hashes and recorded source</summary>
+        <dl>
+          <div>
+            <dt>Manifest</dt>
+            <dd>{view.schemaVersion}</dd>
+          </div>
+          <div>
+            <dt>Source</dt>
+            <dd>
+              {view.architecture.snapshotId} · r{view.architecture.revision}
+            </dd>
+          </div>
+          {view.predecessor && (
+            <div>
+              <dt>Replaces</dt>
+              <dd>
+                {view.predecessor.artifactId} ·{" "}
+                <code>{shortDigest(view.predecessor.digest)}</code>
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Architecture SHA-256</dt>
+            <dd>
+              <code>{view.architecture.artifactDigest}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>Requested formats</dt>
+            <dd>
+              Assembly {view.exportFormats.join(", ")}
+              {view.partExportFormats.length > 0
+                ? ` · Parts ${view.partExportFormats.join(", ")}`
+                : ""}
+            </dd>
+          </div>
+          <div>
+            <dt>Assembly</dt>
+            <dd>
+              {view.assemblyFiles.map((file) =>
+                `${file.format.toUpperCase()} ${file.name} ${
+                  shortDigest(file.digest)
+                }`
+              ).join(" · ") || "None recorded"}
+            </dd>
+          </div>
+          {view.partDefinitions.length > 0 && (
+            <div>
+              <dt>Parts</dt>
+              <dd>
+                {view.partDefinitions.map((definition) =>
+                  `${definition.label} source ${
+                    shortDigest(definition.scriptDigest)
+                  }: ${
+                    definition.files.map((file) =>
+                      `${file.format.toUpperCase()} ${shortDigest(file.digest)}`
+                    ).join(", ")
+                  }`
+                ).join(" · ")}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Script SHA-256</dt>
+            <dd>
+              <code>{view.scriptDigest}</code>
+            </dd>
+          </div>
+        </dl>
+      </details>
+    </>
+  );
+}
+
+function shortDigest(digest: string): string {
+  return `${digest.slice(0, 10)}…${digest.slice(-8)}`;
+}
+
 function StlDraftCanvas({ url }: { url: string }): JSX.Element {
   const host = useRef<HTMLDivElement>(null);
+  const resetView = useRef<(() => void) | undefined>(undefined);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
@@ -374,7 +1027,7 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
     setState("loading");
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1c1e);
+    scene.background = new THREE.Color(0xf4efe5);
     const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
@@ -385,8 +1038,8 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.0));
-    const key = new THREE.DirectionalLight(0xffe8cc, 3.2);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xb9aa98, 2.4));
+    const key = new THREE.DirectionalLight(0xfff8ed, 3.4);
     key.position.set(180, 220, 260);
     scene.add(key);
 
@@ -413,20 +1066,23 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
         geometry.center();
         geometry.computeBoundingSphere();
         material = new THREE.MeshStandardMaterial({
-          color: 0x4a9eff,
-          metalness: 0.2,
-          roughness: 0.65,
+          color: 0xb86635,
+          metalness: 0.08,
+          roughness: 0.72,
         });
         const mesh = new THREE.Mesh(geometry, material);
         mesh.rotation.x = -Math.PI / 2;
         scene.add(mesh);
         const radius = Math.max(geometry.boundingSphere?.radius ?? 50, 1);
-        camera.near = Math.max(radius / 100, 0.1);
-        camera.far = radius * 30;
-        camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
-        camera.updateProjectionMatrix();
-        controls.target.set(0, 0, 0);
-        controls.update();
+        resetView.current = () => {
+          camera.near = Math.max(radius / 100, 0.1);
+          camera.far = radius * 30;
+          camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
+          camera.updateProjectionMatrix();
+          controls.target.set(0, 0, 0);
+          controls.update();
+        };
+        resetView.current();
         setState("ready");
       },
       undefined,
@@ -447,6 +1103,7 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
       controls.dispose();
       geometry?.dispose();
       material?.dispose();
+      resetView.current = undefined;
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -462,98 +1119,14 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
           ? "Draft mesh unavailable"
           : "Drag to orbit · scroll to zoom"}
       </div>
-    </div>
-  );
-}
-
-function GltfDraftCanvas({ url }: { url: string }): JSX.Element {
-  const host = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-
-  useEffect(() => {
-    const container = host.current;
-    if (!container) return;
-    let disposed = false;
-    let frame = 0;
-    setState("loading");
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1c1e);
-    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.replaceChildren(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
-
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.0));
-    const key = new THREE.DirectionalLight(0xffe8cc, 3.2);
-    key.position.set(180, 220, 260);
-    scene.add(key);
-
-    const resize = () => {
-      const w = Math.max(container.clientWidth, 1);
-      const h = Math.max(container.clientHeight, 1);
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    resize();
-
-    new GLTFLoader().load(
-      url,
-      (gltf) => {
-        if (disposed) return;
-        scene.add(gltf.scene);
-        const box = new THREE.Box3().setFromObject(gltf.scene);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        const radius = Math.max(size.length() / 2, 1);
-        gltf.scene.position.sub(center);
-        camera.near = Math.max(radius / 100, 0.1);
-        camera.far = radius * 30;
-        camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
-        camera.updateProjectionMatrix();
-        controls.target.set(0, 0, 0);
-        controls.update();
-        setState("ready");
-      },
-      undefined,
-      () => !disposed && setState("error"),
-    );
-
-    const render = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
-    };
-    render();
-
-    return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      controls.dispose();
-      renderer.dispose();
-      renderer.domElement.remove();
-    };
-  }, [url]);
-
-  return (
-    <div class="geometry-draft-canvas-shell">
-      <div class="geometry-draft-canvas" ref={host} />
-      <div class="geometry-draft-canvas-state" data-state={state}>
-        {state === "loading"
-          ? "Loading draft model…"
-          : state === "error"
-          ? "Draft model unavailable"
-          : "Drag to orbit · scroll to zoom"}
-      </div>
+      <button
+        type="button"
+        class="geometry-draft-reset"
+        disabled={state !== "ready"}
+        onClick={() => resetView.current?.()}
+      >
+        Fit / reset
+      </button>
     </div>
   );
 }

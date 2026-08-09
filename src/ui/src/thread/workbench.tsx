@@ -15,7 +15,28 @@ import {
   StateMessage,
   Toolbar,
 } from "../mcp-view-primitives.ts";
-import { ReviewNotifications } from "../project/control-center.tsx";
+import type {
+  ProjectReviewIntent,
+  ProjectReviewIntentAction,
+} from "../../../domain/project/project-review-intent.ts";
+import {
+  buildActivityReviewRecords,
+  type ProjectReviewRecord,
+} from "../project/review-decision-model.ts";
+import {
+  type ProjectReviewIntentClient,
+  ReviewIntentConflictError,
+  ReviewIntentStaleError,
+} from "../project/review-intent-client.ts";
+import {
+  buildReviewIntent,
+  indexReviewIntentRecords,
+  reattachReviewIntent,
+  reviewIntentScopeKey,
+  reviewIntentStateFromRecord,
+  type ReviewIntentTransmissionState,
+  shouldPollReviewIntentReceipts,
+} from "../project/review-intent-model.ts";
 import {
   agentRunRecordedAt,
   agentRunSummary,
@@ -31,8 +52,13 @@ import {
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
 import {
+  parseProjectLocationHash,
   parseProjectViewHash,
+  projectDeepLinkDomId,
+  projectDeepLinkHash,
+  type ProjectDeepLinkTarget,
   projectViewHash,
+  shouldScrollProjectDeepLink,
 } from "../project/navigation-model.ts";
 import { DocumentaryBaselineWorkbench } from "../project/documentary-baseline-workbench.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
@@ -118,10 +144,12 @@ import type {
 
 export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
+  reviewIntentClient?: ProjectReviewIntentClient;
 }
 
 export function ThreadWorkbench({
   client,
+  reviewIntentClient,
 }: ThreadWorkbenchProps): JSX.Element {
   const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
   const [selection, setSelection] = useState<ThreadRef>();
@@ -130,6 +158,9 @@ export function ThreadWorkbench({
   const [activeView, setActiveView] = useState<ProjectWorkspaceView>(() =>
     parseProjectViewHash(globalThis.location?.hash ?? "")
   );
+  const [activeDeepLink, setActiveDeepLink] = useState<
+    ProjectDeepLinkTarget | undefined
+  >(() => parseProjectLocationHash(globalThis.location?.hash ?? "").target);
   const [activeComponentProvider, setActiveComponentProvider] = useState<
     ThreadComponentProvider
   >("syson");
@@ -143,6 +174,9 @@ export function ThreadWorkbench({
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [error, setError] = useState<string>();
+  const [reviewIntentStates, setReviewIntentStates] = useState<
+    ReadonlyMap<string, ReviewIntentTransmissionState>
+  >(new Map());
   // Mode "Exploration" (sigma) par défaut sur la surface Evidence ; la Carte
   // SVG reste disponible. Le mode "Par pièce" a été retiré (décision opérateur
   // 2026-08-07) : la lecture par pièce vit dans le filtre du feed Activity.
@@ -191,13 +225,19 @@ export function ThreadWorkbench({
     FeedScope | undefined
   >(undefined);
   const snapshotRef = useRef<EngineeringWorkbenchSnapshot>();
+  const lastScrolledDeepLinkRef = useRef<string>();
 
   // Retour arriere et avance du navigateur : le fragment fait autorite sur
   // l'espace affiche, sinon les fleches de l'historique laissent l'URL et le
   // cockpit desynchronises.
   useEffect(() => {
     const syncFromHash = () => {
-      setActiveView(parseProjectViewHash(globalThis.location?.hash ?? ""));
+      const location = parseProjectLocationHash(
+        globalThis.location?.hash ?? "",
+      );
+      if (location.target) lastScrolledDeepLinkRef.current = undefined;
+      setActiveView(location.view);
+      setActiveDeepLink(location.target);
     };
     globalThis.addEventListener("popstate", syncFromHash);
     globalThis.addEventListener("hashchange", syncFromHash);
@@ -206,6 +246,26 @@ export function ThreadWorkbench({
       globalThis.removeEventListener("hashchange", syncFromHash);
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      !activeDeepLink ||
+      !shouldScrollProjectDeepLink(
+        lastScrolledDeepLinkRef.current,
+        activeDeepLink,
+      )
+    ) return;
+    const scrollKey = projectDeepLinkHash(activeDeepLink);
+    const frame = requestAnimationFrame(() => {
+      const target = globalThis.document?.getElementById(
+        projectDeepLinkDomId(activeDeepLink),
+      );
+      if (!target) return;
+      target.scrollIntoView({ block: "start" });
+      lastScrolledDeepLinkRef.current = scrollKey;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeDeepLink, activeView, workbench]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -288,6 +348,67 @@ export function ThreadWorkbench({
       unsubscribe?.();
     };
   }, [client]);
+
+  const reviewIntentProjectId = workbench?.project.project.id;
+  const reviewIntentProjectRevision = workbench?.project.revision;
+
+  // Restore delivery receipts independently from canonical decision state.
+  // Exact decision+fingerprint matching prevents a predecessor's Sent badge
+  // from appearing on a changed proposal after reload.
+  useEffect(() => {
+    if (!reviewIntentClient || !reviewIntentProjectId) return;
+    const controller = new AbortController();
+    reviewIntentClient.list(controller.signal).then((response) => {
+      if (
+        controller.signal.aborted ||
+        response.projectId !== reviewIntentProjectId
+      ) return;
+      const restored = indexReviewIntentRecords(response.intents);
+      setReviewIntentStates((current) =>
+        mergeReviewIntentTransmission(current, restored)
+      );
+    }).catch(() => {
+      // The project and its canonical statuses remain usable if the intent
+      // outbox cannot be read. A later explicit send reports its own error.
+    });
+    return () => controller.abort();
+  }, [
+    reviewIntentClient,
+    reviewIntentProjectId,
+    reviewIntentProjectRevision,
+  ]);
+
+  const hasQueuedReviewIntent = shouldPollReviewIntentReceipts(
+    reviewIntentStates,
+    workbench?.project.decisions ?? [],
+  );
+  useEffect(() => {
+    if (
+      !reviewIntentClient || !reviewIntentProjectId ||
+      !hasQueuedReviewIntent
+    ) return;
+    const controller = new AbortController();
+    const refreshReceipts = () => {
+      reviewIntentClient.list(controller.signal).then((response) => {
+        if (
+          controller.signal.aborted ||
+          response.projectId !== reviewIntentProjectId
+        ) return;
+        setReviewIntentStates((current) =>
+          mergeReviewIntentTransmission(
+            current,
+            indexReviewIntentRecords(response.intents),
+          )
+        );
+      }).catch(() => undefined);
+    };
+    const interval = globalThis.setInterval(refreshReceipts, 2_000);
+    refreshReceipts();
+    return () => {
+      controller.abort();
+      globalThis.clearInterval(interval);
+    };
+  }, [reviewIntentClient, reviewIntentProjectId, hasQueuedReviewIntent]);
 
   // Keep one versioned object graph for the Evidence renderers and their
   // selection state. The Evidence-only removal of closed actions happens
@@ -423,7 +544,9 @@ export function ThreadWorkbench({
   }, [graphSelection, graphSelectionIndexMemo, versionedProvenanceMemo]);
 
   const changeView = (next: ProjectWorkspaceView) => {
+    lastScrolledDeepLinkRef.current = undefined;
     setActiveView(next);
+    setActiveDeepLink(undefined);
     // A selected record can belong to another tool surface. Keep the main
     // workspace calm when changing context; explicit inspection reopens this.
     setInspectorOpen(false);
@@ -431,6 +554,21 @@ export function ThreadWorkbench({
     // partager le lien ramene au meme endroit du cockpit.
     if (globalThis.location && globalThis.history) {
       const hash = projectViewHash(next);
+      if (globalThis.location.hash !== hash) {
+        globalThis.history.pushState(null, "", hash);
+      }
+    }
+  };
+
+  const openProjectDeepLink = (target: ProjectDeepLinkTarget) => {
+    lastScrolledDeepLinkRef.current = undefined;
+    const location = parseProjectLocationHash(projectDeepLinkHash(target));
+    setActiveView(location.view);
+    setActiveDeepLink(target);
+    if (target.startsWith("review/")) setFeedFilterComponentId(undefined);
+    setInspectorOpen(false);
+    if (globalThis.location && globalThis.history) {
+      const hash = projectDeepLinkHash(target);
       if (globalThis.location.hash !== hash) {
         globalThis.history.pushState(null, "", hash);
       }
@@ -497,6 +635,147 @@ export function ThreadWorkbench({
 
   const snapshot = workbench.thread;
   const project = workbench.project;
+  const activityReviewRecords = buildActivityReviewRecords(project, snapshot);
+
+  const setReviewIntentState = (
+    scope: string,
+    state: ReviewIntentTransmissionState,
+  ) => {
+    setReviewIntentStates((current) => {
+      const next = new Map(current);
+      next.set(scope, state);
+      return next;
+    });
+  };
+
+  const reconcileReviewIntentConflict = async (
+    scope: string,
+    intent: ProjectReviewIntent,
+    conflict: ReviewIntentConflictError,
+  ): Promise<void> => {
+    if (!reviewIntentClient) return;
+    try {
+      const response = await reviewIntentClient.list();
+      if (response.projectId === intent.projectId) {
+        const exact = reattachReviewIntent(
+          response.intents,
+          intent.decisionId,
+          intent.inputFingerprint,
+        );
+        if (exact.kind !== "idle") {
+          setReviewIntentState(scope, exact);
+          return;
+        }
+      }
+    } catch {
+      // The conflict below remains truthful even when reconciliation cannot
+      // read the outbox. Never convert this failure into a project verdict.
+    }
+    setReviewIntentState(scope, {
+      kind: "error",
+      message: conflict.code === "review_intent_stale_revision"
+        ? "Project context advanced without changing this proposal. Refresh the exact preview before sending again."
+        : "The outbox could not reconcile this send. Refresh the exact preview before trying again.",
+    });
+  };
+
+  const transmitReviewIntent = async (
+    scope: string,
+    intent: ProjectReviewIntent,
+  ): Promise<void> => {
+    if (!reviewIntentClient) return;
+    setReviewIntentState(scope, { kind: "sending", intent });
+    try {
+      const record = await reviewIntentClient.submit(intent);
+      setReviewIntentState(scope, reviewIntentStateFromRecord(record));
+    } catch (reason) {
+      if (reason instanceof ReviewIntentStaleError) {
+        setReviewIntentState(scope, {
+          kind: "stale",
+          message: reason.message,
+          currentRevision: reason.currentRevision,
+        });
+        return;
+      }
+      if (reason instanceof ReviewIntentConflictError) {
+        await reconcileReviewIntentConflict(scope, intent, reason);
+        return;
+      }
+      setReviewIntentState(scope, {
+        kind: "error",
+        message: reason instanceof Error
+          ? reason.message
+          : "The review intent could not be sent.",
+        retryIntent: intent,
+      });
+    }
+  };
+
+  const submitReviewIntent = async (
+    record: ProjectReviewRecord,
+    action: ProjectReviewIntentAction,
+    comment?: string,
+  ): Promise<void> => {
+    const decision = record.decision;
+    if (
+      !reviewIntentClient || decision?.status !== "proposed" ||
+      !decision.inputFingerprint
+    ) return;
+    const intent = buildReviewIntent({
+      intentId: `review-${globalThis.crypto.randomUUID()}`,
+      projectId: project.project.id,
+      expectedRevision: project.revision,
+      decisionId: decision.id,
+      inputFingerprint: decision.inputFingerprint,
+      action,
+      comment,
+      submittedAt: new Date().toISOString(),
+    });
+    await transmitReviewIntent(
+      reviewIntentScopeKey(decision.id, decision.inputFingerprint),
+      intent,
+    );
+  };
+
+  const retryReviewIntent = async (
+    record: ProjectReviewRecord,
+  ): Promise<void> => {
+    const decision = record.decision;
+    if (!decision?.inputFingerprint) return;
+    const scope = reviewIntentScopeKey(decision.id, decision.inputFingerprint);
+    const state = reviewIntentStates.get(scope);
+    if (state?.kind !== "error" || !state.retryIntent) return;
+    // Retry is byte-for-byte idempotent: same intentId, timestamp, revision,
+    // fingerprint, action and comment.
+    await transmitReviewIntent(scope, state.retryIntent);
+  };
+
+  const refreshReviewIntentContext = async (): Promise<void> => {
+    try {
+      const next = await client.load();
+      snapshotRef.current = next;
+      setWorkbench(next);
+      if (!reviewIntentClient) return;
+      const response = await reviewIntentClient.list();
+      if (response.projectId === next.project.project.id) {
+        setReviewIntentStates(indexReviewIntentRecords(response.intents));
+      }
+    } catch {
+      setReviewIntentStates((current) =>
+        new Map([...current].map(([key, state]) => [
+          key,
+          state.kind === "stale" ||
+            (state.kind === "error" && !state.retryIntent)
+            ? {
+              ...state,
+              message:
+                "Refresh failed. The current project record is still shown; try again.",
+            }
+            : state,
+        ]))
+      );
+    }
+  };
   const agentNow = buildAgentNowPresentation(project);
   const projectPath = buildProjectPath(project, snapshot);
   // versionedProvenance and evidenceCanvas are memoized above (guarded
@@ -580,20 +859,15 @@ export function ThreadWorkbench({
     changeView("work");
   };
 
-  const openDecisionSpecification = (decisionId?: string) => {
-    const reference = currentDecisionEvidence(decisionId);
-    const component = reference
-      ? snapshot.components.components.find((candidate) =>
-        candidate.bindings.some((binding) =>
-          binding.provider === "syson" &&
-          binding.selection?.kind === reference.kind &&
-          binding.selection.id === reference.id
-        )
-      )
-      : undefined;
-    if (component) setSelectedComponentId(component.id);
-    setActiveComponentProvider("syson");
-    changeView("product");
+  const openPublishedEvidence = (reference: ThreadGraphRef) => {
+    const node = snapshot.graph.nodes.find((candidate) =>
+      candidate.ref.kind === reference.kind && candidate.ref.id === reference.id
+    );
+    if (!node) return;
+    setLineageFocus(node.ref);
+    setGraphSelection({ kind: "node", ref: node.ref });
+    if (node.selection) setSelection(node.selection);
+    changeView("verification");
   };
 
   const selectThreadElement = (next: ThreadRef) => {
@@ -904,7 +1178,8 @@ export function ThreadWorkbench({
             thread={snapshot}
             onNavigate={changeView}
             onOpenActivity={openDecisionActivity}
-            onOpenSpecification={openDecisionSpecification}
+            onOpenDeepLink={openProjectDeepLink}
+            onOpenEvidence={openPublishedEvidence}
           />
         )
         : (
@@ -985,12 +1260,6 @@ export function ThreadWorkbench({
                 </summary>
                 <div>
                   <ProjectWorkRibbon project={project} />
-                  <ReviewNotifications
-                    surface="activity"
-                    project={project}
-                    onOpenActivity={openDecisionActivity}
-                    onOpenSpecification={openDecisionSpecification}
-                  />
                 </div>
               </details>
             )}
@@ -1021,6 +1290,17 @@ export function ThreadWorkbench({
                       filterComponentId={feedFilterComponentId}
                       anchorage={partAnchorage}
                       components={snapshot.components}
+                      reviewRecords={activityReviewRecords}
+                      reviewIntentStates={reviewIntentStates}
+                      onSubmitReviewIntent={reviewIntentClient
+                        ? submitReviewIntent
+                        : undefined}
+                      onRetryReviewIntent={reviewIntentClient
+                        ? retryReviewIntent
+                        : undefined}
+                      onRefreshReviewIntents={reviewIntentClient
+                        ? refreshReviewIntentContext
+                        : undefined}
                       onFilterChange={(id) => {
                         setFeedFilterComponentId(id);
                         // Only catalog components can be selected by the
@@ -1059,6 +1339,7 @@ export function ThreadWorkbench({
                         setInspectorOpen(true);
                       }}
                       onOpenEvidenceAnchored={openEvidenceAnchored}
+                      onOpenReviewEvidence={openPublishedEvidence}
                     />
                   )
                   : activeView === "verification"
@@ -1075,7 +1356,7 @@ export function ThreadWorkbench({
                           </h4>
                           <span>
                             {evidenceCanvas.isFiltered
-                              ? "Vue locale — sélectionner le fond du canvas pour revenir à la carte complète."
+                              ? "Local view — select the canvas background to return to the full map."
                               : "Select a result, requirement or component to see what supports it and what it affects. Previous versions stay inside the selected node."}
                           </span>
                         </div>
@@ -1092,22 +1373,22 @@ export function ThreadWorkbench({
                                 evidenceMode === "exploration"
                                   ? explorationLocalVisibleCount
                                   : carteLocalVisibleCount
-                              } faits affichés · vue locale · profondeur ${localDepth}`
+                              } facts shown · local view · depth ${localDepth}`
                               : evidenceMode === "exploration"
                               ? (() => {
                                 const kp = explorationKindProjectionMemo ??
                                   evidenceCanvas;
                                 const parts: string[] = [
-                                  `${kp.displayedCount} faits affichés`,
+                                  `${kp.displayedCount} facts shown`,
                                 ];
                                 const totalFolded = kp.foldedInstrumentCount +
                                   versionedProvenance.collapsedVersionCount;
                                 if (totalFolded > 0) {
-                                  parts.push(`${totalFolded} pliés`);
+                                  parts.push(`${totalFolded} folded`);
                                 }
                                 if (kp.supportingNodeCount > 0) {
                                   parts.push(
-                                    `${kp.supportingNodeCount} masqués par type`,
+                                    `${kp.supportingNodeCount} hidden by type`,
                                   );
                                 }
                                 return parts.join(" · ");
@@ -1121,14 +1402,14 @@ export function ThreadWorkbench({
                                   evidenceCanvas.foldedInstrumentCount +
                                   versionedProvenance.collapsedVersionCount;
                                 const parts: string[] = [
-                                  `${essentialCount} faits affichés`,
+                                  `${essentialCount} facts shown`,
                                 ];
                                 if (totalFolded > 0) {
-                                  parts.push(`${totalFolded} pliés`);
+                                  parts.push(`${totalFolded} folded`);
                                 }
                                 if (evidenceCanvas.supportingNodeCount > 0) {
                                   parts.push(
-                                    `${evidenceCanvas.supportingNodeCount} hors vue courante`,
+                                    `${evidenceCanvas.supportingNodeCount} outside the current view`,
                                   );
                                 }
                                 return parts.join(" · ");
@@ -1137,7 +1418,7 @@ export function ThreadWorkbench({
                           <div
                             class="evidence-graph-mode-toggle"
                             role="group"
-                            aria-label="Mode de rendu du graphe"
+                            aria-label="Graph rendering mode"
                           >
                             <button
                               type="button"
@@ -1151,7 +1432,7 @@ export function ThreadWorkbench({
                               aria-pressed={evidenceMode === "carte"}
                               onClick={() => setEvidenceMode("carte")}
                             >
-                              Carte
+                              Map
                             </button>
                           </div>
                         </div>
@@ -1162,8 +1443,8 @@ export function ThreadWorkbench({
                             type="button"
                             class="evidence-graph-menu-toggle"
                             aria-expanded={graphMenuOpen}
-                            aria-label="Réglages du graphe"
-                            title="Réglages du graphe"
+                            aria-label="Graph settings"
+                            title="Graph settings"
                             onClick={() => setGraphMenuOpen(!graphMenuOpen)}
                           >
                             ☰
@@ -1173,19 +1454,19 @@ export function ThreadWorkbench({
                               {evidenceCanvas.isFiltered && (
                                 <>
                                   <p class="evidence-graph-menu-label">
-                                    PROFONDEUR DES VOISINS
+                                    NEIGHBOR DEPTH
                                   </p>
                                   <div
                                     class="evidence-graph-mode-toggle"
                                     role="group"
-                                    aria-label="Profondeur du voisinage local"
+                                    aria-label="Local neighborhood depth"
                                   >
                                     {([1, 2, 3] as const).map((depth) => (
                                       <button
                                         key={depth}
                                         type="button"
                                         aria-pressed={localDepth === depth}
-                                        title={`Afficher les voisins jusqu'à la profondeur ${depth}`}
+                                        title={`Show neighbors up to depth ${depth}`}
                                         onClick={() => setLocalDepth(depth)}
                                       >
                                         {depth}
@@ -1195,7 +1476,7 @@ export function ThreadWorkbench({
                                 </>
                               )}
                               <p class="evidence-graph-menu-label">
-                                AFFICHER
+                                SHOW
                               </p>
                               {(Object.keys(
                                 DISPLAY_KIND_LABELS,
@@ -2227,6 +2508,20 @@ function streamStatusLabel(
   if (status === "connecting") return "Connecting activity stream";
   if (status === "reconnecting") return "Reconnecting activity stream";
   return "Persisted snapshot";
+}
+
+function mergeReviewIntentTransmission(
+  current: ReadonlyMap<string, ReviewIntentTransmissionState>,
+  restored: ReadonlyMap<string, ReviewIntentTransmissionState>,
+): ReadonlyMap<string, ReviewIntentTransmissionState> {
+  const next = new Map(restored);
+  for (const [key, state] of current) {
+    // Preserve an in-flight or locally reported state until the outbox can
+    // observe it. When GET contains the exact scope, its queued/ack receipt is
+    // authoritative and replaces the local transport state.
+    if (!next.has(key) && state.kind !== "idle") next.set(key, state);
+  }
+  return next;
 }
 
 function formatTime(value: string): string {

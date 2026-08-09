@@ -38,6 +38,29 @@ Deno.test("project brief record is absent for a project without the V3 framing c
   assertEquals(buildProjectBriefRecord(undefined), undefined);
 });
 
+Deno.test("a rejected brief revision is a request, not proof of active agent work", () => {
+  const record = buildProjectBriefRecord(framing({
+    proposalReview: {
+      briefSnapshotId: "brief-snapshot-3",
+      briefRevision: 3,
+      status: "rejected",
+      inputFingerprint: fingerprint(),
+      requestedAt: "2026-08-03T10:00:00.000Z",
+      decidedAt: "2026-08-03T10:05:00.000Z",
+      decidedBy: { id: "erwan", origin: "human" },
+      rationale: "Please correct the scope.",
+    },
+  }));
+
+  assertEquals(record?.revision, 2);
+  assertEquals(record?.status, "revision-requested");
+  assertEquals(record?.statusLabel, "Revision requested");
+  assertEquals(
+    record?.statusDetail,
+    "The confirmed brief stays in force. A correction was requested; no active agent work is implied.",
+  );
+});
+
 function framing(
   overrides: Partial<EngineeringProjectFraming> = {},
 ): EngineeringProjectFraming {

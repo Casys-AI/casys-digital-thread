@@ -63,18 +63,18 @@ export type DisplayKind =
   | "action";
 
 /**
- * Human-readable French labels for each DisplayKind.
+ * Human-readable English labels for each DisplayKind.
  * Used in the burger menu and the legend TYPES section.
  */
 export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
-  "artifact": "Artefacts",
-  "supporting-artifact": "Artefacts techniques",
+  "artifact": "Artifacts",
+  "supporting-artifact": "Technical artifacts",
   "observation": "Observations",
-  "requirement": "Exigences",
-  "evaluation": "Évaluations",
+  "requirement": "Requirements",
+  "evaluation": "Evaluations",
   "violation": "Violations",
   "change": "Changes",
-  "consumption": "Consommations",
+  "consumption": "Consumptions",
   "action": "Actions",
 };
 

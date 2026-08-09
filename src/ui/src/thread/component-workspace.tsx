@@ -20,8 +20,14 @@ import {
   correctionNodesForComponent,
   resolveCadMeshStatus,
   resolveCadSurface,
+  resolveSealedAssemblyGeometry,
+  sealedAssemblyGeometryBlocker,
+  sealedAssemblyGlbAsset,
   type SysmlAnchoredRequirement,
 } from "./component-workspace-model.ts";
+import { CompactIdentifier } from "./compact-identifier.tsx";
+import { GltfAssetCanvas } from "./gltf-asset-canvas.tsx";
+import { productStructureAvailability } from "./product-anchor-model.ts";
 
 export interface ComponentWorkspaceProps {
   snapshot: ThreadWorkbenchSnapshot;
@@ -55,6 +61,8 @@ export function ComponentWorkspace({
 }: ComponentWorkspaceProps): JSX.Element {
   const components = snapshot.components.components;
   const cadCoverage = cadSurfaceCoverage(snapshot);
+  const sealedAssembly = resolveSealedAssemblyGeometry(snapshot);
+  const structure = productStructureAvailability(snapshot);
   const selected =
     components.find((component) => component.id === selectedComponentId) ??
       components[0];
@@ -63,14 +71,28 @@ export function ComponentWorkspace({
     : [];
 
   if (!selected) {
+    const unavailable = structure.status === "unavailable"
+      ? structure
+      : undefined;
     return (
       <div class="component-empty">
-        <span>00</span>
-        <h4>No reviewed product structure</h4>
-        <p>{snapshot.components.rationale}</p>
+        <span aria-hidden="true">N/A</span>
+        <div>
+          <h4>{unavailable?.title ?? "Product structure unavailable"}</h4>
+          <p>{unavailable?.detail ?? snapshot.components.rationale}</p>
+          <p class="component-empty-guidance">
+            {unavailable?.guidance ??
+              "No component count can be inferred from this thread revision."}
+          </p>
+        </div>
       </div>
     );
   }
+
+  const structureCounts = structure.status === "available" ? structure : {
+    assemblyRootCount: 0,
+    partOccurrenceCount: 0,
+  };
 
   return (
     <div class="component-workspace">
@@ -80,8 +102,16 @@ export function ComponentWorkspace({
           <h4>{selected.label}</h4>
         </div>
         <div class="component-workspace-count">
-          <strong>{String(components.length).padStart(2, "0")}</strong>
-          <span>reviewed components</span>
+          <strong>
+            {String(structureCounts.partOccurrenceCount).padStart(2, "0")}
+          </strong>
+          <span>declared part occurrences</span>
+          <small>
+            {structureCounts.assemblyRootCount} assembly root{structureCounts
+                .assemblyRootCount === 1
+              ? ""
+              : "s"}
+          </small>
         </div>
       </header>
 
@@ -111,6 +141,12 @@ export function ComponentWorkspace({
           const selectedCad = provider.id === "build123d"
             ? resolveCadSurface(snapshot, selected)
             : undefined;
+          const genericAssemblyInspection = provider.id === "build123d" &&
+              selected.kind === "assembly"
+            ? sealedAssembly?.inspectionBinding
+            : undefined;
+          const inspectionBinding = selectedCad?.inspectionBinding ??
+            genericAssemblyInspection;
           return (
             <button
               key={provider.id}
@@ -119,15 +155,15 @@ export function ComponentWorkspace({
               aria-selected={activeProvider === provider.id}
               onClick={() => {
                 onProviderChange(provider.id);
-                if (selectedCad) {
-                  onBindingSelect(selectedCad.inspectionBinding);
+                if (inspectionBinding) {
+                  onBindingSelect(inspectionBinding);
                 }
               }}
             >
               <span>{provider.label}</span>
               <small>
                 {provider.id === "build123d"
-                  ? `${cadCoverage.assemblySurfaces} assembly · ${cadCoverage.partSurfaces} parts`
+                  ? cadCoverageLabel(cadCoverage, sealedAssembly)
                   : `${linked}/${components.length} · ${provider.role}`}
               </small>
             </button>
@@ -188,6 +224,7 @@ function PartTraceStrip({
   onProviderChange: (provider: ThreadComponentProvider) => void;
   onBindingSelect: (binding: ThreadComponentBinding) => void;
 }): JSX.Element {
+  const sealedAssembly = resolveSealedAssemblyGeometry(snapshot);
   return (
     <div
       class="part-trace-strip"
@@ -198,8 +235,25 @@ function PartTraceStrip({
         const cadSurface = provider.id === "build123d"
           ? resolveCadSurface(snapshot, component)
           : undefined;
-        const verified = binding?.status === "verified" || !!cadSurface;
-        const inspectableBinding = cadSurface?.inspectionBinding ?? binding;
+        const genericAssemblyBinding = provider.id === "build123d" &&
+            component.kind === "assembly"
+          ? sealedAssembly?.inspectionBinding
+          : undefined;
+        const verified = binding?.status === "verified" || !!cadSurface ||
+          !!genericAssemblyBinding;
+        const inspectableBinding = cadSurface?.inspectionBinding ??
+          genericAssemblyBinding ?? binding;
+        const displayBinding = binding ?? cadSurface?.binding;
+        const displayIdentity = displayBinding?.id ??
+          (genericAssemblyBinding
+            ? "Sealed assembly result"
+            : provider.id === "build123d"
+            ? component.kind === "part"
+              ? "No per-part CAD identity"
+              : "No assembly CAD identity"
+            : provider.id === "syson"
+            ? "No SysON identity"
+            : "No ERP record identity");
         return (
           <div class="part-trace-step" key={provider.id}>
             {index > 0 && (
@@ -219,7 +273,15 @@ function PartTraceStrip({
               <i aria-hidden="true">{verified ? "✓" : "!"}</i>
               <span>
                 <small>{provider.label}</small>
-                <strong>{binding?.id ?? "Unlinked facet"}</strong>
+                {displayBinding
+                  ? (
+                    <CompactIdentifier
+                      value={displayIdentity}
+                      label={`${provider.label} identity`}
+                      copyable={false}
+                    />
+                  )
+                  : <strong>{displayIdentity}</strong>}
               </span>
             </button>
           </div>
@@ -249,7 +311,14 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
           <p>SYSML V2 · {terminology.heading}</p>
           <h5>{view?.diagramLabel ?? "System structure"}</h5>
         </div>
-        <code>{view?.diagramId ?? "diagram identity unavailable"}</code>
+        {view?.diagramId
+          ? (
+            <CompactIdentifier
+              value={view.diagramId}
+              label="SysON diagram identity"
+            />
+          )
+          : <span>Diagram identity unavailable</span>}
       </header>
 
       {
@@ -257,14 +326,14 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
           pre-facet position above everything else. Clicking it selects the
           assembly component when the catalog declares one. */
       }
-      <div
+      <button
+        type="button"
         class={`syson-root-node${
           assemblyComponent && assemblyComponent.id === selected.id
             ? " is-selected"
             : ""
         }`}
-        role={assemblyComponent ? "button" : undefined}
-        tabIndex={assemblyComponent ? 0 : undefined}
+        disabled={!assemblyComponent}
         onClick={assemblyComponent
           ? () => onSelect(assemblyComponent)
           : undefined}
@@ -272,9 +341,11 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
         <span>PART DEFINITION</span>
         <strong>{snapshot.subject.label}</strong>
         <small>
-          {snapshot.components.components.length} {terminology.countLabel}
+          {snapshot.components.components.filter((component) =>
+            component.kind === "part"
+          ).length} {terminology.countLabel}
         </small>
-      </div>
+      </button>
 
       {/* Anchored requirements from the snapshot projection */}
       {subtree.anchoredRequirements.length > 0 && (
@@ -304,10 +375,20 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
                 onClick={() => onSelect(component)}
                 onDblClick={() => binding && onInspect(binding)}
               >
-                <span>{String(index + 1).padStart(2, "0")}</span>
+                <span class="syson-part-ordinal">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 <strong>{component.label}</strong>
                 <small>{binding?.label ?? terminology.missingLabel}</small>
-                <code>{binding?.id ?? "TRACE GAP"}</code>
+                {binding
+                  ? (
+                    <CompactIdentifier
+                      value={binding.id}
+                      label={`${component.label} SysON identity`}
+                      copyable={false}
+                    />
+                  )
+                  : <code>TRACE GAP</code>}
               </button>
             );
           })}
@@ -316,7 +397,10 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
       {sysonBinding && (
         <footer class="syson-element-identity">
           <small>SYSML ELEMENT</small>
-          <code>{sysonBinding.id}</code>
+          <CompactIdentifier
+            value={sysonBinding.id}
+            label="SysML element identity"
+          />
         </footer>
       )}
     </section>
@@ -378,6 +462,7 @@ function ErpBom({ snapshot, selected, onSelect, onInspect }: {
   onInspect: (binding: ThreadComponentBinding) => void;
 }): JSX.Element {
   const bomName = snapshot.components.systemViews.erpnext?.bomName;
+  const selectedBinding = bindingFor(selected, "erpnext");
   return (
     <section class="erp-bom" aria-label="ERPNext bill of materials">
       <header class="provider-surface-header">
@@ -410,7 +495,15 @@ function ErpBom({ snapshot, selected, onSelect, onInspect }: {
               onDblClick={() => binding && onInspect(binding)}
             >
               <span>{String(index + 10).padStart(3, "0")}</span>
-              <code>{binding?.id ?? "UNLINKED"}</code>
+              {binding
+                ? (
+                  <CompactIdentifier
+                    value={binding.id}
+                    label={`${component.label} ERP identity`}
+                    copyable={false}
+                  />
+                )
+                : <code>UNLINKED</code>}
               <strong>{component.label}</strong>
               <span>{component.quantity}</span>
               <span class="erp-trace-state">
@@ -420,6 +513,15 @@ function ErpBom({ snapshot, selected, onSelect, onInspect }: {
           );
         })}
       </div>
+      {selectedBinding && (
+        <footer class="syson-element-identity erp-element-identity">
+          <small>SELECTED ERP RECORD</small>
+          <CompactIdentifier
+            value={selectedBinding.id}
+            label="ERP record identity"
+          />
+        </footer>
+      )}
     </section>
   );
 }
@@ -432,6 +534,11 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
 }): JSX.Element {
   const binding = bindingFor(selected, "build123d");
   const surface = resolveCadSurface(snapshot, selected);
+  const sealedAssembly = resolveSealedAssemblyGeometry(snapshot);
+  const assemblyGlb = sealedAssembly && selected.kind === "assembly"
+    ? sealedAssemblyGlbAsset(sealedAssembly)
+    : undefined;
+  const geometryBlocker = sealedAssemblyGeometryBlocker(snapshot);
   const meshStatus = resolveCadMeshStatus(snapshot, selected);
   const available = snapshot.components.components.flatMap((component) => {
     const candidate = resolveCadSurface(snapshot, component);
@@ -442,8 +549,16 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
       <header class="provider-surface-header">
         <div>
           <p>
-            {surface?.scope === "assembly"
+            {surface?.representation === "authoritative-step"
+              ? surface.scope === "part"
+                ? "PART-LEVEL CAD · AUTHORITATIVE STEP"
+                : "ASSEMBLY-LEVEL CAD · AUTHORITATIVE STEP"
+              : surface?.scope === "assembly"
               ? "ASSEMBLY-LEVEL CAD · PRESENTATION MESH"
+              : surface?.scope === "part"
+              ? "PART-LEVEL CAD · EXACT RECORD"
+              : sealedAssembly && selected.kind === "assembly"
+              ? "SEALED ASSEMBLY RESULT · EXACT RECORD"
               : "PARAMETRIC CAD · PRESENTATION MESH"}
           </p>
           <h5>{selected.label}</h5>
@@ -457,6 +572,15 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
               inspect evidence →
             </button>
           )
+          : sealedAssembly && selected.kind === "assembly"
+          ? (
+            <button
+              type="button"
+              onClick={() => onInspect(sealedAssembly.inspectionBinding)}
+            >
+              inspect sealed result →
+            </button>
+          )
           : binding?.selection
           ? (
             <button type="button" onClick={() => onInspect(binding)}>
@@ -465,24 +589,114 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
           )
           : <span>CAD surface not linked</span>}
       </header>
-      {surface?.preview
+      {sealedAssembly && (
+        <div class="cad-sealed-assembly">
+          <div class="cad-sealed-assembly-copy">
+            <span>SEALED ASSEMBLY RESULT</span>
+            <strong>{sealedAssembly.assemblyFormats.join(" + ")}</strong>
+            <p>
+              The exact assembly files are sealed and linked to this geometry
+              capture.{" "}
+              {sealedAssembly.independentPartDefinitionGeometryCount > 0
+                ? `${sealedAssembly.independentPartDefinitionGeometryCount} independent PartDefinition geometr${
+                  sealedAssembly.independentPartDefinitionGeometryCount === 1
+                    ? "y is"
+                    : "ies are"
+                } recorded under exact STEP identities.`
+                : "No independent per-part geometry mapping was published."}
+              {sealedAssembly.legacyPartMeshCount > 0 &&
+                ` ${sealedAssembly.legacyPartMeshCount} legacy presentation mesh${
+                  sealedAssembly.legacyPartMeshCount === 1 ? " is" : "es are"
+                } retained separately.`}
+            </p>
+            <CompactIdentifier
+              value={sealedAssembly.captureArtifact.fingerprint ??
+                sealedAssembly.captureArtifact.id}
+              label="sealed geometry fingerprint"
+            />
+          </div>
+          <div class="cad-sealed-assembly-actions">
+            <button
+              type="button"
+              onClick={() => onInspect(sealedAssembly.inspectionBinding)}
+            >
+              Open exact record
+            </button>
+          </div>
+        </div>
+      )}
+      {geometryBlocker && (
+        <div class="cad-geometry-blocker" role="alert">
+          <strong>Assembly result unavailable</strong>
+          <p>{geometryBlocker}</p>
+        </div>
+      )}
+      {assemblyGlb
+        ? (
+          <SealedAssemblyGlbViewer
+            asset={assemblyGlb}
+            captureArtifact={sealedAssembly!.captureArtifact}
+          />
+        )
+        : surface?.preview && surface.scope === "assembly"
         ? (
           <>
-            {surface.scope === "assembly" && (
-              <div class="cad-scope-notice">
-                <span>ASSEMBLY SCOPE</span>
-                <p>
-                  This is the exact global CM-01 assembly export. It does not
-                  imply separate geometry identities for its child parts.
-                </p>
-              </div>
-            )}
+            <div class="cad-scope-notice">
+              <span>ASSEMBLY SCOPE</span>
+              <p>
+                This exact assembly export does not imply separate geometry
+                identities for its child parts.
+              </p>
+            </div>
             <CadStlViewer
               preview={surface.preview}
               authoritativeArtifact={surface.authoritativeArtifact}
               snapshot={snapshot}
             />
           </>
+        )
+        : surface?.preview
+        ? (
+          <div class="cad-sealed-summary">
+            <span aria-hidden="true">✓</span>
+            <div>
+              <h5>Part-level geometry record is linked</h5>
+              <p>
+                This exact part mesh remains inspectable as evidence. Product
+                does not create a separate CAD viewer for each part.
+              </p>
+              {surface.authoritativeArtifact.fingerprint && (
+                <CompactIdentifier
+                  value={surface.authoritativeArtifact.fingerprint}
+                  label={`${selected.label} geometry fingerprint`}
+                />
+              )}
+            </div>
+          </div>
+        )
+        : surface?.representation === "authoritative-step"
+        ? (
+          <div class="cad-sealed-summary">
+            <span aria-hidden="true">✓</span>
+            <div>
+              <h5>
+                {surface.scope === "part"
+                  ? "Authoritative STEP linked"
+                  : "Authoritative assembly STEP linked"}
+              </h5>
+              <p>
+                {surface.scope === "part"
+                  ? "This exact PartDefinition STEP is linked through the sealed geometry capture. No per-part viewer is created; the assembly remains the single visual review surface."
+                  : "This exact assembly STEP is linked through the sealed geometry capture. Use the published assembly preview for visual review."}
+              </p>
+              {surface.authoritativeArtifact.fingerprint && (
+                <CompactIdentifier
+                  value={surface.authoritativeArtifact.fingerprint}
+                  label={`${selected.label} authoritative STEP fingerprint`}
+                />
+              )}
+            </div>
+          </div>
         )
         : meshStatus === "not-exported"
         ? (
@@ -491,11 +705,25 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
             <div>
               <h5>Mesh not yet exported for {selected.label}</h5>
               <p>
-                A build123d artifact is declared for this component but no
-                presentation mesh has been generated yet. The @3 CAD operation
-                must be executed with operator consent to produce per-part STLs.
+                A build123d identity is declared for this component, but this
+                revision contains no exact component-level presentation mesh.
               </p>
               <code class="cad-mesh-pending-state">MESH NOT YET EXPORTED</code>
+            </div>
+          </div>
+        )
+        : sealedAssembly && selected.kind === "assembly"
+        ? (
+          <div class="cad-sealed-summary">
+            <span aria-hidden="true">✓</span>
+            <div>
+              <h5>Assembly geometry is sealed</h5>
+              <p>
+                No fingerprint-bound GLB is available in this sealed assembly
+                family. The exact capture remains inspectable from the record
+                action above; Product does not infer a preview from another
+                asset.
+              </p>
             </div>
           </div>
         )
@@ -504,20 +732,21 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
             <span aria-hidden="true">CAD?</span>
             <div>
               <h5>
-                No exact{" "}
-                {selected.kind === "part" ? "part " : ""}geometry is linked to
-                {" "}
-                {selected.label}
+                {selected.kind === "part"
+                  ? `No per-part mesh is linked to ${selected.label}`
+                  : `No exact assembly geometry is linked to ${selected.label}`}
               </h5>
               <p>
                 {selected.kind === "part"
-                  ? "No build123d identity has been declared for this part. The assembly can be viewed, but this revision does not include per-part geometry."
-                  : "This revision contains no exact build123d assembly artifact and matching presentation mesh."}
+                  ? sealedAssembly
+                    ? "The sealed assembly remains available as evidence, but it does not establish an independently addressable CAD identity for this part."
+                    : "No exact build123d identity has been declared for this part in the reviewed catalog."
+                  : "This revision contains neither a catalog-bound assembly mesh nor a generic sealed assembly result."}
               </p>
             </div>
             {available.length > 0 && (
               <div class="cad-available-parts">
-                <small>AVAILABLE GEOMETRY</small>
+                <small>CATALOG-BOUND MESHES</small>
                 {available.map((component) => (
                   <button
                     key={component.id}
@@ -532,6 +761,50 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
           </div>
         )}
     </section>
+  );
+}
+
+function SealedAssemblyGlbViewer({ asset, captureArtifact }: {
+  asset: ThreadArtifact;
+  captureArtifact: ThreadArtifact;
+}): JSX.Element {
+  return (
+    <div class="cad-viewer-shell cad-assembly-gltf-viewer">
+      <header class="cad-assembly-gltf-heading">
+        <div>
+          <small>SEALED ASSEMBLY PREVIEW · GLB</small>
+          <strong>{asset.label}</strong>
+        </div>
+        <CompactIdentifier
+          value={asset.fingerprint ?? asset.id}
+          label="sealed assembly GLB fingerprint"
+        />
+      </header>
+      <GltfAssetCanvas
+        url={asset.uri!}
+        ariaLabel="Interactive sealed assembly geometry"
+        loadingLabel="Loading sealed assembly…"
+        errorLabel="Sealed assembly preview unavailable"
+      />
+      <footer class="cad-viewer-evidence">
+        <div>
+          <small>EXACT VISUAL ASSET · GLB</small>
+          <strong>{asset.label}</strong>
+          <CompactIdentifier
+            value={asset.fingerprint ?? asset.id}
+            label="exact visual asset fingerprint"
+          />
+        </div>
+        <div>
+          <small>SEALED CAPTURE</small>
+          <strong>{captureArtifact.label}</strong>
+          <CompactIdentifier
+            value={captureArtifact.fingerprint ?? captureArtifact.id}
+            label="sealed capture fingerprint"
+          />
+        </div>
+      </footer>
+    </div>
   );
 }
 
@@ -665,14 +938,22 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
         <div>
           <small>ENGINEERING AUTHORITY</small>
           <strong>{authoritativeArtifact.label}</strong>
-          <code>
-            {authoritativeArtifact.fingerprint ?? "fingerprint unavailable"}
-          </code>
+          {authoritativeArtifact.fingerprint
+            ? (
+              <CompactIdentifier
+                value={authoritativeArtifact.fingerprint}
+                label="engineering authority fingerprint"
+              />
+            )
+            : <code>Fingerprint unavailable</code>}
         </div>
         <div>
           <small>PRESENTATION ONLY · STL</small>
           <strong>{presentation?.label ?? "Derived display mesh"}</strong>
-          <code>{presentation?.fingerprint ?? preview.sha256}</code>
+          <CompactIdentifier
+            value={presentation?.fingerprint ?? preview.sha256}
+            label="presentation mesh fingerprint"
+          />
         </div>
       </footer>
     </div>
@@ -692,4 +973,34 @@ function verifiedBinding(
 ): ThreadComponentBinding | undefined {
   const binding = bindingFor(component, provider);
   return binding?.status === "verified" ? binding : undefined;
+}
+
+function cadCoverageLabel(
+  coverage: ReturnType<typeof cadSurfaceCoverage>,
+  sealed: ReturnType<typeof resolveSealedAssemblyGeometry>,
+): string {
+  if (sealed) {
+    if (sealed.independentPartDefinitionGeometryCount > 0) {
+      return `1 sealed assembly · ${sealed.independentPartDefinitionGeometryCount} independent PartDefinition geometr${
+        sealed.independentPartDefinitionGeometryCount === 1 ? "y" : "ies"
+      }`;
+    }
+    if (sealed.legacyPartMeshCount > 0) {
+      return `1 sealed assembly · ${sealed.legacyPartMeshCount} legacy part mesh${
+        sealed.legacyPartMeshCount === 1 ? "" : "es"
+      }`;
+    }
+    return "1 sealed assembly · no independent part geometry";
+  }
+  const assembly = coverage.assemblySurfaces === 0
+    ? "no assembly mesh"
+    : `${coverage.assemblySurfaces} assembly mesh${
+      coverage.assemblySurfaces === 1 ? "" : "es"
+    }`;
+  const parts = coverage.partSurfaces === 0
+    ? "no part meshes"
+    : `${coverage.partSurfaces} part mesh${
+      coverage.partSurfaces === 1 ? "" : "es"
+    }`;
+  return `${assembly} · ${parts}`;
 }

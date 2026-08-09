@@ -1,14 +1,29 @@
 import { assertEquals } from "@std/assert";
 import {
   DEFAULT_PROJECT_VIEW,
+  parseProjectLocationHash,
   parseProjectViewHash,
   PROJECT_VIEWS,
+  projectDeepLinkDomId,
+  projectDeepLinkHash,
   projectViewHash,
   projectViewLabel,
+  shouldScrollProjectDeepLink,
 } from "./src/project/navigation-model.ts";
 
 Deno.test("An absent fragment opens the cockpit on its default space", () => {
   assertEquals(parseProjectViewHash(""), DEFAULT_PROJECT_VIEW);
+});
+
+Deno.test("a live snapshot update cannot repeat an already consumed deep-link scroll", () => {
+  const target = "review/geometry" as const;
+  assertEquals(shouldScrollProjectDeepLink(undefined, target), true);
+  const consumedKey = projectDeepLinkHash(target);
+  assertEquals(shouldScrollProjectDeepLink(consumedKey, target), false);
+  assertEquals(
+    shouldScrollProjectDeepLink(consumedKey, "review/requirements"),
+    true,
+  );
 });
 
 Deno.test("An unknown fragment never leaves the cockpit on an empty space", () => {
@@ -42,4 +57,26 @@ Deno.test("The five spaces stay distinct and stable", () => {
     ["overview", "work", "product", "verification", "operations"],
   );
   assertEquals(new Set(PROJECT_VIEWS.map((view) => view.label)).size, 5);
+});
+
+Deno.test("review deep links round-trip through a fixed fail-closed vocabulary", () => {
+  const targets = [
+    "review/brief",
+    "review/architecture",
+    "review/requirements",
+    "review/geometry",
+  ] as const;
+  for (const target of targets) {
+    const location = parseProjectLocationHash(projectDeepLinkHash(target));
+    assertEquals(location.target, target);
+    assertEquals(projectDeepLinkDomId(target).length > 0, true);
+  }
+  assertEquals(parseProjectLocationHash("#work/review/brief"), {
+    view: "work",
+    target: "review/brief",
+  });
+  assertEquals(projectDeepLinkDomId("review/brief"), "review-brief");
+  assertEquals(parseProjectLocationHash("#work/review/requestState"), {
+    view: DEFAULT_PROJECT_VIEW,
+  });
 });

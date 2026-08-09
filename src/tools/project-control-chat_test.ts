@@ -11,10 +11,13 @@ import {
   FileCaptureStore,
   GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
 } from "../adapters/captures/file-capture-store.ts";
+import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
+import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
 } from "./project-control.ts";
+import { parseGeometryDecisionParameters } from "../domain/platform/geometry-proposal.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const COMMON = {
@@ -63,6 +66,7 @@ Deno.test("project_geometry_preview accepts scoped homonymous usages with distin
       async () => {
         await app.handler("project_geometry_preview")({
           ...GEOMETRY_PREVIEW_ARGS,
+          exportFormats: ["step", "gltf"],
           components: [
             {
               elementId: "usage-left",
@@ -75,6 +79,21 @@ Deno.test("project_geometry_preview accepts scoped homonymous usages with distin
               label: "Right motor",
             },
           ],
+          partExportFormats: ["step", "gltf", "stl"],
+          partDefinitions: [{
+            elementId: "definition-motor",
+            label: "Motor",
+            script: "from build123d import Cylinder\nresult = Cylinder(1, 2)\n",
+          }],
+          occurrences: [{
+            usageElementId: "usage-left",
+            partDefinitionElementId: "definition-motor",
+            placement: { translationMm: [-2, 0, 0], rotationDeg: [0, 0, 0] },
+          }, {
+            usageElementId: "usage-right",
+            partDefinitionElementId: "definition-motor",
+            placement: { translationMm: [2, 0, 0], rotationDeg: [0, 0, 0] },
+          }],
         }, clientContext());
       },
       Error,
@@ -83,6 +102,189 @@ Deno.test("project_geometry_preview accepts scoped homonymous usages with distin
     assertEquals(providerCalls, 1);
   } finally {
     await Deno.remove(draftDirectory, { recursive: true });
+  }
+});
+
+Deno.test("project_geometry_preview v2 returns a reparsable exact bundle with predecessor and definition reuse", async () => {
+  const draftDirectory = await Deno.makeTempDir();
+  const app = new CapturingApp();
+  const calls: Array<Record<string, unknown>> = [];
+  try {
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      {
+        ...dependencies(projectSnapshot()),
+        geometryPreview: {
+          client: {
+            callTool: (call) => {
+              const args = call.arguments as Record<string, unknown>;
+              calls.push(args);
+              const name = String(args.name);
+              const formats = args.formats as Array<"step" | "gltf">;
+              const isDefinition = name.includes("-definition-");
+              return Promise.resolve({
+                structuredContent: {
+                  schemaVersion: "1.0",
+                  kind: "export",
+                  metrics: {},
+                  files: formats.map((format) => ({
+                    format,
+                    path: `/exports/${name}.${format === "gltf" ? "glb" : format}`,
+                    bytes: 100,
+                    sha256: isDefinition
+                      ? (format === "step" ? "c" : "d").repeat(64)
+                      : (format === "step" ? "a" : "b").repeat(64),
+                    ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+                  })),
+                },
+                text: "",
+              });
+            },
+            callToolTextResult: () => Promise.reject(new Error("unexpected")),
+          },
+          draftCaptures: new FileCaptureStore({
+            ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+            directory: draftDirectory,
+          }),
+          build123dService: "mcp-build123d-sandbox",
+          materializeAsset: () => Promise.resolve(),
+          previewRunId: "preview:project-tool-v2",
+        },
+      },
+    );
+    const result = await app.handler("project_geometry_preview")({
+      ...GEOMETRY_PREVIEW_ARGS,
+      exportFormats: ["step", "gltf"],
+      predecessor: {
+        artifactId: "geometry:legacy-exact",
+        digest: "e".repeat(64),
+      },
+      components: [{ elementId: "usage-left", usageName: "left", label: "Left" }, {
+        elementId: "usage-right",
+        usageName: "right",
+        label: "Right",
+      }, {
+        elementId: "usage-cover",
+        usageName: "cover",
+        label: "Cover",
+      }],
+      partExportFormats: ["step", "gltf"],
+      partDefinitions: [{
+        elementId: "definition-shared",
+        label: "Shared",
+        script: "from build123d import Box\nresult = Box(1, 1, 1)\n",
+      }, {
+        elementId: "definition-cover",
+        label: "Cover",
+        script: "from build123d import Cylinder\nresult = Cylinder(1, 2)\n",
+      }],
+      occurrences: [{
+        usageElementId: "usage-left",
+        partDefinitionElementId: "definition-shared",
+        placement: { translationMm: [-1, 0, 0], rotationDeg: [0, 0, 0] },
+      }, {
+        usageElementId: "usage-right",
+        partDefinitionElementId: "definition-shared",
+        placement: { translationMm: [1, 0, 0], rotationDeg: [0, 0, 0] },
+      }, {
+        usageElementId: "usage-cover",
+        partDefinitionElementId: "definition-cover",
+        placement: { translationMm: [0, 0, 2], rotationDeg: [0, 0, 90] },
+      }],
+    }, clientContext());
+    assertEquals(calls.length, 3);
+    assertEquals(new Set(calls.map((call) => call.name)).size, 3);
+    const structured = (result as { structuredContent: Record<string, unknown> })
+      .structuredContent;
+    const rawParameters = structured.decisionParameters as Array<{
+      key: string;
+      value: string | number | boolean;
+    }>;
+    const parsed = parseGeometryDecisionParameters(
+      new Map(rawParameters.map(({ key, value }) => [key, value])),
+    );
+    assertEquals(parsed.manifest.schemaVersion, "geometry-manifest/2.0");
+    if (parsed.manifest.schemaVersion !== "geometry-manifest/2.0") {
+      throw new Error("expected v2 manifest");
+    }
+    assertEquals(parsed.manifest.predecessor, {
+      artifactId: "geometry:legacy-exact",
+      fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+    });
+    assertEquals(parsed.manifest.partDefinitions.length, 2);
+    assertEquals(parsed.manifest.occurrences.length, 3);
+    assertEquals(
+      parsed.manifest.occurrences.filter((occurrence) =>
+        occurrence.partDefinitionElementId === "definition-shared"
+      ).length,
+      2,
+    );
+  } finally {
+    await Deno.remove(draftDirectory, { recursive: true });
+  }
+});
+
+Deno.test("project_geometry_preview v2 rejects incomplete and duplicate definition identity before provider", async () => {
+  for (const defect of ["missing-occurrences", "duplicate-definition"] as const) {
+    const draftDirectory = await Deno.makeTempDir();
+    const app = new CapturingApp();
+    let providerCalls = 0;
+    try {
+      registerProjectControlTools(
+        app as unknown as McpApp,
+        {
+          ...dependencies(projectSnapshot()),
+          geometryPreview: {
+            client: {
+              callTool: () => {
+                providerCalls++;
+                return Promise.reject(new Error("must not dispatch"));
+              },
+              callToolTextResult: () => Promise.reject(new Error("unexpected")),
+            },
+            draftCaptures: new FileCaptureStore({
+              ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+              directory: draftDirectory,
+            }),
+            build123dService: "mcp-build123d-sandbox",
+          },
+        },
+      );
+      const definitions = [{
+        elementId: "definition-shared",
+        label: "Shared",
+        script: "from build123d import Box\nresult = Box(1, 1, 1)\n",
+      }];
+      if (defect === "duplicate-definition") definitions.push({ ...definitions[0]! });
+      await assertRejects(
+        async () =>
+          await app.handler("project_geometry_preview")({
+            ...GEOMETRY_PREVIEW_ARGS,
+            exportFormats: ["step"],
+            components: [{
+              elementId: "usage-one",
+              usageName: "one",
+              label: "One",
+            }],
+            partExportFormats: ["step"],
+            partDefinitions: definitions,
+            ...(defect === "missing-occurrences" ? {} : {
+              occurrences: [{
+                usageElementId: "usage-one",
+                partDefinitionElementId: "definition-shared",
+                placement: {
+                  translationMm: [0, 0, 0],
+                  rotationDeg: [0, 0, 0],
+                },
+              }],
+            }),
+          }, clientContext()),
+        Error,
+      );
+      assertEquals(providerCalls, 0, defect);
+    } finally {
+      await Deno.remove(draftDirectory, { recursive: true });
+    }
   }
 });
 
@@ -498,6 +700,398 @@ Deno.test("project queued-run cancellation requires a verified human elicitation
       false,
       `${forbidden} must be server-owned`,
     );
+  }
+});
+
+Deno.test("project review intent tools list and acknowledge exact pending intent without changing project truth", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "project-review-intent-mcp-" });
+  const journal = new FileProjectReviewIntentStore(directory);
+  const snapshot = projectSnapshot({ withDecision: true });
+  const pending: ProjectReviewIntent = {
+    intentId: "intent-airframe-validate",
+    projectId: snapshot.project.id,
+    expectedRevision: snapshot.revision,
+    decisionId: "airframe-material",
+    inputFingerprint: FINGERPRINT,
+    action: "validate",
+    submittedAt: "2026-08-09T03:15:00.000Z",
+  };
+  try {
+    await journal.append(pending);
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      { ...dependencies(snapshot), reviewIntents: journal },
+    );
+
+    const snapshotResult = await app.handler("project_snapshot")({
+      projectId: snapshot.project.id,
+    }) as {
+      content: string;
+      structuredContent: EngineeringProjectSnapshot;
+    };
+    assertStringIncludes(snapshotResult.content, "1 actionable intent");
+    assertStringIncludes(snapshotResult.content, "1 pending agent receipt");
+    assertStringIncludes(snapshotResult.content, "project_review_intent_list");
+    assertEquals(snapshotResult.structuredContent, snapshot);
+
+    const listResult = await app.handler("project_review_intent_list")({
+      projectId: snapshot.project.id,
+    }) as {
+      structuredContent: {
+        projectId: string;
+        projectRevision: number;
+        count: number;
+        records: Array<{ intent: ProjectReviewIntent; state: string }>;
+      };
+    };
+    assertEquals(listResult.structuredContent, {
+      projectId: snapshot.project.id,
+      projectRevision: snapshot.revision,
+      count: 1,
+      records: [{ intent: pending, state: "pending" }],
+    });
+
+    const acknowledge = app.handler("project_review_intent_acknowledge");
+    await assertRejects(
+      async () => {
+        await acknowledge({
+          projectId: snapshot.project.id,
+          expectedRevision: snapshot.revision,
+          intentId: pending.intentId,
+          decisionId: pending.decisionId,
+          inputFingerprint: pending.inputFingerprint,
+          action: "request-revision",
+        }, clientContext());
+      },
+      TypeError,
+      "does not match the exact project revision, decision, fingerprint, and action",
+    );
+    assertEquals(
+      (await journal.list(snapshot.project.id))[0]?.acknowledgement,
+      undefined,
+    );
+
+    const acknowledgedResult = await acknowledge({
+      projectId: snapshot.project.id,
+      expectedRevision: snapshot.revision,
+      intentId: pending.intentId,
+      decisionId: pending.decisionId,
+      inputFingerprint: pending.inputFingerprint,
+      action: pending.action,
+    }, clientContext()) as {
+      content: string;
+      structuredContent: {
+        projectId: string;
+        projectRevision: number;
+        state: string;
+        record: {
+          intent: ProjectReviewIntent;
+          acknowledgement: {
+            intentId: string;
+            projectId: string;
+            acknowledgedAt: string;
+            acknowledgedBy: string;
+          };
+        };
+        rationale: string;
+        nextTool: string;
+      };
+    };
+    assertStringIncludes(acknowledgedResult.content, "No EngineeringProjectSnapshot");
+    assertStringIncludes(acknowledgedResult.content, "project_decision_approve");
+    assertEquals(Object.keys(acknowledgedResult.structuredContent).sort(), [
+      "nextTool",
+      "projectId",
+      "projectRevision",
+      "rationale",
+      "record",
+      "state",
+    ]);
+    assertEquals(
+      acknowledgedResult.structuredContent.rationale,
+      "Workbench review requested validation without an additional reviewer comment.",
+    );
+    assertEquals(acknowledgedResult.structuredContent.projectId, snapshot.project.id);
+    assertEquals(acknowledgedResult.structuredContent.projectRevision, 4);
+    assertEquals(acknowledgedResult.structuredContent.state, "acknowledged");
+    assertEquals(
+      acknowledgedResult.structuredContent.nextTool,
+      "project_decision_approve",
+    );
+    assertEquals(acknowledgedResult.structuredContent.record.intent, pending);
+    assertEquals(
+      acknowledgedResult.structuredContent.record.acknowledgement.intentId,
+      pending.intentId,
+    );
+    assertEquals(
+      acknowledgedResult.structuredContent.record.acknowledgement.acknowledgedBy,
+      "mcp:paired-chat@1",
+    );
+    assertEquals(
+      (await app.handler("project_snapshot")({ projectId: snapshot.project.id }) as {
+        structuredContent: EngineeringProjectSnapshot;
+      }).structuredContent,
+      snapshot,
+    );
+    const restartedApp = new CapturingApp();
+    registerProjectControlTools(
+      restartedApp as unknown as McpApp,
+      { ...dependencies(snapshot), reviewIntents: journal },
+    );
+    const after = await restartedApp.handler("project_review_intent_list")({
+      projectId: snapshot.project.id,
+    }) as {
+      structuredContent: {
+        count: number;
+        records: Array<{
+          intent: ProjectReviewIntent;
+          acknowledgement?: { acknowledgedBy: string; acknowledgedAt: string };
+          state: string;
+        }>;
+      };
+    };
+    assertEquals(after.structuredContent.count, 1);
+    assertEquals(after.structuredContent.records[0]?.state, "acknowledged");
+    assertEquals(
+      after.structuredContent.records[0]?.acknowledgement,
+      acknowledgedResult.structuredContent.record.acknowledgement,
+    );
+    const restartedSnapshot = await restartedApp.handler("project_snapshot")({
+      projectId: snapshot.project.id,
+    }) as { content: string; structuredContent: EngineeringProjectSnapshot };
+    assertStringIncludes(restartedSnapshot.content, "1 actionable intent");
+    assertStringIncludes(restartedSnapshot.content, "1 acknowledged");
+    assertEquals(restartedSnapshot.structuredContent, snapshot);
+
+    const retry = await restartedApp.handler("project_review_intent_acknowledge")({
+      projectId: snapshot.project.id,
+      expectedRevision: snapshot.revision,
+      intentId: pending.intentId,
+      decisionId: pending.decisionId,
+      inputFingerprint: pending.inputFingerprint,
+      action: pending.action,
+    }, clientContext()) as { content: string; structuredContent: unknown };
+    assertStringIncludes(retry.content, "already acknowledged by mcp:paired-chat@1 at");
+    assertEquals(retry.structuredContent, acknowledgedResult.structuredContent);
+
+    const changedProject = {
+      ...snapshot,
+      id: "chat-first-project:project:r5",
+      revision: 5,
+    } satisfies EngineeringProjectSnapshot;
+    const changedApp = new CapturingApp();
+    registerProjectControlTools(
+      changedApp as unknown as McpApp,
+      { ...dependencies(changedProject), reviewIntents: journal },
+    );
+    const drifted = await changedApp.handler("project_review_intent_list")({
+      projectId: snapshot.project.id,
+    }) as {
+      structuredContent: {
+        projectId: string;
+        projectRevision: number;
+        count: number;
+        records: unknown[];
+      };
+    };
+    assertEquals(drifted.structuredContent.count, 1);
+    assertEquals(drifted.structuredContent.projectRevision, 5);
+    const changedSnapshot = await changedApp.handler("project_snapshot")({
+      projectId: snapshot.project.id,
+    }) as { content: string; structuredContent: EngineeringProjectSnapshot };
+    assertStringIncludes(changedSnapshot.content, "1 actionable intent");
+    assertEquals(changedSnapshot.structuredContent, changedProject);
+    const driftedRetry = await changedApp.handler(
+      "project_review_intent_acknowledge",
+    )({
+      projectId: snapshot.project.id,
+      expectedRevision: snapshot.revision,
+      intentId: pending.intentId,
+      decisionId: pending.decisionId,
+      inputFingerprint: pending.inputFingerprint,
+      action: pending.action,
+    }, clientContext()) as {
+      content: string;
+      structuredContent: Record<string, unknown>;
+    };
+    assertStringIncludes(driftedRetry.content, "current revision 5");
+    assertEquals(driftedRetry.structuredContent, {
+      projectId: snapshot.project.id,
+      projectRevision: 5,
+      state: "acknowledged",
+      record: acknowledgedResult.structuredContent.record,
+      rationale: acknowledgedResult.structuredContent.rationale,
+      nextTool: "project_decision_approve",
+    });
+
+    const replacedProject = {
+      ...changedProject,
+      id: "chat-first-project:project:r6",
+      revision: 6,
+      decisions: changedProject.decisions.map((decision) => ({
+        ...decision,
+        inputFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "b".repeat(64),
+        },
+      })),
+    } satisfies EngineeringProjectSnapshot;
+    const replacedApp = new CapturingApp();
+    registerProjectControlTools(
+      replacedApp as unknown as McpApp,
+      { ...dependencies(replacedProject), reviewIntents: journal },
+    );
+    const resolved = await replacedApp.handler("project_review_intent_list")({
+      projectId: snapshot.project.id,
+    }) as {
+      structuredContent: {
+        projectId: string;
+        projectRevision: number;
+        count: number;
+        records: unknown[];
+      };
+    };
+    assertEquals(resolved.structuredContent, {
+      projectId: snapshot.project.id,
+      projectRevision: 6,
+      count: 0,
+      records: [],
+    });
+
+    assertEquals(app.tool("project_review_intent_list").annotations, {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    assertEquals(app.tool("project_review_intent_acknowledge").annotations, {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("project review intent acknowledgement returns the exact reviewer comment as reject rationale", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "project-review-comment-mcp-" });
+  const journal = new FileProjectReviewIntentStore(directory);
+  const snapshot = projectSnapshot({ withDecision: true });
+  const comment =
+    "  Raise the lamp clearance to 30 mm, then show me the exact preview.  ";
+  const intent: ProjectReviewIntent = {
+    intentId: "intent-airframe-revision-comment",
+    projectId: snapshot.project.id,
+    expectedRevision: snapshot.revision,
+    decisionId: "airframe-material",
+    inputFingerprint: FINGERPRINT,
+    action: "request-revision",
+    comment,
+    submittedAt: "2026-08-09T03:18:00.000Z",
+  };
+  try {
+    await journal.append(intent);
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      { ...dependencies(snapshot), reviewIntents: journal },
+    );
+    const result = await app.handler("project_review_intent_acknowledge")({
+      projectId: intent.projectId,
+      expectedRevision: intent.expectedRevision,
+      intentId: intent.intentId,
+      decisionId: intent.decisionId,
+      inputFingerprint: intent.inputFingerprint,
+      action: intent.action,
+    }, clientContext()) as {
+      structuredContent: {
+        projectId: string;
+        projectRevision: number;
+        state: string;
+        record: {
+          intent: ProjectReviewIntent;
+          acknowledgement: {
+            intentId: string;
+            projectId: string;
+            acknowledgedAt: string;
+            acknowledgedBy: string;
+          };
+        };
+        rationale: string;
+        nextTool: string;
+      };
+    };
+    assertEquals(result.structuredContent, {
+      projectId: snapshot.project.id,
+      projectRevision: snapshot.revision,
+      state: "acknowledged",
+      record: {
+        intent,
+        acknowledgement: (await journal.list(snapshot.project.id))[0]!
+          .acknowledgement!,
+      },
+      rationale: comment,
+      nextTool: "project_decision_reject",
+    });
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("project review intent acknowledgement refuses a replaced proposal fingerprint", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "project-review-intent-stale-" });
+  const journal = new FileProjectReviewIntentStore(directory);
+  const revisionFour = projectSnapshot({ withDecision: true });
+  const intent: ProjectReviewIntent = {
+    intentId: "intent-stale-airframe",
+    projectId: revisionFour.project.id,
+    expectedRevision: revisionFour.revision,
+    decisionId: "airframe-material",
+    inputFingerprint: FINGERPRINT,
+    action: "request-revision",
+    comment: "Please revise the exact material proposal.",
+    submittedAt: "2026-08-09T03:20:00.000Z",
+  };
+  try {
+    await journal.append(intent);
+    const current = {
+      ...revisionFour,
+      id: "chat-first-project:project:r5",
+      revision: 5,
+      decisions: revisionFour.decisions.map((decision) => ({
+        ...decision,
+        inputFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "b".repeat(64),
+        },
+      })),
+    } satisfies EngineeringProjectSnapshot;
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      { ...dependencies(current), reviewIntents: journal },
+    );
+
+    await assertRejects(
+      async () => {
+        await app.handler("project_review_intent_acknowledge")({
+          projectId: intent.projectId,
+          expectedRevision: intent.expectedRevision,
+          intentId: intent.intentId,
+          decisionId: intent.decisionId,
+          inputFingerprint: intent.inputFingerprint,
+          action: intent.action,
+        }, clientContext());
+      },
+      TypeError,
+      "same input fingerprint at current project revision 5",
+    );
+    assertEquals((await journal.list(intent.projectId))[0]?.acknowledgement, undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
   }
 });
 

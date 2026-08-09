@@ -86,8 +86,11 @@ import { registerProjectControlTools } from "../../tools/project-control.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
-const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
+const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
+const HUMAN = {
+  kind: "human" as const,
+  actorId: "mcp-elicitation:paired-chat@1",
+};
 const PROJECT_ID = "project:drone-reqs-test";
 
 // Architecture proposal (drone with Wing component — used by InitialArchSyson).

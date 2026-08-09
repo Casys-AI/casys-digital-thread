@@ -232,6 +232,291 @@
   background: #b94b36;
 }
 
+/* Read-only review records ------------------------------------------------- */
+
+.decision-inbox-preview {
+  padding: var(--space-16) var(--space-18);
+  border-top: 1px solid var(--thread-border);
+  background: #fffbf4;
+  scroll-margin-top: var(--space-20);
+}
+
+.decision-inbox-preview > small {
+  display: block;
+  margin-top: var(--space-10);
+  color: #7a5a40;
+  font: 700 var(--text-3xs)/1.45 var(--mono);
+}
+
+.project-proof-boundary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: var(--space-12);
+  align-items: center;
+  padding: var(--space-12) var(--space-18);
+  border-bottom: 1px solid var(--thread-border);
+  background: #f8f4eb;
+}
+
+.project-proof-boundary > span,
+.project-proof-boundary > strong {
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.07em;
+}
+
+.project-proof-boundary > span {
+  color: var(--thread-muted);
+}
+
+.project-proof-boundary[data-state="unresolved"] > strong {
+  color: #9a552c;
+}
+
+.project-proof-boundary[data-state="resolved"] > strong {
+  color: #47735d;
+}
+
+.project-proof-boundary > small {
+  color: var(--thread-muted);
+  line-height: 1.45;
+}
+
+.review-business-preview,
+.review-preview-unavailable {
+  margin-top: var(--space-14);
+  border: 1px solid #d7cbbb;
+  background: #fbf8f1;
+}
+
+.review-business-preview > header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  align-items: baseline;
+  padding: var(--space-10) var(--space-12);
+  border-bottom: 1px solid #ded4c6;
+  background: #f3ede2;
+}
+
+.review-business-preview > header span {
+  color: #8d5b38;
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.07em;
+}
+
+.review-business-preview > header strong {
+  color: var(--thread-ink);
+  font-size: var(--text-xs);
+}
+
+.review-brief-preview ul,
+.review-requirements-preview ul,
+.review-architecture-preview ol {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-inbox-preview .review-brief-preview ul {
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.review-brief-preview li {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.24fr) minmax(0, 1fr);
+  gap: var(--space-12);
+  padding: var(--space-10) var(--space-12);
+  border-top: 1px solid #e4dbcf;
+}
+
+.review-brief-preview li:first-child,
+.review-requirements-preview li:first-child,
+.review-architecture-preview li:first-child {
+  border-top: 0;
+}
+
+.review-brief-preview li small {
+  color: #8d5b38;
+  font: 700 var(--text-3xs)/1.35 var(--mono);
+  text-transform: uppercase;
+}
+
+.review-brief-preview li span {
+  color: var(--thread-ink);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+}
+
+.review-architecture-preview li {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(90px, 0.6fr)
+    minmax(100px, 1fr);
+  gap: var(--space-10);
+  align-items: baseline;
+  padding: var(--space-10) var(--space-12);
+  border-top: 1px solid #e4dbcf;
+}
+
+.review-architecture-preview code,
+.review-requirements-preview code {
+  overflow-wrap: anywhere;
+  color: #75695d;
+  font: var(--text-3xs)/1.35 var(--mono);
+}
+
+.review-requirements-preview li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-14);
+  align-items: center;
+  padding: var(--space-12);
+  border-top: 1px solid #e4dbcf;
+}
+
+.review-requirements-preview li > div {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.review-requirements-preview li > span {
+  color: #7e4828;
+  font: 700 var(--text-xs)/1.2 var(--mono);
+}
+
+.review-requirements-preview li > small {
+  color: #8b6338;
+  font-size: var(--text-3xs);
+}
+
+.review-preview-unavailable {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-12);
+  border-style: dashed;
+  color: #805b43;
+}
+
+.review-preview-unavailable span {
+  font-size: var(--text-3xs);
+  line-height: 1.45;
+}
+
+.geometry-draft-reset {
+  position: absolute;
+  top: var(--space-10);
+  right: var(--space-10);
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid #b99f89;
+  color: #68452f;
+  background: rgba(255, 252, 246, 0.92);
+  font: 700 var(--text-3xs)/1 var(--mono);
+  cursor: pointer;
+}
+
+.geometry-draft-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.geometry-occurrence-table,
+.geometry-review-trace {
+  border-top: 1px solid #d7cbbb;
+  color: var(--thread-ink);
+  background: #faf7f0;
+}
+
+.geometry-occurrence-table > header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-10) var(--space-12);
+  background: #efe7da;
+}
+
+.geometry-occurrence-table > header span,
+.geometry-occurrence-table > header strong {
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.geometry-occurrence-table > header span {
+  color: #8d5b38;
+}
+
+.geometry-occurrence-table [role="row"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: var(--space-12);
+  align-items: center;
+  padding: var(--space-10) var(--space-12);
+  border-top: 1px solid #e4dbcf;
+}
+
+.geometry-occurrence-table [role="cell"] {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.geometry-occurrence-table [role="cell"] small {
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1.35 var(--mono);
+}
+
+.geometry-occurrence-table [role="row"] > i {
+  color: #9e6138;
+  font-style: normal;
+}
+
+.geometry-review-trace > summary {
+  padding: var(--space-10) var(--space-12);
+  color: #7e583d;
+  font: 700 var(--text-3xs)/1.3 var(--mono);
+  cursor: pointer;
+}
+
+.geometry-review-trace dl {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid #e4dbcf;
+}
+
+.geometry-review-trace dl > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.25fr) minmax(0, 1fr);
+  gap: var(--space-12);
+  padding: var(--space-8) var(--space-12);
+  border-top: 1px solid #e9e1d6;
+}
+
+.geometry-review-trace dl > div:first-child {
+  border-top: 0;
+}
+
+.geometry-review-trace dt,
+.geometry-review-trace dd {
+  margin: 0;
+  font-size: var(--text-3xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.geometry-review-trace dt {
+  color: var(--thread-muted);
+  font-family: var(--mono);
+  text-transform: uppercase;
+}
+
+@media (max-width: 920px) {
+  .review-requirements-preview li,
+  .review-architecture-preview li,
+  .project-proof-boundary {
+    grid-template-columns: 1fr;
+  }
+}
+
 .planning-phase-rail {
   grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
 }

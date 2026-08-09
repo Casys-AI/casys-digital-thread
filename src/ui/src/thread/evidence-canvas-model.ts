@@ -110,7 +110,7 @@ export function stubToEdge(stub: EvidenceGraphStub): ThreadGraphEdge {
     from: stub.from,
     to: stub.to,
     relation: stub.relation,
-    rationale: `via ${stub.viaLabel} — replié`,
+    rationale: `via ${stub.viaLabel} — folded`,
     origin: stub.origin,
   };
 }
@@ -124,8 +124,8 @@ export function stubToEdge(stub: EvidenceGraphStub): ThreadGraphEdge {
  *
  * Looks up each node's component in the EvidenceGraphModel (computed on the
  * full raw graph), collects all matching component names, and returns the most
- * frequent one. Falls back to "Preuves liées" for a single component or
- * "Preuves" for unknown islands.
+ * frequent one. Falls back to "Linked evidence" for a single component or
+ * "Evidence" for unknown islands.
  *
  * This function is called by ThreadGraph at render time via the
  * `componentLabeler` prop.
@@ -136,7 +136,7 @@ export function makeEvidenceComponentLabeler(
 ): (nodes: ThreadGraphNode[], _index: number) => string {
   return (nodes, _index) => {
     if (nodes.length === 0) {
-      return isOnlyComponent ? "Preuves liées" : "Preuves";
+      return isOnlyComponent ? "Linked evidence" : "Evidence";
     }
     // Collect model component names for all nodes in this layout component.
     const nameCounts = new Map<string, number>();
@@ -145,11 +145,11 @@ export function makeEvidenceComponentLabeler(
       const comp = compId !== undefined
         ? model.components.find((c) => c.id === compId)
         : undefined;
-      const name = comp?.name ?? "Preuves";
+      const name = comp?.name ?? "Evidence";
       nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
     }
     // Return the most frequent name.
-    let best = isOnlyComponent ? "Preuves liées" : "Preuves";
+    let best = isOnlyComponent ? "Linked evidence" : "Evidence";
     let bestCount = -1;
     for (const [name, count] of nameCounts) {
       if (count > bestCount) {

@@ -71,8 +71,11 @@ import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-upd
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
-const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
+const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
+const HUMAN = {
+  kind: "human" as const,
+  actorId: "mcp-elicitation:paired-chat@1",
+};
 const PROJECT_ID = "project:drone-v4-test";
 
 // MRTR proposal parameters for a DroneV4 architecture.

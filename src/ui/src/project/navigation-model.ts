@@ -50,6 +50,26 @@ export const PROJECT_VIEWS: readonly ProjectWorkspaceViewDescriptor[] = [
 
 export const DEFAULT_PROJECT_VIEW: ProjectWorkspaceView = "overview";
 
+export type ProjectDeepLinkTarget =
+  | "review/brief"
+  | "review/architecture"
+  | "review/requirements"
+  | "review/geometry";
+
+export interface ProjectWorkspaceLocation {
+  readonly view: ProjectWorkspaceView;
+  readonly target?: ProjectDeepLinkTarget;
+}
+
+const DEEP_LINK_VIEW: Readonly<
+  Record<ProjectDeepLinkTarget, ProjectWorkspaceView>
+> = {
+  "review/brief": "work",
+  "review/architecture": "work",
+  "review/requirements": "work",
+  "review/geometry": "work",
+};
+
 export function projectViewLabel(view: ProjectWorkspaceView): string {
   return PROJECT_VIEWS.find((candidate) => candidate.id === view)?.label ??
     view;
@@ -65,8 +85,39 @@ export function projectViewHash(view: ProjectWorkspaceView): string {
  * erreur, c'est l'ouverture normale.
  */
 export function parseProjectViewHash(hash: string): ProjectWorkspaceView {
+  return parseProjectLocationHash(hash).view;
+}
+
+export function projectDeepLinkHash(target: ProjectDeepLinkTarget): string {
+  return `#${DEEP_LINK_VIEW[target]}/${target}`;
+}
+
+/** Only the fixed, non-authoritative review targets are accepted. */
+export function parseProjectLocationHash(
+  hash: string,
+): ProjectWorkspaceLocation {
   const candidate = hash.replace(/^#/, "");
+  const target = (Object.keys(DEEP_LINK_VIEW) as ProjectDeepLinkTarget[]).find(
+    (item) => `${DEEP_LINK_VIEW[item]}/${item}` === candidate,
+  );
+  if (target) return { view: DEEP_LINK_VIEW[target], target };
   return PROJECT_VIEWS.some((view) => view.id === candidate)
-    ? candidate as ProjectWorkspaceView
-    : DEFAULT_PROJECT_VIEW;
+    ? { view: candidate as ProjectWorkspaceView }
+    : { view: DEFAULT_PROJECT_VIEW };
+}
+
+export function projectDeepLinkDomId(target: ProjectDeepLinkTarget): string {
+  return `review-${target.split("/")[1]}`;
+}
+
+/**
+ * A live snapshot refresh must not steal scroll focus from the reader. The
+ * caller records this stable key only after the target element was found and
+ * scrolled; a new explicit navigation clears it first.
+ */
+export function shouldScrollProjectDeepLink(
+  lastScrolledKey: string | undefined,
+  target: ProjectDeepLinkTarget,
+): boolean {
+  return lastScrolledKey !== projectDeepLinkHash(target);
 }

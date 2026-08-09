@@ -23,10 +23,23 @@ function trimGeneratedHtml(): Plugin {
 }
 
 const root = dirname(fileURLToPath(import.meta.url));
+const workbenchBffOrigin = "http://127.0.0.1:5173";
 
 export default defineConfig({
   plugins: [viteSingleFile(), trimGeneratedHtml()],
   base: "./",
+  server: {
+    host: "127.0.0.1",
+    port: 5174,
+    strictPort: true,
+    open: "/native-workbench.html",
+    proxy: {
+      "/api": {
+        target: workbenchBffOrigin,
+        changeOrigin: false,
+      },
+    },
+  },
   build: {
     outDir: "dist/thread",
     emptyOutDir: true,

@@ -287,10 +287,11 @@ const OPERATIONS = [
     version: DESIGN_PREVIEW_GEOMETRY_OPERATION.version,
     startingPoint: "idea-or-spec",
     allowedBasisKinds: ["thread-snapshot"],
-    title: "Preview the proposed geometry script",
+    title: "Preview the proposed geometry bundle",
     description:
-      "Execute the agent-proposed build123d script in the isolated preview sandbox against the current architecture basis, " +
-      "materialize a draft with binary assets, and propose a geometry MRTR for human review. " +
+      "Execute the reviewed assembly source and one independent build123d source per exact SysML PartDefinition " +
+      "in the isolated preview sandbox against the current architecture basis, materialize a draft with " +
+      "identity-bound binary assets and occurrence placements, and propose a geometry MRTR for human review. " +
       "Does not publish to the ThreadSnapshot — the draft is a workspace artefact only.",
     workItemKind: "design",
     riskClass: "low",
@@ -315,7 +316,8 @@ const OPERATIONS = [
     title: "Seal the human-approved geometry into the evidence thread",
     description:
       "Verify the draft binary assets against the operator-signed hashes, promote them to " +
-      "the canonical geometry capture, and extend the ThreadSnapshot with a new CAD artifact. " +
+      "the canonical geometry capture, and extend the ThreadSnapshot with the assembly plus " +
+      "independent PartDefinition CAD artifacts linked by exact SysML identities. " +
       "The exact bytes are sealed by SHA-256; no provider re-execution occurs (D1).",
     workItemKind: "design",
     riskClass: "consequential",

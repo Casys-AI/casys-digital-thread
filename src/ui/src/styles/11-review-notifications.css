@@ -50,7 +50,7 @@
 
 .thread-workbench .decision-center[data-surface] .decision-center-meter {
   min-width: 0;
-  grid-template-columns: repeat(2, minmax(4.65rem, 5.4rem));
+  grid-template-columns: repeat(3, minmax(4.65rem, 5.4rem));
   padding-left: var(--space-12);
   border-color: var(--thread-border);
 }
@@ -88,10 +88,6 @@
 
 .thread-workbench .decision-center[data-surface="inbox"] .decision-center-header {
   border-bottom: 0;
-}
-
-.thread-workbench .decision-center[data-surface="activity"] .decision-center-header {
-  background: var(--surface-0);
 }
 
 .thread-workbench .decision-center[data-surface] .decision-review-brief {
@@ -165,76 +161,162 @@
   padding-inline: var(--space-12);
   font-size: var(--text-3xs);
 }
-.decision-notification-list {
+.thread-workbench .thread-feed-entry[data-review-status="to-review"] .thread-feed-rail i {
+  border-color: #fff4df;
+  background: #b66a24;
+  box-shadow: 0 0 0 3px #fff4df;
+}
+
+.thread-workbench .thread-feed-entry[data-review-status="validated"] .thread-feed-rail i {
+  border-color: #e7f4ea;
+  background: #367553;
+  box-shadow: 0 0 0 3px #e7f4ea;
+}
+
+.thread-workbench .thread-feed-entry[data-review-status="revision-requested"] .thread-feed-rail i {
+  border-color: #fdebea;
+  background: #a33f35;
+  box-shadow: 0 0 0 3px #fdebea;
+}
+
+.thread-workbench .thread-feed-meta .thread-feed-review-badge {
+  padding: 0.2rem 0.38rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.thread-workbench .thread-feed-review-badge[data-review-status="to-review"] {
+  color: #884615;
+  background: #fff4df;
+}
+
+.thread-workbench .thread-feed-review-badge[data-review-status="validated"] {
+  color: #275d42;
+  background: #e7f4ea;
+}
+
+.thread-workbench .thread-feed-review-badge[data-review-status="revision-requested"] {
+  color: #95342e;
+  background: #fdebea;
+}
+
+.thread-workbench .thread-feed-review-card {
+  display: block;
+  min-width: 0;
+  border: 1px solid var(--thread-border);
+  border-left: 3px solid #b66a24;
+  color: var(--thread-ink);
+  background: #fffaf0;
+}
+
+.thread-workbench .thread-feed-card + .thread-feed-review-card {
+  margin-top: -1px;
+}
+
+.thread-workbench .thread-feed-review-card[data-review-status="validated"] {
+  border-left-color: #367553;
+  background: #f5faf6;
+}
+
+.thread-workbench .thread-feed-review-card[data-superseded="true"] {
+  border-color: #b7b3aa;
+  border-left-color: #77746c;
+  background: #f3f1ec;
+}
+
+.thread-workbench .thread-feed-review-card[data-superseded="true"] > summary {
+  opacity: 0.78;
+}
+
+.thread-workbench .thread-feed-review-card[data-review-status="revision-requested"] {
+  border-left-color: #a33f35;
+  background: #fff7f5;
+}
+
+.thread-workbench .thread-feed-review-card > summary {
   display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: var(--space-10);
+  align-items: center;
+  padding: var(--space-12) var(--space-14);
+  cursor: pointer;
   list-style: none;
 }
 
-.decision-notification-list > li + li {
-  border-top: 1px solid var(--thread-border);
+.thread-workbench .thread-feed-review-card > summary::-webkit-details-marker {
+  display: none;
 }
 
-.thread-workbench .decision-review-notification {
-  position: relative;
+.thread-workbench .thread-feed-review-card > summary:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
+.thread-workbench .thread-feed-review-mark {
+  width: 26px;
+  height: 26px;
   display: grid;
-  gap: var(--space-14);
-  min-width: 0;
-  padding: var(--space-16) var(--space-18) var(--space-16);
-  border-left: 3px solid var(--thread-orange);
-  background:
-    linear-gradient(90deg, rgba(169, 95, 40, 0.045), transparent 26%),
-    var(--thread-panel);
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: #884615;
+  font: 800 var(--text-2xs)/1 var(--mono);
 }
 
-.thread-workbench .decision-review-notification > header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-12);
+.thread-workbench [data-review-status="validated"] .thread-feed-review-mark {
+  color: #275d42;
 }
 
-.thread-workbench .decision-review-notification > header > div {
+.thread-workbench [data-review-status="revision-requested"] .thread-feed-review-mark {
+  color: #95342e;
+}
+
+.thread-workbench .thread-feed-review-copy {
   min-width: 0;
   display: grid;
   gap: var(--space-4);
 }
 
-.thread-workbench .decision-review-notification > header span {
-  color: var(--thread-orange);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.1em;
-}
-
-.thread-workbench .decision-review-notification > header strong {
-  font-family: var(--serif);
-  font-size: clamp(0.94rem, 1.4vw, 1.08rem);
-  font-weight: 400;
-  line-height: 1.15;
-}
-
-.thread-workbench .decision-review-notification > header small {
-  flex: 0 0 auto;
-  padding: var(--space-4) var(--space-6);
-  border: 1px solid var(--thread-border);
-  color: var(--thread-muted);
-  background: #f5f2eb;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.04em;
+.thread-workbench .thread-feed-review-copy small {
+  color: #884615;
+  font: 800 var(--text-3xs)/1 var(--mono);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
-.thread-workbench .decision-review-notification blockquote {
-  max-width: 58rem;
-  margin: 0;
-  padding-left: var(--space-12);
-  border-left: 2px solid rgba(169, 95, 40, 0.42);
-  color: var(--thread-ink);
+.thread-workbench [data-review-status="validated"] .thread-feed-review-copy small {
+  color: #275d42;
+}
+
+.thread-workbench [data-review-status="revision-requested"] .thread-feed-review-copy small {
+  color: #95342e;
+}
+
+.thread-workbench .thread-feed-review-copy strong {
   font-family: var(--serif);
-  font-size: clamp(0.92rem, 1.45vw, 1.08rem);
+  font-size: clamp(0.94rem, 1.4vw, 1.08rem);
+  font-weight: 500;
+}
+
+.thread-workbench .thread-feed-review-copy > span,
+.thread-workbench .thread-feed-review-toggle {
+  color: var(--thread-muted);
+  font-size: var(--text-3xs);
   line-height: 1.4;
+}
+
+.thread-workbench .thread-feed-review-toggle {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.thread-workbench .thread-feed-review-body {
+  display: grid;
+  gap: var(--space-14);
+  padding: 0 var(--space-16) var(--space-16) 3.25rem;
 }
 
 .thread-workbench .decision-notification-summary {
@@ -243,6 +325,243 @@
   color: var(--thread-muted);
   font-size: var(--text-xs);
   line-height: 1.55;
+}
+
+.thread-workbench .decision-review-composer {
+  display: grid;
+  gap: var(--space-12);
+  padding: var(--space-14);
+  border: 1px solid #d7c5b2;
+  border-radius: 6px;
+  color: var(--thread-ink);
+  background: #fffdf8;
+}
+
+.thread-workbench .decision-review-composer > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.thread-workbench .decision-review-composer > header > div,
+.thread-workbench .decision-review-composer-fields {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.thread-workbench .decision-review-composer > header small {
+  color: var(--thread-orange);
+  font: 800 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.07em;
+}
+
+.thread-workbench .decision-review-composer > header strong {
+  font-family: var(--serif);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.thread-workbench .decision-review-transmission-badge {
+  flex: 0 0 auto;
+  padding: 0.32rem 0.55rem;
+  border: 1px solid #7895a0;
+  border-radius: 999px;
+  color: #315f72;
+  background: #edf5f7;
+  font: 800 var(--text-3xs)/1 var(--mono);
+  text-transform: uppercase;
+}
+
+.thread-workbench .decision-review-transmission-badge[data-transmission-state="acknowledged"] {
+  border-color: #688d7a;
+  color: #2d6348;
+  background: #edf6ef;
+}
+
+.thread-workbench .decision-review-transmission-badge:is([data-transmission-state="error"], [data-transmission-state="stale"]) {
+  border-color: #ba756b;
+  color: #8d352e;
+  background: #fff1ee;
+}
+
+.thread-workbench .decision-review-composer-fields label {
+  color: var(--thread-ink);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+.thread-workbench .decision-review-composer-fields textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 5.75rem;
+  resize: vertical;
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid #aaa49a;
+  border-radius: 4px;
+  color: var(--thread-ink);
+  background: #fff;
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.thread-workbench .decision-review-composer-fields textarea:focus-visible {
+  border-color: #315f72;
+  outline: 2px solid rgba(49, 95, 114, 0.24);
+  outline-offset: 1px;
+}
+
+.thread-workbench .decision-review-composer-fields textarea[aria-invalid="true"] {
+  border-color: #a33f35;
+}
+
+.thread-workbench .decision-review-comment-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  color: var(--thread-muted);
+}
+
+.thread-workbench .decision-review-comment-meta small,
+.thread-workbench .decision-review-comment-error {
+  margin: 0;
+  font-size: var(--text-3xs);
+  line-height: 1.4;
+}
+
+.thread-workbench .decision-review-comment-error {
+  color: #8d352e;
+  font-weight: 700;
+}
+
+.thread-workbench .decision-review-submit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  padding-top: var(--space-4);
+}
+
+.thread-workbench .decision-review-submit-actions button,
+.thread-workbench .decision-review-transmission button {
+  min-height: 44px;
+  padding: var(--space-8) var(--space-14);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font: 800 var(--text-2xs)/1 var(--mono);
+  cursor: pointer;
+}
+
+.thread-workbench .decision-review-validate-button {
+  color: #fff;
+  background: #346a4e;
+}
+
+.thread-workbench .decision-review-revision-button {
+  color: #8d352e;
+  background: #fff7f5;
+}
+
+.thread-workbench .decision-review-submit-actions button:hover:not(:disabled),
+.thread-workbench .decision-review-submit-actions button:focus-visible,
+.thread-workbench .decision-review-transmission button:hover,
+.thread-workbench .decision-review-transmission button:focus-visible {
+  outline: 2px solid rgba(49, 95, 114, 0.28);
+  outline-offset: 2px;
+}
+
+.thread-workbench .decision-review-submit-actions button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.thread-workbench .decision-review-transmission {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-12);
+  margin: 0;
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid #b8c9ce;
+  color: #315f72;
+  background: #eff6f7;
+  font-size: var(--text-2xs);
+}
+
+.thread-workbench .decision-review-transmission > span {
+  color: var(--thread-muted);
+}
+
+.thread-workbench .decision-review-transmission:is([data-transmission-state="error"], [data-transmission-state="stale"]) {
+  border-color: #d7a7a1;
+  color: #8d352e;
+  background: #fff3f1;
+}
+
+.thread-workbench .decision-review-transmission button {
+  margin-left: auto;
+  color: currentColor;
+  background: #fff;
+}
+
+.thread-workbench .decision-review-outcome {
+  display: grid;
+  gap: var(--space-8);
+  margin: 0;
+  padding: var(--space-12);
+  border-left: 3px solid #367553;
+  color: var(--thread-ink);
+  background: #eef6ef;
+}
+
+.thread-workbench .decision-review-outcome > div {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 0.25fr) minmax(0, 1fr);
+  gap: var(--space-10);
+}
+
+.thread-workbench .decision-review-outcome dt {
+  color: #2d6348;
+  font: 800 var(--text-3xs)/1.4 var(--mono);
+  text-transform: uppercase;
+}
+
+.thread-workbench .decision-review-outcome dd {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+
+.thread-workbench .decision-review-superseded {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-14);
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid #c8c3b8;
+  color: #504d47;
+  background: #ebe8e1;
+}
+
+.thread-workbench .decision-review-superseded > div {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.thread-workbench .decision-review-superseded strong,
+.thread-workbench .decision-review-superseded span {
+  font-size: var(--text-2xs);
+}
+
+.thread-workbench .decision-review-superseded span {
+  color: var(--thread-muted);
+}
+
+.thread-workbench .decision-review-superseded a {
+  flex: 0 0 auto;
+  color: #315f72;
+  font: 700 var(--text-3xs)/1 var(--mono);
+  text-transform: uppercase;
 }
 
 .thread-workbench .decision-notification-scope {
@@ -312,7 +631,9 @@
 
   .thread-workbench .decision-center[data-surface] .decision-center-meter {
     grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     justify-content: start;
+    width: 100%;
     padding: var(--space-10) 0 0;
     border-top: 1px solid var(--thread-border);
     border-left: 0;
@@ -330,10 +651,6 @@
   .thread-workbench .decision-center[data-surface] .decision-review-brief > button {
     grid-column: 2;
     justify-self: start;
-  }
-
-  .thread-workbench .decision-review-notification {
-    padding: var(--space-14) var(--space-14);
   }
 
   .thread-workbench .decision-notification-scope {
@@ -361,9 +678,16 @@
 }
 
 @media (max-width: 460px) {
-  .thread-workbench .decision-review-notification > header {
-    align-items: start;
-    flex-direction: column;
+  .thread-workbench .thread-feed-review-card > summary {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  .thread-workbench .thread-feed-review-toggle {
+    grid-column: 2;
+  }
+
+  .thread-workbench .thread-feed-review-body {
+    padding-left: var(--space-14);
   }
 
   .thread-workbench .decision-review-actions {
@@ -373,47 +697,183 @@
   .thread-workbench .decision-review-actions .decision-secondary-button {
     width: 100%;
   }
+
+  .thread-workbench .decision-review-composer > header,
+  .thread-workbench .decision-review-comment-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .thread-workbench .decision-review-transmission-badge {
+    align-self: start;
+  }
+
+  .thread-workbench .decision-review-submit-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .thread-workbench .decision-review-submit-actions button {
+    width: 100%;
+  }
+
+  .thread-workbench .decision-review-outcome > div {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
 }
 
-/* Geometry draft viewer — inside a proposed decision notification.
-   WHY DISTINCT STYLE — the DRAFT label and dark canvas are contractual:
-   this is not a canonical evidence artifact.  A viewer that looks identical
-   to the Product surface would create ambiguity about what was reviewed. */
+/* Geometry review viewer — inside a decision notification.
+   The DRAFT/PUBLISHED label carries the contractual distinction. The canvas
+   stays in the same light atelier as the rest of the review surface so its
+   status does not depend on a dark-theme visual convention. */
 
 .geometry-draft-viewer {
   margin: var(--space-12) 0;
-  border: 1px dashed rgba(250, 180, 60, 0.55);
+  border: 1px dashed #c99974;
   border-radius: 6px;
   overflow: hidden;
-  background: #10131a;
+  color: var(--thread-ink);
+  background: #f4efe5;
 }
 
 .geometry-draft-viewer--text {
   padding: var(--space-12) var(--space-14);
-  background: #1a1c1e;
+  background: #faf7f0;
 }
 
 .geometry-draft-label {
   padding: var(--space-6) var(--space-12);
-  color: #fab43c;
+  color: #874b29;
   font-size: var(--text-3xs, 0.62rem);
   font-weight: 600;
   letter-spacing: 0.08em;
-  background: rgba(250, 180, 60, 0.1);
+  background: #efe3d4;
+}
+
+.geometry-draft-viewer[data-geometry-review-mode="sealed"] {
+  border-style: solid;
+  border-color: #83aa91;
+}
+
+.geometry-draft-viewer[data-geometry-review-mode="sealed"] .geometry-draft-label {
+  color: #275d42;
+  background: #e7f4ea;
+}
+
+.geometry-draft-viewer[data-geometry-review-mode="approved"] .geometry-draft-label {
+  color: #315f72;
+  background: #e8f2f5;
+}
+
+.geometry-draft-viewer:is([data-geometry-review-mode="historical"], [data-geometry-review-mode="superseded"]) {
+  border-color: #aaa49a;
+  background: #efede7;
+}
+
+.geometry-draft-viewer:is([data-geometry-review-mode="historical"], [data-geometry-review-mode="superseded"]) .geometry-draft-label {
+  color: #55514b;
+  background: #ddd9d1;
+}
+
+.geometry-part-artifacts {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-12);
+  border-top: 1px solid var(--thread-border);
+  background: #faf8f2;
+}
+
+.geometry-part-artifacts > header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  align-items: baseline;
+}
+
+.geometry-part-artifacts > header span,
+.geometry-part-artifacts > header strong {
+  font-size: var(--text-3xs);
+}
+
+.geometry-part-artifacts > header span {
+  color: var(--thread-orange);
+  font-weight: 800;
+  letter-spacing: 0.07em;
+}
+
+.geometry-part-artifact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8);
+}
+
+.geometry-part-artifact-grid article {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  border: 1px solid var(--thread-border);
+  background: #fff;
+}
+
+.geometry-part-artifact-grid article > div:first-child {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.geometry-part-artifact-grid strong,
+.geometry-part-artifact-grid small,
+.geometry-part-artifact-file,
+.geometry-part-artifacts > p {
+  font-size: var(--text-3xs);
+}
+
+.geometry-part-artifact-grid small,
+.geometry-part-artifacts > p {
+  color: var(--thread-muted);
+}
+
+.geometry-part-artifact-file {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-8);
+  align-items: center;
+  font-family: var(--mono);
+}
+
+.geometry-part-artifact-file a {
+  color: #315f72;
+  font-weight: 700;
+}
+
+.geometry-part-artifacts > p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.geometry-legacy-scope {
+  margin: 0;
+  padding: var(--space-10) var(--space-12);
+  border-top: 1px solid #c8c3b8;
+  color: #5f5a52;
+  background: #f3f1ec;
+  font-size: var(--text-3xs);
 }
 
 .geometry-draft-no-preview {
   margin: var(--space-12) 0;
   padding: var(--space-10) var(--space-12);
-  border: 1px dashed rgba(250, 180, 60, 0.3);
+  border: 1px dashed #c99974;
   border-radius: 6px;
-  color: var(--thread-muted, #888);
+  color: #665b50;
+  background: #faf7f0;
   font-size: var(--text-2xs, 0.72rem);
 }
 
 .geometry-draft-canvas-shell {
   position: relative;
-  height: 240px;
+  height: 390px;
 }
 
 .geometry-draft-canvas {
@@ -431,7 +891,9 @@
   position: absolute;
   right: var(--space-10);
   bottom: var(--space-8);
-  color: rgba(255, 255, 255, 0.45);
+  padding: var(--space-4) var(--space-6);
+  color: #665b50;
+  background: rgba(250, 247, 240, 0.88);
   font-size: var(--text-3xs, 0.62rem);
   pointer-events: none;
 }
@@ -443,11 +905,11 @@
   bottom: unset;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: rgba(255, 255, 255, 0.6);
+  color: #665b50;
 }
 
 .geometry-draft-canvas-state[data-state="error"] {
-  color: rgba(255, 100, 80, 0.75);
+  color: #9f3328;
 }
 
 .geometry-draft-footer {
@@ -457,21 +919,52 @@
   flex-wrap: wrap;
   gap: var(--space-6);
   padding: var(--space-8) var(--space-12);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid #d7cbbb;
+  background: #faf7f0;
 }
 
 .geometry-draft-footer small {
-  color: rgba(255, 255, 255, 0.4);
+  color: #665b50;
   font-size: var(--text-3xs, 0.62rem);
 }
 
 .geometry-draft-digest {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 260px;
-  color: rgba(255, 255, 255, 0.3);
+  max-width: min(100%, 34rem);
+  color: #665b50;
   font-family: var(--font-mono, monospace);
   font-size: 0.55rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (max-width: 720px) {
+  .geometry-draft-canvas-shell {
+    height: 320px;
+  }
+}
+
+@media (max-width: 460px) {
+  .geometry-draft-viewer {
+    margin-inline: 0;
+  }
+
+  .geometry-draft-canvas-shell {
+    height: 280px;
+  }
+
+  .geometry-draft-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .geometry-draft-digest {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .geometry-draft-canvas-shell {
+    height: 260px;
+  }
 }

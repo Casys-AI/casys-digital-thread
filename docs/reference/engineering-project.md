@@ -154,14 +154,30 @@ lineage. Legacy detached `requirements-capture/1.0` records are not silently enr
 This operation records model requirements; it does not evaluate them, invent
 measurements, or publish a pass/fail verdict.
 
-Geometry is a two-step boundary. `project_geometry_preview` is planning-only: it runs an
-agent-proposed, validated script only in `build123d-sandbox`, verifies the provider
-basenames and exported bytes, and records the exact preview-run identity in a
-`geometry-draft-capture/1.1`. build123d's `gltf` token is accepted only with its actual
-binary `.glb` output. The tool returns the exact decision parameters for human review.
-Only `design.write-geometry@1` may then seal those same human-approved hashes into the
-canonical `geometry-capture/1.1`; the seal performs no provider re-execution and records
-its local operation separately from the sandbox producer.
+Geometry is a two-step boundary. `project_geometry_preview` is planning-only and runs
+agent-proposed, validated source only in `build123d-sandbox`. Legacy
+`geometry-draft-capture/1.1` remains readable and assembly-only. A complete bundle uses
+`geometry-draft-capture/2.0`: one exact assembly source plus one exact source per unique
+SysML `PartDefinition`, dispatched as an isolated N+1 sequence after every source and
+identity validates. Its manifest requires authoritative STEP for the assembly and each
+definition, and an exhaustive, identity-based `PartUsage -> PartDefinition -> placement`
+table in a right-handed millimetre frame with extrinsic X/Y/Z degree rotations. The
+placement is local to the PartDefinition that owns the PartUsage; reusing that parent
+repeats the local placement on each expanded product path without duplicating the
+semantic PartUsage declaration. build123d's `gltf` token is accepted only with its
+actual binary `.glb` output.
+
+The preview returns flat decision parameters for a fresh human review. Only
+`design.write-geometry@1` may seal those approved hashes. `geometry-manifest/1.0`
+retains the existing `geometry-capture/1.1` meaning; the explicit
+`geometry-manifest/2.0` discriminator produces `geometry-capture/2.0`, retains the
+approved editable sources and ordered N+1 provenance, and publishes independent
+definition assets without changing legacy replay. The seal makes no provider call. An
+upgrade must name the unique active predecessor, archives its exact geometry family, and
+records `derived_from` plus `supersedes`; ambiguity fails before canonical writes.
+Product projection rereads the v2 capture and attaches the seal-owned authoritative STEP
+artifact to each exact SysML occurrence. Reused definitions share that binding; labels
+are never joins and no `build123d` provider identity is invented.
 
 The fixed `coffee-machine-cm01-v3` reference path is a separate code-owned catalog, not
 a generic project template. After the documentary baseline and SysON seed, it supplies
@@ -452,8 +468,9 @@ publish content-addressed evidence. The architecture writer renders the reviewed
 package, reusable PartDefinitions, and scoped PartUsages; the requirements writer
 renders only reviewed, server-parsed integer model thresholds. `design.write-geometry@1`
 promotes only a matching human-reviewed draft after exact hash and architecture checks;
-the provider execution occurred earlier in the isolated preview boundary.
-`architecture.author-inspection-drone@3` is restricted to the exact
+for v2, the manifest must cover every captured PartUsage and every distinct targeted
+PartDefinition. The provider execution occurred earlier in the isolated preview
+boundary. `architecture.author-inspection-drone@3` is restricted to the exact
 `inspection-drone-v4` r2 basis and has published r3: five typed usages and four
 qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
 or verdict claims. Its read-only successor,

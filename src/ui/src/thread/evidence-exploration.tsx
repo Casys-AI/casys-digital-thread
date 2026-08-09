@@ -413,12 +413,12 @@ export function EvidenceExploration({
         >
           {systemLegend.length > 0 && (
             <>
-              <p class="evidence-exploration-legend-title">OUTILS</p>
+              <p class="evidence-exploration-legend-title">TOOLS</p>
               {systemLegend.map((item) => (
                 <span
                   key={item.system}
                   class="evidence-exploration-legend-chip"
-                  aria-label={`${item.label} — ${item.count} faits`}
+                  aria-label={`${item.label} — ${item.count} facts`}
                 >
                   <span
                     class="evidence-exploration-legend-chip-dot"
@@ -442,7 +442,7 @@ export function EvidenceExploration({
                 <span
                   key={item.kind}
                   class="evidence-exploration-legend-chip"
-                  aria-label={`${item.label} — ${item.count} faits`}
+                  aria-label={`${item.label} — ${item.count} facts`}
                 >
                   <span class="evidence-exploration-legend-chip-name">
                     {item.label}
@@ -456,7 +456,7 @@ export function EvidenceExploration({
           )}
           {legend.length > 0 && (
             <>
-              <p class="evidence-exploration-legend-title">COMPOSANTES</p>
+              <p class="evidence-exploration-legend-title">COMPONENTS</p>
               {legend.map((item) => (
                 <LegendChip
                   key={item.componentIds[0]}
@@ -497,41 +497,68 @@ function ExplorationKeyboardNavigation({
   return (
     <details class="evidence-exploration-relations">
       <summary>
-        NAVIGATION CLAVIER ({nodes.length} faits · {edges.length} relations)
+        ACCESSIBLE EVIDENCE TABLE ({nodes.length} facts · {edges.length}{" "}
+        relations)
       </summary>
-      <p>Tabulez vers un fait ou une relation, puis Entrée pour l’inspecter.</p>
-      <ul aria-label="Faits du graphe">
-        {nodes.map((node) => (
-          <li key={node.key}>
-            <button
-              type="button"
-              onClick={() =>
-                onSelectionChange?.({ kind: "node", ref: node.ref })}
-            >
-              {node.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <ul aria-label="Relations du graphe">
-        {edges.map((edge) => (
-          <li key={edge.key}>
-            <button
-              type="button"
-              aria-label={edge.accessibleLabel}
-              onClick={() =>
-                onSelectionChange?.({
-                  kind: "edge",
-                  id: edge.edgeId,
-                  occurrence: { key: edge.occurrenceKey, edge: edge.edge },
-                })}
-            >
-              <span aria-hidden="true">{edge.label}</span>
-              <span class="sr-only">{edge.accessibleLabel}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      <p>Use Tab to reach a record, then press Enter to inspect it.</p>
+      <div class="evidence-exploration-table-wrap">
+        <table>
+          <caption class="sr-only">
+            Visible evidence facts and relations
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Type</th>
+              <th scope="col">Record</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {nodes.map((node) => (
+              <tr key={node.key}>
+                <td>Fact</td>
+                <td>{node.label}</td>
+                <td>
+                  <button
+                    type="button"
+                    aria-label={`Inspect fact: ${node.label}`}
+                    onClick={() =>
+                      onSelectionChange?.({ kind: "node", ref: node.ref })}
+                  >
+                    Inspect
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {edges.map((edge) => (
+              <tr key={edge.key}>
+                <td>Relation</td>
+                <td>
+                  <span aria-hidden="true">{edge.label}</span>
+                  <span class="sr-only">{edge.accessibleLabel}</span>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    aria-label={`Inspect relation: ${edge.accessibleLabel}`}
+                    onClick={() =>
+                      onSelectionChange?.({
+                        kind: "edge",
+                        id: edge.edgeId,
+                        occurrence: {
+                          key: edge.occurrenceKey,
+                          edge: edge.edge,
+                        },
+                      })}
+                  >
+                    Inspect
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </details>
   );
 }
@@ -573,11 +600,11 @@ function LegendChip({
       type="button"
       class="evidence-exploration-legend-chip"
       onClick={handleClick}
-      title={`Focaliser la caméra sur la composante "${item.name}"`}
-      aria-label={`${item.name} — ${item.visibleNodeCount} faits`}
+      title={`Focus the camera on component "${item.name}"`}
+      aria-label={`${item.name} — ${item.visibleNodeCount} facts`}
     >
       {
-        /* No color dot: node colors encode the producing TOOL (see the OUTILS
+        /* No color dot: node colors encode the producing TOOL (see the TOOLS
           key above); painting component chips with a second palette made the
           two mappings contradict each other on screen. */
       }

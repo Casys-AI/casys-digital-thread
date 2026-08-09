@@ -31,8 +31,11 @@ import type {
 import { materializeSysonModelSeed } from "../../domain/platform/syson-model-seed.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
-const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
-const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
+const HUMAN = {
+  kind: "human" as const,
+  actorId: "mcp-elicitation:paired-chat@1",
+};
+const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
 const V3_SEED_OPERATION: RegisteredEngineeringOperation = {
   id: "architecture.seed-syson-model",
   version: "2",

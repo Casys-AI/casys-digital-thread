@@ -45,12 +45,25 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import {
+  type AnyGeometryManifest,
   DESIGN_WRITE_GEOMETRY_OPERATION,
+  encodeGeometryDecisionParameters,
+  GEOMETRY_MANIFEST_SCHEMA,
   type GeometryDecisionParameters,
   geometryDecisionParametersToMap,
   type GeometryManifest,
   parseGeometryDecisionParameters,
 } from "../../domain/platform/geometry-proposal.ts";
+import {
+  GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE,
+  GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
+  GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+  GEOMETRY_BINARY_DERIVATION_RATIONALE,
+  GEOMETRY_BINARY_TRACE_RATIONALE,
+  GEOMETRY_PREDECESSOR_CAPTURE_USE_RATIONALE,
+  GEOMETRY_PREDECESSOR_DERIVATION_RATIONALE,
+  GEOMETRY_PREDECESSOR_SUPERSEDES_RATIONALE,
+} from "../../domain/platform/geometry-bundle.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -60,7 +73,9 @@ import type {
   ThreadOperationRef,
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
+import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
+import { computeArchiveCascade } from "../../domain/thread/thread-retirement.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
@@ -69,10 +84,17 @@ import {
   GEOMETRY_CAPTURE_URI_PREFIX,
 } from "../captures/file-capture-store.ts";
 import {
+  assertGeometryBundleDraftPaths,
   assertGeometryDraftAssemblyPaths,
+  GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_DRAFT_ASSETS_DIR,
   GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+  type GeometryBundleCanonicalSources,
+  type GeometryBundleDraftCapture,
+  geometryBundleManifestFromDraft,
   LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+  requireGeometryBundleCanonicalSources,
+  requireGeometryBundleDraftAssetMetadata,
 } from "../captures/geometry-draft-capture.ts";
 import { assertThreadSnapshotLineageIntact } from "../stores/thread-snapshot-lineage.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
@@ -105,6 +127,7 @@ export { DESIGN_WRITE_GEOMETRY_OPERATION };
 /** Schema version written into every canonical geometry capture. */
 /** v1.1 distinguishes the preview producer from the local sealing operation. */
 export const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
+export const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.0" as const;
 export const GEOMETRY_CANONICAL_ASSETS_DIR = "state/local/thread-assets" as const;
 
 // ── Cliquet error ─────────────────────────────────────────────────────────────
@@ -139,6 +162,8 @@ export class GeometryLineageReviewRequiredError extends Error {
 
 export type GeometryAssetVerificationCode =
   | "asset_not_found"
+  | "asset_empty"
+  | "byte_count_mismatch"
   | "sha256_mismatch";
 
 /**
@@ -170,37 +195,55 @@ export class GeometryAssetVerificationError extends Error {
  * scenario (human signs hashes for D2 while the viewer shows D1) without
  * bootstrapping a full project fixture.
  */
+type LegacyGeometryDraftManifestShape = {
+  readonly subject: GeometryManifest["architectureBasis"];
+  readonly scriptHash: ContentFingerprint;
+  readonly exportFormats: GeometryManifest["exportFormats"];
+  readonly components: GeometryManifest["components"];
+  readonly assemblyFiles: NonNullable<
+    GeometryManifest["artifactHashes"]
+  >["assemblyFiles"];
+  readonly partMeshes: ReadonlyArray<{
+    readonly usageName: string;
+    readonly name: string;
+    readonly fingerprint: ContentFingerprint;
+  }>;
+};
+
 export function assertMrtrManifestMatchesDraft(
-  signed: GeometryManifest,
-  draft: {
-    readonly subject: GeometryManifest["architectureBasis"];
-    readonly scriptHash: ContentFingerprint;
-    readonly exportFormats: GeometryManifest["exportFormats"];
-    readonly components: GeometryManifest["components"];
-    readonly assemblyFiles: NonNullable<
-      GeometryManifest["artifactHashes"]
-    >["assemblyFiles"];
-    readonly partMeshes: ReadonlyArray<{
-      readonly usageName: string;
-      readonly name: string;
-      readonly fingerprint: ContentFingerprint;
-    }>;
-  },
+  signed: AnyGeometryManifest,
+  draft:
+    | LegacyGeometryDraftManifestShape
+    | Omit<GeometryBundleDraftCapture, "fingerprint">,
 ): void {
+  if (signed.schemaVersion === "geometry-manifest/2.0") {
+    const reconstructed = geometryBundleManifestFromDraft(
+      draft as Omit<GeometryBundleDraftCapture, "fingerprint">,
+    );
+    if (deterministicJson(signed) !== deterministicJson(reconstructed)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "geometry_manifest_mismatch: the signed v2 MRTR manifest is not exactly the " +
+          "manifest reconstructed from the reviewed geometry bundle draft.",
+      );
+    }
+    return;
+  }
+  const legacyDraft = draft as LegacyGeometryDraftManifestShape;
   const reconstructed: GeometryManifest = {
     schemaVersion: "geometry-manifest/1.0",
-    architectureBasis: draft.subject,
-    components: draft.components,
+    architectureBasis: legacyDraft.subject,
+    components: legacyDraft.components,
     unitSystem: "mm",
-    exportFormats: draft.exportFormats,
-    scriptHash: draft.scriptHash,
+    exportFormats: legacyDraft.exportFormats,
+    scriptHash: legacyDraft.scriptHash,
     artifactHashes: {
-      assemblyFiles: draft.assemblyFiles.map((file) => ({
+      assemblyFiles: legacyDraft.assemblyFiles.map((file) => ({
         format: file.format,
         name: file.name,
         fingerprint: file.fingerprint,
       })),
-      partMeshes: draft.partMeshes.map((mesh) => ({
+      partMeshes: legacyDraft.partMeshes.map((mesh) => ({
         semanticKey: mesh.usageName,
         name: mesh.name,
         fingerprint: mesh.fingerprint,
@@ -387,7 +430,11 @@ export class DesignWriteGeometryRunExecutor {
       // recorded. In particular, legacy `format: gltf` records must prove the
       // provider's binary `.glb` path contract before any project, capture,
       // asset, or snapshot write occurs.
-      await loadReviewedGeometryDraft(params, this.#geometryDraftCaptures);
+      await loadReviewedGeometryDraft(
+        params,
+        this.#geometryDraftCaptures,
+        this.#draftAssetDirectory,
+      );
 
       // The reviewed architecture is part of the MRTR input, so validate its
       // exact active tip, capture bytes, seed/predecessor lineage, and component
@@ -415,6 +462,11 @@ export class DesignWriteGeometryRunExecutor {
         preClaimBase,
         preClaimArchitecture,
         this.#architectureCaptures,
+      );
+      await requireGeometryBundlePredecessor(
+        preClaimBase,
+        params,
+        this.#geometryCaptures,
       );
 
       await this.#commands.claimRun(origin, {
@@ -462,9 +514,14 @@ export class DesignWriteGeometryRunExecutor {
       // the claim boundary still fails closed. FileCaptureStore is
       // content-addressed, so a successful second read is the same reviewed
       // object that passed the pre-claim validation above.
-      const { previewProducer } = await loadReviewedGeometryDraft(
+      const {
+        bundleAssetBytes,
+        bundleSources,
+        previewProducer,
+      } = await loadReviewedGeometryDraft(
         params,
         this.#geometryDraftCaptures,
+        this.#draftAssetDirectory,
       );
 
       // Step 10 (D5 part 2): architecture capture load + per-component binding check.
@@ -474,6 +531,11 @@ export class DesignWriteGeometryRunExecutor {
         architectureArtifact,
         this.#architectureCaptures,
       );
+      const predecessor = await requireGeometryBundlePredecessor(
+        base,
+        params,
+        this.#geometryCaptures,
+      );
 
       // Step 11: build and durably record the canonical geometry capture before
       // any binary is published. The capture is derived only from the signed
@@ -481,7 +543,9 @@ export class DesignWriteGeometryRunExecutor {
       const { assemblyFiles = [], partMeshes = [] } = params.manifest.artifactHashes ??
         {};
       const captureRecord = {
-        schemaVersion: GEOMETRY_CAPTURE_SCHEMA,
+        schemaVersion: params.manifest.schemaVersion === "geometry-manifest/2.0"
+          ? GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+          : GEOMETRY_CAPTURE_SCHEMA,
         operation: DESIGN_WRITE_GEOMETRY_OPERATION,
         trustedRunId: run.id,
         draftDigest: params.draftDigest,
@@ -492,6 +556,7 @@ export class DesignWriteGeometryRunExecutor {
           producerRunId: architectureArtifact.producer.runId,
         },
         previewProducer: previewProducer ?? null,
+        ...(bundleSources ? { sourceScripts: bundleSources } : {}),
         sealedAt: capturedAt,
       };
       const captureFp = await sha256Fingerprint(captureRecord);
@@ -513,10 +578,12 @@ export class DesignWriteGeometryRunExecutor {
           captureFp,
           assetFingerprint: file.fingerprint,
           name: `assembly file ${file.name}`,
+          identity: { scope: "assembly", format: file.format, name: file.name },
           extension: geometryAssetExtension(file.format),
           geometryCaptures: this.#geometryCaptures,
           draftDirectory: this.#draftAssetDirectory,
           canonicalDirectory: this.#canonicalAssetDirectory,
+          expectedBytes: bundleAssetBytes?.get(file.fingerprint.digest),
         });
       }
       for (const mesh of partMeshes) {
@@ -524,11 +591,38 @@ export class DesignWriteGeometryRunExecutor {
           captureFp,
           assetFingerprint: mesh.fingerprint,
           name: `part mesh ${mesh.name}`,
+          identity: {
+            scope: "legacy-part-mesh",
+            semanticKey: mesh.semanticKey,
+            name: mesh.name,
+          },
           extension: "stl",
           geometryCaptures: this.#geometryCaptures,
           draftDirectory: this.#draftAssetDirectory,
           canonicalDirectory: this.#canonicalAssetDirectory,
         });
+      }
+      if (params.manifest.schemaVersion === "geometry-manifest/2.0") {
+        for (const definition of params.manifest.partDefinitions) {
+          for (const file of definition.files ?? []) {
+            await promoteAssetNamedByCapture({
+              captureFp,
+              assetFingerprint: file.fingerprint,
+              name: `PartDefinition ${definition.elementId} ${file.format}`,
+              identity: {
+                scope: "part-definition",
+                elementId: definition.elementId,
+                format: file.format,
+                name: file.name,
+              },
+              extension: geometryAssetExtension(file.format),
+              geometryCaptures: this.#geometryCaptures,
+              draftDirectory: this.#draftAssetDirectory,
+              canonicalDirectory: this.#canonicalAssetDirectory,
+              expectedBytes: bundleAssetBytes?.get(file.fingerprint.digest),
+            });
+          }
+        }
       }
 
       // Step 13: build thread extension + validate.
@@ -542,6 +636,7 @@ export class DesignWriteGeometryRunExecutor {
         captureUri,
         params,
         previewProducer,
+        predecessor,
       });
 
       const applied = applyThreadSnapshotExtensionIfNew(base, extension, {
@@ -742,7 +837,12 @@ export class DesignWriteGeometryRunExecutor {
       primary.producer.serverId !== "digital-thread" ||
       primary.producer.tool !==
         `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
-      primary.producer.runId !== run.id || primary.inputArtifactIds.length !== 1
+      primary.producer.runId !== run.id ||
+      primary.inputArtifactIds.length !==
+        (params.manifest.schemaVersion === "geometry-manifest/2.0" &&
+            params.manifest.predecessor
+          ? 2
+          : 1)
     ) {
       throw completedGeometryIntegrityError(
         "the primary geometry artifact identity, URI, media type, producer, or inputs are not exact",
@@ -801,13 +901,15 @@ export class DesignWriteGeometryRunExecutor {
       );
     }
 
-    const { previewProducer } = await loadReviewedGeometryDraft(
+    const { bundleSources, previewProducer } = await loadReviewedGeometryDraft(
       params,
       this.#geometryDraftCaptures,
     );
     const capturedAt = requiredStart(run);
     const expectedCapture = {
-      schemaVersion: GEOMETRY_CAPTURE_SCHEMA,
+      schemaVersion: params.manifest.schemaVersion === "geometry-manifest/2.0"
+        ? GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+        : GEOMETRY_CAPTURE_SCHEMA,
       operation: DESIGN_WRITE_GEOMETRY_OPERATION,
       trustedRunId: run.id,
       draftDigest: params.draftDigest,
@@ -818,6 +920,7 @@ export class DesignWriteGeometryRunExecutor {
         producerRunId: architectureArtifact.producer.runId,
       },
       previewProducer: previewProducer ?? null,
+      ...(bundleSources ? { sourceScripts: bundleSources } : {}),
       sealedAt: capturedAt,
     };
     const observedCaptureFingerprint = await sha256Fingerprint(capture);
@@ -830,6 +933,25 @@ export class DesignWriteGeometryRunExecutor {
       );
     }
 
+    let predecessor: GeometryBundlePredecessorContext | undefined;
+    try {
+      predecessor = await requireGeometryBundlePredecessor(
+        baseSnapshot,
+        params,
+        this.#geometryCaptures,
+      );
+      if (
+        predecessor && primary.inputArtifactIds[1] !== predecessor.artifact.id
+      ) {
+        throw new Error("primary artifact does not name the reviewed predecessor");
+      }
+    } catch (error) {
+      throw completedGeometryIntegrityError(
+        `the geometry predecessor is not exact: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     const expectedExtension = buildExtension({
       base: baseSnapshot,
       architectureArtifact,
@@ -839,6 +961,7 @@ export class DesignWriteGeometryRunExecutor {
       captureUri: expectedCaptureUri,
       params,
       previewProducer,
+      predecessor,
     });
     const expectedArtifactIds = new Set(
       expectedExtension.artifacts.map((artifact) => artifact.id),
@@ -898,6 +1021,17 @@ export class DesignWriteGeometryRunExecutor {
         this.#canonicalAssetDirectory,
       );
     }
+    if (params.manifest.schemaVersion === "geometry-manifest/2.0") {
+      for (const definition of params.manifest.partDefinitions) {
+        for (const file of definition.files ?? []) {
+          await assertCanonicalGeometryAssetExact(
+            file.fingerprint,
+            geometryAssetExtension(file.format),
+            this.#canonicalAssetDirectory,
+          );
+        }
+      }
+    }
   }
 
   async #reconcileLive(subjectId: string, runId: string): Promise<void> {
@@ -915,6 +1049,7 @@ export {
   requireArchitectureArtifact,
   requireDraftAssemblyPaths,
   requireDraftPreviewProducer,
+  requireGeometryBundlePredecessor,
 };
 
 // ── D5: architecture artifact requirement ─────────────────────────────────────
@@ -1228,7 +1363,10 @@ async function assertComponentBindingsMatchArchitecture(
   const definitionsById = new Map(
     definitions.map((definition) => [definition.id, definition]),
   );
-  const allUsages = new Map<string, string>();
+  const allUsages = new Map<
+    string,
+    { readonly label: string; readonly targetId: string }
+  >();
   for (const definition of definitions) {
     const labelsUnderParent = new Set<string>();
     for (const usage of definition.usages) {
@@ -1245,26 +1383,81 @@ async function assertComponentBindingsMatchArchitecture(
           `PartUsage ${usage.id} does not target an exact captured PartDefinition`,
         );
       }
-      allUsages.set(usage.id, usage.label);
+      allUsages.set(usage.id, { label: usage.label, targetId: usage.targetId });
     }
   }
 
   for (const component of params.manifest.components) {
-    const label = allUsages.get(component.elementId);
-    if (label === undefined) {
+    const usage = allUsages.get(component.elementId);
+    if (usage === undefined) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `D5 violation: geometry manifest component elementId "${component.elementId}" ` +
           "is not present in the architecture capture as a PartUsage.",
       );
     }
-    if (label !== component.usageName) {
+    if (usage.label !== component.usageName) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `D5 violation: geometry manifest component elementId "${component.elementId}" ` +
           `has usageName "${component.usageName}" but the architecture capture labels ` +
-          `it "${label}".`,
+          `it "${usage.label}".`,
       );
+    }
+  }
+  if (params.manifest.schemaVersion === "geometry-manifest/2.0") {
+    const manifestUsageIds = new Set(
+      params.manifest.components.map((component) => component.elementId),
+    );
+    if (
+      manifestUsageIds.size !== allUsages.size ||
+      [...allUsages.keys()].some((id) => !manifestUsageIds.has(id))
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "D5 violation: geometry bundle PartUsage identities must exactly cover every " +
+          "PartUsage in the captured architecture.",
+      );
+    }
+    const capturedTargetDefinitionIds = new Set(
+      [...allUsages.values()].map((usage) => usage.targetId),
+    );
+    const manifestDefinitionIds = new Set(
+      params.manifest.partDefinitions.map((definition) => definition.elementId),
+    );
+    if (
+      manifestDefinitionIds.size !== capturedTargetDefinitionIds.size ||
+      [...capturedTargetDefinitionIds].some((id) => !manifestDefinitionIds.has(id))
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "D5 violation: geometry bundle PartDefinition identities must exactly cover " +
+          "the definitions targeted by captured PartUsages; the system root is the " +
+          "separate assembly.",
+      );
+    }
+    for (const definition of params.manifest.partDefinitions) {
+      const captured = definitionsById.get(definition.elementId);
+      if (!captured || captured.label !== definition.label) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `D5 violation: geometry PartDefinition "${definition.elementId}" is not ` +
+            "the exact captured architecture definition.",
+        );
+      }
+    }
+    for (const occurrence of params.manifest.occurrences) {
+      const captured = allUsages.get(occurrence.usageElementId);
+      if (
+        !captured ||
+        captured.targetId !== occurrence.partDefinitionElementId
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `D5 violation: geometry occurrence "${occurrence.usageElementId}" does not ` +
+            `target captured PartDefinition "${occurrence.partDefinitionElementId}".`,
+        );
+      }
     }
   }
 }
@@ -1273,6 +1466,827 @@ function invalidArchitectureCapture(detail: string): never {
   throw new EngineeringProjectCommandError(
     "invalid_transition",
     `D5 violation: architecture capture is not exact schema-v2 evidence: ${detail}.`,
+  );
+}
+
+interface GeometryBundlePredecessorContext {
+  readonly artifact: ThreadArtifact;
+  readonly archiveEntries: ReturnType<typeof computeArchiveCascade>;
+}
+
+/**
+ * Resolve the one active geometry tip that v2 replaces.
+ *
+ * This is intentionally identity-only: capture URI, artifact id and digest are
+ * server-owned. Labels never participate. The exact predecessor capture is
+ * reread before the new run claims or writes anything, which makes the later
+ * derived_from edge and verified consumption truthful.
+ */
+async function requireGeometryBundlePredecessor(
+  base: ThreadSnapshot,
+  params: GeometryDecisionParameters,
+  geometryCaptures: GeometryCaptureStore,
+): Promise<GeometryBundlePredecessorContext | undefined> {
+  if (params.manifest.schemaVersion !== "geometry-manifest/2.0") return undefined;
+  const archived = archivedRefKeys(base);
+  const active = base.artifacts.filter((artifact) =>
+    artifact.kind === "cad-model" &&
+    artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+    !archived.has(`artifact:${artifact.id}`)
+  );
+  if (active.length > 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_tip_ambiguous: more than one active canonical geometry capture exists.",
+    );
+  }
+  const declared = params.manifest.predecessor;
+  const artifact = active[0];
+  if (!artifact) {
+    if (declared) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "geometry_predecessor_mismatch: the signed predecessor is not an active geometry tip.",
+      );
+    }
+    return undefined;
+  }
+  if (
+    !declared || declared.artifactId !== artifact.id ||
+    !fingerprintsEqual(declared.fingerprint, artifact.fingerprint)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `geometry_predecessor_mismatch: v2 must name active geometry tip ${artifact.id} exactly.`,
+    );
+  }
+  const digest = artifact.fingerprint.digest;
+  if (
+    artifact.id !== `geometry-${digest}` || artifact.version !== digest ||
+    artifact.uri !== `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${digest}` ||
+    artifact.mediaType !== "application/json" ||
+    artifact.producer.serverId !== "digital-thread" ||
+    artifact.producer.tool !==
+      `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
+    artifact.producer.runId.trim() === ""
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_predecessor_mismatch: active geometry artifact identity is not canonical.",
+    );
+  }
+  const captureText = await geometryCaptures.read(artifact.fingerprint);
+  if (!captureText) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_predecessor_mismatch: active geometry capture is not durably readable.",
+    );
+  }
+  let capture: unknown;
+  try {
+    capture = JSON.parse(captureText);
+  } catch {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_predecessor_mismatch: active geometry capture is invalid JSON.",
+    );
+  }
+  const observed = await sha256Fingerprint(capture);
+  if (!fingerprintsEqual(observed, artifact.fingerprint)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_predecessor_mismatch: active geometry capture hash is not exact.",
+    );
+  }
+  if (!capture || typeof capture !== "object" || Array.isArray(capture)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_predecessor_mismatch: active geometry capture is not an object.",
+    );
+  }
+  const predecessorCapture = await requireExactGeometryPredecessorCapture(
+    base,
+    artifact,
+    capture as Record<string, unknown>,
+  );
+  const family = requireExactGeometryPredecessorFamily(
+    base,
+    artifact,
+    predecessorCapture.params,
+    predecessorCapture.previewProducer,
+    predecessorCapture.sealedAt,
+  );
+  const archiveEntries = computeArchiveCascade(
+    base,
+    family.map((candidate) => ({ kind: "artifact" as const, id: candidate.id })),
+  );
+  return { artifact, archiveEntries };
+}
+
+interface ExactGeometryPredecessorCapture {
+  readonly params: GeometryDecisionParameters;
+  readonly previewProducer: ThreadOperationRef | undefined;
+  readonly sealedAt: string;
+}
+
+/**
+ * Parse the complete canonical predecessor record before it can become a
+ * verified consumption or supersedes edge. A self-hashed four-field JSON
+ * object is not canonical geometry evidence.
+ */
+async function requireExactGeometryPredecessorCapture(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  record: Record<string, unknown>,
+): Promise<ExactGeometryPredecessorCapture> {
+  const schema = record.schemaVersion;
+  if (schema !== GEOMETRY_CAPTURE_SCHEMA && schema !== GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
+    invalidGeometryPredecessor("capture schema is unsupported");
+  }
+  exactGeometryPredecessorKeys(
+    record,
+    schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+      ? [
+        "schemaVersion",
+        "operation",
+        "trustedRunId",
+        "draftDigest",
+        "manifest",
+        "architectureBasis",
+        "previewProducer",
+        "sourceScripts",
+        "sealedAt",
+      ]
+      : [
+        "schemaVersion",
+        "operation",
+        "trustedRunId",
+        "draftDigest",
+        "manifest",
+        "architectureBasis",
+        "previewProducer",
+        "sealedAt",
+      ],
+    "capture",
+  );
+  const operation = geometryPredecessorObject(record.operation, "operation");
+  exactGeometryPredecessorKeys(operation, ["id", "version"], "operation");
+  if (
+    operation.id !== DESIGN_WRITE_GEOMETRY_OPERATION.id ||
+    operation.version !== DESIGN_WRITE_GEOMETRY_OPERATION.version
+  ) {
+    invalidGeometryPredecessor("operation is not design.write-geometry@1");
+  }
+  const trustedRunId = geometryPredecessorString(
+    record.trustedRunId,
+    "trustedRunId",
+  );
+  if (trustedRunId !== primary.producer.runId) {
+    invalidGeometryPredecessor("trusted run does not match the artifact producer");
+  }
+  const draftDigest = geometryPredecessorDigest(record.draftDigest, "draftDigest");
+  let params: GeometryDecisionParameters;
+  try {
+    const manifest = record.manifest as AnyGeometryManifest;
+    const encoded = encodeGeometryDecisionParameters(draftDigest, manifest);
+    params = parseGeometryDecisionParameters(
+      geometryDecisionParametersToMap(encoded),
+    );
+    if (deterministicJson(params.manifest) !== deterministicJson(record.manifest)) {
+      invalidGeometryPredecessor("manifest is not an exact canonical record");
+    }
+  } catch (error) {
+    if (error instanceof EngineeringProjectCommandError) throw error;
+    invalidGeometryPredecessor(
+      `manifest is incomplete or invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (
+    (schema === GEOMETRY_CAPTURE_SCHEMA &&
+      params.manifest.schemaVersion !== GEOMETRY_MANIFEST_SCHEMA) ||
+    (schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
+      params.manifest.schemaVersion !== "geometry-manifest/2.0")
+  ) {
+    invalidGeometryPredecessor("capture and manifest schema versions diverge");
+  }
+
+  const architectureBasis = geometryPredecessorObject(
+    record.architectureBasis,
+    "architectureBasis",
+  );
+  exactGeometryPredecessorKeys(
+    architectureBasis,
+    ["artifactId", "fingerprint", "producerRunId"],
+    "architectureBasis",
+  );
+  const architectureId = geometryPredecessorString(
+    architectureBasis.artifactId,
+    "architectureBasis.artifactId",
+  );
+  const architectureFingerprint = geometryPredecessorFingerprint(
+    architectureBasis.fingerprint,
+    "architectureBasis.fingerprint",
+  );
+  const architectureProducerRunId = geometryPredecessorString(
+    architectureBasis.producerRunId,
+    "architectureBasis.producerRunId",
+  );
+  const architectureMatches = base.artifacts.filter((candidate) =>
+    candidate.id === architectureId &&
+    fingerprintsEqual(candidate.fingerprint, architectureFingerprint) &&
+    candidate.producer.runId === architectureProducerRunId
+  );
+  if (
+    architectureMatches.length !== 1 ||
+    !fingerprintsEqual(
+      params.manifest.architectureBasis.artifactFingerprint,
+      architectureFingerprint,
+    )
+  ) {
+    invalidGeometryPredecessor("architecture basis is absent or inexact");
+  }
+  const expectedInputs = [
+    architectureId,
+    ...(params.manifest.schemaVersion === "geometry-manifest/2.0" &&
+        params.manifest.predecessor
+      ? [params.manifest.predecessor.artifactId]
+      : []),
+  ];
+  if (
+    deterministicJson(primary.inputArtifactIds) !== deterministicJson(expectedInputs)
+  ) {
+    invalidGeometryPredecessor("artifact inputs do not match the sealed manifest");
+  }
+  let ownPredecessor: ThreadArtifact | undefined;
+  if (
+    params.manifest.schemaVersion === "geometry-manifest/2.0" &&
+    params.manifest.predecessor
+  ) {
+    const manifestPredecessor = params.manifest.predecessor;
+    const prior = base.artifacts.filter((candidate) =>
+      candidate.id === manifestPredecessor.artifactId &&
+      fingerprintsEqual(
+        candidate.fingerprint,
+        manifestPredecessor.fingerprint,
+      )
+    );
+    if (
+      prior.length !== 1 ||
+      !archivedRefKeys(base).has(
+        `artifact:${manifestPredecessor.artifactId}`,
+      )
+    ) {
+      invalidGeometryPredecessor("its own predecessor is absent, active, or inexact");
+    }
+    ownPredecessor = prior[0]!;
+  }
+
+  const previewProducer = geometryPredecessorPreviewProducer(
+    record.previewProducer,
+    schema,
+  );
+  const sealedAt = geometryPredecessorInstant(record.sealedAt, "sealedAt");
+  requireExactGeometryPredecessorArchitectureAttestation(
+    base,
+    primary,
+    architectureMatches[0]!,
+    sealedAt,
+  );
+  if (ownPredecessor) {
+    requireExactGeometryPredecessorLineage(
+      base,
+      primary,
+      ownPredecessor,
+      sealedAt,
+    );
+  }
+  if (
+    primary.freshness.status !== "fresh" ||
+    primary.freshness.changedAt !== sealedAt ||
+    primary.freshness.invalidatedByChangeIds.length !== 0
+  ) {
+    invalidGeometryPredecessor("artifact freshness does not match sealedAt");
+  }
+  if (schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
+    await requireExactGeometryBundleSources(
+      record.sourceScripts,
+      params.manifest as Extract<
+        AnyGeometryManifest,
+        { readonly schemaVersion: "geometry-manifest/2.0" }
+      >,
+    );
+  }
+  return { params, previewProducer, sealedAt };
+}
+
+function requireExactGeometryPredecessorLineage(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  predecessor: ThreadArtifact,
+  sealedAt: string,
+): void {
+  const predecessorDigest = predecessor.fingerprint.digest;
+  if (
+    predecessor.id !== `geometry-${predecessorDigest}` ||
+    predecessor.kind !== "cad-model" || predecessor.version !== predecessorDigest ||
+    predecessor.uri !==
+      `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${predecessorDigest}` ||
+    predecessor.mediaType !== "application/json" ||
+    predecessor.producer.serverId !== "digital-thread" ||
+    predecessor.producer.tool !==
+      `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
+    predecessor.producer.runId.trim() === "" ||
+    !archivedRefKeys(base).has(`artifact:${predecessor.id}`)
+  ) {
+    invalidGeometryPredecessor(
+      "its own predecessor identity, fingerprint, or archive state is not exact",
+    );
+  }
+
+  for (const relation of ["derived_from", "supersedes"] as const) {
+    const links = base.provenance.filter((link) =>
+      link.relation === relation && link.from.kind === "artifact" &&
+      link.from.id === primary.id && link.to.kind === "artifact" &&
+      link.to.id === predecessor.id
+    );
+    const expectedId = relation === "derived_from"
+      ? `derived-from-geometry-${primary.fingerprint.digest}`
+      : `supersedes-geometry-${primary.fingerprint.digest}`;
+    const expectedRationale = relation === "derived_from"
+      ? GEOMETRY_PREDECESSOR_DERIVATION_RATIONALE
+      : GEOMETRY_PREDECESSOR_SUPERSEDES_RATIONALE;
+    if (
+      links.length !== 1 || links[0]!.id !== expectedId ||
+      links[0]!.rationale !== expectedRationale
+    ) {
+      invalidGeometryPredecessor(
+        `its own predecessor ${relation} lineage is not exact`,
+      );
+    }
+  }
+
+  const expectedConsumptionId = `consume-geometry-${predecessor.id}-by-${primary.id}`;
+  const consumptions = base.consumptions.filter((consumption) =>
+    consumption.artifactId === predecessor.id &&
+    deterministicJson(consumption.consumer) === deterministicJson(primary.producer)
+  );
+  if (consumptions.length !== 1) {
+    invalidGeometryPredecessor(
+      "its own predecessor consumption is missing or ambiguous",
+    );
+  }
+  const consumption = consumptions[0]!;
+  if (
+    consumption.id !== expectedConsumptionId ||
+    !fingerprintsEqual(consumption.observedFingerprint, predecessor.fingerprint) ||
+    consumption.status !== "verified" || consumption.verifiedAt !== sealedAt
+  ) {
+    invalidGeometryPredecessor(
+      "its own predecessor consumption metadata is not exact",
+    );
+  }
+  const uses = base.provenance.filter((link) =>
+    link.relation === "uses" && link.from.kind === "consumption" &&
+    link.from.id === expectedConsumptionId && link.to.kind === "artifact" &&
+    link.to.id === predecessor.id
+  );
+  if (
+    uses.length !== 1 || uses[0]!.id !== `uses-${expectedConsumptionId}` ||
+    uses[0]!.rationale !== GEOMETRY_PREDECESSOR_CAPTURE_USE_RATIONALE
+  ) {
+    invalidGeometryPredecessor(
+      "its own predecessor uses attestation is not exact",
+    );
+  }
+}
+
+function requireExactGeometryPredecessorArchitectureAttestation(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  architecture: ThreadArtifact,
+  sealedAt: string,
+): void {
+  const expectedConsumptionId = `consume-arch-${architecture.id}-by-${primary.id}`;
+  const architectureConsumptions = base.consumptions.filter((consumption) =>
+    consumption.artifactId === architecture.id &&
+    deterministicJson(consumption.consumer) === deterministicJson(primary.producer)
+  );
+  if (architectureConsumptions.length !== 1) {
+    invalidGeometryPredecessor(
+      "architecture consumption is missing or ambiguous",
+    );
+  }
+  const consumption = architectureConsumptions[0]!;
+  if (
+    consumption.id !== expectedConsumptionId ||
+    !fingerprintsEqual(consumption.observedFingerprint, architecture.fingerprint) ||
+    consumption.status !== "verified" || consumption.verifiedAt !== sealedAt
+  ) {
+    invalidGeometryPredecessor("architecture consumption metadata is not exact");
+  }
+
+  const uses = base.provenance.filter((link) =>
+    link.relation === "uses" && link.from.kind === "consumption" &&
+    link.from.id === expectedConsumptionId && link.to.kind === "artifact" &&
+    link.to.id === architecture.id
+  );
+  if (
+    uses.length !== 1 || uses[0]!.id !== `uses-${expectedConsumptionId}` ||
+    uses[0]!.rationale !== GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE
+  ) {
+    invalidGeometryPredecessor("architecture uses attestation is not exact");
+  }
+
+  const derived = base.provenance.filter((link) =>
+    link.relation === "derived_from" && link.from.kind === "artifact" &&
+    link.from.id === primary.id && link.to.kind === "artifact" &&
+    link.to.id === architecture.id
+  );
+  if (
+    derived.length !== 1 ||
+    derived[0]!.id !==
+      `derived-from-architecture-${primary.fingerprint.digest}` ||
+    derived[0]!.rationale !== GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE
+  ) {
+    invalidGeometryPredecessor("architecture derivation is not exact");
+  }
+}
+
+async function requireExactGeometryBundleSources(
+  value: unknown,
+  manifest: Extract<
+    AnyGeometryManifest,
+    { readonly schemaVersion: "geometry-manifest/2.0" }
+  >,
+): Promise<void> {
+  const sources = geometryPredecessorObject(value, "sourceScripts");
+  exactGeometryPredecessorKeys(
+    sources,
+    ["assembly", "partDefinitions", "providerCalls"],
+    "sourceScripts",
+  );
+  const assembly = geometryPredecessorObject(
+    sources.assembly,
+    "sourceScripts.assembly",
+  );
+  exactGeometryPredecessorKeys(
+    assembly,
+    ["script", "scriptHash"],
+    "sourceScripts.assembly",
+  );
+  const assemblyScript = geometryPredecessorString(
+    assembly.script,
+    "sourceScripts.assembly.script",
+  );
+  const assemblyHash = geometryPredecessorFingerprint(
+    assembly.scriptHash,
+    "sourceScripts.assembly.scriptHash",
+  );
+  if (!manifest.scriptHash || !fingerprintsEqual(assemblyHash, manifest.scriptHash)) {
+    invalidGeometryPredecessor("assembly source hash is not signed by the manifest");
+  }
+  if (
+    !fingerprintsEqual(
+      await geometryPredecessorTextFingerprint(assemblyScript),
+      assemblyHash,
+    )
+  ) {
+    invalidGeometryPredecessor("assembly source bytes do not match their hash");
+  }
+
+  if (!Array.isArray(sources.partDefinitions)) {
+    invalidGeometryPredecessor("sourceScripts.partDefinitions is not an array");
+  }
+  if (sources.partDefinitions.length !== manifest.partDefinitions.length) {
+    invalidGeometryPredecessor("PartDefinition source coverage is incomplete");
+  }
+  const definitionSources = sources.partDefinitions.map((raw, index) => {
+    const source = geometryPredecessorObject(
+      raw,
+      `sourceScripts.partDefinitions[${index}]`,
+    );
+    exactGeometryPredecessorKeys(
+      source,
+      ["elementId", "script", "scriptHash"],
+      `sourceScripts.partDefinitions[${index}]`,
+    );
+    const definition = manifest.partDefinitions[index]!;
+    const elementId = geometryPredecessorString(
+      source.elementId,
+      `sourceScripts.partDefinitions[${index}].elementId`,
+    );
+    const script = geometryPredecessorString(
+      source.script,
+      `sourceScripts.partDefinitions[${index}].script`,
+    );
+    const scriptHash = geometryPredecessorFingerprint(
+      source.scriptHash,
+      `sourceScripts.partDefinitions[${index}].scriptHash`,
+    );
+    if (
+      elementId !== definition.elementId || !definition.scriptHash ||
+      !fingerprintsEqual(scriptHash, definition.scriptHash)
+    ) {
+      invalidGeometryPredecessor("PartDefinition source identity or hash is inexact");
+    }
+    return { elementId, script, scriptHash };
+  });
+  for (const source of definitionSources) {
+    if (
+      !fingerprintsEqual(
+        await geometryPredecessorTextFingerprint(source.script),
+        source.scriptHash,
+      )
+    ) {
+      invalidGeometryPredecessor(
+        `PartDefinition ${source.elementId} source bytes do not match their hash`,
+      );
+    }
+  }
+
+  if (!Array.isArray(sources.providerCalls)) {
+    invalidGeometryPredecessor("sourceScripts.providerCalls is not an array");
+  }
+  const expectedCalls = [
+    {
+      ordinal: 0,
+      role: "assembly" as const,
+      exportName: manifest.artifactHashes!.assemblyFiles[0]!.name,
+      scriptHash: manifest.scriptHash!,
+      formats: manifest.exportFormats,
+    },
+    ...manifest.partDefinitions.map((definition, index) => ({
+      ordinal: index + 1,
+      role: "part-definition" as const,
+      partDefinitionElementId: definition.elementId,
+      exportName: definition.files![0]!.name,
+      scriptHash: definition.scriptHash!,
+      formats: manifest.partExportFormats,
+    })),
+  ];
+  if (
+    deterministicJson(sources.providerCalls) !== deterministicJson(expectedCalls)
+  ) {
+    invalidGeometryPredecessor("providerCalls is not the exact ordered N+1 plan");
+  }
+}
+
+function requireExactGeometryPredecessorFamily(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  params: GeometryDecisionParameters,
+  previewProducer: ThreadOperationRef | undefined,
+  sealedAt: string,
+): readonly ThreadArtifact[] {
+  const digest = primary.fingerprint.digest;
+  const expected = new Map<string, {
+    readonly name: string;
+    readonly kind: ThreadArtifact["kind"];
+    readonly fingerprint: ContentFingerprint;
+    readonly uri: string;
+    readonly mediaType: string;
+  }>();
+  for (
+    const [index, file] of (params.manifest.artifactHashes?.assemblyFiles ?? [])
+      .entries()
+  ) {
+    const id = params.manifest.schemaVersion === "geometry-manifest/2.0"
+      ? `cad-asset-${digest}-assembly-${index}-${file.fingerprint.digest}`
+      : `cad-asset-${digest}-${file.fingerprint.digest}`;
+    expected.set(id, {
+      name: `${file.format.toUpperCase()}: ${file.name}`,
+      kind: file.format === "step" ? "step" : "cad-model",
+      fingerprint: file.fingerprint,
+      uri: `/api/thread/assets/${file.fingerprint.digest}.${
+        geometryAssetExtension(file.format)
+      }`,
+      mediaType: geometryAssetMediaType(file.format),
+    });
+  }
+  for (const mesh of params.manifest.artifactHashes?.partMeshes ?? []) {
+    expected.set(`mesh-${digest}-${mesh.fingerprint.digest}`, {
+      name: `Mesh: ${mesh.semanticKey}`,
+      kind: "mesh",
+      fingerprint: mesh.fingerprint,
+      uri: `/api/thread/assets/${mesh.fingerprint.digest}.stl`,
+      mediaType: "model/stl",
+    });
+  }
+  if (params.manifest.schemaVersion === "geometry-manifest/2.0") {
+    params.manifest.partDefinitions.forEach((definition, definitionIndex) => {
+      definition.files!.forEach((file, fileIndex) => {
+        expected.set(
+          `cad-asset-${digest}-definition-${definitionIndex}-${fileIndex}-${file.fingerprint.digest}`,
+          {
+            name: `${
+              file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()
+            }: ${definition.label}`,
+            kind: file.format === "step"
+              ? "step"
+              : file.format === "stl"
+              ? "mesh"
+              : "cad-model",
+            fingerprint: file.fingerprint,
+            uri: `/api/thread/assets/${file.fingerprint.digest}.${
+              geometryAssetExtension(file.format)
+            }`,
+            mediaType: geometryAssetMediaType(file.format),
+          },
+        );
+      });
+    });
+  }
+  const archived = archivedRefKeys(base);
+  const exactTraceFamilyIds = new Set(
+    base.provenance.filter((link) =>
+      link.relation === "traces_to" && link.from.kind === "artifact" &&
+      link.to.kind === "artifact" && link.to.id === primary.id
+    ).map((link) => link.from.id),
+  );
+  const family = base.artifacts.filter((candidate) =>
+    !archived.has(`artifact:${candidate.id}`) &&
+    (candidate.id === primary.id ||
+      candidate.id.startsWith(`cad-asset-${digest}-`) ||
+      candidate.id.startsWith(`mesh-${digest}-`) ||
+      exactTraceFamilyIds.has(candidate.id))
+  );
+  if (family.length !== expected.size + 1) {
+    invalidGeometryPredecessor("binary family is incomplete or contains extra assets");
+  }
+  const binaryProducer = previewProducer ?? primary.producer;
+  for (const [id, descriptor] of expected) {
+    const matches = family.filter((candidate) => candidate.id === id);
+    if (matches.length !== 1) {
+      invalidGeometryPredecessor(`binary artifact ${id} is missing or ambiguous`);
+    }
+    const artifact = matches[0]!;
+    if (
+      artifact.name !== descriptor.name || artifact.kind !== descriptor.kind ||
+      artifact.version !== descriptor.fingerprint.digest ||
+      !fingerprintsEqual(artifact.fingerprint, descriptor.fingerprint) ||
+      artifact.uri !== descriptor.uri || artifact.mediaType !== descriptor.mediaType ||
+      deterministicJson(artifact.producer) !== deterministicJson(binaryProducer) ||
+      deterministicJson(artifact.inputArtifactIds) !==
+        deterministicJson(previewProducer ? [] : [primary.id]) ||
+      artifact.freshness.status !== "fresh" ||
+      artifact.freshness.changedAt !== sealedAt ||
+      artifact.freshness.invalidatedByChangeIds.length !== 0
+    ) {
+      invalidGeometryPredecessor(`binary artifact ${id} metadata is not exact`);
+    }
+    const relation = previewProducer ? "traces_to" : "derived_from";
+    const captureLinks = base.provenance.filter((link) =>
+      link.relation === relation && link.from.kind === "artifact" &&
+      link.from.id === id && link.to.kind === "artifact" &&
+      link.to.id === primary.id
+    );
+    const expectedCaptureLinkId = `${
+      previewProducer ? "traces" : "derived"
+    }-${id}-from-${primary.id}`;
+    const expectedCaptureRationale = previewProducer
+      ? GEOMETRY_BINARY_TRACE_RATIONALE
+      : GEOMETRY_BINARY_DERIVATION_RATIONALE;
+    if (
+      captureLinks.length !== 1 ||
+      captureLinks[0]!.id !== expectedCaptureLinkId ||
+      captureLinks[0]!.rationale !== expectedCaptureRationale
+    ) {
+      invalidGeometryPredecessor(`binary artifact ${id} has no exact capture trace`);
+    }
+    const consumptionId = `consume-${primary.id}-by-${id}`;
+    const uses = base.provenance.filter((link) =>
+      link.relation === "uses" && link.from.kind === "consumption" &&
+      link.from.id === consumptionId && link.to.kind === "artifact" &&
+      link.to.id === primary.id
+    );
+    if (
+      base.consumptions.filter((consumption) =>
+          consumption.id === consumptionId && consumption.artifactId === primary.id &&
+          consumption.consumer.serverId === primary.producer.serverId &&
+          consumption.consumer.tool === primary.producer.tool &&
+          consumption.consumer.runId === primary.producer.runId &&
+          fingerprintsEqual(consumption.observedFingerprint, primary.fingerprint) &&
+          consumption.status === "verified" && consumption.verifiedAt === sealedAt
+        ).length !== 1 ||
+      uses.length !== 1 ||
+      uses[0]!.id !== `uses-${consumptionId}` ||
+      uses[0]!.rationale !== GEOMETRY_BINARY_CAPTURE_USE_RATIONALE
+    ) {
+      invalidGeometryPredecessor(
+        `binary artifact ${id} publication consumption is not exact`,
+      );
+    }
+  }
+  return family;
+}
+
+function geometryPredecessorPreviewProducer(
+  value: unknown,
+  schema: typeof GEOMETRY_CAPTURE_SCHEMA | typeof GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+): ThreadOperationRef | undefined {
+  if (value === null) {
+    if (schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
+      invalidGeometryPredecessor("v2 capture has no sandbox preview producer");
+    }
+    return undefined;
+  }
+  const producer = geometryPredecessorObject(value, "previewProducer");
+  exactGeometryPredecessorKeys(
+    producer,
+    ["serverId", "tool", "runId"],
+    "previewProducer",
+  );
+  if (
+    producer.serverId !== "build123d-sandbox" ||
+    producer.tool !== "build123d_export"
+  ) {
+    invalidGeometryPredecessor("preview producer is not build123d-sandbox");
+  }
+  return {
+    serverId: "build123d-sandbox",
+    tool: "build123d_export",
+    runId: geometryPredecessorString(producer.runId, "previewProducer.runId"),
+  };
+}
+
+function geometryPredecessorObject(
+  value: unknown,
+  context: string,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidGeometryPredecessor(`${context} is not an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function exactGeometryPredecessorKeys(
+  record: Record<string, unknown>,
+  expected: readonly string[],
+  context: string,
+): void {
+  if (
+    deterministicJson(Object.keys(record).sort()) !==
+      deterministicJson([...expected].sort())
+  ) {
+    invalidGeometryPredecessor(`${context} has missing or unexpected fields`);
+  }
+}
+
+function geometryPredecessorString(value: unknown, context: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    invalidGeometryPredecessor(`${context} is not a non-empty string`);
+  }
+  return value;
+}
+
+function geometryPredecessorDigest(value: unknown, context: string): string {
+  const result = geometryPredecessorString(value, context);
+  if (!/^[a-f0-9]{64}$/.test(result)) {
+    invalidGeometryPredecessor(`${context} is not a lowercase SHA-256`);
+  }
+  return result;
+}
+
+function geometryPredecessorFingerprint(
+  value: unknown,
+  context: string,
+): ContentFingerprint {
+  const record = geometryPredecessorObject(value, context);
+  exactGeometryPredecessorKeys(record, ["algorithm", "digest"], context);
+  if (record.algorithm !== "sha256") {
+    invalidGeometryPredecessor(`${context}.algorithm is not sha256`);
+  }
+  return {
+    algorithm: "sha256",
+    digest: geometryPredecessorDigest(record.digest, `${context}.digest`),
+  };
+}
+
+function geometryPredecessorInstant(value: unknown, context: string): string {
+  const result = geometryPredecessorString(value, context);
+  if (
+    !Number.isFinite(Date.parse(result)) || new Date(result).toISOString() !== result
+  ) {
+    invalidGeometryPredecessor(`${context} is not a canonical instant`);
+  }
+  return result;
+}
+
+async function geometryPredecessorTextFingerprint(
+  text: string,
+): Promise<ContentFingerprint> {
+  return {
+    algorithm: "sha256",
+    digest: await sha256Hex(new TextEncoder().encode(text)),
+  };
+}
+
+function invalidGeometryPredecessor(detail: string): never {
+  throw new EngineeringProjectCommandError(
+    "invalid_transition",
+    `geometry_predecessor_mismatch: ${detail}.`,
   );
 }
 
@@ -1511,7 +2525,12 @@ function assertArchitectureSourceArtifactExact(
 async function loadReviewedGeometryDraft(
   params: GeometryDecisionParameters,
   draftCaptures: FileCaptureStore<"geometry-draft">,
-): Promise<{ readonly previewProducer: ThreadOperationRef | undefined }> {
+  draftAssetDirectory?: string,
+): Promise<{
+  readonly previewProducer: ThreadOperationRef | undefined;
+  readonly bundleSources: GeometryBundleCanonicalSources | undefined;
+  readonly bundleAssetBytes: ReadonlyMap<string, number> | undefined;
+}> {
   const draftFp: ContentFingerprint = {
     algorithm: "sha256",
     digest: params.draftDigest,
@@ -1538,8 +2557,40 @@ async function loadReviewedGeometryDraft(
   // exactly reconstructible from the reviewed draft record.
   assertMrtrManifestMatchesDraft(params.manifest, draftRecord);
   const previewProducer = requireDraftPreviewProducer(draftRecord);
-  requireDraftAssemblyPaths(draftRecord);
-  return { previewProducer };
+  let bundleAssetBytes: ReadonlyMap<string, number> | undefined;
+  if (draftRecord.schemaVersion === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA) {
+    try {
+      await assertGeometryBundleDraftPaths(draftRecord);
+      const assets = requireGeometryBundleDraftAssetMetadata(draftRecord);
+      bundleAssetBytes = new Map(
+        assets.map((asset) => [asset.fingerprint.digest, asset.bytes]),
+      );
+      if (draftAssetDirectory !== undefined) {
+        for (const asset of assets) {
+          await verifyDraftAsset(
+            asset.fingerprint.digest,
+            asset.name,
+            draftAssetDirectory,
+            asset.bytes,
+          );
+        }
+      }
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Geometry bundle draft binary contract mismatch: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  } else {
+    requireDraftAssemblyPaths(draftRecord);
+  }
+  const bundleSources = draftRecord.schemaVersion ===
+      GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
+    ? await requireGeometryBundleCanonicalSources(draftRecord)
+    : undefined;
+  return { previewProducer, bundleSources, bundleAssetBytes };
 }
 
 /**
@@ -1560,7 +2611,8 @@ function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undef
   const schemaVersion = draft.schemaVersion;
   if (
     schemaVersion !== GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
-    schemaVersion !== LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA
+    schemaVersion !== LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
+    schemaVersion !== GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
@@ -1697,6 +2749,7 @@ async function verifyDraftAsset(
   expectedDigest: string,
   name: string,
   draftDirectory: string,
+  expectedBytes?: number,
 ): Promise<void> {
   const path = `${draftDirectory}/${expectedDigest}`;
   let bytes: Uint8Array;
@@ -1713,6 +2766,26 @@ async function verifyDraftAsset(
     }
     throw error;
   }
+  if (bytes.length === 0) {
+    throw new GeometryAssetVerificationError(
+      "asset_empty",
+      { name, expectedDigest, path },
+      `Geometry draft asset is empty: ${name} (${expectedDigest.slice(0, 16)}…).`,
+    );
+  }
+  if (expectedBytes !== undefined && bytes.length !== expectedBytes) {
+    throw new GeometryAssetVerificationError(
+      "byte_count_mismatch",
+      {
+        name,
+        expectedDigest,
+        expectedBytes: String(expectedBytes),
+        actualBytes: String(bytes.length),
+        path,
+      },
+      `Geometry draft asset byte count mismatch for ${name}: expected ${expectedBytes}, got ${bytes.length}.`,
+    );
+  }
   const actual = await sha256Hex(bytes);
   if (actual !== expectedDigest) {
     throw new GeometryAssetVerificationError(
@@ -1728,10 +2801,28 @@ async function promoteAssetNamedByCapture(options: {
   captureFp: ContentFingerprint;
   assetFingerprint: ContentFingerprint;
   name: string;
+  identity:
+    | {
+      readonly scope: "assembly";
+      readonly format: "step" | "gltf" | "stl";
+      readonly name: string;
+    }
+    | {
+      readonly scope: "legacy-part-mesh";
+      readonly semanticKey: string;
+      readonly name: string;
+    }
+    | {
+      readonly scope: "part-definition";
+      readonly elementId: string;
+      readonly format: "step" | "gltf" | "stl";
+      readonly name: string;
+    };
   extension: string;
   geometryCaptures: GeometryCaptureStore;
   draftDirectory: string;
   canonicalDirectory: string;
+  expectedBytes?: number;
 }): Promise<void> {
   const captureText = await options.geometryCaptures.read(options.captureFp);
   if (!captureText) {
@@ -1742,7 +2833,7 @@ async function promoteAssetNamedByCapture(options: {
     );
   }
   const capture = JSON.parse(captureText) as {
-    manifest?: GeometryManifest;
+    manifest?: AnyGeometryManifest;
   };
   const observedCaptureFp = await sha256Fingerprint(capture);
   if (!fingerprintsEqual(observedCaptureFp, options.captureFp)) {
@@ -1755,18 +2846,33 @@ async function promoteAssetNamedByCapture(options: {
       "Canonical geometry capture changed before binary promotion.",
     );
   }
-  const namedFingerprints = [
-    ...(capture.manifest?.artifactHashes?.assemblyFiles ?? []).map((file) =>
-      file.fingerprint
-    ),
-    ...(capture.manifest?.artifactHashes?.partMeshes ?? []).map((mesh) =>
-      mesh.fingerprint
-    ),
-  ];
+  const manifest = capture.manifest;
+  let exactMatches: ContentFingerprint[] = [];
+  if (options.identity.scope === "assembly") {
+    const identity = options.identity;
+    exactMatches = (manifest?.artifactHashes?.assemblyFiles ?? [])
+      .filter((file) => file.format === identity.format && file.name === identity.name)
+      .map((file) => file.fingerprint);
+  } else if (options.identity.scope === "legacy-part-mesh") {
+    const identity = options.identity;
+    exactMatches = (manifest?.artifactHashes?.partMeshes ?? [])
+      .filter((mesh) =>
+        "semanticKey" in mesh &&
+        mesh.semanticKey === identity.semanticKey &&
+        mesh.name === identity.name
+      )
+      .map((mesh) => mesh.fingerprint);
+  } else if (manifest?.schemaVersion === "geometry-manifest/2.0") {
+    const identity = options.identity;
+    exactMatches = manifest.partDefinitions
+      .filter((definition) => definition.elementId === identity.elementId)
+      .flatMap((definition) => definition.files ?? [])
+      .filter((file) => file.format === identity.format && file.name === identity.name)
+      .map((file) => file.fingerprint);
+  }
   if (
-    !namedFingerprints.some((fingerprint) =>
-      fingerprintsEqual(fingerprint, options.assetFingerprint)
-    )
+    exactMatches.length !== 1 ||
+    !fingerprintsEqual(exactMatches[0]!, options.assetFingerprint)
   ) {
     throw new GeometryAssetVerificationError(
       "sha256_mismatch",
@@ -1781,12 +2887,14 @@ async function promoteAssetNamedByCapture(options: {
     options.assetFingerprint.digest,
     options.name,
     options.draftDirectory,
+    options.expectedBytes,
   );
   await promoteDraftAsset(
     options.assetFingerprint.digest,
     options.extension,
     options.draftDirectory,
     options.canonicalDirectory,
+    options.expectedBytes,
   );
 }
 
@@ -1800,13 +2908,37 @@ async function promoteDraftAsset(
   extension: string,
   draftDirectory: string,
   canonicalDirectory: string,
+  expectedBytes?: number,
 ): Promise<void> {
   const source = `${draftDirectory}/${expectedDigest}`;
   const destination = `${canonicalDirectory}/${expectedDigest}.${extension}`;
   let bytes = await readCanonicalAsset(destination);
-  if (bytes && await sha256Hex(bytes) === expectedDigest) return;
+  if (
+    bytes && bytes.length > 0 &&
+    (expectedBytes === undefined || bytes.length === expectedBytes) &&
+    await sha256Hex(bytes) === expectedDigest
+  ) return;
   await Deno.mkdir(canonicalDirectory, { recursive: true });
   bytes = await Deno.readFile(source);
+  if (bytes.length === 0) {
+    throw new GeometryAssetVerificationError(
+      "asset_empty",
+      { expectedDigest, source },
+      "Geometry draft bytes became empty before canonical promotion.",
+    );
+  }
+  if (expectedBytes !== undefined && bytes.length !== expectedBytes) {
+    throw new GeometryAssetVerificationError(
+      "byte_count_mismatch",
+      {
+        expectedDigest,
+        expectedBytes: String(expectedBytes),
+        actualBytes: String(bytes.length),
+        source,
+      },
+      "Geometry draft byte count changed before canonical promotion.",
+    );
+  }
   const actual = await sha256Hex(bytes);
   if (actual !== expectedDigest) {
     throw new GeometryAssetVerificationError(
@@ -1824,7 +2956,11 @@ async function promoteDraftAsset(
     if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
   }
   const persisted = await readCanonicalAsset(destination);
-  if (!persisted || await sha256Hex(persisted) !== expectedDigest) {
+  if (
+    !persisted || persisted.length === 0 ||
+    (expectedBytes !== undefined && persisted.length !== expectedBytes) ||
+    await sha256Hex(persisted) !== expectedDigest
+  ) {
     throw new GeometryAssetVerificationError(
       "sha256_mismatch",
       { expected: expectedDigest, destination },
@@ -1859,6 +2995,11 @@ async function assertCanonicalGeometryAssetExact(
   if (!bytes) {
     throw completedGeometryIntegrityError(
       `canonical binary ${fingerprint.digest}.${extension} is absent`,
+    );
+  }
+  if (bytes.length === 0) {
+    throw completedGeometryIntegrityError(
+      `canonical binary ${fingerprint.digest}.${extension} is empty`,
     );
   }
   const observed = await sha256Hex(bytes);
@@ -1898,6 +3039,7 @@ function buildExtension(options: {
   captureUri: string;
   params: GeometryDecisionParameters;
   previewProducer: ThreadOperationRef | undefined;
+  predecessor: GeometryBundlePredecessorContext | undefined;
 }) {
   const {
     base,
@@ -1908,6 +3050,7 @@ function buildExtension(options: {
     captureUri,
     params,
     previewProducer,
+    predecessor,
   } = options;
 
   const artifactId = `geometry-${captureFp.digest}`;
@@ -1940,7 +3083,10 @@ function buildExtension(options: {
     uri: captureUri,
     mediaType: "application/json",
     producer: sealProducer,
-    inputArtifactIds: [architectureArtifact.id],
+    inputArtifactIds: [
+      architectureArtifact.id,
+      ...(predecessor ? [predecessor.artifact.id] : []),
+    ],
     freshness,
   };
 
@@ -1959,10 +3105,43 @@ function buildExtension(options: {
       freshness,
     }));
 
+  // V2 publishes one logical artifact per exact PartDefinition and format.
+  // Ordinals are part of the signed manifest order, so equal content hashes
+  // remain distinct semantic artifacts without putting opaque provider ids in
+  // filesystem paths or joining on labels.
+  const partDefinitionArtifacts: ThreadArtifact[] =
+    params.manifest.schemaVersion === "geometry-manifest/2.0"
+      ? params.manifest.partDefinitions.flatMap((definition, definitionIndex) =>
+        (definition.files ?? []).map((file, fileIndex) => ({
+          id:
+            `cad-asset-${captureFp.digest}-definition-${definitionIndex}-${fileIndex}-${file.fingerprint.digest}`,
+          name: `${
+            file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()
+          }: ${definition.label}`,
+          kind: (file.format === "step"
+            ? "step"
+            : file.format === "stl"
+            ? "mesh"
+            : "cad-model") as ThreadArtifact["kind"],
+          version: file.fingerprint.digest,
+          fingerprint: file.fingerprint,
+          uri: `/api/thread/assets/${file.fingerprint.digest}.${
+            geometryAssetExtension(file.format)
+          }`,
+          mediaType: geometryAssetMediaType(file.format),
+          producer: binaryProducer,
+          inputArtifactIds: previewProducer ? [] : [artifactId],
+          freshness,
+        }))
+      )
+      : [];
+
   // Per-assembly-file artifacts: one artifact per exported format (step, gltf, stl).
   const assemblyFileArtifacts: ThreadArtifact[] =
-    (params.manifest.artifactHashes?.assemblyFiles ?? []).map((file) => ({
-      id: `cad-asset-${captureFp.digest}-${file.fingerprint.digest}`,
+    (params.manifest.artifactHashes?.assemblyFiles ?? []).map((file, index) => ({
+      id: params.manifest.schemaVersion === "geometry-manifest/2.0"
+        ? `cad-asset-${captureFp.digest}-assembly-${index}-${file.fingerprint.digest}`
+        : `cad-asset-${captureFp.digest}-${file.fingerprint.digest}`,
       name: `${file.format.toUpperCase()}: ${file.name}`,
       kind: (file.format === "step" ? "step" : "cad-model") as ThreadArtifact["kind"],
       version: file.fingerprint.digest,
@@ -1985,7 +3164,21 @@ function buildExtension(options: {
     verifiedAt: capturedAt,
     status: "verified",
   };
-  const binaryArtifacts = [...assemblyFileArtifacts, ...partMeshArtifacts];
+  const predecessorConsumption: ThreadArtifactConsumption | undefined = predecessor
+    ? {
+      id: `consume-geometry-${predecessor.artifact.id}-by-${artifactId}`,
+      artifactId: predecessor.artifact.id,
+      consumer: sealProducer,
+      observedFingerprint: predecessor.artifact.fingerprint,
+      verifiedAt: capturedAt,
+      status: "verified",
+    }
+    : undefined;
+  const binaryArtifacts = [
+    ...assemblyFileArtifacts,
+    ...partMeshArtifacts,
+    ...partDefinitionArtifacts,
+  ];
   const binaryConsumptions: ThreadArtifactConsumption[] = binaryArtifacts.map(
     (artifact) => ({
       id: `consume-${artifactId}-by-${artifact.id}`,
@@ -2004,8 +3197,17 @@ function buildExtension(options: {
     name: `Geometry seal: ${captureFp.digest.slice(0, 16)}`,
     subjectId: base.subject.id,
     capturedAt,
-    artifacts: [primaryArtifact, ...assemblyFileArtifacts, ...partMeshArtifacts],
-    consumptions: [consumption, ...binaryConsumptions],
+    artifacts: [
+      primaryArtifact,
+      ...assemblyFileArtifacts,
+      ...partMeshArtifacts,
+      ...partDefinitionArtifacts,
+    ],
+    consumptions: [
+      consumption,
+      ...(predecessorConsumption ? [predecessorConsumption] : []),
+      ...binaryConsumptions,
+    ],
     observations: [],
     requirements: [],
     evaluations: [],
@@ -2016,17 +3218,35 @@ function buildExtension(options: {
         relation: "derived_from" as const,
         from: { kind: "artifact" as const, id: artifactId },
         to: { kind: "artifact" as const, id: architectureArtifact.id },
-        rationale:
-          "The geometry was produced against the exact architecture artifact that provides " +
-          "the component structure and SysON element bindings (D5 verification passed).",
+        rationale: GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
       },
+      ...(predecessor && predecessorConsumption
+        ? [{
+          id: `derived-from-geometry-${captureFp.digest}`,
+          relation: "derived_from" as const,
+          from: { kind: "artifact" as const, id: artifactId },
+          to: { kind: "artifact" as const, id: predecessor.artifact.id },
+          rationale: GEOMETRY_PREDECESSOR_DERIVATION_RATIONALE,
+        }, {
+          id: `supersedes-geometry-${captureFp.digest}`,
+          relation: "supersedes" as const,
+          from: { kind: "artifact" as const, id: artifactId },
+          to: { kind: "artifact" as const, id: predecessor.artifact.id },
+          rationale: GEOMETRY_PREDECESSOR_SUPERSEDES_RATIONALE,
+        }, {
+          id: `uses-${predecessorConsumption.id}`,
+          relation: "uses" as const,
+          from: { kind: "consumption" as const, id: predecessorConsumption.id },
+          to: { kind: "artifact" as const, id: predecessor.artifact.id },
+          rationale: GEOMETRY_PREDECESSOR_CAPTURE_USE_RATIONALE,
+        }]
+        : []),
       {
         id: `uses-${consumptionId}`,
         relation: "uses" as const,
         from: { kind: "consumption" as const, id: consumptionId },
         to: { kind: "artifact" as const, id: architectureArtifact.id },
-        rationale:
-          "The executor loaded the exact architecture capture to verify per-component bindings.",
+        rationale: GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE,
       },
       ...binaryArtifacts.flatMap((artifact, index) => {
         const binaryConsumption = binaryConsumptions[index]!;
@@ -2038,19 +3258,27 @@ function buildExtension(options: {
           from: { kind: "artifact" as const, id: artifact.id },
           to: { kind: "artifact" as const, id: artifactId },
           rationale: previewProducer
-            ? "The preview-produced binary is recorded by exact SHA-256 in the sealed geometry capture; this is a trace, not a claim that the later capture produced the bytes."
-            : "This legacy draft had no preview run identity; the local seal produced the canonical binary from the exact content-addressed capture.",
+            ? GEOMETRY_BINARY_TRACE_RATIONALE
+            : GEOMETRY_BINARY_DERIVATION_RATIONALE,
         }, {
           id: `uses-${binaryConsumption.id}`,
           relation: "uses" as const,
           from: { kind: "consumption" as const, id: binaryConsumption.id },
           to: { kind: "artifact" as const, id: artifactId },
-          rationale:
-            "The binary publication reloaded the sealed geometry capture, verified its exact fingerprint, then verified and promoted the binary hash named by that capture.",
+          rationale: GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
         }];
       }),
     ],
     proposedActions: [],
+    ...(predecessor
+      ? {
+        archived: predecessor.archiveEntries.map((entry) => ({
+          target: entry.ref,
+          summary: `Retired by geometry bundle ${captureFp.digest.slice(0, 16)}; ` +
+            `cascade source ${entry.because}.`,
+        })),
+      }
+      : {}),
   };
 }
 

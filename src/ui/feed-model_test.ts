@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
   activityFeedNodes,
   AMBIGUOUS_FEED_SCOPE,
+  buildActivityTimeline,
   buildFeedComponentCounts,
   buildFilterOptions,
   compactLineageCounters,
@@ -10,6 +11,7 @@ import {
   ORPHAN_FEED_SCOPE,
   traceThreadLineage,
 } from "./src/thread/feed-model.ts";
+import type { ProjectReviewRecord } from "./src/project/review-decision-model.ts";
 import type { PartAnchorageResolution } from "./src/thread/part-anchorage-model.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 import {
@@ -172,6 +174,119 @@ Deno.test("activity feed is collapsed until the reviewer explicitly selects an e
     isActivityEntryExpanded({ kind: "artifact", id: "different" }, correction),
     false,
   );
+});
+
+Deno.test("published review enriches its exact feed fact without a duplicate card", () => {
+  const result = node(
+    "geometry-result",
+    "artifact",
+    "2026-08-05T10:00:00.000Z",
+    "geometry-capture",
+  );
+  const review = reviewRecord({
+    decisionId: "decision-geometry-v2",
+    state: "published",
+    recordedAt: "2026-08-05T09:59:00.000Z",
+    resultEvidence: result.ref,
+  });
+
+  const timeline = buildActivityTimeline([result], [review]);
+
+  assertEquals(timeline.length, 1);
+  assertEquals(timeline[0]?.kind, "thread");
+  if (timeline[0]?.kind === "thread") {
+    assertEquals(timeline[0].review?.decision?.id, "decision-geometry-v2");
+    assertEquals(timeline[0].recordedAt, result.recordedAt);
+  }
+});
+
+Deno.test("pending and revision reviews remain ordinary chronological feed events", () => {
+  const pending = reviewRecord({
+    decisionId: "decision-requirements",
+    state: "needs-review",
+    recordedAt: "2026-08-05T11:00:00.000Z",
+  });
+  const revision = reviewRecord({
+    decisionId: "decision-architecture",
+    state: "revision-requested",
+    recordedAt: "2026-08-05T10:00:00.000Z",
+  });
+
+  const timeline = buildActivityTimeline([], [revision, pending]);
+
+  assertEquals(timeline.map((entry) => entry.kind), ["review", "review"]);
+  assertEquals(
+    timeline.map((entry) =>
+      entry.kind === "review" ? entry.review.decision?.id : undefined
+    ),
+    ["decision-requirements", "decision-architecture"],
+  );
+});
+
+Deno.test("review identity stays stable when its decision timestamp changes", () => {
+  const proposed = reviewRecord({
+    decisionId: "decision-geometry",
+    state: "needs-review",
+    recordedAt: "2026-08-05T09:00:00.000Z",
+  });
+  const validated = reviewRecord({
+    decisionId: "decision-geometry",
+    state: "approved-awaiting-result",
+    recordedAt: "2026-08-05T09:05:00.000Z",
+  });
+
+  assertEquals(
+    buildActivityTimeline([], [proposed])[0]?.key,
+    buildActivityTimeline([], [validated])[0]?.key,
+  );
+});
+
+Deno.test("ambiguous result ownership fails closed instead of choosing a review", () => {
+  const result = node("shared-result");
+  const first = reviewRecord({
+    decisionId: "decision-a",
+    state: "published",
+    resultEvidence: result.ref,
+  });
+  const second = reviewRecord({
+    decisionId: "decision-b",
+    state: "published",
+    resultEvidence: result.ref,
+  });
+
+  const timeline = buildActivityTimeline([result], [first, second]);
+
+  assertEquals(timeline.length, 3);
+  assertEquals(
+    timeline.find((entry) => entry.kind === "thread")?.kind === "thread" &&
+      timeline.find((entry) => entry.kind === "thread")?.review,
+    undefined,
+  );
+});
+
+Deno.test("part filtering keeps exact attached reviews but omits unscoped review-only events", () => {
+  const visible = node("geometry-result");
+  const attached = reviewRecord({
+    decisionId: "decision-geometry",
+    state: "published",
+    resultEvidence: visible.ref,
+  });
+  const waiting = reviewRecord({
+    decisionId: "decision-requirements",
+    state: "needs-review",
+  });
+
+  const timeline = buildActivityTimeline(
+    [visible],
+    [attached, waiting],
+    false,
+  );
+
+  assertEquals(timeline.length, 1);
+  assertEquals(timeline[0]?.kind, "thread");
+  if (timeline[0]?.kind === "thread") {
+    assertEquals(timeline[0].review?.decision?.id, "decision-geometry");
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -444,6 +559,42 @@ function node(
     freshness: "fresh",
     summary: id,
     recordedAt,
+  };
+}
+
+function reviewRecord(
+  {
+    decisionId,
+    state,
+    recordedAt = "2026-08-05T10:00:00.000Z",
+    resultEvidence,
+  }: {
+    decisionId: string;
+    state: ProjectReviewRecord["state"];
+    recordedAt?: string;
+    resultEvidence?: ThreadGraphRef;
+  },
+): ProjectReviewRecord {
+  return {
+    id: decisionId.includes("requirements") ? "requirements" : "geometry",
+    anchorId: `review-${decisionId}`,
+    href: `#work/review/${decisionId}`,
+    title: decisionId,
+    question: `${decisionId}?`,
+    summary: decisionId,
+    state,
+    representation: state === "published" ? "published-result" : "proposal",
+    recordedAt,
+    preview: { kind: "unavailable", reason: "Fixture preview" },
+    decision: { id: decisionId } as ProjectReviewRecord["decision"],
+    resultEvidence: resultEvidence
+      ? {
+        snapshotId: "thread:test",
+        snapshotRevision: 1,
+        kind: resultEvidence.kind,
+        id: resultEvidence.id,
+      }
+      : undefined,
   };
 }
 

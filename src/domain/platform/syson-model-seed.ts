@@ -704,7 +704,10 @@ function parseActor(
 ): EngineeringCommandActor {
   const actor = closedRecord(value, ["id", "origin"], path);
   literal(actor.origin, expectedOrigin, `${path}.origin`);
-  return { id: stableIdentifier(actor.id, `${path}.id`), origin: expectedOrigin };
+  return {
+    id: nonEmptyString(actor.id, `${path}.id`, "invalid_input"),
+    origin: expectedOrigin,
+  };
 }
 
 function parseFingerprint(value: unknown, path: string): ContentFingerprint {

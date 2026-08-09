@@ -6,7 +6,7 @@
  *      x/y positions via a deterministic dagre layout (rankdir: LR) — causal
  *      origins on the left, observations/verdicts on the right.
  *   2. Attach sigma-ready visual attributes to each node and edge (color, size,
- *      type, label). Stub edges get a "stub" type and a "via … — replié" label.
+ *      type, label). Stub edges get a "stub" type and a "via … — folded" label.
  *   3. Derive a legend of named components (EvidenceGraphComponent) with a count
  *      of their visible nodes in the current projection — never from layout coords.
  *
@@ -344,7 +344,7 @@ export function buildExplorationModel(
       occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
       edgeId: edge.id,
       edge,
-      label: edge.rationale ?? `via ${edge.relation} — replié`,
+      label: edge.rationale ?? `via ${edge.relation} — folded`,
       edgeType: "stub",
       color: tokens.muted,
       size: 1.5,
@@ -484,7 +484,7 @@ export function buildExplorationModel(
  * (visible fallback, never a silent drop).
  */
 const SYSTEM_LEGEND_LABEL: Record<string, string> = {
-  "syson": "SysON · modèle",
+  "syson": "SysON · model",
   "build123d": "build123d · CAD",
   "calculix": "CalculiX · FEA",
   "modelica": "Modelica · simulation",
@@ -642,8 +642,8 @@ function componentColor(name: string, tokens: CssTokens): string {
   if (name.startsWith("SysML")) return tokens.cyan;
   if (name.startsWith("CAD")) return tokens.amber;
   if (name.startsWith("FEA")) return tokens.red;
-  if (name.startsWith("Thermique")) return tokens.violet;
+  if (name.startsWith("Thermal")) return tokens.violet;
   if (name.startsWith("ERP")) return tokens.blue;
-  if (name.startsWith("Chaîne")) return tokens.green;
+  if (name.startsWith("Digital thread")) return tokens.green;
   return tokens.muted;
 }

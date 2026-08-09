@@ -220,7 +220,7 @@ Deno.test("stubToEdge produces a ThreadGraphEdge with via rationale", () => {
   assertEquals(result.from, ref("A", "artifact"));
   assertEquals(result.to, ref("C", "artifact"));
   assertEquals(result.relation, "derived_from");
-  assertEquals(result.rationale, "via sensitivity base step — replié");
+  assertEquals(result.rationale, "via sensitivity base step — folded");
   assertEquals(result.origin, "provenance");
 });
 
@@ -459,14 +459,14 @@ Deno.test("makeEvidenceComponentLabeler returns fallback for empty nodes", () =>
   const { model } = instrumentBridgeFixture();
   const labeler = makeEvidenceComponentLabeler(model, true);
   const label = labeler([], 0);
-  assertEquals(label, "Preuves liées");
+  assertEquals(label, "Linked evidence");
 });
 
 Deno.test("makeEvidenceComponentLabeler returns multi-component fallback for empty nodes", () => {
   const { model } = instrumentBridgeFixture();
   const labeler = makeEvidenceComponentLabeler(model, false);
   const label = labeler([], 0);
-  assertEquals(label, "Preuves");
+  assertEquals(label, "Evidence");
 });
 
 // ---------------------------------------------------------------------------

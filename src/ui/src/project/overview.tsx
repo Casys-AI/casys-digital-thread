@@ -5,12 +5,15 @@ import type {
   EngineeringAgentRun,
   EngineeringBlocker,
   EngineeringProjectSnapshot,
+  EngineeringThreadEntityRef,
   EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import { productDefinitionSummary } from "../thread/product-anchor-model.ts";
 import { DecisionCenter } from "./control-center.tsx";
 import { ProjectBriefRecord } from "./brief-record.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
+import type { ProjectDeepLinkTarget } from "./navigation-model.ts";
 import {
   agentRunRecordedAt,
   agentRunSummary,
@@ -29,7 +32,8 @@ export interface ProjectOverviewProps {
   readonly thread: ThreadWorkbenchSnapshot;
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
-  readonly onOpenSpecification?: (decisionId: string) => void;
+  readonly onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
+  readonly onOpenEvidence?: (reference: EngineeringThreadEntityRef) => void;
 }
 
 export function ProjectOverview({
@@ -37,7 +41,8 @@ export function ProjectOverview({
   thread,
   onNavigate,
   onOpenActivity,
-  onOpenSpecification,
+  onOpenDeepLink,
+  onOpenEvidence,
 }: ProjectOverviewProps): JSX.Element {
   const brief = buildProjectBrief(project);
   const currentWork = buildCurrentProjectWork(project);
@@ -56,7 +61,7 @@ export function ProjectOverview({
           <strong>{String(project.revision).padStart(2, "0")}</strong>
         </div>
         <div class="project-objective-copy">
-          <p>CURRENT PROJECT BRIEF</p>
+          <p>ENGINEERING PROJECT BRIEF</p>
           <h3 id="project-objective-title">
             {project.project.objective.title}
           </h3>
@@ -80,11 +85,19 @@ export function ProjectOverview({
 
       <DecisionCenter
         project={project}
+        thread={thread}
         onOpenActivity={onOpenActivity}
-        onOpenSpecification={onOpenSpecification}
+        onOpenReview={(kind) => onOpenDeepLink?.(reviewDeepLinkTarget(kind))}
+        onOpenEvidence={onOpenEvidence}
       />
 
-      <ProjectBriefRecord project={project} />
+      <div
+        id={project.framing?.proposalReview?.status === "pending"
+          ? "current-brief-record"
+          : "review-brief"}
+      >
+        <ProjectBriefRecord project={project} />
+      </div>
 
       <section
         class="project-phase-section"
@@ -226,7 +239,7 @@ export function ProjectOverview({
           <EvidenceRoute
             index="A"
             title="Product definition"
-            detail={productDefinitionDetail(thread)}
+            detail={productDefinitionSummary(thread)}
             action="Explore product"
             onOpen={() => onNavigate("product")}
           />
@@ -373,6 +386,12 @@ function EvidenceRoute({ index, title, detail, action, onOpen }: {
   );
 }
 
+function reviewDeepLinkTarget(
+  kind: "brief" | "architecture" | "requirements" | "geometry",
+): ProjectDeepLinkTarget {
+  return kind === "brief" ? "review/brief" : `review/${kind}`;
+}
+
 function phaseStatusLabel(status: string): string {
   if (status === "completed") return "Gate satisfied";
   if (status === "active") return "In progress";
@@ -397,36 +416,6 @@ function projectPhaseLifecycleLabel(
   if (lifecycle.state === "current") return `${subject} updated`;
   if (lifecycle.state === "attention") return `${subject} needs review`;
   return `${subject} retained`;
-}
-
-function productDefinitionDetail(thread: ThreadWorkbenchSnapshot): string {
-  const labels = [
-    ...new Set(
-      thread.components.components.flatMap((component) =>
-        component.bindings.filter((binding) => binding.status === "verified")
-          .map((binding) => providerLabel(binding.provider))
-      ),
-    ),
-  ];
-  const scope = labels.length > 0
-    ? joinLabels(labels)
-    : "recorded source facets";
-  return `${thread.components.components.length} reviewed component records across ${scope}.`;
-}
-
-function providerLabel(
-  provider: "syson" | "erpnext" | "build123d" | "digital-thread" | string,
-): string {
-  if (provider === "syson") return "SysON";
-  if (provider === "build123d") return "CAD";
-  if (provider === "digital-thread") return "Thread";
-  return "ERP";
-}
-
-function joinLabels(labels: readonly string[]): string {
-  if (labels.length < 2) return labels[0]!;
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
 }
 
 function formatShortDate(value: string): string {

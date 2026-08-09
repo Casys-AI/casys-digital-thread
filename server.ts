@@ -159,6 +159,10 @@ import { FileEngineeringProjectRunLease } from "./src/adapters/stores/file-engin
 import { FileLiveThreadUpdateStore } from "./src/adapters/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/stores/engineering-project-store.ts";
 import {
+  FileProjectReviewIntentStore,
+  ProjectReviewIntentConflictError,
+} from "./src/adapters/stores/file-project-review-intent-store.ts";
+import {
   CockpitFocusConflictError,
   FileCockpitFocusStore,
 } from "./src/adapters/stores/file-cockpit-focus-store.ts";
@@ -215,6 +219,7 @@ const DEFAULT_SCENARIO_CONTRACT_PLAN_PATH =
 const DEFAULT_PROJECT_ID = "coffee-machine-cm01";
 const DEFAULT_PROJECT_PATH = "config/projects/coffee-machine-cm01.project.json";
 const DEFAULT_ACTIVE_PROJECT_DIRECTORY = "state/local/engineering-projects";
+const DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY = "state/local/project-review-intents";
 const DEFAULT_COCKPIT_FOCUS_DIRECTORY = "state/local/cockpit-focus";
 const DEFAULT_THREAD_SNAPSHOT_DIRECTORY = "state/local/thread-snapshots";
 const DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY = "state/local/live-thread-updates";
@@ -347,6 +352,8 @@ export interface CreateConsoleServerOptions {
   projectId?: string;
   projectPath?: string;
   activeProjectDirectory?: string;
+  /** Browser-to-agent review outbox; never an EngineeringProject command store. */
+  projectReviewIntentDirectory?: string;
   cockpitFocusDirectory?: string;
   threadSnapshotDirectory?: string;
   liveThreadUpdateDirectory?: string;
@@ -487,6 +494,7 @@ export async function createConsoleServer(
         (error.name === "ControlPlaneNotFoundError" ||
           error instanceof EngineeringProjectCommandError ||
           error instanceof CockpitFocusConflictError ||
+          error instanceof ProjectReviewIntentConflictError ||
           error instanceof TypeError)
         ? error.message
         : null,
@@ -1179,6 +1187,10 @@ async function createProjectControl(
     control: {
       projects: runtime.projects,
       commands: runtime.commands,
+      reviewIntents: new FileProjectReviewIntentStore(
+        options.projectReviewIntentDirectory ??
+          DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,
+      ),
       // WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — preview executes a
       // geometry program PROPOSED BY AN AGENT. A fingerprint proves byte identity
       // after sealing, never causal provenance: a write reaching the shared

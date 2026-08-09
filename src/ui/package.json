@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:thread": "vite --config vite.native.config.ts",
     "build": "vite build",
     "build:thread": "vite build --config vite.native.config.ts",
     "check": "tsc --noEmit"

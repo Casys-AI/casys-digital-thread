@@ -21,8 +21,8 @@ export function ProjectBriefRecord({
     <section class="project-brief-record" aria-labelledby="project-brief-title">
       <header class="project-section-label">
         <div>
-          <p>LIVING PROJECT BRIEF</p>
-          <h3 id="project-brief-title">The shared direction of the project</h3>
+          <p>COMPLETE ENGINEERING BRIEF</p>
+          <h3 id="project-brief-title">Approved engineering project brief</h3>
         </div>
         <span class="project-brief-status" data-state={record.status}>
           {record.statusLabel}

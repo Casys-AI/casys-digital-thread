@@ -809,7 +809,7 @@ Deno.test(
 );
 
 Deno.test(
-  "DISPLAY_KIND_LABELS has a French label for every DisplayKind",
+  "DISPLAY_KIND_LABELS has an English label for every DisplayKind",
   () => {
     const expectedKinds = [
       "artifact",

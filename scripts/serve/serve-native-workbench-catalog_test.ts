@@ -11,13 +11,16 @@
  *    both projectors; the caller must fall through to the static catalog.
  */
 
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../src/domain/kernel/deterministic-json.ts";
 import { validateThreadSnapshot } from "../../src/domain/thread/thread-snapshot-validation.ts";
-import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../../src/adapters/captures/file-capture-store.ts";
+import {
+  ARCHITECTURE_CAPTURE_URI_PREFIX,
+  GEOMETRY_CAPTURE_URI_PREFIX,
+} from "../../src/adapters/captures/file-capture-store.ts";
 import type { ContentFingerprint } from "../../src/domain/thread/thread-snapshot.ts";
 import { resolveSnapshotComponentCatalog } from "./serve-native-workbench.ts";
 
@@ -303,5 +306,55 @@ Deno.test(
       undefined,
       "no architecture artifact → both projectors return undefined",
     );
+  },
+);
+
+Deno.test(
+  "resolveSnapshotComponentCatalog forwards the canonical geometry reader to the generic Product projector",
+  async () => {
+    const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
+    const withGeometry = structuredClone(snapshot);
+    const geometryFp = fingerprint("c");
+    withGeometry.artifacts.push({
+      id: `geometry-${geometryFp.digest}`,
+      name: "Geometry: wing",
+      kind: "cad-model",
+      version: geometryFp.digest,
+      fingerprint: geometryFp,
+      uri: `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${geometryFp.digest}`,
+      mediaType: "application/json",
+      producer: {
+        serverId: "digital-thread",
+        tool: "design.write-geometry@1",
+        runId: "run:geometry",
+      },
+      inputArtifactIds: [`architecture-${captureFp.digest}`],
+      freshness: freshness(),
+    });
+    let geometryReads = 0;
+    const neverRead = {
+      read: (_fp: ContentFingerprint) => Promise.resolve(undefined),
+    };
+    const catalog = await resolveSnapshotComponentCatalog(
+      withGeometry,
+      { architecture: neverRead, partDefinitions: neverRead },
+      {
+        read: (fp: ContentFingerprint) =>
+          fp.digest === captureFp.digest
+            ? Promise.resolve(deterministicJson(captureRecord))
+            : Promise.resolve(undefined),
+      },
+      {
+        read: (_fp: ContentFingerprint) => {
+          geometryReads += 1;
+          return Promise.resolve(undefined);
+        },
+      },
+    );
+
+    assertExists(catalog);
+    assertEquals(geometryReads, 1);
+    assertEquals(catalog.components.length, 2);
+    assertStringIncludes(catalog.rationale, "not durably readable");
   },
 );

@@ -26,7 +26,7 @@ export interface ProjectBriefRecord {
 }
 
 /**
- * A quiet, browser-safe reading projection of the canonical living brief.
+ * A quiet, browser-safe reading projection of the canonical approved brief.
  * It deliberately exposes no commands: the paired conversation remains the
  * place where a person and agent make or correct decisions.
  */
@@ -129,7 +129,7 @@ function uniqueSourceLabels(
 
 function briefStatusLabel(status: ProjectBriefRecord["status"]): string {
   if (status === "discussion") return "Newer draft in discussion";
-  if (status === "revision-requested") return "Revision being prepared";
+  if (status === "revision-requested") return "Revision requested";
   return "Confirmed in conversation";
 }
 
@@ -138,7 +138,7 @@ function briefStatusDetail(status: ProjectBriefRecord["status"]): string {
     return "The confirmed brief stays in force while you discuss a newer draft with the agent.";
   }
   if (status === "revision-requested") {
-    return "The confirmed brief stays in force while the agent prepares a correction.";
+    return "The confirmed brief stays in force. A correction was requested; no active agent work is implied.";
   }
   return "This is the shared brief the agent uses to plan the recorded work.";
 }

@@ -2,9 +2,21 @@
 
 import type { JSX } from "preact";
 import { useMemo } from "preact/hooks";
+import type { ProjectReviewIntentAction } from "../../../domain/project/project-review-intent.ts";
+import { ActivityReviewFeedCard } from "../project/control-center.tsx";
+import {
+  activityReviewStatus,
+  activityReviewStatusLabel,
+  type ProjectReviewRecord,
+} from "../project/review-decision-model.ts";
+import {
+  reviewIntentScopeKey,
+  type ReviewIntentTransmissionState,
+} from "../project/review-intent-model.ts";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
+  buildActivityTimeline,
   buildFeedComponentCounts,
   buildFilterOptions,
   compactLineageCounters,
@@ -60,6 +72,19 @@ export interface ThreadFeedProps {
    * anchorage is present.
    */
   components?: ThreadComponentCatalog;
+  /** Durable human reviews merged into the same chronological Activity rail. */
+  reviewRecords?: readonly ProjectReviewRecord[];
+  /** Delivery state keyed by exact decision id and input fingerprint. */
+  reviewIntentStates?: ReadonlyMap<string, ReviewIntentTransmissionState>;
+  onSubmitReviewIntent?: (
+    record: ProjectReviewRecord,
+    action: ProjectReviewIntentAction,
+    comment?: string,
+  ) => void | Promise<void>;
+  onRetryReviewIntent?: (
+    record: ProjectReviewRecord,
+  ) => void | Promise<void>;
+  onRefreshReviewIntents?: () => void | Promise<void>;
   /** Fires when the user changes the component filter in the feed toolbar. */
   onFilterChange?: (componentId: FeedScope | undefined) => void;
   onFollowLiveChange: (follow: boolean) => void;
@@ -73,6 +98,8 @@ export interface ThreadFeedProps {
    * Implements changeView("verification") + setLineageFocus(ref) + setGraphSelection.
    */
   onOpenEvidenceAnchored?: (ref: ThreadGraphRef) => void;
+  /** Opens the exact published result attached to a validated review. */
+  onOpenReviewEvidence?: (ref: ThreadGraphRef) => void;
 }
 
 /**
@@ -91,13 +118,28 @@ export function ThreadFeed({
   filterComponentId,
   anchorage,
   components,
+  reviewRecords = [],
+  reviewIntentStates,
+  onSubmitReviewIntent,
+  onRetryReviewIntent,
+  onRefreshReviewIntents,
   onFilterChange,
   onFollowLiveChange,
   onSelectNode,
   onSelectEdge,
   onInspect,
   onOpenEvidenceAnchored,
+  onOpenReviewEvidence,
 }: ThreadFeedProps): JSX.Element {
+  const transmissionFor = (
+    record: ProjectReviewRecord,
+  ): ReviewIntentTransmissionState => {
+    const decision = record.decision;
+    if (!decision?.inputFingerprint) return { kind: "idle" };
+    return reviewIntentStates?.get(
+      reviewIntentScopeKey(decision.id, decision.inputFingerprint),
+    ) ?? { kind: "idle" };
+  };
   const allFeedNodes = activityFeedNodes(nodes, edges);
 
   // Counts per component target across ALL feed events (before filtering).
@@ -115,8 +157,11 @@ export function ThreadFeed({
   // A component filter is authoritative. Keeping an old global focus by
   // prepending it here made Activity show an out-of-filter fact while every
   // counter still claimed the filtered total.
-  const entries = feedNodes;
-
+  const entries = buildActivityTimeline(
+    feedNodes,
+    reviewRecords,
+    filterComponentId === undefined,
+  );
   // Build component options for the filter selector.
   // Only parts with >= 1 event appear; counts are shown in the label.
   const filterOptions = components
@@ -157,9 +202,9 @@ export function ThreadFeed({
       {filterOptions && onFilterChange && (
         <div
           class="thread-feed-component-filter"
-          aria-label="Filtrer par pièce"
+          aria-label="Filter by part"
         >
-          <label for="feed-component-filter">PIÈCE</label>
+          <label for="feed-component-filter">PART</label>
           <select
             id="feed-component-filter"
             value={filterComponentId ?? ""}
@@ -168,7 +213,7 @@ export function ThreadFeed({
               onFilterChange(val === "" ? undefined : val as FeedScope);
             }}
           >
-            <option value="">Tout le projet</option>
+            <option value="">Entire project</option>
             {filterOptions.map((opt) => (
               <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
@@ -179,13 +224,56 @@ export function ThreadFeed({
       {entries.length === 0 && (
         <div class="thread-feed-empty" role="status">
           {filterComponentId
-            ? "Aucun événement pour ce périmètre."
+            ? "No event is recorded for this scope."
             : "Waiting for the first linked engineering fact."}
         </div>
       )}
 
       <ol class="thread-feed-list" aria-label="Linked engineering activity">
-        {entries.map((node, index) => {
+        {entries.map((entry, index) => {
+          if (entry.kind === "review") {
+            const status = activityReviewStatus(entry.review);
+            return (
+              <li
+                id={entry.review.anchorId}
+                key={entry.key}
+                class="thread-feed-entry thread-feed-entry--review"
+                data-review-status={status}
+                style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
+              >
+                <div
+                  class="thread-feed-time"
+                  aria-label={entry.recordedAt}
+                >
+                  <strong>{formatFeedTime(entry.recordedAt)}</strong>
+                  <span>{formatFeedDate(entry.recordedAt)}</span>
+                </div>
+                <div class="thread-feed-rail" aria-hidden="true">
+                  <i />
+                </div>
+                <div class="thread-feed-event">
+                  <ActivityReviewFeedCard
+                    record={entry.review}
+                    onOpenEvidence={onOpenReviewEvidence}
+                    transmissionState={transmissionFor(entry.review)}
+                    onSubmitIntent={onSubmitReviewIntent
+                      ? (action, comment) =>
+                        onSubmitReviewIntent(entry.review, action, comment)
+                      : undefined}
+                    onRetryIntent={onRetryReviewIntent
+                      ? () => onRetryReviewIntent(entry.review)
+                      : undefined}
+                    onRefreshIntent={onRefreshReviewIntents}
+                  />
+                </div>
+              </li>
+            );
+          }
+          const node = entry.node;
+          const attachedReview = entry.review;
+          const reviewStatus = attachedReview
+            ? activityReviewStatus(attachedReview)
+            : undefined;
           const active = isActivityEntryExpanded(focus, node);
           const lineage = active
             ? traceThreadLineage(nodes, edges, focus)
@@ -206,11 +294,13 @@ export function ThreadFeed({
 
           return (
             <li
-              key={node.id}
+              id={attachedReview?.anchorId}
+              key={entry.key}
               class="thread-feed-entry"
               data-active={active ? "true" : "false"}
               data-kind={node.entityKind}
               data-freshness={node.freshness}
+              data-review-status={reviewStatus}
               style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
             >
               <div class="thread-feed-time" aria-label={node.recordedAt}>
@@ -241,10 +331,34 @@ export function ThreadFeed({
                     <span>{node.summary}</span>
                   </span>
                   <span class="thread-feed-meta">
+                    {reviewStatus && (
+                      <i
+                        class="thread-feed-review-badge"
+                        data-review-status={reviewStatus}
+                      >
+                        {activityReviewStatusLabel(reviewStatus)}
+                      </i>
+                    )}
                     <i data-state={node.freshness}>{node.freshness}</i>
                     <b>{lineageCount} linked</b>
                   </span>
                 </button>
+
+                {attachedReview && (
+                  <ActivityReviewFeedCard
+                    record={attachedReview}
+                    onOpenEvidence={onOpenReviewEvidence}
+                    transmissionState={transmissionFor(attachedReview)}
+                    onSubmitIntent={onSubmitReviewIntent
+                      ? (action, comment) =>
+                        onSubmitReviewIntent(attachedReview, action, comment)
+                      : undefined}
+                    onRetryIntent={onRetryReviewIntent
+                      ? () => onRetryReviewIntent(attachedReview)
+                      : undefined}
+                    onRefreshIntent={onRefreshReviewIntents}
+                  />
+                )}
 
                 {active && lineage && (
                   <section
@@ -260,10 +374,10 @@ export function ThreadFeed({
                         {compact
                           ? (
                             <span>
-                              {compact.total} faits · profondeur 2 ·{" "}
-                              {compact.upstream} amont / {compact.downstream}
+                              {compact.total} facts · depth 2 ·{" "}
+                              {compact.upstream} upstream / {compact.downstream}
                               {" "}
-                              aval
+                              downstream
                             </span>
                           )
                           : (

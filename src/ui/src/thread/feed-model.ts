@@ -1,4 +1,5 @@
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
+import type { ProjectReviewRecord } from "../project/review-decision-model.ts";
 import type {
   PartAnchorageResolution,
   PartTarget,
@@ -27,6 +28,22 @@ export interface ThreadLineage {
   /** Every edge whose endpoints are part of this complete lineage. */
   edges: ThreadGraphEdge[];
 }
+
+export type ActivityTimelineEntry =
+  | {
+    readonly kind: "thread";
+    readonly key: string;
+    readonly recordedAt: string;
+    readonly node: ThreadGraphNode;
+    /** Exact human review whose published result is this same thread fact. */
+    readonly review?: ProjectReviewRecord;
+  }
+  | {
+    readonly kind: "review";
+    readonly key: string;
+    readonly recordedAt: string;
+    readonly review: ProjectReviewRecord;
+  };
 
 /**
  * Returns every recorded ancestor and descendant of a selected fact.
@@ -123,6 +140,80 @@ export function activityFeedNodes(
   return [...primary, ...recordedCorrectionNodes(nodes, edges)]
     .filter(uniqueNode)
     .sort(compareActivityNodes);
+}
+
+/**
+ * Merge review decisions and technical facts into one chronological Activity
+ * stream. Review records without a durable timestamp or visible human state
+ * stay out of the feed; published artifacts remain their own thread events.
+ */
+export function buildActivityTimeline(
+  nodes: readonly ThreadGraphNode[],
+  reviews: readonly ProjectReviewRecord[],
+  includeStandaloneReviews = true,
+): ActivityTimelineEntry[] {
+  const visibleReviews = reviews.filter((review) =>
+    review.recordedAt && review.state !== "unavailable"
+  );
+  const reviewsByResult = new Map<string, ProjectReviewRecord[]>();
+  for (const review of visibleReviews) {
+    if (review.state !== "published" || !review.resultEvidence) continue;
+    appendReview(
+      reviewsByResult,
+      refKey(review.resultEvidence),
+      review,
+    );
+  }
+  const attachedReviewKeys = new Set<string>();
+  const threadEntries: ActivityTimelineEntry[] = nodes.map((node) => {
+    const candidates = reviewsByResult.get(refKey(node.ref)) ?? [];
+    const review = candidates.length === 1 ? candidates[0] : undefined;
+    if (review) attachedReviewKeys.add(reviewEventKey(review));
+    return {
+      kind: "thread" as const,
+      key: `thread:${refKey(node.ref)}`,
+      recordedAt: node.recordedAt ?? "",
+      node,
+      review,
+    };
+  });
+  const reviewEntries: ActivityTimelineEntry[] = includeStandaloneReviews
+    ? visibleReviews.flatMap(
+      (review) => {
+        const key = reviewEventKey(review);
+        return attachedReviewKeys.has(key) ? [] : [{
+          kind: "review" as const,
+          key,
+          recordedAt: review.recordedAt!,
+          review,
+        }];
+      },
+    )
+    : [];
+  return [...threadEntries, ...reviewEntries].sort((left, right) =>
+    right.recordedAt.localeCompare(left.recordedAt) ||
+    activityTimelinePriority(left) - activityTimelinePriority(right) ||
+    left.key.localeCompare(right.key)
+  );
+}
+
+function reviewEventKey(review: ProjectReviewRecord): string {
+  const identity = review.decision?.id ??
+    (review.preview.kind === "brief" ? review.preview.brief.id : review.id);
+  return `review:${identity}`;
+}
+
+function appendReview(
+  map: Map<string, ProjectReviewRecord[]>,
+  key: string,
+  review: ProjectReviewRecord,
+): void {
+  const existing = map.get(key) ?? [];
+  map.set(key, [...existing, review]);
+}
+
+function activityTimelinePriority(entry: ActivityTimelineEntry): number {
+  return entry.kind === "review" ? 0 : 1;
 }
 
 /**

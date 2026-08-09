@@ -1,10 +1,13 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import {
   buildSysmlSubtree,
   cadSurfaceCoverage,
   correctionNodesForComponent,
   resolveCadMeshStatus,
   resolveCadSurface,
+  resolveSealedAssemblyGeometry,
+  sealedAssemblyGeometryBlocker,
+  sealedAssemblyGlbAsset,
 } from "./src/thread/component-workspace-model.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import type {
@@ -100,6 +103,510 @@ Deno.test("global CAD does not resolve from a label or a foreign provider", () =
   });
 
   assertEquals(resolveCadSurface(snapshot, root), undefined);
+});
+
+Deno.test("projected r5 geometry resolves from exact capture-to-binary traces", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest =
+    "39d5a031fcf2ed7926ac7e17fecb7ee7e55587fe5112588814c0d256afdbb04a";
+  const glbDigest = "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
+  const stepDigest = "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
+  const capture = projectedGeometryCapture(captureDigest);
+  const glb = projectedGeometryBinary(
+    captureDigest,
+    glbDigest,
+    "cad-model",
+    "glb",
+  );
+  const step = projectedGeometryBinary(
+    captureDigest,
+    stepDigest,
+    "step",
+    "step",
+  );
+  snapshot.artifacts.push(capture, glb, step);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, glb.id),
+    projectedTrace(capture.id, step.id),
+  );
+
+  const result = resolveSealedAssemblyGeometry(snapshot);
+
+  assertEquals(result?.captureArtifact.id, capture.id);
+  assertEquals(result?.assemblyAssets.map((artifact) => artifact.id), [
+    glb.id,
+    step.id,
+  ]);
+  assertEquals(result?.assemblyFormats, ["GLB", "STEP"]);
+  assertEquals(result?.independentPartDefinitionGeometryCount, 0);
+  assertEquals(result?.legacyPartMeshCount, 0);
+  assertEquals(result?.inspectionBinding.selection, {
+    kind: "artifact",
+    id: capture.id,
+  });
+  assertEquals(sealedAssemblyGlbAsset(result!)?.id, glb.id);
+});
+
+Deno.test("sealed assembly GLB selection accepts the live sha256 fingerprint shape only", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "0".repeat(64);
+  const glbDigest = "1".repeat(64);
+  const stepDigest = "2".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const glb = projectedGeometryBinary(
+    captureDigest,
+    glbDigest,
+    "cad-model",
+    "glb",
+  );
+  const step = projectedGeometryBinary(
+    captureDigest,
+    stepDigest,
+    "step",
+    "step",
+  );
+  snapshot.artifacts.push(capture, glb, step);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, glb.id),
+    projectedTrace(capture.id, step.id),
+  );
+  const sealed = resolveSealedAssemblyGeometry(snapshot)!;
+
+  assertEquals(glb.fingerprint, `sha256:${glbDigest}`);
+  assertEquals(sealedAssemblyGlbAsset(sealed)?.id, glb.id);
+
+  glb.fingerprint = `sha256:${"f".repeat(64)}`;
+  assertEquals(sealedAssemblyGlbAsset(sealed), undefined);
+});
+
+Deno.test("sealed geometry never promotes a legacy mesh to independent part geometry", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "1".repeat(64);
+  const step = projectedGeometryBinary(
+    captureDigest,
+    "2".repeat(64),
+    "step",
+    "step",
+  );
+  const mesh = projectedGeometryBinary(
+    captureDigest,
+    "3".repeat(64),
+    "mesh",
+    "stl",
+  );
+  snapshot.artifacts.push(projectedGeometryCapture(captureDigest), step, mesh);
+  snapshot.graph.edges.push(
+    projectedTrace(`geometry-${captureDigest}`, step.id),
+    projectedTrace(`geometry-${captureDigest}`, mesh.id),
+  );
+
+  const result = resolveSealedAssemblyGeometry(snapshot);
+
+  assertEquals(result?.independentPartDefinitionGeometryCount, 0);
+  assertEquals(result?.legacyPartMeshCount, 1);
+});
+
+Deno.test("catalog occurrence count does not inflate one v2 PartDefinition geometry", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "4".repeat(64);
+  const assemblyStep = projectedV2GeometryBinary(
+    captureDigest,
+    "5".repeat(64),
+    "step",
+    "step",
+    { scope: "assembly", formatIndex: 0 },
+  );
+  const definitionStep = projectedV2GeometryBinary(
+    captureDigest,
+    "a".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+  );
+  snapshot.artifacts.push(
+    projectedGeometryCapture(captureDigest),
+    assemblyStep,
+    definitionStep,
+  );
+  snapshot.graph.edges.push(
+    projectedTrace(`geometry-${captureDigest}`, assemblyStep.id),
+    projectedTrace(`geometry-${captureDigest}`, definitionStep.id),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    `geometry-${captureDigest}`,
+    assemblyStep,
+    [definitionStep],
+    [2],
+  );
+
+  assertEquals(
+    resolveSealedAssemblyGeometry(snapshot)
+      ?.independentPartDefinitionGeometryCount,
+    1,
+  );
+});
+
+Deno.test("v2 definition assets never inflate sealed assembly assets", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "b".repeat(64);
+  const binaries: ThreadArtifact[] = [
+    projectedV2GeometryBinary(
+      captureDigest,
+      "0".repeat(64),
+      "step",
+      "step",
+      { scope: "assembly", formatIndex: 0 },
+    ),
+    projectedV2GeometryBinary(
+      captureDigest,
+      "1".repeat(64),
+      "cad-model",
+      "glb",
+      { scope: "assembly", formatIndex: 1 },
+    ),
+  ];
+  for (let definitionIndex = 0; definitionIndex < 4; definitionIndex += 1) {
+    binaries.push(
+      projectedV2GeometryBinary(
+        captureDigest,
+        (definitionIndex + 2).toString(16).repeat(64),
+        "step",
+        "step",
+        { scope: "definition", definitionIndex, fileIndex: 0 },
+      ),
+      projectedV2GeometryBinary(
+        captureDigest,
+        (definitionIndex + 6).toString(16).repeat(64),
+        "cad-model",
+        "glb",
+        { scope: "definition", definitionIndex, fileIndex: 1 },
+      ),
+    );
+  }
+  const capture = projectedGeometryCapture(captureDigest);
+  snapshot.artifacts.push(capture, ...binaries);
+  snapshot.graph.edges.push(
+    ...binaries.map((binary) => projectedTrace(capture.id, binary.id)),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    capture.id,
+    binaries[0]!,
+    binaries.filter((binary) =>
+      binary.kind === "step" && binary.id.includes("-definition-")
+    ),
+  );
+
+  const result = resolveSealedAssemblyGeometry(snapshot);
+
+  assertEquals(result?.assemblyAssets.length, 2);
+  assertEquals(result?.assemblyFormats, ["STEP", "GLB"]);
+  assertEquals(result?.independentPartDefinitionGeometryCount, 4);
+  assertEquals(result?.legacyPartMeshCount, 0);
+});
+
+Deno.test("exact digital-thread bindings link a PartDefinition STEP without inventing a viewer", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "8".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const assemblyStep = projectedV2GeometryBinary(
+    captureDigest,
+    "9".repeat(64),
+    "step",
+    "step",
+    { scope: "assembly", formatIndex: 0 },
+  );
+  const definitionStep = projectedV2GeometryBinary(
+    captureDigest,
+    "a".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+  );
+  snapshot.artifacts.push(capture, assemblyStep, definitionStep);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, assemblyStep.id),
+    projectedTrace(capture.id, definitionStep.id),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    capture.id,
+    assemblyStep,
+    [definitionStep],
+    [2],
+  );
+
+  const partComponents = snapshot.components.components.filter((component) =>
+    component.kind === "part"
+  );
+  const surfaces = partComponents.map((component) =>
+    resolveCadSurface(snapshot, component)
+  );
+  assertEquals(surfaces.map((surface) => surface?.representation), [
+    "authoritative-step",
+    "authoritative-step",
+  ]);
+  assertEquals(surfaces[0]?.authoritativeArtifact.id, definitionStep.id);
+  assertEquals(surfaces[0]?.preview, undefined);
+  assertEquals(surfaces[0]?.inspectionBinding.selection, {
+    kind: "artifact",
+    id: definitionStep.id,
+  });
+  assertEquals(cadSurfaceCoverage(snapshot), {
+    assemblySurfaces: 0,
+    partSurfaces: 0,
+    totalComponents: 3,
+  });
+
+  definitionStep.system = "lookalike-build123d-sandbox";
+  assertEquals(
+    resolveCadSurface(snapshot, partComponents[0]!),
+    undefined,
+  );
+});
+
+Deno.test("Product names the authoritative STEP link without adding a part viewer", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/thread/component-workspace.tsx", import.meta.url),
+  );
+  assertStringIncludes(source, "Authoritative STEP linked");
+  assertStringIncludes(source, "No per-part viewer is created");
+  assertStringIncludes(
+    source,
+    "the assembly remains the single visual review surface",
+  );
+});
+
+Deno.test("v2 definitions are not deduplicated when exact STEP bytes match", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "d".repeat(64);
+  const sharedDefinitionDigest = "e".repeat(64);
+  const binaries = [
+    projectedV2GeometryBinary(
+      captureDigest,
+      "f".repeat(64),
+      "step",
+      "step",
+      { scope: "assembly", formatIndex: 0 },
+    ),
+    projectedV2GeometryBinary(
+      captureDigest,
+      sharedDefinitionDigest,
+      "step",
+      "step",
+      { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+    ),
+    projectedV2GeometryBinary(
+      captureDigest,
+      sharedDefinitionDigest,
+      "step",
+      "step",
+      { scope: "definition", definitionIndex: 1, fileIndex: 0 },
+    ),
+  ];
+  const capture = projectedGeometryCapture(captureDigest);
+  snapshot.artifacts.push(capture, ...binaries);
+  snapshot.graph.edges.push(
+    ...binaries.map((binary) => projectedTrace(capture.id, binary.id)),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    capture.id,
+    binaries[0]!,
+    [binaries[1]!, binaries[2]!],
+  );
+
+  assertEquals(
+    resolveSealedAssemblyGeometry(snapshot)
+      ?.independentPartDefinitionGeometryCount,
+    2,
+  );
+});
+
+Deno.test("v2 geometry fails closed on discontinuous server-owned file indexes", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "1".repeat(64);
+  const binaries = [
+    projectedV2GeometryBinary(
+      captureDigest,
+      "2".repeat(64),
+      "step",
+      "step",
+      { scope: "assembly", formatIndex: 0 },
+    ),
+    projectedV2GeometryBinary(
+      captureDigest,
+      "3".repeat(64),
+      "step",
+      "step",
+      { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+    ),
+    projectedV2GeometryBinary(
+      captureDigest,
+      "4".repeat(64),
+      "cad-model",
+      "glb",
+      { scope: "definition", definitionIndex: 0, fileIndex: 2 },
+    ),
+  ];
+  const capture = projectedGeometryCapture(captureDigest);
+  snapshot.artifacts.push(capture, ...binaries);
+  snapshot.graph.edges.push(
+    ...binaries.map((binary) => projectedTrace(capture.id, binary.id)),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    capture.id,
+    binaries[0]!,
+    [binaries[1]!],
+  );
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+  assertEquals(
+    sealedAssemblyGeometryBlocker(snapshot)?.startsWith(
+      "The active geometry capture does not project a complete",
+    ),
+    true,
+  );
+});
+
+Deno.test("v2 sealed geometry requires the exact sandbox provider namespace", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "5".repeat(64);
+  const assemblyStep = projectedV2GeometryBinary(
+    captureDigest,
+    "6".repeat(64),
+    "step",
+    "step",
+    { scope: "assembly", formatIndex: 0 },
+  );
+  const definitionStep = projectedV2GeometryBinary(
+    captureDigest,
+    "7".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+  );
+  assemblyStep.system = "build123d";
+  const capture = projectedGeometryCapture(captureDigest);
+  snapshot.artifacts.push(capture, assemblyStep, definitionStep);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, assemblyStep.id),
+    projectedTrace(capture.id, definitionStep.id),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    capture.id,
+    assemblyStep,
+    [definitionStep],
+  );
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+});
+
+Deno.test("v2 sealed geometry rejects an extra traced definition without an exact catalog binding", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "6".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const assemblyStep = projectedV2GeometryBinary(
+    captureDigest,
+    "7".repeat(64),
+    "step",
+    "step",
+    { scope: "assembly", formatIndex: 0 },
+  );
+  const signedDefinitionStep = projectedV2GeometryBinary(
+    captureDigest,
+    "8".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+  );
+  snapshot.artifacts.push(capture, assemblyStep, signedDefinitionStep);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, assemblyStep.id),
+    projectedTrace(capture.id, signedDefinitionStep.id),
+  );
+  attachExactV2Catalog(
+    snapshot,
+    capture.id,
+    assemblyStep,
+    [signedDefinitionStep],
+  );
+  assertEquals(
+    resolveSealedAssemblyGeometry(snapshot)
+      ?.independentPartDefinitionGeometryCount,
+    1,
+  );
+
+  const unattestedDefinitionStep = projectedV2GeometryBinary(
+    captureDigest,
+    "9".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 1, fileIndex: 0 },
+  );
+  snapshot.artifacts.push(unattestedDefinitionStep);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, unattestedDefinitionStep.id),
+  );
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+  assertEquals(
+    sealedAssemblyGeometryBlocker(snapshot)?.includes("exactly linked"),
+    true,
+  );
+});
+
+Deno.test("multiple active geometry captures require one exact projected supersession tip", () => {
+  const snapshot = minimalSnapshot();
+  const oldDigest = "6".repeat(64);
+  const newDigest = "7".repeat(64);
+  for (const digest of [oldDigest, newDigest]) {
+    const step = projectedGeometryBinary(
+      digest,
+      digest === oldDigest ? "8".repeat(64) : "9".repeat(64),
+      "step",
+      "step",
+    );
+    snapshot.artifacts.push(projectedGeometryCapture(digest), step);
+    snapshot.graph.edges.push(projectedTrace(`geometry-${digest}`, step.id));
+  }
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+  assertEquals(
+    sealedAssemblyGeometryBlocker(snapshot)?.startsWith(
+      "Multiple active geometry captures",
+    ),
+    true,
+  );
+
+  snapshot.graph.edges.push({
+    id: "geometry-supersession",
+    from: { kind: "artifact", id: `geometry-${oldDigest}` },
+    to: { kind: "artifact", id: `geometry-${newDigest}` },
+    relation: "supersedes",
+    rationale: "Projected historical-to-successor direction.",
+    origin: "provenance",
+  });
+  assertEquals(
+    resolveSealedAssemblyGeometry(snapshot)?.captureArtifact.id,
+    `geometry-${newDigest}`,
+  );
+  assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
+});
+
+Deno.test("an incomplete active geometry projection is a motivated blocker", () => {
+  const snapshot = minimalSnapshot();
+  const digest = "c".repeat(64);
+  snapshot.artifacts.push(projectedGeometryCapture(digest));
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+  assertEquals(
+    sealedAssemblyGeometryBlocker(snapshot),
+    "The active geometry capture does not project a complete, exactly linked assembly STEP and asset set. Product will not infer a result from labels or timestamps.",
+  );
 });
 
 Deno.test("component revisions require an explicit catalog anchor", () => {
@@ -263,10 +770,17 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
     }],
   };
 
-  snapshot.components.components = [partWithPreview, partWithBinding, partNoBind];
+  snapshot.components.components = [
+    partWithPreview,
+    partWithBinding,
+    partNoBind,
+  ];
   snapshot.artifacts.push(meshArtifact);
 
-  assertEquals(resolveCadMeshStatus(snapshot, partWithPreview), "preview-ready");
+  assertEquals(
+    resolveCadMeshStatus(snapshot, partWithPreview),
+    "preview-ready",
+  );
   assertEquals(resolveCadMeshStatus(snapshot, partWithBinding), "not-exported");
   assertEquals(resolveCadMeshStatus(snapshot, partNoBind), "no-binding");
 });
@@ -501,4 +1015,114 @@ function artifact(
     producedBy: "build123d_export",
     dependsOn: [],
   };
+}
+
+function projectedGeometryCapture(digest: string): ThreadArtifact {
+  return {
+    id: `geometry-${digest}`,
+    label: "Geometry capture",
+    kind: "cad-model",
+    system: "digital-thread",
+    revision: digest,
+    freshness: "fresh",
+    fingerprint: `sha256:${digest}`,
+    uri: `casys://geometry-capture/sha256/${digest}`,
+    dependsOn: [],
+  };
+}
+
+function projectedGeometryBinary(
+  captureDigest: string,
+  assetDigest: string,
+  kind: string,
+  extension: string,
+): ThreadArtifact {
+  const prefix = kind === "mesh" ? "mesh" : "cad-asset";
+  return {
+    id: `${prefix}-${captureDigest}-${assetDigest}`,
+    label: `${extension.toUpperCase()} geometry asset`,
+    kind,
+    system: "build123d-sandbox",
+    revision: assetDigest,
+    freshness: "fresh",
+    fingerprint: `sha256:${assetDigest}`,
+    uri: `/api/thread/assets/${assetDigest}.${extension}`,
+    dependsOn: [],
+  };
+}
+
+function projectedV2GeometryBinary(
+  captureDigest: string,
+  assetDigest: string,
+  kind: string,
+  extension: string,
+  identity:
+    | { scope: "assembly"; formatIndex: number }
+    | { scope: "definition"; definitionIndex: number; fileIndex: number },
+): ThreadArtifact {
+  const identitySegment = identity.scope === "assembly"
+    ? `assembly-${identity.formatIndex}`
+    : `definition-${identity.definitionIndex}-${identity.fileIndex}`;
+  return {
+    id: `cad-asset-${captureDigest}-${identitySegment}-${assetDigest}`,
+    label: `${extension.toUpperCase()} geometry asset`,
+    kind,
+    system: "build123d-sandbox",
+    revision: assetDigest,
+    freshness: "fresh",
+    fingerprint: `sha256:${assetDigest}`,
+    uri: `/api/thread/assets/${assetDigest}.${extension}`,
+    dependsOn: [],
+  };
+}
+
+function projectedTrace(fromId: string, toId: string) {
+  return {
+    id: `trace-${fromId}-${toId}`,
+    from: { kind: "artifact" as const, id: fromId },
+    to: { kind: "artifact" as const, id: toId },
+    relation: "traces_to" as const,
+    rationale: "Exact projected trace from capture to binary.",
+    origin: "provenance" as const,
+  };
+}
+
+function attachExactV2Catalog(
+  snapshot: ThreadWorkbenchSnapshot,
+  captureArtifactId: string,
+  assemblyStep: ThreadArtifact,
+  definitionSteps: readonly ThreadArtifact[],
+  occurrenceCounts: readonly number[] = definitionSteps.map(() => 1),
+): void {
+  const binding = (artifact: ThreadArtifact) => ({
+    provider: "digital-thread" as const,
+    kind: "artifact" as const,
+    id: artifact.id,
+    label: "Authoritative STEP",
+    evidenceArtifactId: captureArtifactId,
+    status: "verified" as const,
+    selection: { kind: "artifact" as const, id: captureArtifactId },
+  });
+  snapshot.components.components = [
+    {
+      id: "system-root",
+      label: "System",
+      kind: "assembly",
+      quantity: 1,
+      bindings: [binding(assemblyStep)],
+    },
+    ...definitionSteps.flatMap((step, definitionIndex) =>
+      Array.from(
+        { length: occurrenceCounts[definitionIndex] ?? 1 },
+        (_, occurrenceIndex) => ({
+          id: `usage-${definitionIndex}-${occurrenceIndex}`,
+          parentId: "system-root",
+          label: `Part ${definitionIndex + 1}.${occurrenceIndex + 1}`,
+          kind: "part" as const,
+          quantity: 1,
+          bindings: [binding(step)],
+        }),
+      )
+    ),
+  ];
 }

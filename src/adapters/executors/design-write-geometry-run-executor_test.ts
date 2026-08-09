@@ -24,7 +24,13 @@
  * focused on the invariant under test.
  */
 
-import { assertEquals, assertExists, assertRejects, assertThrows } from "@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/assert";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {
   EngineeringProjectCommandError,
@@ -67,6 +73,7 @@ import {
   requireArchitectureArtifact,
   requireDraftAssemblyPaths,
   requireDraftPreviewProducer,
+  requireGeometryBundlePredecessor,
 } from "./design-write-geometry-run-executor.ts";
 import {
   deterministicJson,
@@ -78,24 +85,40 @@ import {
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import {
+  captureGeometryBundleDraft,
   captureGeometryDraft,
   GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+  type GeometryBundleDraftCapture,
+  geometryBundleManifestFromDraft,
   LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
 } from "../captures/geometry-draft-capture.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
 import { ARCHITECTURE_CAPTURE_SCHEMA } from "./model-write-architecture-run-executor.ts";
 import {
+  type AnyGeometryManifest,
   encodeGeometryDecisionParameters,
   GEOMETRY_MANIFEST_SCHEMA,
+  type GeometryDecisionParameters,
   type GeometryManifest,
 } from "../../domain/platform/geometry-proposal.ts";
+import {
+  GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+  GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+  type GeometryBundleManifest,
+} from "../../domain/platform/geometry-bundle.ts";
+import { resolveGenericProductStructureCatalog } from "../projectors/product-structure-catalog.ts";
+import { resolveThreadComponentCatalog } from "../../domain/thread/thread-component-catalog.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const HEX64 = "a".repeat(64);
 const HEX64_B = "b".repeat(64);
-const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
-const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
+const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
+const HUMAN = {
+  kind: "human" as const,
+  actorId: "mcp-elicitation:paired-chat@1",
+};
 const PROJECT_ID = "project:geo-test-01";
 
 // ── Unit: assertGeometryArtifactNotRemoved ────────────────────────────────────
@@ -503,6 +526,459 @@ Deno.test(
   },
 );
 
+function bundlePredecessorParams(
+  predecessor?: { artifactId: string; fingerprint: ContentFingerprint },
+): GeometryDecisionParameters {
+  return {
+    draftDigest: HEX64,
+    manifest: {
+      schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+      architectureBasis: {
+        snapshotId: "architecture",
+        revision: 1,
+        artifactFingerprint: { algorithm: "sha256", digest: HEX64 },
+      },
+      ...(predecessor ? { predecessor } : {}),
+      components: [{ elementId: "usage:frame", usageName: "frame", label: "Frame" }],
+      unitSystem: "mm",
+      placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+      exportFormats: ["step"],
+      partExportFormats: ["step"],
+      scriptHash: { algorithm: "sha256", digest: HEX64 },
+      artifactHashes: {
+        assemblyFiles: [{
+          format: "step",
+          name: "assembly",
+          fingerprint: { algorithm: "sha256", digest: HEX64 },
+        }],
+        partMeshes: [],
+      },
+      partDefinitions: [{
+        elementId: "definition:frame",
+        label: "Frame",
+        scriptHash: { algorithm: "sha256", digest: HEX64_B },
+        files: [{
+          format: "step",
+          name: "definition",
+          fingerprint: { algorithm: "sha256", digest: HEX64_B },
+        }],
+      }],
+      occurrences: [{
+        usageElementId: "usage:frame",
+        partDefinitionElementId: "definition:frame",
+        placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+      }],
+    },
+  };
+}
+
+type ArchitectureAttestationDefect =
+  | "missing-canonical-consumption"
+  | "duplicate-consumption"
+  | "wrong-consumption-time"
+  | "wrong-uses-id"
+  | "wrong-uses-rationale"
+  | "wrong-derived-id"
+  | "wrong-derived-rationale"
+  | "duplicate-derived";
+
+/** Build a structurally valid snapshot whose geometry/architecture attestation
+ * is not the exact graph emitted by buildExtension. */
+function withArchitectureAttestationDefect(
+  snapshot: ThreadSnapshot,
+  defect: ArchitectureAttestationDefect,
+): ThreadSnapshot {
+  const mutated = structuredClone(snapshot);
+  const primary = mutated.artifacts.find((artifact) =>
+    artifact.kind === "cad-model" &&
+    artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
+  );
+  assertExists(primary);
+  const architectureId = primary.inputArtifactIds[0];
+  assertExists(architectureId);
+  const consumptionId = `consume-arch-${architectureId}-by-${primary.id}`;
+  const consumption = mutated.consumptions.find((candidate) =>
+    candidate.id === consumptionId
+  );
+  const uses = mutated.provenance.find((link) => link.id === `uses-${consumptionId}`);
+  const derived = mutated.provenance.find((link) =>
+    link.relation === "derived_from" && link.from.kind === "artifact" &&
+    link.from.id === primary.id && link.to.kind === "artifact" &&
+    link.to.id === architectureId
+  );
+  assertExists(consumption);
+  assertExists(uses);
+  assertExists(derived);
+
+  switch (defect) {
+    case "missing-canonical-consumption": {
+      const replacementId = `${consumptionId}-replacement`;
+      consumption.id = replacementId;
+      uses.id = `uses-${replacementId}`;
+      uses.from = { kind: "consumption", id: replacementId };
+      break;
+    }
+    case "duplicate-consumption": {
+      const duplicateId = `${consumptionId}-duplicate`;
+      mutated.consumptions.push({ ...consumption, id: duplicateId });
+      mutated.provenance.push({
+        ...uses,
+        id: `uses-${duplicateId}`,
+        from: { kind: "consumption", id: duplicateId },
+      });
+      break;
+    }
+    case "wrong-consumption-time":
+      consumption.verifiedAt = "2026-08-08T12:10:01.000Z";
+      break;
+    case "wrong-uses-id":
+      uses.id = `${uses.id}-wrong`;
+      break;
+    case "wrong-uses-rationale":
+      uses.rationale = "Adversarial architecture consumption rationale.";
+      break;
+    case "wrong-derived-id":
+      derived.id = `${derived.id}-wrong`;
+      break;
+    case "wrong-derived-rationale":
+      derived.rationale = "Adversarial architecture derivation rationale.";
+      break;
+    case "duplicate-derived":
+      mutated.provenance.push({
+        ...derived,
+        id: `${derived.id}-duplicate`,
+      });
+      break;
+  }
+  validateThreadSnapshot(mutated);
+  return mutated;
+}
+
+type PriorGeometryLineageDefect =
+  | "missing-supersedes"
+  | "duplicate-derived"
+  | "wrong-consumption-time"
+  | "wrong-derived-id"
+  | "wrong-derived-rationale"
+  | "wrong-supersedes-id"
+  | "wrong-supersedes-rationale"
+  | "wrong-uses-id"
+  | "wrong-uses-rationale";
+
+function withPriorGeometryLineageDefect(
+  snapshot: ThreadSnapshot,
+  defect: PriorGeometryLineageDefect,
+): ThreadSnapshot {
+  const mutated = structuredClone(snapshot);
+  const archivedArtifactIds = new Set(
+    mutated.changeSet.changes.filter((change) =>
+      change.kind === "archived" && change.target.kind === "artifact"
+    ).map((change) => change.target.id),
+  );
+  const activeGeometry = mutated.artifacts.filter((artifact) =>
+    artifact.kind === "cad-model" &&
+    artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+    !archivedArtifactIds.has(artifact.id)
+  );
+  assertEquals(activeGeometry.length, 1);
+  const primary = activeGeometry[0]!;
+  const predecessorId = primary.inputArtifactIds[1];
+  assertExists(predecessorId);
+  const derived = mutated.provenance.find((link) =>
+    link.relation === "derived_from" && link.from.kind === "artifact" &&
+    link.from.id === primary.id && link.to.kind === "artifact" &&
+    link.to.id === predecessorId
+  );
+  const supersedes = mutated.provenance.find((link) =>
+    link.relation === "supersedes" && link.from.kind === "artifact" &&
+    link.from.id === primary.id && link.to.kind === "artifact" &&
+    link.to.id === predecessorId
+  );
+  const consumption = mutated.consumptions.find((candidate) =>
+    candidate.id === `consume-geometry-${predecessorId}-by-${primary.id}`
+  );
+  const uses = mutated.provenance.find((link) =>
+    link.relation === "uses" && link.from.kind === "consumption" &&
+    link.from.id === consumption?.id && link.to.kind === "artifact" &&
+    link.to.id === predecessorId
+  );
+  assertExists(derived);
+  assertExists(supersedes);
+  assertExists(consumption);
+  assertExists(uses);
+
+  switch (defect) {
+    case "missing-supersedes":
+      mutated.provenance = mutated.provenance.filter((link) =>
+        link.id !== supersedes.id
+      );
+      break;
+    case "duplicate-derived":
+      mutated.provenance.push({
+        ...derived,
+        id: `${derived.id}-duplicate`,
+      });
+      break;
+    case "wrong-consumption-time":
+      consumption.verifiedAt = "2026-08-08T12:10:01.000Z";
+      break;
+    case "wrong-derived-id":
+      derived.id = `${derived.id}-wrong`;
+      break;
+    case "wrong-derived-rationale":
+      derived.rationale = "Adversarial predecessor derivation rationale.";
+      break;
+    case "wrong-supersedes-id":
+      supersedes.id = `${supersedes.id}-wrong`;
+      break;
+    case "wrong-supersedes-rationale":
+      supersedes.rationale = "Adversarial predecessor supersession rationale.";
+      break;
+    case "wrong-uses-id":
+      uses.id = `${uses.id}-wrong`;
+      break;
+    case "wrong-uses-rationale":
+      uses.rationale = "Adversarial predecessor consumption rationale.";
+      break;
+  }
+  validateThreadSnapshot(mutated);
+  return mutated;
+}
+
+type PriorGeometryBinaryGraphDefect =
+  | "wrong-uses-id"
+  | "wrong-trace-id"
+  | "wrong-uses-rationale"
+  | "wrong-trace-rationale";
+
+function withPriorGeometryBinaryGraphDefect(
+  snapshot: ThreadSnapshot,
+  defect: PriorGeometryBinaryGraphDefect,
+): ThreadSnapshot {
+  const mutated = structuredClone(snapshot);
+  const archivedArtifactIds = new Set(
+    mutated.changeSet.changes.filter((change) =>
+      change.kind === "archived" && change.target.kind === "artifact"
+    ).map((change) => change.target.id),
+  );
+  const primary = mutated.artifacts.find((artifact) =>
+    artifact.kind === "cad-model" &&
+    artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+    !archivedArtifactIds.has(artifact.id)
+  );
+  assertExists(primary);
+  const trace = mutated.provenance.find((link) =>
+    link.relation === "traces_to" && link.from.kind === "artifact" &&
+    link.to.kind === "artifact" && link.to.id === primary.id
+  );
+  assertExists(trace);
+  const consumptionId = `consume-${primary.id}-by-${trace.from.id}`;
+  const uses = mutated.provenance.find((link) =>
+    link.relation === "uses" && link.from.kind === "consumption" &&
+    link.from.id === consumptionId && link.to.kind === "artifact" &&
+    link.to.id === primary.id
+  );
+  assertExists(uses);
+
+  switch (defect) {
+    case "wrong-uses-id":
+      uses.id = `${uses.id}-wrong`;
+      break;
+    case "wrong-trace-id":
+      trace.id = `${trace.id}-wrong`;
+      break;
+    case "wrong-uses-rationale":
+      uses.rationale = "Adversarial binary publication rationale.";
+      break;
+    case "wrong-trace-rationale":
+      trace.rationale = "Adversarial binary trace rationale.";
+      break;
+  }
+  validateThreadSnapshot(mutated);
+  return mutated;
+}
+
+Deno.test("geometry bundle predecessor resolution refuses ambiguous active tips before capture read", async () => {
+  const first = minimalSnapshotWithGeometry(
+    "basis",
+    2,
+    { algorithm: "sha256", digest: HEX64 },
+  );
+  const secondDigest = "c".repeat(64);
+  first.artifacts.push({
+    ...first.artifacts[0]!,
+    id: `geometry-${secondDigest}`,
+    version: secondDigest,
+    fingerprint: { algorithm: "sha256", digest: secondDigest },
+    uri: `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${secondDigest}`,
+  });
+  let reads = 0;
+  await assertRejects(
+    () =>
+      requireGeometryBundlePredecessor(first, bundlePredecessorParams(), {
+        read: () => {
+          reads++;
+          return Promise.resolve(undefined);
+        },
+        save: () => Promise.reject(new Error("unexpected")),
+        uriFor: () => "unused",
+      }),
+    EngineeringProjectCommandError,
+    "geometry_tip_ambiguous",
+  );
+  assertEquals(reads, 0);
+});
+
+Deno.test("geometry bundle predecessor resolution refuses an inexact producer before capture read", async () => {
+  const basis = minimalSnapshotWithGeometry(
+    "basis",
+    2,
+    { algorithm: "sha256", digest: HEX64 },
+  );
+  const artifact = basis.artifacts[0]!;
+  let reads = 0;
+  await assertRejects(
+    () =>
+      requireGeometryBundlePredecessor(
+        basis,
+        bundlePredecessorParams({
+          artifactId: artifact.id,
+          fingerprint: artifact.fingerprint,
+        }),
+        {
+          read: () => {
+            reads++;
+            return Promise.resolve(undefined);
+          },
+          save: () => Promise.reject(new Error("unexpected")),
+          uriFor: () => "unused",
+        },
+      ),
+    EngineeringProjectCommandError,
+    "identity is not canonical",
+  );
+  assertEquals(reads, 0);
+});
+
+Deno.test("geometry bundle predecessor resolution refuses a self-hashed capture with wrong trusted run", async () => {
+  const predecessorManifest: GeometryManifest = {
+    schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+    architectureBasis: {
+      snapshotId: "architecture",
+      revision: 1,
+      artifactFingerprint: { algorithm: "sha256", digest: HEX64 },
+    },
+    components: [],
+    unitSystem: "mm",
+    exportFormats: ["step"],
+    scriptHash: { algorithm: "sha256", digest: HEX64 },
+    artifactHashes: {
+      assemblyFiles: [{
+        format: "step",
+        name: "assembly",
+        fingerprint: { algorithm: "sha256", digest: HEX64_B },
+      }],
+      partMeshes: [],
+    },
+  };
+  const capture = {
+    schemaVersion: "geometry-capture/1.1",
+    operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+    trustedRunId: "run:wrong",
+    draftDigest: HEX64,
+    manifest: predecessorManifest,
+    architectureBasis: {
+      artifactId: "architecture-artifact",
+      fingerprint: { algorithm: "sha256", digest: HEX64 },
+      producerRunId: "run:architecture",
+    },
+    previewProducer: null,
+    sealedAt: "2026-08-08T00:00:00.000Z",
+  };
+  const fingerprint = await sha256Fingerprint(capture);
+  const artifact: ThreadArtifact = {
+    id: `geometry-${fingerprint.digest}`,
+    name: "Geometry",
+    kind: "cad-model",
+    version: fingerprint.digest,
+    fingerprint,
+    uri: `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${fingerprint.digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "design.write-geometry@1",
+      runId: "run:expected",
+    },
+    inputArtifactIds: [],
+    freshness: SNAP_FRESHNESS,
+  };
+  const basis = { ...minimalSnapshotBase("basis", 2), artifacts: [artifact] };
+  await assertRejects(
+    () =>
+      requireGeometryBundlePredecessor(
+        basis,
+        bundlePredecessorParams({ artifactId: artifact.id, fingerprint }),
+        {
+          read: () => Promise.resolve(deterministicJson(capture)),
+          save: () => Promise.reject(new Error("unexpected")),
+          uriFor: () => "unused",
+        },
+      ),
+    EngineeringProjectCommandError,
+    "trusted run",
+  );
+});
+
+for (const schemaVersion of ["geometry-capture/1.1", "geometry-capture/2.0"] as const) {
+  Deno.test(
+    `geometry bundle predecessor resolution refuses a shallow self-hashed ${schemaVersion} capture with the correct run`,
+    async () => {
+      const capture = {
+        schemaVersion,
+        operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+        trustedRunId: "run:expected",
+        manifest: {
+          schemaVersion: schemaVersion === "geometry-capture/1.1"
+            ? GEOMETRY_MANIFEST_SCHEMA
+            : GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+        },
+      };
+      const fingerprint = await sha256Fingerprint(capture);
+      const artifact: ThreadArtifact = {
+        id: `geometry-${fingerprint.digest}`,
+        name: "Geometry",
+        kind: "cad-model",
+        version: fingerprint.digest,
+        fingerprint,
+        uri: `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${fingerprint.digest}`,
+        mediaType: "application/json",
+        producer: {
+          serverId: "digital-thread",
+          tool: "design.write-geometry@1",
+          runId: "run:expected",
+        },
+        inputArtifactIds: [],
+        freshness: SNAP_FRESHNESS,
+      };
+      const basis = { ...minimalSnapshotBase("basis", 2), artifacts: [artifact] };
+      await assertRejects(
+        () =>
+          requireGeometryBundlePredecessor(
+            basis,
+            bundlePredecessorParams({ artifactId: artifact.id, fingerprint }),
+            {
+              read: () => Promise.resolve(deterministicJson(capture)),
+              save: () => Promise.reject(new Error("unexpected")),
+              uriFor: () => "unused",
+            },
+          ),
+        EngineeringProjectCommandError,
+        "missing or unexpected fields",
+      );
+    },
+  );
+}
+
 // ── Integration fixture ───────────────────────────────────────────────────────
 
 interface GeoFixture {
@@ -549,6 +1025,9 @@ async function buildGeoFixture(
       | "wrong-trusted-run";
     architectureArtifactDefect?: "producer";
     includeParallelSibling?: boolean;
+    bundleV2?: boolean;
+    bundleCoverageDefect?: "omit-usage" | "omit-definition";
+    bundleAssetDefect?: "empty" | "size-mismatch";
   },
 ): Promise<GeoFixture> {
   let tick = 0;
@@ -695,7 +1174,7 @@ async function buildGeoFixture(
 
   let geometryBasis = r1;
   let signedDraftDigest = HEX64;
-  let signedManifest: GeometryManifest | undefined;
+  let signedManifest: AnyGeometryManifest | undefined;
 
   if (opts.mode === "happy") {
     project = await commands.appendChange(AGENT, {
@@ -769,24 +1248,68 @@ async function buildGeoFixture(
         fingerprint: seedFingerprint,
         producerRunId: "run:seed-geometry-test",
       },
-      partDefinitions: [{
-        id: "part-definition:system",
-        kind: "PartDefinition",
-        label: "GeometrySystem",
-        usages: [{
-          id: "usage:frame",
-          kind: "PartUsage",
-          label: "frame",
-          targetId: "part-definition:frame",
-          targetKind: "PartDefinition",
-          targetLabel: "FrameDefinition",
-        }],
-      }, {
-        id: "part-definition:frame",
-        kind: "PartDefinition",
-        label: "FrameDefinition",
-        usages: [],
-      }],
+      partDefinitions: [
+        {
+          id: "part-definition:system",
+          kind: "PartDefinition",
+          label: "GeometrySystem",
+          usages: [
+            {
+              id: "usage:frame",
+              kind: "PartUsage",
+              label: "frame",
+              targetId: "part-definition:frame",
+              targetKind: "PartDefinition",
+              targetLabel: "FrameDefinition",
+            },
+            ...(opts.bundleV2
+              ? [{
+                id: "usage:frame-secondary",
+                kind: "PartUsage",
+                label: "frameSecondary",
+                targetId: opts.bundleCoverageDefect === "omit-definition"
+                  ? "part-definition:shade"
+                  : "part-definition:frame",
+                targetKind: "PartDefinition",
+                targetLabel: opts.bundleCoverageDefect === "omit-definition"
+                  ? "ShadeDefinition"
+                  : "FrameDefinition",
+              }]
+              : []),
+          ],
+        },
+        {
+          id: "part-definition:frame",
+          kind: "PartDefinition",
+          label: "FrameDefinition",
+          usages: opts.bundleV2
+            ? [{
+              id: "usage:bolt",
+              kind: "PartUsage",
+              label: "bolt",
+              targetId: "part-definition:bolt",
+              targetKind: "PartDefinition",
+              targetLabel: "BoltDefinition",
+            }]
+            : [],
+        },
+        ...(opts.bundleV2
+          ? [{
+            id: "part-definition:bolt",
+            kind: "PartDefinition",
+            label: "BoltDefinition",
+            usages: [],
+          }]
+          : []),
+        ...(opts.bundleCoverageDefect === "omit-definition"
+          ? [{
+            id: "part-definition:shade",
+            kind: "PartDefinition",
+            label: "ShadeDefinition",
+            usages: [],
+          }]
+          : []),
+      ],
       insertedAt: "2026-08-08T12:01:30.000Z",
     };
     if (opts.architectureCaptureDefect === "duplicate-id") {
@@ -845,7 +1368,7 @@ async function buildGeoFixture(
       capturedAt: "2026-08-08T12:01:30.000Z",
       artifacts: [seedArtifact, {
         id: architectureArtifactId,
-        name: "Reviewed architecture",
+        name: "Architecture: GeometryTestArchitecture",
         kind: "sysml-model" as const,
         version: architectureFingerprint.digest,
         fingerprint: architectureFingerprint,
@@ -917,99 +1440,263 @@ async function buildGeoFixture(
       subjectId: architectureSnapshot.subject.id,
     };
 
-    const assetBytes = new TextEncoder().encode("reviewed geometry bytes\n");
-    const assetDigest = await sha256Bytes(assetBytes);
-    const draftManifest: GeometryManifest = {
-      schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
-      architectureBasis: {
-        snapshotId: architectureSnapshot.id,
-        revision: architectureSnapshot.revision,
-        artifactFingerprint: architectureFingerprint,
-      },
-      components: opts.emptyComponents ? [] : [{
-        usageName: "frame",
-        elementId: "usage:frame",
-        label: "Frame",
-      }],
-      unitSystem: "mm",
-      exportFormats: ["gltf"],
-    };
-    const draft = await captureGeometryDraft(
-      {
-        callTool: () =>
-          Promise.resolve({
-            structuredContent: {
-              schemaVersion: "1.0",
-              kind: "export",
-              metrics: {},
-              files: [{
-                format: "gltf",
-                path: "/exports/geometry-preview-assembly.glb",
-                bytes: assetBytes.length,
-                sha256: assetDigest,
-                viewer: "model-viewer",
-              }],
+    if (opts.bundleV2) {
+      const assemblyBytes = new TextEncoder().encode("reviewed assembly STEP\n");
+      const definitionBytes = new TextEncoder().encode("reviewed frame STEP\n");
+      const assemblyStlBytes = new TextEncoder().encode("reviewed assembly STL\n");
+      const definitionStlBytes = new TextEncoder().encode("reviewed frame STL\n");
+      const assemblyDigest = await sha256Bytes(assemblyBytes);
+      const definitionDigest = await sha256Bytes(definitionBytes);
+      const assemblyStlDigest = await sha256Bytes(assemblyStlBytes);
+      const definitionStlDigest = await sha256Bytes(definitionStlBytes);
+      const previewBytes = new Map([
+        [assemblyDigest, assemblyBytes],
+        [definitionDigest, definitionBytes],
+        [assemblyStlDigest, assemblyStlBytes],
+        [definitionStlDigest, definitionStlBytes],
+      ]);
+      const draftManifest: GeometryBundleManifest = {
+        schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+        architectureBasis: {
+          snapshotId: architectureSnapshot.id,
+          revision: architectureSnapshot.revision,
+          artifactFingerprint: architectureFingerprint,
+        },
+        components: [
+          {
+            usageName: "frame",
+            elementId: "usage:frame",
+            label: "Frame",
+          },
+          ...(opts.bundleCoverageDefect === "omit-usage" ? [] : [{
+            usageName: "frameSecondary",
+            elementId: "usage:frame-secondary",
+            label: "Frame secondary",
+          }]),
+          {
+            usageName: "bolt",
+            elementId: "usage:bolt",
+            label: "Bolt",
+          },
+        ],
+        unitSystem: "mm",
+        placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+        exportFormats: ["step", "stl"],
+        partExportFormats: ["step", "stl"],
+        partDefinitions: [{
+          elementId: "part-definition:frame",
+          label: "FrameDefinition",
+        }, {
+          elementId: "part-definition:bolt",
+          label: "BoltDefinition",
+        }],
+        occurrences: [
+          {
+            usageElementId: "usage:frame",
+            partDefinitionElementId: "part-definition:frame",
+            placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+          },
+          ...(opts.bundleCoverageDefect === "omit-usage" ? [] : [{
+            usageElementId: "usage:frame-secondary",
+            partDefinitionElementId: "part-definition:frame",
+            placement: {
+              translationMm: [20, 0, 0] as const,
+              rotationDeg: [0, 0, 0] as const,
             },
-            text: "",
-          }),
-        callToolTextResult: () => Promise.reject(new Error("unexpected")),
-      },
-      {
-        script: "from build123d import Box\nresult = Box(10, 10, 10)\n",
-        manifest: draftManifest,
-      },
-      draftCaptures,
-      {
-        build123dService: "mcp-build123d-sandbox",
-        previewRunId: "run:geometry-preview",
-        materializeAsset: async (digest) => {
-          assertEquals(digest, assetDigest);
-          await Deno.mkdir(draftAssetDirectory, { recursive: true });
-          await Deno.writeFile(`${draftAssetDirectory}/${digest}`, assetBytes);
-        },
-      },
-      () => "2026-08-08T12:01:45.000Z",
-    );
-    signedDraftDigest = draft.fingerprint.digest;
-    if (opts.legacyDraftPath) {
-      const legacyDraft = {
-        schemaVersion: LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
-        kind: draft.kind,
-        capturedAt: draft.capturedAt,
-        subject: draft.subject,
-        producer: {
-          serverId: "build123d" as const,
-          tool: "build123d_export" as const,
-        },
-        script: draft.script,
-        scriptHash: draft.scriptHash,
-        exportFormats: draft.exportFormats,
-        components: draft.components,
-        assemblyFiles: draft.assemblyFiles.map((file) => ({
-          ...file,
-          containerPath: `/exports/geometry-preview-assembly.${opts.legacyDraftPath}`,
-        })),
-        partMeshes: draft.partMeshes,
+          }]),
+          {
+            usageElementId: "usage:bolt",
+            partDefinitionElementId: "part-definition:bolt",
+            placement: {
+              translationMm: [0, 0, 0],
+              rotationDeg: [0, 0, 0],
+            },
+          },
+        ],
       };
-      const legacyFingerprint = await sha256Fingerprint(legacyDraft);
-      await draftCaptures.save(
-        legacyFingerprint,
-        deterministicJson(legacyDraft),
+      const draft = await captureGeometryBundleDraft(
+        {
+          callTool: (call) => {
+            const args = call.arguments as Record<string, unknown>;
+            const name = String(args.name);
+            const isAssembly = name.endsWith("-assembly");
+            const formats = args.formats as Array<"step" | "stl">;
+            return Promise.resolve({
+              structuredContent: {
+                schemaVersion: "1.0",
+                kind: "export",
+                metrics: {},
+                files: formats.map((format) => {
+                  const digest = isAssembly
+                    ? format === "step" ? assemblyDigest : assemblyStlDigest
+                    : format === "step"
+                    ? definitionDigest
+                    : definitionStlDigest;
+                  const bytes = previewBytes.get(digest)!;
+                  return {
+                    format,
+                    path: `/exports/${name}.${format}`,
+                    bytes: bytes.length,
+                    sha256: digest,
+                  };
+                }),
+              },
+              text: "",
+            });
+          },
+          callToolTextResult: () => Promise.reject(new Error("unexpected")),
+        },
+        {
+          assemblyScript: "from build123d import Box\nresult = Box(10, 10, 10)\n",
+          manifest: draftManifest,
+          partDefinitionScripts: [{
+            elementId: "part-definition:frame",
+            script: "from build123d import Box\nresult = Box(8, 8, 8)\n",
+          }, {
+            elementId: "part-definition:bolt",
+            script: "from build123d import Cylinder\nresult = Cylinder(2, 8)\n",
+          }],
+        },
+        draftCaptures,
+        {
+          build123dService: "mcp-build123d-sandbox",
+          previewRunId: "run:geometry-preview-v2",
+          materializeAsset: async (digest) => {
+            const bytes = previewBytes.get(digest);
+            assertExists(bytes);
+            await Deno.mkdir(draftAssetDirectory, { recursive: true });
+            await Deno.writeFile(`${draftAssetDirectory}/${digest}`, bytes);
+          },
+        },
+        () => "2026-08-08T12:01:45.000Z",
       );
-      signedDraftDigest = legacyFingerprint.digest;
+      let reviewedDraft: GeometryBundleDraftCapture = draft;
+      if (opts.bundleAssetDefect) {
+        const altered = structuredClone(draft);
+        const assemblyStep = altered.assembly.files[0] as {
+          bytes: number;
+          fingerprint: ContentFingerprint;
+        };
+        if (opts.bundleAssetDefect === "empty") {
+          // Self-consistent empty-file digest plus a lying positive provider
+          // count used to pass the seal because `bytes` was ignored there.
+          assemblyStep.bytes = 1;
+          assemblyStep.fingerprint = {
+            algorithm: "sha256",
+            digest: EMPTY_SHA256,
+          };
+          await Deno.writeFile(
+            `${draftAssetDirectory}/${EMPTY_SHA256}`,
+            new Uint8Array(),
+          );
+        } else {
+          assemblyStep.bytes += 1;
+        }
+        const { fingerprint: _discarded, ...unsigned } = altered;
+        const alteredFingerprint = await sha256Fingerprint(unsigned);
+        await draftCaptures.save(
+          alteredFingerprint,
+          deterministicJson(unsigned),
+        );
+        reviewedDraft = { ...unsigned, fingerprint: alteredFingerprint };
+      }
+      signedDraftDigest = reviewedDraft.fingerprint.digest;
+      signedManifest = geometryBundleManifestFromDraft(reviewedDraft);
+    } else {
+      const assetBytes = new TextEncoder().encode("reviewed geometry bytes\n");
+      const assetDigest = await sha256Bytes(assetBytes);
+      const draftManifest: GeometryManifest = {
+        schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+        architectureBasis: {
+          snapshotId: architectureSnapshot.id,
+          revision: architectureSnapshot.revision,
+          artifactFingerprint: architectureFingerprint,
+        },
+        components: opts.emptyComponents ? [] : [{
+          usageName: "frame",
+          elementId: "usage:frame",
+          label: "Frame",
+        }],
+        unitSystem: "mm",
+        exportFormats: ["gltf"],
+      };
+      const draft = await captureGeometryDraft(
+        {
+          callTool: () =>
+            Promise.resolve({
+              structuredContent: {
+                schemaVersion: "1.0",
+                kind: "export",
+                metrics: {},
+                files: [{
+                  format: "gltf",
+                  path: "/exports/geometry-preview-assembly.glb",
+                  bytes: assetBytes.length,
+                  sha256: assetDigest,
+                  viewer: "model-viewer",
+                }],
+              },
+              text: "",
+            }),
+          callToolTextResult: () => Promise.reject(new Error("unexpected")),
+        },
+        {
+          script: "from build123d import Box\nresult = Box(10, 10, 10)\n",
+          manifest: draftManifest,
+        },
+        draftCaptures,
+        {
+          build123dService: "mcp-build123d-sandbox",
+          previewRunId: "run:geometry-preview",
+          materializeAsset: async (digest) => {
+            assertEquals(digest, assetDigest);
+            await Deno.mkdir(draftAssetDirectory, { recursive: true });
+            await Deno.writeFile(`${draftAssetDirectory}/${digest}`, assetBytes);
+          },
+        },
+        () => "2026-08-08T12:01:45.000Z",
+      );
+      signedDraftDigest = draft.fingerprint.digest;
+      if (opts.legacyDraftPath) {
+        const legacyDraft = {
+          schemaVersion: LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+          kind: draft.kind,
+          capturedAt: draft.capturedAt,
+          subject: draft.subject,
+          producer: {
+            serverId: "build123d" as const,
+            tool: "build123d_export" as const,
+          },
+          script: draft.script,
+          scriptHash: draft.scriptHash,
+          exportFormats: draft.exportFormats,
+          components: draft.components,
+          assemblyFiles: draft.assemblyFiles.map((file) => ({
+            ...file,
+            containerPath: `/exports/geometry-preview-assembly.${opts.legacyDraftPath}`,
+          })),
+          partMeshes: draft.partMeshes,
+        };
+        const legacyFingerprint = await sha256Fingerprint(legacyDraft);
+        await draftCaptures.save(
+          legacyFingerprint,
+          deterministicJson(legacyDraft),
+        );
+        signedDraftDigest = legacyFingerprint.digest;
+      }
+      signedManifest = {
+        ...draftManifest,
+        scriptHash: draft.scriptHash,
+        artifactHashes: {
+          assemblyFiles: draft.assemblyFiles.map((file) => ({
+            format: file.format,
+            name: file.name,
+            fingerprint: file.fingerprint,
+          })),
+          partMeshes: [],
+        },
+      };
     }
-    signedManifest = {
-      ...draftManifest,
-      scriptHash: draft.scriptHash,
-      artifactHashes: {
-        assemblyFiles: draft.assemblyFiles.map((file) => ({
-          format: file.format,
-          name: file.name,
-          fingerprint: file.fingerprint,
-        })),
-        partMeshes: [],
-      },
-    };
   }
 
   if (opts.mode === "no-mrtr") {
@@ -1044,7 +1731,7 @@ async function buildGeoFixture(
   } else {
     // Work item WITH a human-approved decision.  The basis r1 has NO architecture
     // artifact, so D5 will fail — which is what the "no arch artifact" test checks.
-    const geoManifest: GeometryManifest = signedManifest ?? {
+    const geoManifest: AnyGeometryManifest = signedManifest ?? {
       schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
       architectureBasis: {
         snapshotId: r1.snapshotId,
@@ -1492,6 +2179,213 @@ async function queueSuccessiveGeometrySeal(
   };
 }
 
+async function queueGeometryBundleUpgrade(
+  fixture: GeoFixture,
+  completed: Awaited<ReturnType<DesignWriteGeometryRunExecutor["execute"]>>,
+  options: { readonly omitPredecessor?: boolean } = {},
+): Promise<GeoFixture> {
+  const firstRun = completed.agentRuns.find((run) => run.id === fixture.queued.runId);
+  assertExists(firstRun?.resultSnapshot);
+  const basis = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
+  assertExists(basis);
+  const architecture = basis.artifacts.find((artifact) =>
+    artifact.kind === "sysml-model" &&
+    artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
+  );
+  const predecessor = basis.artifacts.find((artifact) =>
+    artifact.kind === "cad-model" &&
+    artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
+  );
+  assertExists(architecture);
+  assertExists(predecessor);
+
+  const manifest: GeometryBundleManifest = {
+    schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+    architectureBasis: {
+      snapshotId: basis.id,
+      revision: basis.revision,
+      artifactFingerprint: architecture.fingerprint,
+    },
+    ...(options.omitPredecessor ? {} : {
+      predecessor: {
+        artifactId: predecessor.id,
+        fingerprint: predecessor.fingerprint,
+      },
+    }),
+    components: [{ usageName: "frame", elementId: "usage:frame", label: "Frame" }],
+    unitSystem: "mm",
+    placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+    exportFormats: ["step"],
+    partExportFormats: ["step", "gltf"],
+    partDefinitions: [{
+      elementId: "part-definition:frame",
+      label: "FrameDefinition",
+    }],
+    occurrences: [{
+      usageElementId: "usage:frame",
+      partDefinitionElementId: "part-definition:frame",
+      placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+    }],
+  };
+  const bytesBySuffix = new Map<string, Uint8Array>([
+    ["-assembly.step", new TextEncoder().encode("bundle assembly step\n")],
+    ["-definition-000.step", new TextEncoder().encode("frame definition step\n")],
+    ["-definition-000.glb", new TextEncoder().encode("frame definition glb\n")],
+  ]);
+  const digestBySuffix = new Map<string, string>();
+  for (const [suffix, bytes] of bytesBySuffix) {
+    digestBySuffix.set(suffix, await sha256Bytes(bytes));
+  }
+  const bundleDraft = await captureGeometryBundleDraft(
+    {
+      callTool: (call) => {
+        const args = call.arguments as Record<string, unknown>;
+        const name = String(args.name);
+        const formats = args.formats as Array<"step" | "gltf">;
+        return Promise.resolve({
+          structuredContent: {
+            schemaVersion: "1.0",
+            kind: "export",
+            metrics: {},
+            files: formats.map((format) => {
+              const extension = format === "gltf" ? "glb" : format;
+              const suffix = name.endsWith("-assembly")
+                ? `-assembly.${extension}`
+                : `-definition-000.${extension}`;
+              const bytes = bytesBySuffix.get(suffix)!;
+              return {
+                format,
+                path: `/exports/${name}.${extension}`,
+                bytes: bytes.length,
+                sha256: digestBySuffix.get(suffix)!,
+                ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+              };
+            }),
+          },
+          text: "",
+        });
+      },
+      callToolTextResult: () => Promise.reject(new Error("unexpected")),
+    },
+    {
+      assemblyScript: "from build123d import Box\nresult = Box(12, 12, 12)\n",
+      manifest,
+      partDefinitionScripts: [{
+        elementId: "part-definition:frame",
+        script: "from build123d import Box\nresult = Box(8, 8, 8)\n",
+      }],
+    },
+    fixture.draftCaptures,
+    {
+      build123dService: "mcp-build123d-sandbox",
+      previewRunId: "run:geometry-preview-upgrade-v2",
+      materializeAsset: async (digest) => {
+        const suffix = [...digestBySuffix].find(([, value]) => value === digest)?.[0];
+        assertExists(suffix);
+        await Deno.mkdir(fixture.draftAssetDirectory, { recursive: true });
+        await Deno.writeFile(
+          `${fixture.draftAssetDirectory}/${digest}`,
+          bytesBySuffix.get(suffix)!,
+        );
+      },
+    },
+    () => "2026-08-08T12:11:00.000Z",
+  );
+  const signedManifest = geometryBundleManifestFromDraft(bundleDraft);
+
+  let project = await fixture.commands.appendChange(AGENT, {
+    commandId: "append-bundle-upgrade",
+    projectId: PROJECT_ID,
+    expectedRevision: completed.revision,
+    issuedAt: "2026-08-08T12:11:10.000Z",
+    baseSnapshot: {
+      snapshotId: basis.id,
+      revision: basis.revision,
+      subjectId: basis.subject.id,
+    },
+    phases: [{
+      id: "geometry-bundle-upgrade",
+      name: "Geometry bundle upgrade",
+      description: "Replace assembly-only geometry with a reviewed v2 bundle.",
+    }],
+    workItems: [{
+      id: "wi:geometry-bundle-upgrade",
+      phaseId: "geometry-bundle-upgrade",
+      owner: "agent",
+      dependsOnWorkItemIds: ["wi:geometry"],
+      decisionIds: ["decision:geometry-bundle-upgrade"],
+      operation: {
+        ...DESIGN_WRITE_GEOMETRY_OPERATION,
+        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+      },
+    }],
+    requiredDecisions: [{
+      id: "decision:geometry-bundle-upgrade",
+      phaseId: "geometry-bundle-upgrade",
+      title: "Geometry bundle v2",
+      question: "Replace the exact legacy geometry tip with this bundle?",
+    }],
+  });
+  project = await fixture.commands.proposeDecision(AGENT, {
+    commandId: "propose-bundle-upgrade",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:11:20.000Z",
+    decisionId: "decision:geometry-bundle-upgrade",
+    baseSnapshot: {
+      snapshotId: basis.id,
+      revision: basis.revision,
+      subjectId: basis.subject.id,
+    },
+    proposal: {
+      summary:
+        "Seal independent definition geometry and supersede the exact legacy tip.",
+      parameters: encodeGeometryDecisionParameters(
+        bundleDraft.fingerprint.digest,
+        signedManifest,
+      ) as Array<{ key: string; label: string; value: string | number | boolean }>,
+    },
+  });
+  const approval = project.approvals.find((candidate) =>
+    candidate.decisionId === "decision:geometry-bundle-upgrade"
+  );
+  assertExists(approval?.inputFingerprint);
+  project = await fixture.commands.approveDecision(HUMAN, {
+    commandId: "approve-bundle-upgrade",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:11:30.000Z",
+    decisionId: "decision:geometry-bundle-upgrade",
+    rationale:
+      "The exact predecessor, sources, definitions and placements were reviewed.",
+    inputFingerprint: approval.inputFingerprint,
+  });
+  project = await fixture.commands.queueRun(AGENT, {
+    commandId: "queue-bundle-upgrade",
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:11:40.000Z",
+    runId: "run:geometry-bundle-upgrade",
+    workItemId: "wi:geometry-bundle-upgrade",
+    summary: "Seal the reviewed geometry bundle upgrade.",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: basis.id,
+      revision: basis.revision,
+      subjectId: basis.subject.id,
+    },
+  });
+  return {
+    ...fixture,
+    baselineRef: {
+      snapshotId: basis.id,
+      revision: basis.revision,
+      subjectId: basis.subject.id,
+    },
+    queued: { revision: project.revision, runId: "run:geometry-bundle-upgrade" },
+  };
+}
+
 async function assertGeometrySealRejectedBeforeCanonicalWrites(
   fixture: GeoFixture,
   directory: string,
@@ -1804,6 +2698,323 @@ Deno.test("a reviewed geometry draft becomes valid canonical thread evidence bou
     assertExists(binaryConsumption);
     assertEquals(binaryConsumption.consumer, geometry.producer);
     assertEquals(binaryConsumption.status, "verified");
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sources, then replays exactly", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-v2-e2e-" });
+  try {
+    const fixture = await buildGeoFixture(tmpDir, { mode: "happy", bundleV2: true });
+    const executor = makeExecutor(fixture, tmpDir);
+    const command = executionCommand(fixture);
+    const completed = await executor.execute(AGENT, command);
+    const run = completed.agentRuns.find((candidate) =>
+      candidate.id === fixture.queued.runId
+    );
+    assertExists(run?.resultSnapshot);
+    const published = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+    assertExists(published);
+    validateThreadSnapshot(published);
+
+    const geometry = published.artifacts.find((artifact) =>
+      artifact.producer.runId === fixture.queued.runId &&
+      artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
+    );
+    assertExists(geometry);
+    const captureText = await fixture.geoCaptures.read(geometry.fingerprint);
+    assertExists(captureText);
+    const capture = JSON.parse(captureText);
+    assertEquals(capture.schemaVersion, "geometry-capture/2.0");
+    assertEquals(capture.manifest.schemaVersion, "geometry-manifest/2.0");
+    assertEquals(capture.sourceScripts.partDefinitions.length, 2);
+    assertEquals(
+      capture.sourceScripts.partDefinitions[0].elementId,
+      "part-definition:frame",
+    );
+    assertEquals(
+      capture.manifest.occurrences[0],
+      {
+        usageElementId: "usage:frame",
+        partDefinitionElementId: "part-definition:frame",
+        placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+      },
+    );
+
+    const assemblyStep = published.artifacts.find((artifact) =>
+      artifact.id.startsWith(`cad-asset-${geometry.fingerprint.digest}-assembly-`)
+    );
+    const definitionStep = published.artifacts.find((artifact) =>
+      artifact.id.startsWith(
+        `cad-asset-${geometry.fingerprint.digest}-definition-0-0-`,
+      )
+    );
+    const boltStep = published.artifacts.find((artifact) =>
+      artifact.id.startsWith(
+        `cad-asset-${geometry.fingerprint.digest}-definition-1-0-`,
+      )
+    );
+    const assemblyStl = published.artifacts.find((artifact) =>
+      artifact.id.startsWith(
+        `cad-asset-${geometry.fingerprint.digest}-assembly-1-`,
+      )
+    );
+    const definitionStl = published.artifacts.find((artifact) =>
+      artifact.id.startsWith(
+        `cad-asset-${geometry.fingerprint.digest}-definition-0-1-`,
+      )
+    );
+    assertExists(assemblyStep);
+    assertExists(definitionStep);
+    assertExists(boltStep);
+    assertExists(assemblyStl);
+    assertExists(definitionStl);
+    assertEquals(assemblyStep.kind, "step");
+    assertEquals(definitionStep.kind, "step");
+    assertEquals(assemblyStl.kind, "cad-model");
+    assertEquals(definitionStl.kind, "mesh");
+    assertEquals(definitionStep.name, "Authoritative STEP: FrameDefinition");
+    assertEquals(
+      assemblyStep.fingerprint.digest === definitionStep.fingerprint.digest,
+      false,
+    );
+    assertEquals(
+      await Deno.readFile(
+        `${fixture.canonicalAssetDirectory}/${definitionStep.fingerprint.digest}.step`,
+      ),
+      await Deno.readFile(
+        `${fixture.draftAssetDirectory}/${definitionStep.fingerprint.digest}`,
+      ),
+    );
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      published,
+      fixture.archCaptures,
+      fixture.geoCaptures,
+    );
+    assertExists(catalog);
+    const occurrences = catalog.components.filter((component) =>
+      component.kind === "part"
+    );
+    assertEquals(occurrences.length, 4);
+    const projected = occurrences.map((component) => {
+      const bindings = component.bindings.filter((binding) =>
+        binding.provider === "digital-thread" && binding.kind === "artifact"
+      );
+      const definition = component.bindings.find((binding) =>
+        binding.provider === "syson" && binding.kind === "part-definition"
+      );
+      assertExists(definition);
+      assertEquals(bindings.length, 1);
+      assertEquals(bindings[0]!.evidenceArtifactId, geometry.id);
+      return { definitionId: definition.id, cadId: bindings[0]!.id };
+    });
+    assertEquals(
+      projected.filter((item) => item.definitionId === "part-definition:frame"),
+      [{
+        definitionId: "part-definition:frame",
+        cadId: definitionStep.id,
+      }, {
+        definitionId: "part-definition:frame",
+        cadId: definitionStep.id,
+      }],
+    );
+    assertEquals(
+      projected.filter((item) => item.definitionId === "part-definition:bolt"),
+      [{
+        definitionId: "part-definition:bolt",
+        cadId: boltStep.id,
+      }, {
+        definitionId: "part-definition:bolt",
+        cadId: boltStep.id,
+      }],
+    );
+    const resolvedCatalog = resolveThreadComponentCatalog(published, catalog);
+    assertEquals(
+      resolvedCatalog.components.flatMap((component) =>
+        component.bindings.filter((binding) =>
+          binding.provider === "digital-thread" && binding.kind === "artifact"
+        ).map((binding) => binding.status)
+      ),
+      ["verified", "verified", "verified", "verified", "verified"],
+    );
+
+    const assertNoProjectedCad = async (
+      candidate: ThreadSnapshot,
+      expectedReason: string,
+    ) => {
+      const unavailable = await resolveGenericProductStructureCatalog(
+        candidate,
+        fixture.archCaptures,
+        fixture.geoCaptures,
+      );
+      assertExists(unavailable);
+      assertEquals(
+        unavailable.components.flatMap((component) =>
+          component.bindings.filter((binding) => binding.provider === "digital-thread")
+        ).length,
+        0,
+      );
+      assertStringIncludes(unavailable.rationale, expectedReason);
+    };
+
+    const extraFamilyArtifact = structuredClone(published);
+    extraFamilyArtifact.artifacts.push({
+      ...definitionStep,
+      id:
+        `cad-asset-${geometry.fingerprint.digest}-definition-99-0-${definitionStep.fingerprint.digest}`,
+    });
+    await assertNoProjectedCad(extraFamilyArtifact, "unreviewed extra artifact");
+
+    const extraLegacyMeshFamilyArtifact = structuredClone(published);
+    extraLegacyMeshFamilyArtifact.artifacts.push({
+      ...definitionStl,
+      id: `mesh-${geometry.fingerprint.digest}-${definitionStl.fingerprint.digest}`,
+    });
+    await assertNoProjectedCad(
+      extraLegacyMeshFamilyArtifact,
+      "unreviewed extra artifact",
+    );
+
+    const archivedDefinitionStep = structuredClone(published);
+    archivedDefinitionStep.changeSet.changes.push({
+      id: `archive-test-${definitionStep.id}`,
+      kind: "archived",
+      target: { kind: "artifact", id: definitionStep.id },
+      summary: "Adversarially archive one required PartDefinition STEP.",
+      beforeFingerprint: definitionStep.fingerprint,
+    });
+    await assertNoProjectedCad(archivedDefinitionStep, "incomplete");
+
+    const publicationConsumptionId = `consume-${geometry.id}-by-${definitionStep.id}`;
+    const missingPublicationConsumption = structuredClone(published);
+    missingPublicationConsumption.consumptions = missingPublicationConsumption
+      .consumptions.filter((consumption) =>
+        consumption.id !== publicationConsumptionId
+      );
+    await assertNoProjectedCad(
+      missingPublicationConsumption,
+      "publication consumption is not exact",
+    );
+
+    const missingPublicationUses = structuredClone(published);
+    missingPublicationUses.provenance = missingPublicationUses.provenance.filter(
+      (link) =>
+        !(link.relation === "uses" && link.from.kind === "consumption" &&
+          link.from.id === publicationConsumptionId),
+    );
+    await assertNoProjectedCad(
+      missingPublicationUses,
+      "publication consumption is not exact",
+    );
+
+    const publicationUses = published.provenance.find((link) =>
+      link.relation === "uses" && link.from.kind === "consumption" &&
+      link.from.id === publicationConsumptionId
+    );
+    assertExists(publicationUses);
+    const wrongPublicationUsesId = structuredClone(published);
+    const wrongUsesIdLink = wrongPublicationUsesId.provenance.find((link) =>
+      link.id === publicationUses.id
+    );
+    assertExists(wrongUsesIdLink);
+    wrongUsesIdLink.id = `${wrongUsesIdLink.id}-wrong`;
+    await assertNoProjectedCad(
+      wrongPublicationUsesId,
+      "publication consumption is not exact",
+    );
+
+    const binaryTrace = published.provenance.find((link) =>
+      link.relation === "traces_to" && link.from.kind === "artifact" &&
+      link.from.id === definitionStep.id && link.to.kind === "artifact" &&
+      link.to.id === geometry.id
+    );
+    assertExists(binaryTrace);
+    const wrongBinaryTraceId = structuredClone(published);
+    const wrongTraceIdLink = wrongBinaryTraceId.provenance.find((link) =>
+      link.id === binaryTrace.id
+    );
+    assertExists(wrongTraceIdLink);
+    wrongTraceIdLink.id = `${wrongTraceIdLink.id}-wrong`;
+    await assertNoProjectedCad(
+      wrongBinaryTraceId,
+      "no unique trace to its capture",
+    );
+
+    for (
+      const [source, id, reason] of [
+        [published, publicationUses.id, "publication consumption is not exact"],
+        [published, binaryTrace.id, "no unique trace to its capture"],
+      ] as const
+    ) {
+      const wrongRationale = structuredClone(source);
+      const link = wrongRationale.provenance.find((candidate) => candidate.id === id);
+      assertExists(link);
+      link.rationale = "Structurally valid but unverified adversarial rationale.";
+      await assertNoProjectedCad(wrongRationale, reason);
+    }
+
+    for (
+      const [defect, reason] of [
+        ["missing-canonical-consumption", "consumption metadata is not exact"],
+        ["duplicate-consumption", "consumption is missing or ambiguous"],
+        ["wrong-consumption-time", "consumption metadata is not exact"],
+        ["wrong-uses-id", "uses attestation is not exact"],
+        ["wrong-uses-rationale", "uses attestation is not exact"],
+        ["wrong-derived-id", "architecture derivation is not exact"],
+        ["wrong-derived-rationale", "architecture derivation is not exact"],
+        ["duplicate-derived", "architecture derivation is not exact"],
+      ] as const
+    ) {
+      await assertNoProjectedCad(
+        withArchitectureAttestationDefect(published, defect),
+        reason,
+      );
+    }
+
+    const missingCaptureCatalog = await resolveGenericProductStructureCatalog(
+      published,
+      fixture.archCaptures,
+      { read: () => Promise.resolve(undefined) },
+    );
+    assertExists(missingCaptureCatalog);
+    assertEquals(missingCaptureCatalog.components.length, catalog.components.length);
+    assertEquals(
+      missingCaptureCatalog.components.flatMap((component) =>
+        component.bindings.filter((binding) => binding.provider === "digital-thread")
+      ).length,
+      0,
+    );
+    assertStringIncludes(missingCaptureCatalog.rationale, "not durably readable");
+
+    const ambiguous = structuredClone(published);
+    ambiguous.artifacts.push({
+      ...geometry,
+      id: `geometry-${"f".repeat(64)}`,
+      version: "f".repeat(64),
+      fingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+      uri: `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${"f".repeat(64)}`,
+    });
+    const ambiguousCatalog = await resolveGenericProductStructureCatalog(
+      ambiguous,
+      fixture.archCaptures,
+      fixture.geoCaptures,
+    );
+    assertExists(ambiguousCatalog);
+    assertEquals(ambiguousCatalog.components.length, catalog.components.length);
+    assertEquals(
+      ambiguousCatalog.components.flatMap((component) =>
+        component.bindings.filter((binding) => binding.provider === "digital-thread")
+      ).length,
+      0,
+    );
+    assertStringIncludes(ambiguousCatalog.rationale, "multiple active capture tips");
+
+    const revisionBeforeReplay = completed.revision;
+    const replayed = await executor.execute(AGENT, command);
+    assertEquals(replayed.revision, revisionBeforeReplay);
+    assertEquals(replayed.threadSnapshots.at(-1), completed.threadSnapshots.at(-1));
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
@@ -2137,6 +3348,655 @@ Deno.test("successive geometry seals may reuse identical binary bytes under dist
     await Deno.remove(tmpDir, { recursive: true });
   }
 });
+
+Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry family", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-upgrade-" });
+  try {
+    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+      AGENT,
+      executionCommand(legacyFixture),
+    );
+    const legacyRun = legacyCompleted.agentRuns.find((run) =>
+      run.id === legacyFixture.queued.runId
+    );
+    assertExists(legacyRun?.resultSnapshot);
+    const legacySnapshot = await legacyFixture.snapshots.get(
+      legacyRun.resultSnapshot.snapshotId,
+    );
+    assertExists(legacySnapshot);
+    const legacyPrimary = legacySnapshot.artifacts.find((artifact) =>
+      artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+      artifact.producer.runId === legacyRun.id
+    );
+    const legacyBinaries = legacySnapshot.artifacts.filter((artifact) =>
+      artifact.id.startsWith(`cad-asset-${legacyPrimary?.fingerprint.digest}-`) ||
+      artifact.id.startsWith(`mesh-${legacyPrimary?.fingerprint.digest}-`)
+    );
+    assertExists(legacyPrimary);
+    assertEquals(legacyBinaries.length > 0, true);
+
+    const upgradeFixture = await queueGeometryBundleUpgrade(
+      legacyFixture,
+      legacyCompleted,
+    );
+    const command = {
+      ...executionCommand(upgradeFixture),
+      commandId: "exec-bundle-upgrade",
+      issuedAt: "2026-08-08T12:12:00.000Z",
+    };
+    const executor = makeExecutor(upgradeFixture, tmpDir);
+    const upgraded = await executor.execute(AGENT, command);
+    const run = upgraded.agentRuns.find((candidate) =>
+      candidate.id === upgradeFixture.queued.runId
+    );
+    assertExists(run?.resultSnapshot);
+    const snapshot = await upgradeFixture.snapshots.get(run.resultSnapshot.snapshotId);
+    assertExists(snapshot);
+    validateThreadSnapshot(snapshot);
+    const newPrimary = snapshot.artifacts.find((artifact) =>
+      artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+      artifact.producer.runId === run.id
+    );
+    assertExists(newPrimary);
+    assertEquals(newPrimary.inputArtifactIds.includes(legacyPrimary.id), true);
+    assertEquals(
+      snapshot.provenance.some((link) =>
+        link.relation === "supersedes" && link.from.id === newPrimary.id &&
+        link.to.id === legacyPrimary.id
+      ),
+      true,
+    );
+    const archived = new Set(
+      snapshot.changeSet.changes.filter((change) => change.kind === "archived")
+        .map((change) => `${change.target.kind}:${change.target.id}`),
+    );
+    assertEquals(archived.has(`artifact:${legacyPrimary.id}`), true);
+    for (const binary of legacyBinaries) {
+      assertEquals(archived.has(`artifact:${binary.id}`), true);
+    }
+    const activeGeometry = snapshot.artifacts.filter((artifact) =>
+      artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+      !archived.has(`artifact:${artifact.id}`)
+    );
+    assertEquals(activeGeometry.map((artifact) => artifact.id), [newPrimary.id]);
+
+    const upgradedCatalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      upgradeFixture.archCaptures,
+      upgradeFixture.geoCaptures,
+    );
+    assertExists(upgradedCatalog);
+    assertEquals(
+      upgradedCatalog.components.some((component) =>
+        component.bindings.some((binding) => binding.provider === "digital-thread")
+      ),
+      true,
+    );
+    const assertNoUpgradedCad = async (
+      candidate: ThreadSnapshot,
+      expectedReason: string,
+    ) => {
+      const unavailable = await resolveGenericProductStructureCatalog(
+        candidate,
+        upgradeFixture.archCaptures,
+        upgradeFixture.geoCaptures,
+      );
+      assertExists(unavailable);
+      assertEquals(
+        unavailable.components.some((component) =>
+          component.bindings.some((binding) => binding.provider === "digital-thread")
+        ),
+        false,
+      );
+      assertStringIncludes(unavailable.rationale, expectedReason);
+    };
+
+    const reactivatedLegacyBinary = structuredClone(snapshot);
+    const legacyBinary = legacyBinaries[0]!;
+    reactivatedLegacyBinary.changeSet.changes = reactivatedLegacyBinary.changeSet
+      .changes.filter((change) =>
+        !(change.kind === "archived" && change.target.kind === "artifact" &&
+          change.target.id === legacyBinary.id)
+      );
+    await assertNoUpgradedCad(
+      reactivatedLegacyBinary,
+      "predecessor binary family is not fully archived",
+    );
+
+    const duplicateSupersedes = structuredClone(snapshot);
+    const supersedes = duplicateSupersedes.provenance.find((link) =>
+      link.relation === "supersedes" && link.from.id === newPrimary.id &&
+      link.to.id === legacyPrimary.id
+    );
+    assertExists(supersedes);
+    duplicateSupersedes.provenance.push({
+      ...supersedes,
+      id: `${supersedes.id}-duplicate`,
+    });
+    await assertNoUpgradedCad(duplicateSupersedes, "unique supersedes");
+
+    const missingDerivedFrom = structuredClone(snapshot);
+    missingDerivedFrom.provenance = missingDerivedFrom.provenance.filter((link) =>
+      !(link.relation === "derived_from" && link.from.id === newPrimary.id &&
+        link.to.id === legacyPrimary.id)
+    );
+    await assertNoUpgradedCad(missingDerivedFrom, "unique derived_from");
+
+    const predecessorConsumptionId =
+      `consume-geometry-${legacyPrimary.id}-by-${newPrimary.id}`;
+    const missingPredecessorUses = structuredClone(snapshot);
+    missingPredecessorUses.provenance = missingPredecessorUses.provenance.filter(
+      (link) =>
+        !(link.relation === "uses" && link.from.kind === "consumption" &&
+          link.from.id === predecessorConsumptionId),
+    );
+    await assertNoUpgradedCad(
+      missingPredecessorUses,
+      "predecessor consumption is not exact",
+    );
+
+    const predecessorDerived = snapshot.provenance.find((link) =>
+      link.relation === "derived_from" && link.from.id === newPrimary.id &&
+      link.to.id === legacyPrimary.id
+    );
+    const predecessorUses = snapshot.provenance.find((link) =>
+      link.relation === "uses" && link.from.kind === "consumption" &&
+      link.from.id === predecessorConsumptionId
+    );
+    assertExists(predecessorDerived);
+    assertExists(predecessorUses);
+    for (
+      const [linkId, reason] of [
+        [supersedes.id, "unique supersedes"],
+        [predecessorDerived.id, "unique derived_from"],
+        [predecessorUses.id, "predecessor consumption is not exact"],
+      ] as const
+    ) {
+      const wrongId: ThreadSnapshot = structuredClone(snapshot);
+      const wrongIdLink: ThreadProvenanceLink | undefined = wrongId.provenance.find(
+        (link: ThreadProvenanceLink) => link.id === linkId,
+      );
+      assertExists(wrongIdLink);
+      wrongIdLink.id = `${wrongIdLink.id}-wrong`;
+      await assertNoUpgradedCad(wrongId, reason);
+
+      const wrongRationale: ThreadSnapshot = structuredClone(snapshot);
+      const wrongRationaleLink: ThreadProvenanceLink | undefined = wrongRationale
+        .provenance.find((link: ThreadProvenanceLink) => link.id === linkId);
+      assertExists(wrongRationaleLink);
+      wrongRationaleLink.rationale =
+        "Structurally valid but unverified predecessor rationale.";
+      await assertNoUpgradedCad(wrongRationale, reason);
+    }
+
+    const replayed = await executor.execute(AGENT, command);
+    assertEquals(replayed.revision, upgraded.revision);
+    assertEquals(replayed.threadSnapshots.at(-1), upgraded.threadSnapshots.at(-1));
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("a third geometry generation refuses a v2 predecessor with broken own lineage", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-transitive-lineage-" });
+  try {
+    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+      AGENT,
+      executionCommand(legacyFixture),
+    );
+    const upgradeFixture = await queueGeometryBundleUpgrade(
+      legacyFixture,
+      legacyCompleted,
+    );
+    const upgraded = await makeExecutor(upgradeFixture, tmpDir).execute(
+      AGENT,
+      {
+        ...executionCommand(upgradeFixture),
+        commandId: "exec-bundle-upgrade-for-transitive-lineage",
+        issuedAt: "2026-08-08T12:12:00.000Z",
+      },
+    );
+    const upgradedRun = upgraded.agentRuns.find((candidate) =>
+      candidate.id === upgradeFixture.queued.runId
+    );
+    assertExists(upgradedRun?.resultSnapshot);
+    const exactBasis = await upgradeFixture.snapshots.get(
+      upgradedRun.resultSnapshot.snapshotId,
+    );
+    assertExists(exactBasis);
+    const activeGeometry = exactBasis.artifacts.find((artifact) =>
+      artifact.kind === "cad-model" &&
+      artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+      artifact.producer.runId === upgradedRun.id
+    );
+    assertExists(activeGeometry);
+    const nextParams = bundlePredecessorParams({
+      artifactId: activeGeometry.id,
+      fingerprint: activeGeometry.fingerprint,
+    });
+
+    const cases: ReadonlyArray<{
+      defect: PriorGeometryLineageDefect;
+      message: string;
+    }> = [{
+      defect: "missing-supersedes",
+      message: "its own predecessor supersedes lineage is not exact",
+    }, {
+      defect: "duplicate-derived",
+      message: "its own predecessor derived_from lineage is not exact",
+    }, {
+      defect: "wrong-consumption-time",
+      message: "its own predecessor consumption metadata is not exact",
+    }, {
+      defect: "wrong-derived-id",
+      message: "its own predecessor derived_from lineage is not exact",
+    }, {
+      defect: "wrong-derived-rationale",
+      message: "its own predecessor derived_from lineage is not exact",
+    }, {
+      defect: "wrong-supersedes-id",
+      message: "its own predecessor supersedes lineage is not exact",
+    }, {
+      defect: "wrong-supersedes-rationale",
+      message: "its own predecessor supersedes lineage is not exact",
+    }, {
+      defect: "wrong-uses-id",
+      message: "its own predecessor uses attestation is not exact",
+    }, {
+      defect: "wrong-uses-rationale",
+      message: "its own predecessor uses attestation is not exact",
+    }];
+    for (const testCase of cases) {
+      const brokenBasis = withPriorGeometryLineageDefect(
+        exactBasis,
+        testCase.defect,
+      );
+      await assertRejects(
+        () =>
+          requireGeometryBundlePredecessor(
+            brokenBasis,
+            nextParams,
+            upgradeFixture.geoCaptures,
+          ),
+        EngineeringProjectCommandError,
+        testCase.message,
+      );
+    }
+    for (
+      const [defect, message] of [
+        ["wrong-uses-id", "publication consumption is not exact"],
+        ["wrong-trace-id", "has no exact capture trace"],
+        ["wrong-uses-rationale", "publication consumption is not exact"],
+        ["wrong-trace-rationale", "has no exact capture trace"],
+      ] as const
+    ) {
+      await assertRejects(
+        () =>
+          requireGeometryBundlePredecessor(
+            withPriorGeometryBinaryGraphDefect(exactBasis, defect),
+            nextParams,
+            upgradeFixture.geoCaptures,
+          ),
+        EngineeringProjectCommandError,
+        message,
+      );
+    }
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("geometry bundle v2 refuses an active legacy tip when predecessor is omitted", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-missing-predecessor-" });
+  try {
+    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+      AGENT,
+      executionCommand(legacyFixture),
+    );
+    const upgradeFixture = await queueGeometryBundleUpgrade(
+      legacyFixture,
+      legacyCompleted,
+      { omitPredecessor: true },
+    );
+    let captureWrites = 0;
+    const trackingCaptureStore: GeometryCaptureStore = {
+      uriFor: (fingerprint) => upgradeFixture.geoCaptures.uriFor(fingerprint),
+      read: (fingerprint) => upgradeFixture.geoCaptures.read(fingerprint),
+      save: () => {
+        captureWrites++;
+        return Promise.reject(new Error("unexpected write"));
+      },
+    };
+    await assertRejects(
+      () =>
+        makeExecutor(upgradeFixture, tmpDir, trackingCaptureStore).execute(AGENT, {
+          ...executionCommand(upgradeFixture),
+          commandId: "exec-bundle-missing-predecessor",
+        }),
+      EngineeringProjectCommandError,
+      "must name active geometry tip",
+    );
+    assertEquals(captureWrites, 0);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("geometry bundle v2 refuses an arbitrary active artifact traced to the predecessor family", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-rogue-family-" });
+  try {
+    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+      AGENT,
+      executionCommand(legacyFixture),
+    );
+    const upgradeFixture = await queueGeometryBundleUpgrade(
+      legacyFixture,
+      legacyCompleted,
+    );
+    const basisId = upgradeFixture.baselineRef.snapshotId;
+    let snapshotWrites = 0;
+    const mutatedSnapshots: ThreadSnapshotStore = {
+      async get(id) {
+        const stored = await upgradeFixture.snapshots.get(id);
+        if (!stored || id !== basisId) return stored;
+        const mutated = structuredClone(stored);
+        const predecessor = mutated.artifacts.find((artifact) =>
+          artifact.kind === "cad-model" &&
+          artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
+        );
+        assertExists(predecessor);
+        const rogueDigest = "d".repeat(64);
+        mutated.artifacts.push({
+          id: "rogue-active-geometry-child",
+          name: "Unreviewed geometry child",
+          kind: "other",
+          version: rogueDigest,
+          fingerprint: { algorithm: "sha256", digest: rogueDigest },
+          uri: "casys://rogue-active-geometry-child",
+          mediaType: "application/octet-stream",
+          producer: {
+            serverId: "untrusted-provider",
+            tool: "rogue_export",
+            runId: "run:rogue",
+          },
+          inputArtifactIds: [],
+          freshness: {
+            status: "fresh",
+            changedAt: "2026-08-08T12:09:00.000Z",
+            invalidatedByChangeIds: [],
+          },
+        });
+        mutated.provenance.push({
+          id: "trace-rogue-active-geometry-child",
+          relation: "traces_to",
+          from: { kind: "artifact", id: "rogue-active-geometry-child" },
+          to: { kind: "artifact", id: predecessor.id },
+          rationale: "Adversarial extra family member.",
+        });
+        return mutated;
+      },
+      latest(subjectId) {
+        return upgradeFixture.snapshots.latest(subjectId);
+      },
+      save(snapshot) {
+        snapshotWrites += 1;
+        return upgradeFixture.snapshots.save(snapshot);
+      },
+    };
+    let captureWrites = 0;
+    const trackingCaptureStore: GeometryCaptureStore = {
+      uriFor: (fingerprint) => upgradeFixture.geoCaptures.uriFor(fingerprint),
+      read: (fingerprint) => upgradeFixture.geoCaptures.read(fingerprint),
+      save: () => {
+        captureWrites += 1;
+        return Promise.reject(new Error("unexpected write"));
+      },
+    };
+
+    await assertRejects(
+      () =>
+        makeExecutor(
+          upgradeFixture,
+          tmpDir,
+          trackingCaptureStore,
+          mutatedSnapshots,
+        ).execute(AGENT, {
+          ...executionCommand(upgradeFixture),
+          commandId: "exec-bundle-rogue-family",
+        }),
+      EngineeringProjectCommandError,
+      "binary family is incomplete or contains extra assets",
+    );
+    assertEquals(captureWrites, 0);
+    assertEquals(snapshotWrites, 0);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("geometry bundle v2 refuses non-canonical predecessor binary trace and uses evidence before publication", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-predecessor-binary-" });
+  try {
+    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+      AGENT,
+      executionCommand(legacyFixture),
+    );
+    const upgradeFixture = await queueGeometryBundleUpgrade(
+      legacyFixture,
+      legacyCompleted,
+    );
+    const basisId = upgradeFixture.baselineRef.snapshotId;
+
+    for (
+      const [defect, expectedMessage] of [
+        ["wrong-uses-id", "publication consumption is not exact"],
+        ["wrong-trace-id", "has no exact capture trace"],
+        ["wrong-uses-rationale", "publication consumption is not exact"],
+        ["wrong-trace-rationale", "has no exact capture trace"],
+      ] as const
+    ) {
+      let snapshotWrites = 0;
+      const mutatedSnapshots: ThreadSnapshotStore = {
+        async get(id) {
+          const stored = await upgradeFixture.snapshots.get(id);
+          if (!stored || id !== basisId) return stored;
+          return withPriorGeometryBinaryGraphDefect(stored, defect);
+        },
+        latest(subjectId) {
+          return upgradeFixture.snapshots.latest(subjectId);
+        },
+        save(snapshot) {
+          snapshotWrites += 1;
+          return upgradeFixture.snapshots.save(snapshot);
+        },
+      };
+      let captureWrites = 0;
+      const captures: GeometryCaptureStore = {
+        uriFor: (fingerprint) => upgradeFixture.geoCaptures.uriFor(fingerprint),
+        read: (fingerprint) => upgradeFixture.geoCaptures.read(fingerprint),
+        save: () => {
+          captureWrites += 1;
+          return Promise.reject(new Error("unexpected canonical capture write"));
+        },
+      };
+
+      await assertRejects(
+        () =>
+          makeExecutor(
+            upgradeFixture,
+            tmpDir,
+            captures,
+            mutatedSnapshots,
+          ).execute(AGENT, {
+            ...executionCommand(upgradeFixture),
+            commandId: `exec-bundle-predecessor-binary-${defect}`,
+          }),
+        EngineeringProjectCommandError,
+        expectedMessage,
+      );
+      assertEquals(captureWrites, 0, defect);
+      assertEquals(snapshotWrites, 0, defect);
+      const unchanged = await upgradeFixture.projects.get(PROJECT_ID);
+      assertEquals(
+        unchanged?.agentRuns.find((run) => run.id === upgradeFixture.queued.runId)
+          ?.status,
+        "queued",
+        defect,
+      );
+    }
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+for (
+  const [defect, expectedMessage] of [
+    [
+      "missing-canonical-consumption",
+      "architecture consumption metadata is not exact",
+    ],
+    [
+      "duplicate-consumption",
+      "architecture consumption is missing or ambiguous",
+    ],
+    ["wrong-consumption-time", "architecture consumption metadata is not exact"],
+    ["wrong-uses-id", "architecture uses attestation is not exact"],
+    ["wrong-uses-rationale", "architecture uses attestation is not exact"],
+    ["wrong-derived-id", "architecture derivation is not exact"],
+    ["wrong-derived-rationale", "architecture derivation is not exact"],
+    ["duplicate-derived", "architecture derivation is not exact"],
+  ] as const
+) {
+  Deno.test(
+    `geometry bundle v2 refuses predecessor architecture attestation defect ${defect}`,
+    async () => {
+      const tmpDir = await Deno.makeTempDir({
+        prefix: `geo-bundle-predecessor-${defect}-`,
+      });
+      try {
+        const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+        const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+          AGENT,
+          executionCommand(legacyFixture),
+        );
+        const upgradeFixture = await queueGeometryBundleUpgrade(
+          legacyFixture,
+          legacyCompleted,
+        );
+        const basisId = upgradeFixture.baselineRef.snapshotId;
+        let snapshotWrites = 0;
+        const mutatedSnapshots: ThreadSnapshotStore = {
+          async get(id) {
+            const stored = await upgradeFixture.snapshots.get(id);
+            if (!stored || id !== basisId) return stored;
+            return withArchitectureAttestationDefect(stored, defect);
+          },
+          latest(subjectId) {
+            return upgradeFixture.snapshots.latest(subjectId);
+          },
+          save(snapshot) {
+            snapshotWrites += 1;
+            return upgradeFixture.snapshots.save(snapshot);
+          },
+        };
+        let captureWrites = 0;
+        const trackingCaptureStore: GeometryCaptureStore = {
+          uriFor: (fingerprint) => upgradeFixture.geoCaptures.uriFor(fingerprint),
+          read: (fingerprint) => upgradeFixture.geoCaptures.read(fingerprint),
+          save: () => {
+            captureWrites += 1;
+            return Promise.reject(new Error("unexpected write"));
+          },
+        };
+
+        await assertRejects(
+          () =>
+            makeExecutor(
+              upgradeFixture,
+              tmpDir,
+              trackingCaptureStore,
+              mutatedSnapshots,
+            ).execute(AGENT, {
+              ...executionCommand(upgradeFixture),
+              commandId: `exec-bundle-predecessor-${defect}`,
+            }),
+          EngineeringProjectCommandError,
+          expectedMessage,
+        );
+        assertEquals(captureWrites, 0);
+        assertEquals(snapshotWrites, 0);
+      } finally {
+        await Deno.remove(tmpDir, { recursive: true });
+      }
+    },
+  );
+}
+
+for (
+  const [defect, message] of [
+    ["omit-usage", "PartUsage identities must exactly cover every PartUsage"],
+    [
+      "omit-definition",
+      "PartDefinition identities must exactly cover the definitions targeted",
+    ],
+  ] as const
+) {
+  Deno.test(
+    `geometry bundle v2 rejects architecture coverage defect ${defect} before canonical writes`,
+    async () => {
+      const tmpDir = await Deno.makeTempDir({ prefix: `geo-bundle-${defect}-` });
+      try {
+        const fixture = await buildGeoFixture(tmpDir, {
+          mode: "happy",
+          bundleV2: true,
+          bundleCoverageDefect: defect,
+        });
+        await assertGeometrySealRejectedBeforeCanonicalWrites(
+          fixture,
+          tmpDir,
+          message,
+        );
+      } finally {
+        await Deno.remove(tmpDir, { recursive: true });
+      }
+    },
+  );
+}
+
+for (
+  const [defect, message] of [
+    ["empty", "empty-file SHA-256 is not a geometry asset"],
+    ["size-mismatch", "Geometry draft asset byte count mismatch"],
+  ] as const
+) {
+  Deno.test(
+    `geometry bundle v2 rejects ${defect} reviewed draft bytes before claim or canonical writes`,
+    async () => {
+      const tmpDir = await Deno.makeTempDir({
+        prefix: `geo-bundle-asset-${defect}-`,
+      });
+      try {
+        const fixture = await buildGeoFixture(tmpDir, {
+          mode: "happy",
+          bundleV2: true,
+          bundleAssetDefect: defect,
+        });
+        await assertGeometrySealRejectedBeforeCanonicalWrites(
+          fixture,
+          tmpDir,
+          message,
+        );
+      } finally {
+        await Deno.remove(tmpDir, { recursive: true });
+      }
+    },
+  );
+}
 
 Deno.test("geometry sealing reads and rehashes the architecture capture even with no component bindings", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-empty-components-corrupt-" });

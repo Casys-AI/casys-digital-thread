@@ -19,6 +19,12 @@
  */
 
 import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
+import {
+  encodeGeometryBundleDecisionParameters,
+  GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+  type GeometryBundleManifest,
+  parseGeometryBundleDecisionParameters,
+} from "./geometry-bundle.ts";
 
 /**
  * Reviewed operation references — the same pattern as MODEL_WRITE_ARCHITECTURE_OPERATION
@@ -98,6 +104,9 @@ export interface GeometryManifest {
   readonly artifactHashes?: GeometryArtifactHashes;
 }
 
+/** Additive read/write union. Existing geometry-manifest/1.0 remains unchanged. */
+export type AnyGeometryManifest = GeometryManifest | GeometryBundleManifest;
+
 /**
  * Flat parameter encoding carried in an `EngineeringDecisionProposal`.
  *
@@ -127,7 +136,7 @@ export type GeometryDecisionParameterKey = string;
 
 export interface GeometryDecisionParameters {
   readonly draftDigest: string;
-  readonly manifest: GeometryManifest;
+  readonly manifest: AnyGeometryManifest;
 }
 
 export type GeometryProposalErrorCode =
@@ -161,6 +170,12 @@ export class GeometryProposalError extends Error {
 export function parseGeometryDecisionParameters(
   params: ReadonlyMap<string, string | number | boolean>,
 ): GeometryDecisionParameters {
+  if (
+    String(params.get("geometry.manifest.schemaVersion")) ===
+      GEOMETRY_BUNDLE_MANIFEST_SCHEMA
+  ) {
+    return parseGeometryBundleDecisionParameters(params);
+  }
   const draftDigest = requireStringParam(
     params,
     "geometry.draft.digest",
@@ -398,8 +413,11 @@ export function geometryDecisionParametersToMap(
  */
 export function encodeGeometryDecisionParameters(
   draftDigest: string,
-  manifest: GeometryManifest,
+  manifest: AnyGeometryManifest,
 ): ReadonlyArray<{ key: string; label: string; value: string | number | boolean }> {
+  if (manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA) {
+    return encodeGeometryBundleDecisionParameters(draftDigest, manifest);
+  }
   if (!manifest.scriptHash || !manifest.artifactHashes) {
     throw new GeometryProposalError(
       "manifest_incomplete",

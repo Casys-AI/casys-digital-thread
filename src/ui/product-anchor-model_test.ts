@@ -1,5 +1,9 @@
 import { assertEquals } from "@std/assert";
-import { buildCatalogArtifactAnchorMap } from "./src/thread/product-anchor-model.ts";
+import {
+  buildCatalogArtifactAnchorMap,
+  productDefinitionSummary,
+  productStructureAvailability,
+} from "./src/thread/product-anchor-model.ts";
 import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import type { ThreadComponent, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
 
@@ -22,6 +26,54 @@ Deno.test("buildCatalogArtifactAnchorMap returns empty map for empty catalog", (
   const snapshot = snapshotWith([]);
   const anchor = buildCatalogArtifactAnchorMap(snapshot);
   assertEquals(anchor.size, 0);
+});
+
+Deno.test("empty or legacy product projection is unavailable, never zero components", () => {
+  const snapshot = snapshotWith([]);
+  snapshot.components.rationale =
+    "architecture-capture/1.0 cannot be projected by the current vocabulary.";
+
+  assertEquals(productStructureAvailability(snapshot), {
+    status: "unavailable",
+    title: "Product structure unavailable",
+    detail: "architecture-capture/1.0 cannot be projected by the current vocabulary.",
+    guidance:
+      "The current thread does not expose a reviewed product catalog compatible with this view. No zero-component count is inferred; inspect the exact architecture evidence or migrate it through the reviewed architecture operation.",
+  });
+  assertEquals(
+    productDefinitionSummary(snapshot),
+    "Product structure unavailable. architecture-capture/1.0 cannot be projected by the current vocabulary.",
+  );
+});
+
+Deno.test("available product structure distinguishes roots from part occurrences", () => {
+  const snapshot = snapshotWith([{
+    id: "assembly",
+    label: "Desk lamp",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [],
+  }, {
+    id: "base-usage",
+    parentId: "assembly",
+    label: "Base",
+    kind: "part",
+    quantity: 1,
+    bindings: [],
+  }, {
+    id: "fastener-usage",
+    parentId: "assembly",
+    label: "Fastener",
+    kind: "part",
+    quantity: 4,
+    bindings: [],
+  }]);
+
+  assertEquals(productStructureAvailability(snapshot), {
+    status: "available",
+    assemblyRootCount: 1,
+    partOccurrenceCount: 5,
+  });
 });
 
 Deno.test("buildCatalogArtifactAnchorMap anchors @3 assembly STEP to assembly component", () => {

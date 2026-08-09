@@ -36,6 +36,10 @@ import {
 } from "../../domain/thread/thread-component-catalog.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
+import {
+  enrichGenericProductCatalogWithGeometryBundle,
+  type GenericGeometryCaptureReader,
+} from "./geometry-bundle-product-catalog.ts";
 
 // ── Capture schema ────────────────────────────────────────────────────────────
 
@@ -101,6 +105,7 @@ interface GenericArchitectureCapture {
 export async function resolveGenericProductStructureCatalog(
   snapshot: ThreadSnapshot,
   captures: GenericArchitectureCaptureReader,
+  geometryCaptures?: GenericGeometryCaptureReader,
 ): Promise<ThreadComponentCatalog | undefined> {
   const architectures = genericArchitectureArtifacts(snapshot);
   const selected = findArchitectureTip(snapshot, architectures);
@@ -124,7 +129,18 @@ export async function resolveGenericProductStructureCatalog(
       selected.artifact,
       architectures,
     );
-    return buildCatalog(snapshot.subject.id, selected.artifact.id, capture);
+    const catalog = buildCatalog(
+      snapshot.subject.id,
+      selected.artifact.id,
+      capture,
+    );
+    return catalog && geometryCaptures
+      ? await enrichGenericProductCatalogWithGeometryBundle(
+        snapshot,
+        catalog,
+        geometryCaptures,
+      )
+      : catalog;
   } catch (error) {
     return unavailable(
       snapshot.subject.id,
@@ -418,7 +434,8 @@ function buildCatalog(
         "This Product Structure is derived at read time from the exact hashed " +
         "architecture capture produced by the generic model.write-architecture@1 run. " +
         "The system PartDef is the assembly root; each PartUsage occurrence is a distinct part. " +
-        "No ERP identity, no CAD child path, and no inferred binding is included.",
+        "No ERP identity or provider binding is inferred. Independent CAD bindings are added " +
+        "only from an exact active geometry-capture/2.0.",
       systemViews: {},
       components: [
         {

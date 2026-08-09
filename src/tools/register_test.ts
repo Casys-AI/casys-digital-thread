@@ -20,6 +20,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     docker: unavailableDocker(),
     logger: () => {},
     activeProjectDirectory,
+    projectReviewIntentDirectory: `${activeProjectDirectory}/review-intents`,
   });
   assertEquals(app.getToolNames().sort(), [
     "cockpit_focus_set",
@@ -41,6 +42,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_decision_reject",
     "project_plan_publish",
     "project_question_propose",
+    "project_review_intent_acknowledge",
+    "project_review_intent_list",
     "project_snapshot",
     "project_start",
     "project_work_item_reconcile_successor",
@@ -99,6 +102,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_decision_reject",
       "project_plan_publish",
       "project_question_propose",
+      "project_review_intent_acknowledge",
+      "project_review_intent_list",
       "project_snapshot",
       "project_start",
       "project_work_item_reconcile_successor",
@@ -199,6 +204,20 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "coffee-machine-cm01",
     );
     assertEquals(project.revision, 1);
+    assertStringIncludes(
+      (projectSnapshot.content as Array<Record<string, unknown>>)[0].text as string,
+      "0 actionable intents",
+    );
+    const reviewIntents = await client.call("tools/call", {
+      name: "project_review_intent_list",
+      arguments: { projectId: "coffee-machine-cm01" },
+    });
+    assertEquals(reviewIntents.structuredContent, {
+      projectId: "coffee-machine-cm01",
+      projectRevision: 1,
+      count: 0,
+      records: [],
+    });
 
     const proposalArguments = {
       commandId: "mcp-proposal-material-1",
@@ -283,11 +302,14 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(annotations.openWorldHint, false);
       assertEquals(
         annotations.readOnlyHint,
-        tool.name === "project_snapshot",
+        tool.name === "project_snapshot" ||
+          tool.name === "project_review_intent_list",
       );
       assertEquals(
         annotations.idempotentHint,
         tool.name === "project_snapshot" ||
+          tool.name === "project_review_intent_list" ||
+          tool.name === "project_review_intent_acknowledge" ||
           tool.name === "project_start" ||
           tool.name === "project_question_propose" ||
           tool.name === "project_answer_record" ||

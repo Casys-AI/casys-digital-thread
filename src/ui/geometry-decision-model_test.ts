@@ -17,6 +17,14 @@
 
 import { assertEquals } from "@std/assert";
 import {
+  encodeGeometryBundleDecisionParameters,
+  type GeometryBundleManifest,
+} from "../domain/platform/geometry-bundle.ts";
+import {
+  encodeGeometryDecisionParameters,
+  type GeometryManifest,
+} from "../domain/platform/geometry-proposal.ts";
+import {
   type GeometryDecisionParameter,
   parseGeometryDecisionView,
 } from "./src/thread/geometry-decision-model.ts";
@@ -48,6 +56,7 @@ function minimalParams(
     "geometry.manifest.assemblyFiles.0.name": "geometry-preview-assembly",
     "geometry.manifest.assemblyFiles.0.fingerprint": HEX64_A,
     "geometry.manifest.components.count": 0,
+    "geometry.manifest.partMeshes.count": 0,
     ...overrides,
   };
   const params: GeometryDecisionParameter[] = Object.entries(base).map((
@@ -200,4 +209,195 @@ Deno.test("an assembly file with an invalid format produces an invalid view", ()
   });
   const result = parseGeometryDecisionView(params);
   assertEquals(result.kind, "invalid");
+});
+
+Deno.test("geometry review fails closed on duplicate and unexpected parameters", () => {
+  const duplicate = parseGeometryDecisionView(minimalParams({}, [{
+    key: "geometry.draft.digest",
+    label: "duplicate",
+    value: HEX64_B,
+  }]));
+  assertEquals(duplicate.kind, "invalid");
+
+  const unexpected = parseGeometryDecisionView(minimalParams({}, [{
+    key: "geometry.internal.requestState",
+    label: "must never be projected",
+    value: "secret",
+  }]));
+  assertEquals(unexpected.kind, "invalid");
+});
+
+Deno.test("geometry review rejects an unsupported manifest schema", () => {
+  assertEquals(
+    parseGeometryDecisionView(minimalParams({
+      "geometry.manifest.schemaVersion": "geometry-manifest/9.0",
+    })).kind,
+    "invalid",
+  );
+});
+
+Deno.test("a v2 geometry decision exposes separate definitions and occurrences", () => {
+  const base = minimalParams({
+    "geometry.manifest.schemaVersion": "geometry-manifest/2.0",
+    "geometry.manifest.predecessor.present": false,
+    "geometry.manifest.placementConvention": "right-handed-mm-extrinsic-xyz-degrees",
+    "geometry.manifest.exportFormats": "gltf,step",
+    "geometry.manifest.assemblyFiles.count": 2,
+    "geometry.manifest.assemblyFiles.1.format": "step",
+    "geometry.manifest.assemblyFiles.1.name": "geometry-preview-assembly",
+    "geometry.manifest.assemblyFiles.1.fingerprint": HEX64_B,
+    "geometry.manifest.components.count": 1,
+    "geometry.manifest.components.0.usageName": "base",
+    "geometry.manifest.components.0.elementId": "usage-base",
+    "geometry.manifest.components.0.label": "Base",
+    "geometry.manifest.partExportFormats": "step",
+    "geometry.manifest.partDefinitions.count": 1,
+    "geometry.manifest.partDefinitions.0.elementId": "def-base",
+    "geometry.manifest.partDefinitions.0.label": "WeightedBase",
+    "geometry.manifest.partDefinitions.0.scriptHash": HEX64_B,
+    "geometry.manifest.partDefinitions.0.files.count": 1,
+    "geometry.manifest.partDefinitions.0.files.0.format": "step",
+    "geometry.manifest.partDefinitions.0.files.0.name": "weighted-base",
+    "geometry.manifest.partDefinitions.0.files.0.fingerprint": HEX64_C,
+    "geometry.manifest.occurrences.count": 1,
+    "geometry.manifest.occurrences.0.usageElementId": "usage-base",
+    "geometry.manifest.occurrences.0.partDefinitionElementId": "def-base",
+    "geometry.manifest.occurrences.0.translationMm.0": 0,
+    "geometry.manifest.occurrences.0.translationMm.1": 0,
+    "geometry.manifest.occurrences.0.translationMm.2": 0,
+    "geometry.manifest.occurrences.0.rotationDeg.0": 0,
+    "geometry.manifest.occurrences.0.rotationDeg.1": 0,
+    "geometry.manifest.occurrences.0.rotationDeg.2": 0,
+  }).filter((parameter) => parameter.key !== "geometry.manifest.partMeshes.count");
+  const result = parseGeometryDecisionView(base);
+  assertEquals(result.kind, "valid");
+  if (result.kind !== "valid") return;
+  assertEquals(result.schemaVersion, "geometry-manifest/2.0");
+  assertEquals(result.partDefinitions[0]?.label, "WeightedBase");
+  assertEquals(result.occurrences[0]?.partDefinitionElementId, "def-base");
+  assertEquals(result.partExportFormats, ["step"]);
+  assertEquals(result.predecessor, undefined);
+});
+
+Deno.test("the browser parser stays in parity with the domain v2 MRTR encoder", () => {
+  const fingerprint = (digest: string) => ({
+    algorithm: "sha256" as const,
+    digest,
+  });
+  const manifest: GeometryBundleManifest = {
+    schemaVersion: "geometry-manifest/2.0",
+    architectureBasis: {
+      snapshotId: "thread:r4",
+      revision: 4,
+      artifactFingerprint: fingerprint(HEX64_A),
+    },
+    predecessor: {
+      artifactId: "geometry-r3",
+      fingerprint: fingerprint(HEX64_B),
+    },
+    components: [{
+      usageName: "base",
+      elementId: "usage-base",
+      label: "Base",
+    }],
+    unitSystem: "mm",
+    placementConvention: "right-handed-mm-extrinsic-xyz-degrees",
+    exportFormats: ["step", "gltf"],
+    partExportFormats: ["step"],
+    partDefinitions: [{
+      elementId: "definition-base",
+      label: "Weighted base",
+      scriptHash: fingerprint(HEX64_B),
+      files: [{
+        format: "step",
+        name: "weighted-base.step",
+        fingerprint: fingerprint(HEX64_C),
+      }],
+    }],
+    occurrences: [{
+      usageElementId: "usage-base",
+      partDefinitionElementId: "definition-base",
+      placement: {
+        translationMm: [0, 0, 0],
+        rotationDeg: [0, 0, 0],
+      },
+    }],
+    scriptHash: fingerprint(HEX64_C),
+    artifactHashes: {
+      assemblyFiles: [{
+        format: "step",
+        name: "desk-lamp.step",
+        fingerprint: fingerprint(HEX64_A),
+      }, {
+        format: "gltf",
+        name: "desk-lamp.glb",
+        fingerprint: fingerprint(HEX64_B),
+      }],
+      partMeshes: [],
+    },
+  };
+
+  const result = parseGeometryDecisionView(
+    encodeGeometryBundleDecisionParameters(HEX64_C, manifest),
+  );
+  assertEquals(result.kind, "valid");
+  if (result.kind !== "valid") return;
+  assertEquals(result.predecessor, {
+    artifactId: "geometry-r3",
+    digest: HEX64_B,
+  });
+  assertEquals(result.assemblyFiles.map((file) => file.format), [
+    "step",
+    "gltf",
+  ]);
+});
+
+Deno.test("the browser parser stays compatible with geometry capture 1.1 manifest parameters", () => {
+  const fingerprint = (digest: string) => ({
+    algorithm: "sha256" as const,
+    digest,
+  });
+  const manifest: GeometryManifest = {
+    schemaVersion: "geometry-manifest/1.0",
+    architectureBasis: {
+      snapshotId: "thread:r4",
+      revision: 4,
+      artifactFingerprint: fingerprint(HEX64_A),
+    },
+    components: [{
+      usageName: "base",
+      elementId: "usage-base",
+      label: "Weighted base",
+    }],
+    unitSystem: "mm",
+    exportFormats: ["gltf", "step"],
+    scriptHash: fingerprint(HEX64_C),
+    artifactHashes: {
+      assemblyFiles: [{
+        format: "gltf",
+        name: "desk-lamp.glb",
+        fingerprint: fingerprint(HEX64_A),
+      }, {
+        format: "step",
+        name: "desk-lamp.step",
+        fingerprint: fingerprint(HEX64_B),
+      }],
+      partMeshes: [{
+        semanticKey: "weighted-base",
+        name: "weighted-base.stl",
+        fingerprint: fingerprint(HEX64_C),
+      }],
+    },
+  };
+  const result = parseGeometryDecisionView(
+    encodeGeometryDecisionParameters(HEX64_A, manifest),
+  );
+  assertEquals(result.kind, "valid");
+  if (result.kind !== "valid") return;
+  assertEquals(result.schemaVersion, "geometry-manifest/1.0");
+  assertEquals(result.assemblyFiles.map((file) => file.format), [
+    "gltf",
+    "step",
+  ]);
+  assertEquals(result.components[0]?.elementId, "usage-base");
 });

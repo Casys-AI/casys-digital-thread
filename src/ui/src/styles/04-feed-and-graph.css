@@ -1207,7 +1207,7 @@
 }
 
 .evidence-exploration-legend {
-  flex: 0 0 180px;
+  flex: 0 0 260px;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -1240,6 +1240,14 @@
 .evidence-exploration-legend-chip:hover {
   border-color: var(--line-strong);
   background: var(--surface-2);
+}
+
+.evidence-exploration-legend-chip:focus-visible,
+.evidence-exploration-stage:focus-visible,
+.evidence-exploration-relations summary:focus-visible,
+.evidence-exploration-relations button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 .evidence-exploration-legend-chip-dot {
@@ -1280,16 +1288,58 @@
   margin: var(--space-8) 0;
 }
 
-.evidence-exploration-relations ul {
-  display: grid;
-  gap: var(--space-4);
-  margin: var(--space-8) 0 0;
-  padding: 0;
-  list-style: none;
+.evidence-exploration-table-wrap {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--line);
+}
+
+.evidence-exploration-relations table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: var(--text);
+  background: var(--surface-1);
+}
+
+.evidence-exploration-relations th,
+.evidence-exploration-relations td {
+  padding: var(--space-6);
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+  text-align: left;
+  vertical-align: top;
+}
+
+.evidence-exploration-relations th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  color: var(--muted);
+  background: var(--surface-2);
+  font: 700 var(--text-3xs)/1.2 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evidence-exploration-relations th:first-child,
+.evidence-exploration-relations td:first-child {
+  width: 52px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.evidence-exploration-relations th:last-child,
+.evidence-exploration-relations td:last-child {
+  width: 58px;
+}
+
+.evidence-exploration-relations tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .evidence-exploration-relations button {
-  width: 100%;
+  width: auto;
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: var(--space-4) var(--space-6);
@@ -1316,6 +1366,15 @@
     flex-wrap: wrap;
     border-left: none;
     border-top: 1px solid var(--line);
+  }
+
+  .evidence-exploration-relations {
+    flex: 1 0 100%;
+    width: 100%;
+  }
+
+  .evidence-exploration-table-wrap {
+    max-height: 55vh;
   }
 }
 
