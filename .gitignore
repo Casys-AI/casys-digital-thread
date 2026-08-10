@@ -6,3 +6,7 @@ cad-exports/
 node_modules/
 src/ui/.vite/
 state/local/
+
+# Réglages Claude Code et worktrees d'agents : purement locaux, et un worktree
+# est une copie complète du dépôt avec son propre .git.
+.claude/
