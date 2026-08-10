@@ -146,7 +146,7 @@ services:
   mcp-modelica:
     # MCP_MODELICA_IMAGE lets a locally verified sidecar be tested without
     # spending a GitHub Actions image build. The committed default stays pinned.
-    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3}"
+    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:fc4ae7ea54e95e0df81d615e2f89482d4acb6af0476c83286164c1506405e0a9}"
     ports:
       - "127.0.0.1:3016:3016"
     volumes:
