@@ -724,3 +724,76 @@ Deno.test(
     assertEquals(anchor?.criterion, "prefix");
   },
 );
+
+// ---------------------------------------------------------------------------
+// Tests for generic multi-project prefixes (b-19 … b-24)
+//
+// These isolated single-node graphs exercise the generic entries that apply
+// to any project beyond CM-01.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "generic fea-proof artifact resolves to assembly via prefix criterion (b-21)",
+  () => {
+    // verify-seal-proof-case-run-executor.ts:508
+    //   artifactId = `fea-proof-${captureFp.digest}`
+    const FP = "a".repeat(64); // synthetic 64-char hex digest
+    const FEA_PROOF_ID = `fea-proof-${FP}`;
+    const g: ThreadGraph = {
+      nodes: [
+        {
+          id: `graph:artifact:${FEA_PROOF_ID}`,
+          ref: { kind: "artifact", id: FEA_PROOF_ID },
+          entityKind: "artifact",
+          artifactKind: "document",
+          label: FEA_PROOF_ID.slice(-30),
+          system: "digital-thread",
+          freshness: "fresh",
+          summary: FEA_PROOF_ID.slice(-30),
+        },
+      ],
+      edges: [],
+    };
+    const map = buildPartAnchorage(g, FIXTURE_CATALOG);
+    const anchor = map.get(`artifact:${FEA_PROOF_ID}`);
+    assertEquals(
+      anchor?.target,
+      "assembly",
+      "fea-proof-<hex> must resolve to assembly",
+    );
+    assertEquals(anchor?.criterion, "prefix");
+  },
+);
+
+Deno.test(
+  "generic geometry artifact resolves to assembly via prefix criterion (b-20)",
+  () => {
+    // design-write-geometry-run-executor.ts:1525
+    //   artifact.id !== `geometry-${digest}`
+    const FP = "b".repeat(64);
+    const GEOMETRY_ID = `geometry-${FP}`;
+    const g: ThreadGraph = {
+      nodes: [
+        {
+          id: `graph:artifact:${GEOMETRY_ID}`,
+          ref: { kind: "artifact", id: GEOMETRY_ID },
+          entityKind: "artifact",
+          artifactKind: "cad-model",
+          label: GEOMETRY_ID.slice(-30),
+          system: "digital-thread",
+          freshness: "fresh",
+          summary: GEOMETRY_ID.slice(-30),
+        },
+      ],
+      edges: [],
+    };
+    const map = buildPartAnchorage(g, FIXTURE_CATALOG);
+    const anchor = map.get(`artifact:${GEOMETRY_ID}`);
+    assertEquals(
+      anchor?.target,
+      "assembly",
+      "geometry-<hex> must resolve to assembly",
+    );
+    assertEquals(anchor?.criterion, "prefix");
+  },
+);

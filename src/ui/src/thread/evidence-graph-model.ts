@@ -572,6 +572,7 @@ const SYSTEM_LABEL: Record<string, string> = {
   "calculix": "FEA",
   "openmodelica": "Thermal",
   "mcp-modelica": "Thermal",
+  "modelica": "Thermal",
   "erpnext": "ERP",
 };
 

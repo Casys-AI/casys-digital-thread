@@ -113,7 +113,12 @@ export type AnchorFamily =
   | "printability"
   | "print-estimate"
   | "drip-tray-correction"
-  | "run-queue-mechanical";
+  | "run-queue-mechanical"
+  // Generic multi-project families (no product-specific names)
+  | "requirements"
+  | "fea-proof"
+  | "fea-solver-result"
+  | "fea-verdict";
 
 type PrefixResult = { target: PartTarget; family: AnchorFamily } | null;
 type PrefixMatcher = (id: string) => PrefixResult;
@@ -274,6 +279,43 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
     /:drip-tray-printability$/,
     () => ({ target: "cm01-v3:drip-tray", family: "printability" }),
   ),
+
+  // -------------------------------------------------------------------------
+  // Generic multi-project entries (b-19 … b-24)
+  //
+  // These patterns apply to any project, not only CM-01.  They are placed
+  // AFTER all CM-01 specific entries so that more-specific product prefixes
+  // always win.  No collision exists: CM-01 ids start with
+  // "coffee-machine-cm01-v3-…", "oracle-requirements-…", etc. — all
+  // structurally distinct from the generic "architecture-", "geometry-",
+  // "fea-…", and "requirements-" prefixes below.
+  // -------------------------------------------------------------------------
+
+  // (b-19) Generic architecture SysML artifact — id: architecture-{HEX64}
+  //        model-write-architecture-run-executor.ts:1743
+  sp("architecture-", "assembly", "architecture"),
+
+  // (b-20) Generic geometry bundle capture — id: geometry-{HEX64}
+  //        design-write-geometry-run-executor.ts:1525
+  sp("geometry-", "assembly", "cad"),
+
+  // (b-21) Generic FEA proof-case document — id: fea-proof-{HEX64}
+  //        verify-seal-proof-case-run-executor.ts:508
+  sp("fea-proof-", "assembly", "fea-proof"),
+
+  // (b-22) Generic FEA solver result — id: fea-solver-result-{HEX64}
+  //        verify-run-fea-static-proof-run-executor.ts:1137
+  sp("fea-solver-result-", "assembly", "fea-solver-result"),
+
+  // (b-23) Generic FEA verdict document — id: fea-verdict-{HEX64}
+  //        verify-run-fea-static-proof-run-executor.ts:1138
+  sp("fea-verdict-", "assembly", "fea-verdict"),
+
+  // (b-24) Generic requirements artifact
+  //        id: requirements-{containerComponent}-{HEX64}
+  //        model-write-requirements-run-executor.ts:1284
+  //        Simple prefix match because containerComponent varies per project.
+  sp("requirements-", "assembly", "requirements"),
 ];
 
 // ---------------------------------------------------------------------------

@@ -461,7 +461,11 @@ export function ThreadWorkbench({
     );
     return buildEvidenceGraphModel(rawGraph, thread.evidenceFamilyGraph, {
       isAnalyzeInstrumentNode,
-      intentionallyIsolatedSystems: ["openmodelica", "mcp-modelica"],
+      intentionallyIsolatedSystems: [
+        "openmodelica",
+        "mcp-modelica",
+        "modelica",
+      ],
       versionedProjection: versionedProvenanceMemo!,
     });
   }, [workbench, versionedProvenanceMemo]);

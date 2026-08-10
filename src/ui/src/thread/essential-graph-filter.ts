@@ -29,12 +29,24 @@ import type {
 /**
  * Artifact kinds that are visually supporting rather than semantically
  * essential in the current-design view. A supporting artifact is still
- * reachable via the inspector; it simply does not appear in the default map.
+ * reachable via the inspector; it simply does not appear in the default
+ * map.
+ *
+ * "solver-result" and "simulation-model" join "solver-input" here: all
+ * three are raw provider output containers whose essential counterpart is
+ * the ThreadObservation extracted from them. Showing the raw result file
+ * next to its observation would duplicate the same engineering fact at
+ * two abstraction levels; the condensed view collapses them to the
+ * observation layer. Connector preservation still applies: if any of
+ * these kinds is the sole path between two essential nodes it stays
+ * visible (see applyEssentialFilter).
  */
 export const SUPPORTING_ARTIFACT_KINDS: ReadonlySet<string> = new Set([
   "script",
   "mesh",
   "solver-input",
+  "solver-result",
+  "simulation-model",
   "evidence",
   "document",
   "other",

@@ -187,6 +187,32 @@ Deno.test("single-node component gets a name from its system", () => {
   assertEquals(model.components[0]!.name.includes("SysML"), true);
 });
 
+Deno.test(
+  "SYSTEM_LABEL maps 'modelica' to 'Thermal' — intentionally isolated component",
+  () => {
+    // Generic "modelica" serverId (producer identity used by the simulate
+    // executors) must be treated identically to "mcp-modelica"/"openmodelica".
+    const graph = {
+      nodes: [nodeFor("sim", "artifact", "modelica")],
+      edges: [],
+    };
+
+    const model = buildEvidenceGraphModel(graph, emptyFamilyGraph(), {
+      intentionallyIsolatedSystems: ["modelica"],
+    });
+
+    assertEquals(model.components.length, 1);
+    // Component is flagged isolated (all nodes belong to "modelica" system).
+    assertEquals(model.components[0]!.intentionallyIsolated, true);
+    // Name is derived from SYSTEM_LABEL["modelica"] = "Thermal".
+    assertEquals(
+      model.components[0]!.name.includes("Thermal"),
+      true,
+      "SYSTEM_LABEL must map 'modelica' to 'Thermal'",
+    );
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Bounded neighbourhood query
 // ---------------------------------------------------------------------------
