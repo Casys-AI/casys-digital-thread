@@ -177,7 +177,7 @@ Active project revision 10 records the bound run and verification work item as
 
 ## Presentation separation
 
-`experiments/thread-workflow/*.yaml` describes data dependencies and explicit engineering
-operations. It has no areas, columns, component keys, CSS, or live UI state. A product
-UI reads a persisted snapshot; it does not execute this YAML merely because a page
-opened.
+`experiments/thread-workflow/*.yaml` describes data dependencies and explicit
+engineering operations. It has no areas, columns, component keys, CSS, or live UI state.
+A product UI reads a persisted snapshot; it does not execute this YAML merely because a
+page opened.

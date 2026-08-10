@@ -190,10 +190,9 @@ binds one or more exact thread-entity targets. Execution requires a human-approv
 decision whose sealed evidence refs equal those exact targets and basis, and the
 approval elicitation renders the server-stamped refs as canonical JSON — an injective
 encoding, so no ID can forge another target list — and the approver sees precisely what
-will be retired. The executor computes the
-domain-pure archive cascade, refuses a fully redundant closure, and publishes the
-successor snapshot with CAS readback. It makes no provider call; history stays readable
-while current views exclude the retired lines.
+will be retired. The executor computes the domain-pure archive cascade, refuses a fully
+redundant closure, and publishes the successor snapshot with CAS readback. It makes no
+provider call; history stays readable while current views exclude the retired lines.
 
 `simulate.seal-simulation-case@1` seals the human-reviewed OpenModelica simulation case
 into the thread without any provider call. Its signed MRTR proposal carries the flat
@@ -216,28 +215,29 @@ structural triple-lock (`verdictStatus: not_evaluated`, `requirements: []`, zero
 passed/failed/unresolved counts) is enforced verbatim by `validateThreadSnapshot` before
 any snapshot is persisted. The executor re-reads the `simulation-case-capture/1.0` by
 content address, verifies the bound `simulationCase` artifact's `caseDigest` in the
-current basis, and confirms kit availability and each parameter's bounds and unit through
-`modelica_kit_list` before any dispatch. A `planDigest` commits the exact simulate
-request to the WAL in `dispatched` state before `modelica_simulate`. The three-state WAL
-(`dispatched → provider-run-known → completed`) embeds the canonical simulate envelope at
-`provider-run-known` so recovery resumes exclusively from `modelica_run_get`;
-re-simulating a run whose provider run-id is already recorded is structurally forbidden.
-Double attestation compares the `modelica_simulate` response against `modelica_run_get`.
-Two CAS objects are produced: a provider run record (producer `modelica`) sealing the raw
-normalized provider envelopes, and an execution receipt (producer `digital-thread`)
-asserting the lineage from the human-signed simulation-case artifact to the concrete
-provider run. No verdict, `TracedRequirement`, evaluation, or violation is ever produced;
-evaluation belongs to SysON, not to this executor.
+current basis, and confirms kit availability and each parameter's bounds and unit
+through `modelica_kit_list` before any dispatch. A `planDigest` commits the exact
+simulate request to the WAL in `dispatched` state before `modelica_simulate`. The
+three-state WAL (`dispatched → provider-run-known → completed`) embeds the canonical
+simulate envelope at `provider-run-known` so recovery resumes exclusively from
+`modelica_run_get`; re-simulating a run whose provider run-id is already recorded is
+structurally forbidden. Double attestation compares the `modelica_simulate` response
+against `modelica_run_get`. Two CAS objects are produced: a provider run record
+(producer `modelica`) sealing the raw normalized provider envelopes, and an execution
+receipt (producer `digital-thread`) asserting the lineage from the human-signed
+simulation-case artifact to the concrete provider run. No verdict, `TracedRequirement`,
+evaluation, or violation is ever produced; evaluation belongs to SysON, not to this
+executor.
 
 `verify.seal-proof-case@1` seals the human-reviewed mechanical proof case into the
 thread without any provider call. Its signed MRTR proposal carries every consequential
 input in the flat `fea.proof.*` grammar: case ID, digest, geometry and requirements
 artifact identities, target model element, STEP byte count, and material constants. The
-executor resolves the case path through the server-owned `FEA_PROOF_CASE_SOURCES` catalog
-— the agent never supplies a path or raw case bytes — validates the JSON against
+executor resolves the case path through the server-owned `FEA_PROOF_CASE_SOURCES`
+catalog — the agent never supplies a path or raw case bytes — validates the JSON against
 `mechanical-proof-case/1.0`, computes `canonicalProofText` and its SHA-256, and fails
-immediately if the MRTR-signed digest diverges. It then verifies the geometry artifact by
-kind, fingerprint, and `geometry-capture/2.0` schema, confirms the target
+immediately if the MRTR-signed digest diverges. It then verifies the geometry artifact
+by kind, fingerprint, and `geometry-capture/2.0` schema, confirms the target
 `PartDefinition` model element in that capture, re-reads the requirements-capture to
 confirm the authoritative tip matches the MRTR-signed artifact, and checks every proof
 requirement against the corresponding oracle requirement. The resulting
@@ -247,24 +247,25 @@ three full `consumption + derived_from + uses` triplets for geometry, requiremen
 STEP. No `verify.run-fea-static-proof@1` run may proceed without this sealed mandate.
 
 `verify.run-fea-static-proof@1` consumes the sealed proof-case artifact and the sealed
-geometry artifact, both bound as exact thread entities and propagated into the approval's
-`inputEvidenceRefs` through `decisionEvidenceScope`. The executor re-reads the
-`fea-proof-case-capture/1.0` by content address, re-checks the requirements tip for
-drift since the seal, re-locates and hash-verifies the STEP bytes via the canonical asset
-reader, and asserts oracle fidelity through `extractAndVerifyOracleRequirements` before
-any provider dispatch. The STEP is staged content-addressed (`fea-<digest>.step`) into
-the CalculiX container; a `FeaExecutionPolicy` caps proof dimensions and STEP byte count.
-The `planDigest` commits the exact solver request to the WAL in `dispatched` state before
-`calculix_solve_static`. The three-state WAL (`dispatched → solver-recorded → completed`)
-embeds the canonical solver-capture text at `solver-recorded` so a crash after the
-provider ACK resumes at the oracle step without re-dispatch; a divergent CAS readback is
-a terminal integrity violation. The SysON oracle (`syson_constraint_evaluate`) evaluates
-each proof requirement at native units; evaluation IDs carry the full 64-hex
-`verdictCaptureFp`. A `fail` verdict is publishable: each failing evaluation produces a
-named violation and a paired proposed action. The thread extension adds a `solver-result`
-artifact (producer `calculix`), a `document` verdict artifact, two `ThreadObservation`
-records in mm and MPa, evaluations, any violations with proposed actions, and STEP
-consumption attestation with the CalculiX-returned hash.
+geometry artifact, both bound as exact thread entities and propagated into the
+approval's `inputEvidenceRefs` through `decisionEvidenceScope`. The executor re-reads
+the `fea-proof-case-capture/1.0` by content address, re-checks the requirements tip for
+drift since the seal, re-locates and hash-verifies the STEP bytes via the canonical
+asset reader, and asserts oracle fidelity through `extractAndVerifyOracleRequirements`
+before any provider dispatch. The STEP is staged content-addressed (`fea-<digest>.step`)
+into the CalculiX container; a `FeaExecutionPolicy` caps proof dimensions and STEP byte
+count. The `planDigest` commits the exact solver request to the WAL in `dispatched`
+state before `calculix_solve_static`. The three-state WAL
+(`dispatched → solver-recorded → completed`) embeds the canonical solver-capture text at
+`solver-recorded` so a crash after the provider ACK resumes at the oracle step without
+re-dispatch; a divergent CAS readback is a terminal integrity violation. The SysON
+oracle (`syson_constraint_evaluate`) evaluates each proof requirement at native units;
+evaluation IDs carry the full 64-hex `verdictCaptureFp`. A `fail` verdict is
+publishable: each failing evaluation produces a named violation and a paired proposed
+action. The thread extension adds a `solver-result` artifact (producer `calculix`), a
+`document` verdict artifact, two `ThreadObservation` records in mm and MPa, evaluations,
+any violations with proposed actions, and STEP consumption attestation with the
+CalculiX-returned hash.
 
 None of these four operations has yet been executed against a real project. Every first
 seal and first run remains gated by a reviewed MRTR proposal and explicit operator
@@ -493,6 +494,22 @@ completion requires a non-`latest` result whose revision advances the exact base
 whose complete `previous` chain reaches that base, plus at least one unique entity that
 is new or content-changed from the base. A newer parallel branch is rejected.
 
+### Human-only operations
+
+A registered operation may declare `mustOrigin: "human"`. The executor gate remains the
+authority — it refuses a non-human origin outright — but the flag is what makes the
+operation _reachable_. `project_agent_run_execute` reads the run's work item, resolves
+its operation in the registry, and when the operation is human-only asks the paired MCP
+host for a signed confirmation before dispatching under `elicitedHumanOrigin`. Every
+other run keeps the agent origin unchanged.
+
+Without that declaration the surface has no way to know it should offer the operator its
+elicitation, so the operation becomes executable by nobody and whatever state it exists
+to unlock stays locked. That is not hypothetical: it stranded two projects on a
+quarantined provider write until the marker was added.
+
+`record.reconcile-uncertain-writer@1` is the only human-only operation today.
+
 ### Failed-work reconciliation
 
 A failed run is never converted into a success. The CM-01 R11 → R12 closeout accepts a
@@ -566,20 +583,20 @@ provider call, gated by a human-approved decision sealing the exact thread-entit
 targets. `simulate.seal-simulation-case@1` resolves the reviewed case through
 `SIMULATION_CASE_SOURCES`, cross-checks every MRTR field, and publishes the
 content-addressed simulation-case mandate with empty `inputArtifactIds` and no provider
-call. `simulate.run-modelica-scenario@1` verifies kit bounds through `modelica_kit_list`,
-dispatches `modelica_simulate`, double-attests the result through `modelica_run_get`, and
-publishes unit-carrying observations only — a structural triple-lock enforces
-`verdictStatus: not_evaluated` and re-dispatch after a known provider run-id is
-forbidden. `verify.seal-proof-case@1` resolves the reviewed proof case through
-`FEA_PROOF_CASE_SOURCES`, cross-checks the MRTR-signed digest and every parameter against
-the canonical bytes, verifies geometry and requirements-tip links in the basis, and
-publishes the content-addressed mandate with no provider call.
+call. `simulate.run-modelica-scenario@1` verifies kit bounds through
+`modelica_kit_list`, dispatches `modelica_simulate`, double-attests the result through
+`modelica_run_get`, and publishes unit-carrying observations only — a structural
+triple-lock enforces `verdictStatus: not_evaluated` and re-dispatch after a known
+provider run-id is forbidden. `verify.seal-proof-case@1` resolves the reviewed proof
+case through `FEA_PROOF_CASE_SOURCES`, cross-checks the MRTR-signed digest and every
+parameter against the canonical bytes, verifies geometry and requirements-tip links in
+the basis, and publishes the content-addressed mandate with no provider call.
 `verify.run-fea-static-proof@1` stages the STEP content-addressed, dispatches
 `calculix_solve_static` from sealed proof parameters only, evaluates through the SysON
 oracle, and publishes a fail-closed verdict with named violations and proposed actions;
 the WAL embeds the canonical solver capture so recovery never re-dispatches after the
-solver ACKs. None of these four has yet been executed against a real project; every first
-seal and run is gated by MRTR proposal and operator consent.
+solver ACKs. None of these four has yet been executed against a real project; every
+first seal and run is gated by MRTR proposal and operator consent.
 `architecture.author-inspection-drone@3` is restricted to the exact
 `inspection-drone-v4` r2 basis and has published r3: five typed usages and four
 qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,

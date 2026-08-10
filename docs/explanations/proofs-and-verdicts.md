@@ -57,6 +57,29 @@ identity binding. It demonstrates the evidence-to-constraint path; it is not a p
 requirement stored in SysON, and the `900 s` horizon is provenance rather than an
 invented heat-up-time limit.
 
+## The join is enforced, not merely intended
+
+The third bullet above — provenance tying the evidence to what was actually used — is
+the one an implementation is most likely to believe it satisfies. The first real
+mechanical runs, on 2026-08-10, showed what that costs in practice.
+
+The verdict artifact declared three inputs and drew three derivation links, but only one
+of them carried an attestation: the solver's, on the STEP it had hashed. The other two
+were _asserted_ derivations — the graph said the verdict came from the sealed proof case
+and the sealed requirements, and nothing recorded that anyone had read them. The
+snapshot was refused. So was a subtler one: the evaluation named the requirement by the
+identifier local to the reviewed JSON file rather than the identifier the thread had
+given it when extracting it from the sealed artifact. It read plausibly and it evaluated
+nothing.
+
+Neither defect could have surfaced from unit tests, because both executors _built_ their
+objects correctly. What they had never done is publish. Constructing a valid object and
+producing a publishable graph are different claims, and only the second is a verdict.
+
+The practical consequence is that an operation which has never run against
+`validateThreadSnapshot` should be described as untested regardless of its test count —
+a distinction worth keeping while the simulation path still awaits its first real run.
+
 ## Why MCP Apps do not collapse the boundary
 
 `mcp-server` transports tools and resources using the stateless `2026-07-28` contract.

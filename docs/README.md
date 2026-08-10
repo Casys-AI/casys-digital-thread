@@ -16,6 +16,9 @@ categories deliberately answer different questions.
   fresh isolated Compose topology without deleting retained evidence. It follows the
   documentary baseline and SysON seed into the five fixed CM-01 operations, then
   documents the bounded correction, identity recovery, and closeout path separately.
+- [Recover a quarantined provider run](how-to/recover-a-quarantined-provider-run.md)
+  covers the one path out of a dispatch the executor could not settle: inspect the
+  provider, sign the seven-parameter reconciliation, execute it as a human, and requeue.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
   starts the single-shell Preact product surface, follows a project from its living
   brief into activity and evidence, and explains why the cockpit observes while the
@@ -46,11 +49,13 @@ categories deliberately answer different questions.
   execution runs, the fixed CM-01 V3 operation catalog, immutable revisions, command
   receipts, authority, and exact references into immutable thread evidence.
 - [Living project brief](reference/project-brief.md) defines intent, guided questions,
-  sourced answers, proposal versus canonical truth, exact human confirmation, and the
-  approved-brief documentary baseline inside one project.
-- [Candidate mechanical-analysis declaration](reference/mechanical-proof-case.md)
-  defines the strict non-executable CM-01 input schema, its limited identity binding,
-  and the missing receipt boundary before it can attest a fail-closed execution.
+  sourced answers, proposal versus canonical truth, exact human confirmation, the
+  versioned V2 gate contract with its declared dependencies, and the approved-brief
+  documentary baseline inside one project.
+- [Mechanical proof case and its execution receipt](reference/mechanical-proof-case.md)
+  defines the strict declaration schema, its limited identity binding, and the run that
+  turns a sealed case into a published verdict — including the provenance every
+  published run must satisfy.
 - [Cross-tool component identity](reference/thread-components.md) defines the reviewed
   SysON PartUsage, build123d artifact, and ERPNext Item bindings used by the native
   **Parts** workspace, including visible trace gaps.

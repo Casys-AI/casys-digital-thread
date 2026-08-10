@@ -2,8 +2,8 @@
 
 > **Diátaxis category: reference.** This page describes the schema-`3.0` framing
 > contract implemented by
-> [`src/domain/project-brief.ts`](../../src/domain/project-brief.ts) and stored inside
-> each immutable `EngineeringProjectSnapshot` revision.
+> [`src/domain/project/project-brief.ts`](../../src/domain/project/project-brief.ts) and
+> stored inside each immutable `EngineeringProjectSnapshot` revision.
 
 A project exists from the first reported intent. There is no pre-project aggregate,
 Discovery page, or handoff in the current product contract. The paired conversation is
@@ -27,6 +27,65 @@ agent proposal. The latter never overwrites the former until the person confirms
 exact brief snapshot, revision, and SHA-256 fingerprint through signed MCP elicitation.
 A rejection preserves the current canonical brief and leaves the proposed revision
 visible for correction.
+
+## Gates and their declared dependencies
+
+A brief can be revised after evidence exists. Nothing represented which proofs relied on
+which part of the mandate, so a revision either invalidated everything — and nobody
+would ever revise a brief — or invalidated nothing, and proofs outlived the mandate that
+authorised them. The brief now declares that structure itself.
+
+```text
+normative item ──dependsOn──> brief gate
+                                 ↑
+                            gateClaims
+                                 │
+                             work item
+                                 │
+                        run → evidenceRefs
+```
+
+The brief owns the dependencies; a work item only claims a gate; the run seals the
+evidence. A revision invalidates the claim, not automatically the artifact.
+
+**Gates are existing kinds.** `success-criterion` and `verification-activity` already
+are gates; no `gate` kind was added. `isProjectBriefGateKind` is the single predicate.
+
+**The contract is versioned.** `ProjectBriefRevision.contractVersion` is `"1.0"` or
+`"2.0"`; an omitted field _is_ the historical V1 form, resolved by
+`projectBriefContractVersion` rather than written into storage. Every new proposal is
+V2. Making the field mandatory in place would have rejected every brief written under
+the earlier contract.
+
+**`dependsOnItemIds` is mandatory as a field, and an empty array is legal.** The three
+states are distinct and must not be collapsed:
+
+| State                                             | Meaning                           |
+| ------------------------------------------------- | --------------------------------- |
+| gate carries no `dependsOnItemIds` in a V2 brief  | incomplete contract → **refused** |
+| `dependsOnItemIds: []`                            | independence **declared**         |
+| item neither depended on nor declared independent | `impact-unresolved`               |
+
+A gate may legitimately depend on no other item — `evidence-chain` is defined by its own
+statement. Revising that statement still invalidates its claims, because a gate always
+depends on its own fingerprint.
+
+**`gateClaims` is a sibling of `operation`, never a binding.** Bindings are the exact
+inputs an operation consumes (`EngineeringOperationInputBinding`); a served gate is a
+coverage claim. Placing one among the inputs would assert a consumption that never
+happened. Each claim is `{ gateItemId, role, status }` with role
+`contributes-to | satisfies`, and every `gateItemId` must exist in the canonical brief
+and name a gate, or the change is refused.
+
+**Claim status is distinct from artifact freshness**: `current`, `impact-unresolved`,
+`invalidated`, `carried-forward`. Not `superseded` before a replacement claim exists,
+and not `unverified` — the proof _was_ verified, inside a scope that has since changed.
+An artifact only becomes stale when its own technical content loses validity.
+
+**Deliberately out of scope.** The signed impact transition between `brief r1 / gate r1`
+and `brief r2 / gate r2` — the statement of what is invalidated, carried forward or
+untouched — is not implemented. This page describes the foundation that records the
+links, not a cascade that computes them. Half a cascade cannot be exercised.
 
 ## MCP surface
 
@@ -67,9 +126,14 @@ human-approved living brief
 ```
 
 The r2 record proves only the identity of the editable SysON container. It is not
-geometry, physical analysis, cost, compliance, or a verified requirement verdict. The
-generic route intentionally stops here: later technical work needs a sourced, reviewed
-definition and its own operation/evidence contract.
+geometry, physical analysis, cost, compliance, or a verified requirement verdict.
+
+The generic route no longer stops there. Reviewed operations continue it through
+architecture, requirements, geometry, a sealed mechanical proof case and its execution
+receipt; `desk-lamp-dl03` and `desk-lamp-dl04` walked that path end to end on
+2026-08-10, each publishing a mechanical verdict on an isolated part. Every step still
+needs its own reviewed operation and evidence contract — the route is generic, not
+open-ended.
 
 The current technical reference is the fixed `coffee-machine-cm01-v3` catalog. It uses
 the same approved-brief and exact-basis discipline, then executes reviewed CM-01

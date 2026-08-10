@@ -16,22 +16,22 @@
 
 ## Authoritative artifacts
 
-| Artifact                   | Location                                                                                                   |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Provider topology          | [`docker-compose.yml`](../../docker-compose.yml)                                                           |
-| Desired fleet              | [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                     |
-| CM-01 subject binding      | [`config/thread-subjects/coffee-machine-cm01.json`](../../config/thread-subjects/coffee-machine-cm01.json) |
-| Native workflow (frozen)   | [`experiments/thread-workflow/`](../../experiments/thread-workflow/)                                       |
-| Canonical linked state     | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                     |
-| Workflow compiler/executor | [`experiments/thread-workflow/`](../../experiments/thread-workflow/) (frozen prototype)                    |
-| Workbench projection       | [`src/adapters/projectors/thread-workbench-projector.ts`](../../src/adapters/projectors/thread-workbench-projector.ts) |
-| Native Workbench UI        | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                           |
-| Modelica evidence          | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                   |
-| CAD/FEA exchange           | `exports` Docker volume, with producer and consumer SHA-256 attestation                                    |
-| ERP manufacturing truth    | ERPNext database, reached only through `mcp-erpnext`                                                       |
-| FEA proof (seal)           | [`src/adapters/executors/verify-seal-proof-case-run-executor.ts`](../../src/adapters/executors/verify-seal-proof-case-run-executor.ts) |
-| FEA proof (run)            | [`src/adapters/executors/verify-run-fea-static-proof-run-executor.ts`](../../src/adapters/executors/verify-run-fea-static-proof-run-executor.ts) |
-| Modelica scenario (seal)   | [`src/adapters/executors/simulate-seal-simulation-case-run-executor.ts`](../../src/adapters/executors/simulate-seal-simulation-case-run-executor.ts) |
+| Artifact                   | Location                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provider topology          | [`docker-compose.yml`](../../docker-compose.yml)                                                                                                       |
+| Desired fleet              | [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                                                                 |
+| CM-01 subject binding      | [`config/thread-subjects/coffee-machine-cm01.json`](../../config/thread-subjects/coffee-machine-cm01.json)                                             |
+| Native workflow (frozen)   | [`experiments/thread-workflow/`](../../experiments/thread-workflow/)                                                                                   |
+| Canonical linked state     | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                                 |
+| Workflow compiler/executor | [`experiments/thread-workflow/`](../../experiments/thread-workflow/) (frozen prototype)                                                                |
+| Workbench projection       | [`src/adapters/projectors/thread-workbench-projector.ts`](../../src/adapters/projectors/thread-workbench-projector.ts)                                 |
+| Native Workbench UI        | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                                       |
+| Modelica evidence          | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                                                               |
+| CAD/FEA exchange           | `exports` Docker volume, with producer and consumer SHA-256 attestation                                                                                |
+| ERP manufacturing truth    | ERPNext database, reached only through `mcp-erpnext`                                                                                                   |
+| FEA proof (seal)           | [`src/adapters/executors/verify-seal-proof-case-run-executor.ts`](../../src/adapters/executors/verify-seal-proof-case-run-executor.ts)                 |
+| FEA proof (run)            | [`src/adapters/executors/verify-run-fea-static-proof-run-executor.ts`](../../src/adapters/executors/verify-run-fea-static-proof-run-executor.ts)       |
+| Modelica scenario (seal)   | [`src/adapters/executors/simulate-seal-simulation-case-run-executor.ts`](../../src/adapters/executors/simulate-seal-simulation-case-run-executor.ts)   |
 | Modelica scenario (run)    | [`src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts`](../../src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts) |
 
 The CM-01 manifest is the sole cross-provider join authority. It binds a SysON project,

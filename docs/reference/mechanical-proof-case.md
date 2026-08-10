@@ -1,18 +1,22 @@
-# Reference: candidate mechanical-analysis declaration
+# Reference: mechanical proof case and its execution receipt
 
 > **Diátaxis category: reference.** This page describes
-> [`mechanical-proof-case.ts`](../../src/domain/analysis/mechanical-proof-case.ts) and the
-> tracked CM-01 example under
-> [`config/mechanical-proof-cases/`](../../config/mechanical-proof-cases/).
+> [`mechanical-proof-case.ts`](../../src/domain/analysis/mechanical-proof-case.ts), the
+> reviewed cases under
+> [`config/mechanical-proof-cases/`](../../config/mechanical-proof-cases/), and the run
+> that turns one into evidence.
 
-`mechanical-proof-case/1.0` is a strict declaration of candidate analysis inputs. It is
-not an execution receipt, solver result, project authorization, or canonical thread
-evidence. The validator checks JSON shape, units, bounded values, identities, and
-internal consistency only.
+`mechanical-proof-case/1.0` is a strict declaration of candidate analysis inputs. The
+declaration itself is never a solver result or thread evidence — its validator checks
+JSON shape, units, bounded values, identities and internal consistency only. The
+execution receipt is a separate contract, described at the end of this page.
 
-The declaration is not loaded by the CM-01 mechanical runner, its capture adapter, or
-the workflow executor. Editing or validating it therefore cannot authorize a run, change
-the effective CalculiX arguments, or create evidence.
+Editing or validating the file cannot authorize a run or create evidence. The file
+becomes effective only once `verify.seal-proof-case@1` resolves it through the
+server-owned catalog `FEA_PROOF_CASE_SOURCES`, verifies every clear-text MRTR parameter
+against the canonical bytes, and publishes it as a content-addressed thread artifact. A
+proof case absent from that catalog is refused by name — a JSON file on disk is not an
+authority.
 
 ## Declared scope
 
@@ -44,20 +48,42 @@ It does not bind material, mesh, supports, loads, requirement limits, decision s
 SysON extraction, provider operation, or result content. A successful identity match
 must never be presented as a fail-closed execution attestation.
 
-## Gap to a fail-closed execution receipt
+## The execution receipt, and what it binds
 
-A future runner integration needs a separate durable receipt that binds all of the
-following to one immutable run:
+`verify.run-fea-static-proof@1` is that receipt. It re-reads the sealed case,
+re-verifies the requirements tip on the execution basis, stages the exact STEP bytes
+under a purely content-addressed name, dispatches CalculiX with three-point SHA-256
+cross-attestation, evaluates through `syson_constraint_evaluate` at native units, and
+publishes observations, evaluations and any named violations with proposed actions. A
+`fail` verdict is publishable; `error` and `unresolved` never become `pass`.
 
-1. the exact project revision, human decision, approved proposal fingerprint, and actor;
-2. the exact SysON project/editing context and extracted constraint response, including
-   a stable revision or content fingerprint;
-3. the canonical effective material, mesh, support, load, force, and limit arguments
-   actually sent to the provider;
-4. the consumed STEP SHA-256 and byte count, provider operation identity, result schema,
-   solver outcome, output hashes, and normalized requirement evaluations;
-5. the resulting canonical `ThreadSnapshot` and project-run transition that cite that
-   receipt.
+It first ran on 2026-08-10, on `desk-lamp-dl03` (thread r9) and `desk-lamp-dl04` (thread
+r8). Both published a mechanical verdict on an isolated articulated arm.
 
-Until such a receipt is implemented and checked at the execution boundary, this schema
-remains a reviewable candidate declaration only.
+### Provenance a published run must satisfy
+
+Building the extension is not enough; the merged snapshot must pass
+`validateThreadSnapshot`. Three rules govern it, and each one rejected the first real
+run before it was met:
+
+1. **Every artifact-to-artifact `derived_from` needs a verified consumption** in which
+   the downstream producer attests the upstream fingerprint it read. The verdict
+   declares three inputs — solver result, sealed proof case, sealed requirements — so it
+   owes three attestations, not one. A derivation without its consumption is asserted
+   rather than demonstrated.
+2. **Every verified consumption needs its `uses` link back** to the artifact it attests.
+   The consumption is the attestation; the link is what makes it reachable from the
+   graph.
+3. **An evaluation names the thread requirement, never the proof-case id.** A proof case
+   names its requirements locally; the thread names them
+   `requirement-<sealed artifact digest>-<metric>`. The executor resolves each one by
+   sealed source artifact plus metric and stops the run unless the match is unique —
+   keeping the local id evaluates a subject the snapshot does not contain.
+
+### Failure that cannot be retried blindly
+
+An error after CalculiX acknowledges the dispatch quarantines the run: it may not be
+retried automatically, and the write-basis guard blocks its sibling runs until a human
+reconciles it through `record.reconcile-uncertain-writer@1`. The terminal receipt
+carries the structural cause verbatim and bounded — without it a quarantined run cannot
+be diagnosed from its own record, which is exactly how one project stalled for a day.

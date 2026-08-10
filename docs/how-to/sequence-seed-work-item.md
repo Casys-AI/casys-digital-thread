@@ -1,8 +1,8 @@
 # How-to: sequence a SysON model-seed work item
 
 Three sequencing rules govern work items that call `architecture.seed-syson-model@2`.
-Violating any of them either blocks execution permanently or leaves an orphan work item in
-"Next current work".
+Violating any of them either blocks execution permanently or leaves an orphan work item
+in "Next current work".
 
 ## Rule 1 — Seed via append, not initial plan
 
@@ -87,9 +87,10 @@ through `successorEvidenceRefs`.
 The desk-lamp-dl01 project surfaced this pattern during its first agent path test:
 
 - Initial plan included `wi-seed` (operation `architecture.seed-syson-model@2`).
-- `project_agent_run_execute` on `wi-seed` was rejected with `planning_lineage_violation`
-  because the run's `changeIds` was empty (no append in its lineage). The executor
-  rejected the run before any agent claim, so it remained `queued`.
+- `project_agent_run_execute` on `wi-seed` was rejected with
+  `planning_lineage_violation` because the run's `changeIds` was empty (no append in its
+  lineage). The executor rejected the run before any agent claim, so it remained
+  `queued`.
 - A human cancelled the queued run (`project_agent_run_cancel`) so it could serve as the
   reconciliation anchor. The cancelled run never touched a provider.
 - A `project_change_append` correctly introduced `wi-seed-2` with the same operation and
@@ -103,12 +104,12 @@ the phase evidence invariant through the reconciliation record.
 
 ## Design note — why no closeout snapshot for direct reconciliation
 
-The `project_work_item_reconcile_successor` MCP tool always uses the direct reconciliation
-path: no separate closeout `ThreadSnapshot` is produced. The successor run's result is
-already the project thread head, so recording a redundant closeout snapshot would advance
-the thread revision without adding evidence.
+The `project_work_item_reconcile_successor` MCP tool always uses the direct
+reconciliation path: no separate closeout `ThreadSnapshot` is produced. The successor
+run's result is already the project thread head, so recording a redundant closeout
+snapshot would advance the thread revision without adding evidence.
 
-The full closeout path (which does produce a closeout snapshot) is used only by the CM-01
-V3 R11/R12 history, where an explicit closeout snapshot was already committed before this
-tool existed. Both forms satisfy the phase completion invariant through
+The full closeout path (which does produce a closeout snapshot) is used only by the
+CM-01 V3 R11/R12 history, where an explicit closeout snapshot was already committed
+before this tool existed. Both forms satisfy the phase completion invariant through
 `successorEvidenceRefs`.
