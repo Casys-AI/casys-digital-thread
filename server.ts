@@ -99,6 +99,10 @@ import {
   ArchiveLineageRunExecutor,
 } from "./src/adapters/executors/archive-lineage-run-executor.ts";
 import {
+  RECONCILE_UNCERTAIN_WRITER_OPERATION,
+  ReconcileUncertainWriterRunExecutor,
+} from "./src/adapters/executors/reconcile-uncertain-writer-run-executor.ts";
+import {
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VerifySealProofCaseRunExecutor,
 } from "./src/adapters/executors/verify-seal-proof-case-run-executor.ts";
@@ -908,6 +912,12 @@ async function createProjectControl(
     snapshots: activeThreadSnapshots,
     lease,
   });
+  // Reconcile-uncertain-writer requires no provider — always available.
+  // Human-only: the executor gate rejects any non-human origin.
+  const genericReconcileUncertainWriter = new ReconcileUncertainWriterRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+  });
   // CM-01 archive-lineage requires no provider — always available.
   const cm01ArchiveLineage = new CoffeeMachineCm01V3ArchiveLineageRunExecutor({
     projects: runtime.projects,
@@ -1420,6 +1430,10 @@ async function createProjectControl(
           {
             operation: ARCHIVE_LINEAGE_OPERATION,
             executor: genericArchiveLineage,
+          },
+          {
+            operation: RECONCILE_UNCERTAIN_WRITER_OPERATION,
+            executor: genericReconcileUncertainWriter,
           },
           {
             operation: VERIFY_SEAL_PROOF_CASE_OPERATION,

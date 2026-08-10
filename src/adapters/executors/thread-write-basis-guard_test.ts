@@ -98,6 +98,48 @@ Deno.test("a terminal uncertain provider sibling blocks after its lease is relea
   );
 });
 
+Deno.test("a reconciled terminal sibling does not block the thread write basis", () => {
+  const current = run("geometry", "queued");
+  const sibling = {
+    ...run("architecture", "failed"),
+    failure: {
+      code: "model-write-architecture-provider-outcome-unknown",
+      message: "Provider outcome is unknown.",
+    },
+    uncertainWriterReconciliation: {
+      kind: "uncertain-writer-resolved" as const,
+      outcome: "provider-did-not-write" as const,
+      reconciledAt: "2026-08-10T00:00:00.000Z",
+      reconciledBy: { id: "op-1", origin: "human" as const },
+      decisionId: "decision-reconcile-1",
+      providerInspectionAttestation: "Inspected container logs; no file written.",
+    },
+  };
+
+  // A terminal uncertain sibling whose operator resolved the uncertainty must
+  // NOT block a new queued run from the same basis.
+  assertThreadWriteBasisAvailable(project([current, sibling]), current);
+});
+
+Deno.test("a reconciled geometry sibling does not block the thread write basis", () => {
+  const current = run("architecture", "queued");
+  const sibling = {
+    ...run("geometry", "failed"),
+    failure: { code: "geometry-failed", message: "Seal outcome is uncertain." },
+    uncertainWriterReconciliation: {
+      kind: "uncertain-writer-resolved" as const,
+      outcome: "provider-did-not-write" as const,
+      reconciledAt: "2026-08-10T00:00:00.000Z",
+      reconciledBy: { id: "op-1", origin: "human" as const },
+      decisionId: "decision-reconcile-2",
+      providerInspectionAttestation: "No STEP file written to the exports volume.",
+    },
+  };
+
+  // A reconciled geometry sibling must also be unblocked.
+  assertThreadWriteBasisAvailable(project([current, sibling]), current);
+});
+
 Deno.test("an ordinary pre-write failed sibling does not poison the basis", () => {
   const current = run("requirements", "queued");
   const sibling = {

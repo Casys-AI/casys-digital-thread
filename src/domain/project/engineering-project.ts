@@ -56,7 +56,8 @@ export type EngineeringProjectCommandName =
   | "agent-run.publish"
   | "agent-run.complete"
   | "agent-run.fail"
-  | "agent-run.cancel";
+  | "agent-run.cancel"
+  | "agent-run.reconcile-annotation";
 
 export interface EngineeringCommandActor {
   readonly id: string;
@@ -262,6 +263,26 @@ export interface EngineeringWorkItemSuccessorReconciliation {
   readonly rationale: string;
 }
 
+/** How a work item relates to one reviewed gate in the canonical brief. */
+export type EngineeringGateClaimRole = "contributes-to" | "satisfies";
+
+/**
+ * State of the work-to-gate link, deliberately separate from artifact
+ * freshness. This foundation records it but does not calculate transitions.
+ */
+export type EngineeringGateClaimStatus =
+  | "current"
+  | "impact-unresolved"
+  | "invalidated"
+  | "carried-forward";
+
+export interface EngineeringGateClaim {
+  /** Stable ID of a success-criterion or verification-activity in the canonical brief. */
+  readonly gateItemId: string;
+  readonly role: EngineeringGateClaimRole;
+  readonly status: EngineeringGateClaimStatus;
+}
+
 export interface EngineeringWorkItem {
   readonly id: string;
   readonly phaseId: string;
@@ -274,6 +295,11 @@ export interface EngineeringWorkItem {
    * the new planning path.
    */
   readonly operation?: EngineeringOperationRef;
+  /**
+   * Declarative coverage of canonical brief gates. Unlike operation bindings,
+   * these are not evidence inputs and must never imply technical consumption.
+   */
+  readonly gateClaims?: readonly EngineeringGateClaim[];
   readonly status: EngineeringWorkItemStatus;
   readonly owner: EngineeringWorkOwner;
   readonly dependsOnWorkItemIds: readonly string[];
@@ -323,12 +349,64 @@ export interface EngineeringAgentRun {
    * execution. This is intentionally distinct from a failed execution.
    */
   readonly cancellation?: EngineeringAgentRunCancellation;
+  /**
+   * Present only on a terminal-uncertain failed run that a human operator has
+   * explicitly resolved after inspecting the provider.  The run remains
+   * `failed`; this annotation tells the thread-write basis guard that the lock
+   * may be lifted.  See EngineeringAgentRunUncertainWriterReconciliation.
+   */
+  readonly uncertainWriterReconciliation?:
+    EngineeringAgentRunUncertainWriterReconciliation;
+  /**
+   * Present only on runs completed by `agent-run.reconcile-annotation`.
+   * Annotation runs produce no ThreadSnapshot and no evidence refs; they only
+   * modify project-level state.  This field lets the validator exempt them from
+   * the standard evidence requirements that apply to evidence-producing runs.
+   */
+  readonly annotationOnly?: true;
   readonly statusHistory?: readonly EngineeringAgentRunTransition[];
 }
 
 export interface EngineeringAgentRunFailure {
   readonly code: string;
   readonly message: string;
+}
+
+/**
+ * Human-only annotation that resolves the write-uncertainty on a terminal
+ * failed provider run.  The run remains `failed` and its `failure.code` is
+ * immutable, but the thread-write basis guard reads this annotation to decide
+ * whether the lock may be lifted for a subsequent run from the same basis.
+ *
+ * WHY THIS EXISTS — an executor may crash after the provider has acknowledged a
+ * write but before the ThreadSnapshot is published.  The failure code enters
+ * TERMINAL_THREAD_WRITE_FAILURES (write-basis-guard.ts), making the basis
+ * permanently unavailable from the server side.  A human operator who inspects
+ * the provider and determines the side-effect is known can seal this annotation
+ * to unblock the basis.  The trust model is identical to every MRTR mechanism:
+ * the attestation is documented, not technically verified.
+ */
+export interface EngineeringAgentRunUncertainWriterReconciliation {
+  readonly kind: "uncertain-writer-resolved";
+  /**
+   * What the operator determined about the provider outcome:
+   *  - "provider-did-not-write": no durable write occurred; the basis is clean
+   *    for a new run without any further constraint.
+   *  - "write-effect-accepted": the provider produced output that was not
+   *    captured in the thread snapshot.  A blocker is opened on the project to
+   *    force a conscious decision before a new run can be queued.
+   */
+  readonly outcome: "provider-did-not-write" | "write-effect-accepted";
+  readonly reconciledAt: IsoDateTime;
+  readonly reconciledBy: EngineeringCommandActor;
+  /** Exact id of the human-approved MRTR decision that sealed this act. */
+  readonly decisionId: string;
+  /**
+   * Free-text attestation documenting what the operator observed at the
+   * provider.  Required and non-empty to make the inspection explicit in the
+   * audit trail.  The system cannot verify that the inspection was genuine.
+   */
+  readonly providerInspectionAttestation: string;
 }
 
 /** Exact human closeout for a queued run that never started. */

@@ -28,10 +28,22 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.version}`,
   `${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.id}@${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.version}`,
 ]);
-const GEOMETRY_WRITE_OPERATION =
+/**
+ * Exported alongside TERMINAL_THREAD_WRITE_FAILURES so the reconcile executor
+ * can determine whether a geometry failure is eligible for reconciliation.
+ * Geometry writes are conservatively terminal even without a quarantine code.
+ */
+export const GEOMETRY_WRITE_OPERATION =
   `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`;
 
-const TERMINAL_THREAD_WRITE_FAILURES = new Set([
+/**
+ * Exported so the reconcile-uncertain-writer executor can check eligibility
+ * (only runs whose failure code is terminal-uncertain — or the geometry write
+ * which is always conservatively terminal — can be reconciled).  The guard
+ * itself is the canonical reader; this export exists solely to avoid duplicating
+ * the constant in the executor.
+ */
+export const TERMINAL_THREAD_WRITE_FAILURES = new Set([
   "model-write-architecture-provider-outcome-unknown",
   "model-write-architecture-post-acknowledgement-quarantined",
   "model-write-architecture-quarantine-write-failed",
@@ -108,6 +120,7 @@ export function assertThreadWriteBasisAvailable(
       sibling.status === "running" || sibling.status === "publishing" ||
       sibling.status === "completed" ||
       (sibling.status === "failed" && sibling.failure &&
+        !sibling.uncertainWriterReconciliation &&
         (operationKey === GEOMETRY_WRITE_OPERATION ||
           TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code)))
     ) {
