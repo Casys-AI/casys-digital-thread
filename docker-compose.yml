@@ -70,7 +70,7 @@ services:
     # Keep the SysON sidecar independently selectable for a locally verified
     # protocol fix. This avoids replacing it with the shared toolchain image
     # when Compose is started for build123d or CalculiX.
-    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
+    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
     command: ["syson", "--port=3009", "--hostname=0.0.0.0"]
     environment:
       SYSON_URL: http://syson-app:8080
@@ -82,7 +82,7 @@ services:
     networks: [chain]
 
   mcp-build123d:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
     command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3014:3014"
@@ -117,7 +117,7 @@ services:
   # its bytes out with `docker compose cp` + fail-closed SHA-256 verification,
   # exactly as it already does for attested assets.
   mcp-build123d-sandbox:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
     command: ["build123d", "--port=3014", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3024:3014"
@@ -133,7 +133,7 @@ services:
       - ALL
 
   mcp-calculix:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01}"
+    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
     command: ["calculix", "--port=3015", "--hostname=0.0.0.0"]
     ports:
       - "127.0.0.1:3015:3015"
