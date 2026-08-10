@@ -3684,8 +3684,13 @@ Deno.test(
 );
 
 Deno.test(
-  "model.write-requirements rejects decimal thresholds before WAL or requirements provider calls",
+  "model.write-requirements rejects decimal thresholds when the proposal is made, before any run exists",
   async () => {
+    // The refusal moved earlier than a queued run: project_decision_propose now
+    // parses the proposal with this operation's own grammar, so a decimal
+    // threshold never reaches a human reviewer, a work item, or the WAL. The
+    // executor keeps its own parse as defence in depth for decisions recorded
+    // before that gate existed.
     for (const decimal of [0.5, 1.5]) {
       const directory = await Deno.makeTempDir({ prefix: "casys-reqs-decimal-" });
       try {
@@ -3694,21 +3699,10 @@ Deno.test(
             ? { ...parameter, value: decimal }
             : parameter
         );
-        const fixture = await queuedRequirementsFixture(directory, parameters);
-        const syson = new InitialReqsSyson();
         await assertRejects(
-          () =>
-            makeExecutor(fixture, { syson, directory }).execute(
-              AGENT,
-              executionCommand(fixture),
-            ),
-          EngineeringProjectCommandError,
+          () => queuedRequirementsFixture(directory, parameters),
+          Error,
           "safe integer",
-        );
-        assertEquals(syson.calls, []);
-        assertEquals(
-          await fixture.reqsAttempts.readRun(PROJECT_ID, fixture.queued.runId),
-          undefined,
         );
       } finally {
         await Deno.remove(directory, { recursive: true });

@@ -1,5 +1,6 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
+import { assertProposalMatchesOperationGrammar } from "../orchestration/operations/proposal-validation.ts";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
 import type { McpToolClient } from "../adapters/mcp/http-mcp-tool-client.ts";
@@ -393,19 +394,30 @@ export function registerProjectControlTools(
       common.projectId,
       common.expectedRevision,
     );
+    const decisionId = requiredString(args.decisionId, "decisionId");
+    const proposal = decisionProposal(args.proposal);
+    /**
+     * Reject an unparsable proposal here rather than at preview or execution:
+     * the agent is the caller, so it is the only party that can fix the keys,
+     * and nothing should reach a human reviewer that the operation could not
+     * read back.
+     */
+    assertProposalMatchesOperationGrammar(
+      current.workItems.find((item) => item.decisionIds.includes(decisionId))
+        ?.operation,
+      proposal.parameters,
+    );
     const snapshot = await dependencies.commands.proposeDecision(
       agentOrigin(context),
       {
         ...common,
-        decisionId: requiredString(args.decisionId, "decisionId"),
-        proposal: decisionProposal(args.proposal),
+        decisionId,
+        proposal,
         baseSnapshot: declaredProjectHead(current),
       },
     );
     return projectResult(
-      `Decision ${
-        requiredString(args.decisionId, "decisionId")
-      } now has an agent proposal at project revision ${snapshot.revision}; human approval is still required.`,
+      `Decision ${decisionId} now has an agent proposal at project revision ${snapshot.revision}; human approval is still required.`,
       snapshot,
     );
   });
