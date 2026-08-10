@@ -117,6 +117,7 @@ import {
 import type { CanonicalAssetReader } from "./canonical-asset-reader.ts";
 import type { ContainerAssetStager } from "./container-asset-stager.ts";
 import {
+  describeCause,
   requireBasis,
   requiredStart,
   requireRun,
@@ -1188,6 +1189,32 @@ export class VerifyRunFeaStaticProofRunExecutor {
         };
       });
 
+      /**
+       * Match each proof-case requirement to the requirement the thread already
+       * carries, by the sealed artifact it was traced from and the metric it
+       * constrains. Matching on the proof-case id would be wrong even when it
+       * happens to look familiar: that id is local to a reviewed JSON file and
+       * owes nothing to the model. A requirement that resolves to nothing stops
+       * the run rather than producing an evaluation of an absent subject.
+       */
+      const threadRequirementIds = new Map<string, string>();
+      for (const req of proofCase.requirements) {
+        const traced = basisSnapshot.requirements.filter((candidate) =>
+          candidate.trace.sourceArtifactId ===
+            proofCapture.requirementsArtifact.id &&
+          candidate.criterion.metric === req.feature
+        );
+        if (traced.length !== 1) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            `Proof-case requirement "${req.id}" resolves to ${traced.length} thread ` +
+              `requirements traced from artifact "${proofCapture.requirementsArtifact.id}" ` +
+              `with metric "${req.feature}"; exactly one is required.`,
+          );
+        }
+        threadRequirementIds.set(req.id, traced[0].id);
+      }
+
       // Evaluations — IDs use the full 64-hex verdictCaptureFp.
       const observationIds = observations.map((o) => o.id);
       const evaluations: RequirementEvaluation[] = feaEvaluationsFromOracle(
@@ -1198,6 +1225,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
           evaluatedAt: capturedAt,
           evidenceArtifactId: verdictArtifactId,
           observationIds,
+          threadRequirementIds,
         },
       );
 
@@ -1241,6 +1269,46 @@ export class VerifyRunFeaStaticProofRunExecutor {
         status: "verified",
       };
 
+      /**
+       * One consumption per input the verdict artifact declares.
+       *
+       * A snapshot is only publishable when every artifact-to-artifact
+       * derivation is backed by a consumption in which the *downstream
+       * producer* attests the upstream fingerprint it actually read. The
+       * CalculiX consumption above covers the solve, but the verdict is
+       * produced by the digital thread from three inputs, and each of them owes
+       * its own attestation — otherwise the derivation is asserted rather than
+       * demonstrated. All three fingerprints are the ones this run read: the
+       * solver capture it just wrote, and the two sealed identities carried by
+       * the proof-case capture.
+       */
+      const verdictConsumptions: ThreadArtifactConsumption[] = [
+        {
+          id: `fea-consumption-${verdictCaptureFp}-verdict-solver-result`,
+          artifactId: solverResultArtifactId,
+          consumer: digitalThreadOp,
+          observedFingerprint: solverResultArtifact.fingerprint,
+          verifiedAt: capturedAt,
+          status: "verified",
+        },
+        {
+          id: `fea-consumption-${verdictCaptureFp}-verdict-proof-case`,
+          artifactId: proofCaseRefId,
+          consumer: digitalThreadOp,
+          observedFingerprint: proofCaseArtifactInBasis.fingerprint,
+          verifiedAt: capturedAt,
+          status: "verified",
+        },
+        {
+          id: `fea-consumption-${verdictCaptureFp}-verdict-requirements`,
+          artifactId: proofCapture.requirementsArtifact.id,
+          consumer: digitalThreadOp,
+          observedFingerprint: proofCapture.requirementsArtifact.fingerprint,
+          verifiedAt: capturedAt,
+          status: "verified",
+        },
+      ];
+
       // Provenance triplets.
       const provenance: ThreadProvenanceLink[] = [
         link(
@@ -1257,6 +1325,19 @@ export class VerifyRunFeaStaticProofRunExecutor {
           "uses",
           "CalculiX reported the SHA-256 of the STEP it consumed.",
           "consumption",
+        ),
+        // Each verified consumption owes a `uses` link back to the artifact it
+        // attests: the consumption is the attestation, the link is what makes
+        // it reachable from the graph.
+        ...verdictConsumptions.map((entry) =>
+          link(
+            `${entry.id}-uses`,
+            entry.id,
+            entry.artifactId,
+            "uses",
+            "The digital thread read this artifact and attested its content hash while producing the verdict.",
+            "consumption",
+          )
         ),
         link(
           `fea-verdict-from-solver-${verdictCaptureFp}`,
@@ -1352,7 +1433,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
         subjectId: basisSnapshot.subject.id,
         capturedAt,
         artifacts: [solverResultArtifact, verdictArtifact],
-        consumptions: [consumption],
+        consumptions: [consumption, ...verdictConsumptions],
         observations,
         requirements: [], // requirements already exist; do NOT recreate TracedRequirements
         evaluations,
@@ -1493,7 +1574,10 @@ export class VerifyRunFeaStaticProofRunExecutor {
         throw new EngineeringProjectCommandError(
           "invalid_transition",
           "The CalculiX dispatch was acknowledged but evidence was not published; " +
-            "the run is quarantined and may not be retried automatically.",
+            "the run is quarantined and may not be retried automatically. " +
+            // A validation failure names one issue per offending path, so the
+            // useful part of the message is the whole list, not its head.
+            `Structural cause: ${describeCause(error, 2000)}`,
         );
       }
 

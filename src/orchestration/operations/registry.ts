@@ -86,6 +86,17 @@ export interface RegisteredEngineeringOperation {
    * baseline).  All other generic operations leave this absent.
    */
   readonly requiresAdditiveChange?: true;
+  /**
+   * Execution demands a human origin; an agent-originated call must be refused.
+   *
+   * The executor gate is still the authority — this flag does not replace it.
+   * What it adds is *reachability*: without a declarative marker, the surface
+   * that dispatches runs has no way to know it should offer the human its
+   * elicitation, so a human-only operation becomes unexecutable by anyone and
+   * the state it was meant to unlock stays locked forever. That is not
+   * hypothetical — it stranded two projects on a quarantined provider write.
+   */
+  readonly mustOrigin?: "human";
   readonly bindings: readonly RegisteredEngineeringOperationBinding[];
 }
 
@@ -508,6 +519,7 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    mustOrigin: "human",
     bindings: [
       {
         name: "approvedBrief",

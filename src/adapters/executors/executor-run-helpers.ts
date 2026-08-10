@@ -97,3 +97,22 @@ export function unexpectedStatus(
     `Agent run ${run.id} is in state ${run.status}; expected ${expected}.`,
   );
 }
+
+/**
+ * Surface the cause of a failure that a coarser wrapper is about to replace.
+ *
+ * A post-dispatch executor cannot rethrow the original error — it owes the
+ * caller the terminal `invalid_transition` that forbids blind retry. Without
+ * this, the structural reason vanishes and only the wrapper's generic sentence
+ * survives, which is what made a quarantined FEA run undiagnosable from its
+ * receipt alone. The message is bounded so an unexpected payload cannot turn a
+ * receipt into a dump, and non-Error throws still name what arrived.
+ */
+export function describeCause(error: unknown, maxLength = 400): string {
+  const described = error instanceof Error
+    ? `${error.name}: ${error.message}`
+    : `non-error throw: ${String(error)}`;
+  return described.length <= maxLength
+    ? described
+    : `${described.slice(0, maxLength)}…`;
+}

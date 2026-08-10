@@ -1,6 +1,7 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import { assertProposalMatchesOperationGrammar } from "../orchestration/operations/proposal-validation.ts";
+import { getRegisteredEngineeringOperation } from "../orchestration/operations/registry.ts";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
 import type { McpToolClient } from "../adapters/mcp/http-mcp-tool-client.ts";
@@ -363,6 +364,37 @@ export function registerProjectControlTools(
     app.registerTool(projectAgentRunExecuteTool, async (args, context) => {
       const common = commonMutation(args);
       const runId = requiredString(args.runId, "runId");
+      const current = await requiredProjectRevision(
+        dependencies.projects,
+        common.projectId,
+        common.expectedRevision,
+      );
+      /**
+       * A human-only operation cannot borrow the agent's origin, so this
+       * surface hands the dispatch itself to the operator's elicitation before
+       * the executor's own gate ever sees it. Everything else keeps the agent
+       * origin unchanged.
+       */
+      if (humanOnlyRunOperation(current, runId)) {
+        const confirmation = humanRunExecutionConfirmationResponse(context);
+        if (confirmation === undefined) {
+          return humanRunExecutionConfirmationRequest(current, runId);
+        }
+        if (!confirmation) {
+          return projectResult(
+            `Human-only agent run ${runId} was not executed. No project state changed; continue the paired conversation.`,
+            current,
+          );
+        }
+        const snapshot = await dependencies.runExecutor!.execute(
+          elicitedHumanOrigin(context),
+          { ...common, runId },
+        );
+        return projectResult(
+          `The paired MCP host reported human execution of run ${runId} through elicitation at project revision ${snapshot.revision}. The operation is human-only; no agent origin was accepted.`,
+          snapshot,
+        );
+      }
       const snapshot = await dependencies.runExecutor!.execute(
         agentOrigin(context),
         { ...common, runId },
@@ -1730,6 +1762,104 @@ async function handleQueuedRunCancellation(
   return projectResult(
     `The paired MCP host reported human cancellation of queued agent run ${runId} through elicitation at project revision ${snapshot.revision}. No agent claim or execution was recorded.`,
     snapshot,
+  );
+}
+
+/**
+ * True when the run's reviewed operation is declared human-only in the registry.
+ *
+ * A run whose work item or operation cannot be resolved is not treated as
+ * human-only: the executor refuses it on its own terms, and inventing an
+ * elicitation for an unresolvable run would ask the operator to confirm
+ * something this surface cannot describe.
+ */
+function humanOnlyRunOperation(
+  snapshot: EngineeringProjectSnapshot,
+  runId: string,
+): boolean {
+  const run = snapshot.agentRuns.find((candidate) => candidate.id === runId);
+  if (run === undefined) return false;
+  const operation = snapshot.workItems.find(
+    (item) => item.id === run.workItemId,
+  )?.operation;
+  if (operation === undefined) return false;
+  return getRegisteredEngineeringOperation(operation)?.mustOrigin === "human";
+}
+
+function humanRunExecutionConfirmationRequest(
+  snapshot: EngineeringProjectSnapshot,
+  runId: string,
+) {
+  const run = snapshot.agentRuns.find((candidate) => candidate.id === runId)!;
+  const operation = snapshot.workItems.find(
+    (item) => item.id === run.workItemId,
+  )!.operation!;
+  return {
+    resultType: "input_required",
+    inputRequests: {
+      human_run_execution_confirmation: {
+        method: "elicitation/create",
+        params: {
+          mode: "form",
+          message:
+            `Execute run “${run.id}” for work item “${run.workItemId}” yourself? Its operation ${operation.id}@${operation.version} is human-only: it records a judgement no agent may make on your behalf, and it will run under your origin. Confirm this exact execution, or decline and continue the conversation.`,
+          requestedSchema: {
+            type: "object",
+            properties: {
+              confirmed: {
+                type: "boolean",
+                title: "Confirm human-only run execution",
+                description:
+                  "I confirm I am executing this human-only operation myself, on my own judgement.",
+              },
+            },
+            required: ["confirmed"],
+            additionalProperties: false,
+          },
+        },
+      },
+    },
+  };
+}
+
+function humanRunExecutionConfirmationResponse(
+  context?: ToolHandlerContext,
+): boolean | undefined {
+  if (context?.inputResponses === undefined) return undefined;
+  if (context.retryVerified !== true) {
+    throw new TypeError(
+      "Human-only run execution requires an MCP retry with verified signed request state.",
+    );
+  }
+  const response = exactRecord(
+    context.inputResponses.human_run_execution_confirmation,
+    "inputResponses.human_run_execution_confirmation",
+  );
+  exactKeys(
+    response,
+    ["action"],
+    ["content"],
+    "inputResponses.human_run_execution_confirmation",
+  );
+  const responseAction = oneOf(
+    response.action,
+    ["accept", "decline", "cancel"] as const,
+    "inputResponses.human_run_execution_confirmation.action",
+  );
+  if (responseAction !== "accept") return false;
+  const content = exactRecord(
+    response.content,
+    "inputResponses.human_run_execution_confirmation.content",
+  );
+  exactKeys(
+    content,
+    ["confirmed"],
+    [],
+    "inputResponses.human_run_execution_confirmation.content",
+  );
+  return requiredBoolean(
+    content.confirmed,
+    "inputResponses.human_run_execution_confirmation.content.confirmed",
   );
 }
 

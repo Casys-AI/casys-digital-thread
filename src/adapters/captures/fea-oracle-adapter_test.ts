@@ -42,11 +42,18 @@ const SOLVER_METRICS: FeaSolverMetrics = {
 
 const EVIDENCE_ID = "fea-verdict-artifact-id";
 
+/** Thread ids differ from the proof-case ids on purpose — that is the point. */
+const THREAD_REQUIREMENT_IDS = new Map([
+  ["drip-tray-displacement", "requirement-abc123-drip_tray_max_displacement"],
+  ["drip-tray-von-mises", "requirement-abc123-drip_tray_max_von_mises"],
+]);
+
 const EVALUATION_CONTEXT: FeaEvaluationContext = {
   verdictCaptureFp: VERDICT_FP,
   evaluatedAt: "2026-08-09T10:00:00.000Z",
   evidenceArtifactId: EVIDENCE_ID,
   observationIds: ["obs-displacement", "obs-von-mises"],
+  threadRequirementIds: THREAD_REQUIREMENT_IDS,
 };
 
 // ---------------------------------------------------------------------------
@@ -423,6 +430,7 @@ Deno.test(
     const shortContext: FeaEvaluationContext = {
       ...EVALUATION_CONTEXT,
       observationIds: ["obs-displacement"], // missing second
+      threadRequirementIds: THREAD_REQUIREMENT_IDS,
     };
     const outcomes = buildOutcomes([["pass", 0.42, 1.5], ["pass", 15e6, 20e6]], [
       DISP_REQ,
@@ -449,9 +457,64 @@ Deno.test(
         feaEvaluationsFromOracle(emptyOutcomes, [DISP_REQ], {
           ...EVALUATION_CONTEXT,
           observationIds: ["obs-displacement"],
+          threadRequirementIds: THREAD_REQUIREMENT_IDS,
         }),
       Error,
       "oracle outcome missing",
+    );
+  },
+);
+
+Deno.test(
+  "feaEvaluationsFromOracle names the thread requirement, never the proof-case id",
+  () => {
+    const [displacement] = feaEvaluationsFromOracle(
+      new Map([["drip-tray-displacement", {
+        status: "pass" as const,
+        computedValue: 0.42,
+        threshold: 1.5,
+        margin: 1.08,
+        marginPercent: 72,
+        unit: "mm",
+      }]]),
+      [DISP_REQ],
+      { ...EVALUATION_CONTEXT, observationIds: ["obs-displacement"] },
+    );
+
+    // A proof case names its requirements locally; the snapshot names them
+    // after the sealed artifact they were traced from. An evaluation that
+    // keeps the local id evaluates a subject the snapshot does not contain,
+    // and the whole publication is rejected — with no run left to inspect.
+    assertEquals(
+      displacement.requirementId,
+      "requirement-abc123-drip_tray_max_displacement",
+    );
+  },
+);
+
+Deno.test(
+  "feaEvaluationsFromOracle refuses a requirement it cannot resolve in the thread",
+  () => {
+    assertThrows(
+      () =>
+        feaEvaluationsFromOracle(
+          new Map([["drip-tray-displacement", {
+            status: "pass" as const,
+            computedValue: 0.42,
+            threshold: 1.5,
+            margin: 1.08,
+            marginPercent: 72,
+            unit: "mm",
+          }]]),
+          [DISP_REQ],
+          {
+            ...EVALUATION_CONTEXT,
+            observationIds: ["obs-displacement"],
+            threadRequirementIds: new Map(),
+          },
+        ),
+      Error,
+      "no thread requirement resolved",
     );
   },
 );

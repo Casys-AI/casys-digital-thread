@@ -222,6 +222,17 @@ export interface FeaEvaluationContext {
   readonly evidenceArtifactId: string;
   /** observationIds[i] corresponds to requirements[i]. */
   readonly observationIds: readonly string[];
+  /**
+   * Thread requirement id per proof-case requirement id.
+   *
+   * A proof case names its requirements with its own local ids; the thread
+   * names the same requirements after the sealed artifact they were extracted
+   * from. An evaluation points at the *thread* requirement — pointing at the
+   * local id produces an evaluation of something the snapshot does not contain,
+   * and the snapshot is rejected. The resolution belongs to the caller: only it
+   * holds the basis snapshot the requirements were traced into.
+   */
+  readonly threadRequirementIds: ReadonlyMap<string, string>;
 }
 
 /**
@@ -250,7 +261,13 @@ export function feaEvaluationsFromOracle(
   requirements: readonly MechanicalRequirement[],
   context: FeaEvaluationContext,
 ): RequirementEvaluation[] {
-  const { verdictCaptureFp, evaluatedAt, evidenceArtifactId, observationIds } = context;
+  const {
+    verdictCaptureFp,
+    evaluatedAt,
+    evidenceArtifactId,
+    observationIds,
+    threadRequirementIds,
+  } = context;
 
   if (!/^[a-f0-9]{64}$/.test(verdictCaptureFp)) {
     throw new Error(
@@ -292,11 +309,19 @@ export function feaEvaluationsFromOracle(
       );
     }
 
+    const threadRequirementId = threadRequirementIds.get(req.id);
+    if (threadRequirementId === undefined) {
+      throw new Error(
+        `fea-oracle-adapter: no thread requirement resolved for proof-case` +
+          ` requirement id "${req.id}".`,
+      );
+    }
+
     const status = oracleResult.status as RequirementEvaluationStatus;
     const base: RequirementEvaluation = {
       id,
       name: `${req.name} evaluation`,
-      requirementId: req.id,
+      requirementId: threadRequirementId,
       observationIds: [observationId],
       status,
       evaluatedAt,

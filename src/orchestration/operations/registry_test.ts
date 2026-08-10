@@ -225,3 +225,16 @@ Deno.test("CM-01 archive lineage accepts explicit N targets and rejects non-reti
   );
   assertEquals(duplicate.code, "invalid_bindings");
 });
+
+Deno.test("a human-only operation declares its origin so a human can reach it", () => {
+  const reconcile = getRegisteredEngineeringOperation({
+    id: "record.reconcile-uncertain-writer",
+    version: "1",
+  })!;
+
+  // The executor refuses an agent origin. Without this declaration the surface
+  // that dispatches runs cannot know to offer the operator its elicitation, so
+  // the run becomes executable by nobody — and the write-basis lock it exists
+  // to lift never comes off.
+  assertEquals(reconcile.mustOrigin, "human");
+});
