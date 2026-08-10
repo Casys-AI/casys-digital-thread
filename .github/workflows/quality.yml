@@ -55,5 +55,13 @@ jobs:
       - name: Verify evidence fixtures
         run: deno task verify:evidence
 
+      # verify:fea:contract is deliberately NOT run here yet. It refuses its own
+      # fixture, which is still synthetic — built from the parser contract
+      # instead of captured from CalculiX. That refusal is correct: a gate that
+      # validates the parser against itself is what let two blocking defects
+      # reach production today. Re-enable this step once
+      # `deno task capture:fea:contract-golden` has produced a real capture and
+      # the fixture is committed.
+
       - name: Build and verify the native Workbench
         run: deno task verify:thread:presentation

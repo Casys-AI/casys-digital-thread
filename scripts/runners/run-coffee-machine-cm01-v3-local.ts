@@ -302,6 +302,7 @@ export async function runCoffeeMachineCm01V3Local(
         statement:
           "Produce one normalized V3 project/thread observation that the static CM-01 golden gate can compare.",
         sourceRefs: [{ kind: "intent", reference: "local-integration-harness" }],
+        dependsOnItemIds: [],
       },
     ],
   });

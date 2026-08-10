@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "capturedFromImageDigest": "4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c",
+    "note": "Synthetic fixture constructed from the parser contract. Run `deno task capture:fea:contract-golden` with live CalculiX to replace with a real provider capture.",
+    "stepSource": "examples/bracket/bracket.step"
+  },
+  "response": {
+    "schemaVersion": "2.0",
+    "kind": "static-solve",
+    "inputArtifact": {
+      "bytes": 35319,
+      "path": "/workspace/fea-7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac.step",
+      "sha256": "7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac",
+      "sourcePath": "/exports/fea-7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac.step"
+    },
+    "constraints": {
+      "fixedSelections": ["FIXED"],
+      "loads": [{ "forceN": [0, 0, -500], "selection": "LOADED" }]
+    },
+    "mesh": {
+      "elements": 1423,
+      "nodes": 2847,
+      "nodesPerSelection": { "FIXED": 312 }
+    },
+    "metrics": {
+      "maxDisplacement": {
+        "nodeId": 1842,
+        "unit": "mm",
+        "value": 0.312,
+        "vectorMm": [0.001, 0.002, 0.312]
+      },
+      "maxVonMises": {
+        "elementId": 934,
+        "unit": "MPa",
+        "value": 26.6
+      }
+    }
+  }
+}
