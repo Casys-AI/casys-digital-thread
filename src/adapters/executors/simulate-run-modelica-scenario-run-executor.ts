@@ -1283,19 +1283,31 @@ export function validateKitList(
   }
 
   const kitObj = kit as Record<string, unknown>;
-  const parameters = kitObj.parameters as Record<string, unknown> | undefined;
-  if (!parameters || typeof parameters !== "object") {
+  /**
+   * WHY AN ARRAY, AND `minimum`/`maximum` — this shape is the provider's own
+   * `kit-list` outputSchema, not a convenience: each parameter is an object
+   * carrying `{id, unit, default, minimum, maximum}` inside a `parameters`
+   * array. Probed against the live server; a map or `min`/`max` short names
+   * would silently find nothing and let an out-of-bounds case reach dispatch.
+   */
+  const parameters = kitObj.parameters;
+  if (!Array.isArray(parameters)) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `Kit "${simulationCase.kit.modelId}" has no parameters map in kit_list.`,
+      `Kit "${simulationCase.kit.modelId}" has no parameters array in kit_list.`,
     );
   }
 
   // Every case parameter must be present in the kit with matching unit and
-  // finite bounds; the case value must be within [min, max].
+  // finite bounds; the case value must be within [minimum, maximum].
   for (const param of simulationCase.parameters) {
-    const kitParam = parameters[param.id] as Record<string, unknown> | undefined;
-    if (!kitParam || typeof kitParam !== "object") {
+    const kitParam = parameters.find(
+      (candidate) =>
+        typeof candidate === "object" &&
+        candidate !== null &&
+        (candidate as Record<string, unknown>).id === param.id,
+    ) as Record<string, unknown> | undefined;
+    if (!kitParam) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `Kit parameter "${param.id}" is absent from kit_list.`,
@@ -1308,8 +1320,8 @@ export function validateKitList(
           `case unit "${param.unit}".`,
       );
     }
-    const min = Number(kitParam.min);
-    const max = Number(kitParam.max);
+    const min = Number(kitParam.minimum);
+    const max = Number(kitParam.maximum);
     if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",

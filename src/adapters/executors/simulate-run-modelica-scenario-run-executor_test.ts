@@ -681,8 +681,12 @@ function makeMinimalSimCase(
 
 /**
  * Minimal kit_list structuredContent that declares a single kit.
- * `kitParams` is the kit's `parameters` map; `producedMetrics` is the array of
- * metrics produced.
+ *
+ * The shape mirrors the provider's `kit-list` outputSchema exactly — probed
+ * against the live server: `parameters` is an ARRAY of objects carrying
+ * `{id, unit, minimum, maximum}`, never a map keyed by id, and the bounds are
+ * spelled `minimum`/`maximum`. A fixture that drifts from the provider makes
+ * these tests pass while the real step 0 rejects every case.
  */
 function makeKitListContent(opts: {
   modelId?: string;
@@ -691,10 +695,17 @@ function makeKitListContent(opts: {
   producedMetrics?: Array<{ id: string; unit: string }>;
 }): unknown {
   return {
+    schemaVersion: "1.0",
+    kind: "kit-list",
     kits: [{
       id: opts.modelId ?? "CoffeeMachine",
       version: opts.modelVersion ?? "1.0.0",
-      parameters: opts.kitParams,
+      parameters: Object.entries(opts.kitParams).map(([id, bounds]) => ({
+        id,
+        unit: bounds.unit,
+        minimum: bounds.min,
+        maximum: bounds.max,
+      })),
       produced_metrics: opts.producedMetrics ?? [
         { id: "T_water_max", unit: "degC" },
       ],
