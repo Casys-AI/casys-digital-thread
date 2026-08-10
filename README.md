@@ -279,6 +279,8 @@ model, and security boundary.
 | `experiments/thread-workflow/`                | Frozen YAML authoring prototype (reviewed spec + engine, no production caller)     |
 | `config/thread-subjects/`                     | Reviewed explicit provider-to-product identity bindings                            |
 | `config/verification-plans/`                  | Versioned provisional scenario-contract plans                                      |
+| `config/mechanical-proof-cases/`              | Candidate mechanical proof-case declarations; authoring only — execution authority belongs to the sealed thread artifact |
+| `config/simulation-cases/`                    | Candidate simulation-case declarations (kit, scenario, parameter overrides); authoring only — execution authority belongs to the sealed thread artifact |
 | `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                            |
 | `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                    |
 | `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence |

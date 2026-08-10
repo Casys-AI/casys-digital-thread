@@ -97,14 +97,18 @@ operation revisions and declared binding names/source kinds; it also supplies th
 durable work title, description, and classification shown to the reviewer. The generic
 entry-point registry contains:
 
-| Starting point or exact prerequisite                                          | Exact operation reference         |
-| ----------------------------------------------------------------------------- | --------------------------------- |
-| New V3 idea or specification                                                  | `baseline.from-approved-brief@1`  |
-| Post-baseline change; exact documentary r1 required at runtime                | `architecture.seed-syson-model@2` |
-| Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`      |
-| Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`      |
-| Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`         |
-| Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`        |
+| Starting point or exact prerequisite                                          | Exact operation reference          |
+| ----------------------------------------------------------------------------- | ---------------------------------- |
+| New V3 idea or specification                                                  | `baseline.from-approved-brief@1`   |
+| Post-baseline change; exact documentary r1 required at runtime                | `architecture.seed-syson-model@2`  |
+| Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`       |
+| Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`       |
+| Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`          |
+| Human-reviewed simulation case; exact thread-snapshot basis required          | `simulate.seal-simulation-case@1`  |
+| Sealed simulation-case artifact in basis; thread-entity binding required      | `simulate.run-modelica-scenario@1` |
+| Human-reviewed FEA proof case; exact geometry and requirements-tip in basis   | `verify.seal-proof-case@1`         |
+| Sealed proof-case and geometry artifacts in basis; thread-entity bindings     | `verify.run-fea-static-proof@1`    |
+| Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`         |
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
 `architecture.seed-syson-model@2` may be added by one append-only project change. The
@@ -120,7 +124,7 @@ blocker, concrete decision proposal, or completed/cancelled work exists. After t
 point it may append a bounded change, but cannot use either command to erase execution
 or review history.
 
-Six generic operations have trusted executors in the current V3 idea/spec slice.
+Ten generic operations have trusted executors in the current V3 idea/spec slice.
 `baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
 registered work item, the backend records the exact approved brief and reviewed plan as
 canonical JSON, fingerprints its bytes with SHA-256, stores them immutably, and cites
@@ -190,6 +194,81 @@ will be retired. The executor computes the
 domain-pure archive cascade, refuses a fully redundant closure, and publishes the
 successor snapshot with CAS readback. It makes no provider call; history stays readable
 while current views exclude the retired lines.
+
+`simulate.seal-simulation-case@1` seals the human-reviewed OpenModelica simulation case
+into the thread without any provider call. Its signed MRTR proposal carries the flat
+`sim.case.*` grammar: case ID, digest, kit model ID and SHA-256, scenario ID and
+SHA-256, explicit parameter overrides with units, timeout, and expected metric names and
+units. The executor resolves the case path through the server-owned
+`SIMULATION_CASE_SOURCES` catalog — the agent never supplies a path or raw case bytes —
+validates the JSON against the `simulation-case/1.0` contract, computes
+`canonicalCaseText` and its SHA-256, and fails immediately if the MRTR-signed digest
+diverges. The Modelica kit lives outside the thread in the provider's own store;
+`inputArtifactIds` is intentionally empty — claiming consumption for bytes that cannot
+be verified by content address would be a false attestation. The honest boundary is the
+`{modelSha256, scenarioSha256}` pair sealed inside `canonicalCaseText`. The
+`simulation-case-capture/1.0` record is stored by content address; the thread extension
+receives one `document` artifact (version = `caseDigest`, the monotony-ratchet key). No
+`simulate.run-modelica-scenario@1` run may proceed without this sealed mandate.
+
+`simulate.run-modelica-scenario@1` is observational: it never produces a verdict and a
+structural triple-lock (`verdictStatus: not_evaluated`, `requirements: []`, zero
+passed/failed/unresolved counts) is enforced verbatim by `validateThreadSnapshot` before
+any snapshot is persisted. The executor re-reads the `simulation-case-capture/1.0` by
+content address, verifies the bound `simulationCase` artifact's `caseDigest` in the
+current basis, and confirms kit availability and each parameter's bounds and unit through
+`modelica_kit_list` before any dispatch. A `planDigest` commits the exact simulate
+request to the WAL in `dispatched` state before `modelica_simulate`. The three-state WAL
+(`dispatched → provider-run-known → completed`) embeds the canonical simulate envelope at
+`provider-run-known` so recovery resumes exclusively from `modelica_run_get`;
+re-simulating a run whose provider run-id is already recorded is structurally forbidden.
+Double attestation compares the `modelica_simulate` response against `modelica_run_get`.
+Two CAS objects are produced: a provider run record (producer `modelica`) sealing the raw
+normalized provider envelopes, and an execution receipt (producer `digital-thread`)
+asserting the lineage from the human-signed simulation-case artifact to the concrete
+provider run. No verdict, `TracedRequirement`, evaluation, or violation is ever produced;
+evaluation belongs to SysON, not to this executor.
+
+`verify.seal-proof-case@1` seals the human-reviewed mechanical proof case into the
+thread without any provider call. Its signed MRTR proposal carries every consequential
+input in the flat `fea.proof.*` grammar: case ID, digest, geometry and requirements
+artifact identities, target model element, STEP byte count, and material constants. The
+executor resolves the case path through the server-owned `FEA_PROOF_CASE_SOURCES` catalog
+— the agent never supplies a path or raw case bytes — validates the JSON against
+`mechanical-proof-case/1.0`, computes `canonicalProofText` and its SHA-256, and fails
+immediately if the MRTR-signed digest diverges. It then verifies the geometry artifact by
+kind, fingerprint, and `geometry-capture/2.0` schema, confirms the target
+`PartDefinition` model element in that capture, re-reads the requirements-capture to
+confirm the authoritative tip matches the MRTR-signed artifact, and checks every proof
+requirement against the corresponding oracle requirement. The resulting
+`fea-proof-case-capture/1.0` record is stored by content address; the thread extension
+receives one `document` artifact (version = `proofDigest`, the monotony-ratchet key) and
+three full `consumption + derived_from + uses` triplets for geometry, requirements, and
+STEP. No `verify.run-fea-static-proof@1` run may proceed without this sealed mandate.
+
+`verify.run-fea-static-proof@1` consumes the sealed proof-case artifact and the sealed
+geometry artifact, both bound as exact thread entities and propagated into the approval's
+`inputEvidenceRefs` through `decisionEvidenceScope`. The executor re-reads the
+`fea-proof-case-capture/1.0` by content address, re-checks the requirements tip for
+drift since the seal, re-locates and hash-verifies the STEP bytes via the canonical asset
+reader, and asserts oracle fidelity through `extractAndVerifyOracleRequirements` before
+any provider dispatch. The STEP is staged content-addressed (`fea-<digest>.step`) into
+the CalculiX container; a `FeaExecutionPolicy` caps proof dimensions and STEP byte count.
+The `planDigest` commits the exact solver request to the WAL in `dispatched` state before
+`calculix_solve_static`. The three-state WAL (`dispatched → solver-recorded → completed`)
+embeds the canonical solver-capture text at `solver-recorded` so a crash after the
+provider ACK resumes at the oracle step without re-dispatch; a divergent CAS readback is
+a terminal integrity violation. The SysON oracle (`syson_constraint_evaluate`) evaluates
+each proof requirement at native units; evaluation IDs carry the full 64-hex
+`verdictCaptureFp`. A `fail` verdict is publishable: each failing evaluation produces a
+named violation and a paired proposed action. The thread extension adds a `solver-result`
+artifact (producer `calculix`), a `document` verdict artifact, two `ThreadObservation`
+records in mm and MPa, evaluations, any violations with proposed actions, and STEP
+consumption attestation with the CalculiX-returned hash.
+
+None of these four operations has yet been executed against a real project. Every first
+seal and first run remains gated by a reviewed MRTR proposal and explicit operator
+consent in the paired conversation.
 
 The fixed `coffee-machine-cm01-v3` reference path is a separate code-owned catalog, not
 a generic project template. After the documentary baseline and SysON seed, it supplies
@@ -468,7 +547,7 @@ is currently process-local, so a shared signing key alone is not sufficient for
 multi-instance operation. That deployment needs a shared, durable replay store with
 atomic consume semantics.
 
-The source dispatcher materializes six generic V3 operations, the reviewed
+The source dispatcher materializes ten generic V3 operations, the reviewed
 `inspection-drone-v4` qualitative-architecture and product-structure operations, and the
 fixed CM-01 catalog. `baseline.from-approved-brief@1` has no provider invocation and
 persists its canonical capture before publishing the cited root snapshot.
@@ -484,7 +563,24 @@ for v2, the manifest must cover every captured PartUsage and every distinct targ
 PartDefinition. The provider execution occurred earlier in the isolated preview
 boundary. `record.archive-lineage@1` runs the governed retirement cascade with no
 provider call, gated by a human-approved decision sealing the exact thread-entity
-targets. `architecture.author-inspection-drone@3` is restricted to the exact
+targets. `simulate.seal-simulation-case@1` resolves the reviewed case through
+`SIMULATION_CASE_SOURCES`, cross-checks every MRTR field, and publishes the
+content-addressed simulation-case mandate with empty `inputArtifactIds` and no provider
+call. `simulate.run-modelica-scenario@1` verifies kit bounds through `modelica_kit_list`,
+dispatches `modelica_simulate`, double-attests the result through `modelica_run_get`, and
+publishes unit-carrying observations only — a structural triple-lock enforces
+`verdictStatus: not_evaluated` and re-dispatch after a known provider run-id is
+forbidden. `verify.seal-proof-case@1` resolves the reviewed proof case through
+`FEA_PROOF_CASE_SOURCES`, cross-checks the MRTR-signed digest and every parameter against
+the canonical bytes, verifies geometry and requirements-tip links in the basis, and
+publishes the content-addressed mandate with no provider call.
+`verify.run-fea-static-proof@1` stages the STEP content-addressed, dispatches
+`calculix_solve_static` from sealed proof parameters only, evaluates through the SysON
+oracle, and publishes a fail-closed verdict with named violations and proposed actions;
+the WAL embeds the canonical solver capture so recovery never re-dispatches after the
+solver ACKs. None of these four has yet been executed against a real project; every first
+seal and run is gated by MRTR proposal and operator consent.
+`architecture.author-inspection-drone@3` is restricted to the exact
 `inspection-drone-v4` r2 basis and has published r3: five typed usages and four
 qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
 or verdict claims. Its read-only successor,

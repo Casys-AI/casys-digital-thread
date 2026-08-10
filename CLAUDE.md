@@ -389,3 +389,37 @@ run, son work item et le reçu de queue. L'annulation rend le work item à son �
 dérivé, permet une nouvelle queue, et conserve la compatibilité des anciens reçus.
 Enfin, `.github/workflows/quality.yml` exécute sur PR et sur `main` les gates formatage,
 lint, type-check, tests, vérification d'évidence et Workbench.
+
+Trois marches de généralisation ont suivi les 2026-08-09/10, en code seulement. Le lot
+de purge d'abord : `src/domain/analysis/` ne contient plus aucun symbole CM-01 (les
+renderers DripTray vivent dans `src/domain/cm01/cm01-drip-tray-analysis-scripts.ts`),
+`record.archive-lineage@1` est l'archivage gouverné générique, et l'élicitation MRTR
+rend les cibles scellées en JSON canonique — un encodage injectif, aucun ID ne peut
+forger la liste affichée à l'approbateur. Ensuite le gel : le moteur de DAG YAML est un
+prototype d'authoring sous `experiments/thread-workflow/`, avec ses 15 tests dont un
+test d'architecture qui interdit tout import de production — la voie d'exécution est et
+reste les executors serveur-fixes du registre.
+
+Puis la physique est devenue générique : le registre compte dix opérations trusted.
+`verify.seal-proof-case@1` scelle un `mechanical-proof-case/1.0` revu en artifact
+content-addressed — l'autorité d'exécution : catalogue serveur des sources, grammaire
+MRTR plate intégralement en clair (matériau, maillage, appuis, charges, seuils, jusqu'à
+l'union `cadSource`), tip requirements autoritatif relu depuis la capture signée,
+chaîne seed vérifiée. `verify.run-fea-static-proof@1` exécute la preuve : staging STEP
+purement content-addressed (`fea-<digest>.step` — aucun composant dérivé d'une valeur
+d'agent, même hashé), attestation croisée à trois points anti-TOCTOU, WAL à trois états
+dont `solver-recorded` embarque le texte canonique de la capture (reprise sans
+redispatch ; un CAS présent mais divergent est terminal), oracle
+`syson_constraint_evaluate` aux unités natives (SysON convertit MPa↔Pa — sondé), un
+verdict `fail` publiable avec violations nommées et actions proposées. Côté système,
+`simulate.seal-simulation-case@1` scelle le cas (kit et scénario liés par SHA-256,
+overrides explicites bornés par `modelica_kit_list`) et
+`simulate.run-modelica-scenario@1` publie observations et artefacts hashés, jamais un
+verdict : `not_evaluated` est forcé, un artifact provider de kind `verdict` est rejeté,
+le WAL `provider-run-known` embarque l'enveloppe simulate et la reprise ne fait que
+`modelica_run_get`. Aucune de ces quatre opérations n'a encore tourné en réel : les
+premiers seals (`coffee-machine-cm01-drip-tray-mechanical-v1`,
+`coffee-machine-cm01-thermal-nominal-v1` — ce dernier ancre son reviewBasis sur le r20
+du sujet V3) puis les premiers runs restent soumis au consentement explicite. Dette
+tracée : les tests d'intégration WAL complets du run Modelica sont différés à la gate
+d'intégration.

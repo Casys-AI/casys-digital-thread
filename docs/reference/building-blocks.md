@@ -29,6 +29,10 @@
 | Modelica evidence          | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                   |
 | CAD/FEA exchange           | `exports` Docker volume, with producer and consumer SHA-256 attestation                                    |
 | ERP manufacturing truth    | ERPNext database, reached only through `mcp-erpnext`                                                       |
+| FEA proof (seal)           | [`src/adapters/executors/verify-seal-proof-case-run-executor.ts`](../../src/adapters/executors/verify-seal-proof-case-run-executor.ts) |
+| FEA proof (run)            | [`src/adapters/executors/verify-run-fea-static-proof-run-executor.ts`](../../src/adapters/executors/verify-run-fea-static-proof-run-executor.ts) |
+| Modelica scenario (seal)   | [`src/adapters/executors/simulate-seal-simulation-case-run-executor.ts`](../../src/adapters/executors/simulate-seal-simulation-case-run-executor.ts) |
+| Modelica scenario (run)    | [`src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts`](../../src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts) |
 
 The CM-01 manifest is the sole cross-provider join authority. It binds a SysON project,
 build123d artifact path, persisted Modelica run, and ERPNext item to one product
