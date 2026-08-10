@@ -157,6 +157,14 @@ export const FEA_PROOF_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
     "coffee-machine-cm01-drip-tray-mechanical-v1",
     "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
   ],
+  [
+    "desk-lamp-dl01-articulated-arm-cantilever-v1",
+    "config/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
+  ],
+  [
+    "desk-lamp-dl03-arm-cantilever",
+    "config/mechanical-proof-cases/desk-lamp-dl03-arm-cantilever.json",
+  ],
 ]);
 
 /**

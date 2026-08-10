@@ -151,6 +151,13 @@ export class FileFeaStaticProofAttemptStore {
     const fresh = buildDispatched(input);
     await Deno.mkdir(this.directory, { recursive: true });
 
+    // Quarantine check must precede the attempt read — a quarantined run must
+    // not receive a new dispatch even if no WAL entry exists (crash before WAL
+    // begin but after provider acknowledgement).
+    if (await this.isQuarantined(fresh.projectId, fresh.runId)) {
+      throw new FeaStaticProofRunQuarantinedError();
+    }
+
     let current: FeaStaticProofAttempt | undefined;
     try {
       current = await this.readRun(fresh.projectId, fresh.runId);

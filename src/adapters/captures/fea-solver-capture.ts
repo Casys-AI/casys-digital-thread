@@ -5,7 +5,7 @@
  * project-specific: it knows the exact proof, selection names, and export
  * identity. The generic executor needs a proof-agnostic parseur that only
  * checks structural invariants (sourcePath matches stagedPath, hash/bytes
- * match, supports/loads echo is exact via deterministicJson, units are the
+ * match, fixedSelections/loads echo is exact via deterministicJson, units are
  * two reviewed ones) and produces a canonical content-addressed envelope for
  * the WAL and CAS store.
  *
@@ -58,11 +58,17 @@ export interface ParsedFeaSolverResult {
   };
   readonly constraints: {
     /**
-     * Supports echoed by CalculiX, verified to equal `expected.supports` via
-     * `deterministicJson`. Stored as `unknown[]` — structure belongs to the
-     * proof case domain, not to this capture layer.
+     * Fixed selection names echoed by CalculiX, verified to equal
+     * `expected.fixedSelections` via `deterministicJson`.
+     *
+     * WHY NAMES AND NOT BOXES — the solver contract echoes which named
+     * selections it constrained, not their geometry. The boxes themselves are
+     * already attested upstream: the server derives them from the sealed proof
+     * case and sends them in the same request whose STEP digest is
+     * cross-attested. Demanding boxes back would assert an echo the provider
+     * never promised.
      */
-    readonly supports: readonly unknown[];
+    readonly fixedSelections: readonly unknown[];
     /** Loads echoed by CalculiX, verified to equal `expected.loads` via `deterministicJson`. */
     readonly loads: readonly unknown[];
   };
@@ -109,7 +115,7 @@ export interface FeaSolverCaptureEnvelope {
   readonly upstreamIdentities: FeaSolverCaptureUpstreamIdentities;
   readonly inputArtifact: ParsedFeaSolverResult["inputArtifact"];
   readonly constraints: {
-    readonly supports: readonly unknown[];
+    readonly fixedSelections: readonly unknown[];
     readonly loads: readonly unknown[];
   };
   readonly mesh: ParsedFeaSolverResult["mesh"];
@@ -126,7 +132,7 @@ export interface FeaSolverCaptureEnvelope {
  *   - `inputArtifact.sourcePath === expected.stagedPath`
  *   - `inputArtifact.sha256 === expected.stepDigest`
  *   - `inputArtifact.bytes === expected.stepBytes`
- *   - `constraints.supports` echoed exactly via `deterministicJson`
+ *   - `constraints.fixedSelections` echoed exactly via `deterministicJson`
  *   - `constraints.loads` echoed exactly via `deterministicJson`
  *   - `mesh.nodesPerSelection` non-empty, all values positive integers
  *   - `metrics.maxDisplacement.unit === "mm"`, value finite and non-negative
@@ -139,7 +145,7 @@ export function parseFeaSolverResponse(
     readonly stagedPath: string;
     readonly stepDigest: string;
     readonly stepBytes: number;
-    readonly supports: readonly unknown[];
+    readonly fixedSelections: readonly unknown[];
     readonly loads: readonly unknown[];
   },
 ): ParsedFeaSolverResult {
@@ -183,20 +189,23 @@ export function parseFeaSolverResponse(
   // constraints — exact echo verification via deterministicJson.
   const constraints = exactRecord(
     root.constraints,
-    ["loads", "supports"],
+    ["fixedSelections", "loads"],
     "FEA solver constraints",
   );
-  if (!Array.isArray(constraints.supports)) {
-    throw new TypeError("FEA solver constraints.supports must be an array.");
+  if (!Array.isArray(constraints.fixedSelections)) {
+    throw new TypeError(
+      "FEA solver constraints.fixedSelections must be an array.",
+    );
   }
   if (!Array.isArray(constraints.loads)) {
     throw new TypeError("FEA solver constraints.loads must be an array.");
   }
   if (
-    deterministicJson(constraints.supports) !== deterministicJson(expected.supports)
+    deterministicJson(constraints.fixedSelections) !==
+      deterministicJson(expected.fixedSelections)
   ) {
     throw new Error(
-      "CalculiX constraints.supports differ from the proof supports.",
+      "CalculiX constraints.fixedSelections differ from the dispatched fixed selections.",
     );
   }
   if (deterministicJson(constraints.loads) !== deterministicJson(expected.loads)) {
@@ -209,7 +218,7 @@ export function parseFeaSolverResponse(
   return {
     inputArtifact: { path: inputPath, sourcePath, sha256, bytes },
     constraints: {
-      supports: constraints.supports as readonly unknown[],
+      fixedSelections: constraints.fixedSelections as readonly unknown[],
       loads: constraints.loads as readonly unknown[],
     },
     mesh,
@@ -303,12 +312,12 @@ export function parseFeaSolverCaptureEnvelope(text: string): FeaSolverCaptureEnv
 
   const constraintsRec = exactRecord(
     root.constraints,
-    ["loads", "supports"],
+    ["fixedSelections", "loads"],
     "FEA solver capture constraints",
   );
-  if (!Array.isArray(constraintsRec.supports)) {
+  if (!Array.isArray(constraintsRec.fixedSelections)) {
     throw new TypeError(
-      "FEA solver capture constraints.supports must be an array.",
+      "FEA solver capture constraints.fixedSelections must be an array.",
     );
   }
   if (!Array.isArray(constraintsRec.loads)) {
@@ -335,7 +344,7 @@ export function parseFeaSolverCaptureEnvelope(text: string): FeaSolverCaptureEnv
       bytes: positiveInt(ia.bytes, "FEA solver capture inputArtifact.bytes"),
     },
     constraints: {
-      supports: constraintsRec.supports as readonly unknown[],
+      fixedSelections: constraintsRec.fixedSelections as readonly unknown[],
       loads: constraintsRec.loads as readonly unknown[],
     },
     mesh,

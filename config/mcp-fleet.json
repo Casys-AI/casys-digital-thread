@@ -15,7 +15,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3009/mcp",
       "healthUrl": "http://127.0.0.1:3009/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c",
       "required": true,
       "expectedTools": [
         "syson_project_list",
@@ -83,7 +83,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3014/mcp",
       "healthUrl": "http://127.0.0.1:3014/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c",
       "required": true,
       "expectedTools": [
         "build123d_execute",
@@ -118,7 +118,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3024/mcp",
       "healthUrl": "http://127.0.0.1:3024/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c",
       "required": false,
       "expectedTools": [
         "build123d_execute",
@@ -154,7 +154,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3015/mcp",
       "healthUrl": "http://127.0.0.1:3015/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:706b2099f947ff3c44c9a532d9da6d96e4312b3cdc879185e37e8d1ac99e1f01",
+      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c",
       "required": true,
       "expectedTools": [
         "calculix_solve_static"
@@ -187,7 +187,7 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3016/mcp",
       "healthUrl": "http://127.0.0.1:3016/health",
-      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
+      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:fc4ae7ea54e95e0df81d615e2f89482d4acb6af0476c83286164c1506405e0a9",
       "required": true,
       "expectedTools": [
         "modelica_kit_list",

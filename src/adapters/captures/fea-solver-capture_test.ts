@@ -58,7 +58,7 @@ function validResponse(): unknown {
       bytes: STEP_BYTES,
     },
     constraints: {
-      supports: structuredClone(SUPPORTS),
+      fixedSelections: structuredClone(SUPPORTS),
       loads: structuredClone(LOADS),
     },
     mesh: {
@@ -89,7 +89,7 @@ const EXPECTED = {
   stagedPath: STAGED_PATH,
   stepDigest: STEP_DIGEST,
   stepBytes: STEP_BYTES,
-  supports: SUPPORTS,
+  fixedSelections: SUPPORTS,
   loads: LOADS,
 };
 
@@ -158,16 +158,16 @@ Deno.test(
 );
 
 Deno.test(
-  "FEA solver response parser rejects when supports echo differs from proof supports",
+  "FEA solver response parser rejects when the fixed-selection echo differs from what was dispatched",
   () => {
     const response = validResponse() as Record<string, unknown>;
-    (response.constraints as Record<string, unknown>).supports = [
-      { id: "wrong", selection: "WRONG-FACE", box: {} },
+    (response.constraints as Record<string, unknown>).fixedSelections = [
+      "WRONG-FACE",
     ];
     assertThrows(
       () => parseFeaSolverResponse(response, EXPECTED),
       Error,
-      "constraints.supports differ from the proof supports",
+      "constraints.fixedSelections differ from the dispatched fixed selections",
     );
   },
 );
@@ -190,7 +190,7 @@ Deno.test(
   () => {
     const response = validResponse() as Record<string, unknown>;
     const constraints = response.constraints as Record<string, unknown>;
-    delete constraints.supports;
+    delete constraints.fixedSelections;
     assertThrows(
       () => parseFeaSolverResponse(response, EXPECTED),
       TypeError,

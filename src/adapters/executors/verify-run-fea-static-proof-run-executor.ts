@@ -842,7 +842,6 @@ export class VerifyRunFeaStaticProofRunExecutor {
       }
       const stepDigest = proofCapture.stepArtifact.fingerprint.digest;
       const stepBytes = proofCapture.stepArtifact.bytes;
-      const capturedAt = requiredStart(requireRun(preClaim, command.runId));
       let stepBytesData: Uint8Array;
       try {
         stepBytesData = await this.#assetReader.read(stepDigest);
@@ -944,6 +943,11 @@ export class VerifyRunFeaStaticProofRunExecutor {
 
       let project = await this.#requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
+      // The durable start timestamp only exists once claimRun has stamped it.
+      // Reading it from the pre-claim snapshot leaves the run unrunnable: it is
+      // queued, so startedAt is still absent and requiredStart throws before any
+      // provider work begins.
+      const capturedAt = requiredStart(run);
 
       if (run.status === "completed") {
         assertCompleted(project, command);
@@ -992,14 +996,12 @@ export class VerifyRunFeaStaticProofRunExecutor {
             stagedPath,
             stepDigest,
             stepBytes,
-            supports: proofCase.analysis.supports.map((s) => ({
-              name: s.selection.name,
-              box: s.selection.box,
-            })),
+            // Mirror of buildCalculixRequest: the solver echoes the names it
+            // constrained and the loads it applied, not the boxes it was given.
+            fixedSelections: proofCase.analysis.supports.map((s) => s.selection.name),
             loads: proofCase.analysis.loads.map((l) => ({
-              name: l.selection.name,
-              box: l.selection.box,
-              force_n: l.force.value,
+              selection: l.selection.name,
+              forceN: l.force.value,
             })),
           });
         } catch (error) {

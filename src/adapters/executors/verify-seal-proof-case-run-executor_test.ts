@@ -631,6 +631,7 @@ Deno.test(
             kind: "intent",
             reference: "conversation:fea-seal-test",
           }],
+          dependsOnItemIds: [],
         }],
       });
       project = await briefs.approveBrief(HUMAN, {
@@ -1287,6 +1288,7 @@ async function buildSealFixtureBase(
       kind: "success-criterion",
       statement: "FEA proof case sealed.",
       sourceRefs: [{ kind: "intent", reference: "conversation:fea-seal" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {
