@@ -8,6 +8,7 @@ import {
 import {
   type CancelQueuedRunCommand,
   type CompleteRunCommand,
+  ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES,
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectCompletionEvidenceValidator,
@@ -282,6 +283,52 @@ Deno.test(
     assertEquals(deriveEngineeringProjectStatus(reconciled), "completed");
     // The snapshot was NOT validated so no validator call needed.
     validateEngineeringProjectSnapshot(reconciled);
+  },
+);
+
+// Friction 2 guard: cancelled + reconciliation must unlock dependents.
+Deno.test(
+  "a cancelled-with-reconciliation predecessor unlocks its planned dependents",
+  async () => {
+    // reconciliableProject() sets verify-current-mechanical-design to "ready"
+    // and provides verify-current-mechanical-design-r3 as a completed successor.
+    // We patch observe-erp-definition to depend on the reconciled work item so
+    // nextIdleWorkStatus is exercised with a cancelled + reconciliation dep.
+    const base = structuredClone(
+      await reconciliableProject(),
+    ) as Mutable<EngineeringProjectSnapshot>;
+    const dependent = base.workItems.find((item) =>
+      item.id === "observe-erp-definition"
+    )!;
+    (dependent as Mutable<typeof dependent>).status = "planned";
+    (dependent as Mutable<typeof dependent>).dependsOnWorkItemIds = [
+      "verify-current-mechanical-design",
+    ];
+    (dependent as Mutable<typeof dependent>).evidenceRefs = [];
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, {
+      ...context("unlock-planned-dependents", project.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2-failed",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot: project.threadSnapshots.at(-1)!,
+      successorEvidenceRefs: evidence,
+      rationale: "Successor independently verified; dependents should unblock.",
+    });
+
+    // The cancelled work item carries a reconciliation record.
+    const reconciledWork = findWorkItem(reconciled, "verify-current-mechanical-design");
+    assertEquals(reconciledWork.status, "cancelled");
+    assert(reconciledWork.reconciliation !== undefined);
+
+    // Before the fix, nextIdleWorkStatus only counted "completed" deps, so
+    // observe-erp-definition would remain "planned" indefinitely.
+    assertEquals(findWorkItem(reconciled, "observe-erp-definition").status, "ready");
   },
 );
 
@@ -1559,6 +1606,187 @@ Deno.test(
     assertEquals(
       findWorkItem(reconciled, "verify-current-mechanical-design").status,
       "cancelled",
+    );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// reconcileAnnotationRun — blocker cross-reference and eligibility invariants
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a minimal valid V1 project with one failed run (eligible failure code)
+ * and one queued reconciliation run, ready for uncertain-writer reconciliation.
+ * Uses the coffee-machine V1 project as a base to avoid duplicating the full
+ * snapshot structure, then splices in the two runs needed for these tests.
+ */
+async function reconcileAnnotationProject(
+  failureCode?: string,
+): Promise<EngineeringProjectSnapshot> {
+  const base = structuredClone(await projectFixture()) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+
+  // Use the verification phase; clear the existing open blocker so the failed
+  // work item can start with empty blockerIds.
+  const verifyItem = base.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design"
+  )!;
+  verifyItem.status = "ready";
+  verifyItem.blockerIds = [];
+  verifyItem.decisionIds = [];
+  verifyItem.evidenceRefs = [];
+  base.blockers = [];
+  base.decisions = [];
+  base.approvals = [];
+  const verifyPhase = base.phases.find((p) => p.id === "verification")!;
+  verifyPhase.requiredDecisionIds = [];
+
+  // Add a human-owned reconciliation work item to the same phase.
+  const reconcileItem = {
+    id: "reconcile-uncertain-writer",
+    phaseId: "verification",
+    title: "Reconcile the uncertain writer outcome",
+    description:
+      "Human review of the provider to determine whether the write took effect.",
+    kind: "review" as const,
+    status: "ready" as const,
+    owner: "human" as const,
+    dependsOnWorkItemIds: [] as string[],
+    evidenceRefs: [] as typeof verifyItem.evidenceRefs,
+    decisionIds: [] as string[],
+    blockerIds: [] as string[],
+  };
+  verifyPhase.workItemIds = [...verifyPhase.workItemIds, reconcileItem.id];
+  base.workItems.push(reconcileItem);
+
+  // Wire up the two agent runs.
+  const eligibleCode = failureCode ??
+    "model-write-architecture-provider-outcome-unknown";
+  base.agentRuns = [
+    {
+      id: "run:uncertain-write-failed",
+      workItemId: verifyItem.id,
+      status: "failed",
+      summary:
+        "Provider acknowledged the write but the executor crashed before capture.",
+      queuedAt: "2026-08-01T10:00:00.000Z",
+      startedAt: "2026-08-01T10:00:01.000Z",
+      completedAt: "2026-08-01T10:00:02.000Z",
+      claimedAt: "2026-08-01T10:00:01.000Z",
+      claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
+      evidenceRefs: [],
+      failure: {
+        code: eligibleCode,
+        message:
+          "Provider acknowledged but executor crashed before ThreadSnapshot write.",
+      },
+    },
+    {
+      id: "run:reconcile-annotation",
+      workItemId: reconcileItem.id,
+      status: "queued",
+      summary: "Pending human reconciliation.",
+      queuedAt: "2026-08-01T10:00:03.000Z",
+      evidenceRefs: [],
+    },
+  ];
+
+  return validateEngineeringProjectSnapshot(base);
+}
+
+Deno.test(
+  "reconcileAnnotationRun write-effect-accepted creates a structurally valid blocker cross-reference",
+  async () => {
+    // This test would have caught the BLOQUANT: the domain was placing the
+    // reconciliation RUN ID in workItemIds instead of the failed WORK ITEM ID,
+    // so validateEngineeringProjectSnapshot always rejected the snapshot.
+    const project = await reconcileAnnotationProject();
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+
+    const result = await service.reconcileAnnotationRun(HUMAN, {
+      ...context("reconcile-write-effect-accepted", project.revision),
+      reconciliationRunId: "run:reconcile-annotation",
+      failedRunId: "run:uncertain-write-failed",
+      reconciliation: {
+        kind: "uncertain-writer-resolved",
+        outcome: "write-effect-accepted",
+        reconciledAt: "2026-08-01T10:00:10.000Z",
+        reconciledBy: { id: HUMAN.actorId, origin: HUMAN.kind },
+        decisionId: "decision-mrtr-1",
+        providerInspectionAttestation:
+          "Inspected the SysON history: the element was written successfully.",
+      },
+      openBlocker: {
+        id: "blocker:uncertain-write-accepted:run:reconcile-annotation",
+        title: "Uncertain provider write accepted — review before re-run",
+        description:
+          "Run run:uncertain-write-failed was reconciled with write-effect-accepted.",
+      },
+    });
+
+    // The blocker must reference the FAILED WORK ITEM, not the reconciliation run.
+    const blocker = result.blockers.find((b) =>
+      b.id === "blocker:uncertain-write-accepted:run:reconcile-annotation"
+    )!;
+    assert(blocker, "blocker must be present");
+    assertEquals(blocker.workItemIds, ["verify-current-mechanical-design"]);
+    assertEquals(blocker.phaseId, "verification");
+
+    // Bidirectional cross-reference: the failed work item must know the blocker.
+    const failedItem = findWorkItem(result, "verify-current-mechanical-design");
+    assert(
+      failedItem.blockerIds.includes(
+        "blocker:uncertain-write-accepted:run:reconcile-annotation",
+      ),
+      "failed work item must have the blocker id in its blockerIds",
+    );
+
+    // The reconciliation run must be completed as annotation-only.
+    const reconcileRun = result.agentRuns.find((r) =>
+      r.id === "run:reconcile-annotation"
+    )!;
+    assertEquals(reconcileRun.status, "completed");
+    assertEquals(reconcileRun.annotationOnly, true);
+
+    // The snapshot must survive full validation — this is what the BLOQUANT broke.
+    validateEngineeringProjectSnapshot(result);
+  },
+);
+
+Deno.test(
+  "reconcileAnnotationRun rejects a failure code not in ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES",
+  async () => {
+    // Guard: the domain must enforce eligibility, not only the executor.
+    // A direct call with an ineligible code must throw invalid_transition.
+    const ineligibleCode = "some-generic-not-uncertain-failure";
+    assert(
+      !ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES.has(ineligibleCode),
+      "test pre-condition: code must not be eligible",
+    );
+
+    const project = await reconcileAnnotationProject(ineligibleCode);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+
+    await assertCommandError(
+      () =>
+        service.reconcileAnnotationRun(HUMAN, {
+          ...context("reconcile-ineligible-code", project.revision),
+          reconciliationRunId: "run:reconcile-annotation",
+          failedRunId: "run:uncertain-write-failed",
+          reconciliation: {
+            kind: "uncertain-writer-resolved",
+            outcome: "provider-did-not-write",
+            reconciledAt: "2026-08-01T10:00:10.000Z",
+            reconciledBy: { id: HUMAN.actorId, origin: HUMAN.kind },
+            decisionId: "decision-mrtr-2",
+            providerInspectionAttestation:
+              "Confirmed: the provider did not write anything.",
+          },
+        }),
+      "invalid_transition",
     );
   },
 );

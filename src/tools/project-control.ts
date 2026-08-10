@@ -32,6 +32,7 @@ import {
 } from "../domain/platform/geometry-bundle.ts";
 import type {
   EngineeringBasisRef,
+  EngineeringGateClaim,
   EngineeringOperationInputBinding,
   EngineeringOperationRef,
   EngineeringProjectSnapshot,
@@ -199,6 +200,20 @@ const OPERATION_REF_SCHEMA = {
     },
   },
   required: ["id", "version", "bindings"],
+  additionalProperties: false,
+} as const;
+
+const GATE_CLAIM_SCHEMA = {
+  type: "object",
+  properties: {
+    gateItemId: { type: "string", minLength: 1 },
+    role: { type: "string", enum: ["contributes-to", "satisfies"] },
+    status: {
+      type: "string",
+      enum: ["current", "impact-unresolved", "invalidated", "carried-forward"],
+    },
+  },
+  required: ["gateItemId", "role", "status"],
   additionalProperties: false,
 } as const;
 
@@ -588,7 +603,16 @@ export function registerProjectControlTools(
           );
         }
         if (components.length === 0) {
-          throw new TypeError("Geometry bundle v2 requires at least one component.");
+          // WHY THIS MESSAGE — the most common mistake is placing usageName/labels in
+          // 'occurrences' instead of 'components', which leaves 'components' empty.
+          // Naming the received occurrence count and restating which list carries which
+          // fields lets the agent self-correct without a second round-trip.
+          const occurrenceCount = (args.occurrences as unknown[]).length;
+          throw new TypeError(
+            `Geometry bundle v2 requires at least one entry in 'components' ` +
+              `(received ${occurrenceCount} occurrence(s) but 0 components). ` +
+              `'components' carries usageName and label; 'occurrences' carries placements.`,
+          );
         }
         const rawPartFormats = Array.isArray(args.partExportFormats)
           ? args.partExportFormats
@@ -983,6 +1007,7 @@ const projectPlanPublishTool: MCPTool = {
             items: { type: "string", minLength: 1 },
           },
           operation: OPERATION_REF_SCHEMA,
+          gateClaims: { type: "array", items: GATE_CLAIM_SCHEMA },
         },
         required: [
           "id",
@@ -1063,6 +1088,7 @@ const projectChangeAppendTool: MCPTool = {
             items: { type: "string", minLength: 1 },
           },
           operation: OPERATION_REF_SCHEMA,
+          gateClaims: { type: "array", items: GATE_CLAIM_SCHEMA },
         },
         required: [
           "id",
@@ -2217,6 +2243,7 @@ function planWorkItems(value: unknown): Array<{
   dependsOnWorkItemIds: string[];
   decisionIds: string[];
   operation: EngineeringOperationRef;
+  gateClaims?: EngineeringGateClaim[];
 }> {
   if (!Array.isArray(value) || value.length === 0) {
     throw new TypeError("workItems must be a non-empty array");
@@ -2234,10 +2261,18 @@ function planWorkItems(value: unknown): Array<{
         "decisionIds",
         "operation",
       ],
-      [],
+      ["gateClaims"],
       path,
     );
-    return {
+    const planned: {
+      id: string;
+      phaseId: string;
+      owner: EngineeringWorkOwner;
+      dependsOnWorkItemIds: string[];
+      decisionIds: string[];
+      operation: EngineeringOperationRef;
+      gateClaims?: EngineeringGateClaim[];
+    } = {
       id: requiredString(record.id, `${path}.id`),
       phaseId: requiredString(record.phaseId, `${path}.phaseId`),
       owner: oneOf(
@@ -2251,6 +2286,32 @@ function planWorkItems(value: unknown): Array<{
       ),
       decisionIds: stringList(record.decisionIds, `${path}.decisionIds`),
       operation: planOperation(record.operation, `${path}.operation`),
+    };
+    if (record.gateClaims !== undefined) {
+      planned.gateClaims = gateClaims(record.gateClaims, `${path}.gateClaims`);
+    }
+    return planned;
+  });
+}
+
+function gateClaims(value: unknown, path: string): EngineeringGateClaim[] {
+  if (!Array.isArray(value)) throw new TypeError(`${path} must be an array`);
+  return value.map((value, index) => {
+    const claimPath = `${path}[${index}]`;
+    const record = exactRecord(value, claimPath);
+    exactKeys(record, ["gateItemId", "role", "status"], [], claimPath);
+    return {
+      gateItemId: requiredString(record.gateItemId, `${claimPath}.gateItemId`),
+      role: oneOf(
+        record.role,
+        ["contributes-to", "satisfies"] as const,
+        `${claimPath}.role`,
+      ),
+      status: oneOf(
+        record.status,
+        ["current", "impact-unresolved", "invalidated", "carried-forward"] as const,
+        `${claimPath}.status`,
+      ),
     };
   });
 }

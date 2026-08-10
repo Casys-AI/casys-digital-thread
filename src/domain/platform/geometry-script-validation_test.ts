@@ -5,7 +5,7 @@
  * so that removing a name from FORBIDDEN_NAMES makes exactly one test red.
  */
 
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
   GeometryScriptValidationError,
   validateGeometryScript,
@@ -601,6 +601,37 @@ result = Box(1, 1, 1)
     assertEquals(err?.code, "forbidden_name");
   });
 }
+
+// ── Forbidden identifier recovery hint ───────────────────────────────────────
+//
+// 'socket' is a Python module name that reads as a natural engineering term
+// (a lamp socket, a connector housing).  An agent that names a local variable
+// 'socket' gets a forbidden_name rejection.  The invariant is that the error
+// message includes the identifier name AND a rename hint, so the agent can
+// self-correct without human intervention.  The exact wording is not pinned
+// here to avoid a mirror test; only the presence of the two load-bearing
+// pieces of information is checked.
+
+Deno.test(
+  "validateGeometryScript forbidden_name for a module-family identifier includes a rename recovery hint",
+  () => {
+    const err = (() => {
+      try {
+        validateGeometryScript(
+          `from build123d import Box\nsocket = Box(1, 1, 1)\nresult = socket\n`,
+        );
+      } catch (e) {
+        return e as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(err?.code, "forbidden_name");
+    // The message must name the offending identifier so the agent knows which
+    // variable to rename.
+    assertStringIncludes(err?.message ?? "", "socket");
+    // The message must suggest renaming — that is the recovery path.
+    assertStringIncludes(err?.message ?? "", "rename");
+  },
+);
 
 // ── Resource policy: language constructs are NOT restricted ──────────────────
 //

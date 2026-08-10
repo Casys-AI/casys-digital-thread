@@ -18,6 +18,8 @@ import { deterministicJson } from "../kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,
   type EngineeringProjectFraming,
+  isProjectBriefGateKind,
+  projectBriefContractVersion,
   projectBriefObjective,
   type ProjectBriefRevision,
 } from "./project-brief.ts";
@@ -27,6 +29,9 @@ export interface EngineeringProjectValidationIssue {
   readonly code: string;
   readonly path: string;
   readonly message: string;
+  /** Structured details for a domain-specific recovery, when one is available. */
+  readonly context?: Readonly<Record<string, string | number | boolean>>;
+  readonly recovery?: string;
 }
 
 export class EngineeringProjectValidationError extends Error {
@@ -494,31 +499,65 @@ function validateProjectBriefRevision(
       "proposedAt",
       "proposedBy",
     ],
-    ["previous"],
+    ["contractVersion", "previous"],
     issues,
   );
   if (!input) return;
+  const contractVersion = readProjectBriefContractVersion(
+    input.contractVersion,
+    `${path}.contractVersion`,
+    issues,
+  );
   nonEmptyString(input.briefId, `${path}.briefId`, issues);
   nonEmptyString(input.id, `${path}.id`, issues);
   positiveInteger(input.revision, `${path}.revision`, issues);
   if (input.previous !== undefined) {
     validatePrevious(input.previous, `${path}.previous`, issues);
   }
-  validateArray(input.items, `${path}.items`, issues, validateProjectBriefItem);
+  validateArray(
+    input.items,
+    `${path}.items`,
+    issues,
+    (item, itemPath, itemIssues) =>
+      validateProjectBriefItem(item, itemPath, itemIssues, contractVersion),
+  );
   isoDateTime(input.proposedAt, `${path}.proposedAt`, issues);
   validateCommandActor(input.proposedBy, `${path}.proposedBy`, issues);
+}
+
+function readProjectBriefContractVersion(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): "1.0" | "2.0" {
+  // Historical brief bytes never carried a version field. They are V1 by
+  // representation, not silently rewritten with a synthetic stored property.
+  if (value === undefined) return "1.0";
+  if (value === "1.0" || value === "2.0") return value;
+  issueWithRecovery(
+    issues,
+    "invalid_brief_contract_version",
+    path,
+    "must be 1.0 or 2.0",
+    { value: typeof value === "string" ? value : typeof value },
+    "Use 2.0 for a newly proposed brief; leave the field absent only for an immutable V1 record.",
+  );
+  return "1.0";
 }
 
 function validateProjectBriefItem(
   value: unknown,
   path: string,
   issues: EngineeringProjectValidationIssue[],
+  contractVersion: "1.0" | "2.0",
 ): void {
   const input = exactRecord(
     value,
     path,
     ["id", "kind", "statement", "sourceRefs"],
-    ["owner", "reviewTrigger"],
+    contractVersion === "2.0"
+      ? ["owner", "reviewTrigger", "dependsOnItemIds"]
+      : ["owner", "reviewTrigger"],
     issues,
   );
   if (!input) return;
@@ -572,6 +611,45 @@ function validateProjectBriefItem(
   );
   optionalNonEmptyString(input.owner, `${path}.owner`, issues);
   optionalNonEmptyString(input.reviewTrigger, `${path}.reviewTrigger`, issues);
+  if (contractVersion !== "2.0") return;
+
+  const isGate = input.kind === "success-criterion" ||
+    input.kind === "verification-activity";
+  const hasDependencyDeclaration = Object.prototype.hasOwnProperty.call(
+    input,
+    "dependsOnItemIds",
+  );
+  if (isGate && !hasDependencyDeclaration) {
+    issueWithRecovery(
+      issues,
+      "missing_gate_dependency_declaration",
+      `${path}.dependsOnItemIds`,
+      "a V2 gate must explicitly declare its brief-item dependencies",
+      {
+        contractVersion,
+        gateItemId: typeof input.id === "string" ? input.id : "",
+      },
+      "Declare dependsOnItemIds explicitly; use [] only when the gate is intentionally independent of other brief items.",
+    );
+    return;
+  }
+  if (isGate) {
+    stringArray(input.dependsOnItemIds, `${path}.dependsOnItemIds`, issues);
+    return;
+  }
+  if (hasDependencyDeclaration) {
+    issueWithRecovery(
+      issues,
+      "invalid_gate_dependency_declaration",
+      `${path}.dependsOnItemIds`,
+      "only success-criterion and verification-activity items may declare gate dependencies",
+      {
+        contractVersion,
+        itemKind: typeof input.kind === "string" ? input.kind : "",
+      },
+      "Move dependsOnItemIds to the gate that depends on this normative item.",
+    );
+  }
 }
 
 function validateProjectBriefReview(
@@ -829,7 +907,7 @@ function validateWorkItem(
       "decisionIds",
       "blockerIds",
     ],
-    ["operation", "reconciliation"],
+    ["operation", "gateClaims", "reconciliation"],
     issues,
   );
   if (!input) return;
@@ -860,6 +938,14 @@ function validateWorkItem(
   if (input.operation !== undefined) {
     validateOperationRef(input.operation, `${path}.operation`, issues);
   }
+  if (input.gateClaims !== undefined) {
+    validateArray(
+      input.gateClaims,
+      `${path}.gateClaims`,
+      issues,
+      validateGateClaim,
+    );
+  }
   if (input.reconciliation !== undefined) {
     validateWorkItemReconciliation(
       input.reconciliation,
@@ -876,6 +962,47 @@ function validateWorkItem(
   );
   stringArray(input.decisionIds, `${path}.decisionIds`, issues);
   stringArray(input.blockerIds, `${path}.blockerIds`, issues);
+}
+
+function validateGateClaim(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const input = exactRecord(
+    value,
+    path,
+    ["gateItemId", "role", "status"],
+    [],
+    issues,
+  );
+  if (!input) return;
+  nonEmptyString(input.gateItemId, `${path}.gateItemId`, issues);
+  if (input.role !== "contributes-to" && input.role !== "satisfies") {
+    issueWithRecovery(
+      issues,
+      "invalid_gate_claim_role",
+      `${path}.role`,
+      "must be contributes-to or satisfies",
+      {
+        value: typeof input.role === "string" ? input.role : typeof input.role,
+      },
+      "Declare whether this work item contributes to the gate or satisfies it.",
+    );
+  }
+  if (
+    input.status !== "current" && input.status !== "impact-unresolved" &&
+    input.status !== "invalidated" && input.status !== "carried-forward"
+  ) {
+    issueWithRecovery(
+      issues,
+      "invalid_gate_claim_status",
+      `${path}.status`,
+      "must be current, impact-unresolved, invalidated or carried-forward",
+      { value: typeof input.status === "string" ? input.status : typeof input.status },
+      "Use the link status that reflects the reviewed gate claim; do not use artifact freshness here.",
+    );
+  }
 }
 
 function validateWorkItemReconciliation(
@@ -1066,6 +1193,8 @@ function validateAgentRun(
       "resultSnapshot",
       "failure",
       "cancellation",
+      "uncertainWriterReconciliation",
+      "annotationOnly",
       "statusHistory",
     ],
     issues,
@@ -1142,6 +1271,64 @@ function validateAgentRun(
         issues,
       );
     }
+  }
+  if (input.uncertainWriterReconciliation !== undefined) {
+    const reconciliation = exactRecord(
+      input.uncertainWriterReconciliation,
+      `${path}.uncertainWriterReconciliation`,
+      [
+        "kind",
+        "outcome",
+        "reconciledAt",
+        "reconciledBy",
+        "decisionId",
+        "providerInspectionAttestation",
+      ],
+      [],
+      issues,
+    );
+    if (reconciliation) {
+      oneOf(
+        reconciliation.kind,
+        ["uncertain-writer-resolved"],
+        `${path}.uncertainWriterReconciliation.kind`,
+        issues,
+      );
+      oneOf(
+        reconciliation.outcome,
+        ["provider-did-not-write", "write-effect-accepted"],
+        `${path}.uncertainWriterReconciliation.outcome`,
+        issues,
+      );
+      isoDateTime(
+        reconciliation.reconciledAt,
+        `${path}.uncertainWriterReconciliation.reconciledAt`,
+        issues,
+      );
+      validateCommandActor(
+        reconciliation.reconciledBy,
+        `${path}.uncertainWriterReconciliation.reconciledBy`,
+        issues,
+      );
+      nonEmptyString(
+        reconciliation.decisionId,
+        `${path}.uncertainWriterReconciliation.decisionId`,
+        issues,
+      );
+      nonEmptyString(
+        reconciliation.providerInspectionAttestation,
+        `${path}.uncertainWriterReconciliation.providerInspectionAttestation`,
+        issues,
+      );
+    }
+  }
+  if (input.annotationOnly !== undefined && input.annotationOnly !== true) {
+    issue(
+      issues,
+      "invalid_enum",
+      `${path}.annotationOnly`,
+      "when present, annotationOnly must be exactly true",
+    );
   }
   if (input.statusHistory !== undefined) {
     validateArray(
@@ -1408,6 +1595,7 @@ function validateCommandReceipt(
       "agent-run.complete",
       "agent-run.fail",
       "agent-run.cancel",
+      "agent-run.reconcile-annotation",
     ],
     `${path}.type`,
     issues,
@@ -1807,6 +1995,18 @@ function validateInvariants(
   const decisionById = new Map(project.decisions.map((item) => [item.id, item]));
   const approvalById = new Map(project.approvals.map((item) => [item.id, item]));
   const blockerById = new Map(project.blockers.map((item) => [item.id, item]));
+  /**
+   * Work item IDs whose sole completed run is an annotation run (annotationOnly:
+   * true).  Annotation runs produce no ThreadSnapshot evidence; the invariant
+   * "a completed work item requires exact ThreadSnapshot evidence" is explicitly
+   * exempted for these items because their work is project-level state change,
+   * not thread-level artifact production.
+   */
+  const annotationOnlyWorkItemIds = new Set(
+    project.agentRuns
+      .filter((run) => run.status === "completed" && run.annotationOnly === true)
+      .map((run) => run.workItemId),
+  );
   const declaredSnapshots = new Set(
     project.threadSnapshots.map((item) => snapshotKey(item.snapshotId, item.revision)),
   );
@@ -2001,7 +2201,10 @@ function validateInvariants(
         );
       }
     });
-    if (item.status === "completed" && item.evidenceRefs.length === 0) {
+    if (
+      item.status === "completed" && item.evidenceRefs.length === 0 &&
+      !annotationOnlyWorkItemIds.has(item.id)
+    ) {
       issue(
         issues,
         "missing_evidence",
@@ -2031,9 +2234,14 @@ function validateInvariants(
       const blockersResolved = item.blockerIds.every((id) =>
         blockerById.get(id)?.status === "resolved"
       );
-      const dependenciesCompleted = item.dependsOnWorkItemIds.every((id) =>
-        workById.get(id)?.status === "completed"
-      );
+      // Mirror of nextIdleWorkStatus and deriveEngineeringPhaseStatus:
+      // a cancelled dep with a reconciliation record carries equivalent evidence
+      // from an independently completed successor, so it satisfies the dependency.
+      const dependenciesCompleted = item.dependsOnWorkItemIds.every((id) => {
+        const dep = workById.get(id);
+        return dep?.status === "completed" ||
+          (dep?.status === "cancelled" && dep.reconciliation !== undefined);
+      });
       if (!decisionsApproved || !blockersResolved || !dependenciesCompleted) {
         issue(
           issues,
@@ -2044,6 +2252,7 @@ function validateInvariants(
       }
     }
   });
+  validateGateClaimsAgainstCanonicalBrief(project, issues);
   detectWorkCycles(project.workItems, issues);
 
   project.agentRuns.forEach((run, index) =>
@@ -2074,6 +2283,92 @@ function validateInvariants(
   );
   validateQueuedRunReceiptBindings(project, issues);
   validateCancelledRunReceiptBindings(project, issues);
+}
+
+/**
+ * A claim is coverage of a reviewed mandate, not an operation input. It can
+ * only target an explicit V2 gate in the current human-approved canonical
+ * brief; V1 remains readable but lacks the dependency contract needed for a
+ * new claim.
+ */
+function validateGateClaimsAgainstCanonicalBrief(
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const brief = project.framing?.currentBrief;
+  const approval = project.framing?.currentBriefApproval;
+  const hasCanonicalBrief = brief !== undefined &&
+    approval?.status === "approved";
+  const gateItems = hasCanonicalBrief && brief
+    ? new Map(brief.items.map((item) => [item.id, item]))
+    : undefined;
+  const isV2Contract = brief !== undefined &&
+    projectBriefContractVersion(brief) === "2.0";
+
+  project.workItems.forEach((workItem, workItemIndex) => {
+    if (workItem.gateClaims === undefined) return;
+    const seenGateItemIds = new Set<string>();
+    workItem.gateClaims.forEach((claim, claimIndex) => {
+      const path = `$.workItems[${workItemIndex}].gateClaims[${claimIndex}]`;
+      if (seenGateItemIds.has(claim.gateItemId)) {
+        issueWithRecovery(
+          issues,
+          "duplicate_gate_claim",
+          `${path}.gateItemId`,
+          "a work item may claim each gate only once",
+          { workItemId: workItem.id, gateItemId: claim.gateItemId },
+          "Keep one claim per gate and set its single reviewed role and link status.",
+        );
+      }
+      seenGateItemIds.add(claim.gateItemId);
+      if (!hasCanonicalBrief) {
+        issueWithRecovery(
+          issues,
+          "missing_canonical_brief_for_gate_claim",
+          `${path}.gateItemId`,
+          "a gate claim requires one current human-approved canonical brief",
+          { workItemId: workItem.id, gateItemId: claim.gateItemId },
+          "Approve the exact brief before recording work-item gate claims.",
+        );
+        return;
+      }
+      if (!isV2Contract) {
+        issueWithRecovery(
+          issues,
+          "gate_claim_contract_incomplete",
+          `${path}.gateItemId`,
+          "a gate claim requires a V2 canonical brief with explicit dependencies",
+          { workItemId: workItem.id, gateItemId: claim.gateItemId },
+          "Revise and approve the brief as V2 with explicit dependsOnItemIds before declaring claims.",
+        );
+        return;
+      }
+      const gate = gateItems?.get(claim.gateItemId);
+      if (!gate) {
+        issueWithRecovery(
+          issues,
+          "unknown_gate_claim",
+          `${path}.gateItemId`,
+          "must reference a gate item in the current canonical brief",
+          { workItemId: workItem.id, gateItemId: claim.gateItemId },
+          "Use the stable ID of a success-criterion or verification-activity in the current canonical brief.",
+        );
+      } else if (!isProjectBriefGateKind(gate.kind)) {
+        issueWithRecovery(
+          issues,
+          "gate_claim_target_not_gate",
+          `${path}.gateItemId`,
+          "must reference a success-criterion or verification-activity",
+          {
+            workItemId: workItem.id,
+            gateItemId: claim.gateItemId,
+            itemKind: gate.kind,
+          },
+          "Target a success-criterion or verification-activity, not a general brief item.",
+        );
+      }
+    });
+  });
 }
 
 function validateWorkItemReconciliationInvariant(
@@ -2569,6 +2864,7 @@ function validateProjectBriefInvariants(
     );
   }
   requireUnique(brief.items, (item) => item.id, `${path}.items`, issues);
+  validateV2BriefGateDependencies(brief, path, issues);
   const objective = brief.items.filter((item) => item.kind === "objective");
   if (objective.length !== 1) {
     issue(
@@ -2642,6 +2938,61 @@ function validateProjectBriefInvariants(
         "an observed fact requires a tool, document or expert source",
       );
     }
+  });
+}
+
+/**
+ * V2 makes every gate's impact contract explicit. The gate's own fingerprint
+ * remains implicit, so self references would only disguise an incomplete
+ * declaration rather than add dependency information.
+ */
+function validateV2BriefGateDependencies(
+  brief: ProjectBriefRevision,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  if (projectBriefContractVersion(brief) !== "2.0") return;
+  const itemsById = new Map(brief.items.map((item) => [item.id, item]));
+  brief.items.forEach((item, itemIndex) => {
+    if (!isProjectBriefGateKind(item.kind)) return;
+    const itemPath = `${path}.items[${itemIndex}]`;
+    const dependencyIds = item.dependsOnItemIds;
+    // Structural validation reports a missing or malformed declaration first.
+    if (!dependencyIds) return;
+    const seen = new Set<string>();
+    dependencyIds.forEach((dependencyId, dependencyIndex) => {
+      const dependencyPath = `${itemPath}.dependsOnItemIds[${dependencyIndex}]`;
+      if (seen.has(dependencyId)) {
+        issueWithRecovery(
+          issues,
+          "duplicate_gate_dependency",
+          dependencyPath,
+          "must name each dependent brief item only once",
+          { gateItemId: item.id, dependencyItemId: dependencyId },
+          "Keep one explicit dependency per brief item.",
+        );
+      }
+      seen.add(dependencyId);
+      if (dependencyId === item.id) {
+        issueWithRecovery(
+          issues,
+          "invalid_gate_self_dependency",
+          dependencyPath,
+          "must not name the gate itself; its own fingerprint is implicit",
+          { gateItemId: item.id },
+          "Remove the self reference; use [] when the gate has no other brief-item dependencies.",
+        );
+      } else if (!itemsById.has(dependencyId)) {
+        issueWithRecovery(
+          issues,
+          "unknown_gate_dependency",
+          dependencyPath,
+          "must reference an existing brief item",
+          { gateItemId: item.id, dependencyItemId: dependencyId },
+          "Reference an existing different brief item or use [] for declared independence.",
+        );
+      }
+    });
   });
 }
 
@@ -3081,15 +3432,30 @@ function validateRunInvariant(
       "an active run requires startedAt and no completedAt",
     );
   }
-  if (executionTerminal && (!run.startedAt || !run.completedAt)) {
+  if (executionTerminal && !run.completedAt) {
     issue(
       issues,
       "invalid_run_lifecycle",
       path,
-      "a terminal run requires startedAt and completedAt",
+      "a terminal run requires completedAt",
     );
   }
-  if (run.status === "completed" && run.evidenceRefs.length === 0) {
+  /**
+   * Annotation runs (agent-run.reconcile-annotation) go directly queued →
+   * completed without a claim step, so they lack startedAt/claimedAt/claimedBy.
+   * Evidence-producing runs (agent-run.complete) must still have startedAt.
+   */
+  if (executionTerminal && !run.annotationOnly && !run.startedAt) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      path,
+      "a terminal non-annotation run requires startedAt",
+    );
+  }
+  if (
+    run.status === "completed" && !run.annotationOnly && run.evidenceRefs.length === 0
+  ) {
     issue(
       issues,
       "missing_evidence",
@@ -3097,12 +3463,28 @@ function validateRunInvariant(
       "a completed run requires exact ThreadSnapshot evidence",
     );
   }
-  if (run.status === "completed" && !run.resultSnapshot) {
+  if (run.status === "completed" && !run.annotationOnly && !run.resultSnapshot) {
     issue(
       issues,
       "missing_evidence",
       `${path}.resultSnapshot`,
       "a completed run requires an exact result ThreadSnapshot",
+    );
+  }
+  if (run.annotationOnly && run.status === "completed" && run.resultSnapshot) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      `${path}.resultSnapshot`,
+      "an annotation run must not have a result ThreadSnapshot",
+    );
+  }
+  if (run.annotationOnly && run.status === "completed" && run.evidenceRefs.length > 0) {
+    issue(
+      issues,
+      "invalid_run_lifecycle",
+      `${path}.evidenceRefs`,
+      "an annotation run must not carry ThreadSnapshot evidence refs",
     );
   }
   if (
@@ -4379,6 +4761,17 @@ function issue(
   message: string,
 ): void {
   issues.push({ code, path, message });
+}
+
+function issueWithRecovery(
+  issues: EngineeringProjectValidationIssue[],
+  code: string,
+  path: string,
+  message: string,
+  context: Readonly<Record<string, string | number | boolean>>,
+  recovery: string,
+): void {
+  issues.push({ code, path, message, context, recovery });
 }
 
 function deepFreeze<T>(value: T): T {

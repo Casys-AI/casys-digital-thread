@@ -702,13 +702,20 @@ function tokenize(source: string): Token[] {
         ? FORBIDDEN_ATTRIBUTES.has(name)
         : FORBIDDEN_NAMES.has(name);
       if (forbidden) {
-        throw new GeometryScriptValidationError(
-          "forbidden_name",
-          `Forbidden ${
-            isAttribute ? "attribute" : "identifier"
-          } '${name}' at line ${startLine}.`,
-          startLine,
-        );
+        // Attributes (FORBIDDEN_ATTRIBUTES path) need no recovery hint — an
+        // agent would not name a method after a file-I/O attribute.  Identifier
+        // position is different: natural engineering terms such as 'socket',
+        // 'time', 'open' or 'input' share names with forbidden Python modules
+        // and built-ins.  Without context the error looks like a validator bug,
+        // not a naming collision.  The hint below lets an agent self-correct
+        // without human intervention.
+        const detail = isAttribute
+          ? `Forbidden attribute '${name}' at line ${startLine}.`
+          : `Forbidden identifier '${name}' at line ${startLine}. ` +
+            `'${name}' is reserved because it matches a restricted Python ` +
+            `module or built-in name — rename the local variable ` +
+            `(e.g. '${name}_shape', '${name}_part').`;
+        throw new GeometryScriptValidationError("forbidden_name", detail, startLine);
       }
 
       pushToken("NAME", name);

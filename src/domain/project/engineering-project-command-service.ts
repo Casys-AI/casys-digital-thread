@@ -1,6 +1,7 @@
 import {
   type EngineeringAgentRun,
   type EngineeringAgentRunStatus,
+  type EngineeringAgentRunUncertainWriterReconciliation,
   type EngineeringApproval,
   type EngineeringApprovedBriefBasis,
   type EngineeringBasisRef,
@@ -9,6 +10,7 @@ import {
   type EngineeringCommandOriginKind,
   type EngineeringDecision,
   type EngineeringDecisionProposalParameter,
+  type EngineeringGateClaim,
   type EngineeringOperationInputBinding,
   type EngineeringOperationRef,
   type EngineeringProjectChange,
@@ -31,7 +33,12 @@ import {
   sha256Fingerprint,
 } from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
-import { currentProjectAnswer } from "./project-brief.ts";
+import {
+  currentProjectAnswer,
+  isProjectBriefGateKind,
+  projectBriefContractVersion,
+} from "./project-brief.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../platform/geometry-proposal.ts";
 
 export interface EngineeringProjectRevisionStore {
   get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
@@ -150,6 +157,62 @@ export interface CancelQueuedRunCommand extends EngineeringProjectCommandInput {
 }
 
 /**
+ * Human-only single-step command that resolves write-uncertainty on a terminal
+ * failed run and completes the reconciliation work item in one atomic write.
+ *
+ * WHY SINGLE-STEP — unlike evidence-producing runs (which go through claim →
+ * publish → complete), the annotation run produces no ThreadSnapshot and no
+ * provider call.  The entire reconciliation is a project-level state mutation
+ * that a human actor executes directly.  The command is analogous to
+ * `agent-run.cancel`: one atomic write, no intermediate "running" state.
+ */
+export interface ReconcileAnnotationRunCommand extends EngineeringProjectCommandInput {
+  /** The id of the reconciliation run (for `record.reconcile-uncertain-writer@1`). */
+  readonly reconciliationRunId: string;
+  /** The id of the terminal failed run whose write-uncertainty is being resolved. */
+  readonly failedRunId: string;
+  /** Validated annotation from the executor, derived from the MRTR decision. */
+  readonly reconciliation: EngineeringAgentRunUncertainWriterReconciliation;
+  /**
+   * When `reconciliation.outcome === "write-effect-accepted"`, the executor
+   * provides a blocker to open on the project to prevent a blind re-run.
+   * `phaseId` is intentionally absent: the domain derives it from the failed
+   * run's work item, making the cross-reference unforgeable.
+   */
+  readonly openBlocker?: {
+    readonly id: string;
+    readonly title: string;
+    readonly description: string;
+  };
+}
+
+/**
+ * Failure codes that indicate a terminal uncertain write — the provider
+ * acknowledged a write but the executor crashed before the ThreadSnapshot was
+ * published.  Only these codes (or the geometry write, which is conservatively
+ * terminal regardless of code) are eligible for uncertain-writer reconciliation.
+ *
+ * WHY IN DOMAIN — eligibility is a domain invariant enforced by
+ * `reconcileAnnotationRun`, not just an adapter-level gate.  The adapter's
+ * `TERMINAL_THREAD_WRITE_FAILURES` is kept as the authoritative source that
+ * the basis-guard reads; this domain constant carries the same values so the
+ * command service can enforce the invariant without importing from adapters.
+ */
+export const ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "model-write-architecture-provider-outcome-unknown",
+  "model-write-architecture-post-acknowledgement-quarantined",
+  "model-write-architecture-quarantine-write-failed",
+  "model-write-requirements-provider-outcome-unknown",
+  "model-write-requirements-post-acknowledgement-quarantined",
+  "model-write-requirements-quarantine-write-failed",
+  "verify-run-fea-static-proof-provider-outcome-unknown",
+  "verify-run-fea-static-proof-post-acknowledgement-quarantined",
+  "verify-run-fea-static-proof-quarantine-write-failed",
+  "simulate-modelica-scenario-outcome-unknown",
+  "simulate-modelica-scenario-post-acknowledgement-quarantined",
+]);
+
+/**
  * Close one failed work item only when an independently completed successor
  * already carries the exact replacement evidence. This is project-state
  * reconciliation, never a provider retry or a claim that the failed work
@@ -207,6 +270,8 @@ export interface PlannedEngineeringWorkItem {
   readonly dependsOnWorkItemIds: readonly string[];
   readonly decisionIds: readonly string[];
   readonly operation: EngineeringOperationRef;
+  /** Optional because a work item may legitimately make no gate claim. */
+  readonly gateClaims?: readonly EngineeringGateClaim[];
 }
 
 export interface PlannedEngineeringDecision {
@@ -245,6 +310,13 @@ export interface EngineeringProjectPlanOperationRegistry {
       /** A queueable run requires a concrete trusted executor. */
       readonly execution: "trusted" | "planning-only";
       readonly decisionEvidenceScope?: "thread-entity-bindings";
+      /**
+       * When true, the operation must arrive via project_change_append, not the
+       * initial plan. publishPlan enforces this at planning time so the agent
+       * learns immediately, before any run has locked the plan against
+       * republication.  See RegisteredEngineeringOperation.requiresAdditiveChange.
+       */
+      readonly requiresAdditiveChange?: true;
     };
     readonly bindings: readonly EngineeringOperationInputBinding[];
   };
@@ -337,6 +409,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
     "decision.reject",
     "agent-run.queue",
     "agent-run.cancel",
+    "agent-run.reconcile-annotation",
   ],
   agent: [
     "project.plan-publish",
@@ -403,6 +476,7 @@ export class EngineeringProjectCommandService {
         assertPlanningProject(draft);
         assertPlanningCanChange(draft);
         validatePlanCommand(command);
+        assertPlanGateClaimsResolve(draft, command.workItems);
         const basis = planningBasisForProject(draft);
 
         const phaseIds = new Set(command.phases.map((phase) => phase.id));
@@ -418,6 +492,18 @@ export class EngineeringProjectCommandService {
           if (resolved.operation.startingPoint !== command.startingPoint) {
             invalidInput(
               `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${command.startingPoint}.`,
+            );
+          }
+          // Fail early: some operations require a planChange lineage that the
+          // initial plan can never provide.  The executor would catch this at
+          // run time, but by then the baseline has completed and
+          // assertPlanningCanChange forbids republication — leaving the agent
+          // with no recovery path.  Rejecting here preserves the plan slot.
+          if (resolved.operation.requiresAdditiveChange) {
+            invalidInput(
+              `Operation ${resolved.operation.id}@${resolved.operation.version} must be introduced ` +
+                "by an additive project change (project_change_append) after the baseline completes " +
+                "— it cannot appear in the initial plan.",
             );
           }
           assertPlanBindingsResolve(draft, resolved.bindings);
@@ -467,6 +553,9 @@ export class EngineeringProjectCommandService {
             : "planned" as const,
           owner: item.owner,
           dependsOnWorkItemIds: [...item.dependsOnWorkItemIds],
+          ...(item.gateClaims === undefined
+            ? {}
+            : { gateClaims: item.gateClaims.map((claim) => ({ ...claim })) }),
           evidenceRefs: [],
           decisionIds: [...item.decisionIds],
           blockerIds: [],
@@ -530,6 +619,7 @@ export class EngineeringProjectCommandService {
         assertPlanningProject(draft);
         assertChangeCanAppend(draft);
         validateChangeCommand(command);
+        assertPlanGateClaimsResolve(draft, command.workItems);
         const currentHead = assertCurrentThreadSnapshotHead(
           draft,
           command.baseSnapshot,
@@ -626,6 +716,9 @@ export class EngineeringProjectCommandService {
             : "planned" as const,
           owner: item.owner,
           dependsOnWorkItemIds: [...item.dependsOnWorkItemIds],
+          ...(item.gateClaims === undefined
+            ? {}
+            : { gateClaims: item.gateClaims.map((claim) => ({ ...claim })) }),
           evidenceRefs: [],
           decisionIds: [...item.decisionIds],
           blockerIds: [],
@@ -993,6 +1086,150 @@ export class EngineeringProjectCommandService {
       workItem.status = nextIdleWorkStatus(draft, workItem);
       recomputeWorkReadiness(draft);
     });
+  }
+
+  /**
+   * Resolve the write-uncertainty on a terminal failed run and complete the
+   * reconciliation work item atomically.
+   *
+   * WHY ONE STEP — no provider is called, no ThreadSnapshot is produced.  The
+   * reconciliation run transitions directly queued → completed (annotationOnly:
+   * true) in one atomic write, mirroring the simplicity of cancelQueuedRun.
+   * The human executor has already validated the MRTR and inspected the
+   * provider; the command service only enforces the domain state invariants.
+   */
+  reconcileAnnotationRun(
+    origin: EngineeringProjectCommandOrigin,
+    command: ReconcileAnnotationRunCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    return this.apply(
+      origin,
+      "agent-run.reconcile-annotation",
+      command,
+      (draft, appliedAt) => {
+        nonEmpty(command.reconciliationRunId, "reconciliationRunId");
+        nonEmpty(command.failedRunId, "failedRunId");
+        if (command.reconciliationRunId === command.failedRunId) {
+          invalidInput("A reconciliation run cannot target itself as the failed run.");
+        }
+
+        // Reconciliation run must be queued and unstarted.
+        const reconciliationRun = findRun(draft, command.reconciliationRunId);
+        if (!reconciliationRun) {
+          notFound("reconciliation agent run", command.reconciliationRunId);
+        }
+        if (reconciliationRun.status !== "queued") {
+          invalidTransition(
+            `Reconciliation run ${reconciliationRun.id} must be queued; it is ${reconciliationRun.status}.`,
+          );
+        }
+        if (
+          reconciliationRun.startedAt || reconciliationRun.completedAt ||
+          reconciliationRun.claimedAt || reconciliationRun.claimedBy ||
+          reconciliationRun.waitingForDecisionIds || reconciliationRun.resultSnapshot ||
+          reconciliationRun.failure || reconciliationRun.evidenceRefs.length !== 0
+        ) {
+          invalidTransition(
+            `Queued reconciliation run ${reconciliationRun.id} has unexpected execution state.`,
+          );
+        }
+
+        // Target run must be a terminal failed run with no existing reconciliation.
+        const failedRun = findRun(draft, command.failedRunId);
+        if (!failedRun) notFound("failed agent run", command.failedRunId);
+        if (failedRun.status !== "failed" || !failedRun.failure) {
+          invalidTransition(
+            `Target run ${failedRun.id} must be a failed run with a structured failure.`,
+          );
+        }
+
+        // Domain eligibility guard: only terminal-uncertain failures (or the geometry
+        // write, which is conservatively terminal) may be reconciled.  This prevents
+        // bypassing the executor-level gate via a direct domain call.
+        const failedWorkItem = findWorkItem(draft, failedRun.workItemId);
+        if (!failedWorkItem) {
+          notFound("work item for failed run", failedRun.workItemId);
+        }
+        const failedOperation = failedWorkItem.operation;
+        const isGeometryWrite = failedOperation
+          ? `${failedOperation.id}@${failedOperation.version}` ===
+            `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`
+          : false;
+        if (
+          !ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES.has(failedRun.failure.code) &&
+          !isGeometryWrite
+        ) {
+          invalidTransition(
+            `Target run ${failedRun.id} failure code "${failedRun.failure.code}" is not in ` +
+              "ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES and is not the geometry write operation. " +
+              "Only terminal-uncertain failures are eligible for uncertain-writer reconciliation.",
+          );
+        }
+
+        if (failedRun.uncertainWriterReconciliation !== undefined) {
+          invalidTransition(
+            `Target run ${failedRun.id} already has an uncertainWriterReconciliation; ` +
+              "a run can be reconciled only once.",
+          );
+        }
+        if (failedRun.evidenceRefs.length !== 0) {
+          invalidTransition(
+            `Target run ${failedRun.id} has evidence refs; uncertain writer reconciliation ` +
+              "is not applicable to runs that produced evidence.",
+          );
+        }
+
+        // Apply the annotation to the target run.
+        failedRun.uncertainWriterReconciliation = structuredClone(
+          command.reconciliation,
+        );
+
+        // If the provider may have written, open a blocker to prevent a blind re-run.
+        // phaseId is derived from the FAILED work item — the blocker belongs to the
+        // failed writer's phase, not the reconciliation run's phase.
+        // workItemIds references the FAILED work item, not the reconciliation run id:
+        // the blocker encumbers the work that might have an uncertain provider effect.
+        if (command.openBlocker) {
+          if (draft.blockers.some((b) => b.id === command.openBlocker!.id)) {
+            invalidInput(`Blocker id ${command.openBlocker.id} already exists.`);
+          }
+          draft.blockers.push({
+            id: command.openBlocker.id,
+            phaseId: failedWorkItem.phaseId,
+            title: command.openBlocker.title,
+            description: command.openBlocker.description,
+            kind: "tool-failure",
+            status: "open",
+            openedAt: appliedAt,
+            workItemIds: [failedWorkItem.id],
+            decisionIds: [],
+          });
+          // Bidirectional cross-reference: the failed work item must know it has a blocker.
+          failedWorkItem.blockerIds = [
+            ...failedWorkItem.blockerIds,
+            command.openBlocker.id,
+          ];
+        }
+
+        // Complete the reconciliation run (annotation-only, no ThreadSnapshot).
+        const summary = "Uncertain-writer reconciliation completed by human operator.";
+        reconciliationRun.status = "completed";
+        reconciliationRun.annotationOnly = true;
+        reconciliationRun.completedAt = appliedAt;
+        reconciliationRun.summary = summary;
+        reconciliationRun.statusHistory ??= [];
+        reconciliationRun.statusHistory.push(transition(
+          { commandId: command.commandId, summary },
+          origin,
+          "completed",
+          appliedAt,
+        ));
+
+        const workItem = findWorkItem(draft, reconciliationRun.workItemId)!;
+        workItem.status = "completed";
+        recomputeWorkReadiness(draft);
+      },
+    );
   }
 
   /**
@@ -1862,6 +2099,67 @@ function validatePlannedChange(
   }
 }
 
+/**
+ * Claims are declared coverage of the current reviewed mandate. They are
+ * checked separately from operation bindings so no gate becomes a fabricated
+ * operation input or evidence-consumption edge.
+ */
+function assertPlanGateClaimsResolve(
+  project: EngineeringProjectSnapshot,
+  workItems: readonly PlannedEngineeringWorkItem[],
+): void {
+  if (!workItems.some((item) => item.gateClaims !== undefined)) return;
+  const brief = project.framing?.currentBrief;
+  const approval = project.framing?.currentBriefApproval;
+  if (!brief || approval?.status !== "approved") {
+    invalidInput("Gate claims require the current human-approved canonical brief.");
+  }
+  if (projectBriefContractVersion(brief) !== "2.0") {
+    invalidInput(
+      "Gate claims require a V2 canonical brief with explicit gate dependencies.",
+    );
+  }
+  const briefItems = new Map(brief.items.map((item) => [item.id, item]));
+  for (const [workItemIndex, workItem] of workItems.entries()) {
+    if (workItem.gateClaims === undefined) continue;
+    if (!Array.isArray(workItem.gateClaims)) {
+      invalidInput(`workItems[${workItemIndex}].gateClaims must be an array.`);
+    }
+    const claimedGateIds = new Set<string>();
+    for (const [claimIndex, claim] of workItem.gateClaims.entries()) {
+      nonEmpty(
+        claim.gateItemId,
+        `workItems[${workItemIndex}].gateClaims[${claimIndex}].gateItemId`,
+      );
+      if (claim.role !== "contributes-to" && claim.role !== "satisfies") {
+        invalidInput(
+          `workItems[${workItemIndex}].gateClaims[${claimIndex}].role must be contributes-to or satisfies.`,
+        );
+      }
+      if (
+        claim.status !== "current" && claim.status !== "impact-unresolved" &&
+        claim.status !== "invalidated" && claim.status !== "carried-forward"
+      ) {
+        invalidInput(
+          `workItems[${workItemIndex}].gateClaims[${claimIndex}].status must be a declared gate-link status.`,
+        );
+      }
+      if (claimedGateIds.has(claim.gateItemId)) {
+        invalidInput(
+          `Work item ${workItem.id} may claim gate ${claim.gateItemId} only once.`,
+        );
+      }
+      claimedGateIds.add(claim.gateItemId);
+      const gate = briefItems.get(claim.gateItemId);
+      if (!gate || !isProjectBriefGateKind(gate.kind)) {
+        invalidInput(
+          `Work item ${workItem.id} must claim a success-criterion or verification-activity in the current canonical brief.`,
+        );
+      }
+    }
+  }
+}
+
 function assertNewPlanIds(
   ids: readonly string[],
   existing: ReadonlySet<string>,
@@ -2406,9 +2704,16 @@ function nextIdleWorkStatus(
   const blockersResolved = workItem.blockerIds.every((id) =>
     draft.blockers.find((blocker) => blocker.id === id)?.status === "resolved"
   );
-  const dependenciesCompleted = workItem.dependsOnWorkItemIds.every((id) =>
-    findWorkItem(draft, id)?.status === "completed"
-  );
+  // A cancelled work item is a satisfied dependency only when it carries a
+  // reconciliation record — meaning an independently completed successor has
+  // delivered equivalent evidence.  A naked cancellation (no reconciliation)
+  // still blocks dependents: the work was abandoned, not superseded.
+  // Mirror of deriveEngineeringPhaseStatus in engineering-project.ts:519-523.
+  const dependenciesCompleted = workItem.dependsOnWorkItemIds.every((id) => {
+    const dep = findWorkItem(draft, id);
+    return dep?.status === "completed" ||
+      (dep?.status === "cancelled" && dep.reconciliation !== undefined);
+  });
   if (decisionsApproved && blockersResolved && dependenciesCompleted) return "ready";
   if (
     workItem.decisionIds.some((id) => {

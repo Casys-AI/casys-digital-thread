@@ -75,6 +75,17 @@ export interface RegisteredEngineeringOperation {
   readonly execution: EngineeringOperationExecution;
   /** Makes a consequential decision bind the exact thread-entity targets. */
   readonly decisionEvidenceScope?: "thread-entity-bindings";
+  /**
+   * This operation must be introduced by an additive project change
+   * (project_change_append), not in the initial plan.  The executor enforces
+   * this at runtime; the flag lets publishPlan catch it early — before any run
+   * has completed and locked the plan against republication.
+   *
+   * Only needed when the executor requires exactly one planChange lineage (e.g.
+   * architecture.seed-syson-model@2, which must follow the approved-brief
+   * baseline).  All other generic operations leave this absent.
+   */
+  readonly requiresAdditiveChange?: true;
   readonly bindings: readonly RegisteredEngineeringOperationBinding[];
 }
 
@@ -170,6 +181,12 @@ const OPERATIONS = [
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
+    // The executor verifies that this work item arrived via exactly one
+    // planChange (assertChangeCanAppend requires a completed baseline first).
+    // Publishing it in the initial plan silently passes planning but fails at
+    // execution, after the baseline has locked the plan against republication.
+    // requiresAdditiveChange lets publishPlan catch this before any run runs.
+    requiresAdditiveChange: true,
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
@@ -459,6 +476,44 @@ const OPERATIONS = [
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
     }],
+  },
+  /**
+   * Human-only recovery gate for a terminal failed provider run whose outcome
+   * was uncertain (the executor crashed after the provider acknowledged a write,
+   * before the ThreadSnapshot was published).
+   *
+   * The operation adds `uncertainWriterReconciliation` to the target run and
+   * directly completes the reconciliation run as an annotation (no ThreadSnapshot,
+   * no evidence refs).  Requires a human-approved MRTR decision whose proposal
+   * names the exact `runId`, `failureCode`, `basisSnapshotId`, `outcome`, and
+   * `providerInspectionAttestation`.
+   *
+   * WHY HUMAN-ONLY — an agent cannot inspect a provider.  Lifting the write-basis
+   * lock on a terminal uncertain failure requires a conscious human decision.
+   * `mustOrigin: "human"` is enforced at the executor gate; this descriptor
+   * documents the intent for the planning layer.
+   */
+  {
+    id: "record.reconcile-uncertain-writer",
+    version: "1",
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Reconcile a terminal uncertain provider write",
+    description:
+      "Resolve the write-uncertainty on a terminal failed run after a human operator " +
+      "has inspected the provider.  Adds the reconciliation annotation to the failed run " +
+      "and lifts the thread-write basis lock.  No provider is called.  " +
+      "Requires a human-approved MRTR decision naming the exact run, failure code, " +
+      "basis snapshot, outcome, and provider inspection attestation.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [
+      {
+        name: "approvedBrief",
+        allowedSourceKinds: ["approved-brief"],
+      },
+    ],
   },
   /**
    * Generic governed lineage retirement. Records the retirement of any named
