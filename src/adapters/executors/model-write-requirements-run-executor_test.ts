@@ -1191,6 +1191,7 @@ async function queuedRequirementsFixture(
         kind: "success-criterion",
         statement: "Requirements capture readable and snapshot validates.",
         sourceRefs: [{ kind: "intent", reference: "conversation:test" }],
+        dependsOnItemIds: [],
       },
     ],
   });

@@ -1090,6 +1090,7 @@ async function buildGeoFixture(
         kind: "success-criterion",
         statement: "Geometry artifact appears in the ThreadSnapshot and validates.",
         sourceRefs: [{ kind: "intent", reference: "conversation:test" }],
+        dependsOnItemIds: [],
       },
     ],
   });

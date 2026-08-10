@@ -232,11 +232,10 @@ substitute evidence, its recovered R3 successor is the current bounded proof, an
 R12 requirement lineage is what lets the project close. Adding or replacing model-owned
 criteria is always an explicit domain mutation, never a UI workaround.
 
-[`experiments/thread-workflow/`](experiments/thread-workflow/) holds the frozen YAML
-DAG authoring prototype (spec and engine; no production caller). No dashboard-layout
-YAML, iframe host, or presentation-only MCP sits between the backend and
-provider-native MCP tools. See the
-[workflow reference](docs/reference/thread-workflows.md).
+[`experiments/thread-workflow/`](experiments/thread-workflow/) holds the frozen YAML DAG
+authoring prototype (spec and engine; no production caller). No dashboard-layout YAML,
+iframe host, or presentation-only MCP sits between the backend and provider-native MCP
+tools. See the [workflow reference](docs/reference/thread-workflows.md).
 
 The four tracked r5 branches share the system subject only through
 [`config/thread-subjects/coffee-machine-cm01.json`](config/thread-subjects/coffee-machine-cm01.json):
@@ -270,30 +269,30 @@ model, and security boundary.
 
 ## Repository map
 
-| Path                                          | Contents                                                                           |
-| --------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `docker-compose.yml`                          | The full stack: SysON + MCP servers over HTTP                                      |
-| `server.ts`, `src/`                           | Console, project control plane, thread contracts, and orchestration                |
-| `config/mcp-fleet.json`                       | Desired fleet, topology, tools, views, and trust boundaries                        |
-| `config/projects/`                            | Versioned project intent plus exact observed baseline captures                     |
-| `experiments/thread-workflow/`                | Frozen YAML authoring prototype (reviewed spec + engine, no production caller)     |
-| `config/thread-subjects/`                     | Reviewed explicit provider-to-product identity bindings                            |
-| `config/verification-plans/`                  | Versioned provisional scenario-contract plans                                      |
-| `config/mechanical-proof-cases/`              | Candidate mechanical proof-case declarations; authoring only — execution authority belongs to the sealed thread artifact |
+| Path                                          | Contents                                                                                                                                                |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker-compose.yml`                          | The full stack: SysON + MCP servers over HTTP                                                                                                           |
+| `server.ts`, `src/`                           | Console, project control plane, thread contracts, and orchestration                                                                                     |
+| `config/mcp-fleet.json`                       | Desired fleet, topology, tools, views, and trust boundaries                                                                                             |
+| `config/projects/`                            | Versioned project intent plus exact observed baseline captures                                                                                          |
+| `experiments/thread-workflow/`                | Frozen YAML authoring prototype (reviewed spec + engine, no production caller)                                                                          |
+| `config/thread-subjects/`                     | Reviewed explicit provider-to-product identity bindings                                                                                                 |
+| `config/verification-plans/`                  | Versioned provisional scenario-contract plans                                                                                                           |
+| `config/mechanical-proof-cases/`              | Candidate mechanical proof-case declarations; authoring only — execution authority belongs to the sealed thread artifact                                |
 | `config/simulation-cases/`                    | Candidate simulation-case declarations (kit, scenario, parameter overrides); authoring only — execution authority belongs to the sealed thread artifact |
-| `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                            |
-| `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                    |
-| `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence |
-| `docs/README.md`                              | Diátaxis documentation map                                                         |
-| `docs/tutorials/`                             | End-to-end learning paths, including the real CoffeeMachine run                    |
-| `docs/how-to/`                                | Focused operating guides for native workflows and MCP Apps                         |
-| `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                              |
-| `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                |
-| `docs/reference/console.md`                   | Console resource, tools, truth model, limitations, and security boundary           |
-| `docs/explanations/positioning.md`            | Explanation: industry & SOTA positioning and references                            |
-| `docs/reference/verification-architecture.md` | Explanation: CoffeeMachine verification boundaries and Modelica decision           |
-| `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                       |
-| `experiments/oracle/`                         | The oracle experiment — the project's decisive measurement                         |
+| `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                                                                                                 |
+| `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                                                                                         |
+| `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence                                                                      |
+| `docs/README.md`                              | Diátaxis documentation map                                                                                                                              |
+| `docs/tutorials/`                             | End-to-end learning paths, including the real CoffeeMachine run                                                                                         |
+| `docs/how-to/`                                | Focused operating guides for native workflows and MCP Apps                                                                                              |
+| `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                                                                                                   |
+| `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                                                                                     |
+| `docs/reference/console.md`                   | Console resource, tools, truth model, limitations, and security boundary                                                                                |
+| `docs/explanations/positioning.md`            | Explanation: industry & SOTA positioning and references                                                                                                 |
+| `docs/reference/verification-architecture.md` | Explanation: CoffeeMachine verification boundaries and Modelica decision                                                                                |
+| `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                                                                                            |
+| `experiments/oracle/`                         | The oracle experiment — the project's decisive measurement                                                                                              |
 
 ## The ecosystem (public building blocks)
 

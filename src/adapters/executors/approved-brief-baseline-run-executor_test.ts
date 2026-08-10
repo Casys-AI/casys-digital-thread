@@ -62,6 +62,7 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
         statement:
           "Demonstrate the approved baseline before technical evidence is added.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        dependsOnItemIds: [],
       }],
     });
     const proposal = project.framing!.proposedBrief!;

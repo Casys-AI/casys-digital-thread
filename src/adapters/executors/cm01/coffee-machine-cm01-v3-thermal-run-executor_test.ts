@@ -278,6 +278,7 @@ async function queuedThermal(directory: string) {
       kind: "success-criterion",
       statement: "Capture a nominal thermal simulation as evidence.",
       sourceRefs: [{ kind: "intent", reference: "conversation:cm01" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {

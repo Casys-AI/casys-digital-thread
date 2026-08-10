@@ -409,6 +409,7 @@ async function queuedSeed(directory: string) {
       kind: "success-criterion",
       statement: "Create a reviewable engineering record.",
       sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {

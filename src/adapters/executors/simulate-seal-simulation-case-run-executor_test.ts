@@ -505,6 +505,7 @@ Deno.test(
           kind: "success-criterion",
           statement: "Simulation case sealed into the thread.",
           sourceRefs: [{ kind: "intent", reference: "conversation:seal-test" }],
+          dependsOnItemIds: [],
         }],
       });
       project = await briefs.approveBrief(HUMAN, {
@@ -835,6 +836,7 @@ async function queuedSealFixture(
       kind: "success-criterion",
       statement: "Simulation case sealed into the evidence thread.",
       sourceRefs: [{ kind: "intent", reference: "conversation:seal" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {

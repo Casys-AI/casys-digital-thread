@@ -732,6 +732,7 @@ async function queuedArchitecture(directory: string) {
       statement:
         "Keep assumptions and technical evidence traceable without certification claims.",
       sourceRefs: [{ kind: "intent", reference: "conversation:inspection-drone" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {

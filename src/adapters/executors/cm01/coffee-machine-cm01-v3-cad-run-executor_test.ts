@@ -240,6 +240,7 @@ async function queuedCad(directory: string) {
       kind: "success-criterion",
       statement: "Capture a deterministic CAD export as evidence.",
       sourceRefs: [{ kind: "intent", reference: "conversation:cm01" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {

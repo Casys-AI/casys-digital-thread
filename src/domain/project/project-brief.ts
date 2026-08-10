@@ -108,6 +108,23 @@ export type ProjectBriefItemKind =
   | "open-question"
   | "proposed-decision";
 
+/**
+ * V1 brief records predate explicit gate dependencies. V2 makes that
+ * declaration part of the reviewed mandate without rewriting V1 history.
+ */
+export type ProjectBriefContractVersion = "1.0" | "2.0";
+
+/** Existing brief kinds that can be claimed by engineering work. */
+export type ProjectBriefGateItemKind =
+  | "success-criterion"
+  | "verification-activity";
+
+export function isProjectBriefGateKind(
+  kind: ProjectBriefItemKind,
+): kind is ProjectBriefGateItemKind {
+  return kind === "success-criterion" || kind === "verification-activity";
+}
+
 export type ProjectBriefSourceKind =
   | "intent"
   | "answer"
@@ -130,6 +147,12 @@ export interface ProjectBriefItem {
   readonly owner?: string;
   /** Required for assumptions; says when the provisional value must be revisited. */
   readonly reviewTrigger?: string;
+  /**
+   * V2-only declaration on a gate. Its presence is mandatory for gate items in
+   * a V2 brief; an empty array explicitly declares independence from other
+   * brief items. Its absence remains the V1 historical representation.
+   */
+  readonly dependsOnItemIds?: readonly string[];
 }
 
 export interface ProjectBriefPreviousRevision {
@@ -139,6 +162,11 @@ export interface ProjectBriefPreviousRevision {
 
 /** One immutable proposal in the stable brief lineage of a project. */
 export interface ProjectBriefRevision {
+  /**
+   * Omitted records are historical V1 briefs. New proposals are always V2 and
+   * persist this field explicitly so their gate contract is reviewable.
+   */
+  readonly contractVersion?: ProjectBriefContractVersion;
   readonly briefId: string;
   readonly id: string;
   readonly revision: number;
@@ -146,6 +174,13 @@ export interface ProjectBriefRevision {
   readonly items: readonly ProjectBriefItem[];
   readonly proposedAt: IsoDateTime;
   readonly proposedBy: ProjectBriefActor;
+}
+
+/** Resolve the historical omitted form without inventing a field in storage. */
+export function projectBriefContractVersion(
+  brief: ProjectBriefRevision,
+): ProjectBriefContractVersion {
+  return brief.contractVersion ?? "1.0";
 }
 
 export type ProjectBriefReviewStatus = "pending" | "approved" | "rejected";

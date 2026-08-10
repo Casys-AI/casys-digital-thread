@@ -393,6 +393,7 @@ async function queuedCadR4(directory: string) {
         statement:
           "Capture a deterministic STEP and N+1 presentation STLs, all bytes servable by the BFF.",
         sourceRefs: [{ kind: "intent", reference: "conversation:cm01-r4" }],
+        dependsOnItemIds: [],
       },
     ],
   });

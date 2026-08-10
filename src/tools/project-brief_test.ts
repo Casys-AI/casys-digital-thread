@@ -67,6 +67,7 @@ Deno.test("project MCP framing uses one project identity from intent through app
         statement:
           "Complete the reviewed scenario with a traceable engineering record.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        dependsOnItemIds: [],
       }],
     });
     project = result.structuredContent as Record<string, unknown>;
@@ -74,6 +75,13 @@ Deno.test("project MCP framing uses one project identity from intent through app
     const proposal = framing.proposedBrief as Record<string, unknown>;
     const review = framing.proposalReview as Record<string, unknown>;
     assertEquals(project.revision, 2);
+    assertEquals(proposal.contractVersion, "2.0");
+    assertEquals(
+      ((proposal.items as Array<Record<string, unknown>>).find((item) =>
+        item.id === "success"
+      ))?.dependsOnItemIds,
+      [],
+    );
     assertEquals(review.status, "pending");
 
     const confirmArgs = {
@@ -178,6 +186,7 @@ Deno.test(
             kind: "success-criterion",
             statement: "Complete the scenario with a traceable record.",
             sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+            dependsOnItemIds: [],
           },
         ],
       });
@@ -287,6 +296,7 @@ Deno.test(
             kind: "success-criterion",
             statement: "Complete the scenario with a traceable record.",
             sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+            dependsOnItemIds: [],
           },
         ],
       });

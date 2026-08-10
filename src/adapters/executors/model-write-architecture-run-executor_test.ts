@@ -751,6 +751,7 @@ async function queuedArchitectureFixture(
       kind: "success-criterion",
       statement: "Architecture capture is readable and snapshot validates.",
       sourceRefs: [{ kind: "intent", reference: "conversation:test" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {
@@ -2730,6 +2731,7 @@ Deno.test(
             kind: "success-criterion",
             statement: "Test passes.",
             sourceRefs: [{ kind: "intent", reference: "conv:test" }],
+            dependsOnItemIds: [],
           }],
         });
         proj2 = await briefs2.approveBrief(HUMAN, {

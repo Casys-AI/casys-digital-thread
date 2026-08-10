@@ -244,6 +244,7 @@ async function queuedProductFixture(options: {
       kind: "success-criterion",
       statement: "Keep the reviewed evidence traceable without a technical verdict.",
       sourceRefs: [{ kind: "intent", reference: "conversation:integration" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {

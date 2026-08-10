@@ -151,6 +151,146 @@ Deno.test("an agent builds a sourced brief but only exact human review makes it 
   );
 });
 
+Deno.test("V2 briefs require explicit gate dependencies while V1 brief records remain readable", async () => {
+  const store = new MemoryProjectStore();
+  const service = serviceFor(store);
+  const started = await start(service);
+  const incompleteItems = briefItems("Demonstrate a reviewable system safely").map(
+    (item) => {
+      if (item.id !== "success-reviewed-system") return item;
+      const { dependsOnItemIds: _ignored, ...withoutDeclaration } = item;
+      return withoutDeclaration;
+    },
+  );
+
+  await assertCommandError(
+    () =>
+      service.proposeBrief(AGENT, {
+        ...context("reject-incomplete-v2-gate", started.revision),
+        items: incompleteItems,
+      }),
+    "invalid_input",
+  );
+
+  let approved = await service.proposeBrief(AGENT, {
+    ...context("propose-explicit-v2-gates", started.revision),
+    items: briefItems("Demonstrate a reviewable system safely"),
+  });
+  const proposal = approved.framing!.proposedBrief!;
+  assertEquals(proposal.contractVersion, "2.0");
+  assertEquals(
+    proposal.items.find((item) => item.id === "success-reviewed-system")
+      ?.dependsOnItemIds,
+    [],
+  );
+  assertEquals(
+    proposal.items.find((item) => item.id === "verify-traceable-record")
+      ?.dependsOnItemIds,
+    ["success-reviewed-system"],
+  );
+
+  approved = await service.approveBrief(HUMAN, {
+    ...context("approve-explicit-v2-gates", approved.revision),
+    briefSnapshotId: proposal.id,
+    briefRevision: proposal.revision,
+    rationale: "The explicit gate contract is reviewed.",
+    inputFingerprint: approved.framing!.proposalReview!.inputFingerprint,
+  });
+  const historical = structuredClone(approved) as unknown as {
+    framing: {
+      currentBrief: {
+        contractVersion?: string;
+        items: Array<{ kind: string; dependsOnItemIds?: string[] }>;
+      };
+    };
+  };
+  delete historical.framing.currentBrief.contractVersion;
+  for (const item of historical.framing.currentBrief.items) {
+    if (
+      item.kind === "success-criterion" ||
+      item.kind === "verification-activity"
+    ) {
+      delete item.dependsOnItemIds;
+    }
+  }
+  assertEquals(collectEngineeringProjectIssues(historical), []);
+});
+
+Deno.test("gate claims resolve only to canonical V2 gates and preserve link status", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+  );
+  const invalidClaim = {
+    gateItemId: "objective",
+    role: "satisfies" as const,
+    status: "current" as const,
+  };
+  await assertCommandError(
+    () =>
+      commands.publishPlan(AGENT, {
+        ...baselinePlanCommand("reject-non-gate-claim", approved.revision),
+        workItems: baselinePlanCommand(
+          "reject-non-gate-claim",
+          approved.revision,
+        ).workItems.map((item) => ({ ...item, gateClaims: [invalidClaim] })),
+      }),
+    "invalid_input",
+  );
+  await assertCommandError(
+    () =>
+      commands.publishPlan(AGENT, {
+        ...baselinePlanCommand("reject-unknown-gate-claim", approved.revision),
+        workItems: baselinePlanCommand(
+          "reject-unknown-gate-claim",
+          approved.revision,
+        ).workItems.map((item) => ({
+          ...item,
+          gateClaims: [{ ...invalidClaim, gateItemId: "missing-gate" }],
+        })),
+      }),
+    "invalid_input",
+  );
+
+  const validClaim = {
+    gateItemId: "verify-traceable-record",
+    role: "satisfies" as const,
+    status: "impact-unresolved" as const,
+  };
+  const planned = await commands.publishPlan(AGENT, {
+    ...baselinePlanCommand("publish-gate-claim", approved.revision),
+    workItems: baselinePlanCommand(
+      "publish-gate-claim",
+      approved.revision,
+    ).workItems.map((item) => ({ ...item, gateClaims: [validClaim] })),
+  });
+  assertEquals(planned.workItems[0]?.gateClaims, [validClaim]);
+  assertEquals(
+    planned.workItems[0]?.operation?.bindings,
+    [{
+      name: "approvedBrief",
+      source: { kind: "approved-brief" },
+    }],
+  );
+
+  const malformedStatus = structuredClone(planned) as unknown as {
+    workItems: Array<{
+      gateClaims?: Array<{ gateItemId: string; role: string; status: string }>;
+    }>;
+  };
+  malformedStatus.workItems[0]!.gateClaims![0]!.status = "stale";
+  const statusIssue = collectEngineeringProjectIssues(malformedStatus).find(
+    (issue) => issue.code === "invalid_gate_claim_status",
+  );
+  assertEquals(statusIssue?.context, { value: "stale" });
+  assertEquals(typeof statusIssue?.recovery, "string");
+});
+
 Deno.test("a rejected update preserves the approved brief and stale proposals cannot be approved", async () => {
   const store = new MemoryProjectStore();
   const service = serviceFor(store);
@@ -462,6 +602,49 @@ Deno.test("a living brief revision does not rewrite the historical approval that
   );
 });
 
+Deno.test(
+  "publishPlan rejects the SysON seed in the initial plan before any run can lock it",
+  async () => {
+    // Friction 1 guard: architecture.seed-syson-model@2 requires a planChange
+    // lineage (the executor checks planChanges.includes(workItemId)).  Without
+    // the publishPlan guard, the plan publishes, the baseline completes, the
+    // plan locks — and only then does the executor reject.  The agent is left
+    // with no recovery path.  The guard must fire here, at planning time.
+    const store = new MemoryProjectStore();
+    const briefs = serviceFor(store);
+    const approved = await approvedProject(briefs);
+    const commands = new EngineeringProjectCommandService(
+      store,
+      undefined,
+      () => "2026-08-03T09:00:00.000Z",
+      { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    );
+
+    await assertCommandError(
+      () =>
+        commands.publishPlan(AGENT, {
+          ...context("publish-with-seed-in-plan", approved.revision),
+          startingPoint: "idea-or-spec",
+          phases: [{ id: "ph-1", name: "Phase 1", description: "Baseline." }],
+          workItems: [{
+            id: "seed-syson",
+            phaseId: "ph-1",
+            owner: "agent",
+            dependsOnWorkItemIds: [],
+            decisionIds: [],
+            operation: {
+              id: "architecture.seed-syson-model",
+              version: "2",
+              bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+            },
+          }],
+          requiredDecisions: [],
+        }),
+      "invalid_input",
+    );
+  },
+);
+
 async function approvedProject(service: ProjectBriefCommandService) {
   let project = await start(service);
   project = await service.proposeBrief(AGENT, {
@@ -546,6 +729,13 @@ function briefItems(objective: string): readonly ProjectBriefItem[] {
     kind: "success-criterion",
     statement: "Complete the reviewed scenario with a traceable engineering record.",
     sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    dependsOnItemIds: [],
+  }, {
+    id: "verify-traceable-record",
+    kind: "verification-activity",
+    statement: "Verify the reviewed record against the declared success criterion.",
+    sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+    dependsOnItemIds: ["success-reviewed-system"],
   }];
 }
 

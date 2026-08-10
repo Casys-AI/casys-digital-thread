@@ -338,6 +338,12 @@ const projectBriefProposeTool: MCPTool = {
           sourceRefs: { type: "array", minItems: 1, items: SOURCE },
           owner: STRING,
           reviewTrigger: STRING,
+          dependsOnItemIds: {
+            type: "array",
+            items: STRING,
+            description:
+              "Required by the V2 brief contract on success-criterion and verification-activity items. Use [] only to declare independence from other brief items.",
+          },
         },
         required: ["id", "kind", "statement", "sourceRefs"],
         additionalProperties: false,
@@ -527,7 +533,7 @@ function briefItems(value: unknown): ProjectBriefItem[] {
     exactKeys(
       input,
       ["id", "kind", "statement", "sourceRefs"],
-      ["owner", "reviewTrigger"],
+      ["owner", "reviewTrigger", "dependsOnItemIds"],
       path,
     );
     if (!Array.isArray(input.sourceRefs)) {
@@ -563,6 +569,12 @@ function briefItems(value: unknown): ProjectBriefItem[] {
     }
     if (input.reviewTrigger !== undefined) {
       item.reviewTrigger = requiredString(input.reviewTrigger, `${path}.reviewTrigger`);
+    }
+    if (input.dependsOnItemIds !== undefined) {
+      item.dependsOnItemIds = stringList(
+        input.dependsOnItemIds,
+        `${path}.dependsOnItemIds`,
+      );
     }
     return item;
   });

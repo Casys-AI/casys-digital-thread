@@ -1134,6 +1134,7 @@ async function queuedSensitivityRelations(
       kind: "success-criterion",
       statement: "Capture a traceable SysON architecture read-back.",
       sourceRefs: [{ kind: "intent", reference: "conversation:cm01" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {
@@ -1519,6 +1520,7 @@ async function queuedSensitivityRelationsOnBriefBasis(
       kind: "success-criterion",
       statement: "Capture a traceable SysON architecture read-back.",
       sourceRefs: [{ kind: "intent", reference: "conversation:cm01" }],
+      dependsOnItemIds: [],
     }],
   });
   project = await briefs.approveBrief(HUMAN, {

@@ -13,6 +13,7 @@ import { validateEngineeringProjectSnapshot } from "./engineering-project-valida
 import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,
+  isProjectBriefGateKind,
   type ProjectAnswerSource,
   type ProjectBriefItem,
   projectBriefObjective,
@@ -319,7 +320,9 @@ export class ProjectBriefCommandService {
         const prior = framing.proposedBrief ?? framing.currentBrief;
         const revision = (prior?.revision ?? 0) + 1;
         const briefId = `${draft.project.id}:brief`;
+        const contractVersion = "2.0" as const;
         const contentFingerprint = await sha256Fingerprint({
+          contractVersion,
           briefId,
           revision,
           previous: prior
@@ -330,13 +333,26 @@ export class ProjectBriefCommandService {
           proposedBy: actor(origin),
         });
         const proposal: Mutable<ProjectBriefRevision> = {
+          contractVersion,
           briefId,
           id: `${briefId}:r${revision}:${contentFingerprint.digest.slice(0, 16)}`,
           revision,
-          items: command.items.map((item) => ({
-            ...item,
-            sourceRefs: item.sourceRefs.map((source) => ({ ...source })),
-          })),
+          items: command.items.map((item) => {
+            const copy: Mutable<ProjectBriefItem> = {
+              id: item.id,
+              kind: item.kind,
+              statement: item.statement,
+              sourceRefs: item.sourceRefs.map((source) => ({ ...source })),
+            };
+            if (item.owner !== undefined) copy.owner = item.owner;
+            if (item.reviewTrigger !== undefined) {
+              copy.reviewTrigger = item.reviewTrigger;
+            }
+            if (item.dependsOnItemIds !== undefined) {
+              copy.dependsOnItemIds = [...item.dependsOnItemIds];
+            }
+            return copy;
+          }),
           proposedAt: appliedAt,
           proposedBy: actor(origin),
         };
@@ -783,6 +799,27 @@ function validateBriefItems(items: readonly ProjectBriefItem[]): void {
     if (item.kind === "objective") objectives++;
     if (item.kind === "mission-scenario") missions++;
     if (item.kind === "success-criterion") successCriteria++;
+    if (isProjectBriefGateKind(item.kind)) {
+      if (!Object.prototype.hasOwnProperty.call(item, "dependsOnItemIds")) {
+        invalidInput(
+          `V2 gate ${item.id} must explicitly declare dependsOnItemIds; use [] only for declared independence.`,
+        );
+      }
+      stringArray(item.dependsOnItemIds!, `items[${index}].dependsOnItemIds`);
+      const dependencyIds = new Set<string>();
+      for (const dependencyId of item.dependsOnItemIds!) {
+        if (dependencyIds.has(dependencyId)) {
+          invalidInput(
+            `V2 gate ${item.id} declares duplicate dependency ${dependencyId}.`,
+          );
+        }
+        dependencyIds.add(dependencyId);
+      }
+    } else if (item.dependsOnItemIds !== undefined) {
+      invalidInput(
+        `Only a V2 success-criterion or verification-activity may declare dependsOnItemIds (item ${item.id}).`,
+      );
+    }
     if (item.kind === "assumption") {
       nonEmpty(item.owner, `items[${index}].owner`);
       nonEmpty(item.reviewTrigger, `items[${index}].reviewTrigger`);
@@ -797,6 +834,16 @@ function validateBriefItems(items: readonly ProjectBriefItem[]): void {
       invalidInput(
         `Observed fact ${item.id} requires a tool, document or expert source.`,
       );
+    }
+  }
+  for (const item of items) {
+    if (!isProjectBriefGateKind(item.kind)) continue;
+    for (const dependencyId of item.dependsOnItemIds!) {
+      if (dependencyId === item.id || !ids.has(dependencyId)) {
+        invalidInput(
+          `V2 gate ${item.id} must depend on an existing different brief item.`,
+        );
+      }
     }
   }
   if (objectives !== 1) invalidInput("A project brief needs exactly one objective.");

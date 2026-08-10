@@ -305,6 +305,7 @@ async function queuedCadR3(directory: string) {
         statement:
           "Capture a deterministic STEP and N+1 presentation STLs as content-addressed evidence.",
         sourceRefs: [{ kind: "intent", reference: "conversation:cm01-r3" }],
+        dependsOnItemIds: [],
       },
     ],
   });
