@@ -24,7 +24,7 @@ Deno.test("recorded Modelica @2 executes the true seal-to-ROP pipeline once and 
     assertEquals(provider.submitCalls, 1);
     assertEquals(provider.requestGetCalls, 1);
     assertEquals(provider.verifyCalls, 1);
-    assertEquals(provider.resourceReads, 9);
+    assertEquals(provider.resourceReads, 10);
 
     const snapshotRef = completed.threadSnapshots.at(-1)!;
     const snapshot = await fixture.snapshots.get(snapshotRef.snapshotId);
@@ -34,7 +34,7 @@ Deno.test("recorded Modelica @2 executes the true seal-to-ROP pipeline once and 
     );
     assertEquals(
       ownArtifacts.length,
-      9,
+      10,
       "the closed provider profile includes run.json",
     );
     const queuedRun = completed.agentRuns.find((run) => run.id === fixture.runId)!;
@@ -94,7 +94,7 @@ Deno.test("recorded Modelica @2 executes the true seal-to-ROP pipeline once and 
     assertEquals(replay.revision, completed.revision, "completed replay is a no-op");
     assertEquals(provider.submitCalls, 1);
     assertEquals(provider.requestGetCalls, 1);
-    assertEquals(provider.resourceReads, 9);
+    assertEquals(provider.resourceReads, 10);
   });
 });
 
@@ -130,7 +130,7 @@ Deno.test("recorded Modelica @2 preserves a lost submit acknowledgement as dispa
       "a durable dispatch marker prohibits redispatch",
     );
     assertEquals(provider.requestGetCalls, 1);
-    assertEquals(provider.resourceReads, 9);
+    assertEquals(provider.resourceReads, 10);
   });
 });
 
@@ -161,7 +161,7 @@ Deno.test("recorded Modelica @2 resumes provider-run-known through the exact rea
     assertEquals(runStatus(completed, fixture.runId), "completed");
     assertEquals(provider.submitCalls, 1);
     assertEquals(provider.requestGetCalls, 2);
-    assertEquals(provider.resourceReads, 9);
+    assertEquals(provider.resourceReads, 10);
   });
 });
 
@@ -304,13 +304,23 @@ Deno.test("recorded Modelica @2 rejects canonical WAL evidence tampering against
   });
 });
 
-Deno.test("recorded Modelica @2 refuses a tampered ROP or sealed source before claim and provider access", async () => {
-  for (const mode of ["plan", "source"] as const) {
+Deno.test("recorded Modelica @2 refuses a tampered ROP or sealed CAS source before claim, WAL, and provider access", async () => {
+  const modes: readonly {
+    readonly label: string;
+    readonly bindingName?: string;
+  }[] = [
+    { label: "plan" },
+    { label: "simulationCase", bindingName: "simulationCase" },
+    { label: "modelSource", bindingName: "modelSource" },
+    { label: "scenarioSource", bindingName: "scenarioSource" },
+    { label: "parameterSchema", bindingName: "parameterSchema" },
+  ];
+  for (const mode of modes) {
     await withFixture(async (fixture) => {
       const provider = new InstrumentedRecordedModelicaProvider(fixture);
       const queued = await requiredProject(fixture);
       const run = queued.agentRuns.find((item) => item.id === fixture.runId)!;
-      if (mode === "plan") {
+      if (mode.bindingName === undefined) {
         const ref = run.resolvedOperationPlan!;
         await Deno.writeTextFile(
           `${fixture.directory}/resolved-operation-plans/${ref.fingerprint.digest}`,
@@ -319,10 +329,13 @@ Deno.test("recorded Modelica @2 refuses a tampered ROP or sealed source before c
       } else {
         const plan = await fixture.plans.read(run.resolvedOperationPlan!);
         const source = plan.sources.find((entry) =>
-          entry.bindingName === "simulationCase"
-        )!;
+          entry.bindingName === mode.bindingName
+        );
+        assert(source, `${mode.label} must be present in the real fixture plan`);
         await Deno.writeTextFile(
-          `${fixture.directory}/simulation-cases/${source.artifact.fingerprint.digest}`,
+          mode.bindingName === "simulationCase"
+            ? `${fixture.directory}/simulation-cases/${source.artifact.fingerprint.digest}`
+            : `${fixture.directory}/qualified-source-bytes/${source.artifact.fingerprint.digest}`,
           "tampered",
         );
       }
@@ -334,9 +347,22 @@ Deno.test("recorded Modelica @2 refuses a tampered ROP or sealed source before c
           ),
         Error,
       );
-      assertEquals(provider.submitCalls, 0, `${mode} tamper must precede submit`);
-      assertEquals(provider.requestGetCalls, 0, `${mode} tamper must precede readback`);
-      assertEquals(provider.resourceReads, 0, `${mode} tamper must precede resources`);
+      assertEquals(provider.submitCalls, 0, `${mode.label} tamper must precede submit`);
+      assertEquals(
+        provider.requestGetCalls,
+        0,
+        `${mode.label} tamper must precede readback`,
+      );
+      assertEquals(
+        provider.resourceReads,
+        0,
+        `${mode.label} tamper must precede resources`,
+      );
+      assertEquals(
+        await fixture.attempts.read(fixture.projectId, fixture.runId),
+        undefined,
+        `${mode.label} tamper must precede WAL claim`,
+      );
       const stillQueued = await requiredProject(fixture);
       assertEquals(runStatus(stillQueued, fixture.runId), "queued");
     });

@@ -13,12 +13,19 @@ import {
 } from "../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../domain/project/project-brief-command-service.ts";
 import {
-  canonicalSimulationCaseText,
-  type SimulationCase,
-  validateSimulationCase,
-} from "../domain/analysis/simulation-case.ts";
-import { encodeSimulationCaseDecisionParameters } from "../domain/analysis/simulation-case-proposal.ts";
+  canonicalSimulationCaseV2Text,
+  type SimulationCaseV2,
+  validateSimulationCaseV2,
+} from "../domain/analysis/simulation-case-v2.ts";
 import {
+  encodeSimulationCaseV2DecisionParameters,
+} from "../domain/analysis/simulation-case-v2-proposal.ts";
+import {
+  simulationCaseV2CatalogKey,
+} from "../domain/analysis/simulation-case-v2-catalog.ts";
+import {
+  canonicalModelicaResumableProviderJson,
+  fingerprintModelicaResumableProviderJson,
   type ModelicaQualifiedManifestDocument,
   type ModelicaResumableCapturedEvidence,
   type ModelicaResumableCapturedResourceTuple,
@@ -32,10 +39,7 @@ import {
   fingerprintResourceBytes,
   type ProviderResourceReader,
 } from "../domain/analysis/provider-resource-reader.ts";
-import {
-  deterministicJson,
-  sha256Fingerprint,
-} from "../domain/kernel/deterministic-json.ts";
+import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../domain/thread/thread-snapshot.ts";
 import { approvedBriefSourceAnalysisFixture } from "./approved-brief-source-analysis-fixture.ts";
 import {
@@ -91,7 +95,7 @@ export interface RecordedModelicaV2Fixture {
   readonly attempts: FileModelicaRecordedScenarioAttemptStore;
   readonly lease: FileEngineeringProjectRunLease;
   readonly sealedSnapshot: ThreadSnapshot;
-  readonly simulationCase: SimulationCase;
+  readonly simulationCase: SimulationCaseV2;
   readonly manifest: ModelicaQualifiedManifestDocument;
   readonly wireManifest: Record<string, unknown>;
   readonly sourceBytes: ReadonlyMap<string, Uint8Array>;
@@ -230,7 +234,19 @@ export async function createRecordedModelicaV2Fixture(
     id: "heat-up",
     qualification_note: "fixture native scenario",
   });
-  const qualified = await qualifiedManifest(modelText, scenarioText);
+  const parameterSchemaText = deterministicJson({
+    schemaVersion: "modelica-parameter-schema/1.0",
+    type: "object",
+    properties: {
+      power: { type: "number", unit: "W", minimum: 0, maximum: 1_000 },
+    },
+    required: ["power"],
+  });
+  const qualified = await qualifiedManifest(
+    modelText,
+    scenarioText,
+    parameterSchemaText,
+  );
   const simulationCase = await fixtureCase({
     projectId,
     subjectId,
@@ -238,7 +254,7 @@ export async function createRecordedModelicaV2Fixture(
     manifest: qualified.manifest,
   });
   const caseDigest = await fingerprintResourceBytes(
-    new TextEncoder().encode(canonicalSimulationCaseText(simulationCase)),
+    new TextEncoder().encode(canonicalSimulationCaseV2Text(simulationCase)),
   );
   project = await initialCommands.appendChange(RECORDED_MODELICA_V2_AGENT, {
     ...context(projectId, "append-seal", baselined.revision),
@@ -273,7 +289,7 @@ export async function createRecordedModelicaV2Fixture(
     baseSnapshot: baseline,
     proposal: {
       summary: "Seal qualified Modelica input evidence.",
-      parameters: encodeSimulationCaseDecisionParameters(caseDigest, simulationCase),
+      parameters: encodeSimulationCaseV2DecisionParameters(caseDigest, simulationCase),
     },
   });
   const sealDecision = project.decisions.find((entry) =>
@@ -296,6 +312,10 @@ export async function createRecordedModelicaV2Fixture(
   const sourceBytes = new Map<string, Uint8Array>([
     [qualified.manifest.model.uri, new TextEncoder().encode(modelText)],
     [qualified.manifest.scenario.uri, new TextEncoder().encode(scenarioText)],
+    [
+      qualified.manifest.parameterSchema!.uri,
+      new TextEncoder().encode(parameterSchemaText),
+    ],
   ]);
   const sealProviderReader: ProviderResourceReader = {
     async read(expected) {
@@ -341,7 +361,11 @@ export async function createRecordedModelicaV2Fixture(
       `${directory}/qualification-captures`,
       "simulation-case-qualification",
     ),
-    readTextFile: () => Promise.resolve(canonicalSimulationCaseText(simulationCase)),
+    simulationCaseCatalog: new Map([[
+      simulationCaseV2CatalogKey(simulationCase),
+      { sourcePath: "fixture-case.json", canonicalDigest: caseDigest },
+    ]]),
+    readTextFile: () => Promise.resolve(canonicalSimulationCaseV2Text(simulationCase)),
   });
   const sealed = await seal.execute(RECORDED_MODELICA_V2_AGENT, {
     ...context(projectId, "run-seal", project.revision),
@@ -629,7 +653,9 @@ export class InstrumentedRecordedModelicaProvider {
       }
       return this.#request;
     }
-    const requestText = deterministicJson(lowerSubmission(submission));
+    const requestText = canonicalModelicaResumableProviderJson(
+      lowerSubmission(submission),
+    );
     const requestSha256 = await fingerprintResourceBytes(
       new TextEncoder().encode(requestText),
     );
@@ -640,13 +666,18 @@ export class InstrumentedRecordedModelicaProvider {
     const script = omcScript(submission);
     const contents: Record<string, string> = {
       request: requestText,
-      resolved_parameters: deterministicJson(resolvedParameters),
+      resolved_parameters: canonicalModelicaResumableProviderJson(
+        resolvedParameters,
+      ),
       model: decode(this.fixture.sourceBytes.get(submission.manifest.model.uri)!),
       scenario: decode(this.fixture.sourceBytes.get(submission.manifest.scenario.uri)!),
+      parameter_schema: decode(
+        this.fixture.sourceBytes.get(submission.manifest.parameterSchema!.uri)!,
+      ),
       script,
       diagnostics: "OpenModelica fixture diagnostics\n",
       result: "time,temperature\n0,20\n10,91\n",
-      evidence: deterministicJson({
+      evidence: canonicalModelicaResumableProviderJson({
         producer: "mcp-modelica",
         status: "succeeded",
         request_id: submission.requestId,
@@ -662,6 +693,7 @@ export class InstrumentedRecordedModelicaProvider {
       ["resolved_parameters", "resolved-parameters.json", "application/json"],
       ["model", `${submission.manifest.modelName}.mo`, "text/x-modelica"],
       ["scenario", "scenario.json", "application/json"],
+      ["parameter_schema", "parameter-schema.json", "application/json"],
       ["script", "run.mos", "text/plain"],
       ["diagnostics", "omc.log", "text/plain"],
       ["result", "result.csv", "text/csv"],
@@ -685,6 +717,8 @@ export class InstrumentedRecordedModelicaProvider {
           ? submission.manifest.model
           : role === "scenario"
           ? submission.manifest.scenario
+          : role === "parameter_schema"
+          ? submission.manifest.parameterSchema
           : undefined;
         return source
           ? {
@@ -716,7 +750,9 @@ export class InstrumentedRecordedModelicaProvider {
       artifacts,
       warnings,
     };
-    const runBytes = new TextEncoder().encode(deterministicJson(run));
+    const runBytes = new TextEncoder().encode(
+      canonicalModelicaResumableProviderJson(run),
+    );
     const runJson = {
       uri: `casys://modelica/requests/${submission.requestId}/run.json`,
       mediaType: "application/json",
@@ -786,7 +822,11 @@ function recordedModelicaV2TestRegistry(): EngineeringProjectPlanOperationRegist
   };
 }
 
-async function qualifiedManifest(modelText: string, scenarioText: string) {
+async function qualifiedManifest(
+  modelText: string,
+  scenarioText: string,
+  parameterSchemaText: string,
+) {
   const selection = {
     modelId: "thermal-kit",
     modelVersion: "1.0.0",
@@ -794,6 +834,7 @@ async function qualifiedManifest(modelText: string, scenarioText: string) {
   };
   const modelBytes = new TextEncoder().encode(modelText);
   const scenarioBytes = new TextEncoder().encode(scenarioText);
+  const parameterSchemaBytes = new TextEncoder().encode(parameterSchemaText);
   const scenarioPublic = {
     id: selection.scenarioId,
     description: "Heat up",
@@ -829,7 +870,17 @@ async function qualifiedManifest(modelText: string, scenarioText: string) {
         qualification: "qualified-kit" as const,
       },
       public: scenarioPublic,
-      projection_sha256: (await sha256Fingerprint(scenarioPublic)).digest,
+      projection_sha256: await fingerprintModelicaResumableProviderJson(
+        scenarioPublic,
+      ),
+    },
+    parameter_schema: {
+      uri:
+        `casys://modelica/kits/${selection.modelId}/${selection.modelVersion}/parameter-schema.json`,
+      mediaType: "application/json",
+      bytes: parameterSchemaBytes.byteLength,
+      sha256: await fingerprintResourceBytes(parameterSchemaBytes),
+      qualification: "compiler-derived-verified" as const,
     },
     parameters: [{
       id: "power",
@@ -851,7 +902,7 @@ async function qualifiedManifest(modelText: string, scenarioText: string) {
     lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
     engine: { name: "OpenModelica", version: "1.23", msl_version: "4.0" },
   };
-  const fingerprint = (await sha256Fingerprint(unsigned)).digest;
+  const fingerprint = await fingerprintModelicaResumableProviderJson(unsigned);
   const wireManifest = { ...unsigned, fingerprint, manifest_sha256: fingerprint };
   const manifest = await parseManifestEnvelope({
     schemaVersion: "2.1",
@@ -866,13 +917,10 @@ function fixtureCase(input: {
   subjectId: string;
   basisSnapshotId: string;
   manifest: ModelicaQualifiedManifestDocument;
-}): SimulationCase {
-  return validateSimulationCase({
-    schemaVersion: "simulation-case/1.0",
-    // The seal executor closes the server-owned case catalogue before it
-    // invokes its injected reader. Retain a real catalog id while the reader
-    // supplies this fixture's independently bound project case.
-    id: "coffee-machine-cm01-thermal-nominal-v1",
+}): SimulationCaseV2 {
+  return validateSimulationCaseV2({
+    schemaVersion: "simulation-case/2.0",
+    id: "fixture-modelica-case-v2",
     revision: 1,
     scope: "qualification-test",
     evidenceBoundary: "test",
@@ -892,7 +940,8 @@ function fixtureCase(input: {
     },
     scenario: {
       id: input.manifest.selection.scenarioId,
-      sha256: input.manifest.scenarioProjectionSha256,
+      sourceSha256: input.manifest.scenario.sha256,
+      projectionSha256: input.manifest.scenarioProjectionSha256,
     },
     parameters: [{ id: "power", value: 250, unit: "W" }],
     expectedMetrics: [{ id: "temperature", unit: "degC" }],

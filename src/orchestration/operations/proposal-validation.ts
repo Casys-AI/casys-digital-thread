@@ -24,6 +24,11 @@ import {
   simulationCaseDecisionParametersToMap,
 } from "../../domain/analysis/simulation-case-proposal.ts";
 import {
+  parseSimulationCaseV2DecisionParameters,
+  simulationCaseV2DecisionParametersToMap,
+} from "../../domain/analysis/simulation-case-v2-proposal.ts";
+import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.ts";
+import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
 } from "../../domain/platform/architecture-proposal.ts";
@@ -89,6 +94,14 @@ const PROPOSAL_VALIDATORS = new Map<
     (parameters) => {
       parseSimulationCaseDecisionParameters(
         simulationCaseDecisionParametersToMap(parameters),
+      );
+    },
+  ],
+  [
+    keyOf(SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION),
+    (parameters) => {
+      parseSimulationCaseV2DecisionParameters(
+        simulationCaseV2DecisionParametersToMap(parameters),
       );
     },
   ],

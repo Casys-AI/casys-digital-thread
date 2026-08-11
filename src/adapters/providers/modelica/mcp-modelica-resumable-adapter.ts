@@ -10,12 +10,11 @@ import {
   positiveInteger,
   rejectDuplicates,
 } from "../../../domain/kernel/case-validation.ts";
+import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
-  deterministicJson,
-  sha256Fingerprint,
-} from "../../../domain/kernel/deterministic-json.ts";
-import {
+  canonicalModelicaResumableProviderJson,
   expectedModelicaResumableResources,
+  fingerprintModelicaResumableProviderJson,
   MODELICA_QUALIFIED_MANIFEST_SCHEMA_VERSION,
   MODELICA_RESUMABLE_CONTRACT_VERSION,
   type ModelicaResumableArtifact,
@@ -200,7 +199,7 @@ export async function parseRequestEnvelope(
     );
     literalValue(envelope.kind, "simulation-request", "request.kind");
     const expected = lowerSubmission(validatedSubmission);
-    const expectedSha = (await sha256Fingerprint(expected)).digest;
+    const expectedSha = await fingerprintModelicaResumableProviderJson(expected);
     const request = exactRecord(
       envelope.request,
       requestKeys(envelope.request),
@@ -303,8 +302,9 @@ export async function normalizeCapturedModelicaResumableEvidence(
   }
   const runJson = runJsonResources[0]!;
   const runLedger = parseCapturedRunLedger(runJson.bytes);
-  const expectedRequestSha256 = (await sha256Fingerprint(lowerSubmission(submission)))
-    .digest;
+  const expectedRequestSha256 = await fingerprintModelicaResumableProviderJson(
+    lowerSubmission(submission),
+  );
   const completed = await parseCompletedRun(
     { ...runLedger, run_json: providerResourceWire(runJson.resource) },
     submission,
@@ -359,8 +359,9 @@ export async function verifyCapturedModelicaResumableEvidence(
   captured: readonly ModelicaResumableCapturedResource[],
 ): Promise<ModelicaResumableCapturedEvidence> {
   const submission = await validateSubmissionManifest(submissionValue);
-  const expectedRequestSha256 = (await sha256Fingerprint(lowerSubmission(submission)))
-    .digest;
+  const expectedRequestSha256 = await fingerprintModelicaResumableProviderJson(
+    lowerSubmission(submission),
+  );
   if (
     completed.requestId !== submission.requestId ||
     completed.requestSha256 !== expectedRequestSha256 ||
@@ -410,7 +411,9 @@ export async function verifyCapturedModelicaResumableEvidence(
   }
 
   const requestText = canonicalJsonText(requiredCaptured(byRole, "request"), "request");
-  const expectedRequestText = deterministicJson(lowerSubmission(submission));
+  const expectedRequestText = canonicalModelicaResumableProviderJson(
+    lowerSubmission(submission),
+  );
   if (
     requestText !== expectedRequestText ||
     await fingerprintResourceBytes(new TextEncoder().encode(requestText)) !==
@@ -424,7 +427,11 @@ export async function verifyCapturedModelicaResumableEvidence(
     requiredCaptured(byRole, "resolved_parameters"),
     "resolved_parameters",
   );
-  if (resolvedText !== deterministicJson(completed.resolvedParameters)) {
+  if (
+    resolvedText !== canonicalModelicaResumableProviderJson(
+      completed.resolvedParameters,
+    )
+  ) {
     throw new TypeError(
       "Captured Modelica resolved parameters differ from the completed run.",
     );
@@ -442,7 +449,7 @@ export async function verifyCapturedModelicaResumableEvidence(
     requiredCaptured(byRole, "evidence"),
     "evidence",
   );
-  const expectedEvidence = deterministicJson({
+  const expectedEvidence = canonicalModelicaResumableProviderJson({
     producer: "mcp-modelica",
     status: completed.status,
     request_id: completed.requestId,
@@ -542,7 +549,7 @@ async function parseManifest(
     throw new TypeError(`${path} fingerprint and manifest_sha256 differ.`);
   }
   const { fingerprint: _fingerprint, manifest_sha256: _manifest, ...unsigned } = root;
-  if ((await sha256Fingerprint(unsigned)).digest !== fingerprint) {
+  if (await fingerprintModelicaResumableProviderJson(unsigned) !== fingerprint) {
     throw new TypeError(`${path} fingerprint does not match canonical manifest bytes.`);
   }
   const model = exactRecord(
@@ -576,7 +583,10 @@ async function parseManifest(
     `${path}.scenario.public`,
     canonical(scenario.id, `${path}.scenario.id`),
   );
-  if ((await sha256Fingerprint(scenario.public)).digest !== scenarioProjectionSha256) {
+  if (
+    await fingerprintModelicaResumableProviderJson(scenario.public) !==
+      scenarioProjectionSha256
+  ) {
     throw new TypeError(
       `${path}.scenario projection_sha256 does not match canonical public scenario bytes.`,
     );
@@ -1301,7 +1311,7 @@ function canonicalJsonText(bytes: Uint8Array, role: string): string {
       cause: error,
     });
   }
-  if (deterministicJson(value) !== text) {
+  if (canonicalModelicaResumableProviderJson(value) !== text) {
     throw new TypeError(`Captured Modelica ${role} is not canonical JSON.`);
   }
   return text;

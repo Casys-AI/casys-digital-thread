@@ -109,8 +109,8 @@ entry-point registry contains:
 | Sealed simulation-case artifact in basis; thread-entity binding required      | `simulate.run-modelica-scenario@1` |
 | Human-reviewed FEA proof case; exact geometry and requirements-tip in basis   | `verify.seal-proof-case@1`         |
 | Sealed proof-case and geometry artifacts in basis; thread-entity bindings     | `verify.run-fea-static-proof@1`    |
-| Human-reviewed simulation case, qualified Modelica kit required               | `simulate.seal-simulation-case@2`  |
-| Sealed case and qualified method-manifest, exact MRTR required                | `simulate.run-modelica-scenario@2` |
+| Human-reviewed `simulation-case/2.0`, qualified Modelica kit required         | `simulate.seal-simulation-case@2`  |
+| Sealed V2 case and qualified method-manifest, exact MRTR required             | `simulate.run-modelica-scenario@2` |
 | Sealed proof case and geometry, exact MRTR required                           | `verify.run-fea-static-proof@2`    |
 | Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`         |
 
@@ -142,13 +142,25 @@ its exact reference to that run. The plan carries no provider endpoint, tool, ra
 arguments, path or agent-authored recovery graph. `project_agent_run_plan_get` is an
 inspection read; it does not execute a plan.
 
-`simulate.seal-simulation-case@2` is deliberately planless. It validates the reviewed
-case against a qualified Modelica manifest, acquires the manifest-declared model,
-scenario and optional schema by exact MCP resource identity, then seals the distinct
-case/method/source/qualification artefacts. `simulate.run-modelica-scenario@2` rereads
-them, journals before submission, captures every returned resource to CAS and publishes
-observations only. If the provider request is known it uses `request_get`; after the
-resource capture, recovery uses only local CAS.
+`simulate.seal-simulation-case@2` is deliberately planless: its exact human-approved
+MRTR authorizes the seal, but no `resolved-operation-plan/2.0` is created for it. The
+operation accepts only the closed `simulation-case/2.0` declaration. Unlike V1's
+historical `scenario.sha256`, V2 separates `scenario.sourceSha256`, the fingerprint of
+the provider-native scenario resource bytes, from `scenario.projectionSha256`, the
+fingerprint recomputed over the provider's canonical public projection. It validates
+both against the qualified Modelica manifest, acquires the manifest-declared model,
+native scenario and optional schema by exact MCP resource identity, then seals the
+distinct case, method-manifest, source and qualification artifacts. The public
+projection stays a manifest-attested fact; it is not represented as a second source
+resource.
+
+`simulate.run-modelica-scenario@2` is a separate reviewed run. Queueing derives its
+one-action `resolved-operation-plan/2.0` from exact `simulationCase` and
+`methodManifest` thread bindings and the qualification seal. The executor rereads the
+canonical V2 case, method manifest and qualification-owned sources before submission,
+journals before the provider boundary, captures every returned resource to CAS and
+publishes observations only. If the provider request is known it uses `request_get`;
+after the resource capture, recovery uses only local CAS.
 
 `verify.run-fea-static-proof@2` rereads the sealed proof and exact STEP before the
 private CalculiX staging boundary. It journals the solve, captures the fixed nine
@@ -158,9 +170,9 @@ artifact is evidence for the SysON outcome. Unlike Modelica, this qualified proo
 publish evaluations, violations and proposed actions. Neither route accepts arbitrary
 agent-authored Modelica source or native CalculiX decks.
 
-The composition root is the reference for these `@2` routes. This document does not
-claim that a real provider call, an MRTR approval, or a live project has yet been run
-through them.
+The composition root is the reference for these `@2` routes. An approved MRTR, a queued
+run or provider availability is not documented as execution success; only captured and
+reread runtime evidence establishes it.
 
 `baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
 registered work item, the backend records the exact approved brief and reviewed plan as
@@ -245,7 +257,9 @@ be verified by content address would be a false attestation. The honest boundary
 `{modelSha256, scenarioSha256}` pair sealed inside `canonicalCaseText`. The
 `simulation-case-capture/1.0` record is stored by content address; the thread extension
 receives one `document` artifact (version = `caseDigest`, the monotony-ratchet key). No
-`simulate.run-modelica-scenario@1` run may proceed without this sealed mandate.
+`simulate.run-modelica-scenario@1` run may proceed without this sealed mandate. This V1
+contract and its single `scenario.sha256` field remain unchanged as historical `@1`
+authority; `@2` neither accepts nor retroactively relabels them.
 
 `simulate.run-modelica-scenario@1` is observational: it never produces a verdict and a
 structural triple-lock (`verdictStatus: not_evaluated`, `requirements: []`, zero

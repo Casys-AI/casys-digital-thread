@@ -27,16 +27,21 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import {
-  canonicalSimulationCaseText,
-  type SimulationCase,
-  validateSimulationCase,
-} from "../../domain/analysis/simulation-case.ts";
+  canonicalSimulationCaseV2Text,
+  type SimulationCaseV2,
+  validateSimulationCaseV2,
+} from "../../domain/analysis/simulation-case-v2.ts";
 import { buildSimulationCaseAnalysisGraph } from "../../domain/analysis/simulation-case-analysis-graph.ts";
 import {
-  parseSimulationCaseDecisionParameters,
-  simulationCaseDecisionParametersToMap,
-  verifySimulationCaseParametersMatchCase,
-} from "../../domain/analysis/simulation-case-proposal.ts";
+  parseSimulationCaseV2DecisionParameters,
+  simulationCaseV2DecisionParametersToMap,
+  verifySimulationCaseV2ParametersMatchCase,
+} from "../../domain/analysis/simulation-case-v2-proposal.ts";
+import {
+  assertCataloguedSimulationCaseV2,
+  cataloguedSimulationCaseV2SourcePath,
+  type SimulationCaseV2Catalog,
+} from "../../domain/analysis/simulation-case-v2-catalog.ts";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
   type ModelicaQualifiedManifestDocument,
@@ -80,7 +85,6 @@ import {
   type ModelicaQualifiedSealPrepared,
 } from "../wal/file-modelica-qualified-seal-attempt-store.ts";
 import { threadSnapshotDescendsFrom } from "../stores/thread-snapshot-lineage.ts";
-import { SIMULATION_CASE_SOURCES } from "./simulate-seal-simulation-case-run-executor.ts";
 import {
   requireBasis,
   requiredStart,
@@ -116,6 +120,8 @@ export interface SimulateSealSimulationCaseV2RunExecutorDependencies {
   readonly simulationCases: FileByteStore<"simulation-case-v2">;
   readonly providerManifests: FileByteStore<"modelica-qualified-provider-manifest">;
   readonly qualificationCaptures: FileByteStore<"simulation-case-qualification">;
+  /** Test-only alternate sealed catalogue; production uses the code-owned default. */
+  readonly simulationCaseCatalog?: SimulationCaseV2Catalog;
   readonly readTextFile?: (path: string) => Promise<string>;
 }
 
@@ -158,10 +164,14 @@ export class SimulateSealSimulationCaseV2RunExecutor {
     if (known) return await this.#resume(origin, command, known);
 
     const approval = await exactHumanApproval(project, run);
-    const simulationCase = await loadCase(this.#read, approval.decision);
-    verifySimulationCaseParametersMatchCase(
-      parseSimulationCaseDecisionParameters(
-        simulationCaseDecisionParametersToMap(approval.decision.proposal!.parameters),
+    const simulationCase = await loadCase(
+      this.#read,
+      approval.decision,
+      this.d.simulationCaseCatalog,
+    );
+    verifySimulationCaseV2ParametersMatchCase(
+      parseSimulationCaseV2DecisionParameters(
+        simulationCaseV2DecisionParametersToMap(approval.decision.proposal!.parameters),
       ),
       simulationCase.case,
     );
@@ -409,16 +419,16 @@ export class SimulateSealSimulationCaseV2RunExecutor {
   }
 
   async #rehydrateCollection(collection: ModelicaQualifiedSealCollection): Promise<{
-    simulationCase: SimulationCase;
+    simulationCase: SimulationCaseV2;
     manifest: ModelicaQualifiedManifestDocument;
   }> {
     const caseText = await readExactText(
       this.d.simulationCases,
       collection.simulationCase,
     );
-    const simulationCase = validateSimulationCase(JSON.parse(caseText));
+    const simulationCase = validateSimulationCaseV2(JSON.parse(caseText));
     if (
-      canonicalSimulationCaseText(simulationCase) !== caseText ||
+      canonicalSimulationCaseV2Text(simulationCase) !== caseText ||
       await fingerprintResourceBytes(new TextEncoder().encode(caseText)) !==
         collection.caseDigest
     ) {
@@ -478,7 +488,7 @@ export class SimulateSealSimulationCaseV2RunExecutor {
     project: EngineeringProjectSnapshot,
     run: EngineeringAgentRun,
   ): Promise<
-    { simulationCase: SimulationCase; manifest: ModelicaQualifiedManifestDocument }
+    { simulationCase: SimulationCaseV2; manifest: ModelicaQualifiedManifestDocument }
   > {
     const hydrated = await this.#rehydrateCollection(prepared);
     const basis = requireBasis(run);
@@ -555,14 +565,15 @@ export class SimulateSealSimulationCaseV2RunExecutor {
 
 export function assertQualifiedModelicaManifestMatchesSimulationCase(
   manifest: ModelicaQualifiedManifestDocument,
-  simulationCase: SimulationCase,
+  simulationCase: SimulationCaseV2,
 ): void {
   if (
     manifest.selection.modelId !== simulationCase.kit.modelId ||
     manifest.selection.modelVersion !== simulationCase.kit.modelVersion ||
     manifest.selection.scenarioId !== simulationCase.scenario.id ||
     manifest.model.sha256 !== simulationCase.kit.modelSha256 ||
-    manifest.scenarioProjectionSha256 !== simulationCase.scenario.sha256
+    manifest.scenario.sha256 !== simulationCase.scenario.sourceSha256 ||
+    manifest.scenarioProjectionSha256 !== simulationCase.scenario.projectionSha256
   ) {
     throw error(
       "invalid_input",
@@ -613,7 +624,7 @@ export function assertQualifiedModelicaManifestMatchesSimulationCase(
 }
 
 interface LoadedCase {
-  readonly case: SimulationCase;
+  readonly case: SimulationCaseV2;
   readonly text: string;
   readonly digest: string;
 }
@@ -621,14 +632,15 @@ interface LoadedCase {
 async function loadCase(
   read: (path: string) => Promise<string>,
   decision: EngineeringDecision,
+  catalog?: SimulationCaseV2Catalog,
 ): Promise<LoadedCase> {
   if (!decision.proposal || !decision.inputFingerprint) {
     throw error("invalid_transition", "Approved Modelica MRTR has no exact proposal.");
   }
-  const parsed = parseSimulationCaseDecisionParameters(
-    simulationCaseDecisionParametersToMap(decision.proposal.parameters),
+  const parsed = parseSimulationCaseV2DecisionParameters(
+    simulationCaseV2DecisionParametersToMap(decision.proposal.parameters),
   );
-  const path = SIMULATION_CASE_SOURCES.get(parsed.id);
+  const path = cataloguedSimulationCaseV2SourcePath(parsed, catalog);
   if (!path) {
     throw error(
       "invalid_input",
@@ -644,9 +656,10 @@ async function loadCase(
       `Simulation case is not readable valid JSON: ${String(cause)}`,
     );
   }
-  const simulationCase = validateSimulationCase(source);
-  const text = canonicalSimulationCaseText(simulationCase);
+  const simulationCase = validateSimulationCaseV2(source);
+  const text = canonicalSimulationCaseV2Text(simulationCase);
   const digest = await fingerprintResourceBytes(new TextEncoder().encode(text));
+  assertCataloguedSimulationCaseV2(simulationCase, digest, catalog);
   if (digest !== parsed.caseDigest) {
     throw error(
       "invalid_input",
@@ -670,7 +683,7 @@ function materializeSnapshot(input: {
   readonly base: ThreadSnapshot;
   readonly run: EngineeringAgentRun;
   readonly prepared: ModelicaQualifiedSealPrepared;
-  readonly simulationCase: SimulationCase;
+  readonly simulationCase: SimulationCaseV2;
 }): { readonly snapshot: ThreadSnapshot } {
   const artifacts = artifactsFor(input.run, input.prepared, input.simulationCase);
   const lineage = provenanceFor(artifacts, input.run, input.prepared.capturedAt);
@@ -707,7 +720,7 @@ function materializeSnapshot(input: {
 function artifactsFor(
   run: EngineeringAgentRun,
   prepared: ModelicaQualifiedSealPrepared,
-  simulationCase: SimulationCase,
+  simulationCase: SimulationCaseV2,
 ): ThreadArtifact[] {
   const producer = {
     serverId: "digital-thread",
@@ -866,7 +879,7 @@ async function exactSnapshotFromAttempt(
 }
 
 async function assertCaseReviewLineage(
-  simulationCase: SimulationCase,
+  simulationCase: SimulationCaseV2,
   basis: EngineeringThreadSnapshotBasis,
   snapshots: ThreadSnapshotStore,
 ): Promise<void> {
@@ -890,7 +903,7 @@ async function assertCaseReviewLineage(
 }
 
 function assertCaseProject(
-  simulationCase: SimulationCase,
+  simulationCase: SimulationCaseV2,
   projectId: string,
   basis: EngineeringThreadSnapshotBasis,
 ): void {

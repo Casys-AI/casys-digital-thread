@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -6,7 +6,9 @@ import {
 import { fingerprintResourceBytes } from "../../../domain/analysis/provider-resource-reader.ts";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
+  canonicalModelicaResumableProviderJson,
   expectedModelicaResumableResources,
+  fingerprintModelicaResumableProviderJson,
   MODELICA_QUALIFIED_MANIFEST_SCHEMA_VERSION,
   type ModelicaResumableSubmission,
   validateModelicaQualifiedManifestDocument,
@@ -122,6 +124,29 @@ Deno.test("resumable Modelica adapter lowers only the three exact capability cal
   );
 });
 
+Deno.test("resumable Modelica adapter re-attests the mcp-modelica 2.1 pretty wire bytes", async () => {
+  const manifest = await fixtureManifest();
+  const { fingerprint, manifest_sha256, ...unsigned } = manifest;
+  assertEquals(fingerprint, manifest_sha256);
+  assertEquals(
+    await fingerprintModelicaResumableProviderJson(unsigned),
+    fingerprint,
+  );
+  assertNotEquals(
+    (await sha256Fingerprint(unsigned)).digest,
+    fingerprint,
+    "mcp-modelica 2.1 seals sorted two-space JSON with a final newline, not compact CAS JSON",
+  );
+  assertEquals(
+    canonicalModelicaResumableProviderJson(unsigned).endsWith("\n"),
+    true,
+  );
+  await parseManifestEnvelope(
+    { schemaVersion: "2.1", kind: "simulation-manifest", manifest },
+    SELECTION,
+  );
+});
+
 Deno.test("resumable Modelica adapter rejects malformed envelopes and artifact extras", async () => {
   const manifest = await fixtureManifest();
   await assertRejects(
@@ -144,7 +169,7 @@ Deno.test("resumable Modelica adapter rejects malformed envelopes and artifact e
     manifest_sha256: _manifestSha256,
     ...unsigned
   } = projectionMismatch;
-  const resealed = (await sha256Fingerprint(unsigned)).digest;
+  const resealed = await fingerprintModelicaResumableProviderJson(unsigned);
   projectionMismatch.fingerprint = resealed;
   projectionMismatch.manifest_sha256 = resealed;
   await assertRejects(
@@ -322,7 +347,7 @@ async function capturedFixture(scriptOverride?: string) {
       id: SELECTION.scenarioId,
       source: scenarioSource,
       public: scenarioPublic,
-      projection_sha256: (await sha256Fingerprint(scenarioPublic)).digest,
+      projection_sha256: await fingerprintModelicaResumableProviderJson(scenarioPublic),
     },
     parameters: [{
       id: "power",
@@ -344,7 +369,9 @@ async function capturedFixture(scriptOverride?: string) {
     lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
     engine: { name: "OpenModelica", version: "1.23", msl_version: "4.0" },
   };
-  const manifestFingerprint = (await sha256Fingerprint(unsignedManifest)).digest;
+  const manifestFingerprint = await fingerprintModelicaResumableProviderJson(
+    unsignedManifest,
+  );
   const manifest = {
     ...unsignedManifest,
     fingerprint: manifestFingerprint,
@@ -355,7 +382,9 @@ async function capturedFixture(scriptOverride?: string) {
   const resolvedParameters = { power: { value: 250, unit: "W" } };
   const metrics = { temperature: { value: 91, unit: "degC" } };
   const warnings: string[] = [];
-  const requestText = deterministicJson(lowerSubmission(submission));
+  const requestText = canonicalModelicaResumableProviderJson(
+    lowerSubmission(submission),
+  );
   const requestSha256 = await fingerprintResourceBytes(
     new TextEncoder().encode(requestText),
   );
@@ -369,13 +398,13 @@ async function capturedFixture(scriptOverride?: string) {
   ].join("\n");
   const contents = {
     request: requestText,
-    resolved_parameters: deterministicJson(resolvedParameters),
+    resolved_parameters: canonicalModelicaResumableProviderJson(resolvedParameters),
     model: modelText,
     scenario: scenarioText,
     script,
     diagnostics: "OpenModelica fixture diagnostics\n",
     result: "time,temperature\n0,20\n10,91\n",
-    evidence: deterministicJson({
+    evidence: canonicalModelicaResumableProviderJson({
       producer: "mcp-modelica",
       status: "succeeded",
       request_id: submission.requestId,
@@ -433,7 +462,7 @@ async function capturedFixture(scriptOverride?: string) {
     artifacts,
     warnings,
   };
-  const runText = deterministicJson(run);
+  const runText = canonicalModelicaResumableProviderJson(run);
   const runBytes = new TextEncoder().encode(runText);
   const runJson = {
     uri: `casys://modelica/requests/${submission.requestId}/run.json`,
@@ -511,7 +540,7 @@ async function fixtureManifest(): Promise<
         "b",
       ),
       public: publicScenario,
-      projection_sha256: (await sha256Fingerprint(publicScenario)).digest,
+      projection_sha256: await fingerprintModelicaResumableProviderJson(publicScenario),
     },
     parameters: [{
       id: "power",
@@ -533,7 +562,7 @@ async function fixtureManifest(): Promise<
     lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
     engine: { name: "OpenModelica", version: "1.23", msl_version: "4.0" },
   };
-  const fingerprint = (await sha256Fingerprint(unsigned)).digest;
+  const fingerprint = await fingerprintModelicaResumableProviderJson(unsigned);
   return { ...unsigned, fingerprint, manifest_sha256: fingerprint };
 }
 
@@ -555,7 +584,9 @@ async function completedEnvelope(
   submission: ModelicaResumableSubmission,
   manifest: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const requestSha256 = (await sha256Fingerprint(lowerSubmission(submission))).digest;
+  const requestSha256 = await fingerprintModelicaResumableProviderJson(
+    lowerSubmission(submission),
+  );
   const runId = "run_12345678-1234-4234-8234-123456789abc";
   return {
     schemaVersion: "2.1",

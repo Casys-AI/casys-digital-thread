@@ -14,7 +14,7 @@ import {
   positiveInteger,
   rejectDuplicates,
 } from "../kernel/case-validation.ts";
-import { deterministicJson, sha256Fingerprint } from "../kernel/deterministic-json.ts";
+import { deterministicJson } from "../kernel/deterministic-json.ts";
 import {
   type ExpectedProviderResource,
   validateExpectedProviderResource,
@@ -23,6 +23,28 @@ import {
 export const MODELICA_RESUMABLE_CONTRACT_VERSION = "2.1" as const;
 export const MODELICA_QUALIFIED_MANIFEST_SCHEMA_VERSION =
   "modelica-qualified-manifest/1.0" as const;
+
+/**
+ * Exact JSON representation sealed by mcp-modelica 2.1.
+ *
+ * This is intentionally distinct from Digital Thread's compact CAS JSON:
+ * provider manifest, scenario-projection, request, and run-ledger digests
+ * attest the provider's recursively sorted, two-space-indented bytes with a
+ * trailing newline.
+ */
+export function canonicalModelicaResumableProviderJson(value: unknown): string {
+  return JSON.stringify(sortModelicaResumableProviderJson(value), null, 2) + "\n";
+}
+
+/** SHA-256 of the exact mcp-modelica 2.1 canonical JSON representation. */
+export async function fingerprintModelicaResumableProviderJson(
+  value: unknown,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalModelicaResumableProviderJson(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 export interface ModelicaResumableManifestSelection {
   readonly modelId: string;
@@ -188,7 +210,9 @@ export async function validateModelicaQualifiedManifestDocument(
     `${path}.scenarioProjectionSha256`,
   );
   if (
-    (await sha256Fingerprint(providerScenarioPublicPayload(scenarioPublic))).digest !==
+    await fingerprintModelicaResumableProviderJson(
+      providerScenarioPublicPayload(scenarioPublic),
+    ) !==
       scenarioProjectionSha256
   ) {
     throw new TypeError(
@@ -233,7 +257,9 @@ export async function validateModelicaQualifiedManifestDocument(
     engine,
   });
   if (
-    (await sha256Fingerprint(providerManifestUnsignedPayload(document))).digest !==
+    await fingerprintModelicaResumableProviderJson(
+      providerManifestUnsignedPayload(document),
+    ) !==
       fingerprint
   ) {
     throw new TypeError(
@@ -289,6 +315,18 @@ function providerManifestUnsignedPayload(
       msl_version: manifest.engine.mslVersion,
     },
   };
+}
+
+function sortModelicaResumableProviderJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortModelicaResumableProviderJson);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .map(([key, child]) => [key, sortModelicaResumableProviderJson(child)]),
+    );
+  }
+  return value;
 }
 
 function providerResourcePayload(resource: ModelicaResumableResource) {

@@ -24,10 +24,10 @@ import {
 import { canonicalProofText } from "../../domain/analysis/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../../domain/analysis/mechanical-proof-case.ts";
 import {
-  canonicalSimulationCaseText,
-  type SimulationCase,
-  validateSimulationCase,
-} from "../../domain/analysis/simulation-case.ts";
+  canonicalSimulationCaseV2Text,
+  type SimulationCaseV2,
+  validateSimulationCaseV2,
+} from "../../domain/analysis/simulation-case-v2.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -554,7 +554,7 @@ export class RecordedOperationPlanResolver {
     snapshot: ThreadSnapshot,
     caseArtifact: ThreadArtifact,
     manifestArtifact: ThreadArtifact,
-    simulationCase: SimulationCase,
+    simulationCase: SimulationCaseV2,
     manifest: ModelicaQualifiedManifestDocument,
     sourceArtifacts: readonly ModelicaBoundSource[],
   ): Promise<{ readonly artifact: ThreadArtifact; readonly bytes: Uint8Array }> {
@@ -660,7 +660,7 @@ export class RecordedOperationPlanResolver {
     if (
       authority.caseDigest !== await fingerprintResourceBytes(caseBytes) ||
       authority.caseDigest !== caseArtifact.fingerprint.digest ||
-      canonicalSimulationCaseText(simulationCase) !==
+      canonicalSimulationCaseV2Text(simulationCase) !==
         decodeUtf8(caseBytes, "simulation case artifact") ||
       authority.trustedRunId !== artifact.producer.runId
     ) {
@@ -711,13 +711,13 @@ export class RecordedOperationPlanResolver {
     return copy;
   }
 
-  async #simulationCase(artifact: ThreadArtifact): Promise<SimulationCase> {
+  async #simulationCase(artifact: ThreadArtifact): Promise<SimulationCaseV2> {
     const bytes = await this.#artifactBytes(artifact);
     const caseText = decodeUtf8(bytes, "simulation case artifact");
-    const simulationCase = validateSimulationCase(
+    const simulationCase = validateSimulationCaseV2(
       parseJson(caseText, "canonical simulation case"),
     );
-    if (canonicalSimulationCaseText(simulationCase) !== caseText) {
+    if (canonicalSimulationCaseV2Text(simulationCase) !== caseText) {
       throw new TypeError(
         "Simulation case artifact does not contain canonical case bytes.",
       );
@@ -1213,14 +1213,15 @@ function assertExactSealEvidenceRefs(
 
 function assertManifestMatchesCase(
   manifest: ModelicaQualifiedManifestDocument,
-  simulationCase: SimulationCase,
+  simulationCase: SimulationCaseV2,
 ): void {
   if (
     manifest.selection.modelId !== simulationCase.kit.modelId ||
     manifest.selection.modelVersion !== simulationCase.kit.modelVersion ||
     manifest.selection.scenarioId !== simulationCase.scenario.id ||
     manifest.model.sha256 !== simulationCase.kit.modelSha256 ||
-    manifest.scenarioProjectionSha256 !== simulationCase.scenario.sha256
+    manifest.scenario.sha256 !== simulationCase.scenario.sourceSha256 ||
+    manifest.scenarioProjectionSha256 !== simulationCase.scenario.projectionSha256
   ) {
     throw new TypeError(
       "Modelica qualified manifest diverges from the sealed simulation case.",

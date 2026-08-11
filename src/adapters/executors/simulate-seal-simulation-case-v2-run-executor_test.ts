@@ -4,10 +4,22 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import {
-  canonicalSimulationCaseText,
-  validateSimulationCase,
-} from "../../domain/analysis/simulation-case.ts";
-import { encodeSimulationCaseDecisionParameters } from "../../domain/analysis/simulation-case-proposal.ts";
+  canonicalSimulationCaseV2Text,
+  validateSimulationCaseV2,
+} from "../../domain/analysis/simulation-case-v2.ts";
+import { validateSimulationCase } from "../../domain/analysis/simulation-case.ts";
+import {
+  fingerprintModelicaResumableProviderJson,
+} from "../../domain/analysis/modelica-resumable-capabilities.ts";
+import {
+  encodeSimulationCaseV2DecisionParameters,
+} from "../../domain/analysis/simulation-case-v2-proposal.ts";
+import {
+  encodeSimulationCaseDecisionParameters,
+} from "../../domain/analysis/simulation-case-proposal.ts";
+import {
+  simulationCaseV2CatalogKey,
+} from "../../domain/analysis/simulation-case-v2-catalog.ts";
 import {
   createProviderResourceRead,
   fingerprintResourceBytes,
@@ -16,8 +28,10 @@ import {
 import type {
   EngineeringProjectCommandOrigin,
   EngineeringProjectPlanOperationRegistry,
+  EngineeringProjectRevisionStore,
 } from "../../domain/project/engineering-project-command-service.ts";
 import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
+import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -312,6 +326,193 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "qualified Modelica seal @2 rejects an actually approved V1 proposal before manifest, source, claim, or collection",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-qualified-modelica-v1-proposal-",
+    });
+    try {
+      const fixture = await fixtureProject(directory);
+      const v1Case = validateSimulationCase(
+        JSON.parse(
+          await Deno.readTextFile(
+            "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
+          ),
+        ),
+      );
+      const originalDecision = fixture.queued.decisions.find((decision) =>
+        decision.id === "qualified-seal-decision"
+      )!;
+      const v1Proposal = {
+        ...originalDecision.proposal!,
+        parameters: encodeSimulationCaseDecisionParameters(
+          "a".repeat(64),
+          v1Case,
+        ),
+      };
+      const v1InputFingerprint = await sha256Fingerprint({
+        baseSnapshot: originalDecision.baseSnapshot,
+        inputEvidenceRefs: originalDecision.inputEvidenceRefs,
+        proposal: {
+          summary: v1Proposal.summary,
+          parameters: v1Proposal.parameters,
+        },
+      });
+      const v1Decision = {
+        ...originalDecision,
+        inputFingerprint: v1InputFingerprint,
+        proposal: v1Proposal,
+      };
+      const v1Project = validateEngineeringProjectSnapshot({
+        ...fixture.queued,
+        decisions: fixture.queued.decisions.map((decision) =>
+          decision.id === v1Decision.id ? v1Decision : decision
+        ),
+        approvals: fixture.queued.approvals.map((approval) =>
+          approval.decisionId === v1Decision.id
+            ? { ...approval, inputFingerprint: v1InputFingerprint }
+            : approval
+        ),
+      });
+      const projects = new Proxy(fixture.projects, {
+        get(target, property, receiver) {
+          if (property === "get") {
+            return async (projectId: string) =>
+              projectId === PROJECT_ID
+                ? structuredClone(v1Project)
+                : await target.get(projectId);
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as EngineeringProjectRevisionStore;
+      let manifestCalls = 0;
+      let resourceCalls = 0;
+      const executor = createExecutor({
+        directory,
+        fixture,
+        projects,
+        sourceCapture: new ModelicaQualifiedSourceCaptureService({
+          reader: {
+            read() {
+              resourceCalls += 1;
+              return Promise.reject(
+                new Error("V1 proposal must stop before source read"),
+              );
+            },
+          },
+          artifacts: byteStore(
+            "modelica-qualified-source",
+            `${directory}/source-bytes`,
+            "modelica-qualified-source",
+          ),
+          captures: byteStore(
+            "modelica-qualified-source-capture",
+            `${directory}/source-captures`,
+            "modelica-qualified-source-capture",
+          ),
+        }),
+        manifestReader: {
+          getManifest() {
+            manifestCalls += 1;
+            return Promise.reject(
+              new Error("V1 proposal must stop before manifest_get"),
+            );
+          },
+        },
+      });
+
+      await assertRejects(
+        () => executor.execute(AGENT, command(v1Project.revision, fixture.runId)),
+        Error,
+      );
+      assertEquals(manifestCalls, 0);
+      assertEquals(resourceCalls, 0);
+      assertEquals(
+        await new FileModelicaQualifiedSealAttemptStore(`${directory}/attempts`).read(
+          PROJECT_ID,
+          fixture.runId,
+        ),
+        undefined,
+      );
+      assertEquals(
+        (await fixture.projects.get(PROJECT_ID))?.agentRuns.find((run) =>
+          run.id === fixture.runId
+        )?.status,
+        "queued",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "qualified Modelica seal rejects a native source or public projection mismatch before provider reads",
+  async () => {
+    for (
+      const mismatch of [
+        { scenarioSourceText: '{"id":"nominal-heatup","changed":true}' },
+        {
+          scenarioPublic: {
+            ...fixtureScenarioPublic(),
+            description: "Different reviewed projection",
+          },
+        },
+      ]
+    ) {
+      const directory = await Deno.makeTempDir({
+        prefix: "casys-qualified-modelica-scenario-identity-",
+      });
+      try {
+        const fixture = await fixtureProject(directory);
+        const manifest = await fixtureManifest(undefined, mismatch);
+        let resourcesRead = 0;
+        const executor = createExecutor({
+          directory,
+          fixture,
+          sourceCapture: new ModelicaQualifiedSourceCaptureService({
+            reader: {
+              read() {
+                resourcesRead += 1;
+                return Promise.reject(
+                  new Error("source reads must remain unreachable"),
+                );
+              },
+            },
+            artifacts: byteStore(
+              "modelica-qualified-source",
+              `${directory}/source-bytes`,
+              "modelica-qualified-source",
+            ),
+            captures: byteStore(
+              "modelica-qualified-source-capture",
+              `${directory}/source-captures`,
+              "modelica-qualified-source-capture",
+            ),
+          }),
+          manifestReader: { getManifest: () => Promise.resolve(manifest) },
+        });
+        await assertRejects(
+          () =>
+            executor.execute(AGENT, command(fixture.queued.revision, fixture.runId)),
+          Error,
+          "model or scenario identity",
+        );
+        assertEquals(resourcesRead, 0);
+        const project = await fixture.projects.get(PROJECT_ID);
+        assertEquals(
+          project?.agentRuns.find((run) => run.id === fixture.runId)?.status,
+          "queued",
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
 async function fixtureProject(directory: string) {
   const projects = new FileEngineeringProjectRevisionStore(`${directory}/projects`);
   const snapshots = new FileThreadSnapshotStore(`${directory}/snapshots`);
@@ -409,7 +610,7 @@ async function fixtureProject(directory: string) {
   const basis = baselined.threadSnapshots[0]!;
   const simulationCase = await fixtureCase(basis.snapshotId);
   const caseDigest = await fingerprintResourceBytes(
-    new TextEncoder().encode(canonicalSimulationCaseText(simulationCase)),
+    new TextEncoder().encode(canonicalSimulationCaseV2Text(simulationCase)),
   );
   project = await commands.appendChange(AGENT, {
     ...context("append", baselined.revision),
@@ -444,7 +645,7 @@ async function fixtureProject(directory: string) {
     baseSnapshot: basis,
     proposal: {
       summary: "Seal qualified Modelica input evidence.",
-      parameters: encodeSimulationCaseDecisionParameters(caseDigest, simulationCase),
+      parameters: encodeSimulationCaseV2DecisionParameters(caseDigest, simulationCase),
     },
   });
   const decision = project.decisions.find((item) =>
@@ -520,6 +721,7 @@ function modelicaSealTestOperationRegistry(): EngineeringProjectPlanOperationReg
 function createExecutor(input: {
   readonly directory: string;
   readonly fixture: Awaited<ReturnType<typeof fixtureProject>>;
+  readonly projects?: EngineeringProjectRevisionStore;
   readonly commands?: EngineeringProjectCommandService;
   readonly sourceCapture: ModelicaQualifiedSourceCaptureService;
   readonly manifestReader: {
@@ -527,7 +729,7 @@ function createExecutor(input: {
   };
 }) {
   return new SimulateSealSimulationCaseV2RunExecutor({
-    projects: input.fixture.projects,
+    projects: input.projects ?? input.fixture.projects,
     commands: input.commands ?? input.fixture.commands,
     snapshots: input.fixture.snapshots,
     lease: new FileEngineeringProjectRunLease(`${input.directory}/leases`),
@@ -549,6 +751,13 @@ function createExecutor(input: {
       `${input.directory}/qualification`,
       "simulation-case-qualification",
     ),
+    simulationCaseCatalog: new Map([[
+      simulationCaseV2CatalogKey(input.fixture.simulationCase),
+      {
+        sourcePath: "fixture-case.json",
+        canonicalDigest: input.fixture.caseDigest,
+      },
+    ]]),
     readTextFile: () =>
       Promise.resolve(deterministicJson(input.fixture.simulationCase)),
   });
@@ -817,9 +1026,10 @@ function failFirstPublish(
 
 async function fixtureCase(basisSnapshotId: string) {
   const model = new TextEncoder().encode("model ThermalKit end ThermalKit;");
-  return validateSimulationCase({
-    schemaVersion: "simulation-case/1.0",
-    id: "coffee-machine-cm01-thermal-nominal-v1",
+  const scenario = new TextEncoder().encode('{"id":"nominal-heatup"}');
+  return validateSimulationCaseV2({
+    schemaVersion: "simulation-case/2.0",
+    id: "fixture-modelica-case-v2",
     revision: 1,
     scope: "qualification-test",
     evidenceBoundary: "test",
@@ -835,8 +1045,9 @@ async function fixtureCase(basisSnapshotId: string) {
     },
     scenario: {
       id: "nominal-heatup",
-      sha256: await sha256Fingerprint(fixtureScenarioPublic()).then((value) =>
-        value.digest
+      sourceSha256: await fingerprintResourceBytes(scenario),
+      projectionSha256: await fingerprintModelicaResumableProviderJson(
+        fixtureScenarioPublic(),
       ),
     },
     parameters: [],
@@ -847,15 +1058,25 @@ async function fixtureCase(basisSnapshotId: string) {
 }
 
 async function fixtureManifest(
-  selection = {
+  selection: {
+    modelId: string;
+    modelVersion: string;
+    scenarioId: string;
+  } = {
     modelId: "cm01-thermal-model",
     modelVersion: "1.0.0",
     scenarioId: "nominal-heatup",
   },
+  options: {
+    readonly scenarioSourceText?: string;
+    readonly scenarioPublic?: ReturnType<typeof fixtureScenarioPublic>;
+  } = {},
 ) {
   const model = new TextEncoder().encode("model ThermalKit end ThermalKit;");
-  const scenario = new TextEncoder().encode('{"id":"nominal-heatup"}');
-  const publicScenario = fixtureScenarioPublic();
+  const scenario = new TextEncoder().encode(
+    options.scenarioSourceText ?? '{"id":"nominal-heatup"}',
+  );
+  const publicScenario = options.scenarioPublic ?? fixtureScenarioPublic();
   const unsigned = {
     schemaVersion: "2.1",
     model: {
@@ -882,7 +1103,9 @@ async function fixtureManifest(
         qualification: "qualified-kit",
       },
       public: publicScenario,
-      projection_sha256: (await sha256Fingerprint(publicScenario)).digest,
+      projection_sha256: await fingerprintModelicaResumableProviderJson(
+        publicScenario,
+      ),
     },
     parameters: [],
     produced_metrics: [{
@@ -895,7 +1118,7 @@ async function fixtureManifest(
     lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
     engine: { name: "OpenModelica", version: "1.23", msl_version: "4.0" },
   };
-  const fingerprint = (await sha256Fingerprint(unsigned)).digest;
+  const fingerprint = await fingerprintModelicaResumableProviderJson(unsigned);
   const { parseManifestEnvelope } = await import(
     "../providers/modelica/mcp-modelica-resumable-adapter.ts"
   );

@@ -1,15 +1,17 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
+  canonicalModelicaResumableProviderJson,
+  fingerprintModelicaResumableProviderJson,
 } from "../../domain/analysis/modelica-resumable-capabilities.ts";
 import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
 import { validateResolvedOperationPlanV2 } from "../../domain/analysis/resolved-operation-plan-v2.ts";
 import { canonicalProofText } from "../../domain/analysis/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../../domain/analysis/mechanical-proof-case.ts";
 import {
-  canonicalSimulationCaseText,
-  validateSimulationCase,
-} from "../../domain/analysis/simulation-case.ts";
+  canonicalSimulationCaseV2Text,
+  validateSimulationCaseV2,
+} from "../../domain/analysis/simulation-case-v2.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -402,7 +404,9 @@ async function modelicaFixture(
         "qualified-kit",
       ),
       public: publicScenario,
-      projection_sha256: (await sha256Fingerprint(publicScenario)).digest,
+      projection_sha256: await fingerprintModelicaResumableProviderJson(
+        publicScenario,
+      ),
     },
     parameters: [{
       id: "power",
@@ -424,7 +428,9 @@ async function modelicaFixture(
     lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
     engine: { name: "OpenModelica", version: "1.23", msl_version: "4.0" },
   };
-  const providerFingerprint = (await sha256Fingerprint(providerUnsigned)).digest;
+  const providerFingerprint = await fingerprintModelicaResumableProviderJson(
+    providerUnsigned,
+  );
   const providerManifest = {
     ...providerUnsigned,
     fingerprint: providerFingerprint,
@@ -467,7 +473,7 @@ async function modelicaFixture(
     normalizedManifest,
   );
   const manifestText = options.wireManifestBytes
-    ? deterministicJson(providerManifest)
+    ? canonicalModelicaResumableProviderJson(providerManifest)
     : options.noncanonicalManifest
     ? `${canonicalManifestText}\n`
     : canonicalManifestText;
@@ -482,8 +488,8 @@ async function modelicaFixture(
     ? baseSnapshot("thread-unrelated", 1, ancestor.subject.id)
     : undefined;
   const caseBasis = unrelated ?? ancestor;
-  const simulationCase = validateSimulationCase({
-    schemaVersion: "simulation-case/1.0",
+  const simulationCase = validateSimulationCaseV2({
+    schemaVersion: "simulation-case/2.0",
     id: "case-1",
     revision: 1,
     scope: "test",
@@ -504,14 +510,15 @@ async function modelicaFixture(
     },
     scenario: {
       id: selection.scenarioId,
-      sha256: providerUnsigned.scenario.projection_sha256,
+      sourceSha256: providerUnsigned.scenario.source.sha256,
+      projectionSha256: providerUnsigned.scenario.projection_sha256,
     },
     parameters: [{ id: "power", value: options.parameterValue ?? 250, unit: "W" }],
     expectedMetrics: [{ id: "temperature", unit: "degC" }],
     parameterMode: "explicit-overrides",
     timeoutMs: 30_000,
   });
-  const caseText = canonicalSimulationCaseText(simulationCase);
+  const caseText = canonicalSimulationCaseV2Text(simulationCase);
   const caseBytes = new TextEncoder().encode(caseText);
   const caseFp = options.legacyStructuredCaseFingerprint
     ? await legacyStructuredFingerprint(caseBytes)

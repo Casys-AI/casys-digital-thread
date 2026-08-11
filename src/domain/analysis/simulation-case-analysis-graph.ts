@@ -17,6 +17,12 @@ import {
 } from "./analysis-graph.ts";
 import type { EngineeringEvidence, SemanticRef } from "./engineering-assertion.ts";
 import { type SimulationCase, validateSimulationCase } from "./simulation-case.ts";
+import {
+  type SimulationCaseV2,
+  validateSimulationCaseV2,
+} from "./simulation-case-v2.ts";
+
+type SimulationCaseForGraph = SimulationCase | SimulationCaseV2;
 
 /** Exact simulation-case artifact retained in the ThreadSnapshot. */
 export interface SimulationCaseAnalysisGraphEvidenceArtifact {
@@ -26,7 +32,7 @@ export interface SimulationCaseAnalysisGraphEvidenceArtifact {
 
 export interface SimulationCaseAnalysisGraphInput {
   /** The reviewed declaration whose exact seal is retained as evidence. */
-  readonly simulationCase: SimulationCase;
+  readonly simulationCase: SimulationCaseForGraph;
   /** Stable digest of the canonical reviewed case declaration. */
   readonly caseFingerprint: ContentFingerprint;
   /** The single retained case artifact that evidences every declaration. */
@@ -43,7 +49,9 @@ export interface SimulationCaseAnalysisGraphInput {
 export function buildSimulationCaseAnalysisGraph(
   input: SimulationCaseAnalysisGraphInput,
 ): AnalysisGraph {
-  const simulationCase = validateSimulationCase(input.simulationCase);
+  const simulationCase = input.simulationCase.schemaVersion === "simulation-case/2.0"
+    ? validateSimulationCaseV2(input.simulationCase)
+    : validateSimulationCase(input.simulationCase);
   const evidence = validateEvidence(input.evidence);
   const caseFingerprint = validateFingerprint(
     input.caseFingerprint,
@@ -111,7 +119,7 @@ export function buildSimulationCaseAnalysisGraph(
 }
 
 function simulationCaseRef(
-  simulationCase: SimulationCase,
+  simulationCase: SimulationCaseForGraph,
   basisFingerprint: ContentFingerprint,
 ): SemanticRef {
   return {

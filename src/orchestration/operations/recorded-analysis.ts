@@ -30,8 +30,10 @@ export const RECORDED_ANALYSIS_OPERATION_DESCRIPTORS = [
     allowedBasisKinds: ["thread-snapshot"],
     title: "Qualify and seal the reviewed Modelica simulation case",
     description:
-      "Re-read the reviewed simulation case, resolve the exact qualified Modelica " +
-      "manifest, acquire its model, scenario and optional parameter-schema resources " +
+      "Re-read the closed simulation-case/2.0 declaration, cross-check its native " +
+      "scenario-source and public-projection SHA-256 identities against the exact " +
+      "qualified Modelica manifest, then acquire its model, scenario and optional " +
+      "parameter-schema resources " +
       "by immutable identity, and publish distinct content-addressed case, method and " +
       "source artifacts. No simulation is submitted.",
     workItemKind: "simulate",

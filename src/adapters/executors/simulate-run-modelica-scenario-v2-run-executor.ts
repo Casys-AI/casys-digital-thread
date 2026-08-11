@@ -20,10 +20,10 @@ import {
   type ResolvedOperationPlanV2,
 } from "../../domain/analysis/resolved-operation-plan-v2.ts";
 import {
-  canonicalSimulationCaseText,
-  type SimulationCase,
-  validateSimulationCase,
-} from "../../domain/analysis/simulation-case.ts";
+  canonicalSimulationCaseV2Text,
+  type SimulationCaseV2,
+  validateSimulationCaseV2,
+} from "../../domain/analysis/simulation-case-v2.ts";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
   expectedModelicaResumableResources,
@@ -34,6 +34,7 @@ import {
   type ModelicaResumableEvidenceVerifier,
   type ModelicaResumableRequest,
   type ModelicaResumableRequestReader,
+  type ModelicaResumableResource,
   type ModelicaResumableSubmission,
   type ModelicaResumableSubmitter,
   validateModelicaQualifiedManifestDocument,
@@ -571,8 +572,8 @@ export class SimulateRunModelicaScenarioV2RunExecutor {
       await this.#readSource(caseSource),
       "Resolved simulation case",
     );
-    const simulationCase = validateSimulationCase(JSON.parse(caseText));
-    if (canonicalSimulationCaseText(simulationCase) !== caseText) {
+    const simulationCase = validateSimulationCaseV2(JSON.parse(caseText));
+    if (canonicalSimulationCaseV2Text(simulationCase) !== caseText) {
       throw new Error("Resolved simulation case CAS bytes are not canonical.");
     }
     const manifestText = decodeExactUtf8(
@@ -596,6 +597,15 @@ export class SimulateRunModelicaScenarioV2RunExecutor {
       canonicalModelicaSimulationCaseQualificationCaptureText(authority) !==
         authorityText
     ) throw new Error("Modelica qualification authority CAS bytes are not canonical.");
+    // The plan names CAS blobs, whereas the qualified manifest names the
+    // native Modelica resources.  Reopen the former now and bind their actual
+    // bytes to the latter before any lease, claim, WAL mutation, or provider
+    // operation can occur.  Comparing the persisted tuples alone would not
+    // detect a corrupted blob at an otherwise valid CAS location.
+    const qualifiedSources = await this.#reopenQualifiedSourceBytes(
+      byBinding,
+      manifest,
+    );
     const sourceCaptureBytes = await this.d.sources.read({
       uri: authority.sourceCapture.uri,
       byteCount: authority.sourceCapture.byteCount,
@@ -634,8 +644,53 @@ export class SimulateRunModelicaScenarioV2RunExecutor {
       manifest,
       authority,
       sourceCapture,
+      qualifiedSources,
     });
     return { simulationCase, manifest, authority };
+  }
+
+  async #reopenQualifiedSourceBytes(
+    byBinding: ReadonlyMap<string, ResolvedOperationPlanSource>,
+    manifest: ModelicaQualifiedManifestDocument,
+  ): Promise<readonly ReopenedQualifiedModelicaSource[]> {
+    const expected: readonly {
+      readonly bindingName: ReopenedQualifiedModelicaSource["bindingName"];
+      readonly role: ReopenedQualifiedModelicaSource["role"];
+      readonly resource: ModelicaResumableResource;
+    }[] = [
+      { bindingName: "modelSource", role: "model", resource: manifest.model },
+      {
+        bindingName: "scenarioSource",
+        role: "scenario",
+        resource: manifest.scenario,
+      },
+      ...(manifest.parameterSchema === undefined ? [] : [{
+        bindingName: "parameterSchema" as const,
+        role: "parameter_schema" as const,
+        resource: manifest.parameterSchema,
+      }]),
+    ];
+    return await Promise.all(expected.map(async (entry) => {
+      const source = byBinding.get(entry.bindingName);
+      if (!source) {
+        throw new Error(
+          `Resolved Modelica plan is missing ${entry.bindingName}.`,
+        );
+      }
+      const bytes = await this.#readSource(source);
+      if (
+        source.artifact.byteCount !== entry.resource.byteCount ||
+        source.artifact.mediaType !== entry.resource.mediaType ||
+        source.artifact.fingerprint.digest !== entry.resource.sha256 ||
+        bytes.byteLength !== entry.resource.byteCount ||
+        await fingerprintResourceBytes(bytes) !== entry.resource.sha256
+      ) {
+        throw new Error(
+          `Resolved Modelica ${entry.bindingName} CAS bytes do not match the qualified manifest resource.`,
+        );
+      }
+      return { ...entry, source, bytes: Uint8Array.from(bytes) };
+    }));
   }
 
   async #readSource(source: ResolvedOperationPlanSource): Promise<Uint8Array> {
@@ -673,11 +728,19 @@ interface CapturedModelicaResource {
 }
 
 interface SealedModelicaInputs {
-  readonly simulationCase: SimulationCase;
+  readonly simulationCase: SimulationCaseV2;
   readonly manifest: ModelicaQualifiedManifestDocument;
   readonly authority: ReturnType<
     typeof validateModelicaSimulationCaseQualificationCapture
   >;
+}
+
+interface ReopenedQualifiedModelicaSource {
+  readonly bindingName: "modelSource" | "scenarioSource" | "parameterSchema";
+  readonly role: "model" | "scenario" | "parameter_schema";
+  readonly resource: ModelicaResumableResource;
+  readonly source: ResolvedOperationPlanSource;
+  readonly bytes: Uint8Array;
 }
 interface ReopenedCapture {
   readonly resources: readonly {
@@ -865,12 +928,13 @@ function assertQualificationBindings(input: {
   readonly byBinding: ReadonlyMap<string, ResolvedOperationPlanSource>;
   readonly caseSource: ResolvedOperationPlanSource;
   readonly manifestSource: ResolvedOperationPlanSource;
-  readonly simulationCase: SimulationCase;
+  readonly simulationCase: SimulationCaseV2;
   readonly manifest: ModelicaQualifiedManifestDocument;
   readonly authority: ReturnType<
     typeof validateModelicaSimulationCaseQualificationCapture
   >;
   readonly sourceCapture: ModelicaQualifiedSourceCaptureDocument;
+  readonly qualifiedSources: readonly ReopenedQualifiedModelicaSource[];
 }): void {
   const {
     sources,
@@ -881,6 +945,7 @@ function assertQualificationBindings(input: {
     manifest,
     authority,
     sourceCapture,
+    qualifiedSources,
   } = input;
   if (
     authority.simulationCase.sha256 !== caseSource.artifact.fingerprint.digest ||
@@ -893,7 +958,8 @@ function assertQualificationBindings(input: {
     simulationCase.kit.modelVersion !== manifest.selection.modelVersion ||
     simulationCase.scenario.id !== manifest.selection.scenarioId ||
     simulationCase.kit.modelSha256 !== manifest.model.sha256 ||
-    simulationCase.scenario.sha256 !== manifest.scenarioProjectionSha256
+    simulationCase.scenario.sourceSha256 !== manifest.scenario.sha256 ||
+    simulationCase.scenario.projectionSha256 !== manifest.scenarioProjectionSha256
   ) {
     throw new Error(
       "Modelica case, manifest, and qualification authority do not cross-bind exactly.",
@@ -926,6 +992,16 @@ function assertQualificationBindings(input: {
       "Modelica qualification authority does not cover the closed source profile.",
     );
   }
+  if (
+    qualifiedSources.length !== expectedRoles.length ||
+    expectedRoles.some((role) =>
+      !qualifiedSources.some((source) => source.role === role)
+    )
+  ) {
+    throw new Error(
+      "Resolved Modelica plan did not reopen the closed qualified source profile.",
+    );
+  }
   const expectedBindings = [
     "simulationCase",
     "methodManifest",
@@ -949,11 +1025,24 @@ function assertQualificationBindings(input: {
       ? "scenarioSource"
       : "parameterSchema";
     const planSource = byBinding.get(binding);
+    const reopened = qualifiedSources.find((entry) => entry.role === source.role);
+    const manifestResource = source.role === "model"
+      ? manifest.model
+      : source.role === "scenario"
+      ? manifest.scenario
+      : manifest.parameterSchema;
     if (
-      !planSource || planSource.artifact.casUri !== source.cas.uri ||
+      !planSource || !reopened || !manifestResource ||
+      reopened.source !== planSource ||
+      planSource.artifact.casUri !== source.cas.uri ||
       planSource.artifact.fingerprint.digest !== source.cas.sha256 ||
       planSource.artifact.byteCount !== source.cas.byteCount ||
-      planSource.artifact.mediaType !== source.mediaType
+      planSource.artifact.mediaType !== source.mediaType ||
+      source.resourceUri !== manifestResource.uri ||
+      source.mediaType !== manifestResource.mediaType ||
+      source.cas.byteCount !== manifestResource.byteCount ||
+      source.cas.sha256 !== manifestResource.sha256 ||
+      reopened.bytes.byteLength !== manifestResource.byteCount
     ) {
       throw new Error(
         `Modelica qualification source ${source.role} does not match the resolved plan.`,

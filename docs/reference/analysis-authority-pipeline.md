@@ -234,17 +234,32 @@ reviewed declaration
   -> measured local response, when an experiment exists
 ```
 
-A `simulation-case/1.0` or `mechanical-proof-case/1.0` remains a reviewed declaration,
-not a generic native-source AST. The recorded vertical crosses an exact, identity-bound
-MCP `resources/read` boundary and saves then rereads every acquired byte through local
-CAS.
+A `simulation-case/1.0`, `simulation-case/2.0` or `mechanical-proof-case/1.0` remains a
+reviewed declaration, not a generic native-source AST. The recorded vertical crosses an
+exact, identity-bound MCP `resources/read` boundary and saves then rereads every
+acquired byte through local CAS.
 
-For Modelica, the `@2` seal accepts only a provider-qualified kit manifest, captures its
-exact model, scenario and optional parameter-schema sources, and seals distinct case,
-method, source and qualification artefacts. The later `@2` run captures the resumable
-request, resolved parameters, model, scenario, script, diagnostics, evidence, `run.json`
-and, on success, result CSV. It publishes normalized observations only: no requirement,
-evaluation, violation, action or verdict is manufactured.
+Modelica `@2` consumes only `simulation-case/2.0`. This additive successor leaves
+`simulation-case/1.0` and its `scenario.sha256` field unchanged as `@1` history. V2
+instead records two provider facts with different meanings: `scenario.sourceSha256`
+fingerprints the exact native scenario resource bytes, while `scenario.projectionSha256`
+fingerprints the provider's canonical public scenario projection. The seal checks the
+former against both the qualified manifest's scenario resource and its acquired CAS
+bytes; it recomputes the latter from the manifest's public projection and checks it
+against `scenarioProjectionSha256`. The projection is therefore manifest-attested data,
+not a second source resource.
+
+`simulate.seal-simulation-case@2` is a planless registered operation gated by the exact
+human-approved MRTR over that closed V2 declaration. It accepts no
+`resolved-operation-plan/2.0`; it reads the provider-qualified kit manifest and exact
+model, scenario and optional parameter-schema resources, then seals distinct case,
+method-manifest, source and qualification artefacts. The later
+`simulate.run-modelica-scenario@2` is separately queued with one server-sealed plan
+bound to the exact `simulationCase` and `methodManifest` thread artifacts. It rereads
+those artifacts and the qualification-owned sources before submission, then captures the
+resumable request, resolved parameters, model, scenario, script, diagnostics, evidence,
+`run.json` and, on success, result CSV. It publishes normalized observations only: no
+requirement, evaluation, violation, action or verdict is manufactured.
 
 For CalculiX, the `@2` run rereads the sealed proof and exact STEP before staging the
 private provider input. It captures the fixed nine-resource profile: STEP, request, Gmsh
@@ -317,8 +332,7 @@ qualified assertions with exact evidence; Graphology remains a read-only project
 
 ## Implementation status
 
-This reference follows the current code for the recorded-analysis `@2` vertical. It is
-not a claim that a real provider run or an MRTR approval has already been performed in
-the current environment. Until integration gates and the live test are completed,
-provider availability remains an explicit runtime capability rather than a documented
-success.
+This reference follows the current code for the recorded-analysis `@2` vertical. It does
+not turn provider availability, an approved MRTR or a queued run into proof of a
+successful provider execution. That success exists only when the recorded runtime
+resources and resulting thread evidence have been captured and reread.

@@ -6,6 +6,18 @@ import {
 } from "./proposal-validation.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
+import { validateSimulationCase } from "../../domain/analysis/simulation-case.ts";
+import {
+  encodeSimulationCaseDecisionParameters,
+} from "../../domain/analysis/simulation-case-proposal.ts";
+import { validateSimulationCaseV2 } from "../../domain/analysis/simulation-case-v2.ts";
+import {
+  encodeSimulationCaseV2DecisionParameters,
+} from "../../domain/analysis/simulation-case-v2-proposal.ts";
+import {
+  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+} from "../../domain/analysis/simulation-case-proposal.ts";
+import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },
@@ -128,6 +140,49 @@ Deno.test("a decision shared by distinct operations must satisfy every declared 
   );
 });
 
+Deno.test("simulation-case proposal validation routes @1 to V1 and seal @2 to the closed V2 grammar", async () => {
+  const v1 = validateSimulationCase(
+    JSON.parse(
+      await Deno.readTextFile(
+        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
+      ),
+    ),
+  );
+  const v2 = validateSimulationCaseV2(
+    JSON.parse(
+      await Deno.readTextFile(
+        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v2.json",
+      ),
+    ),
+  );
+  const v1Parameters = encodeSimulationCaseDecisionParameters("a".repeat(64), v1);
+  const v2Parameters = encodeSimulationCaseV2DecisionParameters("b".repeat(64), v2);
+  assertProposalMatchesOperationGrammar(
+    SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+    v1Parameters,
+  );
+  assertProposalMatchesOperationGrammar(
+    SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+    v2Parameters,
+  );
+  assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+        v1Parameters,
+      ),
+    ProposalGrammarError,
+  );
+  assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+        v2Parameters,
+      ),
+    ProposalGrammarError,
+  );
+});
+
 Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // Adding a sealed or model-writing operation without registering its grammar
   // would silently reopen the round trip this module exists to close.
@@ -137,6 +192,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "model.write-requirements@1",
     "record.reconcile-uncertain-writer@1",
     "simulate.seal-simulation-case@1",
+    "simulate.seal-simulation-case@2",
     "verify.seal-proof-case@1",
   ]);
 });
