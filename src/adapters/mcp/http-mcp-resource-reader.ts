@@ -43,6 +43,7 @@ export class HttpMcpResourceReader implements ProviderResourceReader {
       result = await this.#http.request({
         method: "resources/read",
         label: "resources/read",
+        name: expected.uri,
         params: { uri: expected.uri },
       });
     } catch (error) {
@@ -94,10 +95,35 @@ function exactResultContents(result: Record<string, unknown>): unknown[] {
   const keys = Object.keys(result);
   if (
     !Object.hasOwn(result, "contents") ||
-    keys.some((key) => key !== "contents" && key !== "_meta")
+    keys.some((key) =>
+      key !== "contents" &&
+      key !== "resultType" &&
+      key !== "ttlMs" &&
+      key !== "cacheScope" &&
+      key !== "_meta"
+    )
   ) {
     throw new McpResourceReadError(
       "resources/read: malformed result object",
+    );
+  }
+  if (result.resultType !== "complete") {
+    throw new McpResourceReadError(
+      'resources/read: resultType must be "complete"',
+    );
+  }
+  if (
+    typeof result.ttlMs !== "number" ||
+    !Number.isSafeInteger(result.ttlMs) ||
+    result.ttlMs < 0
+  ) {
+    throw new McpResourceReadError(
+      "resources/read: ttlMs must be a non-negative safe integer",
+    );
+  }
+  if (result.cacheScope !== "private" && result.cacheScope !== "public") {
+    throw new McpResourceReadError(
+      'resources/read: cacheScope must be "private" or "public"',
     );
   }
   if (!Array.isArray(result.contents)) {

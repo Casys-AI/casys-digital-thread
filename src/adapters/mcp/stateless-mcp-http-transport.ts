@@ -19,7 +19,7 @@ export interface StatelessMcpRequest {
   method: string;
   params: Readonly<Record<string, unknown>>;
   label: string;
-  /** Optional diagnostic header used only by tools/call. */
+  /** Optional routing identity mirrored into the Mcp-Name header. */
   name?: string;
 }
 
