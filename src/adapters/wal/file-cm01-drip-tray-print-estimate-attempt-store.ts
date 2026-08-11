@@ -1,308 +1,469 @@
-import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+/** Durable three-state WAL for one non-idempotent Prusa observation. */
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 
 export const PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA =
-  "print-estimate-run-attempt/1.0" as const;
-
+  "print-estimate-run-attempt/1.1" as const;
+const LEGACY_SCHEMA = "print-estimate-run-attempt/1.0" as const;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
-
-/**
- * Durable shape of one print-estimate-run WAL entry.
- *
- * `status: "dispatched"` means the providers may have been called but no
- * normalised result was recorded yet. Like the printability WAL, this status
- * is NOT terminal: the build123d_export + prusaslicer_estimate_fff sequence is
- * effectively idempotent for the same case digest and profile sha256.
- * Re-dispatching is safe.
- */
-type PrintEstimateRunAttempt =
-  | {
-    readonly schemaVersion: typeof PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA;
-    readonly projectId: string;
-    readonly runId: string;
-    readonly caseDigest: string;
-    readonly status: "dispatched";
-    readonly dispatchedAt: string;
-  }
-  | {
-    readonly schemaVersion: typeof PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA;
-    readonly projectId: string;
-    readonly runId: string;
-    readonly caseDigest: string;
-    readonly status: "completed";
-    readonly dispatchedAt: string;
-    readonly completedAt: string;
-    readonly captureFingerprint: ContentFingerprint;
-  };
-
-export interface BeginPrintEstimateRunAttempt {
+type Basis = {
   readonly projectId: string;
   readonly runId: string;
-  /** SHA-256 digest of deterministicJson(printEstimateCase). */
   readonly caseDigest: string;
   readonly dispatchedAt: string;
-}
+};
+type Current =
+  & Basis
+  & ({
+    readonly schemaVersion: typeof PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA;
+    readonly status: "dispatched";
+  } | {
+    readonly schemaVersion: typeof PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA;
+    readonly status: "capture-recorded";
+    readonly recordedAt: string;
+    readonly captureFingerprint: ContentFingerprint;
+    readonly canonicalCaptureText: string;
+  } | {
+    readonly schemaVersion: typeof PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA;
+    readonly status: "completed";
+    readonly recordedAt: string;
+    readonly completedAt: string;
+    readonly captureFingerprint: ContentFingerprint;
+    readonly canonicalCaptureText: string;
+  });
+type Legacy = Basis & {
+  readonly schemaVersion: typeof LEGACY_SCHEMA;
+  readonly status: "dispatched" | "completed";
+  readonly completedAt?: string;
+  readonly captureFingerprint?: ContentFingerprint;
+};
+type Stored = Current | Legacy;
 
+export interface BeginPrintEstimateRunAttempt extends Basis {}
+export interface RecordPrintEstimateCaptureAttempt
+  extends BeginPrintEstimateRunAttempt {
+  readonly recordedAt: string;
+  readonly captureFingerprint: ContentFingerprint;
+  readonly canonicalCaptureText: string;
+}
 export interface CompletePrintEstimateRunAttempt extends BeginPrintEstimateRunAttempt {
   readonly completedAt: string;
   readonly captureFingerprint: ContentFingerprint;
 }
+export type BeginPrintEstimateRunAttemptResult = { readonly action: "dispatch" } | {
+  readonly action: "capture-recorded";
+  readonly recordedAt: string;
+  readonly captureFingerprint: ContentFingerprint;
+  readonly canonicalCaptureText: string;
+} | {
+  readonly action: "completed";
+  readonly recordedAt?: string;
+  readonly captureFingerprint: ContentFingerprint;
+  readonly canonicalCaptureText?: string;
+};
 
-/**
- * Write-ahead journal for the build123d + prusaslicer_estimate_fff pair
- * executed during a print-estimate run.
- *
- * Key: `[projectId, runId, caseDigest]` — ties the attempt to the exact
- * reviewed case, not only to the run identity. A case change produces a new
- * key and therefore a new attempt record.
- *
- * A `dispatched` entry returns `{ action: "dispatch" }` and allows
- * re-dispatch. The provider sequence is effectively idempotent: the same
- * deterministic build123d script always produces the same STL bytes (same
- * SHA), and prusaslicer_estimate_fff with the same profile on that STL is a
- * read-only slicing operation.
- */
+/** A prior provider occurrence is never a permit to invoke it again. */
+export class PrintEstimateRunOutcomeUnknownError extends Error {
+  constructor() {
+    super(
+      "The print-estimate provider outcome is unknown and will not be retried automatically.",
+    );
+    this.name = "PrintEstimateRunOutcomeUnknownError";
+  }
+}
+export class PrintEstimateRunIllegalTransitionError extends Error {
+  constructor(from: string, to: string) {
+    super(`Illegal print-estimate WAL transition: ${from} -> ${to}.`);
+    this.name = "PrintEstimateRunIllegalTransitionError";
+  }
+}
+
 export class FileCm01DripTrayPrintEstimateAttemptStore {
   constructor(
     private readonly directory = "state/local/cm01-drip-tray-print-estimate-attempts",
   ) {}
-
   async begin(
     input: BeginPrintEstimateRunAttempt,
-  ): Promise<
-    | { readonly action: "dispatch" }
-    | {
-      readonly action: "completed";
-      readonly captureFingerprint: ContentFingerprint;
-    }
-  > {
-    validateBegin(input);
-    const fresh: PrintEstimateRunAttempt = {
+  ): Promise<BeginPrintEstimateRunAttemptResult> {
+    validateBasis(input);
+    const fresh: Current = {
       schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
-      projectId: input.projectId,
-      runId: input.runId,
-      caseDigest: input.caseDigest,
+      ...input,
       status: "dispatched",
-      dispatchedAt: input.dispatchedAt,
     };
     await Deno.mkdir(this.directory, { recursive: true });
     try {
-      const file = await Deno.open(
+      await writeNew(
         this.pathFor(input.projectId, input.runId, input.caseDigest),
-        { createNew: true, write: true },
+        `${deterministicJson(fresh)}\n`,
       );
-      try {
-        const bytes = new TextEncoder().encode(`${deterministicJson(fresh)}\n`);
-        await file.write(bytes);
-        await file.syncData();
-      } finally {
-        file.close();
-      }
       return { action: "dispatch" };
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
     }
-    // Existing entry: idempotent re-dispatch is safe for either status.
-    const existing = await this.readExisting(
-      input.projectId,
-      input.runId,
-      input.caseDigest,
-    );
-    if (!existing) {
-      throw new Error(
-        "Print-estimate run attempt was created but cannot be read back.",
+    let existing: Stored | undefined;
+    try {
+      existing = await this.readExisting(
+        input.projectId,
+        input.runId,
+        input.caseDigest,
       );
+    } catch {
+      throw new PrintEstimateRunOutcomeUnknownError();
     }
-    if (existing.status === "completed") {
+    if (!existing) throw new PrintEstimateRunOutcomeUnknownError();
+    assertBasis(existing, input);
+    if (existing.schemaVersion === LEGACY_SCHEMA) {
+      if (existing.status === "dispatched" || !existing.captureFingerprint) {
+        throw new PrintEstimateRunOutcomeUnknownError();
+      }
       return { action: "completed", captureFingerprint: existing.captureFingerprint };
     }
-    // "dispatched" → safe to retry (providers are effectively idempotent).
-    return { action: "dispatch" };
-  }
-
-  async complete(input: CompletePrintEstimateRunAttempt): Promise<void> {
-    validateComplete(input);
-    const existing = await this.readExisting(
-      input.projectId,
-      input.runId,
-      input.caseDigest,
-    );
-    if (!existing) {
-      throw new Error(
-        "Cannot complete a print-estimate run attempt that was never begun.",
-      );
+    if (existing.status === "dispatched") {
+      throw new PrintEstimateRunOutcomeUnknownError();
     }
-    const completed: PrintEstimateRunAttempt = {
+    return existing.status === "capture-recorded"
+      ? {
+        action: "capture-recorded",
+        recordedAt: existing.recordedAt,
+        captureFingerprint: existing.captureFingerprint,
+        canonicalCaptureText: existing.canonicalCaptureText,
+      }
+      : {
+        action: "completed",
+        recordedAt: existing.recordedAt,
+        captureFingerprint: existing.captureFingerprint,
+        canonicalCaptureText: existing.canonicalCaptureText,
+      };
+  }
+  async recordCapture(input: RecordPrintEstimateCaptureAttempt): Promise<void> {
+    validateBasis(input);
+    timestamp(input.recordedAt, "recordedAt");
+    const fingerprint = normalize(input.captureFingerprint);
+    await assertCaptureIntegrity(input.canonicalCaptureText, fingerprint);
+    const existing = await this.required(input);
+    if (existing.schemaVersion === LEGACY_SCHEMA) {
+      throw new PrintEstimateRunOutcomeUnknownError();
+    }
+    if (existing.status === "completed") {
+      throw new PrintEstimateRunIllegalTransitionError("completed", "capture-recorded");
+    }
+    const next: Current = {
       schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
       projectId: existing.projectId,
       runId: existing.runId,
       caseDigest: existing.caseDigest,
-      status: "completed",
       dispatchedAt: existing.dispatchedAt,
-      completedAt: input.completedAt,
-      captureFingerprint: normalizedFingerprint(input.captureFingerprint),
+      status: "capture-recorded",
+      recordedAt: input.recordedAt,
+      captureFingerprint: fingerprint,
+      canonicalCaptureText: input.canonicalCaptureText,
     };
-    if (existing.status === "completed") {
-      if (deterministicJson(existing) !== deterministicJson(completed)) {
+    if (existing.status === "capture-recorded") {
+      if (deterministicJson(existing) !== deterministicJson(next)) {
         throw new Error(
-          "Completed print-estimate run attempt conflicts with its recorded capture fingerprint.",
+          "Print-estimate capture-recorded WAL conflicts with exact capture.",
         );
       }
       return;
     }
-    const path = this.pathFor(
-      input.projectId,
-      input.runId,
-      input.caseDigest,
+    await replace(
+      this.pathFor(input.projectId, input.runId, input.caseDigest),
+      `${deterministicJson(next)}\n`,
     );
-    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-    const file = await Deno.open(temporary, { createNew: true, write: true });
-    try {
-      const bytes = new TextEncoder().encode(
-        `${deterministicJson(completed)}\n`,
-      );
-      let written = 0;
-      while (written < bytes.length) {
-        const count = await file.write(bytes.subarray(written));
-        if (count <= 0) {
-          throw new Error("Print-estimate run attempt write made no progress.");
-        }
-        written += count;
-      }
-      await file.syncData();
-    } finally {
-      file.close();
-    }
-    await Deno.rename(temporary, path);
   }
-
+  async complete(input: CompletePrintEstimateRunAttempt): Promise<void> {
+    validateBasis(input);
+    timestamp(input.completedAt, "completedAt");
+    const existing = await this.required(input);
+    if (existing.schemaVersion === LEGACY_SCHEMA) {
+      throw new PrintEstimateRunOutcomeUnknownError();
+    }
+    if (existing.status === "dispatched") {
+      throw new PrintEstimateRunIllegalTransitionError("dispatched", "completed");
+    }
+    const fingerprint = normalize(input.captureFingerprint);
+    if (
+      deterministicJson(existing.captureFingerprint) !== deterministicJson(fingerprint)
+    ) throw new Error("Print-estimate completion conflicts with recorded capture.");
+    const next: Current = {
+      ...existing,
+      status: "completed",
+      completedAt: input.completedAt,
+    };
+    if (existing.status === "completed") {
+      if (deterministicJson(existing) !== deterministicJson(next)) {
+        throw new Error("Completed print-estimate WAL conflicts with existing record.");
+      }
+      return;
+    }
+    await replace(
+      this.pathFor(input.projectId, input.runId, input.caseDigest),
+      `${deterministicJson(next)}\n`,
+    );
+  }
+  async readRun(
+    projectId: string,
+    runId: string,
+    caseDigest: string,
+  ): Promise<Stored | undefined> {
+    validateIdentity(projectId, runId, caseDigest);
+    return await this.readExisting(projectId, runId, caseDigest);
+  }
   pathFor(projectId: string, runId: string, caseDigest: string): string {
     validateIdentity(projectId, runId, caseDigest);
-    const key = encodeURIComponent(JSON.stringify([projectId, runId, caseDigest]));
-    return `${this.directory.replace(/\/$/, "")}/${key}.json`;
+    return `${this.directory.replace(/\/$/, "")}/${
+      encodeURIComponent(JSON.stringify([projectId, runId, caseDigest]))
+    }.json`;
   }
-
+  private async required(input: BeginPrintEstimateRunAttempt): Promise<Stored> {
+    try {
+      const stored = await this.readExisting(
+        input.projectId,
+        input.runId,
+        input.caseDigest,
+      );
+      if (!stored) throw new Error("missing");
+      assertBasis(stored, input);
+      return stored;
+    } catch {
+      throw new PrintEstimateRunOutcomeUnknownError();
+    }
+  }
   private async readExisting(
     projectId: string,
     runId: string,
     caseDigest: string,
-  ): Promise<PrintEstimateRunAttempt | undefined> {
-    let text: string;
+  ): Promise<Stored | undefined> {
     try {
-      text = await Deno.readTextFile(this.pathFor(projectId, runId, caseDigest));
+      return await parse(
+        await Deno.readTextFile(this.pathFor(projectId, runId, caseDigest)),
+        { projectId, runId, caseDigest },
+      );
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return undefined;
       throw error;
     }
-    return parseAttempt(text, { projectId, runId, caseDigest });
   }
 }
-
-function parseAttempt(
+async function parse(
   text: string,
-  expected: { projectId: string; runId: string; caseDigest: string },
-): PrintEstimateRunAttempt {
+  expected: Pick<Basis, "projectId" | "runId" | "caseDigest">,
+): Promise<Stored> {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
-    throw new Error("Print-estimate run attempt is not valid JSON.");
+    throw new Error("Print-estimate WAL is not JSON.");
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Print-estimate run attempt must be an object.");
+    throw new Error("Print-estimate WAL must be object.");
   }
-  const rec = value as Record<string, unknown>;
+  const r = value as Record<string, unknown>;
   if (
-    rec.schemaVersion !== PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA ||
-    rec.projectId !== expected.projectId ||
-    rec.runId !== expected.runId ||
-    rec.caseDigest !== expected.caseDigest ||
-    (rec.status !== "dispatched" && rec.status !== "completed") ||
-    typeof rec.dispatchedAt !== "string"
-  ) {
-    throw new Error(
-      "Print-estimate run attempt has an invalid identity, schema, or status.",
-    );
-  }
-  if (rec.status === "dispatched") {
+    r.projectId !== expected.projectId || r.runId !== expected.runId ||
+    r.caseDigest !== expected.caseDigest || typeof r.dispatchedAt !== "string"
+  ) throw new Error("Print-estimate WAL has foreign identity.");
+  timestamp(r.dispatchedAt, "dispatchedAt");
+  const basis: Basis = { ...expected, dispatchedAt: r.dispatchedAt };
+  if (r.schemaVersion === LEGACY_SCHEMA) {
+    if (r.status !== "dispatched" && r.status !== "completed") {
+      throw new Error("Legacy print-estimate WAL status invalid.");
+    }
+    if (
+      r.status === "completed" &&
+      (!isFingerprint(r.captureFingerprint) || typeof r.completedAt !== "string")
+    ) throw new Error("Legacy print-estimate completion invalid.");
     return {
-      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
-      projectId: expected.projectId,
-      runId: expected.runId,
-      caseDigest: expected.caseDigest,
-      status: "dispatched",
-      dispatchedAt: rec.dispatchedAt,
+      schemaVersion: LEGACY_SCHEMA,
+      ...basis,
+      status: r.status,
+      ...(r.status === "completed"
+        ? {
+          completedAt: r.completedAt as string,
+          captureFingerprint: normalize(r.captureFingerprint as ContentFingerprint),
+        }
+        : {}),
     };
   }
   if (
-    typeof rec.completedAt !== "string" ||
-    !isContentFingerprint(rec.captureFingerprint)
-  ) {
-    throw new Error(
-      "Completed print-estimate run attempt is missing required fields.",
-    );
+    r.schemaVersion !== PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA ||
+    !["dispatched", "capture-recorded", "completed"].includes(String(r.status))
+  ) throw new Error("Print-estimate WAL schema/status invalid.");
+  if (r.status === "dispatched") {
+    exactKeys(r, [
+      "caseDigest",
+      "dispatchedAt",
+      "projectId",
+      "runId",
+      "schemaVersion",
+      "status",
+    ]);
+    return {
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      ...basis,
+      status: "dispatched",
+    };
+  }
+  exactKeys(
+    r,
+    r.status === "completed"
+      ? [
+        "canonicalCaptureText",
+        "captureFingerprint",
+        "caseDigest",
+        "completedAt",
+        "dispatchedAt",
+        "projectId",
+        "recordedAt",
+        "runId",
+        "schemaVersion",
+        "status",
+      ]
+      : [
+        "canonicalCaptureText",
+        "captureFingerprint",
+        "caseDigest",
+        "dispatchedAt",
+        "projectId",
+        "recordedAt",
+        "runId",
+        "schemaVersion",
+        "status",
+      ],
+  );
+  if (
+    !isFingerprint(r.captureFingerprint) ||
+    typeof r.canonicalCaptureText !== "string" || typeof r.recordedAt !== "string"
+  ) throw new Error("Print-estimate capture-recorded WAL invalid.");
+  timestamp(r.recordedAt, "recordedAt");
+  const captureFingerprint = normalize(r.captureFingerprint);
+  await assertCaptureIntegrity(r.canonicalCaptureText, captureFingerprint);
+  if (r.status === "completed") {
+    if (typeof r.completedAt !== "string") {
+      throw new Error("Completed print-estimate WAL missing completedAt.");
+    }
+    timestamp(r.completedAt, "completedAt");
+    return {
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      ...basis,
+      status: "completed",
+      recordedAt: r.recordedAt,
+      completedAt: r.completedAt,
+      captureFingerprint,
+      canonicalCaptureText: r.canonicalCaptureText,
+    };
   }
   return {
     schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
-    projectId: expected.projectId,
-    runId: expected.runId,
-    caseDigest: expected.caseDigest,
-    status: "completed",
-    dispatchedAt: rec.dispatchedAt,
-    completedAt: rec.completedAt,
-    captureFingerprint: normalizedFingerprint(rec.captureFingerprint),
+    ...basis,
+    status: "capture-recorded",
+    recordedAt: r.recordedAt,
+    captureFingerprint,
+    canonicalCaptureText: r.canonicalCaptureText,
   };
 }
-
-function isContentFingerprint(value: unknown): value is ContentFingerprint {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const rec = value as Record<string, unknown>;
-  return rec.algorithm === "sha256" && typeof rec.digest === "string" &&
-    SHA256_HEX.test(rec.digest);
-}
-
-function normalizedFingerprint(value: ContentFingerprint): ContentFingerprint {
-  if (value.algorithm !== "sha256" || !SHA256_HEX.test(value.digest)) {
-    throw new TypeError(
-      "captureFingerprint must be a sha256 ContentFingerprint with a 64-char hex digest.",
-    );
+async function assertCaptureIntegrity(
+  text: string,
+  fingerprint: ContentFingerprint,
+): Promise<void> {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error("WAL capture text is not JSON.");
   }
+  if (deterministicJson(value) !== text) {
+    throw new Error("WAL capture text is not canonical JSON.");
+  }
+  if (
+    deterministicJson(await sha256Fingerprint(value)) !== deterministicJson(fingerprint)
+  ) throw new Error("WAL capture text fingerprint is not exact.");
+}
+function assertBasis(existing: Basis, input: BeginPrintEstimateRunAttempt): void {
+  if (existing.dispatchedAt !== input.dispatchedAt) {
+    throw new PrintEstimateRunOutcomeUnknownError();
+  }
+}
+function exactKeys(value: Record<string, unknown>, expected: readonly string[]): void {
+  if (deterministicJson(Object.keys(value).sort()) !== deterministicJson(expected)) {
+    throw new Error("Print-estimate WAL has unsupported fields.");
+  }
+}
+function isFingerprint(value: unknown): value is ContentFingerprint {
+  return !!value && typeof value === "object" && !Array.isArray(value) &&
+    (value as Record<string, unknown>).algorithm === "sha256" &&
+    typeof (value as Record<string, unknown>).digest === "string" &&
+    SHA256_HEX.test((value as Record<string, unknown>).digest as string);
+}
+function normalize(value: ContentFingerprint): ContentFingerprint {
+  if (!isFingerprint(value)) throw new TypeError("captureFingerprint must be sha256.");
   return { algorithm: "sha256", digest: value.digest };
 }
-
-function validateBegin(input: BeginPrintEstimateRunAttempt): void {
+function validateBasis(input: BeginPrintEstimateRunAttempt): void {
   validateIdentity(input.projectId, input.runId, input.caseDigest);
-  isoDateTime(input.dispatchedAt, "dispatchedAt");
+  timestamp(input.dispatchedAt, "dispatchedAt");
 }
-
-function validateComplete(input: CompletePrintEstimateRunAttempt): void {
-  validateBegin(input);
-  isoDateTime(input.completedAt, "completedAt");
-  normalizedFingerprint(input.captureFingerprint);
+function validateIdentity(projectId: string, runId: string, caseDigest: string): void {
+  if (!projectId.trim() || !runId.trim() || !SHA256_HEX.test(caseDigest)) {
+    throw new TypeError("Print-estimate WAL identity is invalid.");
+  }
 }
-
-function validateIdentity(
-  projectId: string,
-  runId: string,
-  caseDigest: string,
-): void {
-  nonEmpty(projectId, "projectId");
-  nonEmpty(runId, "runId");
-  if (!SHA256_HEX.test(caseDigest)) {
-    throw new TypeError(
-      "caseDigest must be a 64-character lowercase hexadecimal SHA-256 digest.",
-    );
+function timestamp(value: string, label: string): void {
+  if (
+    typeof value !== "string" || Number.isNaN(Date.parse(value)) ||
+    new Date(Date.parse(value)).toISOString() !== value
+  ) throw new TypeError(`${label} must be canonical ISO timestamp.`);
+}
+async function writeNew(path: string, text: string): Promise<void> {
+  const file = await Deno.open(path, { createNew: true, write: true });
+  try {
+    await writeAll(file, new TextEncoder().encode(text));
+    await file.syncData();
+  } finally {
+    file.close();
+  }
+  await syncDirectory(directoryOf(path));
+}
+async function replace(path: string, text: string): Promise<void> {
+  const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+  try {
+    await writeNew(temporary, text);
+    await Deno.rename(temporary, path);
+    await syncDirectory(directoryOf(path));
+  } finally {
+    await Deno.remove(temporary).catch((error) => {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    });
   }
 }
 
-function nonEmpty(value: string, label: string): void {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new TypeError(`${label} must be a non-empty string.`);
+/** Write every byte: Deno.File.write is permitted to make partial progress. */
+export async function writeAll(
+  file: Pick<Deno.FsFile, "write">,
+  bytes: Uint8Array,
+): Promise<void> {
+  let offset = 0;
+  while (offset < bytes.length) {
+    const count = await file.write(bytes.subarray(offset));
+    if (count <= 0) throw new Error("Print-estimate WAL write made no progress.");
+    offset += count;
   }
 }
 
-function isoDateTime(value: string, label: string): void {
-  if (Number.isNaN(Date.parse(value))) {
-    throw new TypeError(`${label} must be an ISO timestamp.`);
+function directoryOf(path: string): string {
+  const index = path.lastIndexOf("/");
+  return index < 0 ? "." : index === 0 ? "/" : path.slice(0, index);
+}
+
+async function syncDirectory(path: string): Promise<void> {
+  const directory = await Deno.open(path, { read: true });
+  try {
+    await directory.sync();
+  } finally {
+    directory.close();
   }
 }

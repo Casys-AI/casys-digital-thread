@@ -6,6 +6,8 @@ import type {
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadComponentCatalog } from "../../domain/thread/thread-component-catalog.ts";
+import { validateAnalysisGraph } from "../../domain/analysis/analysis-graph.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { projectThreadWorkbenchSnapshot } from "./thread-workbench-projector.ts";
 
 const AT = "2026-08-01T08:00:00.000Z";
@@ -113,6 +115,158 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
   });
 });
 
+Deno.test("the Workbench projects a qualified sensitivity assertion separately from provenance", () => {
+  const canonical = linkedSnapshot();
+  canonical.schemaVersion = "1.1";
+  canonical.analysisGraph = validateAnalysisGraph({
+    schemaVersion: "analysis-graph/1.0",
+    nodes: [{
+      id: "analysis:parameter:wall-thickness",
+      kind: "parameter",
+      semanticRef: {
+        domain: "thread",
+        kind: "parameter",
+        id: "wall-thickness",
+        basisFingerprint: fingerprint("a"),
+      },
+    }, {
+      id: "analysis:metric:von-mises-max",
+      kind: "metric",
+      semanticRef: {
+        domain: "calculix",
+        kind: "metric",
+        id: "von-mises-max",
+      },
+    }],
+    relations: [{
+      fromNodeId: "analysis:parameter:wall-thickness",
+      toNodeId: "analysis:metric:von-mises-max",
+      assertion: {
+        schemaVersion: "engineering-assertion/1.0",
+        id: "assertion:sensitivity:wall-thickness:von-mises-max",
+        relation: "measured-local-sensitivity",
+        from: {
+          domain: "thread",
+          kind: "parameter",
+          id: "wall-thickness",
+          basisFingerprint: fingerprint("a"),
+        },
+        to: {
+          domain: "calculix",
+          kind: "metric",
+          id: "von-mises-max",
+        },
+        epistemicBasis: "observed",
+        assertedBy: { kind: "provider", id: "calculix", version: "2.20" },
+        evidence: [{ id: "step-r2", fingerprint: fingerprint("a") }, {
+          id: "fea-r2",
+          fingerprint: fingerprint("b"),
+        }],
+        scope: {
+          kind: "local-neighborhood",
+          parameter: {
+            domain: "thread",
+            kind: "parameter",
+            id: "wall-thickness",
+            basisFingerprint: fingerprint("a"),
+          },
+          basisFingerprint: fingerprint("a"),
+          lower: { value: 1.6, unit: "mm" },
+          upper: { value: 2, unit: "mm" },
+        },
+        measurement: {
+          method: "forward-finite-difference",
+          basePoint: { value: 1.8, unit: "mm" },
+          perturbationStep: { value: 0.1, unit: "mm" },
+          responseAtBase: { value: 132, unit: "MPa" },
+          responseAtPerturbed: { value: 119, unit: "MPa" },
+          derivative: { value: -130, unit: "MPa/mm" },
+        },
+        rationale: "Measured from the exact retained CalculiX result pair.",
+      },
+    }],
+  });
+  const validated = validateThreadSnapshot(canonical);
+
+  const projection = projectThreadWorkbenchSnapshot(validated);
+  const analysisNodes = projection.graph.nodes.filter((node) =>
+    node.entityKind === "analysis-node"
+  );
+  const edge = projection.graph.edges.find((candidate) =>
+    candidate.id === "assertion:sensitivity:wall-thickness:von-mises-max"
+  );
+
+  assertEquals(analysisNodes.map((node) => node.ref), [{
+    kind: "analysis-node",
+    id: "analysis:metric:von-mises-max",
+  }, {
+    kind: "analysis-node",
+    id: "analysis:parameter:wall-thickness",
+  }]);
+  assertEquals(analysisNodes[1]?.analysis, {
+    semanticRef: {
+      domain: "thread",
+      kind: "parameter",
+      id: "wall-thickness",
+      basisFingerprint: "a".repeat(64),
+    },
+  });
+  assertEquals(edge?.origin, "analysis");
+  assertEquals(edge?.relation, "measured-local-sensitivity");
+  assertEquals(edge?.from, {
+    kind: "analysis-node",
+    id: "analysis:parameter:wall-thickness",
+  });
+  assertEquals(edge?.to, {
+    kind: "analysis-node",
+    id: "analysis:metric:von-mises-max",
+  });
+  assertEquals(edge?.attestation, undefined);
+  assertEquals(edge?.analysis, {
+    assertionId: "assertion:sensitivity:wall-thickness:von-mises-max",
+    epistemicBasis: "observed",
+    assertedBy: { kind: "provider", id: "calculix", version: "2.20" },
+    evidence: [{ id: "fea-r2", fingerprint: "b".repeat(64) }, {
+      id: "step-r2",
+      fingerprint: "a".repeat(64),
+    }],
+    scope: {
+      kind: "local-neighborhood",
+      parameter: {
+        domain: "thread",
+        kind: "parameter",
+        id: "wall-thickness",
+        basisFingerprint: "a".repeat(64),
+      },
+      basisFingerprint: "a".repeat(64),
+      lower: { value: 1.6, unit: "mm" },
+      upper: { value: 2, unit: "mm" },
+    },
+    measurement: {
+      method: "forward-finite-difference",
+      basePoint: { value: 1.8, unit: "mm" },
+      perturbationStep: { value: 0.1, unit: "mm" },
+      responseAtBase: { value: 132, unit: "MPa" },
+      responseAtPerturbed: { value: 119, unit: "MPa" },
+      derivative: { value: -130, unit: "MPa/mm" },
+    },
+  });
+  assertEquals(
+    projection.graph.edges.some((candidate) =>
+      candidate.origin === "provenance" && candidate.relation === "derived_from"
+    ),
+    true,
+  );
+  assertEquals(
+    projection.evidenceFamilyGraph.edges.some((candidate) =>
+      candidate.memberEdgeRefs.some((reference) =>
+        reference.id === edge?.id || reference.origin === "analysis"
+      )
+    ),
+    false,
+  );
+});
+
 Deno.test("the Workbench flow hides retired current entities but retains the archive change", () => {
   const snapshot = clone(linkedSnapshot());
   const archived = [
@@ -160,7 +314,11 @@ Deno.test("the Workbench BFF projects a convergent requirement revision family",
     ...original,
     id: "REQ-STRESS-R1",
     version: "1",
-    freshness: { status: "stale" as const, changedAt: AT, invalidatedByChangeIds: [] },
+    freshness: {
+      status: "stale" as const,
+      changedAt: AT,
+      invalidatedByChangeIds: [],
+    },
   };
   const r2 = {
     ...original,
@@ -397,7 +555,10 @@ Deno.test("Evidence projects the exact SysML hierarchy and authoritative STEP id
 
   const reordered = cloneCatalog(catalog);
   reordered.components.forEach((component) => component.bindings.reverse());
-  const reorderedProjection = projectThreadWorkbenchSnapshot(canonical, reordered);
+  const reorderedProjection = projectThreadWorkbenchSnapshot(
+    canonical,
+    reordered,
+  );
   assertEquals(
     reorderedProjection.graph.nodes.filter((node) =>
       node.entityKind === "part-definition" || node.entityKind === "part-usage"
@@ -451,7 +612,8 @@ Deno.test("Evidence deduplicates one reused PartDefinition and refuses ambiguous
   );
   assertEquals(
     reusedProjection.graph.edges.filter((edge) =>
-      edge.relation === "represented_by" && edge.from.kind === "part-definition" &&
+      edge.relation === "represented_by" &&
+      edge.from.kind === "part-definition" &&
       edge.from.id === "def-head"
     ).map((edge) => edge.to.id).sort(),
     ["glb-head", "step-head"],
@@ -465,7 +627,10 @@ Deno.test("Evidence deduplicates one reused PartDefinition and refuses ambiguous
     label: "Other base definition",
     evidenceArtifactId: "architecture",
   });
-  const ambiguousProjection = projectThreadWorkbenchSnapshot(canonical, ambiguous);
+  const ambiguousProjection = projectThreadWorkbenchSnapshot(
+    canonical,
+    ambiguous,
+  );
   assertEquals(
     ambiguousProjection.graph.nodes.some((node) =>
       node.entityKind === "part-definition" || node.entityKind === "part-usage"
@@ -599,7 +764,10 @@ Deno.test("Evidence keeps exact SysML structure before CAD and suppresses a decl
     );
     delete component.preview;
   });
-  const beforeCadProjection = projectThreadWorkbenchSnapshot(canonical, beforeCad);
+  const beforeCadProjection = projectThreadWorkbenchSnapshot(
+    canonical,
+    beforeCad,
+  );
   assertEquals(
     beforeCadProjection.graph.nodes.filter((node) =>
       node.entityKind === "part-definition" || node.entityKind === "part-usage"
@@ -617,7 +785,10 @@ Deno.test("Evidence keeps exact SysML structure before CAD and suppresses a decl
     binding.provider === "digital-thread"
   )!;
   baseCad.id = "fea-r2";
-  const invalidProjection = projectThreadWorkbenchSnapshot(canonical, invalidCad);
+  const invalidProjection = projectThreadWorkbenchSnapshot(
+    canonical,
+    invalidCad,
+  );
   assertEquals(
     invalidProjection.graph.nodes.some((node) =>
       node.entityKind === "part-definition" || node.entityKind === "part-usage"
@@ -637,7 +808,11 @@ Deno.test("the bounded DripTray correction anchors only to its verified V3 produ
     version: "1",
     fingerprint: fingerprint("c"),
     mediaType: "application/json",
-    producer: operation("syson", "syson_element_insert_sysml", "architecture-r1"),
+    producer: operation(
+      "syson",
+      "syson_element_insert_sysml",
+      "architecture-r1",
+    ),
     inputArtifactIds: [],
     freshness: fresh(),
   });
@@ -704,7 +879,11 @@ function componentStructureFixture(): {
       kind: "step" as const,
       version: "1",
       fingerprint: fingerprint(String(index + 3)),
-      producer: operation("build123d-sandbox", "build123d_export", `cad-${name}`),
+      producer: operation(
+        "build123d-sandbox",
+        "build123d_export",
+        `cad-${name}`,
+      ),
       inputArtifactIds: ["geometry-capture"],
       freshness: fresh(),
     })),

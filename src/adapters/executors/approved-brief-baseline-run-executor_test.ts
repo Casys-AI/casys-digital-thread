@@ -1,16 +1,30 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
+import { BriefSourceAnalysisCaptureService } from "../captures/brief-source-analysis-capture.ts";
+import {
+  PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+  PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+  ProjectBriefSourceAnalyzer,
+} from "../analyzers/project-brief-source-analyzer.ts";
+import { FixedSourceAnalysisFrontendRegistry } from "../../domain/analysis/source-analysis-frontend-registry.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
+import {
+  fingerprintSourceAnalysisBundle,
+  validateSourceAnalysisBundle,
+} from "../../domain/analysis/source-analysis.ts";
+import { materializeApprovedBriefBaseline } from "../../orchestration/operations/approved-brief-baseline.ts";
 
 Deno.test("approved in-project brief becomes the first durable documentary baseline", async () => {
   const root = await Deno.makeTempDir({ prefix: "approved-brief-baseline-" });
@@ -20,6 +34,21 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
     ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
     directory: `${root}/captures`,
   });
+  const briefSourceCaptures = new FileCaptureStore({
+    ...BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
+    directory: `${root}/brief-source-captures`,
+  });
+  const sourceAnalysisCaptures = new FileCaptureStore({
+    ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+    directory: `${root}/source-analysis-captures`,
+  });
+  const briefSourceAnalysisFrontends = new FixedSourceAnalysisFrontendRegistry([{
+    analyzer: {
+      id: PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+      version: PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+    },
+    frontend: new ProjectBriefSourceAnalyzer(),
+  }]);
   let tick = 0;
   const now = () =>
     new Date(Date.parse("2026-08-03T09:00:00.000Z") + ++tick * 1_000)
@@ -30,7 +59,11 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
     undefined,
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, captures),
+    new ExactInitialBaselineEvidenceValidator(snapshots, captures, {
+      sourceCaptures: briefSourceCaptures,
+      analysisCaptures: sourceAnalysisCaptures,
+      frontends: briefSourceAnalysisFrontends,
+    }),
   );
   const agent = { kind: "agent" as const, actorId: "agent:test" };
   const human = { kind: "human" as const, actorId: "human:test" };
@@ -62,7 +95,7 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
         statement:
           "Demonstrate the approved baseline before technical evidence is added.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
-        dependsOnItemIds: [],
+        dependsOnItemIds: ["objective"],
       }],
     });
     const proposal = project.framing!.proposedBrief!;
@@ -106,10 +139,60 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
       summary: "Record the canonical project brief.",
       basis: project.plan!.basis,
     });
+    const briefSourceAnalysis = new BriefSourceAnalysisCaptureService({
+      sourceCaptures: briefSourceCaptures,
+      analysisCaptures: sourceAnalysisCaptures,
+      frontends: briefSourceAnalysisFrontends,
+      analyzer: {
+        id: PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+        version: PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+      },
+    });
+    const approvedProject = await projects.getRevision(
+      project.plan!.basis.projectId,
+      project.plan!.basis.projectRevision,
+    );
+    if (!approvedProject) throw new Error("approved project is missing in test");
+    const reference = await briefSourceAnalysis.capture({
+      brief: approvedProject.framing!.currentBrief!,
+    });
+    const analysisText = await sourceAnalysisCaptures.read(
+      reference.analysisFingerprint,
+    );
+    if (analysisText === undefined) throw new Error("analysis is missing in test");
+    const alteredFingerprint = { algorithm: "sha256" as const, digest: "b".repeat(64) };
+    const alteredBundle = validateSourceAnalysisBundle({
+      ...JSON.parse(analysisText),
+      source: {
+        ...JSON.parse(analysisText).source,
+        fingerprint: alteredFingerprint,
+      },
+    });
+    const alteredReference = {
+      ...reference,
+      sourceFingerprint: alteredFingerprint,
+      analysisFingerprint: await fingerprintSourceAnalysisBundle(alteredBundle),
+    };
+    await assertRejects(
+      () =>
+        materializeApprovedBriefBaseline({
+          project,
+          approvedProject,
+          runId: "run:baseline",
+          capturedAt: "2026-08-03T09:00:01.000Z",
+          briefSourceAnalysis: { reference: alteredReference, bundle: alteredBundle },
+        }),
+      Error,
+      "source fingerprint does not name the exact canonical approved brief bytes",
+    );
     const executor = new ApprovedBriefBaselineRunExecutor({
       projects,
       commands,
       captures,
+      briefSourceAnalysis,
+      briefSourceCaptures,
+      sourceAnalysisCaptures,
+      briefSourceAnalysisFrontends,
       snapshots,
       lease: new FileEngineeringProjectRunLease(`${root}/leases`),
       now,
@@ -127,6 +210,8 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
       snapshot?.artifacts[0]?.name,
       "Approved project brief documentary baseline (pre-technical)",
     );
+    assertEquals(snapshot?.schemaVersion, "1.1");
+    assertEquals(snapshot?.analysisGraph?.relations.length, 1);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

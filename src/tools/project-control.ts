@@ -1,5 +1,9 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
-import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../domain/kernel/deterministic-json.ts";
 import { assertProposalMatchesOperationGrammar } from "../orchestration/operations/proposal-validation.ts";
 import {
   assertUncertainWriterBasisReleaseDecisionSeal,
@@ -8,10 +12,14 @@ import {
   uncertainWriterBasisReleaseBaseSnapshot,
 } from "../domain/project/uncertain-writer-basis-release.ts";
 import { getRegisteredEngineeringOperation } from "../orchestration/operations/registry.ts";
+import type { ProjectGeometryPreviewUseCase } from "../orchestration/project-geometry-preview.ts";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
-import type { McpToolClient } from "../adapters/mcp/http-mcp-tool-client.ts";
-import type { FileCaptureStore } from "../adapters/captures/file-capture-store.ts";
+import type { ResolvedRunPlanReader } from "../domain/project/resolved-run-plan-sealer.ts";
+import {
+  type ResolvedOperationPlanV2,
+  sameResolvedOperationPlanRef,
+} from "../domain/analysis/resolved-operation-plan-v2.ts";
 import type { ProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
 import type {
   ProjectReviewIntent,
@@ -19,12 +27,6 @@ import type {
 } from "../domain/project/project-review-intent.ts";
 import { isApprovalBoundProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {
-  captureGeometryBundleDraft,
-  captureGeometryDraft,
-  geometryBundleManifestFromDraft,
-} from "../adapters/captures/geometry-draft-capture.ts";
-import {
-  encodeGeometryDecisionParameters,
   GEOMETRY_MANIFEST_SCHEMA,
   type GeometryComponentBinding,
   type GeometryExportFormat,
@@ -246,28 +248,14 @@ export interface ProjectControlToolDependencies {
   reviewIntents?: ProjectReviewIntentStore;
   /** Optional so focused read-only tests need not construct a trusted executor. */
   runExecutor?: Pick<RegisteredProjectRunExecutor, "execute">;
+  /** Reads only server-stamped resolved operation plans from the local CAS. */
+  runPlanReader?: ResolvedRunPlanReader;
   /**
    * build123d-backed geometry preview context.  Absent when the build123d
    * provider is not configured; the preview tool returns "unavailable" in
    * that case (D2 — drafts never appear in ThreadSnapshot).
    */
-  geometryPreview?: {
-    readonly client: McpToolClient;
-    readonly draftCaptures: FileCaptureStore<"geometry-draft">;
-    /**
-     * Exact Docker Compose service that owns the private preview /exports volume.
-     * Server-fixed and required: never supplied by an agent and never the trusted
-     * shared-volume instance.
-     */
-    readonly build123dService: "mcp-build123d-sandbox";
-    /** Test seam for the Docker copy boundary; production leaves it undefined. */
-    readonly materializeAsset?: (
-      sha256: string,
-      containerPath: string,
-    ) => Promise<void>;
-    /** Test seam for deterministic provider path assertions. */
-    readonly previewRunId?: string;
-  };
+  geometryPreview?: ProjectGeometryPreviewUseCase;
 }
 
 export function registerProjectControlTools(
@@ -299,6 +287,40 @@ export function registerProjectControlTools(
       snapshot,
     );
   });
+
+  if (dependencies.runPlanReader) {
+    const runPlanReader = dependencies.runPlanReader;
+    app.registerTool(projectAgentRunPlanGetTool, async (args) => {
+      const projectId = requiredString(args.projectId, "projectId");
+      const runId = requiredString(args.runId, "runId");
+      const project = await requiredProject(dependencies.projects, projectId);
+      const run = project.agentRuns.find((candidate) => candidate.id === runId);
+      if (!run) {
+        throw new TypeError(`Agent run ${runId} is not part of project ${projectId}.`);
+      }
+      if (!run.resolvedOperationPlan) {
+        throw new TypeError(
+          `Agent run ${runId} has no resolved-operation-plan/2.0 reference. Historical and @1 runs remain planless.`,
+        );
+      }
+      const plan = await runPlanReader.read(run.resolvedOperationPlan);
+      await assertReadPlanMatchesRun(project, runId, plan, dependencies.projects);
+      return {
+        content:
+          `Resolved operation plan ${run.resolvedOperationPlan.planId} for run ${runId} ` +
+          "was reread from its server-stamped CAS reference and cross-checked against " +
+          "the project, run, queue receipt and MRTR basis. This is inspection only: " +
+          "technical source, qualification and provider verification remains the future @2 executor boundary.",
+        structuredContent: {
+          projectId: project.project.id,
+          projectRevision: project.revision,
+          runId,
+          reference: run.resolvedOperationPlan,
+          plan,
+        },
+      };
+    });
+  }
 
   if (dependencies.reviewIntents) {
     app.registerTool(projectReviewIntentListTool, async (args) => {
@@ -801,67 +823,48 @@ export function registerProjectControlTools(
           })),
           occurrences,
         };
-        const draft = await captureGeometryBundleDraft(
-          geo.client,
-          {
-            assemblyScript: script,
-            manifest,
-            partDefinitionScripts: partDefinitionScripts.map((
-              { elementId, script },
-            ) => ({
-              elementId,
-              script,
-            })),
-          },
-          geo.draftCaptures,
-          {
-            build123dService: geo.build123dService,
-            materializeAsset: geo.materializeAsset,
-            previewRunId: geo.previewRunId,
-          },
-        );
-        const completedManifest = geometryBundleManifestFromDraft(draft);
-        const decisionParams = encodeGeometryDecisionParameters(
-          draft.fingerprint.digest,
-          completedManifest,
-        );
+        const preview = await geo.execute({
+          kind: "bundle",
+          assemblyScript: script,
+          manifest,
+          partDefinitionScripts: partDefinitionScripts.map((
+            { elementId, script },
+          ) => ({
+            elementId,
+            script,
+          })),
+        });
+        if (preview.kind !== "bundle") {
+          throw new TypeError(
+            "Geometry preview use case returned the wrong result kind.",
+          );
+        }
         return {
           content: [{
             type: "text" as const,
             text:
-              `Geometry bundle v2 preview completed. Draft digest: ${draft.fingerprint.digest}.\n` +
-              `Assembly files: ${draft.assembly.files.length}; PartDefinitions: ` +
-              `${draft.partDefinitions.length}; occurrences: ${draft.occurrences.length}.\n` +
+              `Geometry bundle v2 preview completed. Draft digest: ${preview.draftDigest}.\n` +
+              `Assembly files: ${preview.assemblyFiles.length}; PartDefinitions: ` +
+              `${preview.partDefinitions.length}; occurrences: ${preview.occurrences.length}.\n` +
+              `Captured passive source analyses: ${
+                1 + preview.sourceAnalyses.partDefinitions.length
+              }.\n` +
               "The human must approve these exact sources, identities, placements and hashes before sealing.",
           }],
           structuredContent: {
-            schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
-            draftDigest: draft.fingerprint.digest,
-            assemblyFiles: draft.assembly.files.map((file) => ({
-              format: file.format,
-              name: file.name,
-              bytes: file.bytes,
-              digest: file.fingerprint.digest,
-            })),
-            partDefinitions: draft.partDefinitions.map((definition) => ({
-              elementId: definition.elementId,
-              label: definition.label,
-              scriptHash: definition.scriptHash.digest,
-              files: definition.files.map((file) => ({
-                format: file.format,
-                name: file.name,
-                bytes: file.bytes,
-                digest: file.fingerprint.digest,
-              })),
-            })),
-            occurrences: draft.occurrences,
-            decisionParameters: decisionParams,
+            schemaVersion: preview.schemaVersion,
+            draftDigest: preview.draftDigest,
+            assemblyFiles: preview.assemblyFiles,
+            partDefinitions: preview.partDefinitions,
+            sourceAnalyses: preview.sourceAnalyses,
+            occurrences: preview.occurrences,
+            decisionParameters: preview.decisionParameters,
           },
         };
       }
 
-      // Build a manifest without scriptHash/artifactHashes — the draft-capture
-      // layer computes those after the build123d_export call.
+      // Build a manifest without scriptHash/artifactHashes — the preview use
+      // case derives and seals those from exact captured provider output.
       const manifest: GeometryManifest = {
         schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
         architectureBasis: {
@@ -877,65 +880,29 @@ export function registerProjectControlTools(
         exportFormats,
       };
 
-      const draft = await captureGeometryDraft(
-        geo.client,
-        { script, manifest },
-        geo.draftCaptures,
-        {
-          build123dService: geo.build123dService,
-          materializeAsset: geo.materializeAsset,
-          previewRunId: geo.previewRunId,
-        },
-      );
-
-      // Build the completed manifest for the MRTR proposal.
-      const completedManifest: GeometryManifest = {
-        ...manifest,
-        scriptHash: draft.scriptHash,
-        artifactHashes: {
-          assemblyFiles: draft.assemblyFiles.map((f) => ({
-            format: f.format,
-            name: f.name,
-            fingerprint: f.fingerprint,
-          })),
-          partMeshes: draft.partMeshes.map((m) => ({
-            semanticKey: m.usageName,
-            name: m.name,
-            fingerprint: m.fingerprint,
-          })),
-        },
-      };
-
-      const decisionParams = encodeGeometryDecisionParameters(
-        draft.fingerprint.digest,
-        completedManifest,
-      );
+      const preview = await geo.execute({ kind: "legacy", script, manifest });
+      if (preview.kind !== "legacy") {
+        throw new TypeError(
+          "Geometry preview use case returned the wrong result kind.",
+        );
+      }
 
       return {
         content: [{
           type: "text" as const,
-          text:
-            `Geometry preview completed. Draft digest: ${draft.fingerprint.digest}.\n` +
-            `Assembly files: ${draft.assemblyFiles.length}, ` +
-            `part meshes: ${draft.partMeshes.length}.\n` +
+          text: `Geometry preview completed. Draft digest: ${preview.draftDigest}.\n` +
+            `Assembly files: ${preview.assemblyFiles.length}, ` +
+            `part meshes: ${preview.partMeshes.length}.\n` +
+            `Passive source analysis: ${preview.sourceAnalysis.analysisDigest}.\n` +
             `The human must approve the MRTR decision before the geometry can be sealed ` +
             `into the evidence thread (design.write-geometry@1).`,
         }],
         structuredContent: {
-          draftDigest: draft.fingerprint.digest,
-          assemblyFiles: draft.assemblyFiles.map((f) => ({
-            format: f.format,
-            name: f.name,
-            bytes: f.bytes,
-            digest: f.fingerprint.digest,
-          })),
-          partMeshes: draft.partMeshes.map((m) => ({
-            usageName: m.usageName,
-            name: m.name,
-            bytes: m.bytes,
-            digest: m.fingerprint.digest,
-          })),
-          decisionParameters: decisionParams,
+          draftDigest: preview.draftDigest,
+          assemblyFiles: preview.assemblyFiles,
+          partMeshes: preview.partMeshes,
+          sourceAnalysis: preview.sourceAnalysis,
+          decisionParameters: preview.decisionParameters,
         },
       };
     });
@@ -1266,6 +1233,23 @@ const projectAgentRunQueueTool: MCPTool = {
   annotations: PROJECT_EXECUTION_ANNOTATIONS,
 };
 
+const projectAgentRunPlanGetTool: MCPTool = {
+  name: "project_agent_run_plan_get",
+  description:
+    "Read the resolved-operation-plan/2.0 referenced by one existing project agent run and cross-check its local project/run/queue/MRTR seals. It does not reopen technical sources, qualified methods or providers. The caller supplies only projectId and runId; no CAS URI, digest, provider, tool arguments, files, queueing, claim, or execution input is accepted.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      runId: { type: "string", minLength: 1 },
+    },
+    required: ["projectId", "runId"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
 const projectAgentRunCancelTool: MCPTool = {
   name: "project_agent_run_cancel",
   description:
@@ -1351,7 +1335,7 @@ const projectWorkItemReconcileSuccessorTool: MCPTool = {
 const projectGeometryPreviewTool: MCPTool = {
   name: "project_geometry_preview",
   description:
-    "Execute a build123d geometry script and save the result as a draft for human review. " +
+    "Capture and conservatively analyse an exact build123d Python source, execute those unchanged bytes in the private sandbox, and save the result as a draft for human review. " +
     "Returns a draftDigest and the MRTR decision parameters that the agent should present " +
     "for human approval before calling design.write-geometry@1. " +
     "Drafts are NEVER written to the evidence ThreadSnapshot (D2).",
@@ -2219,6 +2203,110 @@ async function requiredProject(
   const snapshot = await store.get(projectId);
   if (!snapshot) throw new TypeError(`Engineering project not found: ${projectId}.`);
   return snapshot;
+}
+
+/**
+ * Inspection replays only project-local seals. It deliberately does not
+ * reopen ThreadSnapshot artefacts, qualified-method manifests or providers;
+ * that technical verification remains with the future registered @2 executor.
+ */
+async function assertReadPlanMatchesRun(
+  project: EngineeringProjectSnapshot,
+  runId: string,
+  plan: ResolvedOperationPlanV2,
+  projects: EngineeringProjectSnapshotReader,
+): Promise<void> {
+  const run = project.agentRuns.find((candidate) => candidate.id === runId);
+  if (
+    !run || !run.resolvedOperationPlan ||
+    plan.run.projectId !== project.project.id ||
+    plan.run.runId !== run.id ||
+    plan.run.workItemId !== run.workItemId ||
+    !run.inputFingerprint ||
+    !fingerprintsEqual(plan.run.inputFingerprint, run.inputFingerprint)
+  ) {
+    throw new TypeError(
+      "Resolved operation plan does not bind the exact inspected run.",
+    );
+  }
+  if (
+    run.basis?.kind !== "thread-snapshot" ||
+    plan.basis.snapshotId !== run.basis.snapshotId ||
+    plan.basis.revision !== run.basis.revision ||
+    plan.basis.subjectId !== run.basis.subjectId
+  ) {
+    throw new TypeError(
+      "Resolved operation plan does not bind the run ThreadSnapshot basis.",
+    );
+  }
+  const queueCommandId = run.statusHistory?.[0]?.commandId;
+  const queueReceipt = queueCommandId
+    ? project.commandReceipts?.find((receipt) =>
+      receipt.type === "agent-run.queue" && receipt.commandId === queueCommandId
+    )
+    : undefined;
+  if (
+    !queueReceipt?.queuedRun ||
+    !sameResolvedOperationPlanRef(
+      run.resolvedOperationPlan,
+      queueReceipt.queuedRun.resolvedOperationPlan,
+    )
+  ) {
+    throw new TypeError(
+      "Resolved operation plan is not cross-bound by the exact queue receipt.",
+    );
+  }
+  const queueBasis = plan.run.queueBasisProject;
+  const queuedProject = await projects.getRevision(
+    project.project.id,
+    queueBasis.revision,
+  );
+  if (
+    !queuedProject || queuedProject.id !== queueBasis.snapshotId ||
+    !fingerprintsEqual(await sha256Fingerprint(queuedProject), queueBasis.fingerprint)
+  ) {
+    throw new TypeError(
+      "Resolved operation plan queue basis project is missing or changed.",
+    );
+  }
+  const workItem = queuedProject.workItems.find((item) => item.id === run.workItemId);
+  if (
+    !workItem?.operation || plan.workItem.id !== workItem.id ||
+    plan.workItem.operation.id !== workItem.operation.id ||
+    plan.workItem.operation.version !== workItem.operation.version ||
+    !fingerprintsEqual(
+      plan.workItem.operationFingerprint,
+      await sha256Fingerprint(workItem.operation),
+    )
+  ) {
+    throw new TypeError(
+      "Resolved operation plan does not bind the exact queued work item.",
+    );
+  }
+  const decision = queuedProject.decisions.find((item) =>
+    item.id === plan.authorization.mrtr.decisionId
+  );
+  const approval = queuedProject.approvals.find((item) =>
+    item.id === plan.authorization.mrtr.approvalId
+  );
+  if (
+    !workItem.decisionIds.includes(plan.authorization.mrtr.decisionId) ||
+    decision?.status !== "approved" || !decision.inputFingerprint ||
+    decision.approvalIds.at(-1) !== approval?.id ||
+    !fingerprintsEqual(
+      decision.inputFingerprint,
+      plan.authorization.mrtr.decisionInputFingerprint,
+    ) ||
+    !approval || approval.status !== "approved" ||
+    !fingerprintsEqual(
+      await sha256Fingerprint(approval),
+      plan.authorization.mrtr.approvalFingerprint,
+    )
+  ) {
+    throw new TypeError(
+      "Resolved operation plan MRTR approval no longer matches its queued project basis.",
+    );
+  }
 }
 
 async function requiredProjectRevision(

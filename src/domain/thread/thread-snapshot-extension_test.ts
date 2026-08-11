@@ -1,5 +1,11 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { materializeAttestedMechanicalRun } from "../../testing/attested-mechanical-run-fixture.ts";
+import type { AnalysisGraph } from "../analysis/analysis-graph.ts";
+import { buildBriefAnalysisGraph } from "../analysis/brief-analysis-graph.ts";
+import {
+  SOURCE_ANALYSIS_SCHEMA,
+  validateSourceAnalysisBundle,
+} from "../analysis/source-analysis.ts";
 import {
   applyThreadSnapshotExtension,
   applyThreadSnapshotExtensionIfNew,
@@ -87,6 +93,14 @@ Deno.test("repeated assembly preserves one immutable head and advances from that
     revision: first.snapshot.revision,
   });
   assertEquals(second.snapshot.id, `${base.subject.id}:r3:capture-pressure-run`);
+
+  const conflicting = thermalExtension(base.subject.id);
+  conflicting.artifacts[0]!.name = "Divergent content under a reused artifact id";
+  assertThrows(
+    () => applyThreadSnapshotExtensionIfNew(first.snapshot, conflicting),
+    Error,
+    "artifact modelica-evidence-demo conflicts",
+  );
 });
 
 Deno.test("an extension retains a valid stale root cause when historic evidence is stale", async () => {
@@ -124,6 +138,115 @@ Deno.test("an extension retains a valid stale root cause when historic evidence 
   assertEquals(
     result.freshness.reason,
     "At least one retained entity is stale; replacement evidence is still required.",
+  );
+});
+
+Deno.test("analysis-only extension upgrades to 1.1 and snapshot evidence retains its semantic graph", async () => {
+  const base = await materializeAttestedMechanicalRun(capture());
+  const extension = analysisExtension(base.subject.id, base);
+
+  const successor = applyThreadSnapshotExtension(base, extension);
+  const detached = snapshotEvidenceExtension(successor, {
+    id: "attach-analysis-evidence",
+    name: "Attach analysis evidence",
+    subjectId: "coffee-machine-cm01",
+  });
+
+  assertEquals(successor.schemaVersion, "1.1");
+  assertEquals(
+    successor.analysisGraph?.relations.map((relation) => relation.assertion.id),
+    [
+      "binding.support-bracket-thickness",
+    ],
+  );
+  assertEquals(detached.analysisGraph, successor.analysisGraph);
+});
+
+Deno.test("two brief revisions retain distinct source-qualified item occurrences", async () => {
+  const base = await materializeAttestedMechanicalRun(capture());
+  const evidence = base.artifacts[0]!;
+  const firstGraph = briefRevisionGraph("c", {
+    id: evidence.id,
+    fingerprint: evidence.fingerprint,
+  });
+  const secondGraph = briefRevisionGraph("d", {
+    id: evidence.id,
+    fingerprint: evidence.fingerprint,
+  });
+
+  const first = applyThreadSnapshotExtension(base, {
+    id: "capture-brief-revision-one",
+    name: "Capture brief revision one",
+    subjectId: base.subject.id,
+    capturedAt: "2026-08-01T04:00:00.000Z",
+    artifacts: [],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+    analysisGraph: firstGraph,
+  });
+  const successor = applyThreadSnapshotExtension(first, {
+    id: "capture-brief-revision-two",
+    name: "Capture brief revision two",
+    subjectId: base.subject.id,
+    capturedAt: "2026-08-01T05:00:00.000Z",
+    artifacts: [],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+    analysisGraph: secondGraph,
+  });
+
+  assertEquals(successor.analysisGraph?.nodes.length, 4);
+  assertEquals(
+    successor.analysisGraph?.nodes.map((node) =>
+      node.semanticRef.basisFingerprint?.digest
+    ).sort(),
+    ["c".repeat(64), "c".repeat(64), "d".repeat(64), "d".repeat(64)],
+  );
+  assertEquals(
+    new Set(successor.analysisGraph?.nodes.map((node) => node.id)).size,
+    4,
+  );
+});
+
+Deno.test("analysis-only extension is idempotent and a partial assertion collision is refused", async () => {
+  const base = await materializeAttestedMechanicalRun(capture());
+  const initial = analysisExtension(base.subject.id, base);
+  const first = applyThreadSnapshotExtensionIfNew(base, initial);
+  const repeated = applyThreadSnapshotExtensionIfNew(first.snapshot, initial);
+  const partial = analysisExtension(base.subject.id, base, [
+    "binding.support-bracket-thickness",
+    "binding.support-bracket-material",
+  ]);
+
+  assertEquals(first.applied, true);
+  assertEquals(repeated.applied, false);
+  assertEquals(repeated.snapshot, first.snapshot);
+  assertThrows(
+    () => applyThreadSnapshotExtensionIfNew(first.snapshot, partial),
+    Error,
+    "contains only part of extension",
+  );
+
+  const conflicting = structuredClone(initial);
+  const mutableRelation = conflicting.analysisGraph!.relations[0] as {
+    assertion: { rationale: string };
+  };
+  mutableRelation.assertion.rationale =
+    "Divergent content under a reused assertion id.";
+  assertThrows(
+    () => applyThreadSnapshotExtensionIfNew(first.snapshot, conflicting),
+    Error,
+    "assertion binding.support-bracket-thickness conflicts",
   );
 });
 
@@ -200,6 +323,126 @@ function pressureExtension(subjectId: string): ThreadSnapshotExtension {
       to: { kind: "artifact" as const, id: "pressure-evidence-demo" },
     })),
   };
+}
+
+function analysisExtension(
+  subjectId: string,
+  snapshot: Awaited<ReturnType<typeof materializeAttestedMechanicalRun>>,
+  assertionIds = ["binding.support-bracket-thickness"],
+): ThreadSnapshotExtension {
+  return {
+    id: `capture-analysis-${assertionIds.length}`,
+    name: "Capture semantic analysis facts",
+    subjectId,
+    capturedAt: "2026-08-01T04:00:00.000Z",
+    artifacts: [],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+    analysisGraph: analysisGraph(snapshot, assertionIds),
+  };
+}
+
+function analysisGraph(
+  snapshot: Awaited<ReturnType<typeof materializeAttestedMechanicalRun>>,
+  assertionIds: readonly string[],
+): AnalysisGraph {
+  const step = snapshot.artifacts[0]!;
+  const result = snapshot.artifacts[1]!;
+  return {
+    schemaVersion: "analysis-graph/1.0",
+    nodes: [
+      {
+        id: "component.support-bracket",
+        kind: "component",
+        semanticRef: {
+          domain: "cad",
+          kind: "component",
+          id: "support-bracket",
+          basisFingerprint: step.fingerprint,
+        },
+      },
+      {
+        id: "parameter.wall-thickness",
+        kind: "parameter",
+        semanticRef: {
+          domain: "cad",
+          kind: "parameter",
+          id: "wall-thickness",
+          basisFingerprint: result.fingerprint,
+        },
+      },
+    ],
+    relations: assertionIds.map((id) => ({
+      assertion: {
+        schemaVersion: "engineering-assertion/1.0",
+        id,
+        relation: "semantic-binding",
+        from: {
+          domain: "cad",
+          kind: "component",
+          id: "support-bracket",
+          basisFingerprint: step.fingerprint,
+        },
+        to: {
+          domain: "cad",
+          kind: "parameter",
+          id: "wall-thickness",
+          basisFingerprint: result.fingerprint,
+        },
+        epistemicBasis: "inferred",
+        assertedBy: { kind: "analyzer", id: "extension-test", version: "1" },
+        evidence: [
+          { id: result.id, fingerprint: result.fingerprint },
+          { id: step.id, fingerprint: step.fingerprint },
+        ],
+        scope: { kind: "basis", basisFingerprint: step.fingerprint },
+        rationale: "Captured analysis relates this component to this parameter.",
+      },
+      fromNodeId: "component.support-bracket",
+      toNodeId: "parameter.wall-thickness",
+    })),
+  };
+}
+
+function briefRevisionGraph(
+  sourceDigest: string,
+  evidence: {
+    readonly id: string;
+    readonly fingerprint: { readonly algorithm: "sha256"; readonly digest: string };
+  },
+): AnalysisGraph {
+  const graph = buildBriefAnalysisGraph({
+    bundle: validateSourceAnalysisBundle({
+      schemaVersion: SOURCE_ANALYSIS_SCHEMA,
+      source: {
+        id: `brief-source:${sourceDigest.repeat(64)}`,
+        role: "brief",
+        language: "plain-text",
+        fingerprint: { algorithm: "sha256", digest: sourceDigest.repeat(64) },
+      },
+      analyzer: { id: "project-brief-json", version: "1.0.0" },
+      policy: { profile: "project-brief-explicit-v1", status: "passed", findings: [] },
+      symbols: [
+        { id: "brief-item:objective", kind: "brief-item", name: "objective" },
+        { id: "brief-item:gate", kind: "brief-item", name: "gate" },
+      ],
+      dependencies: [{
+        id: "dependency:objective:gate",
+        kind: "declared-dependency",
+        fromSymbolId: "brief-item:objective",
+        toSymbolId: "brief-item:gate",
+      }],
+      unresolvedConstructs: [],
+    }),
+    evidence,
+  });
+  if (graph === undefined) throw new Error("brief test graph must be present");
+  return graph;
 }
 
 function capture() {

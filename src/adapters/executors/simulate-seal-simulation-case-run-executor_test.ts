@@ -26,7 +26,7 @@
  *    replay returns the same project revision without writing a new snapshot
  */
 
-import { assertEquals, assertExists, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -60,6 +60,7 @@ import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   SimulateSealSimulationCaseRunExecutor,
   SIMULATION_CASE_CAPTURE_DESCRIPTOR,
@@ -521,7 +522,11 @@ Deno.test(
         new ExactThreadCompletionEvidenceValidator(snapshots),
         nowFn,
         { operations: makeTestPlanOperationRegistry() },
-        new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+        new ExactInitialBaselineEvidenceValidator(
+          snapshots,
+          baselineCaptures,
+          approvedBriefSourceAnalysisFixture(directory),
+        ),
       );
 
       project = await commands.publishPlan(AGENT, {
@@ -559,6 +564,7 @@ Deno.test(
         projects,
         commands,
         captures: baselineCaptures,
+        ...approvedBriefSourceAnalysisFixture(directory),
         snapshots,
         lease: new FileEngineeringProjectRunLease(
           `${directory}/baseline-leases`,
@@ -697,6 +703,15 @@ Deno.test(
       const resultSnapshot = await snapshots.get(run.resultSnapshot!.snapshotId);
       assertExists(resultSnapshot, "Result snapshot must be readable after CAS save.");
       validateThreadSnapshot(resultSnapshot); // Throws if invalid — proves structural correctness.
+      assertEquals(resultSnapshot.schemaVersion, "1.1");
+
+      const historicalBaseline = await snapshots.get(r1Ref.snapshotId);
+      assertExists(historicalBaseline);
+      assertEquals(
+        historicalBaseline.analysisGraph,
+        undefined,
+        "The seal must promote a successor, never mutate a historical basis snapshot.",
+      );
 
       // The snapshot must carry exactly one simulation-case artifact.
       const sealArtifacts = resultSnapshot.artifacts.filter(
@@ -713,6 +728,24 @@ Deno.test(
         sealArtifacts[0]!.version,
         caseDigest,
         "Artifact version must equal the caseDigest (cliquet key).",
+      );
+      assert(
+        resultSnapshot.analysisGraph?.relations.every((relation) =>
+          relation.assertion.evidence.length === 1 &&
+          relation.assertion.evidence[0]!.id === sealArtifacts[0]!.id &&
+          relation.assertion.evidence[0]!.fingerprint.digest ===
+            sealArtifacts[0]!.fingerprint.digest &&
+          relation.assertion.from.kind === "simulation-case" &&
+          relation.assertion.relation === "structural-incidence"
+        ),
+        "The graph must contain only case declarations evidenced by the exact seal artifact.",
+      );
+      assert(
+        !resultSnapshot.analysisGraph?.relations.some((relation) =>
+          relation.assertion.from.kind === "parameter" &&
+          relation.assertion.to.kind === "metric"
+        ),
+        "A case seal must not invent a parameter-to-metric influence.",
       );
 
       // The capture must be readable and byte-stable (CAS integrity).
@@ -852,7 +885,11 @@ async function queuedSealFixture(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     nowFn,
     { operations: makeTestPlanOperationRegistry() },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
 
   project = await commands.publishPlan(AGENT, {
@@ -888,6 +925,7 @@ async function queuedSealFixture(
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-09T10:01:00.000Z",

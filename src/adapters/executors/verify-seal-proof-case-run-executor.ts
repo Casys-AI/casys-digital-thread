@@ -84,6 +84,7 @@ import {
   type MechanicalProofCase,
   validateMechanicalProofCase,
 } from "../../domain/analysis/mechanical-proof-case.ts";
+import { buildMechanicalProofCaseAnalysisGraph } from "../../domain/analysis/mechanical-proof-case-analysis-graph.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -119,7 +120,10 @@ import {
   REQUIREMENTS_CAPTURE_SCHEMA,
   requireRequirementsTip,
 } from "./model-write-requirements-run-executor.ts";
-import { GEOMETRY_BUNDLE_CAPTURE_SCHEMA } from "./design-write-geometry-run-executor.ts";
+import {
+  GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+  PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+} from "./design-write-geometry-run-executor.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -652,6 +656,11 @@ export class VerifySealProofCaseRunExecutor {
         violations: [],
         provenance,
         proposedActions: [],
+        analysisGraph: buildMechanicalProofCaseAnalysisGraph({
+          proofCase: validatedCase,
+          proofFingerprint: { algorithm: "sha256", digest: proofDigest },
+          evidence: { id: artifact.id, fingerprint: artifact.fingerprint },
+        }),
       };
 
       const applied = applyThreadSnapshotExtensionIfNew(
@@ -906,12 +915,18 @@ export class VerifySealProofCaseRunExecutor {
       !geoCaptureRecord ||
       typeof geoCaptureRecord !== "object" ||
       Array.isArray(geoCaptureRecord) ||
-      (geoCaptureRecord as Record<string, unknown>).schemaVersion !==
-        GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+      ![
+        PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+        GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+      ].includes(
+        (geoCaptureRecord as Record<string, unknown>).schemaVersion as
+          | typeof PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+          | typeof GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+      )
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `FEA proof seal requires a geometry-capture/2.0 capture; ` +
+        `FEA proof seal requires a geometry bundle capture (2.0 or 2.1); ` +
           `got schemaVersion="${
             (geoCaptureRecord as Record<string, unknown>)?.schemaVersion
           }".`,

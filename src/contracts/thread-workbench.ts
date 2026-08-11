@@ -30,13 +30,14 @@ export interface ThreadGraphRef {
     | "violation"
     | "change"
     | "action"
+    | "analysis-node"
     | "part-definition"
     | "part-usage";
   id: string;
 }
 
 /** Canonical provenance relations plus explicit browser-safe structural facts. */
-export type ThreadGraphRelation =
+export type ProvenanceThreadGraphRelation =
   | "changes"
   | "derived_from"
   | "traces_to"
@@ -52,6 +53,79 @@ export type ThreadGraphRelation =
   | "typed_by"
   | "represented_by";
 
+export type ThreadAnalysisRelation =
+  | "semantic-binding"
+  | "declared-dependency"
+  | "static-value-flow"
+  | "structural-incidence"
+  | "runtime-consumption"
+  | "measured-local-sensitivity"
+  | "projection-of";
+
+export type ThreadGraphRelation =
+  | ProvenanceThreadGraphRelation
+  | ThreadAnalysisRelation;
+
+export interface ThreadAnalysisSemanticRef {
+  domain: "brief" | "sysml" | "cad" | "modelica" | "calculix" | "thread";
+  kind: string;
+  id: string;
+  basisFingerprint?: string;
+}
+
+export interface ThreadAnalysisNodeDetail {
+  semanticRef: ThreadAnalysisSemanticRef;
+}
+
+export interface ThreadAnalysisQuantity {
+  value: number;
+  unit: string;
+}
+
+export type ThreadAnalysisScope =
+  | { kind: "basis"; basisFingerprint: string }
+  | {
+    kind: "source-span";
+    source: ThreadAnalysisSemanticRef;
+    basisFingerprint: string;
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  }
+  | {
+    kind: "scenario";
+    scenario: ThreadAnalysisSemanticRef;
+    basisFingerprint: string;
+  }
+  | {
+    kind: "local-neighborhood";
+    parameter: ThreadAnalysisSemanticRef;
+    basisFingerprint: string;
+    lower: ThreadAnalysisQuantity;
+    upper: ThreadAnalysisQuantity;
+  };
+
+export interface ThreadAnalysisMeasurement {
+  method: "forward-finite-difference";
+  basePoint: ThreadAnalysisQuantity;
+  perturbationStep: ThreadAnalysisQuantity;
+  responseAtBase: ThreadAnalysisQuantity;
+  responseAtPerturbed: ThreadAnalysisQuantity;
+  derivative: ThreadAnalysisQuantity;
+}
+
+export interface ThreadAnalysisEdgeDetail {
+  assertionId: string;
+  epistemicBasis: "declared" | "inferred" | "observed";
+  assertedBy: {
+    kind: "agent" | "analyzer" | "provider" | "server";
+    id: string;
+    version?: string;
+  };
+  evidence: Array<{ id: string; fingerprint: string }>;
+  scope: ThreadAnalysisScope;
+  measurement?: ThreadAnalysisMeasurement;
+}
+
 export interface ThreadGraphNode {
   /** Stable browser key, distinct from the canonical entity id. */
   id: string;
@@ -59,6 +133,8 @@ export interface ThreadGraphNode {
   entityKind: ThreadGraphRef["kind"];
   /** Canonical artifact kind, present only for artifact nodes. */
   artifactKind?: string;
+  /** Exact semantic identity, present only for analysis-node read-model nodes. */
+  analysis?: ThreadAnalysisNodeDetail;
   label: string;
   system: string;
   freshness: ThreadFreshness;
@@ -94,8 +170,10 @@ export interface ThreadGraphEdge {
   to: ThreadGraphRef;
   relation: ThreadGraphRelation;
   rationale: string;
-  origin: "provenance" | "structure";
+  origin: "provenance" | "structure" | "analysis";
   attestation?: ThreadGraphEdgeAttestation;
+  /** Complete assertion detail, present exactly when origin is analysis. */
+  analysis?: ThreadAnalysisEdgeDetail;
 }
 
 export interface ThreadGraph {
@@ -256,6 +334,8 @@ export interface ThreadRequirement {
   id: string;
   label: string;
   source: string;
+  /** Exact structured SysML element identity; never inferred from display text. */
+  sourceElementId: string;
   expression: string;
   status: "pass" | "fail" | "unresolved";
   observationIds: string[];

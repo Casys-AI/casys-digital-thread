@@ -2,7 +2,7 @@
  * Read-only Product projection for canonical geometry bundles.
  *
  * This projector never infers CAD identity from a label or a content digest.
- * It rereads the active geometry-capture/2.0, verifies its exact sealed graph,
+ * It rereads the active geometry bundle capture, verifies its exact sealed graph,
  * and attaches the seal-owned authoritative STEP artifact id to each exact
  * SysON PartUsage occurrence. When the same signed bundle also includes GLB,
  * that presentation asset follows the identical PartDefinition mapping.
@@ -44,8 +44,10 @@ import {
 } from "../../domain/thread/thread-snapshot.ts";
 import { GEOMETRY_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
 
-const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
-const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.0" as const;
+const PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
+const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.2" as const;
+const PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.0" as const;
+const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.1" as const;
 
 export interface GenericGeometryCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
@@ -114,7 +116,7 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
     if (result.kind === "legacy") {
       return withoutCad(
         architectureCatalog,
-        "The active geometry-capture/1.1 is a legacy assembly-only seal; it contains no independent PartDefinition STEP mapping.",
+        "The active geometry capture is an assembly-only seal; it contains no independent PartDefinition STEP mapping.",
       );
     }
     return attachExactCadBindings(architectureCatalog, result.bundle);
@@ -172,7 +174,9 @@ async function verifyGeometryCapture(
   }
   const schemaVersion = capture.schemaVersion;
   if (
+    schemaVersion !== PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_CAPTURE_SCHEMA &&
+    schemaVersion !== PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_BUNDLE_CAPTURE_SCHEMA
   ) {
     fail(
@@ -187,7 +191,10 @@ async function verifyGeometryCapture(
   const sealedAt = canonicalInstant(capture.sealedAt, "sealedAt");
   assertExactPrimary(primary, trustedRunId, sealedAt);
 
-  if (schemaVersion === GEOMETRY_CAPTURE_SCHEMA) {
+  if (
+    schemaVersion === PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA ||
+    schemaVersion === GEOMETRY_CAPTURE_SCHEMA
+  ) {
     return { kind: "legacy" };
   }
 
@@ -200,6 +207,7 @@ async function verifyGeometryCapture(
     "architectureBasis",
     "previewProducer",
     "sourceScripts",
+    ...(schemaVersion === GEOMETRY_BUNDLE_CAPTURE_SCHEMA ? ["sourceAnalyses"] : []),
     "sealedAt",
   ], "geometry capture");
   const draftDigest = digest(capture.draftDigest, "draftDigest");
@@ -212,6 +220,9 @@ async function verifyGeometryCapture(
     architectureArtifact,
   );
   await assertCanonicalSources(capture.sourceScripts, manifest);
+  if (schemaVersion === GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
+    await assertSourceAnalysisReferences(capture.sourceAnalyses, manifest);
+  }
   assertExactPrimaryInputs(
     snapshot,
     primary,
@@ -445,6 +456,121 @@ async function assertCanonicalSources(
       fail("A canonical geometry source does not match its signed SHA-256.");
     }
   }
+}
+
+async function assertSourceAnalysisReferences(
+  value: unknown,
+  manifest: GeometryBundleManifest,
+): Promise<void> {
+  const analyses = exactObject(
+    value,
+    ["assembly", "partDefinitions"],
+    "sourceAnalyses",
+  );
+  const assembly = sourceAnalysisReference(
+    analyses.assembly,
+    "sourceAnalyses.assembly",
+  );
+  if (
+    assembly.sourceId !== "cad-assembly" ||
+    assembly.selector.kind !== "assembly" ||
+    !manifest.scriptHash ||
+    !fingerprintsEqual(assembly.sourceFingerprint, manifest.scriptHash)
+  ) {
+    fail("The assembly source-analysis reference is not exact.");
+  }
+
+  const definitions = array(
+    analyses.partDefinitions,
+    "sourceAnalyses.partDefinitions",
+  );
+  if (definitions.length !== manifest.partDefinitions.length) {
+    fail("Source analyses do not cover the signed PartDefinitions.");
+  }
+  for (const [index, raw] of definitions.entries()) {
+    const entry = exactObject(
+      raw,
+      ["elementId", "analysis"],
+      `sourceAnalyses.partDefinitions[${index}]`,
+    );
+    const definition = manifest.partDefinitions[index]!;
+    const analysis = sourceAnalysisReference(
+      entry.analysis,
+      `sourceAnalyses.partDefinitions[${index}].analysis`,
+    );
+    const elementId = nonEmpty(
+      entry.elementId,
+      `sourceAnalyses.partDefinitions[${index}].elementId`,
+    );
+    const selector = analysis.selector;
+    if (
+      elementId !== definition.elementId ||
+      selector.kind !== "part-definition" ||
+      selector.elementId !== definition.elementId ||
+      !definition.scriptHash ||
+      !fingerprintsEqual(analysis.sourceFingerprint, definition.scriptHash)
+    ) {
+      fail(`PartDefinition ${index} source-analysis identity is not exact.`);
+    }
+    const elementIdFingerprint = await textFingerprint(definition.elementId);
+    if (
+      analysis.sourceId !==
+        `cad-part-definition:${elementIdFingerprint.digest}`
+    ) {
+      fail(`PartDefinition ${index} source-analysis id is not selector-derived.`);
+    }
+  }
+}
+
+function sourceAnalysisReference(
+  value: unknown,
+  path: string,
+): {
+  readonly sourceId: string;
+  readonly selector:
+    | { readonly kind: "assembly" }
+    | { readonly kind: "part-definition"; readonly elementId: string };
+  readonly sourceFingerprint: ContentFingerprint;
+} {
+  const reference = exactObject(
+    value,
+    [
+      "sourceId",
+      "selector",
+      "sourceFingerprint",
+      "sourceCaptureFingerprint",
+      "analysisFingerprint",
+    ],
+    path,
+  );
+  const selectorValue = object(reference.selector, `${path}.selector`);
+  const selector = selectorValue.kind === "assembly"
+    ? (assertOnlyKeys(selectorValue, ["kind"], `${path}.selector`), {
+      kind: "assembly" as const,
+    })
+    : (() => {
+      assertOnlyKeys(selectorValue, ["kind", "elementId"], `${path}.selector`);
+      if (selectorValue.kind !== "part-definition") {
+        fail(`${path}.selector.kind is unsupported.`);
+      }
+      return {
+        kind: "part-definition" as const,
+        elementId: nonEmpty(selectorValue.elementId, `${path}.selector.elementId`),
+      };
+    })();
+  exactFingerprint(
+    reference.sourceCaptureFingerprint,
+    `${path}.sourceCaptureFingerprint`,
+  );
+  exactFingerprint(reference.analysisFingerprint, `${path}.analysisFingerprint`);
+  return {
+    sourceId: nonEmpty(reference.sourceId, `${path}.sourceId`),
+    selector,
+    sourceFingerprint: exactFingerprint(
+      reference.sourceFingerprint,
+      `${path}.sourceFingerprint`,
+    ),
+  };
 }
 
 function assertExactPrimaryInputs(
@@ -934,7 +1060,7 @@ function attachExactCadBindings(
     ...catalog,
     rationale:
       "This Product Structure is derived from the exact architecture capture and " +
-      "the unique active geometry-capture/2.0. Each PartUsage maps by signed element " +
+      "the unique active geometry bundle capture. Each PartUsage maps by signed element " +
       "identity to its PartDefinition and authoritative STEP; labels are never joins." +
       presentationRationale,
     components,

@@ -11,6 +11,7 @@ import { SYSON_MODEL_SEED_OPERATION } from "../../../domain/platform/syson-model
 import {
   ApprovedBriefBaselineRunExecutor,
 } from "../approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -1380,7 +1381,11 @@ async function queuedOracleRequirements(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
 
   project = await commands.publishPlan(AGENT, {
@@ -1418,6 +1423,7 @@ async function queuedOracleRequirements(
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-03T13:30:00.000Z",

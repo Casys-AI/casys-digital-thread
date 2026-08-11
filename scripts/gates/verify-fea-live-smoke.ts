@@ -37,6 +37,10 @@ import { loadFleetManifest, ManifestError } from "../../src/adapters/manifest.ts
 import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
 import { parseFeaSolverResponse } from "../../src/adapters/captures/fea-solver-capture.ts";
 import {
+  ephemeralFeaExportCleanupScript,
+  validateEphemeralFeaExportCleanup,
+} from "./fea-build123d-cleanup.ts";
+import {
   LIVE_SMOKE_BOX_DIMENSIONS_MM,
   LIVE_SMOKE_MESH_SIZE_MM,
   liveSmokeSelections,
@@ -396,26 +400,11 @@ result = bp.part
       const cleanupResult = await build123dClient.callTool({
         name: "build123d_execute",
         arguments: {
-          script: [
-            "from build123d import Box",
-            "import os",
-            `path = ${JSON.stringify(exportPath)}`,
-            "if os.path.exists(path):",
-            "    os.remove(path)",
-            "result = Box(1, 1, 1)",
-          ].join("\n"),
+          script: ephemeralFeaExportCleanupScript(exportPath),
         },
       });
-      if (
-        cleanupResult.structuredContent.schemaVersion !== "1.0" ||
-        cleanupResult.structuredContent.kind !== "execution"
-      ) {
-        cleanupFailures.push(
-          "build123d cleanup did not return a successful execution result.",
-        );
-      } else {
-        console.log(`  Export file cleaned up.`);
-      }
+      validateEphemeralFeaExportCleanup(cleanupResult.structuredContent);
+      console.log(`  Export file cleaned up.`);
     } catch (error) {
       cleanupFailures.push(
         `export cleanup failed: ${

@@ -3,6 +3,10 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type {
+  DynamicSystemRun,
+  SimulationCaseIdentity as PortSimulationCaseIdentity,
+} from "../../domain/analysis/simulation-capabilities.ts";
 
 // ── Schema version constants ─────────────────────────────────────────────────
 
@@ -61,39 +65,7 @@ type RunArtifactKind = (typeof ALLOWED_ARTIFACT_KINDS)[number];
  * re-validated simulation-case artifact; the capture layer never looks up
  * or re-derives any of these values from the provider response.
  */
-export interface SimulationCaseIdentity {
-  readonly kit: {
-    /** Provider model id — compared verbatim against run.model.id. */
-    readonly modelId: string;
-    readonly modelVersion: string;
-    /** Lowercase hex-64 SHA-256 of the Modelica model file. */
-    readonly modelSha256: string;
-  };
-  readonly scenario: {
-    readonly id: string;
-    /** Lowercase hex-64 SHA-256 of the scenario definition. */
-    readonly sha256: string;
-  };
-  /**
-   * Exact parameters sorted by id (canonical form guarantees this).
-   * The resolved_parameters block from the provider must match exactly:
-   * same ids, same values, same units — no surplus, no missing.
-   */
-  readonly parameters: readonly {
-    readonly id: string;
-    readonly value: number;
-    readonly unit: string;
-  }[];
-  /**
-   * Expected metrics with their units.
-   * Every metric listed here must appear in the provider response with the
-   * same unit. Surplus provider metrics are conserved in the parsed output.
-   */
-  readonly expectedMetrics: readonly {
-    readonly id: string;
-    readonly unit: string;
-  }[];
-}
+export type SimulationCaseIdentity = PortSimulationCaseIdentity;
 
 /** Minimal envelope extracted before the WAL provider-run-known transition. */
 export interface ModelicaEnvelopeMinimal {
@@ -124,39 +96,7 @@ export interface ParsedQuantity {
  * normalized form used by assertSimulateMatchesRunGet to verify that the
  * provider persisted exactly the same data that simulate returned.
  */
-export interface ParsedModelicaRun {
-  readonly runId: string;
-  readonly startedAt: string;
-  readonly completedAt: string;
-  readonly fingerprint: ContentFingerprint;
-  readonly model: {
-    readonly id: string;
-    readonly version: string;
-    readonly fingerprint: ContentFingerprint;
-  };
-  readonly scenario: {
-    readonly id: string;
-    readonly fingerprint: ContentFingerprint;
-  };
-  readonly engine: {
-    readonly name: string;
-    readonly version: string;
-    readonly mslVersion: string;
-  };
-  /** Exact parameter values resolved by the provider; equal to case.parameters. */
-  readonly resolvedParameters: readonly ParsedQuantity[];
-  /** All metrics returned by the provider; each expectedMetric is guaranteed present. */
-  readonly metrics: readonly ParsedQuantity[];
-  readonly artifacts: readonly ParsedRunArtifact[];
-  readonly warnings: readonly string[];
-  /**
-   * deterministicJson of the raw run_get structured content.
-   *
-   * Retained verbatim so that assertSimulateMatchesRunGet can compare both
-   * normalized representations without needing the original run_get response.
-   */
-  readonly canonicalEnvelopeText: string;
-}
+export type ParsedModelicaRun = DynamicSystemRun;
 
 /** Canonical text and its SHA-256 fingerprint digest for a CAS object. */
 export interface CasEnvelope {

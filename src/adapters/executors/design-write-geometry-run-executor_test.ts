@@ -45,11 +45,19 @@ import {
   GEOMETRY_CAPTURE_DESCRIPTOR,
   GEOMETRY_CAPTURE_URI_PREFIX,
   GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+  GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
+import { PythonCadSourceAnalyzer } from "../analyzers/python-cad-source-analyzer.ts";
+import type {
+  SysmlSourceAnalysisReader,
+  VerifiedSysmlSourceAnalysis,
+} from "../captures/sysml-source-analysis-capture.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import type {
@@ -93,7 +101,10 @@ import {
   LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
 } from "../captures/geometry-draft-capture.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
-import { ARCHITECTURE_CAPTURE_SCHEMA } from "./model-write-architecture-run-executor.ts";
+import {
+  ARCHITECTURE_CAPTURE_SCHEMA,
+  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+} from "../captures/architecture-capture.ts";
 import {
   type AnyGeometryManifest,
   encodeGeometryDecisionParameters,
@@ -118,6 +129,28 @@ const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
 const HUMAN = {
   kind: "human" as const,
   actorId: "mcp-elicitation:paired-chat@1",
+};
+
+function geometrySourceAnalysisFor(directory: string) {
+  return {
+    sourceCaptures: new FileCaptureStore({
+      ...GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/geometry-source-captures`,
+    }),
+    analysisCaptures: new FileCaptureStore({
+      ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/source-analysis-captures`,
+    }),
+    frontend: new PythonCadSourceAnalyzer(),
+  } as const;
+}
+
+const acceptingSysmlSourceAnalysisReader: SysmlSourceAnalysisReader = {
+  reopen(value) {
+    return Promise.resolve(
+      { reference: structuredClone(value) } as unknown as VerifiedSysmlSourceAnalysis,
+    );
+  },
 };
 const PROJECT_ID = "project:geo-test-01";
 
@@ -929,7 +962,14 @@ Deno.test("geometry bundle predecessor resolution refuses a self-hashed capture 
   );
 });
 
-for (const schemaVersion of ["geometry-capture/1.1", "geometry-capture/2.0"] as const) {
+for (
+  const schemaVersion of [
+    "geometry-capture/1.1",
+    "geometry-capture/1.2",
+    "geometry-capture/2.0",
+    "geometry-capture/2.1",
+  ] as const
+) {
   Deno.test(
     `geometry bundle predecessor resolution refuses a shallow self-hashed ${schemaVersion} capture with the correct run`,
     async () => {
@@ -938,7 +978,7 @@ for (const schemaVersion of ["geometry-capture/1.1", "geometry-capture/2.0"] as 
         operation: DESIGN_WRITE_GEOMETRY_OPERATION,
         trustedRunId: "run:expected",
         manifest: {
-          schemaVersion: schemaVersion === "geometry-capture/1.1"
+          schemaVersion: schemaVersion.startsWith("geometry-capture/1.")
             ? GEOMETRY_MANIFEST_SCHEMA
             : GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
         },
@@ -988,6 +1028,8 @@ interface GeoFixture {
   readonly archCaptures: FileCaptureStore<"architecture-capture">;
   readonly draftCaptures: FileCaptureStore<"geometry-draft">;
   readonly geoCaptures: FileCaptureStore<"geometry-capture">;
+  readonly sourceAnalysis: ReturnType<typeof geometrySourceAnalysisFor>;
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly baselineRef: EngineeringThreadSnapshotRef;
   readonly draftAssetDirectory: string;
   readonly canonicalAssetDirectory: string;
@@ -1022,7 +1064,10 @@ async function buildGeoFixture(
       | "duplicate-id"
       | "package-definition-collision"
       | "usage-package-collision"
-      | "wrong-trusted-run";
+      | "wrong-trusted-run"
+      | "missing-source-analyses"
+      | "malformed-source-analysis"
+      | "foreign-source-analysis";
     architectureArtifactDefect?: "producer";
     includeParallelSibling?: boolean;
     bundleV2?: boolean;
@@ -1053,6 +1098,7 @@ async function buildGeoFixture(
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: `${directory}/geo-captures`,
   });
+  const sourceAnalysis = geometrySourceAnalysisFor(directory);
   const draftAssetDirectory = `${directory}/draft-assets`;
   const canonicalAssetDirectory = `${directory}/canonical-assets`;
 
@@ -1112,7 +1158,11 @@ async function buildGeoFixture(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, briefCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      briefCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
 
   project = await commands.publishPlan(AGENT, {
@@ -1158,6 +1208,7 @@ async function buildGeoFixture(
     projects,
     commands,
     captures: briefCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-08T12:01:00.000Z",
@@ -1238,8 +1289,34 @@ async function buildGeoFixture(
         invalidatedByChangeIds: [],
       },
     };
+    const currentArchitectureCapture =
+      opts.architectureCaptureDefect === "missing-source-analyses" ||
+      opts.architectureCaptureDefect === "malformed-source-analysis" ||
+      opts.architectureCaptureDefect === "foreign-source-analysis";
+    const sourceAnalysisReference = {
+      sourceId: "sysml-source:geometry-test-architecture",
+      selector: {
+        kind: "full-package" as const,
+        packageName: "GeometryTestArchitecture",
+      },
+      runId: opts.architectureCaptureDefect === "foreign-source-analysis"
+        ? "run:foreign-architecture"
+        : "run:architecture",
+      operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+      sourceFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+      sourceCaptureFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "b".repeat(64),
+      },
+      analysisFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "c".repeat(64),
+      },
+    };
     const architectureCapture = {
-      schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
+      schemaVersion: currentArchitectureCapture
+        ? ARCHITECTURE_CAPTURE_SCHEMA
+        : ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
       operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
       trustedRunId: "run:architecture",
       packageName: "GeometryTestArchitecture",
@@ -1312,6 +1389,12 @@ async function buildGeoFixture(
           }]
           : []),
       ],
+      ...(opts.architectureCaptureDefect === "malformed-source-analysis"
+        ? { sourceAnalyses: [{ malformed: true }] }
+        : currentArchitectureCapture &&
+            opts.architectureCaptureDefect !== "missing-source-analyses"
+        ? { sourceAnalyses: [sourceAnalysisReference] }
+        : {}),
       insertedAt: "2026-08-08T12:01:30.000Z",
     };
     if (opts.architectureCaptureDefect === "duplicate-id") {
@@ -1571,6 +1654,7 @@ async function buildGeoFixture(
         draftCaptures,
         {
           build123dService: "mcp-build123d-sandbox",
+          sourceAnalysis,
           previewRunId: "run:geometry-preview-v2",
           materializeAsset: async (digest) => {
             const bytes = previewBytes.get(digest);
@@ -1658,6 +1742,7 @@ async function buildGeoFixture(
         draftCaptures,
         {
           build123dService: "mcp-build123d-sandbox",
+          sourceAnalysis,
           previewRunId: "run:geometry-preview",
           materializeAsset: async (digest) => {
             assertEquals(digest, assetDigest);
@@ -1927,6 +2012,8 @@ async function buildGeoFixture(
     archCaptures,
     draftCaptures,
     geoCaptures,
+    sourceAnalysis,
+    sysmlSourceAnalysis: acceptingSysmlSourceAnalysisReader,
     baselineRef: geometryBasis,
     draftAssetDirectory,
     canonicalAssetDirectory,
@@ -1946,7 +2033,10 @@ function makeExecutor(
     commands: fixture.commands,
     snapshots,
     architectureCaptures: fixture.archCaptures,
+    sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
     geometryDraftCaptures: fixture.draftCaptures,
+    geometrySourceCaptures: fixture.sourceAnalysis.sourceCaptures,
+    sourceAnalysisCaptures: fixture.sourceAnalysis.analysisCaptures,
     geometryCaptures,
     lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
     draftAssetDirectory: fixture.draftAssetDirectory,
@@ -2073,6 +2163,7 @@ async function queueSuccessiveGeometrySeal(
     fixture.draftCaptures,
     {
       build123dService: "mcp-build123d-sandbox",
+      sourceAnalysis: fixture.sourceAnalysis,
       previewRunId: "run:geometry-preview-second",
       materializeAsset: (digest) => {
         assertEquals(digest, existingBinary.fingerprint.digest);
@@ -2289,6 +2380,7 @@ async function queueGeometryBundleUpgrade(
     fixture.draftCaptures,
     {
       build123dService: "mcp-build123d-sandbox",
+      sourceAnalysis: fixture.sourceAnalysis,
       previewRunId: "run:geometry-preview-upgrade-v2",
       materializeAsset: async (digest) => {
         const suffix = [...digestBySuffix].find(([, value]) => value === digest)?.[0];
@@ -2583,6 +2675,50 @@ Deno.test(
   },
 );
 
+Deno.test("geometry sealing refuses a missing passive source analysis before claim or canonical writes", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-source-analysis-missing-" });
+  try {
+    const fixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const before = await fixture.projects.get(PROJECT_ID);
+    assertExists(before);
+    const analysisDirectory = `${tmpDir}/source-analysis-captures`;
+    const analysisFiles = (await Array.fromAsync(Deno.readDir(analysisDirectory)))
+      .filter((entry) => entry.isFile);
+    const cadAnalysisFiles = (await Promise.all(
+      analysisFiles.map(async (entry) => ({
+        entry,
+        analysis: JSON.parse(
+          await Deno.readTextFile(`${analysisDirectory}/${entry.name}`),
+        ) as { source?: { role?: unknown } },
+      })),
+    )).filter((candidate) => candidate.analysis.source?.role === "cad-script");
+    assertEquals(cadAnalysisFiles.length, 1);
+    await Deno.remove(`${analysisDirectory}/${cadAnalysisFiles[0]!.entry.name}`);
+
+    await assertRejects(
+      () =>
+        makeExecutor(fixture, tmpDir).execute(
+          AGENT,
+          executionCommand(fixture),
+        ),
+      EngineeringProjectCommandError,
+      "Geometry source analysis is not durably readable",
+    );
+    const unchanged = await fixture.projects.get(PROJECT_ID);
+    assertEquals(unchanged?.revision, before.revision);
+    assertEquals(
+      unchanged?.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
+      "queued",
+    );
+    await assertRejects(
+      () => Deno.stat(`${tmpDir}/geo-captures`),
+      Deno.errors.NotFound,
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
 Deno.test("a reviewed geometry draft becomes valid canonical thread evidence bound to its architecture", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-happy-path-" });
   try {
@@ -2741,9 +2877,10 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     const captureText = await fixture.geoCaptures.read(geometry.fingerprint);
     assertExists(captureText);
     const capture = JSON.parse(captureText);
-    assertEquals(capture.schemaVersion, "geometry-capture/2.0");
+    assertEquals(capture.schemaVersion, "geometry-capture/2.1");
     assertEquals(capture.manifest.schemaVersion, "geometry-manifest/2.0");
     assertEquals(capture.sourceScripts.partDefinitions.length, 2);
+    assertEquals(capture.sourceAnalyses.partDefinitions.length, 2);
     assertEquals(
       capture.sourceScripts.partDefinitions[0].elementId,
       "part-definition:frame",
@@ -3720,6 +3857,10 @@ Deno.test("a third geometry generation refuses a v2 predecessor with broken own 
             brokenBasis,
             nextParams,
             upgradeFixture.geoCaptures,
+            {
+              geometrySourceCaptures: upgradeFixture.sourceAnalysis.sourceCaptures,
+              sourceAnalysisCaptures: upgradeFixture.sourceAnalysis.analysisCaptures,
+            },
           ),
         EngineeringProjectCommandError,
         testCase.message,
@@ -3739,6 +3880,10 @@ Deno.test("a third geometry generation refuses a v2 predecessor with broken own 
             withPriorGeometryBinaryGraphDefect(exactBasis, defect),
             nextParams,
             upgradeFixture.geoCaptures,
+            {
+              geometrySourceCaptures: upgradeFixture.sourceAnalysis.sourceCaptures,
+              sourceAnalysisCaptures: upgradeFixture.sourceAnalysis.analysisCaptures,
+            },
           ),
         EngineeringProjectCommandError,
         message,
@@ -4138,7 +4283,7 @@ Deno.test("geometry sealing rejects duplicate architecture graph identities befo
     await assertGeometrySealRejectedBeforeCanonicalWrites(
       fixture,
       tmpDir,
-      "Package and PartDefinition ids",
+      "PartDefinition 1 is ambiguous",
     );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
@@ -4155,7 +4300,7 @@ Deno.test("geometry sealing rejects Package to PartDefinition identity collision
     await assertGeometrySealRejectedBeforeCanonicalWrites(
       fixture,
       tmpDir,
-      "Package and PartDefinition ids",
+      "PartDefinition 0 is ambiguous",
     );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
@@ -4172,7 +4317,7 @@ Deno.test("geometry sealing rejects Package to PartUsage identity collisions bef
     await assertGeometrySealRejectedBeforeCanonicalWrites(
       fixture,
       tmpDir,
-      "PartUsage ids must be globally unique",
+      "PartUsage 0/0 is ambiguous",
     );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
@@ -4196,6 +4341,37 @@ Deno.test("geometry sealing binds an empty-component architecture capture to its
     await Deno.remove(tmpDir, { recursive: true });
   }
 });
+
+for (
+  const [defect, message] of [
+    ["missing-source-analyses", "non-exact fields"],
+    ["malformed-source-analysis", "sourceAnalyses[0] is invalid"],
+    ["foreign-source-analysis", "names another run"],
+  ] as const
+) {
+  Deno.test(
+    `geometry sealing rejects current architecture capture defect ${defect}`,
+    async () => {
+      const tmpDir = await Deno.makeTempDir({
+        prefix: `geo-architecture-${defect}-`,
+      });
+      try {
+        const fixture = await buildGeoFixture(tmpDir, {
+          mode: "happy",
+          emptyComponents: true,
+          architectureCaptureDefect: defect,
+        });
+        await assertGeometrySealRejectedBeforeCanonicalWrites(
+          fixture,
+          tmpDir,
+          message,
+        );
+      } finally {
+        await Deno.remove(tmpDir, { recursive: true });
+      }
+    },
+  );
+}
 
 Deno.test("geometry sealing rejects an inexact architecture artifact producer before canonical writes", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-architecture-producer-" });

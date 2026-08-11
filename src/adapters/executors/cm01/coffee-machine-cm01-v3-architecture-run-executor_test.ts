@@ -25,6 +25,7 @@ import {
 } from "../../../orchestration/operations/registry.ts";
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { FileEngineeringProjectRunLease } from "../../stores/file-engineering-project-run-lease.ts";
@@ -413,7 +414,11 @@ async function queuedArchitecture(directory: string) {
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: OPERATIONS },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
   project = await commands.publishPlan(AGENT, {
     ...context("publish-cm01-plan", project.revision),
@@ -448,6 +453,7 @@ async function queuedArchitecture(directory: string) {
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-03T13:30:00.000Z",

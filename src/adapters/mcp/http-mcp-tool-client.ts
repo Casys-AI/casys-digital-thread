@@ -1,13 +1,7 @@
-const MCP_PROTOCOL_VERSION = "2026-07-28";
-
-const CLIENT_META = {
-  "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
-  "io.modelcontextprotocol/clientCapabilities": {},
-  "io.modelcontextprotocol/clientInfo": {
-    name: "casys-digital-thread-orchestrator",
-    version: "0.1.0",
-  },
-};
+import {
+  StatelessMcpHttpTransport,
+  StatelessMcpTransportError,
+} from "./stateless-mcp-http-transport.ts";
 
 export interface McpToolCall {
   name: string;
@@ -52,21 +46,10 @@ export class McpToolCallError extends Error {
  * engineering computation may be expensive or have durable side effects.
  */
 export class HttpMcpToolClient implements McpToolClient {
-  readonly #mcpUrl: string;
-  readonly #fetch: typeof fetch;
-  readonly #timeoutMs: number;
-  #nextRequestId = 1;
+  readonly #http: StatelessMcpHttpTransport;
 
   constructor(options: HttpMcpToolClientOptions) {
-    if (options.mcpUrl.trim() === "") {
-      throw new TypeError("mcpUrl must be a non-empty URL");
-    }
-    this.#mcpUrl = options.mcpUrl;
-    this.#fetch = options.fetch ?? fetch;
-    this.#timeoutMs = options.timeoutMs ?? 120_000;
-    if (!Number.isSafeInteger(this.#timeoutMs) || this.#timeoutMs < 1) {
-      throw new TypeError("timeoutMs must be a positive integer");
-    }
+    this.#http = new StatelessMcpHttpTransport(options);
   }
 
   async callTool(call: McpToolCall): Promise<McpToolResult> {
@@ -147,91 +130,34 @@ export class HttpMcpToolClient implements McpToolClient {
     if (call.name.trim() === "") {
       throw new TypeError("tool name must be a non-empty string");
     }
-    const requestId = this.#nextRequestId++;
-    const body = {
-      jsonrpc: "2.0",
-      id: requestId,
-      method: "tools/call",
-      params: {
-        _meta: CLIENT_META,
-        name: call.name,
-        arguments: call.arguments ?? {},
-      },
-    };
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
-    let response: Response;
+    let result: Record<string, unknown>;
     try {
-      response = await this.#fetch(this.#mcpUrl, {
-        method: "POST",
-        headers: {
-          "accept": "application/json",
-          "content-type": "application/json",
-          "mcp-protocol-version": MCP_PROTOCOL_VERSION,
-          "mcp-method": "tools/call",
-          "mcp-name": call.name,
+      result = await this.#http.request({
+        method: "tools/call",
+        label: call.name,
+        name: call.name,
+        params: {
+          name: call.name,
+          arguments: call.arguments ?? {},
         },
-        body: JSON.stringify(body),
-        signal: controller.signal,
       });
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        throw new McpToolCallError(
-          `${call.name}: MCP tool call timed out after ${this.#timeoutMs}ms`,
-        );
+      if (error instanceof StatelessMcpTransportError) {
+        throw new McpToolCallError(error.message);
       }
-      throw new McpToolCallError(
-        `${call.name}: MCP request failed: ${errorMessage(error)}`,
-      );
-    } finally {
-      clearTimeout(timer);
+      throw error;
     }
-
-    if (!response.ok) {
-      throw new McpToolCallError(
-        `${call.name}: MCP endpoint returned HTTP ${response.status}`,
-      );
-    }
-    const payload = await parseEnvelope(response, call.name);
-    if (payload.error) {
-      throw new McpToolCallError(
-        `${call.name}: ${payload.error.message ?? "JSON-RPC error"}`,
-      );
-    }
-    if (!isRecord(payload.result)) {
-      throw new McpToolCallError(`${call.name}: missing result`);
-    }
-    if (payload.result.resultType !== "complete") {
+    if (result.resultType !== "complete") {
       throw new McpToolCallError(
         `${call.name}: expected resultType \"complete\"`,
       );
     }
-    if (payload.result.isError === true) {
+    if (result.isError === true) {
       throw new McpToolCallError(
-        `${call.name}: ${contentText(payload.result) || "tool reported an error"}`,
+        `${call.name}: ${contentText(result) || "tool reported an error"}`,
       );
     }
-    return payload.result;
-  }
-}
-
-interface RpcEnvelope {
-  result?: Record<string, unknown>;
-  error?: { code?: number; message?: string };
-}
-
-async function parseEnvelope(
-  response: Response,
-  toolName: string,
-): Promise<RpcEnvelope> {
-  const text = (await response.text()).trim();
-  if (text === "") {
-    throw new McpToolCallError(`${toolName}: MCP endpoint returned an empty body`);
-  }
-  try {
-    return JSON.parse(text) as RpcEnvelope;
-  } catch {
-    throw new McpToolCallError(`${toolName}: MCP endpoint returned invalid JSON`);
+    return result;
   }
 }
 
@@ -258,8 +184,4 @@ function contentFirstText(result: Record<string, unknown>): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

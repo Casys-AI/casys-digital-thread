@@ -11,6 +11,12 @@ import type {
   ThreadViolation,
   TracedRequirement,
 } from "./thread-snapshot.ts";
+import {
+  ANALYSIS_GRAPH_SCHEMA,
+  type AnalysisGraph,
+  validateAnalysisGraph,
+} from "../analysis/analysis-graph.ts";
+import { deterministicJson } from "../kernel/deterministic-json.ts";
 import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
 
 /** A provider-native identity that an extension can prove structurally. */
@@ -39,6 +45,12 @@ export interface ThreadSnapshotExtension {
   violations: ThreadViolation[];
   provenance: ThreadProvenanceLink[];
   proposedActions: ProposedThreadAction[];
+  /**
+   * Optional semantic facts captured by this branch.  Supplying one upgrades
+   * the assembled successor to ThreadSnapshot 1.1; it never changes
+   * provenance relation meanings or execution authority.
+   */
+  analysisGraph?: AnalysisGraph;
   /**
    * Optional retirement entries. Each entry records that the named entity has
    * been retired (append-only status change); the entity itself remains in every
@@ -88,6 +100,9 @@ export function snapshotEvidenceExtension(
     provenance: validated.provenance.filter((link) => link.relation !== "changes")
       .map((link) => structuredClone(link)),
     proposedActions: structuredClone(validated.proposedActions),
+    ...(validated.analysisGraph === undefined
+      ? {}
+      : { analysisGraph: structuredClone(validated.analysisGraph) }),
   };
 }
 
@@ -146,6 +161,10 @@ export function applyThreadSnapshotExtension(
       "This snapshot extension recorded the retirement of the referenced entity.",
   }));
   const nextRevision = base.revision + 1;
+  const analysisGraph = mergeAnalysisGraphs(
+    base.analysisGraph,
+    extension.analysisGraph,
+  );
   const status = aggregateFreshness(
     [
       ...base.artifacts,
@@ -196,6 +215,10 @@ export function applyThreadSnapshotExtension(
       ...archivedChangeLinks,
     ],
     proposedActions: [...base.proposedActions, ...extension.proposedActions],
+    ...(analysisGraph === undefined ? {} : {
+      schemaVersion: "1.1" as const,
+      analysisGraph,
+    }),
   };
   return validateThreadSnapshot(merged);
 }
@@ -213,20 +236,54 @@ export function applyThreadSnapshotExtensionIfNew(
   extension: ThreadSnapshotExtension,
   options: { appliedAt?: string } = {},
 ): { snapshot: ThreadSnapshot; applied: boolean } {
-  if (extension.artifacts.length === 0) {
+  const baseAnalysisGraph = base.analysisGraph === undefined
+    ? undefined
+    : validateAnalysisGraph(base.analysisGraph);
+  const extensionAnalysisGraph = extension.analysisGraph === undefined
+    ? undefined
+    : validateAnalysisGraph(extension.analysisGraph);
+  const extensionAssertionIds =
+    extensionAnalysisGraph?.relations.map((relation) => relation.assertion.id) ?? [];
+  const extensionMemberCount = extension.artifacts.length +
+    extensionAssertionIds.length;
+  if (extensionMemberCount === 0) {
     return {
       snapshot: applyThreadSnapshotExtension(base, extension, options),
       applied: true,
     };
   }
-  const knownArtifactIds = new Set(base.artifacts.map((artifact) => artifact.id));
-  const attachedArtifacts = extension.artifacts.filter((artifact) =>
-    knownArtifactIds.has(artifact.id)
+  const knownArtifacts = new Map(
+    base.artifacts.map((artifact) => [artifact.id, artifact]),
   );
-  if (attachedArtifacts.length === extension.artifacts.length) {
+  const knownAssertions = new Map(
+    baseAnalysisGraph?.relations.map((relation) => [
+      relation.assertion.id,
+      relation,
+    ]) ?? [],
+  );
+  for (const artifact of extension.artifacts) {
+    const existing = knownArtifacts.get(artifact.id);
+    if (existing && deterministicJson(existing) !== deterministicJson(artifact)) {
+      throw new Error(
+        `Thread artifact ${artifact.id} conflicts with an already attached artifact.`,
+      );
+    }
+  }
+  for (const relation of extensionAnalysisGraph?.relations ?? []) {
+    const existing = knownAssertions.get(relation.assertion.id);
+    if (existing && deterministicJson(existing) !== deterministicJson(relation)) {
+      throw new Error(
+        `Analysis assertion ${relation.assertion.id} conflicts with an already attached assertion.`,
+      );
+    }
+  }
+  const attachedCount =
+    extension.artifacts.filter((artifact) => knownArtifacts.has(artifact.id)).length +
+    extensionAssertionIds.filter((id) => knownAssertions.has(id)).length;
+  if (attachedCount === extensionMemberCount) {
     return { snapshot: base, applied: false };
   }
-  if (attachedArtifacts.length > 0) {
+  if (attachedCount > 0) {
     throw new Error(
       `Base ThreadSnapshot ${base.id} contains only part of extension ${extension.id}; refusing an ambiguous merge.`,
     );
@@ -235,6 +292,48 @@ export function applyThreadSnapshotExtensionIfNew(
     snapshot: applyThreadSnapshotExtension(base, extension, options),
     applied: true,
   };
+}
+
+function mergeAnalysisGraphs(
+  base: AnalysisGraph | undefined,
+  extension: AnalysisGraph | undefined,
+): AnalysisGraph | undefined {
+  if (base === undefined && extension === undefined) return undefined;
+  const validatedBase = base === undefined ? undefined : validateAnalysisGraph(base);
+  const validatedExtension = extension === undefined
+    ? undefined
+    : validateAnalysisGraph(extension);
+  const nodes = deduplicateExactNodes([
+    ...(validatedBase?.nodes ?? []),
+    ...(validatedExtension?.nodes ?? []),
+  ]);
+  return validateAnalysisGraph({
+    schemaVersion: ANALYSIS_GRAPH_SCHEMA,
+    nodes,
+    relations: [
+      ...(validatedBase?.relations ?? []),
+      ...(validatedExtension?.relations ?? []),
+    ],
+  });
+}
+
+function deduplicateExactNodes(
+  nodes: readonly AnalysisGraph["nodes"][number][],
+): AnalysisGraph["nodes"] {
+  const nodeById = new Map<string, AnalysisGraph["nodes"][number]>();
+  for (const node of nodes) {
+    const existing = nodeById.get(node.id);
+    if (!existing) {
+      nodeById.set(node.id, node);
+      continue;
+    }
+    if (deterministicJson(existing) !== deterministicJson(node)) {
+      throw new Error(
+        `Analysis graph node ${node.id} conflicts between ThreadSnapshot branches.`,
+      );
+    }
+  }
+  return [...nodeById.values()];
 }
 
 function aggregateFreshness(

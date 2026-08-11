@@ -1,13 +1,23 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { validatePrintabilityCheckCase } from "../../../domain/analysis/printability-case.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import {
   createThreadSnapshot,
   validateThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot-validation.ts";
-import { FileCm01DripTrayPrintabilityAttemptStore } from "../../wal/file-cm01-drip-tray-printability-attempt-store.ts";
 import {
+  FileCm01DripTrayPrintabilityAttemptStore,
+  PrintabilityRunOutcomeUnknownError,
+} from "../../wal/file-cm01-drip-tray-printability-attempt-store.ts";
+import {
+  assertCurrentCaptureEnvelope,
+  CoffeeMachineCm01V3PrintabilityRunExecutor,
   materializePrintabilitySnapshot,
   parseBuild123dStepExport,
+  parseCaptureRecord,
   parseDfmOverhangResult,
   parseDfmThicknessResult,
   type PrintabilityCaptureRecord,
@@ -19,6 +29,188 @@ const STEP_SHA = "e".repeat(64);
 const STEP_SHA_OTHER = "f".repeat(64);
 
 // ── Test 1 ────────────────────────────────────────────────────────────────────
+
+Deno.test("printability known capture-recorded never reconfirms after completion I/O fails", async () => {
+  let beginCalls = 0;
+  const executor = new CoffeeMachineCm01V3PrintabilityRunExecutor({
+    ...printabilityMinimalStubs(),
+    attempts: {
+      complete: () => Promise.reject(new Error("completion fsync interrupted")),
+      begin: () => {
+        beginCalls += 1;
+        return Promise.reject(new Error("confirmation I/O interrupted"));
+      },
+    } as never,
+  });
+  const complete = (executor as unknown as {
+    completeCapturedAttempt(input: Record<string, unknown>): Promise<void>;
+  }).completeCapturedAttempt.bind(executor);
+  await assertRejects(
+    () =>
+      complete({
+        projectId: "coffee-machine-cm01-v3",
+        runId: "run:printability-recovery",
+        caseDigest: "d".repeat(64),
+        dispatchedAt: AT,
+        completedAt: AT,
+        captureFingerprint: CAPTURE_FP,
+      }),
+    Error,
+    "durable",
+  );
+  assertEquals(beginCalls, 0);
+});
+
+Deno.test(
+  "printability recordCapture failure after durable capture-recorded requires a CAS-only recovery",
+  async () => {
+    let recordCalls = 0;
+    let completeCalls = 0;
+    let beginCalls = 0;
+    const executor = new CoffeeMachineCm01V3PrintabilityRunExecutor({
+      ...printabilityMinimalStubs(),
+      attempts: {
+        recordCapture: () => {
+          recordCalls += 1;
+          return Promise.reject(
+            new Error("fsync interrupted after durable capture-recorded"),
+          );
+        },
+        complete: () => {
+          completeCalls += 1;
+          return Promise.reject(new Error("fsync interrupted after capture-recorded"));
+        },
+        begin: () => {
+          beginCalls += 1;
+          return Promise.resolve({
+            action: "capture-recorded" as const,
+            recordedAt: AT,
+            captureFingerprint: CAPTURE_FP,
+            canonicalCaptureText: deterministicJson({ kind: "capture" }),
+          });
+        },
+      } as never,
+    });
+    const recordAndComplete = (executor as unknown as {
+      recordAndCompleteCapturedAttempt(
+        record: Record<string, unknown>,
+        complete: Record<string, unknown>,
+      ): Promise<void>;
+    }).recordAndCompleteCapturedAttempt.bind(executor);
+    await assertRejects(
+      () =>
+        recordAndComplete(
+          {
+            projectId: "coffee-machine-cm01-v3",
+            runId: "run:printability-recovery",
+            caseDigest: "d".repeat(64),
+            dispatchedAt: AT,
+            recordedAt: AT,
+            canonicalCaptureText: deterministicJson({ kind: "capture" }),
+            captureFingerprint: CAPTURE_FP,
+          },
+          {
+            projectId: "coffee-machine-cm01-v3",
+            runId: "run:printability-recovery",
+            caseDigest: "d".repeat(64),
+            dispatchedAt: AT,
+            completedAt: AT,
+            captureFingerprint: CAPTURE_FP,
+          },
+        ),
+      Error,
+      "durable",
+    );
+    assertEquals(
+      { recordCalls, completeCalls, beginCalls },
+      { recordCalls: 1, completeCalls: 0, beginCalls: 1 },
+    );
+  },
+);
+
+Deno.test(
+  "current printability capture rejects a self-consistent foreign provider handoff before publication",
+  () => {
+    const record: PrintabilityCaptureRecord = {
+      ...captureRecord([]),
+      schemaVersion: "printability-check-capture/2.2",
+      trustedRunId: "run-printability-envelope",
+      dispatchedAt: AT,
+      providerCallParams: {
+        meshSizeMm: 2,
+        buildDirection: [0, 0, 1],
+        minWallThicknessMm: 1.2,
+        maxOverhangAngleDeg: 45,
+      },
+      reviewedCaseThresholds: { maxUnsupportedAreaMm2: 600 },
+      step: {
+        ...captureRecord([]).step,
+        stepPath: "/exports/foreign-but-self-consistent.step",
+      },
+    };
+    assertThrows(
+      () =>
+        assertCurrentCaptureEnvelope(
+          record,
+          validCase(),
+          "d".repeat(64),
+          "run-printability-envelope",
+          AT,
+        ),
+      Error,
+      "handoff",
+    );
+  },
+);
+
+Deno.test("current printability capture rejects unsupported nested fields", () => {
+  const record = {
+    ...captureRecord([]),
+    schemaVersion: "printability-check-capture/2.2",
+    trustedRunId: "run-printability-envelope",
+    dispatchedAt: AT,
+    providerCallParams: {
+      meshSizeMm: 2,
+      buildDirection: [0, 0, 1],
+      minWallThicknessMm: 1.2,
+      maxOverhangAngleDeg: 45,
+    },
+    reviewedCaseThresholds: { maxUnsupportedAreaMm2: 600 },
+  };
+  assertThrows(
+    () => parseCaptureRecord({ ...record, step: { ...record.step, extra: true } }),
+    Error,
+    "unsupported",
+  );
+});
+
+Deno.test("current printability capture rejects impossible fractional DFM counts", () => {
+  const record = {
+    ...captureRecord([]),
+    schemaVersion: "printability-check-capture/2.2",
+    trustedRunId: "run-printability-envelope",
+    dispatchedAt: AT,
+    providerCallParams: {
+      meshSizeMm: 2,
+      buildDirection: [0, 0, 1],
+      minWallThicknessMm: 1.2,
+      maxOverhangAngleDeg: 45,
+    },
+    reviewedCaseThresholds: { maxUnsupportedAreaMm2: 600 },
+  };
+  assertThrows(
+    () =>
+      parseCaptureRecord({
+        ...record,
+        thickness: {
+          ...record.thickness,
+          measured: { ...record.thickness.measured, sampleCount: 1.5 },
+        },
+      }),
+    TypeError,
+    "integer",
+  );
+});
 
 Deno.test(
   "materializePrintabilitySnapshot happy path produces a validateThreadSnapshot-passing snapshot",
@@ -34,6 +226,36 @@ Deno.test(
     );
     // Must not throw — validates provenance, observation invariants, etc.
     validateThreadSnapshot(snapshot);
+  },
+);
+
+Deno.test(
+  "materializePrintabilitySnapshot never invents a STEP URI and attributes DFM measurements to DFM",
+  async () => {
+    const { snapshot } = await materializePrintabilitySnapshot(
+      baseThreadSnapshot(),
+      "run-printability-provenance",
+      validCase(),
+      CAPTURE_FP,
+      `casys://cm01-drip-tray-printability-capture/sha256/${"c".repeat(64)}`,
+      captureRecord([]),
+    );
+    const published = snapshot.artifacts.filter((artifact) =>
+      artifact.id.includes("drip-tray-printability-")
+    );
+    assertEquals(published.map((artifact) => artifact.kind), ["document"]);
+    assertEquals(
+      published.some((artifact) => artifact.uri?.includes("#")),
+      false,
+    );
+    assertEquals(
+      snapshot.observations.filter((observation) =>
+        observation.metric.startsWith("drip_tray_") &&
+        observation.metric !== "drip_tray_dfm_violation_count" &&
+        observation.metric !== "drip_tray_printability_not_checked_count"
+      ).map((observation) => observation.source.operation.serverId),
+      ["dfm", "dfm", "dfm"],
+    );
   },
 );
 
@@ -156,29 +378,90 @@ Deno.test(
         dispatchedAt: AT,
       });
       assertEquals(first.action, "dispatch");
+      const canonicalCaptureText = deterministicJson({ kind: "test" });
+      const captureFingerprint = await sha256Fingerprint({ kind: "test" });
+      await store.recordCapture({
+        projectId: "coffee-machine-cm01-v3",
+        runId: "run-wal-printability-skip",
+        caseDigest,
+        dispatchedAt: AT,
+        recordedAt: "2026-08-05T10:01:00.000Z",
+        captureFingerprint,
+        canonicalCaptureText,
+      });
       await store.complete({
         projectId: "coffee-machine-cm01-v3",
         runId: "run-wal-printability-skip",
         caseDigest,
         dispatchedAt: AT,
         completedAt: "2026-08-05T10:01:00.000Z",
-        captureFingerprint: CAPTURE_FP,
+        captureFingerprint,
       });
       const second = await store.begin({
         projectId: "coffee-machine-cm01-v3",
         runId: "run-wal-printability-skip",
         caseDigest,
-        dispatchedAt: "2026-08-05T11:00:00.000Z",
+        dispatchedAt: AT,
       });
       assertEquals(second, {
         action: "completed",
-        captureFingerprint: CAPTURE_FP,
+        recordedAt: "2026-08-05T10:01:00.000Z",
+        captureFingerprint,
+        canonicalCaptureText,
       });
     } finally {
       await Deno.remove(dir, { recursive: true });
     }
   },
 );
+
+Deno.test("dispatched printability WAL is outcome-unknown and never authorizes redispatch", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileCm01DripTrayPrintabilityAttemptStore(dir);
+    const input = {
+      projectId: "coffee-machine-cm01-v3",
+      runId: "run-wal-printability-dispatched",
+      caseDigest: "e".repeat(64),
+      dispatchedAt: AT,
+    };
+    await store.begin(input);
+    await assertRejects(
+      () => store.begin(input),
+      PrintabilityRunOutcomeUnknownError,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("printability WAL rejects noncanonical capture text before completion", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileCm01DripTrayPrintabilityAttemptStore(dir);
+    const input = {
+      projectId: "coffee-machine-cm01-v3",
+      runId: "run-wal-printability-noncanonical",
+      caseDigest: "f".repeat(64),
+      dispatchedAt: AT,
+    };
+    await store.begin(input);
+    const captureFingerprint = await sha256Fingerprint({ a: 1, b: 2 });
+    await assertRejects(
+      () =>
+        store.recordCapture({
+          ...input,
+          recordedAt: "2026-08-05T10:01:00.000Z",
+          captureFingerprint,
+          canonicalCaptureText: '{"b":2,"a":1}',
+        }),
+      Error,
+      "canonical",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
 
 // ── Test 5 ────────────────────────────────────────────────────────────────────
 
@@ -365,6 +648,29 @@ Deno.test("parseDfmThicknessResult accepts a valid thickness result", () => {
   assertEquals(result.violations, []);
 });
 
+Deno.test("parseDfmThicknessResult rejects a provider-declared threshold that differs from dispatch", () => {
+  assertThrows(
+    () =>
+      parseDfmThicknessResult(
+        {
+          violations: [],
+          measured: validThicknessMeasured(),
+          limits_declared: { min_thickness_mm: 0.8 },
+          not_checked: [],
+          input_artifact: {
+            sha256: STEP_SHA,
+            bytes: 1024,
+            source_path: "/exports/x.step",
+          },
+        },
+        STEP_SHA,
+        1.2,
+      ),
+    Error,
+    "different threshold",
+  );
+});
+
 // ── Test 7 ────────────────────────────────────────────────────────────────────
 
 Deno.test("parseDfmOverhangResult rejects a missing violations array", () => {
@@ -452,6 +758,29 @@ Deno.test("parseDfmOverhangResult accepts a valid overhang result", () => {
   assertEquals(result.violations, []);
 });
 
+Deno.test("parseDfmOverhangResult rejects a provider-declared threshold that differs from dispatch", () => {
+  assertThrows(
+    () =>
+      parseDfmOverhangResult(
+        {
+          violations: [],
+          measured: validOverhangMeasured(),
+          limits_declared: { max_overhang_deg: 30 },
+          not_checked: [],
+          input_artifact: {
+            sha256: STEP_SHA,
+            bytes: 1024,
+            source_path: "/exports/x.step",
+          },
+        },
+        STEP_SHA,
+        45,
+      ),
+    Error,
+    "different threshold",
+  );
+});
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 function validCase() {
@@ -487,6 +816,19 @@ function validCase() {
       note: "Thresholds sourced from typical FDM desktop-printer guidelines.",
     },
   });
+}
+
+function printabilityMinimalStubs() {
+  return {
+    projects: {} as never,
+    commands: {} as never,
+    snapshots: {} as never,
+    printabilityCase: validCase(),
+    build123d: {} as never,
+    dfm: {} as never,
+    captures: {} as never,
+    lease: {} as never,
+  };
 }
 
 function captureRecord(

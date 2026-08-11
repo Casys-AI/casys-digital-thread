@@ -64,6 +64,7 @@ import { FileCaptureStore } from "../../captures/file-capture-store.ts";
 import {
   type CompletePrintEstimateRunAttempt,
   FileCm01DripTrayPrintEstimateAttemptStore,
+  type RecordPrintEstimateCaptureAttempt,
 } from "../../wal/file-cm01-drip-tray-print-estimate-attempt-store.ts";
 import type { EngineeringProjectRunLease } from "../../stores/file-engineering-project-run-lease.ts";
 import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
@@ -83,13 +84,22 @@ const PROJECT_ID = "coffee-machine-cm01-v3" as const;
 const SUBJECT_ID = "project:coffee-machine-cm01-v3" as const;
 const STL_EXPORT_NAME = "cm01-drip-tray-print-estimate";
 
-export const PRINT_ESTIMATE_CAPTURE_SCHEMA = "print-estimate-capture/1.0" as const;
+export const PRINT_ESTIMATE_CAPTURE_SCHEMA = "print-estimate-capture/1.2" as const;
+const LEGACY_PRINT_ESTIMATE_CAPTURE_SCHEMAS = [
+  "print-estimate-capture/1.0",
+  "print-estimate-capture/1.1",
+] as const;
 
 export interface PrintEstimateCaptureRecord {
-  readonly schemaVersion: typeof PRINT_ESTIMATE_CAPTURE_SCHEMA;
+  readonly schemaVersion:
+    | typeof PRINT_ESTIMATE_CAPTURE_SCHEMA
+    | typeof LEGACY_PRINT_ESTIMATE_CAPTURE_SCHEMAS[number];
   readonly caseId: string;
   readonly caseRevision: number;
   readonly caseDigest: string;
+  /** Current capture only: binds evidence to this one claimed run occurrence. */
+  readonly trustedRunId?: string;
+  readonly dispatchedAt?: string;
   readonly capturedAt: string;
   /** STL export — source geometry for the slicer. */
   readonly stl: {
@@ -104,6 +114,10 @@ export interface PrintEstimateCaptureRecord {
     readonly profilePath: string;
     readonly profileSha256: string;
     readonly profileBytes: number;
+  };
+  /** Server-fixed slicer override, explicitly captured for replay admission. */
+  readonly callParams?: {
+    readonly filamentDensityGCm3: number | null;
   };
   /** Slicer output — all unitised measurements from the server. */
   readonly estimate: {
@@ -160,6 +174,13 @@ interface PrintEstimateMaterialization {
 interface PersistedCapture {
   readonly record: PrintEstimateCaptureRecord;
   readonly captureFingerprint: ContentFingerprint;
+}
+
+class PrintEstimateCaptureRecoveryRequiredError extends Error {
+  constructor() {
+    super("Print-estimate capture is durable and must be recovered without providers.");
+    this.name = "PrintEstimateCaptureRecoveryRequiredError";
+  }
 }
 
 export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
@@ -315,6 +336,12 @@ export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
       await this.reconcileLive(completed.project.subjectId, command.runId);
       return completed;
     } catch (error) {
+      if (error instanceof PrintEstimateCaptureRecoveryRequiredError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "CM-01 print-estimate capture is durable but WAL completion needs an exact CAS-only retry. Providers will not run again.",
+        );
+      }
       if (materialized && (await this.presence(materialized.snapshot)) === "exact") {
         const completed = await this.completedFor(command);
         if (completed) return completed;
@@ -346,7 +373,7 @@ export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
       caseDigest,
       dispatchedAt,
     });
-    if (attempt.action === "completed") {
+    if (attempt.action !== "dispatch") {
       const text = await this.#captures.read(attempt.captureFingerprint);
       if (!text) {
         throw new Error(
@@ -354,6 +381,40 @@ export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
         );
       }
       const record = parseCaptureRecord(JSON.parse(text));
+      await assertCaptureReadback(
+        text,
+        attempt.captureFingerprint,
+        "Completed print-estimate attempt",
+      );
+      if (
+        attempt.canonicalCaptureText !== undefined &&
+        text !== attempt.canonicalCaptureText
+      ) {
+        throw new Error("Print-estimate WAL capture text differs from CAS readback.");
+      }
+      assertCurrentCaptureEnvelope(
+        record,
+        this.#printEstimateCase,
+        caseDigest,
+        run.id,
+        dispatchedAt,
+      );
+      if (
+        attempt.recordedAt !== undefined &&
+        record.capturedAt !== attempt.recordedAt
+      ) {
+        throw new Error("Print-estimate capture occurrence timestamp is not exact.");
+      }
+      if (attempt.action === "capture-recorded") {
+        await this.completeCapturedAttempt({
+          projectId: project.project.id,
+          runId: run.id,
+          caseDigest,
+          dispatchedAt,
+          completedAt: this.#now(),
+          captureFingerprint: attempt.captureFingerprint,
+        });
+      }
       return { record, captureFingerprint: attempt.captureFingerprint };
     }
     // Run providers.
@@ -398,6 +459,8 @@ export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
       sc,
       caseDigest,
       capturedAt,
+      run.id,
+      dispatchedAt,
       stlExport,
       profilePathInExports,
       profileSha256Actual,
@@ -406,6 +469,32 @@ export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
     const captureText = deterministicJson(record);
     const captureFingerprint = await sha256Fingerprint(record);
     await this.#captures.save(captureFingerprint, captureText);
+    const persistedText = await this.#captures.read(captureFingerprint);
+    if (!persistedText) {
+      throw new Error("Print-estimate capture disappeared after it was saved.");
+    }
+    await assertCaptureReadback(
+      persistedText,
+      captureFingerprint,
+      "Saved print-estimate capture",
+    );
+    const persistedRecord = parseCaptureRecord(JSON.parse(persistedText));
+    assertCurrentCaptureEnvelope(
+      persistedRecord,
+      sc,
+      caseDigest,
+      run.id,
+      dispatchedAt,
+    );
+    const recordInput: RecordPrintEstimateCaptureAttempt = {
+      projectId: project.project.id,
+      runId: run.id,
+      caseDigest,
+      dispatchedAt,
+      recordedAt: capturedAt,
+      captureFingerprint,
+      canonicalCaptureText: persistedText,
+    };
     const completeInput: CompletePrintEstimateRunAttempt = {
       projectId: project.project.id,
       runId: run.id,
@@ -414,8 +503,53 @@ export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
       completedAt: capturedAt,
       captureFingerprint,
     };
-    await this.#attempts.complete(completeInput);
-    return { record, captureFingerprint };
+    await this.recordAndCompleteCapturedAttempt(recordInput, completeInput);
+    return { record: persistedRecord, captureFingerprint };
+  }
+
+  private async recordAndCompleteCapturedAttempt(
+    record: RecordPrintEstimateCaptureAttempt,
+    complete: CompletePrintEstimateRunAttempt,
+  ): Promise<void> {
+    let captureRecorded = false;
+    try {
+      await this.#attempts.recordCapture(record);
+      captureRecorded = true;
+      await this.#attempts.complete(complete);
+    } catch (error) {
+      if (captureRecorded) throw new PrintEstimateCaptureRecoveryRequiredError();
+      await this.requireCaptureOnlyRecoveryOrThrow(complete, error);
+    }
+  }
+
+  private async completeCapturedAttempt(
+    input: CompletePrintEstimateRunAttempt,
+  ): Promise<void> {
+    try {
+      await this.#attempts.complete(input);
+    } catch {
+      // This method is called only after begin() admitted capture-recorded.
+      // Its exact capture is already durable, even if confirmation I/O fails.
+      throw new PrintEstimateCaptureRecoveryRequiredError();
+    }
+  }
+
+  private async requireCaptureOnlyRecoveryOrThrow(
+    input: Pick<
+      CompletePrintEstimateRunAttempt,
+      "projectId" | "runId" | "caseDigest" | "dispatchedAt"
+    >,
+    original: unknown,
+  ): Promise<never> {
+    try {
+      const recovery = await this.#attempts.begin(input);
+      if (recovery.action === "capture-recorded" || recovery.action === "completed") {
+        throw new PrintEstimateCaptureRecoveryRequiredError();
+      }
+    } catch (error) {
+      if (error instanceof PrintEstimateCaptureRecoveryRequiredError) throw error;
+    }
+    throw original;
   }
 
   private async requiredBasis(
@@ -573,8 +707,8 @@ export class CoffeeMachineCm01V3PrintEstimateRunExecutor {
  *  - filament_mass_g (unit: "g") — ONLY when record.estimate.filamentMassG is present
  *  - not_checked count (unit: "1") — when any not_checked items were reported
  *
- * The G-code SHA-256 is captured as a separate artifact (non-deterministic
- * audit reference) — not as a scalar observation.
+ * The G-code SHA-256 remains a non-deterministic audit field in the persisted
+ * capture — not a scalar observation or a separately published artifact.
  */
 export function materializePrintEstimateSnapshot(
   base: ThreadSnapshot,
@@ -592,11 +726,6 @@ export function materializePrintEstimateSnapshot(
     changedAt: capturedAt,
     invalidatedByChangeIds: [],
   };
-  const cadOp: ThreadOperationRef = {
-    serverId: "build123d",
-    tool: "build123d_export",
-    runId,
-  };
   const slicerOp: ThreadOperationRef = {
     serverId: "prusaslicer",
     tool: "prusaslicer_estimate_fff",
@@ -608,35 +737,12 @@ export function materializePrintEstimateSnapshot(
     runId,
   };
 
-  const stlArtifactId = `${prefix}-stl`;
   const captureDocId = `${prefix}-capture`;
-  const gcodeArtifactId = `${prefix}-gcode`;
 
-  const stlFingerprint: ContentFingerprint = {
-    algorithm: "sha256",
-    digest: record.stl.stlSha256,
-  };
-  const gcodeFingerprint: ContentFingerprint = {
-    algorithm: "sha256",
-    digest: record.estimate.gcodeSha256,
-  };
-
-  // All three artifacts carry inputArtifactIds: [] to avoid the consumption
-  // attestation protocol, which is not needed for an observational run.
-  // The STL sha256 and G-code sha256 are cross-recorded in the capture
-  // document (captureDocId); that is sufficient for audit and replay.
+  // The capture is the sole published artifact. STL and G-code digests are
+  // evidence fields in its exact persisted bytes; no URI fragment is claimed
+  // to dereference provider bytes that this executor did not capture.
   const artifacts: ThreadArtifact[] = [
-    makeArtifact(
-      stlArtifactId,
-      "CM-01 DripTray print-estimate STL",
-      "mesh", // STL is a triangular-mesh format; "mesh" is the correct ThreadArtifactKind
-      stlFingerprint,
-      `${uri}#stl`,
-      "model/stl",
-      cadOp,
-      [],
-      freshness,
-    ),
     makeArtifact(
       captureDocId,
       "CM-01 DripTray print-estimate capture",
@@ -645,17 +751,6 @@ export function materializePrintEstimateSnapshot(
       uri,
       "application/json",
       localOp,
-      [],
-      freshness,
-    ),
-    makeArtifact(
-      gcodeArtifactId,
-      "CM-01 DripTray print-estimate G-code (non-deterministic audit reference)",
-      "document",
-      gcodeFingerprint,
-      `${uri}#gcode`,
-      "text/x-gcode",
-      slicerOp,
       [],
       freshness,
     ),
@@ -715,12 +810,7 @@ export function materializePrintEstimateSnapshot(
     },
   ];
 
-  // Provenance links connect observations → capture document (the single
-  // source of truth for all measured values). Artifact-to-artifact links
-  // (e.g. gcode → stl) are intentionally omitted because they would require
-  // a full consumption-attestation record, which is not appropriate for a
-  // lightweight observational run. The cross-sha256 trail lives in the
-  // capture document itself.
+  // Provenance links connect observations → the exact capture document.
   const provenance = [
     makeLink(
       `${printTimeObsId}-from-capture`,
@@ -1114,6 +1204,8 @@ function buildCaptureRecord(
   sc: PrintEstimateCase,
   caseDigest: string,
   capturedAt: string,
+  trustedRunId: string,
+  dispatchedAt: string,
   stlExport: { path: string; sha256: string; bytes: number },
   profilePath: string,
   profileSha256: string,
@@ -1133,6 +1225,8 @@ function buildCaptureRecord(
     caseId: sc.id,
     caseRevision: sc.revision,
     caseDigest,
+    trustedRunId,
+    dispatchedAt,
     capturedAt,
     stl: {
       exportName: STL_EXPORT_NAME,
@@ -1146,6 +1240,9 @@ function buildCaptureRecord(
       profileSha256,
       profileBytes: estimate.profileArtifactBytes,
     },
+    callParams: {
+      filamentDensityGCm3: sc.filamentDensityGCm3?.value ?? null,
+    },
     estimate: estimate.filamentMassG !== undefined
       ? { ...estimateBase, filamentMassG: estimate.filamentMassG }
       : estimateBase,
@@ -1157,9 +1254,14 @@ function buildCaptureRecord(
  * Fail-closed re-validation of a persisted capture. The WAL "completed" path
  * replays this record instead of the providers.
  */
-function parseCaptureRecord(value: unknown): PrintEstimateCaptureRecord {
+export function parseCaptureRecord(value: unknown): PrintEstimateCaptureRecord {
   const root = requireObject(value, "print-estimate capture record");
-  if (root.schemaVersion !== PRINT_ESTIMATE_CAPTURE_SCHEMA) {
+  if (
+    root.schemaVersion !== PRINT_ESTIMATE_CAPTURE_SCHEMA &&
+    !LEGACY_PRINT_ESTIMATE_CAPTURE_SCHEMAS.includes(
+      root.schemaVersion as typeof LEGACY_PRINT_ESTIMATE_CAPTURE_SCHEMAS[number],
+    )
+  ) {
     throw new Error(
       `Print-estimate capture record has unsupported schemaVersion: ${root.schemaVersion}.`,
     );
@@ -1171,6 +1273,12 @@ function parseCaptureRecord(value: unknown): PrintEstimateCaptureRecord {
   }
   const caseRevision = requirePositiveInt(root.caseRevision, "capture caseRevision");
   const caseDigest = requireSha256Hex(root.caseDigest, "capture caseDigest");
+  const trustedRunId = root.schemaVersion === PRINT_ESTIMATE_CAPTURE_SCHEMA
+    ? requireNonEmpty(root.trustedRunId, "capture trustedRunId")
+    : undefined;
+  const dispatchedAt = root.schemaVersion === PRINT_ESTIMATE_CAPTURE_SCHEMA
+    ? requireCanonicalTimestamp(root.dispatchedAt, "capture dispatchedAt")
+    : undefined;
   // stl
   const stlRoot = requireObject(root.stl, "capture stl");
   const stl = {
@@ -1196,9 +1304,15 @@ function parseCaptureRecord(value: unknown): PrintEstimateCaptureRecord {
       "capture profile.profileBytes",
     ),
   };
+  const callParams = root.schemaVersion === PRINT_ESTIMATE_CAPTURE_SCHEMA
+    ? parseCurrentCallParams(root.callParams)
+    : undefined;
   // estimate
   const estRoot = requireObject(root.estimate, "capture estimate");
-  const printTimeS = requireFinite(estRoot.printTimeS, "capture estimate.printTimeS");
+  const printTimeS = requireNonNegative(
+    estRoot.printTimeS,
+    "capture estimate.printTimeS",
+  );
   const printTimeNormalMode = requireNonEmpty(
     estRoot.printTimeNormalMode,
     "capture estimate.printTimeNormalMode",
@@ -1209,11 +1323,11 @@ function parseCaptureRecord(value: unknown): PrintEstimateCaptureRecord {
       estRoot.printTimeSilentMode,
       "capture estimate.printTimeSilentMode",
     );
-  const filamentLengthMm = requireFinite(
+  const filamentLengthMm = requireNonNegative(
     estRoot.filamentLengthMm,
     "capture estimate.filamentLengthMm",
   );
-  const filamentVolumeMm3 = requireFinite(
+  const filamentVolumeMm3 = requireNonNegative(
     estRoot.filamentVolumeMm3,
     "capture estimate.filamentVolumeMm3",
   );
@@ -1242,7 +1356,7 @@ function parseCaptureRecord(value: unknown): PrintEstimateCaptureRecord {
   const estimate = hasFilamentMassG
     ? {
       ...estimateBase,
-      filamentMassG: requireFinite(
+      filamentMassG: requireNonNegative(
         estRoot.filamentMassG,
         "capture estimate.filamentMassG",
       ),
@@ -1258,17 +1372,97 @@ function parseCaptureRecord(value: unknown): PrintEstimateCaptureRecord {
     }
     return item;
   });
-  return {
-    schemaVersion: PRINT_ESTIMATE_CAPTURE_SCHEMA,
+  const record: PrintEstimateCaptureRecord = {
+    schemaVersion: root.schemaVersion as PrintEstimateCaptureRecord["schemaVersion"],
     caseId: root.caseId,
     caseRevision,
     caseDigest,
+    ...(trustedRunId ? { trustedRunId } : {}),
+    ...(dispatchedAt ? { dispatchedAt } : {}),
     capturedAt: root.capturedAt,
     stl,
     profile,
+    ...(callParams ? { callParams } : {}),
     estimate,
     limitations,
   };
+  if (
+    root.schemaVersion === PRINT_ESTIMATE_CAPTURE_SCHEMA &&
+    deterministicJson(record) !== deterministicJson(root)
+  ) {
+    throw new Error("Current print-estimate capture record has unsupported fields.");
+  }
+  return record;
+}
+
+export function assertCurrentCaptureEnvelope(
+  record: PrintEstimateCaptureRecord,
+  sc: PrintEstimateCase,
+  caseDigest: string,
+  runId: string,
+  dispatchedAt: string,
+): void {
+  if (
+    record.caseId !== sc.id || record.caseRevision !== sc.revision ||
+    record.caseDigest !== caseDigest
+  ) {
+    throw new Error("Print-estimate capture case identity is not exact.");
+  }
+  if (record.schemaVersion !== PRINT_ESTIMATE_CAPTURE_SCHEMA) {
+    throw new Error("Print-estimate capture is legacy and cannot be replay-published.");
+  }
+  if (record.trustedRunId !== runId || record.dispatchedAt !== dispatchedAt) {
+    throw new Error("Print-estimate capture run occurrence is not exact.");
+  }
+  if (
+    record.stl.exportName !== STL_EXPORT_NAME ||
+    record.stl.stlPath !== `/exports/${STL_EXPORT_NAME}.stl` ||
+    record.profile.exportName !== sc.profile.exportName ||
+    record.profile.profilePath !== `/exports/${sc.profile.exportName}.ini` ||
+    record.profile.profileSha256 !== sc.profile.sha256 ||
+    record.callParams?.filamentDensityGCm3 !==
+      (sc.filamentDensityGCm3?.value ?? null) ||
+    deterministicJson(record.limitations) !== deterministicJson(sc.limitations)
+  ) throw new Error("Print-estimate capture slicer envelope is not exact.");
+  if (
+    sc.filamentDensityGCm3 === undefined
+      ? record.estimate.filamentMassG !== undefined
+      : record.estimate.filamentMassG === undefined
+  ) throw new Error("Print-estimate capture density and mass are not exact.");
+}
+
+function parseCurrentCallParams(value: unknown): {
+  readonly filamentDensityGCm3: number | null;
+} {
+  const root = requireObject(value, "capture callParams");
+  const filamentDensityGCm3 = root.filamentDensityGCm3 === null ? null : requireFinite(
+    root.filamentDensityGCm3,
+    "capture callParams.filamentDensityGCm3",
+  );
+  if (filamentDensityGCm3 !== null && filamentDensityGCm3 <= 0) {
+    throw new TypeError("capture callParams.filamentDensityGCm3 must be positive.");
+  }
+  return { filamentDensityGCm3 };
+}
+
+async function assertCaptureReadback(
+  text: string,
+  expected: ContentFingerprint,
+  label: string,
+): Promise<void> {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error(`${label} is not valid JSON after readback.`);
+  }
+  if (deterministicJson(value) !== text) {
+    throw new Error(`${label} is not canonical JSON after readback.`);
+  }
+  const actual = await sha256Fingerprint(value);
+  if (deterministicJson(actual) !== deterministicJson(expected)) {
+    throw new Error(`${label} does not match its persisted fingerprint.`);
+  }
 }
 
 // ── Base64 helper (pure, no I/O) ──────────────────────────────────────────────
@@ -1343,11 +1537,28 @@ function requireFinite(value: unknown, label: string): number {
   return value;
 }
 
+function requireNonNegative(value: unknown, label: string): number {
+  const number = requireFinite(value, label);
+  if (number < 0) throw new TypeError(`${label} must be non-negative.`);
+  return number;
+}
+
 function requireNonEmpty(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${label} must be a non-empty string.`);
   }
   return value;
+}
+
+function requireCanonicalTimestamp(value: unknown, label: string): string {
+  const timestamp = requireNonEmpty(value, label);
+  if (
+    Number.isNaN(Date.parse(timestamp)) ||
+    new Date(Date.parse(timestamp)).toISOString() !== timestamp
+  ) {
+    throw new TypeError(`${label} must be a canonical ISO timestamp.`);
+  }
+  return timestamp;
 }
 
 function requireStringArray(value: unknown, label: string): string[] {

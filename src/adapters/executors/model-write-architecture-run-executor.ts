@@ -15,7 +15,7 @@
  *  7. Cliquet: assertArchitectureArtifactNotRemoved.
  *  8. Preflight re-extraction → planArchitectureInsertion.
  *  9. Conflict + empty-plan guard.
- * 10. WAL (keyed by planDigest) → dispatch or resume completed.
+ * 10. Run-scoped WAL seals the ordered source-backed plan → dispatch or resume.
  * 11. SysON insertions.
  * 12. Verification re-extraction: every proposed component present.
  * 13. Capture save + CAS readback.
@@ -51,7 +51,7 @@ import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
   planArchitectureInsertion,
-  renderArchitectureSysml,
+  renderArchitectureSysmlWithManifest,
 } from "../../domain/platform/architecture-proposal.ts";
 import type {
   ContentFingerprint,
@@ -70,8 +70,20 @@ import {
   type FileCaptureStore,
 } from "../captures/file-capture-store.ts";
 import {
+  ARCHITECTURE_CAPTURE_SCHEMA,
+  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+  type ExactArchitectureCapture,
+  parseExactArchitectureCapture,
+} from "../captures/architecture-capture.ts";
+import {
+  type SysmlSourceAnalysisCaptureService,
+  type SysmlSourceAnalysisReference,
+  type VerifiedSysmlSourceAnalysis,
+} from "../captures/sysml-source-analysis-capture.ts";
+import {
   ArchitectureRunQuarantinedError,
   ArchitectureWriteOutcomeUnknownError,
+  architectureWritePlanDigest,
   FileArchitectureAttemptStore,
 } from "../wal/file-architecture-attempt-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
@@ -100,9 +112,7 @@ import {
 // ── Public re-exports ────────────────────────────────────────────────────────
 
 export { MODEL_WRITE_ARCHITECTURE_OPERATION };
-
-/** Stable schema version written into every architecture capture. */
-export const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/2.0" as const;
+export { ARCHITECTURE_CAPTURE_SCHEMA, ARCHITECTURE_CAPTURE_SCHEMA_LEGACY };
 
 // ── Error: architecture artifact removed from a successor snapshot ────────────
 
@@ -144,6 +154,8 @@ export interface ModelWriteArchitectureRunExecutorDependencies {
     read(fingerprint: ContentFingerprint): Promise<string | undefined>;
   };
   readonly captures: FileCaptureStore<"architecture-capture">;
+  /** Server-rendered source capture → analysis boundary before every SysON write. */
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly attempts: FileArchitectureAttemptStore;
   /** Fixed server-owned MCP client. No agent value reaches this boundary. */
   readonly syson: McpToolClient;
@@ -333,6 +345,7 @@ export class ModelWriteArchitectureRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #seedCaptures: ModelWriteArchitectureRunExecutorDependencies["seedCaptures"];
   readonly #captures: FileCaptureStore<"architecture-capture">;
+  readonly #sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly #attempts: FileArchitectureAttemptStore;
   readonly #syson: McpToolClient;
   readonly #lease: EngineeringProjectRunLease;
@@ -345,6 +358,7 @@ export class ModelWriteArchitectureRunExecutor {
     this.#snapshots = dependencies.snapshots;
     this.#seedCaptures = dependencies.seedCaptures;
     this.#captures = dependencies.captures;
+    this.#sysmlSourceAnalysis = dependencies.sysmlSourceAnalysis;
     this.#attempts = dependencies.attempts;
     this.#syson = dependencies.syson;
     this.#lease = dependencies.lease;
@@ -470,6 +484,7 @@ export class ModelWriteArchitectureRunExecutor {
       // retry must perform readback/publication only and never insert again.
       let architecturePackageId: string;
       let adopted: ReturnType<typeof planArchitectureInsertion>["adopted"] = [];
+      let sealedSources: readonly VerifiedSysmlSourceAnalysis[] = [];
       const existingAttempt = await this.#runAttemptOrFail(
         project.project.id,
         command.runId,
@@ -480,6 +495,21 @@ export class ModelWriteArchitectureRunExecutor {
         // subsequent extraction/capture failure instead of leaving a retryable
         // running run that might redispatch.
         providerAcknowledged = true;
+        if (existingAttempt.schemaVersion === "architecture-write-attempt/3.0") {
+          sealedSources = await this.#reopenSysmlSources(
+            existingAttempt.sourceAnalyses,
+          );
+          this.#assertCurrentAttemptRunBasis(
+            existingAttempt,
+            architectureProposal,
+            run.id,
+            capturedAt,
+          );
+          this.#assertSourcesMatchCurrentProposal(
+            sealedSources,
+            architectureProposal,
+          );
+        }
         const existingForResume = await extractArchitectureStructure(
           this.#syson,
           editingContextId,
@@ -526,17 +556,56 @@ export class ModelWriteArchitectureRunExecutor {
           );
         }
 
-        const planDigest = await planContentDigest(plan.toInsert, architectureProposal);
+        sealedSources = await this.#captureAndReopenSysmlSources(
+          architectureProposal,
+          plan.mode,
+          plan.toInsert,
+          run.id,
+        );
+        this.#assertSourcesMatchCurrentProposal(sealedSources, architectureProposal);
+        const sourceAnalyses = sealedSources.map((source) => source.reference);
+        const planDigest = await architectureWritePlanDigest({
+          items: plan.toInsert,
+          packageName: architectureProposal.packageName,
+          sourceAnalyses,
+        });
         const walResult = await this.#walBeginOrFail(
           project.project.id,
           command.runId,
+          architectureProposal.packageName,
+          plan.toInsert,
           planDigest,
           capturedAt,
+          sourceAnalyses,
         );
         if (walResult.action === "completed") {
           // A legacy or concurrently recovered record won the race. This branch
           // is still strictly readback-only.
           providerAcknowledged = true;
+          const completedAttempt = await this.#runAttemptOrFail(
+            project.project.id,
+            command.runId,
+          );
+          if (completedAttempt?.schemaVersion === "architecture-write-attempt/3.0") {
+            sealedSources = await this.#reopenSysmlSources(
+              completedAttempt.sourceAnalyses,
+            );
+            this.#assertCurrentAttemptRunBasis(
+              completedAttempt,
+              architectureProposal,
+              run.id,
+              capturedAt,
+            );
+            this.#assertSourcesMatchCurrentProposal(
+              sealedSources,
+              architectureProposal,
+            );
+          } else {
+            // The durable acknowledgement predates source analysis. Keep the
+            // historical recovery historical: it may publish only v2 capture
+            // evidence, never a newly invented v3 source-analysis binding.
+            sealedSources = [];
+          }
           const existingForResume = await extractArchitectureStructure(
             this.#syson,
             editingContextId,
@@ -561,7 +630,10 @@ export class ModelWriteArchitectureRunExecutor {
           // Dispatch: perform all insertions.
           try {
             if (plan.mode === "initial") {
-              const sysml = renderArchitectureSysml(architectureProposal);
+              const sysml = sourceTextForSelector(sealedSources, {
+                kind: "full-package",
+                packageName: architectureProposal.packageName,
+              });
               const result = await this.#syson.callTool({
                 name: "syson_element_insert_sysml",
                 arguments: {
@@ -583,6 +655,7 @@ export class ModelWriteArchitectureRunExecutor {
                 editingContextId,
                 packageId,
                 plan.toInsert,
+                sealedSources,
                 () => {
                   providerAcknowledged = true;
                 },
@@ -679,7 +752,9 @@ export class ModelWriteArchitectureRunExecutor {
 
       // Step 13: build + save capture.
       const captureRecord = {
-        schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
+        schemaVersion: sealedSources.length > 0
+          ? ARCHITECTURE_CAPTURE_SCHEMA
+          : ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
         operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
         trustedRunId: run.id,
         packageName: architectureProposal.packageName,
@@ -713,6 +788,9 @@ export class ModelWriteArchitectureRunExecutor {
           })),
         })),
         insertedAt: capturedAt,
+        ...(sealedSources.length > 0
+          ? { sourceAnalyses: sealedSources.map((source) => source.reference) }
+          : {}),
       };
       // Fingerprint the object so SHA-256 = SHA-256(raw text bytes of captureText).
       // FileCaptureStore.save verifies SHA-256 of raw bytes, so the fingerprint
@@ -911,26 +989,35 @@ export class ModelWriteArchitectureRunExecutor {
   async #walBeginOrFail(
     projectId: string,
     runId: string,
+    packageName: string,
+    items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
     planDigest: string,
     dispatchedAt: string,
+    sourceAnalyses: readonly SysmlSourceAnalysisReference[],
   ): Promise<
     | { readonly action: "dispatch" }
     | { readonly action: "completed"; readonly architecturePackageId: string }
   > {
     /**
-     * BLOQUANT C — check for a run-level quarantine BEFORE attempting the
-     * planDigest-level WAL entry. After a structural verification failure
-     * post-acknowledgement, the enrichment preflight produces a *different*
-     * planDigest (the model now has more elements), so the original WAL entry
-     * would not be found, a new entry would be created, and SysON would be
-     * inserted a second time. The quarantine sentinel (keyed by runId) is
-     * planDigest-agnostic and blocks any further dispatch for this run.
+     * BLOQUANT C — check the run-level quarantine before consulting the WAL.
+     * A completed acknowledgement cannot authorize recovery after structural
+     * verification failed: the operator must inspect the possibly partial
+     * provider graph. The quarantine sentinel therefore takes precedence over
+     * every dispatched or completed attempt for the run.
      */
     if (await this.#attempts.isQuarantined(projectId, runId)) {
       throw new ArchitectureRunQuarantinedError();
     }
     try {
-      return await this.#attempts.begin({ projectId, runId, planDigest, dispatchedAt });
+      return await this.#attempts.begin({
+        projectId,
+        runId,
+        packageName,
+        items,
+        planDigest,
+        dispatchedAt,
+        sourceAnalyses,
+      });
     } catch (error) {
       if (error instanceof ArchitectureWriteOutcomeUnknownError) throw error;
       throw new ArchitectureWriteOutcomeUnknownError();
@@ -961,16 +1048,146 @@ export class ModelWriteArchitectureRunExecutor {
     }
   }
 
+  /**
+   * Capture every server-owned write form before the WAL permits dispatch, then
+   * immediately reopen the durable bytes. The returned sourceText is therefore
+   * not a freshly rendered string: it is the exact CAS text sent to SysON.
+   */
+  async #captureAndReopenSysmlSources(
+    proposal: ArchitectureProposal,
+    mode: "initial" | "enrichment",
+    items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
+    runId: string,
+  ): Promise<readonly VerifiedSysmlSourceAnalysis[]> {
+    const selectors = mode === "initial"
+      ? [{ kind: "full-package" as const, packageName: proposal.packageName }]
+      : items.map((item) => {
+        if (item.kind === "part-def") {
+          return {
+            kind: "part-def" as const,
+            packageName: proposal.packageName,
+            componentName: item.componentName,
+          };
+        }
+        if (item.kind === "usage") {
+          return {
+            kind: "usage" as const,
+            packageName: proposal.packageName,
+            componentName: item.componentName,
+            usageName: item.usageName,
+            parentName: item.parentName,
+          };
+        }
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "An enrichment plan must not contain a full-package SysML write.",
+        );
+      });
+    const references = await Promise.all(
+      selectors.map((selector) =>
+        this.#sysmlSourceAnalysis.capture({
+          proposal,
+          selector,
+          runId,
+          operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+        })
+      ),
+    );
+    return await this.#reopenSysmlSources(references);
+  }
+
+  async #reopenSysmlSources(
+    references: readonly SysmlSourceAnalysisReference[],
+  ): Promise<readonly VerifiedSysmlSourceAnalysis[]> {
+    if (references.length === 0) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "A current architecture write must seal at least one rendered SysML source.",
+      );
+    }
+    try {
+      return await Promise.all(
+        references.map((reference) => this.#sysmlSourceAnalysis.reopen(reference)),
+      );
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Sealed SysML source evidence is not exact and cannot be dispatched: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * A v3 WAL is a binding to this exact run occurrence, not just a correctly
+   * shaped bundle for the same package.  Validate its server-owned dispatch
+   * basis before any provider read or publication path can trust it.
+   */
+  #assertCurrentAttemptRunBasis(
+    attempt: Extract<
+      NonNullable<Awaited<ReturnType<FileArchitectureAttemptStore["readRun"]>>>,
+      { readonly schemaVersion: "architecture-write-attempt/3.0" }
+    >,
+    proposal: ArchitectureProposal,
+    runId: string,
+    dispatchedAt: string,
+  ): void {
+    if (
+      attempt.runId !== runId ||
+      attempt.packageName !== proposal.packageName ||
+      attempt.dispatchedAt !== dispatchedAt
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Current architecture WAL does not match the signed package and immutable run dispatch basis.",
+      );
+    }
+  }
+
+  /**
+   * Reopening proves CAS integrity.  Re-rendering proves the bytes are still
+   * the native source of the proposal currently under authority.  Without this
+   * second check, a self-consistent v3 WAL from another valid proposal could
+   * be replayed under the same package/run/selectors.
+   */
+  #assertSourcesMatchCurrentProposal(
+    sources: readonly VerifiedSysmlSourceAnalysis[],
+    proposal: ArchitectureProposal,
+  ): void {
+    for (const source of sources) {
+      const rendered = renderArchitectureSysmlWithManifest(
+        proposal,
+        source.reference.selector,
+      );
+      if (
+        source.source.sourceText !== rendered.sourceText ||
+        deterministicJson(source.source.manifest) !==
+          deterministicJson(rendered.manifest)
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "Current architecture WAL source evidence does not exactly match the signed proposal render.",
+        );
+      }
+    }
+  }
+
   async #insertEnrichmentItems(
     editingContextId: string,
     architecturePackageId: string,
     items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
+    sources: readonly VerifiedSysmlSourceAnalysis[],
     onAcknowledged: () => void,
   ): Promise<void> {
     // Phase A: insert all new part-defs under the architecture package.
     for (const item of items) {
       if (item.kind !== "part-def") continue;
-      const sysml = `part def ${item.componentName} {}`;
+      const sysml = sourceTextForSelector(sources, {
+        kind: "part-def",
+        packageName: sources[0]?.reference.selector.packageName ?? "",
+        componentName: item.componentName,
+      });
       const result = await this.#syson.callTool({
         name: "syson_element_insert_sysml",
         arguments: {
@@ -1040,7 +1257,13 @@ export class ModelWriteArchitectureRunExecutor {
             `"${item.parentName}" has no resolved ID after insertion.`,
         );
       }
-      const sysml = `part ${item.usageName} : ${item.componentName};`;
+      const sysml = sourceTextForSelector(sources, {
+        kind: "usage",
+        packageName: sources[0]?.reference.selector.packageName ?? "",
+        componentName: item.componentName,
+        usageName: item.usageName,
+        parentName: item.parentName,
+      });
       const result = await this.#syson.callTool({
         name: "syson_element_insert_sysml",
         arguments: {
@@ -1313,7 +1536,7 @@ export class ModelWriteArchitectureRunExecutor {
       ) {
         throw new EngineeringProjectCommandError(
           "invalid_input",
-          "The predecessor architecture capture is not schema v2 evidence.",
+          "The predecessor architecture capture is not exact v2/v3 evidence.",
         );
       }
       predecessorPackage = capture.package;
@@ -1525,7 +1748,7 @@ export class ModelWriteArchitectureRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The predecessor architecture capture is not canonical schema-v2 evidence: ${
+        `The predecessor architecture capture is not canonical v2/v3 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -1545,7 +1768,7 @@ export class ModelWriteArchitectureRunExecutor {
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The predecessor architecture capture is not exact schema-v2 evidence.",
+        "The predecessor architecture capture is not exact v2/v3 evidence.",
       );
     }
     const captureSeed = capture.seed;
@@ -1776,7 +1999,7 @@ export class ModelWriteArchitectureRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Completed architecture capture is not canonical schema-v2 evidence: ${
+        `Completed architecture capture is not canonical v2/v3 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -1967,7 +2190,7 @@ export class ModelWriteArchitectureRunExecutor {
       );
     }
 
-    // The v2 WAL is the durable provider acknowledgement. Its planDigest seals
+    // The WAL is the durable provider acknowledgement. Its planDigest seals
     // the live preflight split between adopted and inserted items, which cannot
     // be reconstructed offline from the final capture without confusing a
     // pre-existing live adoption with an insertion performed by this run. The
@@ -1993,7 +2216,34 @@ export class ModelWriteArchitectureRunExecutor {
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Completed architecture evidence is not backed by the exact completed v2 WAL acknowledgement, run start, and Package identity.",
+        "Completed architecture evidence is not backed by an exact completed WAL acknowledgement, run start, and Package identity.",
+      );
+    }
+    if (capture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
+      if (
+        completedAttempt.schemaVersion !== "architecture-write-attempt/3.0" ||
+        !sameSourceAnalysisReferences(
+          capture.sourceAnalyses!,
+          completedAttempt.sourceAnalyses,
+        )
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "Completed current architecture capture does not match the exact source-analysis evidence sealed by its WAL.",
+        );
+      }
+      const sources = await this.#reopenSysmlSources(capture.sourceAnalyses!);
+      this.#assertCurrentAttemptRunBasis(
+        completedAttempt,
+        architectureProposal,
+        run.id,
+        requiredStart(run),
+      );
+      this.#assertSourcesMatchCurrentProposal(sources, architectureProposal);
+    } else if (completedAttempt.schemaVersion !== "architecture-write-attempt/2.0") {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Historical architecture capture must not be retrofitted with current source-analysis WAL evidence.",
       );
     }
 
@@ -2258,259 +2508,28 @@ function parseProposal(
   }
 }
 
-interface ExactArchitectureCapture {
-  readonly schemaVersion: typeof ARCHITECTURE_CAPTURE_SCHEMA;
-  readonly operation: typeof MODEL_WRITE_ARCHITECTURE_OPERATION;
-  readonly trustedRunId: string;
-  readonly packageName: string;
-  readonly systemName: string;
-  readonly package: { readonly id: string; readonly label: string };
-  readonly seed: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-    readonly producerRunId: string;
-  };
-  readonly predecessor?: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-    readonly producerRunId: string;
-  };
-  readonly partDefinitions: readonly {
-    readonly id: string;
-    readonly kind: "PartDefinition";
-    readonly label: string;
-    readonly usages: readonly {
-      readonly id: string;
-      readonly kind: "PartUsage";
-      readonly label: string;
-      readonly targetId: string;
-      readonly targetKind: "PartDefinition";
-      readonly targetLabel: string;
-    }[];
-  }[];
-  readonly insertedAt: string;
-}
-
-function parseExactArchitectureCapture(value: unknown): ExactArchitectureCapture {
-  const record = exactObject(value, "Architecture capture");
-  exactKeys(
-    record,
-    [
-      "schemaVersion",
-      "operation",
-      "trustedRunId",
-      "packageName",
-      "systemName",
-      "package",
-      "seed",
-      ...(record.predecessor === undefined ? [] : ["predecessor"]),
-      "partDefinitions",
-      "insertedAt",
-    ],
-    "Architecture capture",
+/** Return only persisted-and-reopened bytes for the exact server write form. */
+function sourceTextForSelector(
+  sources: readonly VerifiedSysmlSourceAnalysis[],
+  selector: SysmlSourceAnalysisReference["selector"],
+): string {
+  const matches = sources.filter((source) =>
+    deterministicJson(source.reference.selector) === deterministicJson(selector)
   );
-  const operation = exactObject(record.operation, "Architecture capture operation");
-  exactKeys(operation, ["id", "version"], "Architecture capture operation");
-  if (
-    record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
-    operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
-    operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version
-  ) {
-    throw new Error("Architecture capture operation or schema is not exact.");
-  }
-
-  const trustedRunId = exactNonEmpty(record.trustedRunId, "trustedRunId");
-  const packageName = exactNonEmpty(record.packageName, "packageName");
-  const systemName = exactNonEmpty(record.systemName, "systemName");
-  const insertedAt = exactCanonicalInstant(record.insertedAt, "insertedAt");
-  const rawPackage = exactObject(record.package, "Architecture capture package");
-  exactKeys(rawPackage, ["id", "label"], "Architecture capture package");
-  const architecturePackage = {
-    id: exactNonEmpty(rawPackage.id, "package.id"),
-    label: exactNonEmpty(rawPackage.label, "package.label"),
-  };
-  if (architecturePackage.label !== packageName) {
-    throw new Error("Architecture capture package label does not match packageName.");
-  }
-
-  const captureRef = (
-    raw: unknown,
-    field: "seed" | "predecessor",
-  ) => {
-    const ref = exactObject(raw, `Architecture capture ${field}`);
-    exactKeys(
-      ref,
-      ["artifactId", "fingerprint", "producerRunId"],
-      `Architecture capture ${field}`,
+  if (matches.length !== 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "The architecture dispatch has no one exact reopened SysML source for its registered write form.",
     );
-    return {
-      artifactId: exactNonEmpty(ref.artifactId, `${field}.artifactId`),
-      fingerprint: exactFingerprint(ref.fingerprint, `${field}.fingerprint`),
-      producerRunId: exactNonEmpty(ref.producerRunId, `${field}.producerRunId`),
-    };
-  };
-  const seed = captureRef(record.seed, "seed");
-  const predecessor = record.predecessor === undefined
-    ? undefined
-    : captureRef(record.predecessor, "predecessor");
-
-  if (!Array.isArray(record.partDefinitions)) {
-    throw new Error("Architecture capture partDefinitions must be an array.");
   }
-  const semanticIds = new Set<string>([architecturePackage.id]);
-  const definitionLabels = new Set<string>();
-  const partDefinitions = record.partDefinitions.map((rawPart, index) => {
-    const part = exactObject(rawPart, `partDefinitions[${index}]`);
-    exactKeys(
-      part,
-      ["id", "kind", "label", "usages"],
-      `partDefinitions[${index}]`,
-    );
-    const id = exactNonEmpty(part.id, `partDefinitions[${index}].id`);
-    const label = exactNonEmpty(part.label, `partDefinitions[${index}].label`);
-    if (
-      part.kind !== "PartDefinition" || !Array.isArray(part.usages) ||
-      semanticIds.has(id) || definitionLabels.has(label)
-    ) {
-      throw new Error(`Architecture capture PartDefinition ${index} is ambiguous.`);
-    }
-    semanticIds.add(id);
-    definitionLabels.add(label);
-    const usageLabels = new Set<string>();
-    const usages = part.usages.map((rawUsage, usageIndex) => {
-      const usage = exactObject(
-        rawUsage,
-        `partDefinitions[${index}].usages[${usageIndex}]`,
-      );
-      exactKeys(
-        usage,
-        ["id", "kind", "label", "targetId", "targetKind", "targetLabel"],
-        `partDefinitions[${index}].usages[${usageIndex}]`,
-      );
-      const usageId = exactNonEmpty(
-        usage.id,
-        `partDefinitions[${index}].usages[${usageIndex}].id`,
-      );
-      const usageLabel = exactNonEmpty(
-        usage.label,
-        `partDefinitions[${index}].usages[${usageIndex}].label`,
-      );
-      if (
-        usage.kind !== "PartUsage" || usage.targetKind !== "PartDefinition" ||
-        semanticIds.has(usageId) || usageLabels.has(usageLabel)
-      ) {
-        throw new Error(
-          `Architecture capture PartUsage ${index}/${usageIndex} is ambiguous.`,
-        );
-      }
-      semanticIds.add(usageId);
-      usageLabels.add(usageLabel);
-      return {
-        id: usageId,
-        kind: "PartUsage" as const,
-        label: usageLabel,
-        targetId: exactNonEmpty(
-          usage.targetId,
-          `partDefinitions[${index}].usages[${usageIndex}].targetId`,
-        ),
-        targetKind: "PartDefinition" as const,
-        targetLabel: exactNonEmpty(
-          usage.targetLabel,
-          `partDefinitions[${index}].usages[${usageIndex}].targetLabel`,
-        ),
-      };
-    });
-    return { id, kind: "PartDefinition" as const, label, usages };
-  });
-
-  const definitionsById = new Map(partDefinitions.map((part) => [part.id, part]));
-  for (const part of partDefinitions) {
-    for (const usage of part.usages) {
-      if (definitionsById.get(usage.targetId)?.label !== usage.targetLabel) {
-        throw new Error(
-          `Architecture capture PartUsage "${usage.label}" has a non-exact target.`,
-        );
-      }
-    }
-  }
-  if (!partDefinitions.some((part) => part.label === systemName)) {
-    throw new Error("Architecture capture systemName is not a PartDefinition.");
-  }
-
-  return {
-    schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
-    operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
-    trustedRunId,
-    packageName,
-    systemName,
-    package: architecturePackage,
-    seed,
-    ...(predecessor ? { predecessor } : {}),
-    partDefinitions,
-    insertedAt,
-  };
+  return matches[0]!.source.sourceText;
 }
 
-function exactObject(value: unknown, path: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${path} must be an object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function exactKeys(
-  value: Record<string, unknown>,
-  expected: readonly string[],
-  path: string,
-): void {
-  const actual = Object.keys(value).sort();
-  const required = [...expected].sort();
-  if (
-    actual.length !== required.length ||
-    actual.some((key, index) => key !== required[index])
-  ) {
-    throw new Error(`${path} has non-exact fields.`);
-  }
-}
-
-function exactNonEmpty(value: unknown, path: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${path} must be a non-empty string.`);
-  }
-  return value;
-}
-
-function exactFingerprint(value: unknown, path: string): ContentFingerprint {
-  const record = exactObject(value, path);
-  exactKeys(record, ["algorithm", "digest"], path);
-  if (
-    record.algorithm !== "sha256" || typeof record.digest !== "string" ||
-    !/^[0-9a-f]{64}$/.test(record.digest)
-  ) {
-    throw new Error(`${path} must be an exact SHA-256 fingerprint.`);
-  }
-  return { algorithm: "sha256", digest: record.digest };
-}
-
-function exactCanonicalInstant(value: unknown, path: string): string {
-  if (
-    typeof value !== "string" || Number.isNaN(Date.parse(value)) ||
-    new Date(value).toISOString() !== value
-  ) {
-    throw new Error(`${path} must be a canonical ISO instant.`);
-  }
-  return value;
-}
-
-// ── Private: plan content digest ─────────────────────────────────────────────
-
-async function planContentDigest(
-  items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
-  proposal: ArchitectureProposal,
-): Promise<string> {
-  const canonical = deterministicJson({ items, packageName: proposal.packageName });
-  const fp = await sha256Fingerprint(canonical);
-  return fp.digest;
+function sameSourceAnalysisReferences(
+  left: readonly SysmlSourceAnalysisReference[],
+  right: readonly SysmlSourceAnalysisReference[],
+): boolean {
+  return deterministicJson(left) === deterministicJson(right);
 }
 
 // ── Private: SysON response validation ───────────────────────────────────────

@@ -725,6 +725,7 @@ const ALL_KINDS_VISIBLE: Record<DisplayKind, boolean> = {
   "change": true,
   "consumption": true,
   "action": true,
+  "analysis": true,
   "sysml-element": true,
 };
 
@@ -739,6 +740,7 @@ const DEFAULT_MAP_KINDS: Record<DisplayKind, boolean> = {
   "change": false,
   "consumption": false,
   "action": true,
+  "analysis": true,
   "sysml-element": true,
 };
 

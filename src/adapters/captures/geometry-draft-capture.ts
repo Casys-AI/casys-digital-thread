@@ -5,11 +5,13 @@
  * before any human MRTR decision.  Its output MUST never appear in a
  * ThreadSnapshot so that the canonical evidence thread remains unambiguous
  * (Invariant 4 + D2 decision).  This module materialises the provider result
- * into two stores:
+ * into four stores:
  *
- *   a) `state/local/geometry-draft-captures/` — content-addressed JSON captures
+ *   a) `state/local/geometry-source-captures/` — exact native source envelopes
+ *   b) `state/local/source-analysis-captures/` — passive source-local facts
+ *   c) `state/local/geometry-draft-captures/` — content-addressed JSON captures
  *      (FileCaptureStore<"geometry-draft">)
- *   b) `state/local/geometry-draft-assets/` — raw binary files keyed by their
+ *   d) `state/local/geometry-draft-assets/` — raw binary files keyed by their
  *      SHA-256, served by `/api/draft-assets/<digest>`
  *
  * The operator reviews the MRTR proposal (which carries the `draftDigest`) and
@@ -18,10 +20,9 @@
  * before promoting anything into the canonical thread.
  *
  * SCRIPT EXECUTION — `validateGeometryScript` is called before any provider
- * dispatch (D4).  A single assembly `build123d_export` call is made. Per-component
- * STL export is deliberately deferred until a provider-fixed isolation recipe exists.
- * The Python script is agent-proposed and validated before dispatch; every
- * provider-side export name and identity is server-fixed.
+ * dispatch (D4). The exact validated source and its passive parser result are
+ * both persisted and reread before build123d receives the same text. Every
+ * provider-side export name and identity remains server-fixed.
  *
  * BINARY MATERIALIZATION — each file returned by the provider carries a
  * `sha256` field we treat as the expected digest.  We verify by re-computing
@@ -56,6 +57,11 @@ import {
 } from "../../domain/platform/geometry-bundle.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type { FileCaptureStore } from "./file-capture-store.ts";
+import {
+  type GeometrySourceAnalysisCaptureDependencies,
+  GeometrySourceAnalysisCaptureService,
+  type GeometrySourceAnalysisReference,
+} from "./geometry-source-analysis-capture.ts";
 
 // ── Schema constant ───────────────────────────────────────────────────────────
 
@@ -67,9 +73,15 @@ import type { FileCaptureStore } from "./file-capture-store.ts";
  */
 export const LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA =
   "geometry-draft-capture/1.0" as const;
-export const GEOMETRY_DRAFT_CAPTURE_SCHEMA = "geometry-draft-capture/1.1" as const;
-export const GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA =
+/** Historical preview-run attribution, before passive source analysis existed. */
+export const PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA =
+  "geometry-draft-capture/1.1" as const;
+export const GEOMETRY_DRAFT_CAPTURE_SCHEMA = "geometry-draft-capture/1.2" as const;
+/** Historical bundle with exact sources but no captured source analysis. */
+export const PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA =
   "geometry-draft-capture/2.0" as const;
+export const GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA =
+  "geometry-draft-capture/2.1" as const;
 
 /** Server-fixed name prefix used for all geometry preview exports. */
 const PREVIEW_ASSEMBLY_NAME = "geometry-preview-assembly" as const;
@@ -123,6 +135,8 @@ export interface GeometryDraftCapture {
   /** Validated Python script that was submitted to the provider. */
   readonly script: string;
   readonly scriptHash: ContentFingerprint;
+  /** Passive facts derived from these exact bytes before provider dispatch. */
+  readonly sourceAnalysis: GeometrySourceAnalysisReference;
   /** Export formats requested for the assembly call. */
   readonly exportFormats: ReadonlyArray<GeometryExportFormat>;
   /** Reviewed component bindings retained as metadata; v1 exports no per-part mesh. */
@@ -146,6 +160,11 @@ export interface GeometryDraftCaptureOptions {
    * Server-fixed: never supplied by an agent.
    */
   readonly build123dService: "mcp-build123d-sandbox";
+  /**
+   * Server-owned passive analysis path. The source and bundle stores are
+   * durable CAS records; the frontend has no provider or authority access.
+   */
+  readonly sourceAnalysis: GeometrySourceAnalysisCaptureDependencies;
   /**
    * Path to the directory containing `docker-compose.yml`.
    * Passed as `--project-directory` to `docker compose cp`.
@@ -217,6 +236,13 @@ export interface GeometryBundleDraftCapture {
     readonly exportFormats: ReadonlyArray<GeometryBundleExportFormat>;
     readonly files: ReadonlyArray<GeometryDraftAssemblyFile>;
   };
+  readonly sourceAnalyses: {
+    readonly assembly: GeometrySourceAnalysisReference;
+    readonly partDefinitions: ReadonlyArray<{
+      readonly elementId: string;
+      readonly analysis: GeometrySourceAnalysisReference;
+    }>;
+  };
   readonly components: ReadonlyArray<GeometryBundleComponentBinding>;
   readonly partExportFormats: ReadonlyArray<GeometryBundleExportFormat>;
   readonly partDefinitions: ReadonlyArray<GeometryBundleDraftPartDefinition>;
@@ -278,11 +304,13 @@ export class GeometryDraftMaterializationError extends Error {
  * Steps:
  *  1. `validateGeometryScript` — fail-closed, D4.
  *  2. `sha256Fingerprint` on the script bytes (for the signed MRTR proposal).
- *  3. `build123d_export` for the assembly in the requested formats.
- *  4. Keep component bindings as metadata; per-part export is deferred to v2.
- *  5. Materialise every binary to `state/local/geometry-draft-assets/{sha256}`.
- *  6. Build + save the JSON draft capture to the FileCaptureStore.
- *  7. Return the typed capture (whose `fingerprint.digest` = the draftDigest).
+ *  3. Capture/re-read the exact source, analyse it, then capture/re-read the
+ *     passive source-analysis bundle.
+ *  4. `build123d_export` for the assembly in the requested formats.
+ *  5. Keep component bindings as metadata; per-part export is deferred to v2.
+ *  6. Materialise every binary to `state/local/geometry-draft-assets/{sha256}`.
+ *  7. Build + save the JSON draft capture to the FileCaptureStore.
+ *  8. Return the typed capture (whose `fingerprint.digest` = the draftDigest).
  */
 export async function captureGeometryDraft(
   client: McpToolClient,
@@ -323,7 +351,19 @@ export async function captureGeometryDraft(
   // partial state that looks like a successful draft.
   const scriptHash = await sha256FingerprintOfText(script);
 
-  // Step 3: assembly export.
+  // Step 3: preserve and analyse these exact bytes before the provider sees
+  // them. The analysis is passive: it creates no assertion, admission, plan,
+  // ThreadSnapshot entity, or provider request.
+  const sourceAnalysis = await new GeometrySourceAnalysisCaptureService(
+    options.sourceAnalysis,
+  ).capture({ selector: { kind: "assembly" }, sourceText: script });
+  if (!fingerprintsEqual(sourceAnalysis.sourceFingerprint, scriptHash)) {
+    throw new Error(
+      "Geometry source analysis did not retain the exact preview script hash.",
+    );
+  }
+
+  // Step 4: assembly export.
   const assemblyResult = await client.callTool({
     name: "build123d_export",
     arguments: {
@@ -378,6 +418,7 @@ export async function captureGeometryDraft(
     },
     script,
     scriptHash,
+    sourceAnalysis,
     exportFormats: [...manifest.exportFormats],
     components: [...manifest.components],
     assemblyFiles: Object.freeze(assemblyFiles),
@@ -478,6 +519,54 @@ export async function captureGeometryBundleDraft(
       definition.elementId,
       await sha256FingerprintOfText(scriptsByDefinitionId.get(definition.elementId)!),
     );
+  }
+
+  // Persist and analyse the complete N+1 source set before the first provider
+  // call. A later rejected PartDefinition may leave passive CAS records, but it
+  // can never leave a partial build123d execution that appears reviewable.
+  const sourceAnalysisService = new GeometrySourceAnalysisCaptureService(
+    options.sourceAnalysis,
+  );
+  const assemblySourceAnalysis = await sourceAnalysisService.capture({
+    selector: { kind: "assembly" },
+    sourceText: input.assemblyScript,
+  });
+  if (
+    !fingerprintsEqual(
+      assemblySourceAnalysis.sourceFingerprint,
+      assemblyScriptHash,
+    )
+  ) {
+    throw new Error(
+      "Geometry assembly analysis did not retain the exact preview script hash.",
+    );
+  }
+  const partDefinitionSourceAnalyses: Array<{
+    readonly elementId: string;
+    readonly analysis: GeometrySourceAnalysisReference;
+  }> = [];
+  for (const definition of manifest.partDefinitions) {
+    const analysis = await sourceAnalysisService.capture({
+      selector: {
+        kind: "part-definition",
+        elementId: definition.elementId,
+      },
+      sourceText: scriptsByDefinitionId.get(definition.elementId)!,
+    });
+    if (
+      !fingerprintsEqual(
+        analysis.sourceFingerprint,
+        definitionScriptHashes.get(definition.elementId)!,
+      )
+    ) {
+      throw new Error(
+        `Geometry PartDefinition ${definition.elementId} analysis did not retain the exact preview script hash.`,
+      );
+    }
+    partDefinitionSourceAnalyses.push({
+      elementId: definition.elementId,
+      analysis,
+    });
   }
 
   const previewRunId = options.previewRunId ??
@@ -594,6 +683,10 @@ export async function captureGeometryBundleDraft(
       scriptHash: assemblyScriptHash,
       exportFormats: [...manifest.exportFormats],
       files: assemblyFiles,
+    },
+    sourceAnalyses: {
+      assembly: assemblySourceAnalysis,
+      partDefinitions: partDefinitionSourceAnalyses,
     },
     components: [...manifest.components],
     partExportFormats: [...manifest.partExportFormats],
@@ -1303,6 +1396,13 @@ async function sha256FingerprintOfText(text: string): Promise<ContentFingerprint
       .map((b) => b.toString(16).padStart(2, "0"))
       .join(""),
   };
+}
+
+function fingerprintsEqual(
+  left: ContentFingerprint,
+  right: ContentFingerprint,
+): boolean {
+  return left.algorithm === right.algorithm && left.digest === right.digest;
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {

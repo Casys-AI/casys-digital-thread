@@ -4,6 +4,7 @@ import type {
 } from "../thread/thread-snapshot.ts";
 import type { IsoDateTime } from "../kernel/types.ts";
 import type { EngineeringProjectFraming } from "./project-brief.ts";
+import type { ResolvedOperationPlanRef } from "../analysis/resolved-operation-plan-v2.ts";
 
 /**
  * Immutable, transport-independent intent and execution state for one
@@ -340,6 +341,11 @@ export interface EngineeringAgentRun {
    */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
   readonly inputFingerprint?: ContentFingerprint;
+  /**
+   * Server-stamped CAS reference for a registered resolved-operation-plan/2.0.
+   * Historical and @1 runs deliberately omit it; no caller can provide it.
+   */
+  readonly resolvedOperationPlan?: ResolvedOperationPlanRef;
   readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly waitingForDecisionIds?: readonly string[];
   readonly resultSnapshot?: EngineeringThreadSnapshotRef;
@@ -506,6 +512,8 @@ export interface EngineeringProjectCommandReceipt {
 export interface EngineeringQueuedRunReceiptBinding {
   readonly runId: string;
   readonly workItemId: string;
+  /** Present exactly when its queued run carries a resolved operation plan. */
+  readonly resolvedOperationPlan?: ResolvedOperationPlanRef;
 }
 
 /** Exact run identity sealed into an agent-run.cancel receipt by the service. */

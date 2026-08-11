@@ -13,6 +13,8 @@
  */
 
 import type { EngineeringDecisionProposalParameter } from "../project/engineering-project.ts";
+import { deterministicJson } from "../kernel/deterministic-json.ts";
+import { exactRecord } from "../kernel/case-validation.ts";
 
 // ── Operation identity ───────────────────────────────────────────────────────
 
@@ -331,38 +333,485 @@ function detectCycles(
  * The renderer is pure and deterministic — same input always produces the same
  * SysML text, which is why the insertion fingerprint is computable in advance.
  */
-export function renderArchitectureSysml(proposal: ArchitectureProposal): string {
-  const lines: string[] = [];
-  lines.push(`package ${proposal.packageName} {`);
+export interface SysmlSourceSpan {
+  readonly start: { readonly line: number; readonly column: number };
+  readonly end: { readonly line: number; readonly column: number };
+}
 
-  const systemUsages = proposal.components.filter(
-    (c) => c.parentName === proposal.system.name,
-  );
-  lines.push(`  part def ${proposal.system.name} {`);
-  for (const usage of systemUsages) {
-    lines.push(`    part ${usage.usageName} : ${usage.name};`);
+export type SysmlArchitectureSourceSelector =
+  | { readonly kind: "full-package"; readonly packageName: string }
+  | {
+    readonly kind: "part-def";
+    readonly packageName: string;
+    readonly componentName: string;
   }
-  lines.push("  }");
+  | {
+    readonly kind: "usage";
+    readonly packageName: string;
+    readonly componentName: string;
+    readonly usageName: string;
+    readonly parentName: string;
+  };
 
-  const definitionNames = [
-    ...new Set(proposal.components.map((component) => component.name)),
-  ];
-  for (const definitionName of definitionNames) {
-    if (definitionName === proposal.system.name) continue;
-    const usages = proposal.components.filter((c) => c.parentName === definitionName);
-    if (usages.length === 0) {
-      lines.push(`  part def ${definitionName} {}`);
-    } else {
-      lines.push(`  part def ${definitionName} {`);
+export interface RenderedArchitectureSysmlEntry {
+  readonly kind: "package" | "part-definition" | "part-usage";
+  readonly selector: SysmlArchitectureSourceSelector;
+  readonly packageName: string;
+  readonly parentName?: string;
+  readonly definitionName?: string;
+  /** The legacy renderer emits the system definition as a block even when empty. */
+  readonly bodyStyle?: "block" | "empty";
+  readonly usageName?: string;
+  readonly targetName?: string;
+  readonly span: SysmlSourceSpan;
+}
+
+export interface RenderedArchitectureSysmlManifest {
+  readonly schemaVersion: "rendered-architecture-sysml-manifest/1.0";
+  readonly selector: SysmlArchitectureSourceSelector;
+  readonly entries: readonly RenderedArchitectureSysmlEntry[];
+}
+
+export interface RenderedArchitectureSysml {
+  readonly sourceText: string;
+  readonly manifest: RenderedArchitectureSysmlManifest;
+}
+
+/**
+ * Render one server-owned SysML write form and simultaneously attest the exact
+ * constructs it emitted. This is deliberately a renderer/source-map pair, not
+ * a parser for arbitrary SysML text.
+ */
+export function renderArchitectureSysmlWithManifest(
+  proposal: ArchitectureProposal,
+  selector: SysmlArchitectureSourceSelector = {
+    kind: "full-package",
+    packageName: proposal.packageName,
+  },
+): RenderedArchitectureSysml {
+  const normalized = normalizeSysmlSelector(proposal, selector);
+  const output: Array<{
+    readonly text: string;
+    readonly entry?: Omit<RenderedArchitectureSysmlEntry, "span">;
+  }> = [];
+  const add = (
+    text: string,
+    entry?: Omit<RenderedArchitectureSysmlEntry, "span">,
+  ): void => {
+    output.push({ text, entry });
+  };
+
+  if (normalized.kind === "part-def") {
+    add(`part def ${normalized.componentName} {}`, {
+      kind: "part-definition",
+      selector: normalized,
+      packageName: normalized.packageName,
+      definitionName: normalized.componentName,
+      bodyStyle: "empty",
+    });
+  } else if (normalized.kind === "usage") {
+    add(`part ${normalized.usageName} : ${normalized.componentName};`, {
+      kind: "part-usage",
+      selector: normalized,
+      packageName: normalized.packageName,
+      parentName: normalized.parentName,
+      usageName: normalized.usageName,
+      targetName: normalized.componentName,
+    });
+  } else {
+    add(`package ${proposal.packageName} {`, {
+      kind: "package",
+      selector: normalized,
+      packageName: proposal.packageName,
+    });
+    const definitionNames = [
+      proposal.system.name,
+      ...[...new Set(proposal.components.map((component) => component.name))]
+        .filter((name) => name !== proposal.system.name),
+    ];
+    for (const definitionName of definitionNames) {
+      const usages = proposal.components.filter((component) =>
+        component.parentName === definitionName
+      );
+      if (usages.length === 0 && definitionName !== proposal.system.name) {
+        add(`  part def ${definitionName} {}`, {
+          kind: "part-definition",
+          selector: normalized,
+          packageName: proposal.packageName,
+          definitionName,
+          bodyStyle: "empty",
+        });
+        continue;
+      }
+      add(`  part def ${definitionName} {`, {
+        kind: "part-definition",
+        selector: normalized,
+        packageName: proposal.packageName,
+        definitionName,
+        bodyStyle: "block",
+      });
       for (const usage of usages) {
-        lines.push(`    part ${usage.usageName} : ${usage.name};`);
+        add(`    part ${usage.usageName} : ${usage.name};`, {
+          kind: "part-usage",
+          selector: normalized,
+          packageName: proposal.packageName,
+          parentName: definitionName,
+          usageName: usage.usageName,
+          targetName: usage.name,
+        });
+      }
+      add("  }");
+    }
+    add("}");
+  }
+  const sourceText = output.map((line) => line.text).join("\n");
+  const entries = output.flatMap((line, index) =>
+    line.entry
+      ? [{
+        ...line.entry,
+        span: {
+          start: { line: index + 1, column: 0 },
+          end: { line: index + 1, column: line.text.length },
+        },
+      }]
+      : []
+  );
+  return Object.freeze({
+    sourceText,
+    manifest: Object.freeze({
+      schemaVersion: "rendered-architecture-sysml-manifest/1.0",
+      selector: normalized,
+      entries: Object.freeze(entries),
+    }),
+  });
+}
+
+/** Reconstruct solely from the attested manifest; reject any altered bytes. */
+export function validateRenderedArchitectureSysml(
+  value: unknown,
+): RenderedArchitectureSysml {
+  const rendered = exactRecord(value, ["sourceText", "manifest"], "$renderedSysml");
+  if (typeof rendered.sourceText !== "string" || rendered.sourceText.length === 0) {
+    throw new TypeError("$renderedSysml.sourceText must be non-empty text.");
+  }
+  const manifest = parseRenderedArchitectureManifest(rendered.manifest);
+  const expected = sourceFromManifest(manifest);
+  if (rendered.sourceText !== expected) {
+    throw new TypeError(
+      "Rendered SysML source does not exactly match its attested manifest.",
+    );
+  }
+  return Object.freeze({ sourceText: rendered.sourceText, manifest });
+}
+
+/** Legacy full-package renderer: intentionally byte-identical to its predecessor. */
+export function renderArchitectureSysml(proposal: ArchitectureProposal): string {
+  return renderArchitectureSysmlWithManifest(proposal).sourceText;
+}
+
+function normalizeSysmlSelector(
+  proposal: ArchitectureProposal,
+  selector: SysmlArchitectureSourceSelector,
+): SysmlArchitectureSourceSelector {
+  if (selector.packageName !== proposal.packageName) {
+    throw new TypeError(
+      "SysML source selector must name the proposal package exactly.",
+    );
+  }
+  if (selector.kind === "full-package") return Object.freeze({ ...selector });
+  if (selector.kind === "part-def") {
+    const definitions = new Set([
+      proposal.system.name,
+      ...proposal.components.map((c) => c.name),
+    ]);
+    if (!definitions.has(selector.componentName)) {
+      throw new TypeError(
+        "SysML part-definition selector is not declared by proposal.",
+      );
+    }
+    return Object.freeze({ ...selector });
+  }
+  if (
+    !proposal.components.some((component) =>
+      component.name === selector.componentName &&
+      component.usageName === selector.usageName &&
+      component.parentName === selector.parentName
+    )
+  ) throw new TypeError("SysML usage selector is not one exact proposal occurrence.");
+  return Object.freeze({ ...selector });
+}
+
+function parseRenderedArchitectureManifest(
+  value: unknown,
+): RenderedArchitectureSysmlManifest {
+  const raw = exactRecord(
+    value,
+    ["schemaVersion", "selector", "entries"],
+    "$renderedSysml.manifest",
+  );
+  if (raw.schemaVersion !== "rendered-architecture-sysml-manifest/1.0") {
+    throw new TypeError("Unsupported rendered SysML manifest schema.");
+  }
+  const selector = parseSysmlSelector(raw.selector, "$renderedSysml.manifest.selector");
+  if (!Array.isArray(raw.entries) || raw.entries.length === 0) {
+    throw new TypeError("Rendered SysML manifest must contain entries.");
+  }
+  const entries = raw.entries.map((entry, index) =>
+    parseRenderedEntry(entry, `$renderedSysml.manifest.entries[${index}]`, selector)
+  );
+  return Object.freeze({
+    schemaVersion: "rendered-architecture-sysml-manifest/1.0",
+    selector,
+    entries: Object.freeze(entries),
+  });
+}
+
+function parseSysmlSelector(
+  value: unknown,
+  path: string,
+): SysmlArchitectureSourceSelector {
+  const record = value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+  if (record?.kind === "full-package") {
+    const raw = exactRecord(value, ["kind", "packageName"], path);
+    return Object.freeze({
+      kind: "full-package",
+      packageName: sysmlName(raw.packageName, `${path}.packageName`),
+    });
+  }
+  if (record?.kind === "part-def") {
+    const raw = exactRecord(value, ["kind", "packageName", "componentName"], path);
+    return Object.freeze({
+      kind: "part-def",
+      packageName: sysmlName(raw.packageName, `${path}.packageName`),
+      componentName: sysmlName(raw.componentName, `${path}.componentName`),
+    });
+  }
+  const raw = exactRecord(value, [
+    "kind",
+    "packageName",
+    "componentName",
+    "usageName",
+    "parentName",
+  ], path);
+  if (raw.kind !== "usage") {
+    throw new TypeError(`${path}.kind must name a registered write form.`);
+  }
+  return Object.freeze({
+    kind: "usage",
+    packageName: sysmlName(raw.packageName, `${path}.packageName`),
+    componentName: sysmlName(raw.componentName, `${path}.componentName`),
+    usageName: sysmlUsageName(raw.usageName, `${path}.usageName`),
+    parentName: sysmlName(raw.parentName, `${path}.parentName`),
+  });
+}
+
+function parseRenderedEntry(
+  value: unknown,
+  path: string,
+  selector: SysmlArchitectureSourceSelector,
+): RenderedArchitectureSysmlEntry {
+  const record = value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+  if (!record) throw new TypeError(`${path} must be an object.`);
+  const fields = ["kind", "selector", "packageName", "span"];
+  if (record.kind === "part-definition") fields.push("definitionName", "bodyStyle");
+  if (record.kind === "part-usage") {
+    fields.push("parentName", "usageName", "targetName");
+  }
+  const raw = exactRecord(value, fields, path);
+  const entrySelector = parseSysmlSelector(raw.selector, `${path}.selector`);
+  if (deterministicJson(entrySelector) !== deterministicJson(selector)) {
+    throw new TypeError(`${path}.selector must equal manifest selector.`);
+  }
+  const packageName = sysmlName(raw.packageName, `${path}.packageName`);
+  if (packageName !== selector.packageName) {
+    throw new TypeError(`${path}.packageName must equal selector packageName.`);
+  }
+  const span = parseSysmlSpan(raw.span, `${path}.span`);
+  if (raw.kind === "package") return { kind: "package", selector, packageName, span };
+  if (raw.kind === "part-definition") {
+    if (raw.bodyStyle !== "block" && raw.bodyStyle !== "empty") {
+      throw new TypeError(`${path}.bodyStyle is unsupported.`);
+    }
+    return {
+      kind: "part-definition",
+      selector,
+      packageName,
+      definitionName: sysmlName(raw.definitionName, `${path}.definitionName`),
+      bodyStyle: raw.bodyStyle,
+      span,
+    };
+  }
+  if (raw.kind !== "part-usage") throw new TypeError(`${path}.kind is unsupported.`);
+  return {
+    kind: "part-usage",
+    selector,
+    packageName,
+    parentName: sysmlName(raw.parentName, `${path}.parentName`),
+    usageName: sysmlUsageName(raw.usageName, `${path}.usageName`),
+    targetName: sysmlName(raw.targetName, `${path}.targetName`),
+    span,
+  };
+}
+
+function parseSysmlSpan(value: unknown, path: string): SysmlSourceSpan {
+  const raw = exactRecord(value, ["start", "end"], path);
+  const point = (value: unknown, pointPath: string) => {
+    const raw = exactRecord(value, ["line", "column"], pointPath);
+    const line = raw.line;
+    const column = raw.column;
+    if (
+      typeof line !== "number" || !Number.isSafeInteger(line) || line < 1 ||
+      typeof column !== "number" || !Number.isSafeInteger(column) || column < 0
+    ) throw new TypeError(`${pointPath} is invalid.`);
+    return { line, column };
+  };
+  const start = point(raw.start, `${path}.start`);
+  const end = point(raw.end, `${path}.end`);
+  if (end.line < start.line || (end.line === start.line && end.column < start.column)) {
+    throw new TypeError(`${path}.end precedes start.`);
+  }
+  return { start, end };
+}
+
+function sourceFromManifest(manifest: RenderedArchitectureSysmlManifest): string {
+  const entries = manifest.entries;
+  if (manifest.selector.kind === "part-def") {
+    if (
+      entries.length !== 1 || entries[0]?.kind !== "part-definition" ||
+      entries[0].definitionName !== manifest.selector.componentName
+    ) throw new TypeError("Part-definition manifest is not exact.");
+    if (entries[0].bodyStyle !== "empty") {
+      throw new TypeError("Part-definition manifest must use the empty write form.");
+    }
+    const sourceText = `part def ${manifest.selector.componentName} {}`;
+    assertManifestSpans(sourceText, entries);
+    return sourceText;
+  }
+  if (manifest.selector.kind === "usage") {
+    if (
+      entries.length !== 1 || entries[0]?.kind !== "part-usage" ||
+      entries[0].usageName !== manifest.selector.usageName ||
+      entries[0].targetName !== manifest.selector.componentName ||
+      entries[0].parentName !== manifest.selector.parentName
+    ) throw new TypeError("Usage manifest is not exact.");
+    const sourceText =
+      `part ${manifest.selector.usageName} : ${manifest.selector.componentName};`;
+    assertManifestSpans(sourceText, entries);
+    return sourceText;
+  }
+  if (entries[0]?.kind !== "package") {
+    throw new TypeError("Full-package manifest must start with package.");
+  }
+  const lines = [`package ${manifest.selector.packageName} {`];
+  let index = 1;
+  const definitionNames = new Set<string>();
+  const usageNamesByParent = new Set<string>();
+  const usageTargetNames = new Set<string>();
+  while (index < entries.length) {
+    const definition = entries[index];
+    if (definition?.kind !== "part-definition") {
+      throw new TypeError("Full-package manifest has invalid entry order.");
+    }
+    if (definitionNames.has(definition.definitionName!)) {
+      throw new TypeError(
+        "Full-package manifest has duplicate PartDefinition entries.",
+      );
+    }
+    definitionNames.add(definition.definitionName!);
+    index += 1;
+    const usages: RenderedArchitectureSysmlEntry[] = [];
+    while (
+      entries[index]?.kind === "part-usage" &&
+      entries[index]?.parentName === definition.definitionName
+    ) usages.push(entries[index++]!);
+    if (usages.length > 0 && definition.bodyStyle !== "block") {
+      throw new TypeError(
+        "A PartDefinition with usages must use the block write form.",
+      );
+    }
+    for (const usage of usages) {
+      const identity = deterministicJson({
+        parentName: usage.parentName,
+        usageName: usage.usageName,
+      });
+      if (usageNamesByParent.has(identity)) {
+        throw new TypeError(
+          "Full-package manifest has duplicate scoped PartUsage entries.",
+        );
+      }
+      usageNamesByParent.add(identity);
+      usageTargetNames.add(usage.targetName!);
+    }
+    if (usages.length === 0 && definition.bodyStyle === "empty") {
+      lines.push(`  part def ${definition.definitionName} {}`);
+    } else {
+      lines.push(`  part def ${definition.definitionName} {`);
+      for (const usage of usages) {
+        lines.push(`    part ${usage.usageName} : ${usage.targetName};`);
       }
       lines.push("  }");
     }
   }
-
+  for (const targetName of usageTargetNames) {
+    if (!definitionNames.has(targetName)) {
+      throw new TypeError("Full-package manifest usage target has no PartDefinition.");
+    }
+  }
   lines.push("}");
-  return lines.join("\n");
+  const sourceText = lines.join("\n");
+  assertManifestSpans(sourceText, manifest.entries);
+  return sourceText;
+}
+
+function assertManifestSpans(
+  sourceText: string,
+  entries: readonly RenderedArchitectureSysmlEntry[],
+): void {
+  const lines = sourceText.split("\n");
+  let nextLine = 0;
+  const expectedSpans = entries.map((entry) => {
+    const needle = entry.kind === "package"
+      ? `package ${entry.packageName} {`
+      : entry.kind === "part-definition"
+      ? `part def ${entry.definitionName}`
+      : `part ${entry.usageName} : ${entry.targetName};`;
+    const offset = lines.slice(nextLine).findIndex((line) =>
+      line.trimStart().startsWith(needle)
+    );
+    if (offset < 0) {
+      throw new TypeError("Rendered SysML manifest entry does not occur in order.");
+    }
+    const lineIndex = nextLine + offset;
+    nextLine = lineIndex + 1;
+    return {
+      start: { line: lineIndex + 1, column: 0 },
+      end: { line: lineIndex + 1, column: lines[lineIndex]!.length },
+    };
+  });
+  if (
+    deterministicJson(expectedSpans) !==
+      deterministicJson(entries.map((entry) => entry.span))
+  ) {
+    throw new TypeError("Rendered SysML manifest spans do not match source.");
+  }
+}
+
+function sysmlName(value: unknown, path: string): string {
+  if (typeof value !== "string" || !SYSML_IDENTIFIER.test(value)) {
+    throw new TypeError(`${path} must be a SysML identifier.`);
+  }
+  return value;
+}
+
+function sysmlUsageName(value: unknown, path: string): string {
+  if (typeof value !== "string" || !SYSML_USAGE_IDENTIFIER.test(value)) {
+    throw new TypeError(`${path} must be a SysML usage identifier.`);
+  }
+  return value;
 }
 
 // ── Insertion plan ───────────────────────────────────────────────────────────

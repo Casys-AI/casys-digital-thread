@@ -1,4 +1,3 @@
-import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 
@@ -16,17 +15,22 @@ export const CM01_V3_ERPNEXT_BOM = Object.freeze(
   } as const,
 );
 
-export const CM01_ERPNEXT_BOM_CAPTURE_SCHEMA = "cm01-erpnext-bom-capture/1.0" as const;
+export const CM01_ERPNEXT_BOM_CAPTURE_SCHEMA = "cm01-erpnext-bom-capture/2.0" as const;
+export const CM01_ERPNEXT_BOM_LEGACY_CAPTURE_SCHEMA =
+  "cm01-erpnext-bom-capture/1.0" as const;
 
 export interface Cm01ErpNextBomCapture {
   readonly schemaVersion: typeof CM01_ERPNEXT_BOM_CAPTURE_SCHEMA;
   readonly kind: "cm01-erpnext-bom-capture";
   readonly capturedAt: string;
-  /** Minimal, content-addressed external evidence. No ERP document payload leaks. */
+  /**
+   * Complete normalized BOM evidence. Its enclosing capture is the only
+   * published artifact, so the ThreadArtifact fingerprint and URI identify
+   * these exact persisted bytes rather than a hidden semantic projection.
+   */
   readonly artifact: {
     readonly role: "erp-bom";
     readonly kind: "bom";
-    readonly fingerprint: ContentFingerprint;
     readonly producer: {
       readonly serverId: "erpnext";
       readonly tool: "erpnext_bom_get";
@@ -40,8 +44,38 @@ export interface Cm01ErpNextBomCapture {
       readonly value: number;
       readonly unit: string;
     };
+    readonly components: readonly Cm01ErpNextBomComponent[];
+  };
+}
+
+/** Read-only compatibility shape for captures already persisted under 1.0. */
+export interface LegacyCm01ErpNextBomCapture {
+  readonly schemaVersion: typeof CM01_ERPNEXT_BOM_LEGACY_CAPTURE_SCHEMA;
+  readonly kind: "cm01-erpnext-bom-capture";
+  readonly capturedAt: string;
+  readonly artifact: {
+    readonly role: "erp-bom";
+    readonly kind: "bom";
+    readonly fingerprint: ContentFingerprint;
+    readonly producer: {
+      readonly serverId: "erpnext";
+      readonly tool: "erpnext_bom_get";
+    };
+    readonly identity: {
+      readonly bomName: string;
+      readonly itemCode: string;
+      readonly itemName: string;
+    };
+    readonly quantity: { readonly value: number; readonly unit: string };
     readonly componentCount: number;
   };
+}
+
+export interface Cm01ErpNextBomComponent {
+  readonly index: number;
+  readonly itemCode: string;
+  readonly quantity: number;
+  readonly unit: string;
 }
 
 export interface Cm01ErpNextBomCaptureAdapterOptions {
@@ -86,14 +120,6 @@ export class Cm01ErpNextBomCaptureAdapter {
     }
 
     const bom = parseProviderBom(result.structuredContent);
-    const fingerprint = await sha256Fingerprint({
-      schemaVersion: "cm01-erpnext-bom-fingerprint/1.0",
-      bomName: bom.name,
-      itemCode: bom.itemCode,
-      quantity: bom.quantity,
-      components: bom.components,
-    });
-
     return deepFreeze({
       schemaVersion: CM01_ERPNEXT_BOM_CAPTURE_SCHEMA,
       kind: "cm01-erpnext-bom-capture",
@@ -101,7 +127,6 @@ export class Cm01ErpNextBomCaptureAdapter {
       artifact: {
         role: "erp-bom",
         kind: "bom",
-        fingerprint,
         producer: { serverId: "erpnext", tool: "erpnext_bom_get" },
         identity: {
           bomName: bom.name,
@@ -109,7 +134,7 @@ export class Cm01ErpNextBomCaptureAdapter {
           itemName: bom.itemName,
         },
         quantity: bom.quantity,
-        componentCount: bom.components.length,
+        components: bom.components,
       },
     });
   }
@@ -120,12 +145,7 @@ interface NormalizedBom {
   readonly itemCode: string;
   readonly itemName: string;
   readonly quantity: { readonly value: number; readonly unit: string };
-  readonly components: readonly {
-    readonly index: number;
-    readonly itemCode: string;
-    readonly quantity: number;
-    readonly unit: string;
-  }[];
+  readonly components: readonly Cm01ErpNextBomComponent[];
 }
 
 /** Strict boundary for the actual mcp-erpnext `erpnext_bom_get` response. */

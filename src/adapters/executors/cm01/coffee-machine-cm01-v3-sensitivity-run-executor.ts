@@ -36,10 +36,10 @@ import {
   type SensitivityStudyCase,
   validateSensitivityStudyCase,
 } from "../../../domain/analysis/sensitivity-study.ts";
+import { buildSensitivityAnalysisGraph } from "../../../domain/analysis/sensitivity-analysis-graph.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
-  ThreadArtifactConsumption,
   ThreadFreshness,
   ThreadOperationRef,
   ThreadSnapshot,
@@ -72,13 +72,21 @@ const SUBJECT_ID = "project:coffee-machine-cm01-v3" as const;
 const BASE_EXPORT_NAME = "coffee-machine-cm01-v3-drip-tray-sensitivity-base";
 const STEPPED_EXPORT_NAME = "coffee-machine-cm01-v3-drip-tray-sensitivity-stepped";
 
-export const SENSITIVITY_CAPTURE_SCHEMA = "sensitivity-study-capture/1.0" as const;
+/** Current capture schema seals the exact run and its required start instant. */
+export const SENSITIVITY_CAPTURE_SCHEMA = "sensitivity-study-capture/1.1" as const;
+/**
+ * Historical captures remain readable for diagnosis, but cannot be reused by a
+ * WAL replay: 1.0 did not seal a run identity or its basis-start instant.
+ */
+export const LEGACY_SENSITIVITY_CAPTURE_SCHEMA =
+  "sensitivity-study-capture/1.0" as const;
 
 export interface SensitivityCaptureRecord {
   readonly schemaVersion: typeof SENSITIVITY_CAPTURE_SCHEMA;
   readonly caseId: string;
   readonly caseRevision: number;
   readonly caseDigest: string;
+  readonly trustedRunId: string;
   readonly capturedAt: string;
   readonly base: {
     readonly heightMm: number;
@@ -105,6 +113,17 @@ export interface SensitivityCaptureRecord {
     readonly localValidityNote: string;
     readonly limitations: readonly string[];
   };
+}
+
+interface ParsedSensitivityCaptureRecord extends
+  Omit<
+    SensitivityCaptureRecord,
+    "schemaVersion" | "trustedRunId"
+  > {
+  readonly schemaVersion:
+    | typeof SENSITIVITY_CAPTURE_SCHEMA
+    | typeof LEGACY_SENSITIVITY_CAPTURE_SCHEMA;
+  readonly trustedRunId?: string;
 }
 
 export interface CoffeeMachineCm01V3SensitivityRunExecutorCommand {
@@ -137,6 +156,15 @@ interface SensitivityMaterialization {
 interface PersistedCapture {
   readonly record: SensitivityCaptureRecord;
   readonly captureFingerprint: ContentFingerprint;
+}
+
+class SensitivityCaptureRecordedRecoveryError extends Error {
+  constructor() {
+    super(
+      "Sensitivity capture is durable in CAS and WAL but final WAL completion must be retried.",
+    );
+    this.name = "SensitivityCaptureRecordedRecoveryError";
+  }
 }
 
 export class CoffeeMachineCm01V3SensitivityRunExecutor {
@@ -240,10 +268,9 @@ export class CoffeeMachineCm01V3SensitivityRunExecutor {
         base,
         run.id,
         this.#sensitivityCase,
+        { algorithm: "sha256", digest: persisted.record.caseDigest },
         persisted.captureFingerprint,
         uri,
-        persisted.record.base.stepSha256,
-        persisted.record.stepped.stepSha256,
         metricsToMap(persisted.record.base.metrics),
         metricsToMap(persisted.record.stepped.metrics),
         persisted.record.capturedAt,
@@ -293,6 +320,12 @@ export class CoffeeMachineCm01V3SensitivityRunExecutor {
       await this.reconcileLive(completed.project.subjectId, command.runId);
       return completed;
     } catch (error) {
+      if (error instanceof SensitivityCaptureRecordedRecoveryError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "CM-01 sensitivity capture is durable and provider dispatch will not repeat. Retry this exact command to resume from CAS.",
+        );
+      }
       if (materialized && (await this.presence(materialized.snapshot)) === "exact") {
         const completed = await this.completedFor(command);
         if (completed) return completed;
@@ -324,14 +357,30 @@ export class CoffeeMachineCm01V3SensitivityRunExecutor {
       caseDigest,
       dispatchedAt,
     });
-    if (attempt.action === "completed") {
-      const text = await this.#captures.read(attempt.captureFingerprint);
-      if (!text) {
-        throw new Error(
-          "Completed sensitivity attempt has no readable capture in the CAS.",
-        );
+    if (attempt.action === "capture-recorded" || attempt.action === "completed") {
+      const record = await readValidatedSensitivityCapture(
+        this.#captures,
+        attempt.captureFingerprint,
+        this.#sensitivityCase,
+        caseDigest,
+        run.id,
+        dispatchedAt,
+        attempt.canonicalCaptureText,
+      );
+      if (attempt.action === "capture-recorded") {
+        try {
+          await this.#attempts.complete({
+            projectId: project.project.id,
+            runId: run.id,
+            caseDigest,
+            dispatchedAt,
+            completedAt: this.#now(),
+            captureFingerprint: attempt.captureFingerprint,
+          });
+        } catch {
+          throw new SensitivityCaptureRecordedRecoveryError();
+        }
       }
-      const record = parseCaptureRecord(JSON.parse(text));
       return { record, captureFingerprint: attempt.captureFingerprint };
     }
     // Run base providers.
@@ -376,10 +425,14 @@ export class CoffeeMachineCm01V3SensitivityRunExecutor {
     const baseMetrics = extractMetrics(baseSolve.metrics, sc);
     const steppedMetrics = extractMetrics(steppedSolve.metrics, sc);
     const derivatives = computeSensitivities(sc, baseMetrics, steppedMetrics);
-    const capturedAt = this.#now();
+    // The capture seals the run's durable required start instant. This makes a
+    // completed WAL replay bind to one run identity and causal start, rather
+    // than treating a provider-finish clock as an untrusted oracle.
+    const capturedAt = dispatchedAt;
     const record = buildCaptureRecord(
       sc,
       caseDigest,
+      run.id,
       capturedAt,
       baseHeightMm,
       steppedHeightMm,
@@ -389,19 +442,66 @@ export class CoffeeMachineCm01V3SensitivityRunExecutor {
       steppedMetrics,
       derivatives,
     );
+    validateSensitivityCaptureForCase(
+      record,
+      sc,
+      caseDigest,
+      run.id,
+      dispatchedAt,
+    );
     const captureText = deterministicJson(record);
     const captureFingerprint = await sha256Fingerprint(record);
     await this.#captures.save(captureFingerprint, captureText);
-    const completeInput: CompleteSensitivityRunAttempt = {
-      projectId: project.project.id,
-      runId: run.id,
-      caseDigest,
-      dispatchedAt,
-      completedAt: capturedAt,
+    const persistedRecord = await readValidatedSensitivityCapture(
+      this.#captures,
       captureFingerprint,
-    };
-    await this.#attempts.complete(completeInput);
-    return { record, captureFingerprint };
+      sc,
+      caseDigest,
+      run.id,
+      dispatchedAt,
+      captureText,
+    );
+    try {
+      await this.#attempts.recordCapture({
+        projectId: project.project.id,
+        runId: run.id,
+        caseDigest,
+        dispatchedAt,
+        recordedAt: this.#now(),
+        captureFingerprint,
+        canonicalCaptureText: deterministicJson(persistedRecord),
+      });
+      const completeInput: CompleteSensitivityRunAttempt = {
+        projectId: project.project.id,
+        runId: run.id,
+        caseDigest,
+        dispatchedAt,
+        completedAt: this.#now(),
+        captureFingerprint,
+      };
+      await this.#attempts.complete(completeInput);
+    } catch (error) {
+      try {
+        const recovery = await this.#attempts.begin({
+          projectId: project.project.id,
+          runId: run.id,
+          caseDigest,
+          dispatchedAt,
+        });
+        if (
+          recovery.action === "capture-recorded" ||
+          recovery.action === "completed"
+        ) {
+          throw new SensitivityCaptureRecordedRecoveryError();
+        }
+      } catch (recoveryError) {
+        if (recoveryError instanceof SensitivityCaptureRecordedRecoveryError) {
+          throw recoveryError;
+        }
+      }
+      throw error;
+    }
+    return { record: persistedRecord, captureFingerprint };
   }
 
   private async requiredBasis(
@@ -552,18 +652,17 @@ export class CoffeeMachineCm01V3SensitivityRunExecutor {
  * sensitivity study is observational only. Provenance links satisfy all
  * checkArtifact / checkConsumption / checkObservation invariants.
  */
-export async function materializeSensitivitySnapshot(
+export function materializeSensitivitySnapshot(
   base: ThreadSnapshot,
   runId: string,
   sensitivityCase: SensitivityStudyCase,
+  caseFingerprint: ContentFingerprint,
   captureFingerprint: ContentFingerprint,
   uri: string,
-  baseSha256: string,
-  steppedSha256: string,
   baseMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>,
   steppedMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>,
   capturedAt: string,
-): Promise<SensitivityMaterialization> {
+): SensitivityMaterialization {
   const derivatives = computeSensitivities(
     sensitivityCase,
     baseMetrics,
@@ -576,11 +675,6 @@ export async function materializeSensitivitySnapshot(
     changedAt: capturedAt,
     invalidatedByChangeIds: [],
   };
-  const cad: ThreadOperationRef = {
-    serverId: "build123d",
-    tool: "build123d_export",
-    runId,
-  };
   const solver: ThreadOperationRef = {
     serverId: "calculix",
     tool: "calculix_solve_static",
@@ -592,30 +686,6 @@ export async function materializeSensitivitySnapshot(
     runId,
   };
   const captureDocId = `${prefix}-capture`;
-  const baseStepId = `${prefix}-base-step`;
-  const steppedStepId = `${prefix}-stepped-step`;
-  const baseSolveId = `${prefix}-base-solve`;
-  const steppedSolveId = `${prefix}-stepped-solve`;
-  const baseStepFingerprint: ContentFingerprint = {
-    algorithm: "sha256",
-    digest: baseSha256,
-  };
-  const steppedStepFingerprint: ContentFingerprint = {
-    algorithm: "sha256",
-    digest: steppedSha256,
-  };
-  const baseSolveFingerprint = await sha256Fingerprint({
-    role: "sensitivity-base-solve",
-    runId,
-    stepSha256: baseSha256,
-    metrics: Object.fromEntries(baseMetrics.entries()),
-  });
-  const steppedSolveFingerprint = await sha256Fingerprint({
-    role: "sensitivity-stepped-solve",
-    runId,
-    stepSha256: steppedSha256,
-    metrics: Object.fromEntries(steppedMetrics.entries()),
-  });
   const artifacts: ThreadArtifact[] = [
     makeArtifact(
       captureDocId,
@@ -628,70 +698,13 @@ export async function materializeSensitivitySnapshot(
       [],
       freshness,
     ),
-    makeArtifact(
-      baseStepId,
-      "CM-01 DripTray sensitivity base STEP",
-      "step",
-      baseStepFingerprint,
-      `${uri}#base-step`,
-      "model/step",
-      cad,
-      [],
-      freshness,
-    ),
-    makeArtifact(
-      steppedStepId,
-      "CM-01 DripTray sensitivity stepped STEP",
-      "step",
-      steppedStepFingerprint,
-      `${uri}#stepped-step`,
-      "model/step",
-      cad,
-      [],
-      freshness,
-    ),
-    makeArtifact(
-      baseSolveId,
-      "CM-01 DripTray sensitivity base static result",
-      "solver-result",
-      baseSolveFingerprint,
-      `${uri}#base-solve`,
-      "application/json",
-      solver,
-      [baseStepId],
-      freshness,
-    ),
-    makeArtifact(
-      steppedSolveId,
-      "CM-01 DripTray sensitivity stepped static result",
-      "solver-result",
-      steppedSolveFingerprint,
-      `${uri}#stepped-solve`,
-      "application/json",
-      solver,
-      [steppedStepId],
-      freshness,
-    ),
   ];
-  const consumptions: ThreadArtifactConsumption[] = [
-    {
-      id: `${prefix}-calc-consumes-base-step`,
-      artifactId: baseStepId,
-      consumer: solver,
-      observedFingerprint: baseStepFingerprint,
-      verifiedAt: capturedAt,
-      status: "verified",
-    },
-    {
-      id: `${prefix}-calc-consumes-stepped-step`,
-      artifactId: steppedStepId,
-      consumer: solver,
-      observedFingerprint: steppedStepFingerprint,
-      verifiedAt: capturedAt,
-      status: "verified",
-    },
-  ];
-  // Raw metric observations (source = solve artifact).
+  // These V1 observation identifiers are already present in immutable historical
+  // snapshots, so their display names stay stable here. The semantic
+  // AnalysisGraph below is instead built by iterating sensitivityCase.metrics.
+  // The provider responses and STEP handoffs are normalized into the exact
+  // capture document. Do not invent independent STEP or solver-result
+  // artifacts: no bytes for those projections were persisted in CAS.
   const baseDispId = `${prefix}-base-displacement`;
   const baseVmId = `${prefix}-base-von-mises`;
   const steppedDispId = `${prefix}-stepped-displacement`;
@@ -722,7 +735,7 @@ export async function materializeSensitivitySnapshot(
       quantity: { value: baseDisp.value, unit: baseDisp.unit },
       source: {
         operation: solver,
-        artifactIds: [baseSolveId],
+        artifactIds: [captureDocId],
         capturedAt,
       },
       freshness,
@@ -734,7 +747,7 @@ export async function materializeSensitivitySnapshot(
       quantity: { value: baseVm.value, unit: baseVm.unit },
       source: {
         operation: solver,
-        artifactIds: [baseSolveId],
+        artifactIds: [captureDocId],
         capturedAt,
       },
       freshness,
@@ -746,7 +759,7 @@ export async function materializeSensitivitySnapshot(
       quantity: { value: steppedDisp.value, unit: steppedDisp.unit },
       source: {
         operation: solver,
-        artifactIds: [steppedSolveId],
+        artifactIds: [captureDocId],
         capturedAt,
       },
       freshness,
@@ -758,7 +771,7 @@ export async function materializeSensitivitySnapshot(
       quantity: { value: steppedVm.value, unit: steppedVm.unit },
       source: {
         operation: solver,
-        artifactIds: [steppedSolveId],
+        artifactIds: [captureDocId],
         capturedAt,
       },
       freshness,
@@ -794,76 +807,55 @@ export async function materializeSensitivitySnapshot(
     subjectId: base.subject.id,
     capturedAt,
     artifacts,
-    consumptions,
+    consumptions: [],
     observations,
     requirements: [],
     evaluations: [],
     violations: [],
     proposedActions: [],
+    analysisGraph: buildSensitivityAnalysisGraph({
+      sensitivityCase,
+      caseFingerprint,
+      baseMetrics,
+      steppedMetrics,
+      evidence: {
+        capture: { id: captureDocId, fingerprint: captureFingerprint },
+      },
+    }),
     provenance: [
-      // Consumption → artifact uses links (required by checkConsumption/verified).
+      // Each raw response observation is derived from the one exact capture
+      // document; it contains both provider-normalized metrics and the
+      // provider-attested STEP handoff digests.
       makeLink(
-        `${prefix}-calc-consumes-base-step-uses`,
-        consumptions[0]!.id,
-        baseStepId,
-        "uses",
-        "CalculiX reported the SHA-256 of the base STEP it consumed.",
-        "consumption",
-      ),
-      makeLink(
-        `${prefix}-calc-consumes-stepped-step-uses`,
-        consumptions[1]!.id,
-        steppedStepId,
-        "uses",
-        "CalculiX reported the SHA-256 of the stepped STEP it consumed.",
-        "consumption",
-      ),
-      // Artifact → input derived_from links (required by checkArtifact/inputArtifactIds).
-      makeLink(
-        `${prefix}-base-solve-from-base-step`,
-        baseSolveId,
-        baseStepId,
-        "derived_from",
-        "CalculiX solved the base DripTray STEP after attesting its SHA-256.",
-      ),
-      makeLink(
-        `${prefix}-stepped-solve-from-stepped-step`,
-        steppedSolveId,
-        steppedStepId,
-        "derived_from",
-        "CalculiX solved the stepped DripTray STEP after attesting its SHA-256.",
-      ),
-      // Raw observation → solve artifact links (required by checkObservation).
-      makeLink(
-        `${baseDispId}-from-base-solve`,
+        `${baseDispId}-from-capture`,
         baseDispId,
-        baseSolveId,
+        captureDocId,
         "derived_from",
-        "The base displacement observation came from the base static solve.",
+        "The exact capture records the base static-solve displacement and handoff.",
         "observation",
       ),
       makeLink(
-        `${baseVmId}-from-base-solve`,
+        `${baseVmId}-from-capture`,
         baseVmId,
-        baseSolveId,
+        captureDocId,
         "derived_from",
-        "The base von Mises observation came from the base static solve.",
+        "The exact capture records the base static-solve von Mises result and handoff.",
         "observation",
       ),
       makeLink(
-        `${steppedDispId}-from-stepped-solve`,
+        `${steppedDispId}-from-capture`,
         steppedDispId,
-        steppedSolveId,
+        captureDocId,
         "derived_from",
-        "The stepped displacement observation came from the stepped static solve.",
+        "The exact capture records the stepped static-solve displacement and handoff.",
         "observation",
       ),
       makeLink(
-        `${steppedVmId}-from-stepped-solve`,
+        `${steppedVmId}-from-capture`,
         steppedVmId,
-        steppedSolveId,
+        captureDocId,
         "derived_from",
-        "The stepped von Mises observation came from the stepped static solve.",
+        "The exact capture records the stepped static-solve von Mises result and handoff.",
         "observation",
       ),
       // Derivative observation → capture document links (required by checkObservation).
@@ -1127,6 +1119,7 @@ function extractMetrics(
 function buildCaptureRecord(
   sc: SensitivityStudyCase,
   caseDigest: string,
+  trustedRunId: string,
   capturedAt: string,
   baseHeightMm: number,
   steppedHeightMm: number,
@@ -1141,6 +1134,7 @@ function buildCaptureRecord(
     caseId: sc.id,
     caseRevision: sc.revision,
     caseDigest,
+    trustedRunId,
     capturedAt,
     base: {
       heightMm: baseHeightMm,
@@ -1176,24 +1170,64 @@ function buildCaptureRecord(
  * downstream must be proven here — a cast would let a corrupted or truncated
  * capture silently stand in for two real solver runs.
  */
-function parseCaptureRecord(value: unknown): SensitivityCaptureRecord {
+function parseCaptureRecord(value: unknown): ParsedSensitivityCaptureRecord {
   const root = requireObject(value, "sensitivity capture record");
-  if (root.schemaVersion !== SENSITIVITY_CAPTURE_SCHEMA) {
+  if (
+    root.schemaVersion !== SENSITIVITY_CAPTURE_SCHEMA &&
+    root.schemaVersion !== LEGACY_SENSITIVITY_CAPTURE_SCHEMA
+  ) {
     throw new Error(
       `Sensitivity capture record has unsupported schemaVersion: ${root.schemaVersion}.`,
     );
   }
+  requireExactKeys(
+    root,
+    root.schemaVersion === SENSITIVITY_CAPTURE_SCHEMA
+      ? [
+        "base",
+        "capturedAt",
+        "caseDigest",
+        "caseId",
+        "caseRevision",
+        "derivatives",
+        "domain",
+        "schemaVersion",
+        "stepped",
+        "trustedRunId",
+      ]
+      : [
+        "base",
+        "capturedAt",
+        "caseDigest",
+        "caseId",
+        "caseRevision",
+        "derivatives",
+        "domain",
+        "schemaVersion",
+        "stepped",
+      ],
+    "sensitivity capture record",
+  );
   if (typeof root.caseId !== "string" || typeof root.capturedAt !== "string") {
     throw new Error("Sensitivity capture record is missing required string fields.");
   }
+  const trustedRunId = root.schemaVersion === SENSITIVITY_CAPTURE_SCHEMA
+    ? requireNonEmptyText(root.trustedRunId, "capture trustedRunId")
+    : undefined;
   const caseRevision = requirePositiveInt(root.caseRevision, "capture caseRevision");
   const caseDigest = requireSha256Hex(root.caseDigest, "capture caseDigest");
   const parseRun = (value: unknown, label: string) => {
     const run = requireObject(value, label);
+    requireExactKeys(
+      run,
+      ["exportName", "heightMm", "metrics", "stepSha256"],
+      label,
+    );
     const metricsRoot = requireObject(run.metrics, `${label} metrics`);
     const metrics: Record<string, { value: number; unit: string }> = {};
     for (const [key, entry] of Object.entries(metricsRoot)) {
       const measurement = requireObject(entry, `${label} metric ${key}`);
+      requireExactKeys(measurement, ["unit", "value"], `${label} metric ${key}`);
       if (typeof measurement.unit !== "string" || measurement.unit.length === 0) {
         throw new Error(`${label} metric ${key} is missing its unit.`);
       }
@@ -1218,6 +1252,11 @@ function parseCaptureRecord(value: unknown): SensitivityCaptureRecord {
   }
   const derivatives = derivativesRoot.map((entry, index) => {
     const derivative = requireObject(entry, `capture derivative ${index}`);
+    requireExactKeys(
+      derivative,
+      ["metric", "unit", "value"],
+      `capture derivative ${index}`,
+    );
     if (
       typeof derivative.metric !== "string" || derivative.metric.length === 0 ||
       typeof derivative.unit !== "string" || derivative.unit.length === 0
@@ -1231,6 +1270,18 @@ function parseCaptureRecord(value: unknown): SensitivityCaptureRecord {
     };
   });
   const domainRoot = requireObject(root.domain, "capture domain");
+  requireExactKeys(
+    domainRoot,
+    [
+      "approximationOrder",
+      "base",
+      "limitations",
+      "localValidityNote",
+      "parameterUnit",
+      "step",
+    ],
+    "capture domain",
+  );
   if (
     typeof domainRoot.approximationOrder !== "string" ||
     typeof domainRoot.parameterUnit !== "string" ||
@@ -1241,10 +1292,11 @@ function parseCaptureRecord(value: unknown): SensitivityCaptureRecord {
     throw new Error("Sensitivity capture record has a malformed domain block.");
   }
   return {
-    schemaVersion: SENSITIVITY_CAPTURE_SCHEMA,
+    schemaVersion: root.schemaVersion,
     caseId: root.caseId,
     caseRevision,
     caseDigest,
+    trustedRunId,
     capturedAt: root.capturedAt,
     base: parseRun(root.base, "capture base run"),
     stepped: parseRun(root.stepped, "capture stepped run"),
@@ -1258,6 +1310,124 @@ function parseCaptureRecord(value: unknown): SensitivityCaptureRecord {
       limitations: domainRoot.limitations as string[],
     },
   };
+}
+
+/**
+ * Bind a persisted capture to the exact reviewed case before it can replace
+ * provider dispatch on a completed WAL replay. Parsing alone proves only that
+ * the bytes are well-formed; this reconstruction proves the capture's case
+ * identity, driver, base/step, metric set and units, finite-difference values,
+ * domain statement, and the two provider-attested STEP handoff references.
+ */
+export function validateSensitivityCaptureForCase(
+  record: ParsedSensitivityCaptureRecord,
+  sensitivityCase: SensitivityStudyCase,
+  expectedCaseDigest: string,
+  expectedRunId: string,
+  expectedCapturedAt: string,
+): SensitivityCaptureRecord {
+  const reviewed = validateSensitivityStudyCase(sensitivityCase);
+  const requiredCapturedAt = requireIsoInstant(
+    expectedCapturedAt,
+    "expected sensitivity run start",
+  );
+  if (record.schemaVersion !== SENSITIVITY_CAPTURE_SCHEMA) {
+    throw new Error(
+      "Historical sensitivity-study-capture/1.0 has no sealed run identity and cannot be replayed.",
+    );
+  }
+  if (
+    record.caseId !== reviewed.id ||
+    record.caseRevision !== reviewed.revision ||
+    record.caseDigest !== expectedCaseDigest ||
+    record.trustedRunId !== expectedRunId ||
+    record.capturedAt !== requiredCapturedAt
+  ) {
+    throw new Error(
+      "Sensitivity capture does not belong to the exact reviewed case, run, and start instant.",
+    );
+  }
+  const baseMetrics = metricsToMap(record.base.metrics);
+  const steppedMetrics = metricsToMap(record.stepped.metrics);
+  const declaredMetricIds = reviewed.metrics.map((metric) => metric.id).sort();
+  for (
+    const [label, actual] of [
+      ["base", [...baseMetrics.keys()].sort()],
+      ["stepped", [...steppedMetrics.keys()].sort()],
+    ] as const
+  ) {
+    if (
+      actual.length !== declaredMetricIds.length ||
+      actual.some((metric, index) => metric !== declaredMetricIds[index])
+    ) {
+      throw new Error(
+        `Sensitivity capture ${label} metrics contain an undeclared_metric or omit a declared metric.`,
+      );
+    }
+  }
+  const derivatives = computeSensitivities(reviewed, baseMetrics, steppedMetrics);
+  const expected = buildCaptureRecord(
+    reviewed,
+    expectedCaseDigest,
+    expectedRunId,
+    requiredCapturedAt,
+    reviewed.baseValue.value,
+    reviewed.baseValue.value + reviewed.step.value,
+    record.base.stepSha256,
+    record.stepped.stepSha256,
+    baseMetrics,
+    steppedMetrics,
+    derivatives,
+  );
+  if (deterministicJson(record) !== deterministicJson(expected)) {
+    throw new Error(
+      "Sensitivity capture diverges from the reviewed case or its reconstructed finite difference.",
+    );
+  }
+  // Return the reconstructed current-schema value, not a cast of the parsed
+  // JSON. The deterministic equality above proves it denotes the same bytes.
+  return expected;
+}
+
+/** Read, parse, and bind a CAS capture before a completed WAL can reuse it. */
+export async function readValidatedSensitivityCapture(
+  captures: FileCaptureStore<"sensitivity-study">,
+  captureFingerprint: ContentFingerprint,
+  sensitivityCase: SensitivityStudyCase,
+  expectedCaseDigest: string,
+  expectedRunId: string,
+  expectedCapturedAt: string,
+  expectedCanonicalText?: string,
+): Promise<SensitivityCaptureRecord> {
+  const text = await captures.read(captureFingerprint);
+  if (!text) {
+    throw new Error(
+      "Completed sensitivity attempt has no readable capture in the CAS.",
+    );
+  }
+  if (expectedCanonicalText !== undefined && text !== expectedCanonicalText) {
+    throw new Error(
+      "Sensitivity CAS capture bytes diverge from the canonical WAL capture text.",
+    );
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error("Completed sensitivity attempt capture is not valid JSON.");
+  }
+  if (deterministicJson(value) !== text) {
+    throw new Error(
+      "Completed sensitivity attempt capture is not canonical deterministic JSON.",
+    );
+  }
+  return validateSensitivityCaptureForCase(
+    parseCaptureRecord(value),
+    sensitivityCase,
+    expectedCaseDigest,
+    expectedRunId,
+    expectedCapturedAt,
+  );
 }
 
 function metricsToMap(
@@ -1278,6 +1448,21 @@ function requireObject(
     throw new TypeError(`${label} must be an object.`);
   }
   return value as Record<string, unknown>;
+}
+
+function requireExactKeys(
+  record: Record<string, unknown>,
+  expected: readonly string[],
+  label: string,
+): void {
+  const actual = Object.keys(record).sort();
+  const sortedExpected = [...expected].sort();
+  if (
+    actual.length !== sortedExpected.length ||
+    actual.some((key, index) => key !== sortedExpected[index])
+  ) {
+    throw new TypeError(`${label} must have exactly the reviewed keys.`);
+  }
 }
 
 function requireSha256Hex(value: unknown, label: string): string {
@@ -1301,6 +1486,21 @@ function requireFinite(value: unknown, label: string): number {
     throw new TypeError(`${label} must be a finite number.`);
   }
   return value;
+}
+
+function requireNonEmptyText(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(`${label} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function requireIsoInstant(value: unknown, label: string): string {
+  const text = requireNonEmptyText(value, label);
+  if (Number.isNaN(Date.parse(text)) || new Date(text).toISOString() !== text) {
+    throw new TypeError(`${label} must be a canonical ISO-8601 instant.`);
+  }
+  return text;
 }
 
 function makeArtifact(

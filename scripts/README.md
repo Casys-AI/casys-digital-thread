@@ -26,6 +26,7 @@ running the task writes local state. Scripts that write always write under
 | `gates/verify-console-evidence.ts`                        | `verify:evidence`                                 | read  |
 | `gates/verify-native-workbench-presentation.ts`           | `verify:thread:presentation`                      | read  |
 | `gates/fea-provider-smoke-inputs.ts`                      | `capture:fea:contract-golden` / `verify:fea:live` | read  |
+| `gates/fea-build123d-cleanup.ts`                          | `capture:fea:contract-golden` / `verify:fea:live` | read  |
 | `gates/fea-contract-capture-lifecycle.ts`                 | `capture:fea:contract-golden`                     | write |
 | `gates/verify-fea-provider-contract.ts`                   | `verify:fea:contract`                             | read  |
 | `gates/capture-fea-contract-golden.ts`                    | `capture:fea:contract-golden`                     | write |

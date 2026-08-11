@@ -48,6 +48,7 @@ import { FileThreadSnapshotStore } from "../../stores/file-thread-snapshot-store
 import { ExactThreadCompletionEvidenceValidator } from "../../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
 import { LiveThreadUpdateStore } from "../../stores/live-thread-update-store.ts";
 import { SysonModelSeedRunExecutor } from "../syson-model-seed-run-executor.ts";
 import { FileSysonModelSeedAttemptStore } from "../../wal/file-syson-model-seed-attempt-store.ts";
@@ -1071,7 +1072,11 @@ async function queuedSensitivityEdges(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
 
   project = await realCommands.publishPlan(AGENT, {
@@ -1108,6 +1113,7 @@ async function queuedSensitivityEdges(
     projects: realProjects,
     commands: realCommands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-05T10:01:00.000Z",

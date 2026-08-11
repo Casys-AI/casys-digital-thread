@@ -11,6 +11,10 @@ import type {
 } from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
+import type {
+  SysmlSourceAnalysisReader,
+  VerifiedSysmlSourceAnalysis,
+} from "../captures/sysml-source-analysis-capture.ts";
 import type { GenericArchitectureCaptureReader } from "./product-structure-catalog.ts";
 import { resolveGenericProductStructureCatalog } from "./product-structure-catalog.ts";
 
@@ -75,6 +79,22 @@ function makeCaptureRecord(
       })),
     })),
     insertedAt: AT,
+  };
+}
+
+function makeCurrentCaptureRecord(): Record<string, unknown> {
+  return {
+    ...makeCaptureRecord(),
+    schemaVersion: "architecture-capture/3.0",
+    sourceAnalyses: [{
+      sourceId: "sysml-source:system-v1",
+      selector: { kind: "full-package", packageName: "SystemV1" },
+      runId: "run:arch",
+      operation: { id: "model.write-architecture", version: "1" },
+      sourceFingerprint: fingerprint("a"),
+      sourceCaptureFingerprint: fingerprint("b"),
+      analysisFingerprint: fingerprint("c"),
+    }],
   };
 }
 
@@ -513,6 +533,100 @@ Deno.test(
 );
 
 Deno.test(
+  "resolveGenericProductStructureCatalog rejects current captures with absent malformed or foreign source analyses",
+  async () => {
+    const mutations: ReadonlyArray<
+      (
+        capture: Record<string, unknown>,
+      ) => void
+    > = [
+      (capture) => {
+        delete capture.sourceAnalyses;
+      },
+      (capture) => {
+        capture.sourceAnalyses = [{ malformed: true }];
+      },
+      (capture) => {
+        const [reference] = capture.sourceAnalyses as Array<
+          Record<string, unknown>
+        >;
+        reference!.runId = "run:foreign";
+      },
+      (capture) => {
+        const [reference] = capture.sourceAnalyses as Array<
+          Record<string, unknown>
+        >;
+        reference!.operation = { id: "model.write-requirements", version: "1" };
+      },
+      (capture) => {
+        const [reference] = capture.sourceAnalyses as Array<
+          Record<string, unknown>
+        >;
+        reference!.selector = {
+          kind: "full-package",
+          packageName: "ForeignPackage",
+        };
+      },
+    ];
+
+    for (const mutate of mutations) {
+      const capture = makeCurrentCaptureRecord();
+      mutate(capture);
+      const captureFp = await sha256Fingerprint(capture);
+      const catalog = await resolveGenericProductStructureCatalog(
+        snapshotWithArchArtifact(captureFp),
+        makeReader(captureFp, capture),
+      );
+      assertEquals(catalog?.components, []);
+      assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+    }
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog reopens every current SysML source analysis before projecting",
+  async () => {
+    const capture = makeCurrentCaptureRecord();
+    const captureFp = await sha256Fingerprint(capture);
+    let reopenCalls = 0;
+    const sourceAnalysis: SysmlSourceAnalysisReader = {
+      reopen(value) {
+        reopenCalls++;
+        return Promise.resolve(
+          {
+            reference: structuredClone(value),
+          } as unknown as VerifiedSysmlSourceAnalysis,
+        );
+      },
+    };
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshotWithArchArtifact(captureFp),
+      makeReader(captureFp, capture),
+      undefined,
+      sourceAnalysis,
+    );
+    assertEquals(reopenCalls, 1);
+    assertEquals(catalog?.components.length, 3);
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog makes a current source-analysis read failure unavailable",
+  async () => {
+    const capture = makeCurrentCaptureRecord();
+    const captureFp = await sha256Fingerprint(capture);
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshotWithArchArtifact(captureFp),
+      makeReader(captureFp, capture),
+      undefined,
+      { reopen: () => Promise.reject(new Error("CAS source absent")) },
+    );
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
+  },
+);
+
+Deno.test(
   "resolveGenericProductStructureCatalog returns unavailable when the capture has no system declaration",
   async () => {
     // systemName = "SystemUnit" but declarations only contain "AlphaModule" and
@@ -536,7 +650,7 @@ Deno.test(
     assertEquals(catalog?.components, []);
     assertStringIncludes(
       catalog?.rationale ?? "",
-      "exactly one system PartDefinition",
+      "could not be verified",
     );
   },
 );

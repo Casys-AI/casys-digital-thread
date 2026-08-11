@@ -5,6 +5,7 @@ import type {
   ThreadOperationRef,
   ThreadSnapshot,
 } from "./thread-snapshot.ts";
+import type { AnalysisGraph } from "../analysis/analysis-graph.ts";
 import {
   collectThreadSnapshotIssues,
   createThreadSnapshot,
@@ -31,6 +32,62 @@ Deno.test("ThreadSnapshot validates and round-trips a linked CoffeeMachine chang
     true,
   );
   assertEquals(collectThreadSnapshotIssues(snapshot), []);
+});
+
+Deno.test("ThreadSnapshot 1.0 forbids an analysis graph while 1.1 requires one", () => {
+  const legacy = coffeeMachineSnapshot();
+  legacy.analysisGraph = analysisGraphFor(legacy);
+  assertEquals(
+    collectThreadSnapshotIssues(legacy).some((issue) =>
+      issue.code === "unsupported_analysis_graph" && issue.path === "$.analysisGraph"
+    ),
+    true,
+  );
+
+  const missing = coffeeMachineSnapshot();
+  missing.schemaVersion = "1.1";
+  assertEquals(
+    collectThreadSnapshotIssues(missing).some((issue) =>
+      issue.code === "missing_analysis_graph" && issue.path === "$.analysisGraph"
+    ),
+    true,
+  );
+});
+
+Deno.test("ThreadSnapshot 1.1 accepts analysis assertions only with exact artifact evidence", () => {
+  const candidate = coffeeMachineSnapshot();
+  candidate.schemaVersion = "1.1";
+  candidate.analysisGraph = analysisGraphFor(candidate);
+  assertEquals(collectThreadSnapshotIssues(candidate), []);
+
+  const mismatched = clone(candidate);
+  const mutableGraph = mismatched.analysisGraph as unknown as {
+    relations: Array<
+      { assertion: { evidence: Array<{ fingerprint: ContentFingerprint }> } }
+    >;
+  };
+  mutableGraph.relations[0]!.assertion.evidence[0]!.fingerprint = fingerprint("f");
+  assertEquals(
+    collectThreadSnapshotIssues(mismatched).some((issue) =>
+      issue.code === "analysis_evidence_fingerprint_mismatch" &&
+      issue.path === "$.analysisGraph.relations[0].assertion.evidence[0].fingerprint"
+    ),
+    true,
+  );
+
+  const missing = clone(candidate);
+  const graphWithMissingEvidence = missing.analysisGraph as unknown as {
+    relations: Array<{ assertion: { evidence: Array<{ id: string }> } }>;
+  };
+  graphWithMissingEvidence.relations[0]!.assertion.evidence[0]!.id =
+    "unrecorded-analysis-evidence";
+  assertEquals(
+    collectThreadSnapshotIssues(missing).some((issue) =>
+      issue.code === "missing_reference" &&
+      issue.path === "$.analysisGraph.relations[0].assertion.evidence[0].id"
+    ),
+    true,
+  );
 });
 
 Deno.test("ThreadSnapshot rejects mechanical provenance when consumer bytes do not match producer bytes", () => {
@@ -672,4 +729,65 @@ function link(
 
 function clone(snapshot: ThreadSnapshot): ThreadSnapshot {
   return JSON.parse(JSON.stringify(snapshot)) as ThreadSnapshot;
+}
+
+function analysisGraphFor(snapshot: ThreadSnapshot): AnalysisGraph {
+  const model = snapshot.artifacts.find((artifact) => artifact.id === "sysml-cm01")!;
+  const result = snapshot.artifacts.find((artifact) =>
+    artifact.id === "fea-result-cm01"
+  )!;
+  return {
+    schemaVersion: "analysis-graph/1.0",
+    nodes: [
+      {
+        id: "component.housing",
+        kind: "component",
+        semanticRef: {
+          domain: "sysml",
+          kind: "component",
+          id: "housing",
+          basisFingerprint: model.fingerprint,
+        },
+      },
+      {
+        id: "parameter.rib-thickness",
+        kind: "parameter",
+        semanticRef: {
+          domain: "cad",
+          kind: "parameter",
+          id: "rib-thickness",
+          basisFingerprint: result.fingerprint,
+        },
+      },
+    ],
+    relations: [{
+      assertion: {
+        schemaVersion: "engineering-assertion/1.0",
+        id: "binding.housing-rib-thickness",
+        relation: "semantic-binding",
+        from: {
+          domain: "sysml",
+          kind: "component",
+          id: "housing",
+          basisFingerprint: model.fingerprint,
+        },
+        to: {
+          domain: "cad",
+          kind: "parameter",
+          id: "rib-thickness",
+          basisFingerprint: result.fingerprint,
+        },
+        epistemicBasis: "inferred",
+        assertedBy: { kind: "analyzer", id: "thread-analysis-test", version: "1" },
+        evidence: [
+          { id: result.id, fingerprint: result.fingerprint },
+          { id: model.id, fingerprint: model.fingerprint },
+        ],
+        scope: { kind: "basis", basisFingerprint: model.fingerprint },
+        rationale: "A captured analysis linked this component to the CAD parameter.",
+      },
+      fromNodeId: "component.housing",
+      toNodeId: "parameter.rib-thickness",
+    }],
+  };
 }

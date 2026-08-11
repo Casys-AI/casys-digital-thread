@@ -22,6 +22,7 @@
  */
 
 import {
+  deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
@@ -36,14 +37,15 @@ import {
 } from "../../domain/thread/thread-component-catalog.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
+import { parseExactArchitectureCapture } from "../captures/architecture-capture.ts";
+import {
+  requireCurrentArchitectureSourceAnalyses,
+  type SysmlSourceAnalysisReader,
+} from "../captures/sysml-source-analysis-capture.ts";
 import {
   enrichGenericProductCatalogWithGeometryBundle,
   type GenericGeometryCaptureReader,
 } from "./geometry-bundle-product-catalog.ts";
-
-// ── Capture schema ────────────────────────────────────────────────────────────
-
-const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/2.0" as const;
 
 class ArchitectureCaptureUnreadableError extends Error {}
 
@@ -106,6 +108,7 @@ export async function resolveGenericProductStructureCatalog(
   snapshot: ThreadSnapshot,
   captures: GenericArchitectureCaptureReader,
   geometryCaptures?: GenericGeometryCaptureReader,
+  sysmlSourceAnalysis?: SysmlSourceAnalysisReader,
 ): Promise<ThreadComponentCatalog | undefined> {
   const architectures = genericArchitectureArtifacts(snapshot);
   const selected = findArchitectureTip(snapshot, architectures);
@@ -128,6 +131,7 @@ export async function resolveGenericProductStructureCatalog(
       captures,
       selected.artifact,
       architectures,
+      sysmlSourceAnalysis,
     );
     const catalog = buildCatalog(
       snapshot.subject.id,
@@ -197,6 +201,7 @@ async function verifyArchitectureLineage(
   captures: GenericArchitectureCaptureReader,
   tip: ThreadArtifact,
   architectures: readonly ThreadArtifact[],
+  sysmlSourceAnalysis: SysmlSourceAnalysisReader | undefined,
 ): Promise<GenericArchitectureCapture> {
   const byId = new Map(architectures.map((artifact) => [artifact.id, artifact]));
   if (byId.size !== architectures.length) {
@@ -225,6 +230,22 @@ async function verifyArchitectureLineage(
     if (!isExactArchitectureArtifact(current, capture)) {
       throw new Error(
         "A generic architecture artifact metadata is not exactly bound to its capture.",
+      );
+    }
+    if (capture.schemaVersion === "architecture-capture/3.0") {
+      if (!sysmlSourceAnalysis) {
+        throw new ArchitectureCaptureUnreadableError(
+          "Current architecture source-analysis evidence has no configured read capability.",
+        );
+      }
+      await requireCurrentArchitectureSourceAnalyses(
+        capture.sourceAnalyses!,
+        sysmlSourceAnalysis,
+        {
+          runId: current.producer.runId,
+          operation: capture.operation,
+          packageName: capture.packageName,
+        },
       );
     }
     if (
@@ -435,7 +456,7 @@ function buildCatalog(
         "architecture capture produced by the generic model.write-architecture@1 run. " +
         "The system PartDef is the assembly root; each PartUsage occurrence is a distinct part. " +
         "No ERP identity or provider binding is inferred. Independent CAD bindings are added " +
-        "only from an exact active geometry-capture/2.0.",
+        "only from an exact active geometry bundle capture.",
       systemViews: {},
       components: [
         {
@@ -488,7 +509,7 @@ function unavailable(subjectId: string, rationale: string): ThreadComponentCatal
 async function parseAndVerifyCapture(
   text: string,
   expectedFingerprint: ContentFingerprint,
-): Promise<GenericArchitectureCapture> {
+): Promise<ReturnType<typeof parseExactArchitectureCapture>> {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -500,14 +521,6 @@ async function parseAndVerifyCapture(
     throw new Error("Architecture capture is not a JSON object.");
   }
   const record = value as Record<string, unknown>;
-
-  if (record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA) {
-    throw new Error(
-      `Architecture capture has unsupported schema version: ${
-        String(record.schemaVersion)
-      }`,
-    );
-  }
 
   // Verify the fingerprint against the deterministic JSON representation.
   // sha256Fingerprint accepts a JSON-safe value and sorts keys deterministically.
@@ -521,28 +534,23 @@ async function parseAndVerifyCapture(
     );
   }
 
+  // Validate the complete v2/v3 capture, including v3 source-analysis context,
+  // before this read-only projection omits fields it does not display.
+  const exact = parseExactArchitectureCapture(record);
+  if (deterministicJson(exact) !== text) {
+    throw new Error("Architecture capture is not canonical JSON.");
+  }
+
   const operation = record.operation as Record<string, unknown>;
   if (operation?.id !== "model.write-architecture" || operation.version !== "1") {
     throw new Error(
       "Architecture capture operation is not model.write-architecture@1.",
     );
   }
-  const trustedRunId = nonEmptyString(record.trustedRunId, "trustedRunId");
-  const insertedAt = canonicalInstant(record.insertedAt, "insertedAt");
-  const packageName = nonEmptyString(record.packageName, "packageName");
-  const systemName = nonEmptyString(record.systemName, "systemName");
-  assertOnlyKeys(record, [
-    "schemaVersion",
-    "operation",
-    "trustedRunId",
-    "packageName",
-    "systemName",
-    "package",
-    "seed",
-    "predecessor",
-    "partDefinitions",
-    "insertedAt",
-  ]);
+  const _trustedRunId = nonEmptyString(record.trustedRunId, "trustedRunId");
+  const _insertedAt = canonicalInstant(record.insertedAt, "insertedAt");
+  const _packageName = nonEmptyString(record.packageName, "packageName");
+  const _systemName = nonEmptyString(record.systemName, "systemName");
   const packageRecord = objectRecord(record.package, "package");
   const seedRecord = objectRecord(record.seed, "seed");
   if (!packageRecord || !seedRecord || !Array.isArray(record.partDefinitions)) {
@@ -552,16 +560,16 @@ async function parseAndVerifyCapture(
   }
   assertOnlyKeys(packageRecord, ["id", "label"]);
   assertOnlyKeys(seedRecord, ["artifactId", "fingerprint", "producerRunId"]);
-  const packageValue = {
+  const _packageValue = {
     id: nonEmptyString(packageRecord.id, "package.id"),
     label: nonEmptyString(packageRecord.label, "package.label"),
   };
-  const seed = {
+  const _seed = {
     artifactId: nonEmptyString(seedRecord.artifactId, "seed.artifactId"),
     fingerprint: fingerprintRecord(seedRecord.fingerprint, "seed.fingerprint"),
     producerRunId: nonEmptyString(seedRecord.producerRunId, "seed.producerRunId"),
   };
-  const predecessor = record.predecessor === undefined ? undefined : (() => {
+  const _predecessor = record.predecessor === undefined ? undefined : (() => {
     const predecessorRecord = objectRecord(record.predecessor, "predecessor");
     assertOnlyKeys(predecessorRecord, ["artifactId", "fingerprint", "producerRunId"]);
     return {
@@ -669,17 +677,7 @@ async function parseAndVerifyCapture(
     );
   }
 
-  return {
-    operation: { id: "model.write-architecture", version: "1" },
-    trustedRunId,
-    insertedAt,
-    packageName,
-    systemName,
-    package: packageValue,
-    seed,
-    ...(predecessor ? { predecessor } : {}),
-    partDefinitions,
-  };
+  return exact;
 }
 
 function objectRecord(value: unknown, name: string): Record<string, unknown> {

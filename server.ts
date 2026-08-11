@@ -14,6 +14,7 @@ import { FileThreadSnapshotStore } from "./src/adapters/stores/file-thread-snaps
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_PRINT_ESTIMATE_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_PRINTABILITY_CAPTURE_DESCRIPTOR,
@@ -26,14 +27,27 @@ import {
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
   GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+  GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_EDGES_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_RELATIONS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+  SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/captures/file-capture-store.ts";
+import { PythonCadSourceAnalyzer } from "./src/adapters/analyzers/python-cad-source-analyzer.ts";
+import {
+  PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+  PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+  ProjectBriefSourceAnalyzer,
+} from "./src/adapters/analyzers/project-brief-source-analyzer.ts";
+import { BriefSourceAnalysisCaptureService } from "./src/adapters/captures/brief-source-analysis-capture.ts";
+import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/analysis/source-analysis-frontend-registry.ts";
+import { RenderedArchitectureSysmlAnalyzer } from "./src/adapters/analyzers/rendered-architecture-sysml-analyzer.ts";
+import { SysmlSourceAnalysisCaptureService } from "./src/adapters/captures/sysml-source-analysis-capture.ts";
 import { FileSensitivityRunAttemptStore } from "./src/adapters/wal/file-sensitivity-run-attempt-store.ts";
 import { FileCm01DripTrayPrintabilityAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-printability-attempt-store.ts";
 import { FileCm01DripTrayPrintEstimateAttemptStore } from "./src/adapters/wal/file-cm01-drip-tray-print-estimate-attempt-store.ts";
@@ -90,6 +104,7 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
 } from "./src/adapters/executors/design-write-geometry-run-executor.ts";
+import { CaptureBackedProjectGeometryPreviewUseCase } from "./src/adapters/project-geometry-preview-use-case.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
@@ -122,6 +137,8 @@ import { FileCanonicalAssetReader } from "./src/adapters/executors/canonical-ass
 import { DockerVolumeAssetStager } from "./src/adapters/executors/container-asset-stager.ts";
 import { FileFeaStaticProofAttemptStore } from "./src/adapters/wal/file-fea-static-proof-attempt-store.ts";
 import { FileModelicaScenarioAttemptStore } from "./src/adapters/wal/file-modelica-scenario-attempt-store.ts";
+import { McpModelicaProvider } from "./src/adapters/providers/modelica/mcp-modelica-provider.ts";
+import { McpCalculixStaticStructuralSolver } from "./src/adapters/providers/calculix/mcp-calculix-static-structural-solver.ts";
 import {
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR,
@@ -425,6 +442,12 @@ export interface CreateConsoleServerOptions {
   threadSnapshotDirectory?: string;
   liveThreadUpdateDirectory?: string;
   approvedBriefCaptureDirectory?: string;
+  /** Exact canonical brief JSON captured before local source analysis. */
+  briefSourceCaptureDirectory?: string;
+  /** Shared provider-neutral source-analysis CAS (brief, SysML, and CAD). */
+  sourceAnalysisCaptureDirectory?: string;
+  /** Exact server-rendered SysML source bytes captured before analysis/dispatch. */
+  sysmlSourceCaptureDirectory?: string;
   sysonModelSeedCaptureDirectory?: string;
   sysonModelSeedAttemptDirectory?: string;
   cm01NominalModelicaCaptureDirectory?: string;
@@ -620,6 +643,41 @@ async function createProjectControl(
     directory: options.approvedBriefCaptureDirectory ??
       DEFAULT_APPROVED_BRIEF_CAPTURE_DIRECTORY,
   });
+  const briefSourceCaptures = new FileCaptureStore({
+    ...BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
+    directory: options.briefSourceCaptureDirectory ??
+      BRIEF_SOURCE_CAPTURE_DESCRIPTOR.directory,
+  });
+  const sourceAnalysisCaptures = new FileCaptureStore({
+    ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+    directory: options.sourceAnalysisCaptureDirectory ??
+      SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR.directory,
+  });
+  const briefSourceAnalysisFrontends = new FixedSourceAnalysisFrontendRegistry([{
+    analyzer: {
+      id: PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+      version: PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+    },
+    frontend: new ProjectBriefSourceAnalyzer(),
+  }]);
+  const briefSourceAnalysis = new BriefSourceAnalysisCaptureService({
+    sourceCaptures: briefSourceCaptures,
+    analysisCaptures: sourceAnalysisCaptures,
+    frontends: briefSourceAnalysisFrontends,
+    analyzer: {
+      id: PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+      version: PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+    },
+  });
+  const sysmlSourceAnalysis = new SysmlSourceAnalysisCaptureService({
+    sourceCaptures: new FileCaptureStore({
+      ...SYSML_SOURCE_CAPTURE_DESCRIPTOR,
+      directory: options.sysmlSourceCaptureDirectory ??
+        SYSML_SOURCE_CAPTURE_DESCRIPTOR.directory,
+    }),
+    analysisCaptures: sourceAnalysisCaptures,
+    frontend: new RenderedArchitectureSysmlAnalyzer(),
+  });
   const sysonModelSeedCaptures = new FileCaptureStore({
     ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
     directory: options.sysonModelSeedCaptureDirectory ??
@@ -645,12 +703,21 @@ async function createProjectControl(
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       activeThreadSnapshots,
       captures,
+      {
+        sourceCaptures: briefSourceCaptures,
+        analysisCaptures: sourceAnalysisCaptures,
+        frontends: briefSourceAnalysisFrontends,
+      },
     ),
   });
   const baseline = new ApprovedBriefBaselineRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
     captures,
+    briefSourceAnalysis,
+    briefSourceCaptures,
+    sourceAnalysisCaptures,
+    briefSourceAnalysisFrontends,
     snapshots: activeThreadSnapshots,
     lease,
     liveUpdates,
@@ -670,17 +737,19 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const genericArchitectureCaptures = new FileCaptureStore({
+    ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
+    directory: options.architectureCaptureDirectory ??
+      DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
+  });
   const genericModelWriteArchitecture = sysonMcpUrl
     ? new ModelWriteArchitectureRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
       seedCaptures: sysonModelSeedCaptures,
-      captures: new FileCaptureStore({
-        ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
-        directory: options.architectureCaptureDirectory ??
-          DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
-      }),
+      captures: genericArchitectureCaptures,
+      sysmlSourceAnalysis,
       attempts: new FileArchitectureAttemptStore(
         options.architectureAttemptDirectory ?? DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY,
       ),
@@ -694,19 +763,23 @@ async function createProjectControl(
    * into the evidence thread.  It makes no provider calls — the draft and its
    * binary assets must already be present in the draft stores before the run.
    */
+  const geometrySourceAnalysis = {
+    sourceCaptures: new FileCaptureStore(GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR),
+    analysisCaptures: sourceAnalysisCaptures,
+    frontend: new PythonCadSourceAnalyzer(),
+  } as const;
   const genericDesignWriteGeometry = new DesignWriteGeometryRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
     snapshots: activeThreadSnapshots,
-    architectureCaptures: new FileCaptureStore({
-      ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
-      directory: options.architectureCaptureDirectory ??
-        DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
-    }),
+    architectureCaptures: genericArchitectureCaptures,
+    sysmlSourceAnalysis,
     geometryDraftCaptures: new FileCaptureStore({
       ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
       directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
     }),
+    geometrySourceCaptures: geometrySourceAnalysis.sourceCaptures,
+    sourceAnalysisCaptures: geometrySourceAnalysis.analysisCaptures,
     geometryCaptures: new FileCaptureStore({
       ...GEOMETRY_CAPTURE_DESCRIPTOR,
       directory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
@@ -720,11 +793,8 @@ async function createProjectControl(
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
       seedCaptures: sysonModelSeedCaptures,
-      architectureCaptures: new FileCaptureStore({
-        ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
-        directory: options.architectureCaptureDirectory ??
-          DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
-      }),
+      architectureCaptures: genericArchitectureCaptures,
+      sysmlSourceAnalysis,
       captures: new FileCaptureStore({
         ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
         directory: options.requirementsCaptureDirectory ??
@@ -989,7 +1059,9 @@ async function createProjectControl(
         directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
       }),
       syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      calculix: new HttpMcpToolClient({ mcpUrl: calculixMcpUrl, timeoutMs: 180_000 }),
+      solver: new McpCalculixStaticStructuralSolver(
+        new HttpMcpToolClient({ mcpUrl: calculixMcpUrl, timeoutMs: 180_000 }),
+      ),
       policy: feaExecutionPolicy,
       solverImageObserver: observeCalculixImage,
       lease,
@@ -1004,7 +1076,12 @@ async function createProjectControl(
     simulationCaseCaptures: new FileCaptureStore(SIMULATION_CASE_CAPTURE_DESCRIPTOR),
     lease,
   });
-  const genericSimulateRunModelicaScenario = modelicaMcpUrl
+  const modelicaProvider = modelicaMcpUrl
+    ? new McpModelicaProvider(
+      new HttpMcpToolClient({ mcpUrl: modelicaMcpUrl, timeoutMs: 150_000 }),
+    )
+    : undefined;
+  const genericSimulateRunModelicaScenario = modelicaProvider
     ? new SimulateRunModelicaScenarioRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
@@ -1015,7 +1092,10 @@ async function createProjectControl(
         MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
       ),
       attempts: new FileModelicaScenarioAttemptStore(),
-      modelica: new HttpMcpToolClient({ mcpUrl: modelicaMcpUrl, timeoutMs: 150_000 }),
+      methodCatalog: modelicaProvider,
+      planResolver: modelicaProvider,
+      simulator: modelicaProvider,
+      runReader: modelicaProvider,
       policy: simulationExecutionPolicy,
       lease,
       liveUpdates,
@@ -1380,7 +1460,7 @@ async function createProjectControl(
       // program can never touch evidence bytes. No sandbox entry in the fleet
       // manifest ⇒ no preview tool at all, never a ghost that fails when called.
       geometryPreview: build123dSandboxMcpUrl
-        ? {
+        ? new CaptureBackedProjectGeometryPreviewUseCase({
           client: new HttpMcpToolClient({
             mcpUrl: build123dSandboxMcpUrl,
             timeoutMs: 120_000,
@@ -1389,8 +1469,9 @@ async function createProjectControl(
             ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
             directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
           }),
+          sourceAnalysis: geometrySourceAnalysis,
           build123dService: "mcp-build123d-sandbox",
-        }
+        })
         : undefined,
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,

@@ -203,6 +203,7 @@ export function ThreadWorkbench({
     "change": false,
     "consumption": false,
     "action": true,
+    "analysis": true,
     "sysml-element": true,
   });
   // Type visibility for the local Exploration view (in-place sigma reducer,
@@ -219,6 +220,7 @@ export function ThreadWorkbench({
     "change": true,
     "consumption": true,
     "action": true,
+    "analysis": true,
     "sysml-element": true,
   });
   // Feed component filter: a catalog component, an explicit non-anchored
@@ -1773,6 +1775,48 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       },
     );
   }
+  if (edge.analysis) {
+    facts.push(
+      {
+        id: "assertion-id",
+        label: "Assertion",
+        value: <code>{edge.analysis.assertionId}</code>,
+      },
+      {
+        id: "epistemic-basis",
+        label: "Knowledge basis",
+        value: edge.analysis.epistemicBasis,
+      },
+      {
+        id: "asserted-by",
+        label: "Asserted by",
+        value:
+          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+            edge.analysis.assertedBy.version
+              ? ` @ ${edge.analysis.assertedBy.version}`
+              : ""
+          }`,
+      },
+      {
+        id: "analysis-scope",
+        label: "Validity scope",
+        value: edge.analysis.scope.kind,
+      },
+      {
+        id: "analysis-evidence",
+        label: "Exact evidence",
+        value: edge.analysis.evidence.map((item) => item.id).join(", "),
+      },
+    );
+    if (edge.analysis.measurement) {
+      const measurement = edge.analysis.measurement;
+      facts.push({
+        id: "analysis-derivative",
+        label: "Local derivative",
+        value: `${measurement.derivative.value} ${measurement.derivative.unit}`,
+      });
+    }
+  }
 
   return (
     <Card
@@ -1826,12 +1870,21 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
             : "This dependency cannot support a current verdict until the consumer is rerun with the recorded producer bytes."}
         </StateMessage>
       )}
-      {!edge.attestation && (
-        <StateMessage title="Recorded semantic relation" tone="info">
-          This edge comes from an explicit canonical relation. It is not a
-          byte-level consumption attestation.
-        </StateMessage>
-      )}
+      {!edge.attestation && edge.analysis
+        ? (
+          <StateMessage title="Qualified analysis assertion" tone="info">
+            This semantic relation is backed by the exact evidence listed above
+            and is classified as{" "}
+            {edge.analysis.epistemicBasis}. It does not grant execution
+            authority.
+          </StateMessage>
+        )
+        : !edge.attestation && (
+          <StateMessage title="Recorded semantic relation" tone="info">
+            This edge comes from an explicit canonical relation. It is not a
+            byte-level consumption attestation.
+          </StateMessage>
+        )}
     </Card>
   );
 }
@@ -2453,7 +2506,7 @@ function relationTitle(relation: ThreadGraphEdge["relation"]): string {
 }
 
 function relationLabel(relation: ThreadGraphEdge["relation"]): string {
-  return relation.replaceAll("_", " ");
+  return relation.replaceAll("_", " ").replaceAll("-", " ");
 }
 
 function artifactFacts(artifact: ThreadArtifact): KeyValueItem[] {

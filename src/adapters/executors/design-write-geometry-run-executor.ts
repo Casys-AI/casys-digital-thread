@@ -44,6 +44,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
+import { exactRecord } from "../../domain/kernel/case-validation.ts";
 import {
   type AnyGeometryManifest,
   DESIGN_WRITE_GEOMETRY_OPERATION,
@@ -93,9 +94,15 @@ import {
   type GeometryBundleDraftCapture,
   geometryBundleManifestFromDraft,
   LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+  PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
+  PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
   requireGeometryBundleCanonicalSources,
   requireGeometryBundleDraftAssetMetadata,
 } from "../captures/geometry-draft-capture.ts";
+import {
+  type GeometrySourceAnalysisReference,
+  requireGeometrySourceAnalysis,
+} from "../captures/geometry-source-analysis-capture.ts";
 import { assertThreadSnapshotLineageIntact } from "../stores/thread-snapshot-lineage.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
@@ -110,10 +117,17 @@ import {
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
 import {
-  ARCHITECTURE_CAPTURE_SCHEMA,
   findArchitectureArtifact,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
 } from "./model-write-architecture-run-executor.ts";
+import {
+  type ArchitectureCaptureArtifactReference as ArchitectureCaptureSource,
+  parseExactArchitectureCapture,
+} from "../captures/architecture-capture.ts";
+import {
+  requireCurrentArchitectureSourceAnalyses,
+  type SysmlSourceAnalysisReader,
+} from "../captures/sysml-source-analysis-capture.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 
 // ── Public constants ──────────────────────────────────────────────────────────
@@ -124,11 +138,62 @@ import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-upd
  */
 export { DESIGN_WRITE_GEOMETRY_OPERATION };
 
-/** Schema version written into every canonical geometry capture. */
-/** v1.1 distinguishes the preview producer from the local sealing operation. */
-export const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
-export const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.0" as const;
+/** Historical captures produced before passive native-source analysis. */
+export const PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
+export const PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA =
+  "geometry-capture/2.0" as const;
+/** Current captures seal the exact passive analysis references from the draft. */
+export const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.2" as const;
+export const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.1" as const;
 export const GEOMETRY_CANONICAL_ASSETS_DIR = "state/local/thread-assets" as const;
+
+interface SealedGeometrySourceAnalyses {
+  readonly assembly: GeometrySourceAnalysisReference;
+  readonly partDefinitions: ReadonlyArray<{
+    readonly elementId: string;
+    readonly analysis: GeometrySourceAnalysisReference;
+  }>;
+}
+
+type GeometryCaptureSchema =
+  | typeof PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA
+  | typeof PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+  | typeof GEOMETRY_CAPTURE_SCHEMA
+  | typeof GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
+
+function isGeometryCaptureSchema(value: unknown): value is GeometryCaptureSchema {
+  return value === PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA ||
+    value === PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA ||
+    value === GEOMETRY_CAPTURE_SCHEMA || value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
+}
+
+function isGeometryBundleCaptureSchema(
+  value: GeometryCaptureSchema,
+): boolean {
+  return value === PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA ||
+    value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
+}
+
+function isAnalyzedGeometryCaptureSchema(
+  value: GeometryCaptureSchema,
+): boolean {
+  return value === GEOMETRY_CAPTURE_SCHEMA ||
+    value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
+}
+
+function geometryCaptureSchema(
+  manifest: AnyGeometryManifest,
+  sourceAnalyses: SealedGeometrySourceAnalyses | undefined,
+): GeometryCaptureSchema {
+  if (manifest.schemaVersion === "geometry-manifest/2.0") {
+    return sourceAnalyses
+      ? GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+      : PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
+  }
+  return sourceAnalyses
+    ? GEOMETRY_CAPTURE_SCHEMA
+    : PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA;
+}
 
 // ── Cliquet error ─────────────────────────────────────────────────────────────
 
@@ -300,8 +365,14 @@ export interface DesignWriteGeometryRunExecutorDependencies {
   readonly snapshots: ThreadSnapshotStore;
   /** Architecture captures — used for D5 per-component binding verification. */
   readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
+  /** Read-only proof port for current SysML source-analysis evidence. */
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   /** Draft geometry JSON captures produced by the preview tool. */
   readonly geometryDraftCaptures: FileCaptureStore<"geometry-draft">;
+  /** Exact native CAD source envelopes captured before preview. */
+  readonly geometrySourceCaptures: FileCaptureStore<"geometry-source">;
+  /** Passive source-analysis bundles captured before preview. */
+  readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   /** Canonical geometry captures sealed by this executor. */
   readonly geometryCaptures: GeometryCaptureStore;
   readonly lease: EngineeringProjectRunLease;
@@ -331,7 +402,10 @@ export class DesignWriteGeometryRunExecutor {
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
   readonly #architectureCaptures: FileCaptureStore<"architecture-capture">;
+  readonly #sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly #geometryDraftCaptures: FileCaptureStore<"geometry-draft">;
+  readonly #geometrySourceCaptures: FileCaptureStore<"geometry-source">;
+  readonly #sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   readonly #geometryCaptures: GeometryCaptureStore;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
@@ -344,7 +418,10 @@ export class DesignWriteGeometryRunExecutor {
     this.#commands = dependencies.commands;
     this.#snapshots = dependencies.snapshots;
     this.#architectureCaptures = dependencies.architectureCaptures;
+    this.#sysmlSourceAnalysis = dependencies.sysmlSourceAnalysis;
     this.#geometryDraftCaptures = dependencies.geometryDraftCaptures;
+    this.#geometrySourceCaptures = dependencies.geometrySourceCaptures;
+    this.#sourceAnalysisCaptures = dependencies.sourceAnalysisCaptures;
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#lease = dependencies.lease;
     this.#liveUpdates = dependencies.liveUpdates;
@@ -433,6 +510,8 @@ export class DesignWriteGeometryRunExecutor {
       await loadReviewedGeometryDraft(
         params,
         this.#geometryDraftCaptures,
+        this.#geometrySourceCaptures,
+        this.#sourceAnalysisCaptures,
         this.#draftAssetDirectory,
       );
 
@@ -462,11 +541,16 @@ export class DesignWriteGeometryRunExecutor {
         preClaimBase,
         preClaimArchitecture,
         this.#architectureCaptures,
+        this.#sysmlSourceAnalysis,
       );
       await requireGeometryBundlePredecessor(
         preClaimBase,
         params,
         this.#geometryCaptures,
+        {
+          geometrySourceCaptures: this.#geometrySourceCaptures,
+          sourceAnalysisCaptures: this.#sourceAnalysisCaptures,
+        },
       );
 
       await this.#commands.claimRun(origin, {
@@ -518,9 +602,12 @@ export class DesignWriteGeometryRunExecutor {
         bundleAssetBytes,
         bundleSources,
         previewProducer,
+        sourceAnalyses,
       } = await loadReviewedGeometryDraft(
         params,
         this.#geometryDraftCaptures,
+        this.#geometrySourceCaptures,
+        this.#sourceAnalysisCaptures,
         this.#draftAssetDirectory,
       );
 
@@ -530,11 +617,16 @@ export class DesignWriteGeometryRunExecutor {
         base,
         architectureArtifact,
         this.#architectureCaptures,
+        this.#sysmlSourceAnalysis,
       );
       const predecessor = await requireGeometryBundlePredecessor(
         base,
         params,
         this.#geometryCaptures,
+        {
+          geometrySourceCaptures: this.#geometrySourceCaptures,
+          sourceAnalysisCaptures: this.#sourceAnalysisCaptures,
+        },
       );
 
       // Step 11: build and durably record the canonical geometry capture before
@@ -543,9 +635,7 @@ export class DesignWriteGeometryRunExecutor {
       const { assemblyFiles = [], partMeshes = [] } = params.manifest.artifactHashes ??
         {};
       const captureRecord = {
-        schemaVersion: params.manifest.schemaVersion === "geometry-manifest/2.0"
-          ? GEOMETRY_BUNDLE_CAPTURE_SCHEMA
-          : GEOMETRY_CAPTURE_SCHEMA,
+        schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
         operation: DESIGN_WRITE_GEOMETRY_OPERATION,
         trustedRunId: run.id,
         draftDigest: params.draftDigest,
@@ -557,6 +647,7 @@ export class DesignWriteGeometryRunExecutor {
         },
         previewProducer: previewProducer ?? null,
         ...(bundleSources ? { sourceScripts: bundleSources } : {}),
+        ...(sourceAnalyses ? { sourceAnalyses } : {}),
         sealedAt: capturedAt,
       };
       const captureFp = await sha256Fingerprint(captureRecord);
@@ -863,6 +954,7 @@ export class DesignWriteGeometryRunExecutor {
         baseSnapshot,
         architectureArtifact,
         this.#architectureCaptures,
+        this.#sysmlSourceAnalysis,
       );
     } catch (error) {
       throw completedGeometryIntegrityError(
@@ -901,15 +993,16 @@ export class DesignWriteGeometryRunExecutor {
       );
     }
 
-    const { bundleSources, previewProducer } = await loadReviewedGeometryDraft(
-      params,
-      this.#geometryDraftCaptures,
-    );
+    const { bundleSources, previewProducer, sourceAnalyses } =
+      await loadReviewedGeometryDraft(
+        params,
+        this.#geometryDraftCaptures,
+        this.#geometrySourceCaptures,
+        this.#sourceAnalysisCaptures,
+      );
     const capturedAt = requiredStart(run);
     const expectedCapture = {
-      schemaVersion: params.manifest.schemaVersion === "geometry-manifest/2.0"
-        ? GEOMETRY_BUNDLE_CAPTURE_SCHEMA
-        : GEOMETRY_CAPTURE_SCHEMA,
+      schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
       operation: DESIGN_WRITE_GEOMETRY_OPERATION,
       trustedRunId: run.id,
       draftDigest: params.draftDigest,
@@ -921,6 +1014,7 @@ export class DesignWriteGeometryRunExecutor {
       },
       previewProducer: previewProducer ?? null,
       ...(bundleSources ? { sourceScripts: bundleSources } : {}),
+      ...(sourceAnalyses ? { sourceAnalyses } : {}),
       sealedAt: capturedAt,
     };
     const observedCaptureFingerprint = await sha256Fingerprint(capture);
@@ -939,6 +1033,10 @@ export class DesignWriteGeometryRunExecutor {
         baseSnapshot,
         params,
         this.#geometryCaptures,
+        {
+          geometrySourceCaptures: this.#geometrySourceCaptures,
+          sourceAnalysisCaptures: this.#sourceAnalysisCaptures,
+        },
       );
       if (
         predecessor && primary.inputArtifactIds[1] !== predecessor.artifact.id
@@ -1146,6 +1244,7 @@ async function assertComponentBindingsMatchArchitecture(
   base: ThreadSnapshot,
   architectureArtifact: ThreadArtifact,
   architectureCaptures: FileCaptureStore<"architecture-capture">,
+  sysmlSourceAnalysis: SysmlSourceAnalysisReader,
 ): Promise<void> {
   const digest = architectureArtifact.fingerprint.digest;
   if (
@@ -1185,181 +1284,55 @@ async function assertComponentBindingsMatchArchitecture(
   } catch {
     invalidArchitectureCapture("capture is not valid JSON");
   }
-  const captureRecord = architectureCaptureObject(parsed, "capture");
-  const recomputed = await sha256Fingerprint(captureRecord);
+  const recomputed = await sha256Fingerprint(parsed);
   if (!fingerprintsEqual(recomputed, architectureArtifact.fingerprint)) {
     invalidArchitectureCapture(
       "capture fingerprint does not match the architecture artifact",
     );
   }
-  architectureCaptureOnlyKeys(captureRecord, [
-    "schemaVersion",
-    "operation",
-    "trustedRunId",
-    "packageName",
-    "systemName",
-    "package",
-    "seed",
-    "predecessor",
-    "partDefinitions",
-    "insertedAt",
-  ], "capture");
-  if (captureRecord.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA) {
+  let capture: ReturnType<typeof parseExactArchitectureCapture>;
+  try {
+    capture = parseExactArchitectureCapture(parsed);
+    if (deterministicJson(capture) !== captureText) {
+      throw new Error("architecture capture is not canonical JSON");
+    }
+  } catch (error) {
     invalidArchitectureCapture(
-      `unsupported schema ${String(captureRecord.schemaVersion)}`,
+      error instanceof Error ? error.message : String(error),
     );
   }
-  const operation = architectureCaptureObject(
-    captureRecord.operation,
-    "operation",
-  );
-  architectureCaptureOnlyKeys(operation, ["id", "version"], "operation");
-  if (
-    operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
-    operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version
-  ) {
-    invalidArchitectureCapture(
-      "operation is not model.write-architecture@1",
-    );
-  }
-  const trustedRunId = architectureCaptureNonEmptyString(
-    captureRecord.trustedRunId,
-    "trustedRunId",
-  );
-  if (trustedRunId !== architectureArtifact.producer.runId) {
+  if (capture.trustedRunId !== architectureArtifact.producer.runId) {
     invalidArchitectureCapture(
       "trustedRunId does not match the architecture artifact producer",
     );
   }
-  const packageName = architectureCaptureNonEmptyString(
-    captureRecord.packageName,
-    "packageName",
-  );
-  const systemName = architectureCaptureNonEmptyString(
-    captureRecord.systemName,
-    "systemName",
-  );
-  const insertedAt = architectureCaptureNonEmptyString(
-    captureRecord.insertedAt,
-    "insertedAt",
-  );
-  if (
-    !Number.isFinite(Date.parse(insertedAt)) ||
-    new Date(insertedAt).toISOString() !== insertedAt
-  ) {
-    invalidArchitectureCapture("insertedAt is not a canonical instant");
+  if (capture.schemaVersion === "architecture-capture/3.0") {
+    try {
+      await requireCurrentArchitectureSourceAnalyses(
+        capture.sourceAnalyses!,
+        sysmlSourceAnalysis,
+        {
+          runId: architectureArtifact.producer.runId,
+          operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+          packageName: capture.packageName,
+        },
+      );
+    } catch (error) {
+      invalidArchitectureCapture(
+        `current source-analysis evidence is not exact: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
-  const packageRecord = architectureCaptureObject(
-    captureRecord.package,
-    "package",
-  );
-  architectureCaptureOnlyKeys(packageRecord, ["id", "label"], "package");
-  const packageId = architectureCaptureNonEmptyString(
-    packageRecord.id,
-    "package.id",
-  );
-  if (
-    architectureCaptureNonEmptyString(packageRecord.label, "package.label") !==
-      packageName
-  ) {
-    invalidArchitectureCapture("package label does not match packageName");
-  }
-  const seed = assertArchitectureCaptureSource(captureRecord.seed, "seed");
-  const predecessor = captureRecord.predecessor === undefined
-    ? undefined
-    : assertArchitectureCaptureSource(captureRecord.predecessor, "predecessor");
   assertArchitectureCaptureLineageExact(
     base,
     architectureArtifact,
-    seed,
-    predecessor,
-    insertedAt,
+    capture.seed,
+    capture.predecessor,
+    capture.insertedAt,
   );
-  if (
-    !Array.isArray(captureRecord.partDefinitions) ||
-    captureRecord.partDefinitions.length === 0
-  ) {
-    invalidArchitectureCapture("partDefinitions must be a non-empty array");
-  }
-
-  const definitions = captureRecord.partDefinitions.map((raw, definitionIndex) => {
-    const definition = architectureCaptureObject(
-      raw,
-      `partDefinitions[${definitionIndex}]`,
-    );
-    architectureCaptureOnlyKeys(
-      definition,
-      ["id", "kind", "label", "usages"],
-      `partDefinitions[${definitionIndex}]`,
-    );
-    if (definition.kind !== "PartDefinition" || !Array.isArray(definition.usages)) {
-      invalidArchitectureCapture(
-        `partDefinitions[${definitionIndex}] is not a strict PartDefinition`,
-      );
-    }
-    return {
-      id: architectureCaptureNonEmptyString(
-        definition.id,
-        `partDefinitions[${definitionIndex}].id`,
-      ),
-      label: architectureCaptureNonEmptyString(
-        definition.label,
-        `partDefinitions[${definitionIndex}].label`,
-      ),
-      usages: definition.usages.map((rawUsage, usageIndex) => {
-        const context = `partDefinitions[${definitionIndex}].usages[${usageIndex}]`;
-        const usage = architectureCaptureObject(rawUsage, context);
-        architectureCaptureOnlyKeys(usage, [
-          "id",
-          "kind",
-          "label",
-          "targetId",
-          "targetKind",
-          "targetLabel",
-        ], context);
-        if (
-          usage.kind !== "PartUsage" ||
-          usage.targetKind !== "PartDefinition"
-        ) {
-          invalidArchitectureCapture(`${context} has invalid SysON kinds`);
-        }
-        return {
-          id: architectureCaptureNonEmptyString(usage.id, `${context}.id`),
-          label: architectureCaptureNonEmptyString(
-            usage.label,
-            `${context}.label`,
-          ),
-          targetId: architectureCaptureNonEmptyString(
-            usage.targetId,
-            `${context}.targetId`,
-          ),
-          targetLabel: architectureCaptureNonEmptyString(
-            usage.targetLabel,
-            `${context}.targetLabel`,
-          ),
-        };
-      }),
-    };
-  });
-  const semanticIds = new Set<string>([packageId]);
-  const definitionIds = new Set<string>();
-  const definitionLabels = new Set<string>();
-  for (const definition of definitions) {
-    if (
-      semanticIds.has(definition.id) ||
-      definitionLabels.has(definition.label)
-    ) {
-      invalidArchitectureCapture(
-        "Package and PartDefinition ids, and PartDefinition labels, must be unique",
-      );
-    }
-    semanticIds.add(definition.id);
-    definitionIds.add(definition.id);
-    definitionLabels.add(definition.label);
-  }
-  if (!definitionLabels.has(systemName)) {
-    invalidArchitectureCapture("systemName does not name a PartDefinition");
-  }
+  const definitions = capture.partDefinitions;
   const definitionsById = new Map(
     definitions.map((definition) => [definition.id, definition]),
   );
@@ -1368,21 +1341,7 @@ async function assertComponentBindingsMatchArchitecture(
     { readonly label: string; readonly targetId: string }
   >();
   for (const definition of definitions) {
-    const labelsUnderParent = new Set<string>();
     for (const usage of definition.usages) {
-      if (semanticIds.has(usage.id) || labelsUnderParent.has(usage.label)) {
-        invalidArchitectureCapture(
-          "PartUsage ids must be globally unique and labels unique within their parent",
-        );
-      }
-      semanticIds.add(usage.id);
-      labelsUnderParent.add(usage.label);
-      const target = definitionsById.get(usage.targetId);
-      if (!target || target.label !== usage.targetLabel) {
-        invalidArchitectureCapture(
-          `PartUsage ${usage.id} does not target an exact captured PartDefinition`,
-        );
-      }
       allUsages.set(usage.id, { label: usage.label, targetId: usage.targetId });
     }
   }
@@ -1465,13 +1424,18 @@ async function assertComponentBindingsMatchArchitecture(
 function invalidArchitectureCapture(detail: string): never {
   throw new EngineeringProjectCommandError(
     "invalid_transition",
-    `D5 violation: architecture capture is not exact schema-v2 evidence: ${detail}.`,
+    `D5 violation: architecture capture is not exact v2/v3 evidence: ${detail}.`,
   );
 }
 
 interface GeometryBundlePredecessorContext {
   readonly artifact: ThreadArtifact;
   readonly archiveEntries: ReturnType<typeof computeArchiveCascade>;
+}
+
+interface GeometrySourceAnalysisStores {
+  readonly geometrySourceCaptures: FileCaptureStore<"geometry-source">;
+  readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
 }
 
 /**
@@ -1486,6 +1450,7 @@ async function requireGeometryBundlePredecessor(
   base: ThreadSnapshot,
   params: GeometryDecisionParameters,
   geometryCaptures: GeometryCaptureStore,
+  sourceAnalysisStores?: GeometrySourceAnalysisStores,
 ): Promise<GeometryBundlePredecessorContext | undefined> {
   if (params.manifest.schemaVersion !== "geometry-manifest/2.0") return undefined;
   const archived = archivedRefKeys(base);
@@ -1568,6 +1533,7 @@ async function requireGeometryBundlePredecessor(
     base,
     artifact,
     capture as Record<string, unknown>,
+    sourceAnalysisStores,
   );
   const family = requireExactGeometryPredecessorFamily(
     base,
@@ -1598,35 +1564,28 @@ async function requireExactGeometryPredecessorCapture(
   base: ThreadSnapshot,
   primary: ThreadArtifact,
   record: Record<string, unknown>,
+  sourceAnalysisStores?: GeometrySourceAnalysisStores,
 ): Promise<ExactGeometryPredecessorCapture> {
   const schema = record.schemaVersion;
-  if (schema !== GEOMETRY_CAPTURE_SCHEMA && schema !== GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
+  if (!isGeometryCaptureSchema(schema)) {
     invalidGeometryPredecessor("capture schema is unsupported");
   }
+  const bundleSchema = isGeometryBundleCaptureSchema(schema);
+  const analyzedSchema = isAnalyzedGeometryCaptureSchema(schema);
   exactGeometryPredecessorKeys(
     record,
-    schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA
-      ? [
-        "schemaVersion",
-        "operation",
-        "trustedRunId",
-        "draftDigest",
-        "manifest",
-        "architectureBasis",
-        "previewProducer",
-        "sourceScripts",
-        "sealedAt",
-      ]
-      : [
-        "schemaVersion",
-        "operation",
-        "trustedRunId",
-        "draftDigest",
-        "manifest",
-        "architectureBasis",
-        "previewProducer",
-        "sealedAt",
-      ],
+    [
+      "schemaVersion",
+      "operation",
+      "trustedRunId",
+      "draftDigest",
+      "manifest",
+      "architectureBasis",
+      "previewProducer",
+      ...(bundleSchema ? ["sourceScripts"] : []),
+      ...(analyzedSchema ? ["sourceAnalyses"] : []),
+      "sealedAt",
+    ],
     "capture",
   );
   const operation = geometryPredecessorObject(record.operation, "operation");
@@ -1664,9 +1623,9 @@ async function requireExactGeometryPredecessorCapture(
     );
   }
   if (
-    (schema === GEOMETRY_CAPTURE_SCHEMA &&
+    (!bundleSchema &&
       params.manifest.schemaVersion !== GEOMETRY_MANIFEST_SCHEMA) ||
-    (schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
+    (bundleSchema &&
       params.manifest.schemaVersion !== "geometry-manifest/2.0")
   ) {
     invalidGeometryPredecessor("capture and manifest schema versions diverge");
@@ -1769,13 +1728,25 @@ async function requireExactGeometryPredecessorCapture(
   ) {
     invalidGeometryPredecessor("artifact freshness does not match sealedAt");
   }
-  if (schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
+  if (bundleSchema) {
     await requireExactGeometryBundleSources(
       record.sourceScripts,
       params.manifest as Extract<
         AnyGeometryManifest,
         { readonly schemaVersion: "geometry-manifest/2.0" }
       >,
+    );
+  }
+  if (analyzedSchema) {
+    if (!sourceAnalysisStores) {
+      invalidGeometryPredecessor(
+        "source-analysis stores are unavailable for an analyzed capture",
+      );
+    }
+    await requireCanonicalGeometrySourceAnalyses(
+      record.sourceAnalyses,
+      params,
+      sourceAnalysisStores,
     );
   }
   return { params, previewProducer, sealedAt };
@@ -2184,11 +2155,16 @@ function requireExactGeometryPredecessorFamily(
 
 function geometryPredecessorPreviewProducer(
   value: unknown,
-  schema: typeof GEOMETRY_CAPTURE_SCHEMA | typeof GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+  schema: GeometryCaptureSchema,
 ): ThreadOperationRef | undefined {
   if (value === null) {
-    if (schema === GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
-      invalidGeometryPredecessor("v2 capture has no sandbox preview producer");
+    if (
+      isGeometryBundleCaptureSchema(schema) ||
+      isAnalyzedGeometryCaptureSchema(schema)
+    ) {
+      invalidGeometryPredecessor(
+        "current or v2 capture has no sandbox preview producer",
+      );
     }
     return undefined;
   }
@@ -2288,88 +2264,6 @@ function invalidGeometryPredecessor(detail: string): never {
     "invalid_transition",
     `geometry_predecessor_mismatch: ${detail}.`,
   );
-}
-
-function architectureCaptureObject(
-  value: unknown,
-  context: string,
-): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    invalidArchitectureCapture(`${context} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function architectureCaptureNonEmptyString(
-  value: unknown,
-  context: string,
-): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    invalidArchitectureCapture(`${context} must be a non-empty string`);
-  }
-  return value;
-}
-
-function architectureCaptureOnlyKeys(
-  record: Record<string, unknown>,
-  allowed: readonly string[],
-  context: string,
-): void {
-  const allowedKeys = new Set(allowed);
-  const unexpected = Object.keys(record).find((key) => !allowedKeys.has(key));
-  if (unexpected) {
-    invalidArchitectureCapture(`${context} has unsupported field ${unexpected}`);
-  }
-}
-
-interface ArchitectureCaptureSource {
-  readonly artifactId: string;
-  readonly fingerprint: ContentFingerprint;
-  readonly producerRunId: string;
-}
-
-function assertArchitectureCaptureSource(
-  value: unknown,
-  context: string,
-): ArchitectureCaptureSource {
-  const source = architectureCaptureObject(value, context);
-  architectureCaptureOnlyKeys(
-    source,
-    ["artifactId", "fingerprint", "producerRunId"],
-    context,
-  );
-  const artifactId = architectureCaptureNonEmptyString(
-    source.artifactId,
-    `${context}.artifactId`,
-  );
-  const producerRunId = architectureCaptureNonEmptyString(
-    source.producerRunId,
-    `${context}.producerRunId`,
-  );
-  const fingerprint = architectureCaptureObject(
-    source.fingerprint,
-    `${context}.fingerprint`,
-  );
-  architectureCaptureOnlyKeys(
-    fingerprint,
-    ["algorithm", "digest"],
-    `${context}.fingerprint`,
-  );
-  if (
-    fingerprint.algorithm !== "sha256" ||
-    typeof fingerprint.digest !== "string" ||
-    !/^[a-f0-9]{64}$/.test(fingerprint.digest)
-  ) {
-    invalidArchitectureCapture(`${context}.fingerprint is not SHA-256`);
-  }
-  return {
-    artifactId,
-    fingerprint: {
-      algorithm: "sha256",
-      digest: fingerprint.digest as string,
-    },
-    producerRunId,
-  };
 }
 
 function assertArchitectureCaptureLineageExact(
@@ -2525,11 +2419,14 @@ function assertArchitectureSourceArtifactExact(
 async function loadReviewedGeometryDraft(
   params: GeometryDecisionParameters,
   draftCaptures: FileCaptureStore<"geometry-draft">,
+  geometrySourceCaptures: FileCaptureStore<"geometry-source">,
+  sourceAnalysisCaptures: FileCaptureStore<"source-analysis">,
   draftAssetDirectory?: string,
 ): Promise<{
   readonly previewProducer: ThreadOperationRef | undefined;
   readonly bundleSources: GeometryBundleCanonicalSources | undefined;
   readonly bundleAssetBytes: ReadonlyMap<string, number> | undefined;
+  readonly sourceAnalyses: SealedGeometrySourceAnalyses | undefined;
 }> {
   const draftFp: ContentFingerprint = {
     algorithm: "sha256",
@@ -2558,7 +2455,7 @@ async function loadReviewedGeometryDraft(
   assertMrtrManifestMatchesDraft(params.manifest, draftRecord);
   const previewProducer = requireDraftPreviewProducer(draftRecord);
   let bundleAssetBytes: ReadonlyMap<string, number> | undefined;
-  if (draftRecord.schemaVersion === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA) {
+  if (isGeometryBundleDraftSchema(draftRecord.schemaVersion)) {
     try {
       await assertGeometryBundleDraftPaths(draftRecord);
       const assets = requireGeometryBundleDraftAssetMetadata(draftRecord);
@@ -2586,11 +2483,181 @@ async function loadReviewedGeometryDraft(
   } else {
     requireDraftAssemblyPaths(draftRecord);
   }
-  const bundleSources = draftRecord.schemaVersion ===
-      GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
+  const bundleSources = isGeometryBundleDraftSchema(draftRecord.schemaVersion)
     ? await requireGeometryBundleCanonicalSources(draftRecord)
     : undefined;
-  return { previewProducer, bundleSources, bundleAssetBytes };
+  const sourceAnalyses = await requireReviewedGeometrySourceAnalyses(
+    draftRecord,
+    params,
+    geometrySourceCaptures,
+    sourceAnalysisCaptures,
+  );
+  return { previewProducer, bundleSources, bundleAssetBytes, sourceAnalyses };
+}
+
+async function requireReviewedGeometrySourceAnalyses(
+  draft: Record<string, unknown>,
+  params: GeometryDecisionParameters,
+  geometrySourceCaptures: FileCaptureStore<"geometry-source">,
+  sourceAnalysisCaptures: FileCaptureStore<"source-analysis">,
+): Promise<SealedGeometrySourceAnalyses | undefined> {
+  const schema = draft.schemaVersion;
+  if (
+    schema === LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA ||
+    schema === PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA ||
+    schema === PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
+  ) {
+    return undefined;
+  }
+
+  const stores = {
+    sourceCaptures: geometrySourceCaptures,
+    analysisCaptures: sourceAnalysisCaptures,
+  } as const;
+  try {
+    if (schema === GEOMETRY_DRAFT_CAPTURE_SCHEMA) {
+      if (params.manifest.schemaVersion !== GEOMETRY_MANIFEST_SCHEMA) {
+        throw new TypeError("draft and manifest families diverge");
+      }
+      const verified = await requireGeometrySourceAnalysis(
+        draft.sourceAnalysis,
+        stores,
+      );
+      if (
+        verified.reference.selector.kind !== "assembly" ||
+        !params.manifest.scriptHash ||
+        !fingerprintsEqual(
+          verified.reference.sourceFingerprint,
+          params.manifest.scriptHash,
+        )
+      ) {
+        throw new TypeError(
+          "assembly analysis does not name the exact signed script",
+        );
+      }
+      return Object.freeze({
+        assembly: verified.reference,
+        partDefinitions: Object.freeze([]),
+      });
+    }
+
+    if (schema === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA) {
+      if (params.manifest.schemaVersion !== "geometry-manifest/2.0") {
+        throw new TypeError("draft and manifest families diverge");
+      }
+      const raw = exactRecord(
+        draft.sourceAnalyses,
+        ["assembly", "partDefinitions"],
+        "$geometryDraft.sourceAnalyses",
+      );
+      const assembly = await requireGeometrySourceAnalysis(raw.assembly, stores);
+      if (
+        assembly.reference.selector.kind !== "assembly" ||
+        !params.manifest.scriptHash ||
+        !fingerprintsEqual(
+          assembly.reference.sourceFingerprint,
+          params.manifest.scriptHash,
+        )
+      ) {
+        throw new TypeError(
+          "bundle assembly analysis does not name the exact signed script",
+        );
+      }
+      if (!Array.isArray(raw.partDefinitions)) {
+        throw new TypeError("PartDefinition analyses must be an array");
+      }
+      if (raw.partDefinitions.length !== params.manifest.partDefinitions.length) {
+        throw new TypeError(
+          "PartDefinition analysis coverage does not match the signed manifest",
+        );
+      }
+      const partDefinitions = [];
+      for (const [index, rawEntry] of raw.partDefinitions.entries()) {
+        const entry = exactRecord(
+          rawEntry,
+          ["elementId", "analysis"],
+          `$geometryDraft.sourceAnalyses.partDefinitions[${index}]`,
+        );
+        const definition = params.manifest.partDefinitions[index]!;
+        if (entry.elementId !== definition.elementId || !definition.scriptHash) {
+          throw new TypeError(
+            `PartDefinition analysis ${index} does not preserve signed identity order`,
+          );
+        }
+        const verified = await requireGeometrySourceAnalysis(
+          entry.analysis,
+          stores,
+        );
+        if (
+          verified.reference.selector.kind !== "part-definition" ||
+          verified.reference.selector.elementId !== definition.elementId ||
+          !fingerprintsEqual(
+            verified.reference.sourceFingerprint,
+            definition.scriptHash,
+          )
+        ) {
+          throw new TypeError(
+            `PartDefinition ${definition.elementId} analysis does not name its exact signed source`,
+          );
+        }
+        partDefinitions.push({
+          elementId: definition.elementId,
+          analysis: verified.reference,
+        });
+      }
+      return Object.freeze({
+        assembly: assembly.reference,
+        partDefinitions: Object.freeze(partDefinitions),
+      });
+    }
+    throw new TypeError(`unsupported geometry draft schema ${String(schema)}`);
+  } catch (error) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Geometry source-analysis provenance mismatch: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+async function requireCanonicalGeometrySourceAnalyses(
+  value: unknown,
+  params: GeometryDecisionParameters,
+  stores: GeometrySourceAnalysisStores,
+): Promise<SealedGeometrySourceAnalyses> {
+  const raw = exactRecord(
+    value,
+    ["assembly", "partDefinitions"],
+    "$geometryCapture.sourceAnalyses",
+  );
+  const syntheticDraft = params.manifest.schemaVersion === "geometry-manifest/2.0"
+    ? {
+      schemaVersion: GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
+      sourceAnalyses: raw,
+    }
+    : {
+      schemaVersion: GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+      sourceAnalysis: raw.assembly,
+    };
+  if (
+    params.manifest.schemaVersion !== "geometry-manifest/2.0" &&
+    (!Array.isArray(raw.partDefinitions) || raw.partDefinitions.length !== 0)
+  ) {
+    throw new TypeError(
+      "A v1 canonical source-analysis set must not contain PartDefinitions.",
+    );
+  }
+  const result = await requireReviewedGeometrySourceAnalyses(
+    syntheticDraft,
+    params,
+    stores.geometrySourceCaptures,
+    stores.sourceAnalysisCaptures,
+  );
+  if (!result) {
+    throw new TypeError("Canonical geometry source analyses were not resolved.");
+  }
+  return result;
 }
 
 /**
@@ -2611,7 +2678,9 @@ function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undef
   const schemaVersion = draft.schemaVersion;
   if (
     schemaVersion !== GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
+    schemaVersion !== PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
     schemaVersion !== LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
+    schemaVersion !== PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
   ) {
     throw new EngineeringProjectCommandError(
@@ -2654,8 +2723,13 @@ function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undef
   }
   throw new EngineeringProjectCommandError(
     "invalid_transition",
-    "Geometry draft capture/1.1 requires an exact preview producer runId.",
+    "Geometry draft capture requires an exact preview producer runId.",
   );
+}
+
+function isGeometryBundleDraftSchema(value: unknown): boolean {
+  return value === PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA ||
+    value === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA;
 }
 
 /** Fail closed on legacy and current draft paths before canonical capture writes. */

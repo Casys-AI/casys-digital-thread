@@ -29,8 +29,9 @@ import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot
 import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "../../../orchestration/operations/coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   CM01_ERPNEXT_BOM_CAPTURE_SCHEMA,
+  CM01_V3_ERPNEXT_BOM,
   type Cm01ErpNextBomCapture,
-  type Cm01ErpNextBomCaptureAdapter,
+  type LegacyCm01ErpNextBomCapture,
 } from "../../captures/cm01-erpnext-bom-capture.ts";
 import { FileCaptureStore } from "../../captures/file-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "../../captures/file-cm01-erpnext-bom-run-capture-store.ts";
@@ -63,7 +64,9 @@ export interface CoffeeMachineCm01V3ErpNextBomRunExecutorDependencies {
   readonly commands: EngineeringProjectCommandService;
   readonly snapshots: ThreadSnapshotStore;
   /** Closed, server-owned, read-only observation. No agent value reaches ERPNext. */
-  readonly capture: Pick<Cm01ErpNextBomCaptureAdapter, "capture">;
+  readonly capture: {
+    capture(): Promise<PersistedBomCapture>;
+  };
   readonly captures: FileCaptureStore<"cm01-erpnext-bom">;
   readonly runCaptures: FileCm01ErpNextBomRunCaptureStore;
   readonly lease: EngineeringProjectRunLease;
@@ -74,6 +77,15 @@ export interface CoffeeMachineCm01V3ErpNextBomRunExecutorDependencies {
 interface Materialization {
   readonly snapshot: ThreadSnapshot;
   readonly evidence: EngineeringThreadEntityRef;
+}
+
+type PersistedBomCapture =
+  | Cm01ErpNextBomCapture
+  | LegacyCm01ErpNextBomCapture;
+
+interface CapturedBom {
+  readonly capture: PersistedBomCapture;
+  readonly captureFingerprint: ContentFingerprint;
 }
 
 /**
@@ -87,7 +99,9 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
-  readonly #capture: Pick<Cm01ErpNextBomCaptureAdapter, "capture">;
+  readonly #capture: {
+    capture(): Promise<PersistedBomCapture>;
+  };
   readonly #captures: FileCaptureStore<"cm01-erpnext-bom">;
   readonly #runCaptures: FileCm01ErpNextBomRunCaptureStore;
   readonly #lease: EngineeringProjectRunLease;
@@ -173,9 +187,14 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
           "Reading the reviewed external BOM. This is supply evidence, not an availability, cost, or release verdict.",
       });
 
-      const capture = await this.captureOnce(project, run);
+      const captured = await this.captureOnce(project, run);
       captureDurable = true;
-      materialized = await materialize(base, capture, this.#captures);
+      materialized = await materialize(
+        base,
+        captured.capture,
+        captured.captureFingerprint,
+        this.#captures,
+      );
       await this.#snapshots.save(materialized.snapshot);
       snapshotDurable = true;
       await this.assertPersisted(materialized.snapshot);
@@ -184,7 +203,7 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
         runId: run.id,
         baseRevision: base.revision,
         state: "fresh",
-        recordedAt: capture.capturedAt,
+        recordedAt: captured.capture.capturedAt,
         label: "ERP BOM evidence captured",
         summary:
           "The normalized ERPNext BOM evidence is attached to the project thread. No stock or manufacturing conclusion was inferred.",
@@ -243,7 +262,7 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
   private async captureOnce(
     project: EngineeringProjectSnapshot,
     run: EngineeringAgentRun,
-  ): Promise<Cm01ErpNextBomCapture> {
+  ): Promise<CapturedBom> {
     const existing = await this.#runCaptures.read(project.project.id, run.id);
     if (existing) {
       const text = await this.#captures.read(existing.captureFingerprint);
@@ -252,20 +271,28 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
           "CM-01 ERPNext BOM run capture is missing its immutable bytes.",
         );
       }
-      return await parsePersistedCapture(text, existing.captureFingerprint);
+      return {
+        capture: await parsePersistedCapture(text, existing.captureFingerprint),
+        captureFingerprint: existing.captureFingerprint,
+      };
     }
     const capture = await this.#capture.capture();
     const text = deterministicJson(capture);
     const fingerprint = await sha256Fingerprint(capture);
     await this.#captures.save(fingerprint, text);
+    const persistedText = await this.#captures.read(fingerprint);
+    if (!persistedText) {
+      throw new Error("CM-01 ERPNext BOM capture disappeared after it was saved.");
+    }
+    const persisted = await parsePersistedCapture(persistedText, fingerprint);
     await this.#runCaptures.save({
       schemaVersion: "cm01-erpnext-bom-run-capture/1.0",
       projectId: project.project.id,
       runId: run.id,
-      capturedAt: capture.capturedAt,
+      capturedAt: persisted.capturedAt,
       captureFingerprint: fingerprint,
     });
-    return parseCapture(capture);
+    return { capture: persisted, captureFingerprint: fingerprint };
   }
 
   private async requiredBasis(
@@ -426,12 +453,18 @@ export class CoffeeMachineCm01V3ErpNextBomRunExecutor {
   }
 }
 
-async function materialize(
+function materialize(
   base: ThreadSnapshot,
-  capture: Cm01ErpNextBomCapture,
+  capture: PersistedBomCapture,
+  captureFingerprint: ContentFingerprint,
   store: FileCaptureStore<"cm01-erpnext-bom">,
-): Promise<Materialization> {
-  const extension = await extensionFor(base.subject.id, capture, store);
+): Materialization {
+  const extension = extensionFor(
+    base.subject.id,
+    capture,
+    captureFingerprint,
+    store,
+  );
   const applied = applyThreadSnapshotExtensionIfNew(base, extension, {
     appliedAt: capture.capturedAt,
   });
@@ -471,15 +504,14 @@ export function coffeeMachineCm01V3ErpNextBomGoldenArtifact(
   };
 }
 
-async function extensionFor(
+function extensionFor(
   subjectId: string,
-  capture: Cm01ErpNextBomCapture,
+  capture: PersistedBomCapture,
+  captureFingerprint: ContentFingerprint,
   store: FileCaptureStore<"cm01-erpnext-bom">,
-): Promise<ThreadSnapshotExtension> {
+): ThreadSnapshotExtension {
   const valid = parseCapture(capture);
-  const fingerprint = valid.artifact.fingerprint;
-  const captureFingerprint = await sha256Fingerprint(valid);
-  const suffix = fingerprint.digest.slice(0, 12);
+  const suffix = captureFingerprint.digest.slice(0, 12);
   const operation: ThreadOperationRef = {
     serverId: "erpnext",
     tool: "erpnext_bom_get",
@@ -495,7 +527,7 @@ async function extensionFor(
     name: `ERPNext BOM ${valid.artifact.identity.bomName}`,
     kind: "bom",
     version: suffix,
-    fingerprint,
+    fingerprint: captureFingerprint,
     uri: store.uriFor(captureFingerprint),
     producer: operation,
     inputArtifactIds: [],
@@ -528,7 +560,7 @@ async function extensionFor(
         id: componentsId,
         name: "BOM component count",
         metric: "bom_component_count",
-        quantity: { value: valid.artifact.componentCount, unit: "1" },
+        quantity: { value: componentCount(valid), unit: "1" },
         source: { operation, artifactIds: [artifact.id], capturedAt: valid.capturedAt },
         freshness,
       },
@@ -560,12 +592,17 @@ async function extensionFor(
 async function parsePersistedCapture(
   text: string,
   expected: ContentFingerprint,
-): Promise<Cm01ErpNextBomCapture> {
+): Promise<PersistedBomCapture> {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
     throw new Error("The persisted CM-01 ERPNext BOM capture is not valid JSON.");
+  }
+  if (deterministicJson(value) !== text) {
+    throw new Error(
+      "The persisted CM-01 ERPNext BOM capture is not canonical JSON.",
+    );
   }
   const actual = await sha256Fingerprint(value);
   if (deterministicJson(actual) !== deterministicJson(expected)) {
@@ -576,32 +613,264 @@ async function parsePersistedCapture(
   return parseCapture(value);
 }
 
-function parseCapture(value: unknown): Cm01ErpNextBomCapture {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("CM-01 ERPNext BOM capture must be an object.");
+function parseCapture(value: unknown): PersistedBomCapture {
+  const root = exactRecord(
+    value,
+    ["artifact", "capturedAt", "kind", "schemaVersion"],
+    "CM-01 ERPNext BOM capture",
+  );
+  const schemaVersion = requiredText(root.schemaVersion, "capture.schemaVersion");
+  const kind = requiredText(root.kind, "capture.kind");
+  if (kind !== "cm01-erpnext-bom-capture") {
+    throw new Error("The persisted CM-01 ERPNext BOM capture has an invalid kind.");
   }
-  const capture = value as Cm01ErpNextBomCapture;
-  const artifact = capture.artifact;
+  const capturedAt = canonicalIso(root.capturedAt, "capture.capturedAt");
+  if (schemaVersion === CM01_ERPNEXT_BOM_CAPTURE_SCHEMA) {
+    return {
+      schemaVersion: CM01_ERPNEXT_BOM_CAPTURE_SCHEMA,
+      kind: "cm01-erpnext-bom-capture",
+      capturedAt,
+      artifact: parseCurrentArtifact(root.artifact),
+    };
+  }
+  if (schemaVersion === "cm01-erpnext-bom-capture/1.0") {
+    return {
+      schemaVersion: "cm01-erpnext-bom-capture/1.0",
+      kind: "cm01-erpnext-bom-capture",
+      capturedAt,
+      artifact: parseLegacyArtifact(root.artifact),
+    };
+  }
+  throw new Error("The persisted CM-01 ERPNext BOM capture schema is unsupported.");
+}
+
+function componentCount(capture: PersistedBomCapture): number {
+  return capture.schemaVersion === CM01_ERPNEXT_BOM_CAPTURE_SCHEMA
+    ? capture.artifact.components.length
+    : capture.artifact.componentCount;
+}
+
+function parseCurrentArtifact(value: unknown): Cm01ErpNextBomCapture["artifact"] {
+  const artifact = exactRecord(
+    value,
+    ["components", "identity", "kind", "producer", "quantity", "role"],
+    "capture.artifact",
+  );
+  return {
+    role: exactLiteral(artifact.role, "erp-bom", "capture.artifact.role"),
+    kind: exactLiteral(artifact.kind, "bom", "capture.artifact.kind"),
+    producer: parseProducer(artifact.producer),
+    identity: parseIdentity(artifact.identity),
+    quantity: parseQuantity(artifact.quantity, "capture.artifact.quantity"),
+    components: parseComponents(artifact.components),
+  };
+}
+
+function parseLegacyArtifact(
+  value: unknown,
+): LegacyCm01ErpNextBomCapture["artifact"] {
+  const artifact = exactRecord(
+    value,
+    [
+      "componentCount",
+      "fingerprint",
+      "identity",
+      "kind",
+      "producer",
+      "quantity",
+      "role",
+    ],
+    "legacy capture.artifact",
+  );
+  return {
+    role: exactLiteral(artifact.role, "erp-bom", "legacy capture.artifact.role"),
+    kind: exactLiteral(artifact.kind, "bom", "legacy capture.artifact.kind"),
+    fingerprint: parseFingerprint(
+      artifact.fingerprint,
+      "legacy capture.artifact.fingerprint",
+    ),
+    producer: parseProducer(artifact.producer),
+    identity: parseIdentity(artifact.identity),
+    quantity: parseQuantity(artifact.quantity, "legacy capture.artifact.quantity"),
+    componentCount: positiveInteger(
+      artifact.componentCount,
+      "legacy capture.artifact.componentCount",
+    ),
+  };
+}
+
+function parseProducer(
+  value: unknown,
+): { readonly serverId: "erpnext"; readonly tool: "erpnext_bom_get" } {
+  const producer = exactRecord(
+    value,
+    ["serverId", "tool"],
+    "capture.artifact.producer",
+  );
+  return {
+    serverId: exactLiteral(
+      producer.serverId,
+      "erpnext",
+      "capture.artifact.producer.serverId",
+    ),
+    tool: exactLiteral(
+      producer.tool,
+      "erpnext_bom_get",
+      "capture.artifact.producer.tool",
+    ),
+  };
+}
+
+function parseIdentity(
+  value: unknown,
+): { readonly bomName: string; readonly itemCode: string; readonly itemName: string } {
+  const identity = exactRecord(
+    value,
+    ["bomName", "itemCode", "itemName"],
+    "capture.artifact.identity",
+  );
+  const bomName = requiredText(
+    identity.bomName,
+    "capture.artifact.identity.bomName",
+  );
+  const itemCode = requiredText(
+    identity.itemCode,
+    "capture.artifact.identity.itemCode",
+  );
   if (
-    capture.schemaVersion !== CM01_ERPNEXT_BOM_CAPTURE_SCHEMA ||
-    capture.kind !== "cm01-erpnext-bom-capture" ||
-    Number.isNaN(Date.parse(capture.capturedAt)) || !artifact ||
-    artifact.role !== "erp-bom" || artifact.kind !== "bom" ||
-    artifact.producer?.serverId !== "erpnext" ||
-    artifact.producer.tool !== "erpnext_bom_get" ||
-    artifact.fingerprint?.algorithm !== "sha256" ||
-    !/^[a-f0-9]{64}$/.test(artifact.fingerprint.digest) ||
-    !artifact.identity?.bomName?.trim() || !artifact.identity.itemCode?.trim() ||
-    !artifact.identity.itemName?.trim() ||
-    !Number.isFinite(artifact.quantity?.value) || artifact.quantity.value <= 0 ||
-    !artifact.quantity.unit?.trim() ||
-    !Number.isSafeInteger(artifact.componentCount) || artifact.componentCount < 1
+    bomName !== CM01_V3_ERPNEXT_BOM.name ||
+    itemCode !== CM01_V3_ERPNEXT_BOM.itemCode
   ) {
     throw new Error(
-      "The persisted capture is not the closed CM-01 ERPNext BOM contract.",
+      "capture.artifact.identity is not the fixed reviewed CM-01 ERPNext BOM.",
     );
   }
-  return capture;
+  return {
+    bomName,
+    itemCode,
+    itemName: requiredText(identity.itemName, "capture.artifact.identity.itemName"),
+  };
+}
+
+function parseQuantity(
+  value: unknown,
+  path: string,
+): { readonly value: number; readonly unit: string } {
+  const quantity = exactRecord(value, ["unit", "value"], path);
+  return {
+    value: positiveNumber(quantity.value, `${path}.value`),
+    unit: requiredText(quantity.unit, `${path}.unit`),
+  };
+}
+
+function parseComponents(
+  value: unknown,
+): Cm01ErpNextBomCapture["artifact"]["components"] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("capture.artifact.components must be a non-empty array.");
+  }
+  return value.map((item, position) => {
+    const component = exactRecord(
+      item,
+      ["index", "itemCode", "quantity", "unit"],
+      `capture.artifact.components[${position}]`,
+    );
+    const index = positiveInteger(
+      component.index,
+      `capture.artifact.components[${position}].index`,
+    );
+    if (index !== position + 1) {
+      throw new Error(
+        "capture.artifact.components must be normalized in sequential index order.",
+      );
+    }
+    return {
+      index,
+      itemCode: requiredText(
+        component.itemCode,
+        `capture.artifact.components[${position}].itemCode`,
+      ),
+      quantity: positiveNumber(
+        component.quantity,
+        `capture.artifact.components[${position}].quantity`,
+      ),
+      unit: requiredText(
+        component.unit,
+        `capture.artifact.components[${position}].unit`,
+      ),
+    };
+  });
+}
+
+function parseFingerprint(value: unknown, path: string): ContentFingerprint {
+  const fingerprint = exactRecord(value, ["algorithm", "digest"], path);
+  return {
+    algorithm: exactLiteral(fingerprint.algorithm, "sha256", `${path}.algorithm`),
+    digest: sha256Digest(fingerprint.digest, `${path}.digest`),
+  };
+}
+
+function exactRecord(
+  value: unknown,
+  keys: readonly string[],
+  path: string,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${path} must be an object.`);
+  }
+  const record = value as Record<string, unknown>;
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  if (deterministicJson(actual) !== deterministicJson(expected)) {
+    throw new Error(`${path} has unsupported keys.`);
+  }
+  return record;
+}
+
+function requiredText(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${path} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function canonicalIso(value: unknown, path: string): string {
+  const text = requiredText(value, path);
+  const milliseconds = Date.parse(text);
+  if (Number.isNaN(milliseconds) || new Date(milliseconds).toISOString() !== text) {
+    throw new Error(`${path} must be a canonical ISO instant.`);
+  }
+  return text;
+}
+
+function exactLiteral<T extends string>(value: unknown, expected: T, path: string): T {
+  if (value !== expected) {
+    throw new Error(`${path} must equal ${JSON.stringify(expected)}.`);
+  }
+  return expected;
+}
+
+function positiveNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${path} must be a positive finite number.`);
+  }
+  return value;
+}
+
+function positiveInteger(value: unknown, path: string): number {
+  const number = positiveNumber(value, path);
+  if (!Number.isSafeInteger(number)) {
+    throw new Error(`${path} must be a positive integer.`);
+  }
+  return number;
+}
+
+function sha256Digest(value: unknown, path: string): string {
+  const digest = requiredText(value, path);
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error(`${path} must be a sha256 digest.`);
+  }
+  return digest;
 }
 
 function requireShape(

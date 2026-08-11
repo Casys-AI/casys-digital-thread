@@ -27,6 +27,9 @@ import {
   queuedRunCancellationSummary,
 } from "./engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
+import type { RegisteredRunPlanSealer } from "./resolved-run-plan-sealer.ts";
+import { validateResolvedOperationPlanRef } from "../analysis/resolved-operation-plan-v2.ts";
+import { deepFreeze } from "../kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -297,6 +300,8 @@ export interface EngineeringProjectPlanOperationRegistry {
       readonly workItemKind: EngineeringWorkItem["kind"];
       /** A queueable run requires a concrete trusted executor. */
       readonly execution: "trusted" | "planning-only";
+      /** Requires a server-sealed resolved-operation-plan/2.0 before queue commit. */
+      readonly resolvedOperationPlan?: "2.0";
       readonly decisionEvidenceScope?: "thread-entity-bindings";
       /**
        * When true, the operation must arrive via project_change_append, not the
@@ -327,6 +332,11 @@ export interface EngineeringProjectQueueEligibility {
 
 export interface EngineeringProjectPlanningDependencies {
   readonly operations: EngineeringProjectPlanOperationRegistry;
+  /**
+   * Present only when the deployment can seal and reread registered recorded
+   * plans. It is consulted exclusively for operations marked plan 2.0.
+   */
+  readonly runPlanSealer?: RegisteredRunPlanSealer;
   /**
    * Optional, code-owned admission gate for a particular reviewed V3 run.
    * It is deliberately evaluated before a run, work-item status or receipt is
@@ -1895,7 +1905,7 @@ async function queueV3Run(
   if (!operation) {
     invalidInput("A V3 run requires a registered operation on its work item.");
   }
-  assertRegisteredQueueOperation(planning, operation, basis.kind);
+  const registered = assertRegisteredQueueOperation(planning, operation, basis.kind);
   await assertQueueEligibility(planning, draft, workItem.id, basis);
   const inputFingerprint = await sha256Fingerprint({
     workItemId: workItem.id,
@@ -1907,7 +1917,7 @@ async function queueV3Run(
     },
     approvedDecisions,
   });
-  return {
+  const candidate: Mutable<EngineeringAgentRun> = {
     id: command.runId,
     workItemId: workItem.id,
     status: "queued",
@@ -1918,6 +1928,30 @@ async function queueV3Run(
     evidenceRefs: [],
     statusHistory: [transition(command, origin, "queued", appliedAt)],
   };
+  if (registered.operation.resolvedOperationPlan === "2.0") {
+    const sealer = planning?.runPlanSealer;
+    if (!sealer) {
+      invalidInput(
+        `Queued operation ${registered.operation.id}@${registered.operation.version} requires a configured resolved-operation-plan/2.0 sealer.`,
+      );
+    }
+    const project = validateEngineeringProjectSnapshot(draft);
+    const frozenCandidate = deepFreeze(
+      structuredClone(candidate),
+    ) as EngineeringAgentRun;
+    const sealed = await sealer.seal({
+      project,
+      workItem: project.workItems.find((item) => item.id === workItem.id)!,
+      run: frozenCandidate,
+      queueBasisProject: {
+        snapshotId: project.id,
+        revision: project.revision,
+        fingerprint: await sha256Fingerprint(project),
+      },
+    });
+    candidate.resolvedOperationPlan = validateResolvedOperationPlanRef(sealed);
+  }
+  return candidate;
 }
 
 /**
@@ -1929,7 +1963,7 @@ function assertRegisteredQueueOperation(
   planning: EngineeringProjectPlanningDependencies | undefined,
   operation: EngineeringOperationRef,
   basisKind: EngineeringBasisRef["kind"],
-): void {
+): ReturnType<EngineeringProjectPlanOperationRegistry["validate"]> {
   if (!planning) {
     invalidInput(
       "V3 run queueing is unavailable because no reviewed operation registry is configured.",
@@ -1950,6 +1984,7 @@ function assertRegisteredQueueOperation(
       `Queued operation ${registered.operation.id}@${registered.operation.version} is planning-only and is not backed by a trusted executor.`,
     );
   }
+  return registered;
 }
 
 /**
@@ -2205,6 +2240,7 @@ function validatePlannedChange(
     uniquePlanIds(item.dependsOnWorkItemIds, `workItems[${index}] dependency`);
     uniquePlanIds(item.decisionIds, `workItems[${index}] decision`);
   }
+  assertPlannedDecisionScopesAreUnambiguous(command.workItems);
   for (const [index, decision] of command.requiredDecisions.entries()) {
     nonEmpty(decision.id, `requiredDecisions[${index}].id`);
     if (isReservedUncertainWriterBasisReleaseDecisionId(decision.id)) {
@@ -2215,6 +2251,29 @@ function validatePlannedChange(
     nonEmpty(decision.phaseId, `requiredDecisions[${index}].phaseId`);
     nonEmpty(decision.title, `requiredDecisions[${index}].title`);
     nonEmpty(decision.question, `requiredDecisions[${index}].question`);
+  }
+}
+
+/**
+ * An MRTR approval is scoped to one concrete operation.  Letting a decision
+ * appear on two work items would make one human confirmation silently release
+ * multiple actions, even if each individual reference is otherwise valid.
+ */
+function assertPlannedDecisionScopesAreUnambiguous(
+  workItems: readonly Pick<PlannedEngineeringWorkItem, "id" | "decisionIds">[],
+): void {
+  const ownerByDecisionId = new Map<string, string>();
+  for (const item of workItems) {
+    for (const decisionId of item.decisionIds) {
+      const existingOwner = ownerByDecisionId.get(decisionId);
+      if (existingOwner !== undefined && existingOwner !== item.id) {
+        invalidInput(
+          `Decision ${decisionId} must be bound to exactly one work item; ` +
+            `it is already bound to ${existingOwner}.`,
+        );
+      }
+      ownerByDecisionId.set(decisionId, item.id);
+    }
   }
 }
 
@@ -2531,7 +2590,9 @@ function uniquePlanIds(values: readonly string[], label: string): void {
 
 /** The queue receipt target is derived from the server draft, never input. */
 function hasCallerQueuedRunBinding(command: QueueRunCommand): boolean {
-  return Object.prototype.hasOwnProperty.call(command, "queuedRun");
+  return Object.prototype.hasOwnProperty.call(command, "queuedRun") ||
+    Object.prototype.hasOwnProperty.call(command, "resolvedOperationPlan") ||
+    Object.prototype.hasOwnProperty.call(command, "plan");
 }
 
 /** The cancellation receipt target is derived from the server draft, never input. */
@@ -2576,7 +2637,13 @@ function queuedRunReceiptBinding(
     );
   }
   const run = candidates[0]!;
-  return { runId: run.id, workItemId: run.workItemId };
+  return {
+    runId: run.id,
+    workItemId: run.workItemId,
+    ...(run.resolvedOperationPlan
+      ? { resolvedOperationPlan: structuredClone(run.resolvedOperationPlan) }
+      : {}),
+  };
 }
 
 function cancelledRunReceiptBinding(

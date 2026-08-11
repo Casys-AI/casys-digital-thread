@@ -14,6 +14,17 @@ import type {
 } from "../../domain/project/engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts";
+import {
+  fingerprintSourceAnalysisBundle,
+  type SourceAnalysisBundle,
+  validateSourceAnalysisBundle,
+} from "../../domain/analysis/source-analysis.ts";
+import { buildBriefAnalysisGraph } from "../../domain/analysis/brief-analysis-graph.ts";
+import {
+  type BriefSourceAnalysisReference,
+  briefSourceIdFor,
+  validateBriefSourceAnalysisReference,
+} from "../../domain/analysis/brief-source-analysis-reference.ts";
 import type {
   ContentFingerprint,
   ThreadSnapshot,
@@ -23,6 +34,8 @@ import { validateRegisteredEngineeringOperationInput } from "./registry.ts";
 
 export const APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA =
   "approved-brief-baseline-capture/1.0" as const;
+export const APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA_V1_1 =
+  "approved-brief-baseline-capture/1.1" as const;
 
 export const APPROVED_BRIEF_BASELINE_OPERATION = {
   id: "baseline.from-approved-brief",
@@ -37,7 +50,20 @@ export interface MaterializeApprovedBriefBaselineInput {
   readonly runId: string;
   readonly capturedAt: string;
   readonly captureUri?: string;
+  /**
+   * Persisted local facts about the exact approved brief. The source bytes and
+   * bundle are intentionally not embedded in the documentary capture.
+   */
+  readonly briefSourceAnalysis: {
+    readonly reference: BriefSourceAnalysisReference;
+    readonly bundle: SourceAnalysisBundle;
+  };
 }
+
+export type PrepareApprovedBriefBaselineEligibilityInput = Omit<
+  MaterializeApprovedBriefBaselineInput,
+  "briefSourceAnalysis" | "captureUri"
+>;
 
 export interface ApprovedBriefBaselineProjectDefinition {
   readonly identity: EngineeringProjectIdentity;
@@ -55,8 +81,7 @@ export interface ApprovedBriefBaselineProjectDefinition {
   };
 }
 
-export interface ApprovedBriefBaselineCapture {
-  readonly schemaVersion: typeof APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA;
+interface ApprovedBriefBaselineCaptureBase {
   readonly kind: "approved-brief-documentary-baseline";
   readonly scope: "pre-technical-documentation";
   readonly statement: string;
@@ -67,6 +92,23 @@ export interface ApprovedBriefBaselineCapture {
   readonly projectDefinition: ApprovedBriefBaselineProjectDefinition;
   readonly approvedBrief: ProjectBriefRevision;
 }
+
+/** Historical documentary baseline which predates local brief analysis. */
+export interface ApprovedBriefBaselineCaptureV1
+  extends ApprovedBriefBaselineCaptureBase {
+  readonly schemaVersion: typeof APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA;
+}
+
+/** Documentary baseline sealing the exact brief source and local analysis CAS. */
+export interface ApprovedBriefBaselineCaptureV1_1
+  extends ApprovedBriefBaselineCaptureBase {
+  readonly schemaVersion: typeof APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA_V1_1;
+  readonly briefSourceAnalysis: BriefSourceAnalysisReference;
+}
+
+export type ApprovedBriefBaselineCapture =
+  | ApprovedBriefBaselineCaptureV1
+  | ApprovedBriefBaselineCaptureV1_1;
 
 export interface ApprovedBriefBaselineMaterialization {
   readonly capture: ApprovedBriefBaselineCapture;
@@ -90,22 +132,49 @@ export class ApprovedBriefBaselineMaterializationError extends Error {
   }
 }
 
+/**
+ * Pure fail-closed eligibility check used before the executor writes source
+ * CAS records. It deliberately does not construct a capture, so it cannot be
+ * misused to emit the historical 1.0 write shape.
+ */
+export function prepareApprovedBriefBaselineEligibility(
+  input: PrepareApprovedBriefBaselineEligibilityInput,
+): {
+  readonly project: EngineeringProjectSnapshot;
+  readonly approvedProject: EngineeringProjectSnapshot;
+  readonly runId: string;
+  readonly capturedAt: string;
+  readonly workItem: ApprovedBriefBaselineProjectDefinition["workItem"];
+  readonly basis: EngineeringApprovedBriefBasis;
+  readonly brief: ProjectBriefRevision;
+} {
+  const project = validatedProject(input.project, "project");
+  const approvedProject = validatedProject(input.approvedProject, "approvedProject");
+  const runId = requiredIdentifier(input.runId, "runId");
+  const capturedAt = canonicalUtcInstant(input.capturedAt, "capturedAt");
+  const workItem = verifyExactApprovedBriefPlan(project, approvedProject);
+  return {
+    project,
+    approvedProject,
+    runId,
+    capturedAt,
+    workItem,
+    basis: project.plan!.basis as EngineeringApprovedBriefBasis,
+    brief: approvedProject.framing!.currentBrief!,
+  };
+}
+
 /** Pure materialization of the exact canonical in-project brief. */
 export async function materializeApprovedBriefBaseline(
   input: MaterializeApprovedBriefBaselineInput,
 ): Promise<ApprovedBriefBaselineMaterialization> {
-  const project = validatedProject(input.project, "project");
-  const approvedProject = validatedProject(
-    input.approvedProject,
-    "approvedProject",
+  const { project, runId, capturedAt, workItem, basis, brief } =
+    prepareApprovedBriefBaselineEligibility(input);
+  const briefSourceAnalysis = await validateBriefSourceAnalysisInput(
+    input.briefSourceAnalysis,
+    brief,
   );
-  const runId = requiredIdentifier(input.runId, "runId");
-  const capturedAt = canonicalUtcInstant(input.capturedAt, "capturedAt");
-  const workItem = verifyExactApprovedBriefPlan(project, approvedProject);
-  const basis = project.plan!.basis as EngineeringApprovedBriefBasis;
-  const brief = approvedProject.framing!.currentBrief!;
-  const capture: ApprovedBriefBaselineCapture = {
-    schemaVersion: APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA,
+  const captureBase: ApprovedBriefBaselineCaptureBase = {
     kind: "approved-brief-documentary-baseline",
     scope: "pre-technical-documentation",
     statement:
@@ -122,15 +191,26 @@ export async function materializeApprovedBriefBaseline(
     },
     approvedBrief: structuredClone(brief),
   };
+  const capture: ApprovedBriefBaselineCaptureV1_1 = {
+    ...captureBase,
+    schemaVersion: APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA_V1_1,
+    briefSourceAnalysis: structuredClone(briefSourceAnalysis.reference),
+  };
   const text = deterministicJson(capture);
   const bytes = new TextEncoder().encode(text);
   const sha256 = await sha256Fingerprint(capture);
+  const artifactId = `approved-brief-document-${sha256.digest}`;
+  const analysisGraph = buildBriefAnalysisGraph({
+    bundle: briefSourceAnalysis.bundle,
+    evidence: { id: artifactId, fingerprint: sha256 },
+  });
   const snapshot = documentaryThreadSnapshot({
     project,
     runId,
     capturedAt,
     sha256,
     captureUri: optionalCaptureUri(input.captureUri),
+    analysisGraph,
   });
   return {
     capture: structuredClone(capture),
@@ -233,12 +313,13 @@ function documentaryThreadSnapshot(input: {
   capturedAt: string;
   sha256: ContentFingerprint;
   captureUri?: string;
+  analysisGraph?: ThreadSnapshot["analysisGraph"];
 }): ThreadSnapshot {
   const artifactId = `approved-brief-document-${input.sha256.digest}`;
   const changeSetId = `approved-brief-baseline-${input.sha256.digest}`;
   const changeId = `${changeSetId}:record-document`;
   return validateThreadSnapshot({
-    schemaVersion: "1.0",
+    schemaVersion: input.analysisGraph ? "1.1" : "1.0",
     id: `${input.project.project.subjectId}:r1:${changeSetId}`,
     revision: 1,
     generatedAt: input.capturedAt,
@@ -303,7 +384,61 @@ function documentaryThreadSnapshot(input: {
         "The immutable document records only canonical project intent and reviewed planning provenance.",
     }],
     proposedActions: [],
+    ...(input.analysisGraph ? { analysisGraph: input.analysisGraph } : {}),
   });
+}
+
+async function validateBriefSourceAnalysisInput(
+  value: MaterializeApprovedBriefBaselineInput["briefSourceAnalysis"],
+  brief: ProjectBriefRevision,
+): Promise<{
+  readonly reference: BriefSourceAnalysisReference;
+  readonly bundle: SourceAnalysisBundle;
+}> {
+  let reference: BriefSourceAnalysisReference;
+  let bundle: SourceAnalysisBundle;
+  try {
+    reference = validateBriefSourceAnalysisReference(value.reference);
+    bundle = validateSourceAnalysisBundle(value.bundle);
+  } catch (error) {
+    invalid("invalid_brief", `briefSourceAnalysis is invalid: ${errorMessage(error)}`);
+  }
+  if (
+    reference.briefId !== brief.briefId || reference.briefSnapshotId !== brief.id ||
+    reference.briefRevision !== brief.revision ||
+    reference.sourceId !== await briefSourceIdFor(
+        reference.briefId,
+        reference.briefSnapshotId,
+        reference.briefRevision,
+      ) ||
+    bundle.source.id !== reference.sourceId ||
+    bundle.source.role !== "brief" || bundle.source.language !== "plain-text" ||
+    !fingerprintsEqual(bundle.source.fingerprint, reference.sourceFingerprint) ||
+    bundle.policy.status !== "passed"
+  ) {
+    invalid(
+      "invalid_brief",
+      "briefSourceAnalysis does not name the exact approved brief and passed local analysis.",
+    );
+  }
+  const expectedSourceFingerprint = await fingerprintUtf8(deterministicJson(brief));
+  if (
+    !fingerprintsEqual(reference.sourceFingerprint, expectedSourceFingerprint) ||
+    !fingerprintsEqual(bundle.source.fingerprint, expectedSourceFingerprint)
+  ) {
+    invalid(
+      "invalid_brief",
+      "briefSourceAnalysis source fingerprint does not name the exact canonical approved brief bytes.",
+    );
+  }
+  const fingerprint = await fingerprintSourceAnalysisBundle(bundle);
+  if (!fingerprintsEqual(fingerprint, reference.analysisFingerprint)) {
+    invalid(
+      "invalid_brief",
+      "briefSourceAnalysis analysisFingerprint does not name the exact canonical bundle.",
+    );
+  }
+  return { reference, bundle };
 }
 
 function validatedProject(
@@ -347,4 +482,14 @@ function invalid(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function fingerprintUtf8(text: string): Promise<ContentFingerprint> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return {
+    algorithm: "sha256",
+    digest: [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join(""),
+  };
 }

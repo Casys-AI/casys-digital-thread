@@ -825,6 +825,7 @@ Deno.test(
       ["change", "change"],
       ["consumption", "consumption"],
       ["action", "action"],
+      ["analysis-node", "analysis"],
       ["part-definition", "sysml-element"],
       ["part-usage", "sysml-element"],
     ];
@@ -857,6 +858,7 @@ Deno.test(
       "change",
       "consumption",
       "action",
+      "analysis",
       "sysml-element",
     ];
     for (const kind of expectedKinds) {

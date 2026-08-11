@@ -661,6 +661,57 @@ Deno.test("human approvals resolve their blockers and unlock work only after all
   );
 });
 
+Deno.test("one approval cannot make two work items ready through a shared blocker decision", async () => {
+  const initialStore = await memoryStore();
+  const initialService = serviceFor(initialStore);
+  let project = (await initialStore.get(PROJECT_ID))!;
+  const first = findWorkItem(project, "verify-current-mechanical-design");
+  const decisionId = first.decisionIds[0]!;
+  project = await propose(
+    initialService,
+    initialStore,
+    decisionId,
+    project.revision,
+    1,
+  );
+
+  const invalid = structuredClone(project) as Mutable<EngineeringProjectSnapshot>;
+  const invalidFirst = invalid.workItems.find((item) => item.id === first.id)!;
+  const blocker = invalid.blockers.find((item) =>
+    item.id === invalidFirst.blockerIds[0]
+  )!;
+  const second = {
+    ...structuredClone(invalidFirst),
+    id: "verify-current-mechanical-design-second",
+    status: "planned" as const,
+    decisionIds: [] as string[],
+    blockerIds: [blocker.id],
+  };
+  invalid.workItems.push(second);
+  invalid.phases.find((phase) => phase.id === invalidFirst.phaseId)!.workItemIds.push(
+    second.id,
+  );
+  blocker.workItemIds.push(second.id);
+
+  const store = new MemoryRevisionStore(invalid);
+  const service = serviceFor(store);
+  const decision = findDecision(invalid, decisionId);
+  await assertRejects(
+    () =>
+      service.approveDecision(HUMAN, {
+        ...context("reject-shared-blocker-release", invalid.revision),
+        decisionId,
+        rationale: "One approval must release only one exact work item.",
+        inputFingerprint: decision.inputFingerprint!,
+      }),
+    EngineeringProjectValidationError,
+  );
+
+  const persisted = (await store.get(PROJECT_ID))!;
+  assertEquals(findWorkItem(persisted, invalidFirst.id).status, "waiting-for-decision");
+  assertEquals(findWorkItem(persisted, second.id).status, "planned");
+});
+
 Deno.test("browser cannot claim and a second agent cannot hijack a claimed run", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);

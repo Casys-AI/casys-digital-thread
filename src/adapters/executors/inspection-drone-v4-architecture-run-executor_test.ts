@@ -27,6 +27,7 @@ import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-att
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../orchestration/operations/inspection-drone-v4.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   INSPECTION_DRONE_V4_PART_USAGE_CONTRACT,
   INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION,
@@ -704,7 +705,11 @@ async function queuedArchitecture(directory: string) {
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
   let project = await briefs.startProject(AGENT, {
     commandId: "start-inspection-drone-v4",
@@ -775,6 +780,7 @@ async function queuedArchitecture(directory: string) {
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-08T03:30:00.000Z",

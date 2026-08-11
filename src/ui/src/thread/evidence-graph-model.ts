@@ -67,7 +67,7 @@ export interface EvidenceGraphStub {
   /** Human-readable label of the folded node, used as tooltip / moignon text. */
   readonly viaLabel: string;
   readonly relation: ThreadGraphRelation;
-  readonly origin: "provenance" | "structure";
+  readonly origin: ThreadGraphEdge["origin"];
 }
 
 export interface EvidenceGraphNeighborhood {

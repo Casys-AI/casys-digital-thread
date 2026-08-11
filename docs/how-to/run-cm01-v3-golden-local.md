@@ -332,6 +332,22 @@ value, step, mesh, material, load and selection boxes — comes from the reviewe
 code at run time, and the executor refuses a case whose base value does not match the
 reviewed recipe.
 
+The two provider replies and their STEP handoff digests are normalized into one exact,
+content-addressed sensitivity capture. The thread exposes the base and stepped values as
+observations derived from that capture; it does not claim separate persisted bytes for
+synthetic STEP or solver-result artifacts.
+
+The current capture schema also seals the exact run ID and its required start instant.
+Completed WAL replay re-reads and reconstructs the capture against that run and the
+reviewed case; historical 1.0 captures remain diagnostic records but are not replayable.
+The WAL records the canonical CAS capture before completion. A dispatched-only recovery
+is outcome-unknown and never re-runs the providers automatically; a capture-recorded
+recovery resumes exclusively from the exact CAS bytes.
+
+The case identifies the finite-difference driver, but does not by itself prove a binding
+to a product component. The measurement stays visible in the global evidence graph and
+does not appear in a component facet until an exact architecture/source binding exists.
+
 A sensitivity result is data, never a verdict. The published derivative satisfies no
 requirement by itself; its declared limitations state that remeshing variation is
 included and that the derivative is local to its neighbourhood. Its purpose is to make

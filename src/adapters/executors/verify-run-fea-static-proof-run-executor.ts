@@ -30,7 +30,7 @@
  * 11.  Staging ContainerAssetStager → named container path.
  * 12.  Policy asserted (assertProofWithinPolicy + assertStepBytesWithinPolicy);
  *      planDigest computed; WAL begin (dispatched).
- * 13.  Dispatch calculix_solve_static from sealed proof parameters only.
+ * 13.  Dispatch the static-structural capability from sealed proof parameters only.
  * 14.  parseFeaSolverResponse (fail-closed, all structural invariants).
  * 15.  buildFeaSolverCaptureEnvelope → WAL recordSolver (canonical text embedded)
  *      → CAS write solver → readback. Absent = rematérialise from WAL text.
@@ -99,10 +99,14 @@ import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import { FEA_VERDICT_ARTIFACT_URI_ROOT } from "../captures/file-capture-store.ts";
 import {
   buildFeaSolverCaptureEnvelope,
-  type ParsedFeaSolverResult,
+  exactFeaSolverResultForCapture,
   parseFeaSolverCaptureEnvelope,
-  parseFeaSolverResponse,
 } from "../captures/fea-solver-capture.ts";
+import type {
+  StaticStructuralCaptureToken,
+  StaticStructuralSolver,
+} from "../../domain/analysis/static-structural-solver.ts";
+import { StaticStructuralResponseError } from "../../domain/analysis/static-structural-solver.ts";
 import {
   buildOracleValues,
   callFeaConstraintOracle,
@@ -693,8 +697,8 @@ export interface VerifyRunFeaStaticProofRunExecutorDependencies {
   readonly assetReader: CanonicalAssetReader;
   /** SysON MCP client — used for oracle fidelity check + constraint evaluate. */
   readonly syson: McpToolClient;
-  /** CalculiX MCP client — used for the static solve dispatch. */
-  readonly calculix: McpToolClient;
+  /** Static structural capability; provider MCP vocabulary stays private. */
+  readonly solver: StaticStructuralSolver;
   readonly policy: FeaExecutionPolicy;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
@@ -718,7 +722,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
   readonly #stager: ContainerAssetStager;
   readonly #assetReader: CanonicalAssetReader;
   readonly #syson: McpToolClient;
-  readonly #calculix: McpToolClient;
+  readonly #solver: StaticStructuralSolver;
   readonly #policy: FeaExecutionPolicy;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates?: LiveThreadUpdateMilestoneJournal;
@@ -738,7 +742,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
     this.#stager = deps.stager;
     this.#assetReader = deps.assetReader;
     this.#syson = deps.syson;
-    this.#calculix = deps.calculix;
+    this.#solver = deps.solver;
     this.#policy = deps.policy;
     this.#lease = deps.lease;
     this.#liveUpdates = deps.liveUpdates;
@@ -1034,11 +1038,14 @@ export class VerifyRunFeaStaticProofRunExecutor {
         );
       }
 
-      const exactSolverRequest = buildCalculixRequest(
-        proofCase,
-        stagedPath,
-        stepDigest,
-      );
+      const solvePlan = this.#solver.resolve({
+        proof: proofCase,
+        inputArtifact: {
+          fingerprint: proofCapture.stepArtifact.fingerprint,
+          byteCount: stepBytes,
+        },
+      });
+      const exactSolverRequest = solvePlan.exactRequest;
       const planDigest = (await sha256Fingerprint({
         proofDigest: proofCapture.proofDigest,
         stepDigest,
@@ -1141,56 +1148,40 @@ export class VerifyRunFeaStaticProofRunExecutor {
         solverCaptureFp = walResult.solverCaptureFp;
         canonicalSolverCaptureText = walResult.canonicalSolverCaptureText;
       } else {
-        // Step 13 — dispatch calculix_solve_static from sealed proof only.
-        let solveResult;
+        // Step 13 — dispatch through the private static-structural capability.
+        let captureToken: StaticStructuralCaptureToken;
         try {
-          solveResult = await this.#calculix.callTool({
-            name: "calculix_solve_static",
-            arguments: exactSolverRequest,
-          });
+          const execution = await this.#solver.solve(solvePlan);
+          captureToken = execution.captureToken;
           providerAcknowledged = true;
-        } catch (_error) {
+        } catch (error) {
+          if (error instanceof StaticStructuralResponseError) {
+            providerAcknowledged = true;
+            throw new EngineeringProjectCommandError(
+              "invalid_transition",
+              `CalculiX response parse failed: ${error.message}`,
+            );
+          }
           // CalculiX never ACKed — dispatched but unknown, abort.
           throw new FeaStaticProofOutcomeUnknownError();
         }
 
-        // Step 14 — parseFeaSolverResponse (fail-closed).
-        let parsed: ParsedFeaSolverResult;
-        try {
-          parsed = parseFeaSolverResponse(solveResult.structuredContent, {
-            stagedPath,
-            stepDigest,
-            stepBytes,
-            // Mirror of buildCalculixRequest: the solver echoes the names it
-            // constrained and the loads it applied, not the boxes it was given.
-            fixedSelections: proofCase.analysis.supports.map((s) => s.selection.name),
-            loads: proofCase.analysis.loads.map((l) => ({
-              selection: l.selection.name,
-              forceN: l.force.value,
-            })),
-          });
-        } catch (error) {
-          throw new EngineeringProjectCommandError(
-            "invalid_transition",
-            `CalculiX response parse failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-
         // Step 15 — build canonical envelope → WAL recordSolver → CAS write.
-        const solverEnvelope = await buildFeaSolverCaptureEnvelope(parsed, {
-          trustedRunId: command.runId,
-          operation:
-            `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
-          upstreamIdentities: {
-            proofDigest: proofCapture.proofDigest,
-            stepArtifactId: proofCapture.stepArtifact.id,
-            stepFingerprint: proofCapture.stepArtifact.fingerprint,
-            stagedPath,
+        const solverEnvelope = await buildFeaSolverCaptureEnvelope(
+          exactFeaSolverResultForCapture(captureToken),
+          {
+            trustedRunId: command.runId,
+            operation:
+              `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
+            upstreamIdentities: {
+              proofDigest: proofCapture.proofDigest,
+              stepArtifactId: proofCapture.stepArtifact.id,
+              stepFingerprint: proofCapture.stepArtifact.fingerprint,
+              stagedPath,
+            },
+            capturedAt,
           },
-          capturedAt,
-        });
+        );
         canonicalSolverCaptureText = solverEnvelope.canonicalText;
         solverCaptureFp = solverEnvelope.fingerprintDigest;
 
@@ -1312,8 +1303,8 @@ export class VerifyRunFeaStaticProofRunExecutor {
         invalidatedByChangeIds: [],
       };
       const calculixOp: ThreadOperationRef = {
-        serverId: "calculix",
-        tool: "calculix_solve_static",
+        serverId: solvePlan.executionOperation.serverId,
+        tool: solvePlan.executionOperation.operationId,
         runId: command.runId,
       };
       const digitalThreadOp: ThreadOperationRef = {
@@ -2073,41 +2064,6 @@ function assertCompleted(
       `FEA run ${command.runId} did not reach completed status.`,
     );
   }
-}
-
-/**
- * Build the calculix_solve_static arguments from the sealed proof case.
- * Arguments are constructed from the proof case only — never from agent input.
- */
-function buildCalculixRequest(
-  proof: MechanicalProofCase,
-  stepPath: string,
-  expectedSha256: string,
-): Record<string, unknown> {
-  return {
-    step_path: stepPath,
-    expected_step_sha256: expectedSha256,
-    mesh_size_mm: proof.analysis.mesh.targetSize.value,
-    material: {
-      e_mpa: proof.analysis.material.youngModulus.value,
-      nu: proof.analysis.material.poissonRatio.value,
-    },
-    selections: [
-      ...proof.analysis.supports.map((s) => ({
-        name: s.selection.name,
-        box: { min: s.selection.box.min, max: s.selection.box.max },
-      })),
-      ...proof.analysis.loads.map((l) => ({
-        name: l.selection.name,
-        box: { min: l.selection.box.min, max: l.selection.box.max },
-      })),
-    ],
-    fixed: proof.analysis.supports.map((s) => s.selection.name),
-    loads: proof.analysis.loads.map((l) => ({
-      selection: l.selection.name,
-      force_n: l.force.value,
-    })),
-  };
 }
 
 async function sha256OfText(text: string): Promise<string> {

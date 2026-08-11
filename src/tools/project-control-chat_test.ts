@@ -7,10 +7,20 @@ import type {
 } from "@casys/mcp-server";
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
+import type {
+  ResolvedOperationPlanRef,
+  ResolvedOperationPlanV2,
+} from "../domain/analysis/resolved-operation-plan-v2.ts";
+import type { ResolvedRunPlanReader } from "../domain/project/resolved-run-plan-sealer.ts";
+import { sha256Fingerprint } from "../domain/kernel/deterministic-json.ts";
 import {
   FileCaptureStore,
   GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+  GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
 } from "../adapters/captures/file-capture-store.ts";
+import { PythonCadSourceAnalyzer } from "../adapters/analyzers/python-cad-source-analyzer.ts";
+import { CaptureBackedProjectGeometryPreviewUseCase } from "../adapters/project-geometry-preview-use-case.ts";
 import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
 import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {
@@ -42,6 +52,20 @@ const GEOMETRY_PREVIEW_ARGS = {
   exportFormats: ["gltf"],
 };
 
+function sourceAnalysisFor(directory: string) {
+  return {
+    sourceCaptures: new FileCaptureStore({
+      ...GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/geometry-sources`,
+    }),
+    analysisCaptures: new FileCaptureStore({
+      ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/source-analyses`,
+    }),
+    frontend: new PythonCadSourceAnalyzer(),
+  } as const;
+}
+
 Deno.test("project_geometry_preview accepts scoped homonymous usages with distinct provider identities", async () => {
   const draftDirectory = await Deno.makeTempDir();
   const app = new CapturingApp();
@@ -52,7 +76,7 @@ Deno.test("project_geometry_preview accepts scoped homonymous usages with distin
       app as unknown as McpApp,
       {
         ...dependencies(projectSnapshot()),
-        geometryPreview: {
+        geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
           client: {
             callTool: () => {
               providerCalls++;
@@ -64,8 +88,9 @@ Deno.test("project_geometry_preview accepts scoped homonymous usages with distin
             ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
             directory: draftDirectory,
           }),
+          sourceAnalysis: sourceAnalysisFor(draftDirectory),
           build123dService: "mcp-build123d-sandbox",
-        },
+        }),
       },
     );
 
@@ -121,7 +146,7 @@ Deno.test("project_geometry_preview v2 returns a reparsable exact bundle with pr
       app as unknown as McpApp,
       {
         ...dependencies(projectSnapshot()),
-        geometryPreview: {
+        geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
           client: {
             callTool: (call) => {
               const args = call.arguments as Record<string, unknown>;
@@ -153,10 +178,11 @@ Deno.test("project_geometry_preview v2 returns a reparsable exact bundle with pr
             ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
             directory: draftDirectory,
           }),
+          sourceAnalysis: sourceAnalysisFor(draftDirectory),
           build123dService: "mcp-build123d-sandbox",
           materializeAsset: () => Promise.resolve(),
           previewRunId: "preview:project-tool-v2",
-        },
+        }),
       },
     );
     const result = await app.handler("project_geometry_preview")({
@@ -241,7 +267,7 @@ Deno.test("project_geometry_preview v2 rejects incomplete and duplicate definiti
         app as unknown as McpApp,
         {
           ...dependencies(projectSnapshot()),
-          geometryPreview: {
+          geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
             client: {
               callTool: () => {
                 providerCalls++;
@@ -253,8 +279,9 @@ Deno.test("project_geometry_preview v2 rejects incomplete and duplicate definiti
               ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
               directory: draftDirectory,
             }),
+            sourceAnalysis: sourceAnalysisFor(draftDirectory),
             build123dService: "mcp-build123d-sandbox",
-          },
+          }),
         },
       );
       const definitions = [{
@@ -304,7 +331,7 @@ Deno.test("project_geometry_preview rejects a duplicate provider element before 
       app as unknown as McpApp,
       {
         ...dependencies(projectSnapshot()),
-        geometryPreview: {
+        geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
           client: {
             callTool: () => {
               providerCalls++;
@@ -316,8 +343,9 @@ Deno.test("project_geometry_preview rejects a duplicate provider element before 
             ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
             directory: draftDirectory,
           }),
+          sourceAnalysis: sourceAnalysisFor(draftDirectory),
           build123dService: "mcp-build123d-sandbox",
-        },
+        }),
       },
     );
 
@@ -338,6 +366,144 @@ Deno.test("project_geometry_preview rejects a duplicate provider element before 
   } finally {
     await Deno.remove(draftDirectory, { recursive: true });
   }
+});
+
+Deno.test("project_agent_run_plan_get is absent without a reader and follows only a stamped run reference", async () => {
+  const withoutReader = new CapturingApp();
+  registerProjectControlTools(
+    withoutReader as unknown as McpApp,
+    dependencies(projectSnapshot()),
+  );
+  assertEquals(withoutReader.hasTool("project_agent_run_plan_get"), false);
+
+  const fixture = await resolvedPlanInspectionFixture();
+  const app = new CapturingApp();
+  let readerCalls = 0;
+  let currentReads = 0;
+  let revisionReads = 0;
+  let mutationCalls = 0;
+  const reader: ResolvedRunPlanReader = {
+    read(ref) {
+      readerCalls++;
+      assertEquals(ref, fixture.ref);
+      return Promise.resolve(fixture.plan);
+    },
+  };
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    {
+      ...dependencies(fixture.current, {
+        queueRun: () => {
+          mutationCalls++;
+          return Promise.resolve(fixture.current);
+        },
+      }),
+      projects: {
+        get: () => {
+          currentReads++;
+          return Promise.resolve(fixture.current);
+        },
+        getRevision: () => {
+          revisionReads++;
+          return Promise.resolve(fixture.queueBasis);
+        },
+      },
+      runPlanReader: reader,
+    },
+  );
+  assertEquals(app.hasTool("project_agent_run_plan_get"), true);
+  const tool = app.tool("project_agent_run_plan_get");
+  assertEquals(Object.keys(tool.inputSchema.properties ?? {}).sort(), [
+    "projectId",
+    "runId",
+  ]);
+  assertEquals(tool.inputSchema.additionalProperties, false);
+
+  const result = await app.handler("project_agent_run_plan_get")({
+    projectId: fixture.current.project.id,
+    runId: fixture.runId,
+  }) as { structuredContent: { reference: ResolvedOperationPlanRef } };
+  assertEquals(result.structuredContent.reference, fixture.ref);
+  assertEquals(readerCalls, 1);
+  assertEquals(currentReads, 1);
+  assertEquals(revisionReads, 1);
+  assertEquals(mutationCalls, 0);
+
+  const divergent = structuredClone(fixture.current);
+  (divergent.commandReceipts![0]!.queuedRun as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  }).resolvedOperationPlan = {
+    ...fixture.ref,
+    fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+    casUri: `casys://resolved-operation-plan/sha256/${"d".repeat(64)}`,
+  };
+  const divergentApp = new CapturingApp();
+  registerProjectControlTools(
+    divergentApp as unknown as McpApp,
+    {
+      ...dependencies(divergent),
+      projects: {
+        get: () => Promise.resolve(divergent),
+        getRevision: () => Promise.resolve(fixture.queueBasis),
+      },
+      runPlanReader: reader,
+    },
+  );
+  await assertRejects(
+    () =>
+      divergentApp.handler("project_agent_run_plan_get")({
+        projectId: divergent.project.id,
+        runId: fixture.runId,
+      }) as Promise<unknown>,
+    TypeError,
+    "cross-bound",
+  );
+
+  const missing = structuredClone(fixture.current);
+  delete (missing.agentRuns[0] as { resolvedOperationPlan?: unknown })
+    .resolvedOperationPlan;
+  const missingApp = new CapturingApp();
+  registerProjectControlTools(
+    missingApp as unknown as McpApp,
+    { ...dependencies(missing), runPlanReader: reader },
+  );
+  await assertRejects(
+    () =>
+      missingApp.handler("project_agent_run_plan_get")({
+        projectId: missing.project.id,
+        runId: fixture.runId,
+      }) as Promise<unknown>,
+    TypeError,
+    "has no resolved-operation-plan",
+  );
+
+  const forgedApp = new CapturingApp();
+  registerProjectControlTools(
+    forgedApp as unknown as McpApp,
+    {
+      ...dependencies(fixture.current),
+      projects: {
+        get: () => Promise.resolve(fixture.current),
+        getRevision: () => Promise.resolve(fixture.queueBasis),
+      },
+      runPlanReader: {
+        read: () =>
+          Promise.resolve({
+            ...fixture.plan,
+            run: { ...fixture.plan.run, runId: "run:forged" },
+          }),
+      },
+    },
+  );
+  await assertRejects(
+    () =>
+      forgedApp.handler("project_agent_run_plan_get")({
+        projectId: fixture.current.project.id,
+        runId: fixture.runId,
+      }) as Promise<unknown>,
+    TypeError,
+    "does not bind the exact inspected run",
+  );
 });
 
 Deno.test("project_agent_run_queue derives its server-owned run command from one ready work item", async () => {
@@ -1446,6 +1612,10 @@ class CapturingApp {
     assert(tool, `Expected ${name} tool to be registered.`);
     return tool;
   }
+
+  hasTool(name: string): boolean {
+    return this.#tools.has(name);
+  }
 }
 
 function dependencies(
@@ -1471,6 +1641,245 @@ function clientContext(): ToolHandlerContext {
     toolName: "test",
     clientInfo: { name: "paired-chat", version: "1" },
   };
+}
+
+async function resolvedPlanInspectionFixture(): Promise<{
+  readonly current: EngineeringProjectSnapshot;
+  readonly queueBasis: EngineeringProjectSnapshot;
+  readonly plan: ResolvedOperationPlanV2;
+  readonly ref: ResolvedOperationPlanRef;
+  readonly runId: string;
+}> {
+  const threadBasis = {
+    kind: "thread-snapshot" as const,
+    snapshotId: "chat-first-subject:thread:r7",
+    revision: 7,
+    subjectId: "chat-first-subject",
+  };
+  const runId = "run:inspect-modelica-plan";
+  const workItem = {
+    id: "simulate-modelica-recorded",
+    phaseId: "simulation",
+    title: "Recorded Modelica simulation",
+    description: "One test-only recorded Modelica operation.",
+    kind: "simulate" as const,
+    operation: {
+      id: "simulate.run-modelica-scenario",
+      version: "2",
+      bindings: [],
+    },
+    status: "in-progress" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: ["decision:modelica-method"],
+    blockerIds: [],
+  };
+  const decision = {
+    id: "decision:modelica-method",
+    phaseId: "simulation",
+    title: "Qualified Modelica method",
+    question: "Approve the qualified method for this recorded Modelica scenario?",
+    status: "approved" as const,
+    requestedAt: "2026-08-03T11:50:00.000Z",
+    inputFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
+    inputEvidenceRefs: [],
+    approvalIds: ["approval:modelica-method"],
+    proposal: {
+      summary: "Use the reviewed recorded Modelica method.",
+      parameters: [],
+      proposedAt: "2026-08-03T11:50:00.000Z",
+      proposedBy: { id: "agent:paired-chat", origin: "agent" as const },
+    },
+  };
+  const approval = {
+    id: "approval:modelica-method",
+    decisionId: decision.id,
+    status: "approved" as const,
+    requestedAt: "2026-08-03T11:51:00.000Z",
+    decidedAt: "2026-08-03T11:52:00.000Z",
+    decidedBy: "human:owner",
+    rationale: "The qualified recorded method is approved.",
+    decidedByOrigin: "human" as const,
+    inputFingerprint: decision.inputFingerprint,
+    inputEvidenceRefs: [],
+  };
+  const queueBasis = {
+    ...projectSnapshot({ threadSnapshots: [threadBasis] }),
+    workItems: [workItem],
+    decisions: [decision],
+    approvals: [approval],
+  } as unknown as EngineeringProjectSnapshot;
+  const ref: ResolvedOperationPlanRef = {
+    schemaVersion: "resolved-operation-plan-ref/1.0",
+    planId: runId,
+    fingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+    byteCount: 256,
+    casUri: `casys://resolved-operation-plan/sha256/${"f".repeat(64)}`,
+  };
+  const plan: ResolvedOperationPlanV2 = {
+    schemaVersion: "resolved-operation-plan/2.0",
+    id: runId,
+    run: {
+      projectId: queueBasis.project.id,
+      runId,
+      workItemId: workItem.id,
+      inputFingerprint: FINGERPRINT,
+      queueBasisProject: {
+        snapshotId: queueBasis.id,
+        revision: queueBasis.revision,
+        fingerprint: await sha256Fingerprint(queueBasis),
+      },
+    },
+    workItem: {
+      id: workItem.id,
+      operation: { id: workItem.operation.id, version: workItem.operation.version },
+      operationFingerprint: await sha256Fingerprint(workItem.operation),
+    },
+    authorization: {
+      kind: "human-mrtr-and-qualified-method",
+      mrtr: {
+        decisionId: decision.id,
+        decisionInputFingerprint: decision.inputFingerprint,
+        approvalId: approval.id,
+        approvalFingerprint: await sha256Fingerprint(approval),
+      },
+      methodQualification: {
+        id: "qualified-modelica-thermal",
+        version: "2.1",
+        fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+      },
+    },
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: threadBasis.snapshotId,
+      revision: threadBasis.revision,
+      subjectId: threadBasis.subjectId,
+      fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+    },
+    sources: [{
+      bindingName: "modelSource",
+      role: "model-source",
+      threadRef: {
+        snapshotId: threadBasis.snapshotId,
+        snapshotRevision: threadBasis.revision,
+        kind: "artifact",
+        id: "artifact:modelica-source",
+      },
+      artifact: {
+        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+        byteCount: 42,
+        mediaType: "text/plain",
+        casUri: `casys://modelica-source/sha256/${"e".repeat(64)}`,
+      },
+    }, {
+      bindingName: "methodManifest",
+      role: "provider-manifest",
+      threadRef: {
+        snapshotId: threadBasis.snapshotId,
+        snapshotRevision: threadBasis.revision,
+        kind: "artifact",
+        id: "artifact:modelica-provider-manifest",
+      },
+      artifact: {
+        fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+        byteCount: 43,
+        mediaType: "application/json",
+        casUri: `casys://modelica-provider-manifest/sha256/${"c".repeat(64)}`,
+      },
+    }, {
+      bindingName: "simulationCase",
+      role: "simulation-case",
+      threadRef: {
+        snapshotId: threadBasis.snapshotId,
+        snapshotRevision: threadBasis.revision,
+        kind: "artifact",
+        id: "artifact:simulation-case",
+      },
+      artifact: {
+        fingerprint: { algorithm: "sha256", digest: "9".repeat(64) },
+        byteCount: 44,
+        mediaType: "application/json",
+        casUri: `casys://simulation-case-capture/sha256/${"9".repeat(64)}`,
+      },
+    }],
+    action: {
+      kind: "dynamic-system-simulation",
+      provider: {
+        id: "mcp-modelica",
+        contract: { id: "resumable", version: "2.1" },
+      },
+      lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
+      normalizer: {
+        id: "modelica-run-normalizer",
+        version: "2.1",
+        authority: "exact-provider-manifest",
+      },
+      requestId: "request.inspect-modelica-plan",
+      input: {
+        simulationCase: {
+          id: "case:modelica-thermal",
+          fingerprint: { algorithm: "sha256", digest: "9".repeat(64) },
+          sourceBinding: "simulationCase",
+        },
+        providerManifestFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+        methodManifestSourceBinding: "methodManifest",
+        scenarioStartTimeSeconds: 0,
+        effectiveTimeoutMs: 30_000,
+      },
+    },
+    expectedProviderResources: {
+      ledgerSchema: "provider-resource-acquisition-ledger/1.0",
+      captureManifestSchema: "provider-artifact-capture-manifest/1.0",
+      resourceProfile: {
+        id: "mcp-modelica.resumable-artifacts",
+        version: "2.1",
+      },
+      parameterSchema: "absent",
+    },
+    recovery: {
+      policy: "mcp-modelica.resumable-recovery@2.1",
+      requestId: "request.inspect-modelica-plan",
+      mode: "same-request-readback-no-blind-redispatch",
+      ambiguousOutcome: "quarantine-for-human-review",
+      capturedOutcome: "cas-only-recovery",
+    },
+  };
+  const current = {
+    ...queueBasis,
+    id: "chat-first-project:project:r5",
+    revision: 5,
+    generatedAt: "2026-08-03T12:05:00.000Z",
+    agentRuns: [{
+      id: runId,
+      workItemId: workItem.id,
+      status: "queued",
+      summary: "Queued recorded Modelica simulation.",
+      queuedAt: "2026-08-03T12:05:00.000Z",
+      basis: threadBasis,
+      inputFingerprint: FINGERPRINT,
+      evidenceRefs: [],
+      statusHistory: [{
+        commandId: "queue:inspect-modelica-plan",
+        status: "queued",
+        at: "2026-08-03T12:05:00.000Z",
+        actor: { id: "agent:paired-chat", origin: "agent" },
+        summary: "Queued recorded Modelica simulation.",
+      }],
+      resolvedOperationPlan: ref,
+    }],
+    commandReceipts: [{
+      commandId: "queue:inspect-modelica-plan",
+      type: "agent-run.queue",
+      actor: { id: "agent:paired-chat", origin: "agent" },
+      issuedAt: "2026-08-03T12:05:00.000Z",
+      appliedAt: "2026-08-03T12:05:00.000Z",
+      requestFingerprint: FINGERPRINT,
+      resultingSnapshot: { snapshotId: "chat-first-project:project:r5", revision: 5 },
+      queuedRun: { runId, workItemId: workItem.id, resolvedOperationPlan: ref },
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  return { current, queueBasis, plan, ref, runId };
 }
 
 function projectSnapshot(

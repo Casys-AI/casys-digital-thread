@@ -1,5 +1,11 @@
 import { parseArgs } from "../lib/cli.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../../src/adapters/executors/approved-brief-baseline-run-executor.ts";
+import {
+  PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+  PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+  ProjectBriefSourceAnalyzer,
+} from "../../src/adapters/analyzers/project-brief-source-analyzer.ts";
+import { BriefSourceAnalysisCaptureService } from "../../src/adapters/captures/brief-source-analysis-capture.ts";
 import { Cm01ErpNextBomCaptureAdapter } from "../../src/adapters/captures/cm01-erpnext-bom-capture.ts";
 import { Cm01NominalModelicaCaptureAdapter } from "../../src/adapters/captures/cm01-nominal-modelica-capture.ts";
 import {
@@ -30,6 +36,7 @@ import {
 } from "../../src/adapters/executors/cm01/coffee-machine-cm01-v3-sensitivity-run-executor.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
+  BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
   CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
   CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
@@ -38,6 +45,7 @@ import {
   FileCaptureStore,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/captures/file-capture-store.ts";
 import { FileSensitivityRunAttemptStore } from "../../src/adapters/wal/file-sensitivity-run-attempt-store.ts";
@@ -54,6 +62,7 @@ import { SysonModelSeedRunExecutor } from "../../src/adapters/executors/syson-mo
 import { parseCm01DripTrayMechanicalProof } from "../../src/domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import { parseCoffeeMachineCm01SemanticRecipe } from "../../src/domain/cm01/coffee-machine-cm01-semantic-recipe.ts";
 import { validateSensitivityStudyCase } from "../../src/domain/analysis/sensitivity-study.ts";
+import { FixedSourceAnalysisFrontendRegistry } from "../../src/domain/analysis/source-analysis-frontend-registry.ts";
 import {
   compareCoffeeMachineCm01V3GoldenReference,
   type GoldenReferenceComparison,
@@ -232,6 +241,30 @@ export async function runCoffeeMachineCm01V3Local(
     ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
     directory: state.baselineCaptures,
   });
+  const briefSourceCaptures = new FileCaptureStore({
+    ...BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
+    directory: `${state.baselineCaptures}-brief-source`,
+  });
+  const sourceAnalysisCaptures = new FileCaptureStore({
+    ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+    directory: `${state.baselineCaptures}-source-analysis`,
+  });
+  const briefSourceAnalysisFrontends = new FixedSourceAnalysisFrontendRegistry([{
+    analyzer: {
+      id: PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+      version: PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+    },
+    frontend: new ProjectBriefSourceAnalyzer(),
+  }]);
+  const briefSourceAnalysis = new BriefSourceAnalysisCaptureService({
+    sourceCaptures: briefSourceCaptures,
+    analysisCaptures: sourceAnalysisCaptures,
+    frontends: briefSourceAnalysisFrontends,
+    analyzer: {
+      id: PROJECT_BRIEF_SOURCE_ANALYZER_ID,
+      version: PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
+    },
+  });
   const seedCaptures = new FileCaptureStore({
     ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
     directory: state.sysonSeedCaptures,
@@ -243,7 +276,15 @@ export async function runCoffeeMachineCm01V3Local(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      {
+        sourceCaptures: briefSourceCaptures,
+        analysisCaptures: sourceAnalysisCaptures,
+        frontends: briefSourceAnalysisFrontends,
+      },
+    ),
   );
 
   const recipe = parseCoffeeMachineCm01SemanticRecipe(
@@ -345,6 +386,10 @@ export async function runCoffeeMachineCm01V3Local(
         projects,
         commands,
         captures: baselineCaptures,
+        briefSourceAnalysis,
+        briefSourceCaptures,
+        sourceAnalysisCaptures,
+        briefSourceAnalysisFrontends,
         snapshots,
         lease,
         liveUpdates,

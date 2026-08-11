@@ -30,7 +30,13 @@ import {
   GEOMETRY_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+  SYSML_SOURCE_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/captures/file-capture-store.ts";
+import {
+  requireSysmlSourceAnalysis,
+  type SysmlSourceAnalysisReader,
+} from "../../src/adapters/captures/sysml-source-analysis-capture.ts";
 import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/captures/geometry-draft-capture.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
@@ -100,6 +106,7 @@ export async function resolveSnapshotComponentCatalog(
   cm01Captures: Cm01V3ProductStructureCaptureReaders,
   archCaptures: GenericArchitectureCaptureReader,
   geometryCaptures?: GenericGeometryCaptureReader,
+  sysmlSourceAnalysis?: SysmlSourceAnalysisReader,
 ): Promise<ThreadComponentCatalog | undefined> {
   return (
     await resolveCoffeeMachineCm01V3ProductStructureCatalog(
@@ -109,6 +116,7 @@ export async function resolveSnapshotComponentCatalog(
       snapshot,
       archCaptures,
       geometryCaptures,
+      sysmlSourceAnalysis,
     )
   );
 }
@@ -1053,6 +1061,17 @@ if (import.meta.main) {
     ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
     directory: architectureCaptureDirectory,
   });
+  const sysmlSourceCaptures = new FileCaptureStore(SYSML_SOURCE_CAPTURE_DESCRIPTOR);
+  const sourceAnalysisCaptures = new FileCaptureStore(
+    SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+  );
+  const sysmlSourceAnalysis: SysmlSourceAnalysisReader = {
+    reopen: (reference) =>
+      requireSysmlSourceAnalysis(reference, {
+        sourceCaptures: sysmlSourceCaptures,
+        analysisCaptures: sourceAnalysisCaptures,
+      }),
+  };
   const geometryCaptures = new FileCaptureStore({
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: geometryCaptureDirectory,
@@ -1137,6 +1156,7 @@ if (import.meta.main) {
         },
         archCaptures,
         geometryCaptures,
+        sysmlSourceAnalysis,
       ),
     liveUpdates,
     reviewIntents,

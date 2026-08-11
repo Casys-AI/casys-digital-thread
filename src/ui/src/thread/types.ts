@@ -7,6 +7,11 @@
 
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import type {
+  ThreadAnalysisEdgeDetail,
+  ThreadAnalysisNodeDetail,
+  ThreadAnalysisQuantity,
+  ThreadAnalysisScope,
+  ThreadAnalysisSemanticRef,
   ThreadComponent,
   ThreadComponentBinding,
   ThreadComponentCatalog,
@@ -26,6 +31,7 @@ import type {
   ThreadGraphRef,
   ThreadGraphRelation,
   ThreadRef,
+  ThreadRequirement,
   ThreadWorkbenchPreviousSnapshot,
   ThreadWorkbenchSnapshot,
 } from "../../../contracts/thread-workbench.ts";
@@ -577,8 +583,27 @@ export function isThreadWorkbenchSnapshot(
     Array.isArray(candidate.artifacts) &&
     Array.isArray(candidate.observations) &&
     Array.isArray(candidate.requirements) &&
+    candidate.requirements.every(isThreadRequirement) &&
     Array.isArray(candidate.violations) &&
     Array.isArray(candidate.actions);
+}
+
+function isThreadRequirement(value: unknown): value is ThreadRequirement {
+  if (!value || typeof value !== "object") return false;
+  const requirement = value as Partial<ThreadRequirement>;
+  return typeof requirement.id === "string" && requirement.id.length > 0 &&
+    typeof requirement.label === "string" &&
+    typeof requirement.source === "string" &&
+    typeof requirement.sourceElementId === "string" &&
+    requirement.sourceElementId.length > 0 &&
+    typeof requirement.expression === "string" &&
+    (requirement.status === "pass" || requirement.status === "fail" ||
+      requirement.status === "unresolved") &&
+    Array.isArray(requirement.observationIds) &&
+    requirement.observationIds.every((id) => typeof id === "string") &&
+    Array.isArray(requirement.violationIds) &&
+    requirement.violationIds.every((id) => typeof id === "string") &&
+    typeof requirement.rationale === "string";
 }
 
 /**
@@ -774,6 +799,9 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
     node.entityKind === node.ref?.kind &&
     (node.artifactKind === undefined ||
       typeof node.artifactKind === "string") &&
+    (node.entityKind === "analysis-node"
+      ? isThreadAnalysisNodeDetail(node.analysis)
+      : node.analysis === undefined) &&
     typeof node.label === "string" &&
     typeof node.system === "string" &&
     isThreadFreshness(node.freshness) &&
@@ -794,9 +822,20 @@ function isThreadGraphEdge(value: unknown): value is ThreadGraphEdge {
     isThreadGraphRef(edge.to) &&
     isThreadGraphRelation(edge.relation) &&
     typeof edge.rationale === "string" &&
-    (edge.origin === "provenance" || edge.origin === "structure") &&
+    (edge.origin === "provenance" || edge.origin === "structure" ||
+      edge.origin === "analysis") &&
     (edge.attestation === undefined ||
-      isThreadGraphEdgeAttestation(edge.attestation));
+      isThreadGraphEdgeAttestation(edge.attestation)) &&
+    (edge.origin === "analysis"
+      ? isThreadAnalysisRelation(edge.relation) &&
+        edge.attestation === undefined &&
+        isThreadAnalysisEdgeDetail(edge.analysis) &&
+        edge.analysis.assertionId === edge.id &&
+        (edge.relation === "measured-local-sensitivity"
+          ? edge.analysis.measurement !== undefined
+          : edge.analysis.measurement === undefined)
+      : !isThreadAnalysisRelation(edge.relation) &&
+        edge.analysis === undefined);
 }
 
 function isThreadGraphEdgeAttestation(
@@ -823,6 +862,7 @@ function isThreadGraphRef(value: unknown): value is ThreadGraphRef {
       reference.kind === "violation" ||
       reference.kind === "change" ||
       reference.kind === "action" ||
+      reference.kind === "analysis-node" ||
       reference.kind === "part-definition" ||
       reference.kind === "part-usage");
 }
@@ -852,7 +892,112 @@ function isThreadGraphRelation(value: unknown): value is ThreadGraphRelation {
     value === "source_of" ||
     value === "contains" ||
     value === "typed_by" ||
-    value === "represented_by";
+    value === "represented_by" ||
+    isThreadAnalysisRelation(value);
+}
+
+function isThreadAnalysisRelation(value: unknown): boolean {
+  return value === "semantic-binding" || value === "declared-dependency" ||
+    value === "static-value-flow" || value === "structural-incidence" ||
+    value === "runtime-consumption" ||
+    value === "measured-local-sensitivity" || value === "projection-of";
+}
+
+function isThreadAnalysisNodeDetail(
+  value: unknown,
+): value is ThreadAnalysisNodeDetail {
+  return !!value && typeof value === "object" &&
+    isThreadAnalysisSemanticRef(
+      (value as Partial<ThreadAnalysisNodeDetail>).semanticRef,
+    );
+}
+
+function isThreadAnalysisSemanticRef(
+  value: unknown,
+): value is ThreadAnalysisSemanticRef {
+  if (!value || typeof value !== "object") return false;
+  const reference = value as Partial<ThreadAnalysisSemanticRef>;
+  return (reference.domain === "brief" || reference.domain === "sysml" ||
+    reference.domain === "cad" || reference.domain === "modelica" ||
+    reference.domain === "calculix" || reference.domain === "thread") &&
+    typeof reference.kind === "string" && reference.kind.length > 0 &&
+    typeof reference.id === "string" && reference.id.length > 0 &&
+    (reference.basisFingerprint === undefined ||
+      isSha256Digest(reference.basisFingerprint));
+}
+
+function isThreadAnalysisEdgeDetail(
+  value: unknown,
+): value is ThreadAnalysisEdgeDetail {
+  if (!value || typeof value !== "object") return false;
+  const detail = value as Partial<ThreadAnalysisEdgeDetail>;
+  return typeof detail.assertionId === "string" &&
+    detail.assertionId.length > 0 &&
+    (detail.epistemicBasis === "declared" ||
+      detail.epistemicBasis === "inferred" ||
+      detail.epistemicBasis === "observed") &&
+    !!detail.assertedBy && typeof detail.assertedBy === "object" &&
+    (detail.assertedBy.kind === "agent" ||
+      detail.assertedBy.kind === "analyzer" ||
+      detail.assertedBy.kind === "provider" ||
+      detail.assertedBy.kind === "server") &&
+    typeof detail.assertedBy.id === "string" &&
+    detail.assertedBy.id.length > 0 &&
+    (detail.assertedBy.version === undefined ||
+      typeof detail.assertedBy.version === "string") &&
+    Array.isArray(detail.evidence) && detail.evidence.length > 0 &&
+    detail.evidence.every((item) =>
+      !!item && typeof item === "object" && typeof item.id === "string" &&
+      item.id.length > 0 && isSha256Digest(item.fingerprint)
+    ) &&
+    isThreadAnalysisScope(detail.scope) &&
+    (detail.measurement === undefined ||
+      (detail.measurement.method === "forward-finite-difference" &&
+        isThreadAnalysisQuantity(detail.measurement.basePoint) &&
+        isThreadAnalysisQuantity(detail.measurement.perturbationStep) &&
+        isThreadAnalysisQuantity(detail.measurement.responseAtBase) &&
+        isThreadAnalysisQuantity(detail.measurement.responseAtPerturbed) &&
+        isThreadAnalysisQuantity(detail.measurement.derivative)));
+}
+
+function isThreadAnalysisScope(value: unknown): value is ThreadAnalysisScope {
+  if (!value || typeof value !== "object") return false;
+  const scope = value as Partial<ThreadAnalysisScope> & Record<string, unknown>;
+  if (!isSha256Digest(scope.basisFingerprint)) return false;
+  if (scope.kind === "basis") return true;
+  if (scope.kind === "source-span") {
+    return isThreadAnalysisSemanticRef(scope.source) &&
+      isSourcePosition(scope.start) && isSourcePosition(scope.end);
+  }
+  if (scope.kind === "scenario") {
+    return isThreadAnalysisSemanticRef(scope.scenario);
+  }
+  return scope.kind === "local-neighborhood" &&
+    isThreadAnalysisSemanticRef(scope.parameter) &&
+    isThreadAnalysisQuantity(scope.lower) &&
+    isThreadAnalysisQuantity(scope.upper);
+}
+
+function isThreadAnalysisQuantity(
+  value: unknown,
+): value is ThreadAnalysisQuantity {
+  return !!value && typeof value === "object" &&
+    typeof (value as ThreadAnalysisQuantity).value === "number" &&
+    Number.isFinite((value as ThreadAnalysisQuantity).value) &&
+    typeof (value as ThreadAnalysisQuantity).unit === "string" &&
+    (value as ThreadAnalysisQuantity).unit.length > 0;
+}
+
+function isSourcePosition(value: unknown): boolean {
+  return !!value && typeof value === "object" &&
+    Number.isSafeInteger((value as { line?: unknown }).line) &&
+    (value as { line: number }).line >= 1 &&
+    Number.isSafeInteger((value as { column?: unknown }).column) &&
+    (value as { column: number }).column >= 0;
+}
+
+function isSha256Digest(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
 
 function isThreadFreshness(value: unknown): value is ThreadFreshness {

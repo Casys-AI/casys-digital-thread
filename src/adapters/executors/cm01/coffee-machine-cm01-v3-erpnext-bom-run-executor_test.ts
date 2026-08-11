@@ -8,12 +8,19 @@ import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot
 import {
   CoffeeMachineCm01V3ErpNextBomRunExecutor,
 } from "./coffee-machine-cm01-v3-erpnext-bom-run-executor.ts";
-import type { Cm01ErpNextBomCapture } from "../../captures/cm01-erpnext-bom-capture.ts";
+import type {
+  Cm01ErpNextBomCapture,
+  LegacyCm01ErpNextBomCapture,
+} from "../../captures/cm01-erpnext-bom-capture.ts";
 import {
   CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
 } from "../../captures/file-capture-store.ts";
 import { FileCm01ErpNextBomRunCaptureStore } from "../../captures/file-cm01-erpnext-bom-run-capture-store.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 
 const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
@@ -31,32 +38,41 @@ Deno.test("CM-01 V3 ERP BOM executor captures a read-only evidence descendant an
     assertExists(result);
     const snapshot = await fixture.snapshots.get(result.snapshotId);
     assertExists(snapshot);
+    const fingerprint = await fixture.captureFingerprint();
+    const bomArtifacts = snapshot.artifacts.filter((artifact) =>
+      artifact.kind === "bom" &&
+      artifact.uri?.startsWith("casys://cm01-erpnext-bom-capture/")
+    );
     assertEquals(
-      snapshot.artifacts.filter((artifact) =>
-        artifact.kind === "bom" &&
-        artifact.uri?.startsWith("casys://cm01-erpnext-bom-capture/")
-      ).map((
-        artifact,
-      ) => ({
+      bomArtifacts.map((artifact) => ({
         kind: artifact.kind,
         serverId: artifact.producer.serverId,
         tool: artifact.producer.tool,
         uri: artifact.uri,
+        fingerprint: artifact.fingerprint,
       })),
       [{
         kind: "bom",
         serverId: "erpnext",
         tool: "erpnext_bom_get",
-        uri: `casys://cm01-erpnext-bom-capture/sha256/${
-          (await fixture.captureFingerprint()).digest
-        }`,
+        uri: `casys://cm01-erpnext-bom-capture/sha256/${fingerprint.digest}`,
+        fingerprint,
       }],
+    );
+    const persistedText = await Deno.readTextFile(
+      `${fixture.directory}/captures/${fingerprint.digest}.json`,
+    );
+    assertEquals(
+      bomArtifacts[0]?.fingerprint,
+      await sha256Fingerprint(JSON.parse(persistedText)),
     );
     assertEquals(snapshot.requirements.length, 0);
     assertEquals(snapshot.evaluations.length, 0);
     assertEquals(
       snapshot.observations.filter((item) =>
-        item.source.artifactIds.includes(`erpnext-bom-${"a".repeat(12)}`)
+        item.source.artifactIds.includes(
+          `erpnext-bom-${fingerprint.digest.slice(0, 12)}`,
+        )
       ).map((item) => item.metric).sort(),
       [
         "bom_component_count",
@@ -99,6 +115,101 @@ Deno.test("CM-01 V3 ERP BOM executor resumes from immutable capture after a snap
   }
 });
 
+Deno.test("CM-01 V3 ERP BOM executor reads a legacy capture without reviving its hidden BOM fingerprint", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "cm01-erp-bom-legacy-" });
+  try {
+    const fixture = await fixtureFor(directory);
+    const capture = new LegacyFakeCapture();
+    const completed = await executorFor(fixture, capture).execute(AGENT, command());
+    const snapshotRef = completed.agentRuns[0]?.resultSnapshot;
+    assertExists(snapshotRef);
+    const snapshot = await fixture.snapshots.get(snapshotRef.snapshotId);
+    assertExists(snapshot);
+    const artifact = snapshot.artifacts.find((item) =>
+      item.kind === "bom" &&
+      item.uri?.startsWith("casys://cm01-erpnext-bom-capture/sha256/")
+    );
+    assertExists(artifact);
+    assertEquals(artifact.fingerprint.digest === "a".repeat(64), false);
+    assertEquals(
+      artifact.uri,
+      `casys://cm01-erpnext-bom-capture/sha256/${artifact.fingerprint.digest}`,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("CM-01 V3 ERP BOM replay rejects a canonically stored capture with an extra key", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "cm01-erp-bom-extra-key-" });
+  try {
+    const fixture = await fixtureFor(directory);
+    const original = await new FakeCapture().capture();
+    const extraKeyCapture = { ...original, unexpected: "must not replay" };
+    const text = deterministicJson(extraKeyCapture);
+    const fingerprint = await sha256Fingerprint(extraKeyCapture);
+    await new FileCaptureStore({
+      ...CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/captures`,
+    }).save(fingerprint, text);
+    await new FileCm01ErpNextBomRunCaptureStore(`${directory}/run-captures`).save({
+      schemaVersion: "cm01-erpnext-bom-run-capture/1.0",
+      projectId: "coffee-machine-cm01-v3",
+      runId: "run:cm01-erp-bom",
+      capturedAt: original.capturedAt,
+      captureFingerprint: fingerprint,
+    });
+    await assertRejects(
+      () => executorFor(fixture, new FakeCapture()).execute(AGENT, command()),
+      Error,
+      "unsupported keys",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("CM-01 V3 ERP BOM replay rejects a self-consistent other BOM", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "cm01-erp-bom-foreign-" });
+  try {
+    const fixture = await fixtureFor(directory);
+    const original = await new FakeCapture().capture();
+    const foreign = {
+      ...original,
+      artifact: {
+        ...original.artifact,
+        identity: {
+          ...original.artifact.identity,
+          bomName: "BOM-OTHER-001",
+          itemCode: "OTHER-ITEM",
+        },
+      },
+    };
+    const text = deterministicJson(foreign);
+    const fingerprint = await sha256Fingerprint(foreign);
+    await new FileCaptureStore({
+      ...CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/captures`,
+    }).save(fingerprint, text);
+    await new FileCm01ErpNextBomRunCaptureStore(`${directory}/run-captures`).save({
+      schemaVersion: "cm01-erpnext-bom-run-capture/1.0",
+      projectId: "coffee-machine-cm01-v3",
+      runId: "run:cm01-erp-bom",
+      capturedAt: original.capturedAt,
+      captureFingerprint: fingerprint,
+    });
+    const provider = new FakeCapture();
+    await assertRejects(
+      () => executorFor(fixture, provider).execute(AGENT, command()),
+      Error,
+      "fixed reviewed CM-01 ERPNext BOM",
+    );
+    assertEquals(provider.calls, 0);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("CM-01 V3 ERP BOM executor rejects a human before project or ERPNext access", async () => {
   const executor = new CoffeeMachineCm01V3ErpNextBomRunExecutor({
     projects: { get: () => Promise.reject(new Error("must not read")) } as never,
@@ -118,7 +229,9 @@ Deno.test("CM-01 V3 ERP BOM executor rejects a human before project or ERPNext a
 
 function executorFor(
   fixture: Awaited<ReturnType<typeof fixtureFor>>,
-  capture: FakeCapture,
+  capture: {
+    capture(): Promise<Cm01ErpNextBomCapture | LegacyCm01ErpNextBomCapture>;
+  },
   snapshots: ThreadSnapshotStore = fixture.snapshots,
 ) {
   return new CoffeeMachineCm01V3ErpNextBomRunExecutor({
@@ -288,6 +401,32 @@ class FakeCapture {
   calls = 0;
   capture(): Promise<Cm01ErpNextBomCapture> {
     this.calls++;
+    return Promise.resolve({
+      schemaVersion: "cm01-erpnext-bom-capture/2.0",
+      kind: "cm01-erpnext-bom-capture",
+      capturedAt: "2026-08-03T14:05:00.000Z",
+      artifact: {
+        role: "erp-bom",
+        kind: "bom",
+        producer: { serverId: "erpnext", tool: "erpnext_bom_get" },
+        identity: {
+          bomName: "BOM-CASYS-CM01-001",
+          itemCode: "CASYS-CM01",
+          itemName: "Coffee machine",
+        },
+        quantity: { value: 1, unit: "Nos" },
+        components: [
+          { index: 1, itemCode: "CASYS-CM01-ENC", quantity: 1, unit: "Nos" },
+          { index: 2, itemCode: "CASYS-CM01-TANK", quantity: 1, unit: "Nos" },
+          { index: 3, itemCode: "CASYS-CM01-PUMP", quantity: 1, unit: "Nos" },
+        ],
+      },
+    });
+  }
+}
+
+class LegacyFakeCapture {
+  capture(): Promise<LegacyCm01ErpNextBomCapture> {
     return Promise.resolve({
       schemaVersion: "cm01-erpnext-bom-capture/1.0",
       kind: "cm01-erpnext-bom-capture",

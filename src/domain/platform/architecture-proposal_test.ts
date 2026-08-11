@@ -6,6 +6,8 @@ import {
   parseArchitectureProposalParameters,
   planArchitectureInsertion,
   renderArchitectureSysml,
+  renderArchitectureSysmlWithManifest,
+  validateRenderedArchitectureSysml,
 } from "./architecture-proposal.ts";
 import type { EngineeringDecisionProposalParameter } from "../project/engineering-project.ts";
 
@@ -320,6 +322,131 @@ Deno.test("renderArchitectureSysml: usage names are scoped by their parent PartD
   assertEquals(sysml.match(/part motor :/g)?.length, 2);
   assertEquals(sysml.includes("part motor : LeftMotor;"), true);
   assertEquals(sysml.includes("part motor : RightMotor;"), true);
+});
+
+Deno.test("rendered architecture SysML keeps legacy full-package bytes and exact source spans", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.wing.name", label: "Wing", value: "Wing" },
+    { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+  ]);
+  const rendered = renderArchitectureSysmlWithManifest(proposal);
+  assertEquals(rendered.sourceText, renderArchitectureSysml(proposal));
+  assertEquals(rendered.manifest.entries.map((entry) => entry.span), [
+    { start: { line: 1, column: 0 }, end: { line: 1, column: 17 } },
+    { start: { line: 2, column: 0 }, end: { line: 2, column: 24 } },
+    { start: { line: 3, column: 0 }, end: { line: 3, column: 21 } },
+    { start: { line: 5, column: 0 }, end: { line: 5, column: 18 } },
+  ]);
+  assertEquals(validateRenderedArchitectureSysml(rendered), rendered);
+});
+
+Deno.test("rendered architecture SysML supports exactly the registered enrichment forms", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.wing.name", label: "Wing", value: "Wing" },
+    { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+  ]);
+  const partDef = renderArchitectureSysmlWithManifest(proposal, {
+    kind: "part-def",
+    packageName: "DroneV4",
+    componentName: "Wing",
+  });
+  const usage = renderArchitectureSysmlWithManifest(proposal, {
+    kind: "usage",
+    packageName: "DroneV4",
+    componentName: "Wing",
+    usageName: "wing",
+    parentName: "DroneSystem",
+  });
+  assertEquals(partDef.sourceText, "part def Wing {}");
+  assertEquals(usage.sourceText, "part wing : Wing;");
+  assertEquals(validateRenderedArchitectureSysml(partDef), partDef);
+  assertEquals(validateRenderedArchitectureSysml(usage), usage);
+});
+
+Deno.test("rendered architecture SysML rejects tampered source or manifest spans", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.wing.name", label: "Wing", value: "Wing" },
+    { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+  ]);
+  const rendered = renderArchitectureSysmlWithManifest(proposal);
+  assertThrows(() =>
+    validateRenderedArchitectureSysml({
+      ...rendered,
+      sourceText: "package arbitrary {}",
+    })
+  );
+  assertThrows(() =>
+    validateRenderedArchitectureSysml({
+      ...rendered,
+      manifest: {
+        ...rendered.manifest,
+        entries: rendered.manifest.entries.map((entry, index) =>
+          index === 0
+            ? { ...entry, span: { ...entry.span, end: { line: 1, column: 1 } } }
+            : entry
+        ),
+      },
+    })
+  );
+});
+
+Deno.test("rendered architecture SysML retains scoped repeated usage bytes through manifest validation", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.left.name", label: "Left", value: "LeftWing" },
+    { key: "component.left.usage", label: "Left use", value: "leftWing" },
+    { key: "component.right.name", label: "Right", value: "RightWing" },
+    { key: "component.right.usage", label: "Right use", value: "rightWing" },
+    { key: "component.leftMotor.name", label: "Left motor", value: "Motor" },
+    { key: "component.leftMotor.usage", label: "Motor", value: "motor" },
+    { key: "component.leftMotor.parent", label: "Parent", value: "LeftWing" },
+    { key: "component.rightMotor.name", label: "Right motor", value: "Motor" },
+    { key: "component.rightMotor.usage", label: "Motor", value: "motor" },
+    { key: "component.rightMotor.parent", label: "Parent", value: "RightWing" },
+  ]);
+  const rendered = renderArchitectureSysmlWithManifest(proposal);
+  assertEquals(validateRenderedArchitectureSysml(rendered), rendered);
+});
+
+Deno.test("rendered architecture SysML rejects incoherent full-package manifest structure", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "DroneV4" },
+    { key: "system.name", label: "System", value: "DroneSystem" },
+    { key: "component.wing.name", label: "Wing", value: "Wing" },
+    { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+  ]);
+  const rendered = renderArchitectureSysmlWithManifest(proposal);
+  assertThrows(() =>
+    validateRenderedArchitectureSysml({
+      ...rendered,
+      manifest: {
+        ...rendered.manifest,
+        entries: rendered.manifest.entries.map((entry) =>
+          entry.kind === "part-definition" && entry.definitionName === "DroneSystem"
+            ? { ...entry, bodyStyle: "empty" }
+            : entry
+        ),
+      },
+    })
+  );
+  assertThrows(() =>
+    validateRenderedArchitectureSysml({
+      ...rendered,
+      manifest: {
+        ...rendered.manifest,
+        entries: rendered.manifest.entries.filter((entry) =>
+          entry.kind !== "part-definition" || entry.definitionName !== "Wing"
+        ),
+      },
+    })
+  );
 });
 
 // ── Insertion plan invariants ────────────────────────────────────────────────

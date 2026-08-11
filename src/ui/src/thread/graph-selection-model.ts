@@ -58,7 +58,7 @@ export function graphRelationAccessibleLabel(
   targetLabel: string,
   ordinal: number,
 ): string {
-  const relation = edge.relation.replaceAll("_", " ");
+  const relation = edge.relation.replaceAll("_", " ").replaceAll("-", " ");
   const rationale = edge.rationale.trim() || "No recorded rationale.";
   return `${relation}: ${sourceLabel} (${
     graphRefLabel(edge.from)

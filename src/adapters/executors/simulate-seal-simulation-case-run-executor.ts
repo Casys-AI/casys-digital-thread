@@ -75,6 +75,7 @@ import {
   type SimulationCaseThreadSnapshot,
   validateSimulationCase,
 } from "../../domain/analysis/simulation-case.ts";
+import { buildSimulationCaseAnalysisGraph } from "../../domain/analysis/simulation-case-analysis-graph.ts";
 import {
   parseSimulationCaseDecisionParameters,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
@@ -456,6 +457,11 @@ export class SimulateSealSimulationCaseRunExecutor {
         violations: [],
         provenance: [],
         proposedActions: [],
+        analysisGraph: buildSimulationCaseAnalysisGraph({
+          simulationCase: validatedCase,
+          caseFingerprint: { algorithm: "sha256", digest: caseDigest },
+          evidence: { id: artifact.id, fingerprint: artifact.fingerprint },
+        }),
       };
 
       const applied = applyThreadSnapshotExtensionIfNew(

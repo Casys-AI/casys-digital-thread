@@ -31,7 +31,7 @@
  *      validateThreadSnapshot passes; idempotent replay returns same project revision
  */
 
-import { assertEquals, assertExists, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -72,6 +72,7 @@ import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   FEA_PROOF_CASE_CAPTURE_URI_PREFIX,
   VerifySealProofCaseRunExecutor,
@@ -647,7 +648,11 @@ Deno.test(
         new ExactThreadCompletionEvidenceValidator(snapshots),
         nowFn,
         { operations: makeTestPlanOperationRegistry() },
-        new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+        new ExactInitialBaselineEvidenceValidator(
+          snapshots,
+          baselineCaptures,
+          approvedBriefSourceAnalysisFixture(directory),
+        ),
       );
 
       // Publish plan (brief baseline first).
@@ -685,6 +690,7 @@ Deno.test(
         projects,
         commands,
         captures: baselineCaptures,
+        ...approvedBriefSourceAnalysisFixture(directory),
         snapshots,
         lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
         now: () => "2026-08-09T10:01:00.000Z",
@@ -892,6 +898,15 @@ Deno.test(
       const resultSnapshot = await snapshots.get(run.resultSnapshot!.snapshotId);
       assertExists(resultSnapshot, "Result snapshot must be readable after CAS save.");
       validateThreadSnapshot(resultSnapshot); // structural correctness gate
+      assertEquals(resultSnapshot.schemaVersion, "1.1");
+
+      const historicalBasis = await snapshots.get(r2Snapshot.id);
+      assertExists(historicalBasis);
+      assertEquals(
+        historicalBasis.analysisGraph,
+        undefined,
+        "The seal must promote a successor, never mutate its historical basis snapshot.",
+      );
 
       // The snapshot must carry exactly one FEA proof case artifact.
       const sealArtifacts = resultSnapshot.artifacts.filter(
@@ -908,6 +923,22 @@ Deno.test(
         sealArtifacts[0]!.version,
         proofDigest,
         "Artifact version must equal proofDigest (cliquet key).",
+      );
+      assert(
+        resultSnapshot.analysisGraph?.relations.every((relation) =>
+          relation.assertion.evidence.length === 1 &&
+          relation.assertion.evidence[0]!.id === sealArtifacts[0]!.id &&
+          relation.assertion.evidence[0]!.fingerprint.digest ===
+            sealArtifacts[0]!.fingerprint.digest
+        ),
+        "Every proof declaration must cite only the exact sealed proof artifact.",
+      );
+      assert(
+        !resultSnapshot.analysisGraph?.relations.some((relation) =>
+          relation.assertion.from.kind === "parameter" &&
+          relation.assertion.to.kind === "metric"
+        ),
+        "A proof case seal must not invent a parameter-to-result influence.",
       );
 
       // The snapshot must carry nine provenance entities (3 triplets × 3 entities each:
@@ -1304,7 +1335,11 @@ async function buildSealFixtureBase(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     nowFn,
     { operations: makeTestPlanOperationRegistry() },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
 
   project = await commands.publishPlan(AGENT, {
@@ -1338,6 +1373,7 @@ async function buildSealFixtureBase(
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-09T10:01:00.000Z",

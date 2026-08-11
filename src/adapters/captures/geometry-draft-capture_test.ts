@@ -24,7 +24,10 @@ import {
 import {
   FileCaptureStore,
   GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+  GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
 } from "./file-capture-store.ts";
+import { PythonCadSourceAnalyzer } from "../analyzers/python-cad-source-analyzer.ts";
 import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
 import { GeometryScriptValidationError } from "../../domain/platform/geometry-script-validation.ts";
 import {
@@ -91,6 +94,20 @@ async function makeTempDraftStore(): Promise<
   return [store, tmpDir];
 }
 
+function sourceAnalysisFor(directory: string) {
+  return {
+    sourceCaptures: new FileCaptureStore({
+      ...GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/geometry-sources`,
+    }),
+    analysisCaptures: new FileCaptureStore({
+      ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/source-analyses`,
+    }),
+    frontend: new PythonCadSourceAnalyzer(),
+  } as const;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid script and assembly-only manifest", async () => {
@@ -117,6 +134,7 @@ Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid scri
       store,
       {
         build123dService: "mcp-build123d-sandbox",
+        sourceAnalysis: sourceAnalysisFor(tmpDir),
         materializeAsset: noopMaterialize,
         previewRunId: "preview:test-001",
       },
@@ -172,6 +190,7 @@ Deno.test("captureGeometryDraft uses server-fixed name 'geometry-preview-assembl
       store,
       {
         build123dService: "mcp-build123d-sandbox",
+        sourceAnalysis: sourceAnalysisFor(tmpDir),
         materializeAsset: noopMaterialize,
       },
     );
@@ -203,6 +222,7 @@ Deno.test("captureGeometryDraft refuses a provider path whose extension contradi
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -236,6 +256,7 @@ Deno.test("captureGeometryDraft rejects duplicate formats before the provider ca
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -289,6 +310,7 @@ Deno.test("captureGeometryDraft rejects colliding provider digests before materi
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: () => {
               materialized = true;
               return Promise.resolve();
@@ -323,6 +345,7 @@ Deno.test("captureGeometryDraft refuses the trusted build123d volume before prov
           store,
           {
             build123dService: "mcp-build123d" as unknown as "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -375,6 +398,7 @@ Deno.test(
         store,
         {
           build123dService: "mcp-build123d-sandbox",
+          sourceAnalysis: sourceAnalysisFor(tmpDir),
           materializeAsset: noopMaterialize,
         },
       );
@@ -414,6 +438,7 @@ Deno.test("captureGeometryDraft rejects a script with a forbidden identifier bef
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -450,6 +475,7 @@ Deno.test("captureGeometryDraft rejects a provider response with a missing requi
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -490,6 +516,7 @@ Deno.test("captureGeometryDraft rejects a provider response with an unexpected s
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -588,6 +615,7 @@ Deno.test("captureGeometryBundleDraft exports one exact assembly and one exact s
       store,
       {
         build123dService: "mcp-build123d-sandbox",
+        sourceAnalysis: sourceAnalysisFor(tmpDir),
         materializeAsset: noopMaterialize,
         previewRunId: "preview:bundle-v2",
       },
@@ -664,6 +692,7 @@ Deno.test("captureGeometryBundleDraft rejects missing independent source before 
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -722,6 +751,7 @@ Deno.test("captureGeometryBundleDraft accepts identical content for distinct sem
       store,
       {
         build123dService: "mcp-build123d-sandbox",
+        sourceAnalysis: sourceAnalysisFor(tmpDir),
         materializeAsset: noopMaterialize,
       },
     );
@@ -767,6 +797,7 @@ Deno.test("captureGeometryBundleDraft rejects a provider definition path that br
           store,
           {
             build123dService: "mcp-build123d-sandbox",
+            sourceAnalysis: sourceAnalysisFor(tmpDir),
             materializeAsset: noopMaterialize,
           },
         ),
@@ -827,6 +858,7 @@ for (
               store,
               {
                 build123dService: "mcp-build123d-sandbox",
+                sourceAnalysis: sourceAnalysisFor(tmpDir),
                 materializeAsset: () => {
                   materializations += 1;
                   return Promise.resolve();
@@ -838,10 +870,12 @@ for (
         );
         assertEquals(providerCalls, 1);
         assertEquals(materializations, 0);
-        assertEquals(
-          (await Array.fromAsync(Deno.readDir(tmpDir))).length,
-          0,
-        );
+        // Passive source and analysis CAS records intentionally precede the
+        // provider. A bad provider response still creates no reviewable draft.
+        const entries = (await Array.fromAsync(Deno.readDir(tmpDir)))
+          .map((entry) => entry.name)
+          .sort();
+        assertEquals(entries, ["geometry-sources", "source-analyses"]);
       } finally {
         await Deno.remove(tmpDir, { recursive: true });
       }
@@ -876,6 +910,7 @@ Deno.test("geometry bundle canonical sources reject source or N+1 provenance mut
       store,
       {
         build123dService: "mcp-build123d-sandbox",
+        sourceAnalysis: sourceAnalysisFor(tmpDir),
         materializeAsset: noopMaterialize,
         previewRunId: "preview:source-integrity",
       },

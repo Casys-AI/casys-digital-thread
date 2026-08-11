@@ -198,7 +198,7 @@ services:
       retries: 6
     networks: [chain, erpnext]
 
-  # The four standalone oracle servers, each pinned to its published ghcr
+  # The four standalone engineering-capability servers, each pinned to its published ghcr
   # image. Their entrypoints default to HTTP mode binding 0.0.0.0 inside the
   # container on their park port; the mappings stay loopback-only. dfm,
   # prusaslicer and spice mount /exports read-only: they verify artifacts the

@@ -35,6 +35,8 @@ import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   REQUIREMENTS_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+  SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
@@ -42,8 +44,11 @@ import { FileEngineeringProjectRunLease } from "../stores/file-engineering-proje
 import { FileRequirementsAttemptStore } from "../wal/file-requirements-attempt-store.ts";
 import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-attempt-store.ts";
 import { FileArchitectureAttemptStore } from "../wal/file-architecture-attempt-store.ts";
+import { RenderedArchitectureSysmlAnalyzer } from "../analyzers/rendered-architecture-sysml-analyzer.ts";
+import { SysmlSourceAnalysisCaptureService } from "../captures/sysml-source-analysis-capture.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 import type {
   McpToolCall,
@@ -1094,6 +1099,7 @@ interface ReqsFixture {
   readonly snapshots: FileThreadSnapshotStore;
   readonly seedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly archCaptures: FileCaptureStore<"architecture-capture">;
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly reqsCaptures: FileCaptureStore<"requirements-capture">;
   readonly reqsAttempts: FileRequirementsAttemptStore;
   readonly queued: { readonly revision: number; readonly runId: string };
@@ -1208,7 +1214,11 @@ async function queuedRequirementsFixture(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
 
   // Baseline run.
@@ -1241,6 +1251,7 @@ async function queuedRequirementsFixture(
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-08T12:05:00.000Z",
@@ -1341,12 +1352,24 @@ async function queuedRequirementsFixture(
     summary: "Author DroneV4 architecture.",
     basis: { kind: "thread-snapshot", ...r2 },
   });
+  const sysmlSourceAnalysis = new SysmlSourceAnalysisCaptureService({
+    sourceCaptures: new FileCaptureStore({
+      ...SYSML_SOURCE_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/sysml-source-captures`,
+    }),
+    analysisCaptures: new FileCaptureStore({
+      ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/source-analysis-captures`,
+    }),
+    frontend: new RenderedArchitectureSysmlAnalyzer(),
+  });
   const afterArch = await new ModelWriteArchitectureRunExecutor({
     projects,
     commands,
     snapshots,
     seedCaptures,
     captures: archCaptures,
+    sysmlSourceAnalysis,
     attempts: archAttempts,
     syson: new InitialArchSyson(),
     lease: new FileEngineeringProjectRunLease(`${directory}/arch-leases`),
@@ -1504,6 +1527,7 @@ async function queuedRequirementsFixture(
     snapshots,
     seedCaptures,
     archCaptures,
+    sysmlSourceAnalysis,
     reqsCaptures,
     reqsAttempts,
     queued: { revision: queued.revision, runId: "run:requirements" },
@@ -1529,6 +1553,7 @@ function makeExecutor(
     snapshots: fixture.snapshots,
     seedCaptures: fixture.seedCaptures,
     architectureCaptures: fixture.archCaptures,
+    sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
     captures: fixture.reqsCaptures,
     attempts: options.attempts ?? fixture.reqsAttempts,
     syson: options.syson,
@@ -4052,7 +4077,7 @@ Deno.test(
 );
 
 Deno.test(
-  "architecture captures with non-canonical schema, semantics, ids, or predecessor are refused before WAL and SysON",
+  "architecture captures with non-canonical schema, source analysis, semantics, ids, or predecessor are refused before WAL and SysON",
   async () => {
     const mutations: ReadonlyArray<[
       string,
@@ -4066,6 +4091,27 @@ Deno.test(
       }],
       ["extra root field", (record) => {
         record.untrusted = true;
+      }],
+      ["missing current source analyses", (record) => {
+        delete record.sourceAnalyses;
+      }],
+      ["malformed current source analysis", (record) => {
+        record.sourceAnalyses = [{ malformed: true }];
+      }],
+      ["foreign source-analysis run", (record) => {
+        const [reference] = record.sourceAnalyses as Array<Record<string, unknown>>;
+        reference!.runId = "run:foreign-architecture";
+      }],
+      ["foreign source-analysis operation", (record) => {
+        const [reference] = record.sourceAnalyses as Array<Record<string, unknown>>;
+        reference!.operation = { id: "model.write-requirements", version: "1" };
+      }],
+      ["foreign source-analysis package", (record) => {
+        const [reference] = record.sourceAnalyses as Array<Record<string, unknown>>;
+        reference!.selector = {
+          kind: "full-package",
+          packageName: "ForeignPackage",
+        };
       }],
       ["wrong PartDefinition kind", (record) => {
         const parts = record.partDefinitions as Array<Record<string, unknown>>;
@@ -4122,6 +4168,65 @@ Deno.test(
       } finally {
         await Deno.remove(directory, { recursive: true });
       }
+    }
+  },
+);
+
+Deno.test(
+  "requirements refuses an absent sealed SysML source capture before claim, WAL, or SysON",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-arch-source-absent-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const project = await fixture.projects.get(PROJECT_ID);
+      assertExists(project);
+      const run = project.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      if (!run?.basis || run.basis.kind !== "thread-snapshot") {
+        throw new Error("Requirements fixture has no thread-snapshot basis.");
+      }
+      const basis = await fixture.snapshots.get(run.basis.snapshotId);
+      assertExists(basis);
+      const architecture = findArchitectureArtifact(basis);
+      assertExists(architecture);
+      const captureText = await fixture.archCaptures.read(architecture.fingerprint);
+      assertExists(captureText);
+      const capture = JSON.parse(captureText) as {
+        sourceAnalyses: Array<
+          { sourceCaptureFingerprint: ThreadArtifact["fingerprint"] }
+        >;
+      };
+      const sourceCapture = new FileCaptureStore({
+        ...SYSML_SOURCE_CAPTURE_DESCRIPTOR,
+        directory: `${directory}/sysml-source-captures`,
+      });
+      await Deno.remove(
+        sourceCapture.pathFor(capture.sourceAnalyses[0]!.sourceCaptureFingerprint),
+      );
+
+      const syson = new InitialReqsSyson();
+      const attempts = new FileRequirementsAttemptStore(`${directory}/absent-attempts`);
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "absent-source-leases",
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "source-analysis evidence",
+      );
+      assertEquals(syson.calls, []);
+      assertEquals(
+        await attempts.readRun(PROJECT_ID, fixture.queued.runId),
+        undefined,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
     }
   },
 );

@@ -272,7 +272,7 @@ export function buildExplorationModel(
       occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
       edgeId: edge.id,
       edge,
-      label: edge.relation.replaceAll("_", " "),
+      label: edge.relation.replaceAll("_", " ").replaceAll("-", " "),
       edgeType: "regular",
       color: tokens.lineStrong,
       size: 2,
@@ -440,6 +440,10 @@ const SYSTEM_LEGEND_LABEL: Record<string, string> = {
   "erpnext": "ERPNext · ERP",
   "digital-thread": "Digital thread",
   "casys-digital-thread": "Digital thread · plan",
+  "brief": "Brief · semantic concept",
+  "sysml": "SysML · semantic concept",
+  "cad": "CAD · semantic concept",
+  "thread": "Thread · semantic concept",
 };
 
 // ---------------------------------------------------------------------------
@@ -548,6 +552,7 @@ function nodeSizeFor(node: ThreadGraphNode): number {
     case "violation":
       return 14;
     case "observation":
+    case "analysis-node":
       return 10;
     case "artifact":
       return 8;
@@ -563,9 +568,11 @@ function nodeSizeFor(node: ThreadGraphNode): number {
 function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
   switch (node.system) {
     case "syson":
+    case "sysml":
       return tokens.cyan;
     case "build123d":
     case "build123d-sandbox":
+    case "cad":
       return tokens.amber;
     case "calculix":
       return tokens.red;
@@ -576,6 +583,8 @@ function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
     case "erpnext":
       return tokens.blue;
     case "digital-thread":
+    case "brief":
+    case "thread":
       return tokens.green;
     default:
       return tokens.muted;

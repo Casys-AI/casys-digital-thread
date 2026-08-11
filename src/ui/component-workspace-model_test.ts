@@ -13,6 +13,8 @@ import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import type {
   ThreadArtifact,
   ThreadComponent,
+  ThreadGraphEdge,
+  ThreadGraphNode,
   ThreadWorkbenchSnapshot,
 } from "./src/thread/types.ts";
 
@@ -958,7 +960,7 @@ Deno.test("buildSysmlSubtree returns the assembly itself as root and selected wh
   assertEquals(subtree.siblings.length, 0);
 });
 
-Deno.test("buildSysmlSubtree filters anchored requirements by SysON element id substring", () => {
+Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identity", () => {
   const snapshot = minimalSnapshot();
   const dripTray: ThreadComponent = {
     id: "cm01-v3:drip-tray",
@@ -981,6 +983,7 @@ Deno.test("buildSysmlSubtree filters anchored requirements by SysON element id s
       id: "req-displacement",
       label: "DripTray displacement",
       source: "syson · sysml-drip-tray-def",
+      sourceElementId: "sysml-drip-tray-def",
       expression: "displacement ≤ 1 mm",
       status: "pass",
       observationIds: [],
@@ -991,6 +994,7 @@ Deno.test("buildSysmlSubtree filters anchored requirements by SysON element id s
       id: "req-stress",
       label: "DripTray stress",
       source: "syson · sysml-drip-tray-def",
+      sourceElementId: "sysml-drip-tray-def",
       expression: "von_mises ≤ 150 MPa",
       status: "unresolved",
       observationIds: [],
@@ -1001,6 +1005,7 @@ Deno.test("buildSysmlSubtree filters anchored requirements by SysON element id s
       id: "req-boiler",
       label: "Boiler pressure",
       source: "syson · sysml-boiler-def",
+      sourceElementId: "sysml-boiler-def",
       expression: "pressure ≤ 15 bar",
       status: "pass",
       observationIds: [],
@@ -1016,7 +1021,53 @@ Deno.test("buildSysmlSubtree filters anchored requirements by SysON element id s
   assertEquals(subtree.anchoredRequirements[1]?.id, "req-stress");
 });
 
-Deno.test("buildSysmlSubtree collects sensitivity derivative observations by canonical label pattern", () => {
+Deno.test("buildSysmlSubtree never treats a prefix SysML identity as an anchor", () => {
+  const snapshot = minimalSnapshot();
+  const component: ThreadComponent = {
+    id: "component-1",
+    label: "Target",
+    kind: "part",
+    quantity: 1,
+    bindings: [{
+      provider: "syson",
+      kind: "part-definition",
+      id: "id-1",
+      label: "Target",
+      evidenceArtifactId: "arch",
+      status: "verified",
+    }],
+  };
+  snapshot.components.components = [component];
+  snapshot.requirements = [{
+    id: "req-id-1",
+    label: "Exact",
+    source: "syson · id-1",
+    sourceElementId: "id-1",
+    expression: "value <= 1",
+    status: "pass",
+    observationIds: [],
+    violationIds: [],
+    rationale: "Exact anchor.",
+  }, {
+    id: "req-id-10",
+    label: "Prefix only",
+    source: "syson · id-10",
+    sourceElementId: "id-10",
+    expression: "value <= 1",
+    status: "pass",
+    observationIds: [],
+    violationIds: [],
+    rationale: "Different element.",
+  }];
+
+  const subtree = buildSysmlSubtree(snapshot, component);
+
+  assertEquals(subtree.anchoredRequirements.map((requirement) => requirement.id), [
+    "req-id-1",
+  ]);
+});
+
+Deno.test("buildSysmlSubtree never binds legacy sensitivity labels to a component", () => {
   const snapshot = minimalSnapshot();
   const dripTray: ThreadComponent = {
     id: "cm01-v3:drip-tray",
@@ -1064,20 +1115,121 @@ Deno.test("buildSysmlSubtree collects sensitivity derivative observations by can
 
   const subtree = buildSysmlSubtree(snapshot, dripTray);
 
-  assertEquals(subtree.sensitivityRecords.length, 2);
-  assertEquals(
-    subtree.sensitivityRecords[0]?.label,
-    "DripTray displacement sensitivity (size-z)",
+  assertEquals(subtree.sensitivityRecords, []);
+});
+
+Deno.test("an unbound canonical sensitivity stays out of the component facet", () => {
+  const snapshot = minimalSnapshot();
+  const selected: ThreadComponent = {
+    id: "cm01-v3:drip-tray",
+    label: "DripTray",
+    kind: "part",
+    quantity: 1,
+    bindings: [],
+  };
+  snapshot.components.components = [selected];
+  snapshot.observations = [{
+    id: "misleading-observation",
+    label: "DripTray invented sensitivity (size-z)",
+    value: 999,
+    unit: "mm/mm",
+    display: "999 mm/mm",
+    sourceArtifactId: "unrelated",
+    requirementIds: [],
+    freshness: "fresh",
+    measuredAt: "2026-08-04T10:00:00.000Z",
+  }];
+  snapshot.graph.nodes.push(
+    {
+      id: "graph:analysis-node:driver",
+      ref: { kind: "analysis-node", id: "driver" },
+      entityKind: "analysis-node",
+      label: "size-z",
+      system: "thread",
+      freshness: "fresh",
+      summary: "parameter · thread",
+      analysis: {
+        semanticRef: { domain: "thread", kind: "parameter", id: "size-z" },
+      },
+    },
+    {
+      id: "graph:analysis-node:response",
+      ref: { kind: "analysis-node", id: "response" },
+      entityKind: "analysis-node",
+      label: "assembly_max_displacement",
+      system: "calculix",
+      freshness: "fresh",
+      summary: "metric · calculix",
+      analysis: {
+        semanticRef: {
+          domain: "calculix",
+          kind: "metric",
+          id: "assembly_max_displacement",
+        },
+      },
+    },
   );
-  assertEquals(
-    subtree.sensitivityRecords[1]?.label,
-    "DripTray von Mises sensitivity (size-z)",
+  snapshot.graph.edges.push({
+    id: "assertion:local-sensitivity",
+    from: { kind: "analysis-node", id: "driver" },
+    to: { kind: "analysis-node", id: "response" },
+    relation: "measured-local-sensitivity",
+    rationale: "Measured by a reviewed forward finite difference.",
+    origin: "analysis",
+    analysis: {
+      assertionId: "assertion:local-sensitivity",
+      epistemicBasis: "observed",
+      assertedBy: { kind: "server", id: "digital-thread", version: "1" },
+      evidence: [{ id: "capture", fingerprint: "a".repeat(64) }],
+      scope: {
+        kind: "local-neighborhood",
+        parameter: { domain: "thread", kind: "parameter", id: "size-z" },
+        basisFingerprint: "a".repeat(64),
+        lower: { value: 29, unit: "mm" },
+        upper: { value: 31, unit: "mm" },
+      },
+      measurement: {
+        method: "forward-finite-difference",
+        basePoint: { value: 30, unit: "mm" },
+        perturbationStep: { value: 1, unit: "mm" },
+        responseAtBase: { value: 0.1, unit: "mm" },
+        responseAtPerturbed: { value: 0.092, unit: "mm" },
+        derivative: { value: -0.008, unit: "mm/mm" },
+      },
+    },
+  });
+
+  const subtree = buildSysmlSubtree(snapshot, selected);
+
+  assertEquals(subtree.sensitivityRecords, []);
+});
+
+Deno.test("a canonical sensitivity is not shown for a different selected component", () => {
+  const snapshot = minimalSnapshot();
+  const dripTray: ThreadComponent = {
+    id: "cm01-v3:drip-tray",
+    label: "DripTray",
+    kind: "part",
+    quantity: 1,
+    bindings: [],
+  };
+  const boiler: ThreadComponent = {
+    id: "cm01-v3:boiler",
+    label: "Boiler",
+    kind: "part",
+    quantity: 1,
+    bindings: [],
+  };
+  snapshot.components.components = [dripTray, boiler];
+  snapshot.graph.nodes.push(
+    analysisNode("driver", "parameter", "size-z"),
+    analysisNode("response", "metric", "assembly_max_displacement"),
   );
-  // Mass observation does not match the sensitivity label pattern
-  assertEquals(
-    subtree.sensitivityRecords.some((r) => r.label === "DripTray mass"),
-    false,
+  snapshot.graph.edges.push(
+    measuredSensitivityEdge("driver", "response"),
   );
+
+  assertEquals(buildSysmlSubtree(snapshot, boiler).sensitivityRecords, []);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1088,6 +1240,59 @@ function minimalSnapshot(): ThreadWorkbenchSnapshot {
   snapshot.requirements = [];
   snapshot.observations = [];
   return snapshot;
+}
+
+function analysisNode(
+  id: string,
+  kind: "component" | "parameter" | "metric",
+  semanticId: string,
+): ThreadGraphNode {
+  const domain = kind === "metric" ? "calculix" as const : "thread" as const;
+  return {
+    id: `graph:analysis-node:${id}`,
+    ref: { kind: "analysis-node", id },
+    entityKind: "analysis-node",
+    label: semanticId,
+    system: domain,
+    freshness: "fresh",
+    summary: `${kind} · ${domain}`,
+    analysis: { semanticRef: { domain, kind, id: semanticId } },
+  };
+}
+
+function measuredSensitivityEdge(
+  parameterNodeId: string,
+  responseNodeId: string,
+): ThreadGraphEdge {
+  return {
+    id: "assertion:local-sensitivity",
+    from: { kind: "analysis-node", id: parameterNodeId },
+    to: { kind: "analysis-node", id: responseNodeId },
+    relation: "measured-local-sensitivity",
+    rationale: "Measured by a reviewed forward finite difference.",
+    origin: "analysis",
+    analysis: {
+      assertionId: "assertion:local-sensitivity",
+      epistemicBasis: "observed",
+      assertedBy: { kind: "server", id: "digital-thread", version: "1" },
+      evidence: [{ id: "capture", fingerprint: "a".repeat(64) }],
+      scope: {
+        kind: "local-neighborhood",
+        parameter: { domain: "thread", kind: "parameter", id: "size-z" },
+        basisFingerprint: "a".repeat(64),
+        lower: { value: 29, unit: "mm" },
+        upper: { value: 31, unit: "mm" },
+      },
+      measurement: {
+        method: "forward-finite-difference",
+        basePoint: { value: 30, unit: "mm" },
+        perturbationStep: { value: 1, unit: "mm" },
+        responseAtBase: { value: 0.1, unit: "mm" },
+        responseAtPerturbed: { value: 0.092, unit: "mm" },
+        derivative: { value: -0.008, unit: "mm/mm" },
+      },
+    },
+  };
 }
 
 function artifact(

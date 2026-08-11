@@ -1482,7 +1482,7 @@ function addMapValue(
 }
 
 function relationLabel(relation: ThreadGraphEdge["relation"]): string {
-  return relation.replaceAll("_", " ");
+  return relation.replaceAll("_", " ").replaceAll("-", " ");
 }
 
 function attestationDescription(

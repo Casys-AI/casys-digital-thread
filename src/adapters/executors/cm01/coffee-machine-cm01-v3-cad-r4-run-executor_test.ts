@@ -13,6 +13,7 @@ import {
   type RegisteredEngineeringOperationInput,
 } from "../../../orchestration/operations/registry.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   COFFEE_MACHINE_CM01_V3_CAD_R4_OPERATION,
   COFFEE_MACHINE_CM01_V3_CAD_R4_PROJECT_ID,
@@ -409,7 +410,11 @@ async function queuedCadR4(directory: string) {
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: OPERATIONS },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
   project = await commands.publishPlan(AGENT, {
     ...ctx("publish-cm01-r4-plan", project.revision),
@@ -444,6 +449,7 @@ async function queuedCadR4(directory: string) {
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-06T09:30:00.000Z",

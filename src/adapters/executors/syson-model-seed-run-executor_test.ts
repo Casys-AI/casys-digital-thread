@@ -11,6 +11,7 @@ import {
   type RegisteredEngineeringOperationInput,
 } from "../../orchestration/operations/registry.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../validators/engineering-project-completion-evidence-validator.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
@@ -424,7 +425,11 @@ async function queuedSeed(directory: string) {
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: TEST_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
   project = await commands.publishPlan(AGENT, {
     ...context("publish-initial-plan", project.revision),
@@ -462,6 +467,7 @@ async function queuedSeed(directory: string) {
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     liveUpdates,

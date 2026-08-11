@@ -258,6 +258,121 @@ Deno.test("the Workbench contract requires a typed native graph", () => {
   assertEquals(isThreadWorkbenchSnapshot(unsupportedRelation), false);
 });
 
+Deno.test("the Workbench contract requires one non-empty structured requirement source identity", () => {
+  const missingSourceElementId = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  delete (missingSourceElementId.requirements[0] as {
+    sourceElementId?: string;
+  }).sourceElementId;
+  assertEquals(isThreadWorkbenchSnapshot(missingSourceElementId), false);
+
+  const blankSourceElementId = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  blankSourceElementId.requirements[0]!.sourceElementId = "";
+  assertEquals(isThreadWorkbenchSnapshot(blankSourceElementId), false);
+});
+
+Deno.test("the Workbench contract accepts qualified analysis assertions and rejects malformed detail", () => {
+  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const digest = "a".repeat(64);
+  snapshot.graph.nodes.push({
+    id: "analysis-node:wall-thickness",
+    ref: { kind: "analysis-node", id: "wall-thickness" },
+    entityKind: "analysis-node",
+    label: "wall-thickness",
+    system: "thread",
+    freshness: "fresh",
+    summary: "parameter · thread",
+    analysis: {
+      semanticRef: {
+        domain: "thread",
+        kind: "parameter",
+        id: "wall-thickness",
+        basisFingerprint: digest,
+      },
+    },
+  }, {
+    id: "analysis-node:von-mises-max",
+    ref: { kind: "analysis-node", id: "von-mises-max" },
+    entityKind: "analysis-node",
+    label: "von-mises-max",
+    system: "calculix",
+    freshness: "fresh",
+    summary: "metric · calculix",
+    analysis: {
+      semanticRef: {
+        domain: "calculix",
+        kind: "metric",
+        id: "von-mises-max",
+      },
+    },
+  });
+  snapshot.graph.edges.push({
+    id: "assertion:sensitivity:wall-thickness:von-mises-max",
+    from: { kind: "analysis-node", id: "wall-thickness" },
+    to: { kind: "analysis-node", id: "von-mises-max" },
+    relation: "measured-local-sensitivity",
+    rationale: "Measured from retained solver outputs.",
+    origin: "analysis",
+    analysis: {
+      assertionId: "assertion:sensitivity:wall-thickness:von-mises-max",
+      epistemicBasis: "observed",
+      assertedBy: { kind: "provider", id: "calculix" },
+      evidence: [{ id: "ART-FEA-018", fingerprint: digest }],
+      scope: {
+        kind: "local-neighborhood",
+        parameter: {
+          domain: "thread",
+          kind: "parameter",
+          id: "wall-thickness",
+          basisFingerprint: digest,
+        },
+        basisFingerprint: digest,
+        lower: { value: 1.6, unit: "mm" },
+        upper: { value: 2, unit: "mm" },
+      },
+      measurement: {
+        method: "forward-finite-difference",
+        basePoint: { value: 1.8, unit: "mm" },
+        perturbationStep: { value: 0.1, unit: "mm" },
+        responseAtBase: { value: 132, unit: "MPa" },
+        responseAtPerturbed: { value: 119, unit: "MPa" },
+        derivative: { value: -130, unit: "MPa/mm" },
+      },
+    },
+  });
+
+  assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
+
+  const wrongAssertionId = structuredClone(snapshot);
+  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId = "other-assertion";
+  assertEquals(isThreadWorkbenchSnapshot(wrongAssertionId), false);
+
+  const missingMeasurement = structuredClone(snapshot);
+  delete missingMeasurement.graph.edges.at(-1)!.analysis!.measurement;
+  assertEquals(isThreadWorkbenchSnapshot(missingMeasurement), false);
+
+  const unexpectedMeasurement = structuredClone(snapshot);
+  unexpectedMeasurement.graph.edges.at(-1)!.relation = "declared-dependency";
+  assertEquals(isThreadWorkbenchSnapshot(unexpectedMeasurement), false);
+
+  const invalidSourcePosition = structuredClone(snapshot);
+  const invalidDetail = invalidSourcePosition.graph.edges.at(-1)!.analysis!;
+  invalidSourcePosition.graph.edges.at(-1)!.relation = "static-value-flow";
+  delete invalidDetail.measurement;
+  invalidDetail.scope = {
+    kind: "source-span",
+    source: {
+      domain: "cad",
+      kind: "model-symbol",
+      id: "wall-thickness",
+      basisFingerprint: digest,
+    },
+    basisFingerprint: digest,
+    start: { line: 0, column: 0 },
+    end: { line: 1, column: 0 },
+  };
+  assertEquals(isThreadWorkbenchSnapshot(invalidSourcePosition), false);
+});
+
 Deno.test("the Workbench contract accepts exact SysML structure nodes and rejects malformed model kinds", () => {
   const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
   snapshot.graph.nodes.push({

@@ -74,6 +74,11 @@ export interface RegisteredEngineeringOperation {
   readonly workItemKind: EngineeringWorkItemKind;
   readonly riskClass: EngineeringOperationRiskClass;
   readonly execution: EngineeringOperationExecution;
+  /**
+   * Opt-in for a future recorded vertical. No current operation is marked
+   * until its resolver, executor and recovery policy are independently wired.
+   */
+  readonly resolvedOperationPlan?: "2.0";
   /** Makes a consequential decision bind the exact thread-entity targets. */
   readonly decisionEvidenceScope?: "thread-entity-bindings";
   /**

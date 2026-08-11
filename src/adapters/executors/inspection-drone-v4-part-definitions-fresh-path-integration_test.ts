@@ -34,6 +34,7 @@ import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering
 import { FileInspectionDroneV4PartDefinitionsPublicationStore } from "../wal/file-inspection-drone-v4-part-definitions-publication-store.ts";
 import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-attempt-store.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   INSPECTION_DRONE_V4_PART_USAGE_CONTRACT,
   INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT,
@@ -217,7 +218,11 @@ async function queuedProductFixture(options: {
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
   let project = await briefs.startProject(AGENT, {
     commandId: "start",
@@ -287,6 +292,7 @@ async function queuedProductFixture(options: {
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now,

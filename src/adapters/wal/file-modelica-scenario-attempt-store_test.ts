@@ -313,6 +313,21 @@ Deno.test("Modelica scenario WAL quarantine blocks begin before any attempt reco
   });
 });
 
+Deno.test("Modelica scenario WAL quarantine wins over an existing completed attempt", async () => {
+  await withStore(async (store) => {
+    await store.begin(beginInput());
+    await store.recordProviderRun(recordInput());
+    await store.complete(completeInput());
+    await store.quarantine({ ...identity(), quarantinedAt: AT });
+
+    await assertRejects(
+      () => store.begin(beginInput()),
+      ModelicaScenarioRunQuarantinedError,
+    );
+    assertEquals((await store.readRun(PROJ, RUN_ID))?.status, "completed");
+  });
+});
+
 Deno.test("Modelica scenario WAL quarantine validates its sentinel before trusting it", async () => {
   await withStore(async (store) => {
     await store.quarantine({ ...identity(), quarantinedAt: AT });

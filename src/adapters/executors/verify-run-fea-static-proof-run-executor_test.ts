@@ -32,6 +32,7 @@ import {
   validateMechanicalProofCase,
 } from "../../domain/analysis/mechanical-proof-case.ts";
 import { FEA_EXECUTION_POLICY_VERSION } from "../../domain/analysis/fea-execution-policy.ts";
+import type { StaticStructuralSolveInput } from "../../domain/analysis/static-structural-solver.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
 import type {
@@ -45,6 +46,7 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
   VerifyRunFeaStaticProofRunExecutor,
 } from "./verify-run-fea-static-proof-run-executor.ts";
+import { lowerCalculixStaticStructuralSolve } from "../providers/calculix/mcp-calculix-static-structural-solver.ts";
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 
@@ -610,7 +612,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -640,7 +642,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -711,7 +713,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -799,7 +801,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -831,7 +833,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {
         withLease: (_: unknown, __: unknown, fn: () => Promise<unknown>) => fn(),
@@ -880,7 +882,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {
         withLease: (_: unknown, __: unknown, fn: () => Promise<unknown>) => fn(),
@@ -1052,7 +1054,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {
+      solver: {
         callTool: () => {
           calculixCalled = true;
           return Promise.resolve({ structuredContent: {} });
@@ -1088,8 +1090,12 @@ Deno.test(
   "verify-run-fea-static-proof executor does not redispatch CalculiX when WAL is solver-recorded",
   async () => {
     const fx = await buildFixtures();
-    let calculixCallCount = 0;
+    let resolveCallCount = 0;
+    let solveCallCount = 0;
     let stageCallCount = 0;
+    let preflightCallCount = 0;
+    let recoveryCaptureWriteCount = 0;
+    let quarantineCallCount = 0;
 
     // Canned solver capture text — structure only, not fully validated in this test.
     const cannedSolverText = JSON.stringify({
@@ -1146,22 +1152,32 @@ Deno.test(
       } as never,
       solverCaptures: {
         read: () => Promise.resolve(cannedSolverText),
-        save: () => Promise.resolve(),
+        save: () => {
+          recoveryCaptureWriteCount++;
+          return Promise.reject(
+            new Error("solver-recorded recovery capture write sentinel"),
+          );
+        },
         uriFor: () => `casys://fea-solver-result-capture/sha256/${cannedFp}`,
       } as never,
       verdictCaptures: {} as never,
       attempts: {
-        preflight: () =>
-          Promise.resolve({
+        preflight: () => {
+          preflightCallCount++;
+          return Promise.resolve({
             action: "solver-recorded" as const,
             solverCaptureFp: cannedFp,
             canonicalSolverCaptureText: cannedSolverText,
-          }),
+          });
+        },
         begin: () => Promise.reject(new Error("begin must not run on recovery")),
         recordSolver: () =>
           Promise.reject(new Error("recordSolver must not be called on recovery")),
         complete: () => Promise.resolve(),
-        quarantine: () => Promise.resolve(),
+        quarantine: () => {
+          quarantineCallCount++;
+          return Promise.resolve();
+        },
       } as never,
       canonicalAssetDirectory: "state/local/thread-assets",
       stager: {
@@ -1182,10 +1198,14 @@ Deno.test(
             },
           }),
       } as never,
-      calculix: {
-        callTool: () => {
-          calculixCallCount++;
-          return Promise.resolve({ structuredContent: {} });
+      solver: {
+        resolve: (input: StaticStructuralSolveInput) => {
+          resolveCallCount++;
+          return lowerCalculixStaticStructuralSolve(input);
+        },
+        solve: () => {
+          solveCallCount++;
+          return Promise.reject(new Error("solve must not run on recovery"));
         },
       } as never,
       policy: {
@@ -1200,13 +1220,20 @@ Deno.test(
       } as never,
     });
 
-    try {
-      await executor.execute(AGENT, COMMAND_BASE);
-    } catch {
-      // Stubs not fully wired for a complete run — only checking CalculiX absence.
-    }
+    await assertRejects(
+      () => executor.execute(AGENT, COMMAND_BASE),
+      EngineeringProjectCommandError,
+      "solver-recorded recovery capture write sentinel",
+    );
+    assertStrictEquals(resolveCallCount, 1, "the exact solve plan must be resolved");
+    assertStrictEquals(preflightCallCount, 1, "WAL preflight must be reached");
     assertStrictEquals(
-      calculixCallCount,
+      recoveryCaptureWriteCount,
+      1,
+      "solver-recorded recovery must reach capture rematerialization",
+    );
+    assertStrictEquals(
+      solveCallCount,
       0,
       "CalculiX must NOT be dispatched on WAL solver-recorded recovery",
     );
@@ -1214,6 +1241,11 @@ Deno.test(
       stageCallCount,
       0,
       "Docker staging must NOT run on WAL solver-recorded recovery",
+    );
+    assertStrictEquals(
+      quarantineCallCount,
+      1,
+      "a post-recorded structural failure must quarantine the recovered attempt",
     );
   },
 );
@@ -1334,6 +1366,11 @@ Deno.test(
       })),
       policyVersion: FEA_EXECUTION_POLICY_VERSION,
       exactSolverRequest: replayRequest,
+      solverImage: {
+        image: "ghcr.io/casys-ai/calculix@sha256:sealed",
+        digest: "e".repeat(64),
+        observedAt: replayCapturedAt,
+      },
     };
     const verdictText = deterministicJson(verdict);
     const verdictFp = (await sha256Fingerprint(verdict)).digest;
@@ -1424,8 +1461,9 @@ Deno.test(
           });
         },
       } as never,
-      calculix: {
-        callTool: () => Promise.reject(new Error("must not dispatch")),
+      solver: {
+        resolve: lowerCalculixStaticStructuralSolve,
+        solve: () => Promise.reject(new Error("must not dispatch")),
       } as never,
       policy: {
         policyVersion: FEA_EXECUTION_POLICY_VERSION,
@@ -1445,6 +1483,10 @@ Deno.test(
           observedAt: AT,
         });
       },
+      // Deliberately later than the sealed image observation. A completed WAL
+      // must read the existing verdict bytes, not derive a replacement from a
+      // new clock value or image observation.
+      now: () => "2026-08-11T00:00:00.000Z",
     });
     const completed = await executor.execute(AGENT, COMMAND_BASE);
     assertEquals(
@@ -1538,7 +1580,10 @@ Deno.test(
             },
           }),
       } as never,
-      calculix: { callTool: () => Promise.resolve({ structuredContent: {} }) } as never,
+      solver: {
+        resolve: lowerCalculixStaticStructuralSolve,
+        solve: () => Promise.reject(new Error("must not dispatch")),
+      } as never,
       policy: {
         policyVersion: FEA_EXECUTION_POLICY_VERSION,
         meshTargetSizeMinMm: 100.0, // proof mesh = 2mm → violates minimum
@@ -1652,7 +1697,10 @@ Deno.test(
             },
           }),
       } as never,
-      calculix: { callTool: () => Promise.resolve({ structuredContent: {} }) } as never,
+      solver: {
+        resolve: lowerCalculixStaticStructuralSolve,
+        solve: () => Promise.reject(new Error("must not dispatch")),
+      } as never,
       policy: {
         policyVersion: FEA_EXECUTION_POLICY_VERSION,
         meshTargetSizeMinMm: 0.5,
@@ -1730,7 +1778,10 @@ Deno.test(
             },
           }),
       } as never,
-      calculix: { callTool: () => Promise.resolve({ structuredContent: {} }) } as never,
+      solver: {
+        resolve: lowerCalculixStaticStructuralSolve,
+        solve: () => Promise.reject(new Error("must not dispatch")),
+      } as never,
       policy: {
         policyVersion: FEA_EXECUTION_POLICY_VERSION,
         meshTargetSizeMinMm: 0.5,
@@ -1782,7 +1833,7 @@ Deno.test(
       } as never,
       // Oracle runs at step 10, after STEP read (step 9) — won't be reached.
       syson: { callTool: () => Promise.resolve({ structuredContent: {} }) } as never,
-      calculix: { callTool: () => Promise.resolve({ structuredContent: {} }) } as never,
+      solver: { callTool: () => Promise.resolve({ structuredContent: {} }) } as never,
       policy: {
         policyVersion: FEA_EXECUTION_POLICY_VERSION,
         meshTargetSizeMinMm: 0.5,
@@ -2323,7 +2374,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {
         withLease: (_: unknown, __: unknown, fn: () => Promise<unknown>) => fn(),
@@ -2382,7 +2433,7 @@ Deno.test(
       stager: {} as never,
       assetReader: {} as never,
       syson: {} as never,
-      calculix: {} as never,
+      solver: {} as never,
       policy: {} as never,
       lease: {
         withLease: (_: unknown, __: unknown, fn: () => Promise<unknown>) => fn(),

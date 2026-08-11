@@ -14,6 +14,10 @@ import type {
   EngineeringWorkItem,
 } from "./engineering-project.ts";
 import { queuedRunCancellationSummary } from "./engineering-project.ts";
+import {
+  sameResolvedOperationPlanRef,
+  validateResolvedOperationPlanRef,
+} from "../analysis/resolved-operation-plan-v2.ts";
 import { deterministicJson } from "../kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,
@@ -1189,6 +1193,7 @@ function validateAgentRun(
       "basis",
       "baseSnapshot",
       "inputFingerprint",
+      "resolvedOperationPlan",
       "waitingForDecisionIds",
       "resultSnapshot",
       "failure",
@@ -1225,6 +1230,13 @@ function validateAgentRun(
     validateCommandActor(input.claimedBy, `${path}.claimedBy`, issues);
   }
   validateRunExecutionBinding(input, path, issues, schemaVersion);
+  if (input.resolvedOperationPlan !== undefined) {
+    validateResolvedPlanReference(
+      input.resolvedOperationPlan,
+      `${path}.resolvedOperationPlan`,
+      issues,
+    );
+  }
   validateArray(
     input.evidenceRefs,
     `${path}.evidenceRefs`,
@@ -1637,10 +1649,23 @@ function validateQueuedRunReceiptBinding(
   path: string,
   issues: EngineeringProjectValidationIssue[],
 ): void {
-  const input = exactRecord(value, path, ["runId", "workItemId"], [], issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["runId", "workItemId"],
+    ["resolvedOperationPlan"],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.runId, `${path}.runId`, issues);
   nonEmptyString(input.workItemId, `${path}.workItemId`, issues);
+  if (input.resolvedOperationPlan !== undefined) {
+    validateResolvedPlanReference(
+      input.resolvedOperationPlan,
+      `${path}.resolvedOperationPlan`,
+      issues,
+    );
+  }
 }
 
 function validateCancelledRunReceiptBinding(
@@ -2076,6 +2101,7 @@ function validateInvariants(
       );
     }
   });
+  const workItemOwnerByDecisionId = new Map<string, string>();
   project.workItems.forEach((item, index) => {
     const reconciliation = item.reconciliation;
     if (!reconciliation) return;
@@ -2163,6 +2189,13 @@ function validateInvariants(
       }
     });
     item.decisionIds.forEach((id, decisionIndex) => {
+      claimDecisionWorkItemScope(
+        workItemOwnerByDecisionId,
+        id,
+        item.id,
+        `${path}.decisionIds[${decisionIndex}]`,
+        issues,
+      );
       const decision = decisionById.get(id);
       if (!decision || decision.phaseId !== item.phaseId) {
         issue(
@@ -2275,14 +2308,56 @@ function validateInvariants(
   project.approvals.forEach((approval, index) =>
     validateApprovalInvariant(approval, index, decisionById, issues)
   );
-  project.blockers.forEach((blocker, index) =>
-    validateBlockerInvariant(blocker, index, phaseById, workById, decisionById, issues)
-  );
+  project.blockers.forEach((blocker, index) => {
+    blocker.decisionIds.forEach((decisionId) => {
+      blocker.workItemIds.forEach((workItemId, workItemIndex) =>
+        claimDecisionWorkItemScope(
+          workItemOwnerByDecisionId,
+          decisionId,
+          workItemId,
+          `$.blockers[${index}].workItemIds[${workItemIndex}]`,
+          issues,
+        )
+      );
+    });
+    validateBlockerInvariant(
+      blocker,
+      index,
+      phaseById,
+      workById,
+      decisionById,
+      issues,
+    );
+  });
   (project.commandReceipts ?? []).forEach((receipt, index) =>
     validateCommandReceiptInvariant(receipt, index, project, issues)
   );
   validateQueuedRunReceiptBindings(project, issues);
   validateCancelledRunReceiptBindings(project, issues);
+}
+
+/**
+ * Every decision that can release work has one exact work-item owner. Direct
+ * decision links and blocker-mediated links share this same authority map.
+ */
+function claimDecisionWorkItemScope(
+  ownerByDecisionId: Map<string, string>,
+  decisionId: string,
+  workItemId: string,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const existingOwner = ownerByDecisionId.get(decisionId);
+  if (existingOwner !== undefined && existingOwner !== workItemId) {
+    issue(
+      issues,
+      "ambiguous_decision_scope",
+      path,
+      "must not let one decision release more than one work item",
+    );
+    return;
+  }
+  ownerByDecisionId.set(decisionId, workItemId);
 }
 
 /**
@@ -3374,7 +3449,8 @@ function validateRunInvariant(
   issues: EngineeringProjectValidationIssue[],
 ): void {
   const path = `$.agentRuns[${index}]`;
-  if (!workById.has(run.workItemId)) {
+  const workItem = workById.get(run.workItemId);
+  if (!workItem) {
     issue(
       issues,
       "missing_reference",
@@ -3382,6 +3458,13 @@ function validateRunInvariant(
       "does not reference a work item",
     );
   }
+  validateResolvedOperationPlanRunInvariant(
+    run,
+    index,
+    workItem,
+    project,
+    issues,
+  );
   validateRunBasisInvariant(run, index, workById, project, issues);
   uniqueEvidence(run.evidenceRefs, `${path}.evidenceRefs`, issues);
   uniqueStrings(
@@ -3704,6 +3787,95 @@ function validateRunInvariant(
 }
 
 /**
+ * Resolved-operation-plan/2.0 is a closed persisted contract, not a marker
+ * that can be dropped from a stored snapshot. The two exact @2 operation
+ * identities require the server-stamped run and queue-receipt references;
+ * every other operation, including immutable @1 history, must remain planless.
+ */
+function validateResolvedOperationPlanRunInvariant(
+  run: EngineeringAgentRun,
+  index: number,
+  workItem: EngineeringWorkItem | undefined,
+  project: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const path = `$.agentRuns[${index}]`;
+  const requiresPlan = isResolvedOperationPlanV2Operation(workItem?.operation);
+  const queueCommandId = run.statusHistory?.[0]?.commandId;
+  const queueReceipt = queueCommandId
+    ? project.commandReceipts?.find((receipt) =>
+      receipt.type === "agent-run.queue" && receipt.commandId === queueCommandId
+    )
+    : undefined;
+  const receiptPlan = queueReceipt?.queuedRun?.resolvedOperationPlan;
+
+  if (!requiresPlan) {
+    if (run.resolvedOperationPlan !== undefined) {
+      issue(
+        issues,
+        "unexpected_resolved_operation_plan",
+        `${path}.resolvedOperationPlan`,
+        "is allowed only for the two closed recorded @2 operation identities",
+      );
+    }
+    if (receiptPlan !== undefined) {
+      issue(
+        issues,
+        "unexpected_resolved_operation_plan",
+        "$.commandReceipts",
+        "a queue receipt may carry a resolved operation plan only for a closed recorded @2 run",
+      );
+    }
+    return;
+  }
+
+  if (!run.resolvedOperationPlan) {
+    issue(
+      issues,
+      "missing_resolved_operation_plan",
+      `${path}.resolvedOperationPlan`,
+      "is required for a closed recorded @2 operation",
+    );
+  } else if (run.resolvedOperationPlan.planId !== run.id) {
+    issue(
+      issues,
+      "invalid_resolved_operation_plan_identity",
+      `${path}.resolvedOperationPlan.planId`,
+      "must equal the exact persisted run id",
+    );
+  }
+  if (!queueReceipt?.queuedRun) {
+    issue(
+      issues,
+      "missing_resolved_operation_plan_receipt",
+      `${path}.statusHistory[0]`,
+      "a closed recorded @2 operation requires its exact queue receipt binding",
+    );
+    return;
+  }
+  if (
+    !receiptPlan ||
+    !sameOptionalResolvedPlanReference(run.resolvedOperationPlan, receiptPlan)
+  ) {
+    issue(
+      issues,
+      "invalid_resolved_operation_plan_receipt",
+      `${path}.resolvedOperationPlan`,
+      "must exactly match the server-stamped resolved operation plan on its queue receipt",
+    );
+  }
+}
+
+function isResolvedOperationPlanV2Operation(
+  operation: EngineeringWorkItem["operation"],
+): boolean {
+  return operation?.version === "2" && (
+    operation.id === "simulate.run-modelica-scenario" ||
+    operation.id === "verify.run-fea-static-proof"
+  );
+}
+
+/**
  * A command receipt is globally unique, so one transition commandId must
  * belong to one agent run. This prevents copying an otherwise valid cancelled
  * history to a second work item and claiming the same queue/cancel receipts.
@@ -3746,7 +3918,11 @@ function matchesQueuedRunReceiptBinding(
     receipt.actor.origin === queuedTransition.actor.origin &&
     Date.parse(receipt.appliedAt) === Date.parse(queuedTransition.at) &&
     binding.runId === run.id &&
-    binding.workItemId === run.workItemId;
+    binding.workItemId === run.workItemId &&
+    sameOptionalResolvedPlanReference(
+      run.resolvedOperationPlan,
+      binding.resolvedOperationPlan,
+    );
 }
 
 function queueAndCancellationReceiptBindingsAgree(
@@ -4761,6 +4937,33 @@ function issue(
   message: string,
 ): void {
   issues.push({ code, path, message });
+}
+
+function validateResolvedPlanReference(
+  value: unknown,
+  path: string,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  try {
+    validateResolvedOperationPlanRef(value);
+  } catch (error) {
+    issue(
+      issues,
+      "invalid_resolved_operation_plan_ref",
+      path,
+      error instanceof Error
+        ? error.message
+        : "must be an exact resolved operation plan reference",
+    );
+  }
+}
+
+function sameOptionalResolvedPlanReference(
+  left: EngineeringAgentRun["resolvedOperationPlan"],
+  right: EngineeringAgentRun["resolvedOperationPlan"],
+): boolean {
+  return left === undefined && right === undefined ||
+    sameResolvedOperationPlanRef(left, right);
 }
 
 function issueWithRecovery(

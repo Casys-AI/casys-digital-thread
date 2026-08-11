@@ -6,9 +6,14 @@ import type {
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
+  type EngineeringProjectPlanningDependencies,
+  type EngineeringProjectPlanOperationRegistry,
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
+  type QueueRunCommand,
 } from "./engineering-project-command-service.ts";
+import type { RegisteredRunPlanSealInput } from "./resolved-run-plan-sealer.ts";
+import type { ResolvedOperationPlanRef } from "../analysis/resolved-operation-plan-v2.ts";
 import {
   ProjectBriefCommandService,
   type ProjectBriefMutationCommand,
@@ -324,6 +329,128 @@ Deno.test("an agent cannot preempt the server-reserved uncertain-writer release 
   assertEquals((await store.get(PROJECT_ID))?.revision, approved.revision);
 });
 
+Deno.test("publishPlan refuses one MRTR decision shared by two work items before persistence", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+  );
+  const plan = baselinePlanCommand("reject-shared-mrtr-plan", approved.revision);
+  const decisionId = "decision:one-operation-only";
+  const first = { ...plan.workItems[0]!, decisionIds: [decisionId] };
+
+  await assertCommandError(
+    () =>
+      commands.publishPlan(AGENT, {
+        ...plan,
+        workItems: [first, { ...first, id: "second-reviewed-operation" }],
+        requiredDecisions: [{
+          id: decisionId,
+          phaseId: "phase-baseline",
+          title: "One bounded approval",
+          question: "Approve one operation only?",
+        }],
+      }),
+    "invalid_input",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, approved.revision);
+});
+
+Deno.test("appendChange refuses one MRTR decision shared by two appended work items before persistence", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    { validateInitial: () => Promise.resolve() },
+  );
+  let project = await commands.publishPlan(
+    AGENT,
+    baselinePlanCommand("publish-baseline-for-shared-mrtr-append", approved.revision),
+  );
+  const baselineWorkItemId = "record-approved-brief";
+  const runId = "run:baseline-for-shared-mrtr-append";
+  project = await commands.queueRun(AGENT, {
+    ...context("queue-baseline-for-shared-mrtr-append", project.revision),
+    runId,
+    workItemId: baselineWorkItemId,
+    summary: "Queue the exact approved documentary baseline.",
+    basis: project.plan!.basis,
+  });
+  project = await commands.claimRun(AGENT, {
+    ...context("claim-baseline-for-shared-mrtr-append", project.revision),
+    runId,
+    summary: "Claim the exact approved documentary baseline.",
+  });
+  project = await commands.publishRun(AGENT, {
+    ...context("publish-run-for-shared-mrtr-append", project.revision),
+    runId,
+    summary: "Publish the exact approved documentary baseline.",
+  });
+  const baselineSnapshot = {
+    snapshotId: "project-v3:documentary-baseline:r1",
+    revision: 1,
+    subjectId: project.project.subjectId,
+  };
+  project = await commands.completeRun(AGENT, {
+    ...context("complete-baseline-for-shared-mrtr-append", project.revision),
+    runId,
+    summary: "Complete the exact approved documentary baseline.",
+    resultSnapshot: baselineSnapshot,
+    evidenceRefs: [{
+      snapshotId: baselineSnapshot.snapshotId,
+      snapshotRevision: baselineSnapshot.revision,
+      kind: "artifact",
+      id: "approved-brief-baseline",
+    }],
+  });
+  const decisionId = "decision:one-appended-operation-only";
+  const workItem = {
+    id: "seed-syson-one",
+    phaseId: "phase-architecture",
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    decisionIds: [decisionId],
+    operation: {
+      id: "architecture.seed-syson-model",
+      version: "2",
+      bindings: [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+    },
+  };
+
+  await assertCommandError(
+    () =>
+      commands.appendChange(AGENT, {
+        ...context("reject-shared-mrtr-append", project.revision),
+        baseSnapshot: baselineSnapshot,
+        phases: [{
+          id: "phase-architecture",
+          name: "Architecture",
+          description: "Create the bounded reviewed system structure.",
+        }],
+        workItems: [workItem, { ...workItem, id: "seed-syson-two" }],
+        requiredDecisions: [{
+          id: decisionId,
+          phaseId: "phase-architecture",
+          title: "One appended operation",
+          question: "Approve one appended operation only?",
+        }],
+      }),
+    "invalid_input",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, project.revision);
+});
+
 Deno.test("a rejected update preserves the approved brief and stale proposals cannot be approved", async () => {
   const store = new MemoryProjectStore();
   const service = serviceFor(store);
@@ -525,6 +652,7 @@ Deno.test("a V3 cancellation seals its legacy unbound queue receipt", async () =
     runId: "run:legacy-v3-queue",
     workItemId: "record-approved-brief",
   });
+  assertEquals(queued.agentRuns[0]?.resolvedOperationPlan, undefined);
 
   const legacyQueued = structuredClone(queued);
   const legacyQueueReceipt = legacyQueued.commandReceipts!.at(-1)! as {
@@ -535,6 +663,28 @@ Deno.test("a V3 cancellation seals its legacy unbound queue receipt", async () =
   await store.commit(legacyQueued, queued.revision);
   assertEquals(legacyQueueReceipt.queuedRun, undefined);
   assertEquals(collectEngineeringProjectIssues(legacyQueued), []);
+
+  const historicalWithPlan = structuredClone(queued);
+  const historicalPlanRef: ResolvedOperationPlanRef = {
+    schemaVersion: "resolved-operation-plan-ref/1.0",
+    planId: "run:legacy-v3-queue",
+    fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    byteCount: 1,
+    casUri: `casys://resolved-operation-plan/sha256/${"c".repeat(64)}`,
+  };
+  (historicalWithPlan.agentRuns[0] as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  })
+    .resolvedOperationPlan = historicalPlanRef;
+  (historicalWithPlan.commandReceipts!.at(-1)!.queuedRun as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  }).resolvedOperationPlan = historicalPlanRef;
+  assertEquals(
+    collectEngineeringProjectIssues(historicalWithPlan).some((issue) =>
+      issue.code === "unexpected_resolved_operation_plan"
+    ),
+    true,
+  );
 
   const cancelled = await commands.cancelQueuedRun(HUMAN, {
     ...context("cancel-legacy-v3-queue", legacyQueued.revision),
@@ -548,6 +698,226 @@ Deno.test("a V3 cancellation seals its legacy unbound queue receipt", async () =
     queuedCommandId: legacyQueueReceipt.commandId,
   });
   assertEquals(collectEngineeringProjectIssues(cancelled), []);
+});
+
+Deno.test("a plan 2.0 registered operation seals a server reference before its V3 queue receipt commits", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  let sealInput: RegisteredRunPlanSealInput | undefined;
+  const planRef: ResolvedOperationPlanRef = {
+    schemaVersion: "resolved-operation-plan-ref/1.0",
+    planId: "run:recorded-plan-queue",
+    fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+    byteCount: 200,
+    casUri: `casys://resolved-operation-plan/sha256/${"a".repeat(64)}`,
+  };
+  const planning: EngineeringProjectPlanningDependencies = {
+    operations: recordedPlanTestRegistry(),
+    runPlanSealer: {
+      seal(input) {
+        sealInput = input;
+        return Promise.resolve(planRef);
+      },
+    },
+  };
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    planning,
+  );
+  const planned = await commands.publishPlan(
+    AGENT,
+    recordedPlanPlanCommand("publish-plan-2-queue", approved.revision),
+  );
+  const queueBasis = await addRecordedThreadQueueBasis(store, planned);
+  const queued = await commands.queueRun(AGENT, {
+    ...context("queue-plan-2", planned.revision),
+    runId: planRef.planId,
+    workItemId: "simulate-modelica-recorded",
+    summary: "Queue a test-only registered recorded plan.",
+    basis: queueBasis,
+  });
+  const run = queued.agentRuns[0]!;
+  const receipt = queued.commandReceipts!.at(-1)!;
+
+  assertEquals(sealInput?.project.id, planned.id);
+  assertEquals(sealInput?.project.revision, planned.revision);
+  assertEquals(sealInput?.run.inputFingerprint, run.inputFingerprint);
+  assertEquals(run.resolvedOperationPlan, planRef);
+  assertEquals(receipt.queuedRun?.resolvedOperationPlan, planRef);
+  assertEquals(collectEngineeringProjectIssues(queued), []);
+
+  const foreignPlan = structuredClone(queued);
+  const foreignPlanRef = { ...planRef, planId: "run:foreign-recorded-plan" };
+  (foreignPlan.agentRuns[0] as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  }).resolvedOperationPlan = foreignPlanRef;
+  (foreignPlan.commandReceipts!.at(-1)!.queuedRun as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  }).resolvedOperationPlan = foreignPlanRef;
+  assertEquals(
+    collectEngineeringProjectIssues(foreignPlan).some((issue) =>
+      issue.code === "invalid_resolved_operation_plan_identity" &&
+      issue.path === "$.agentRuns[0].resolvedOperationPlan.planId"
+    ),
+    true,
+  );
+
+  const mismatched = structuredClone(queued);
+  const mismatchedReceipt = mismatched.commandReceipts!.at(-1)!.queuedRun! as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  };
+  mismatchedReceipt.resolvedOperationPlan = {
+    ...planRef,
+    fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+    casUri: `casys://resolved-operation-plan/sha256/${"b".repeat(64)}`,
+  };
+  assertEquals(
+    collectEngineeringProjectIssues(mismatched).some((issue) =>
+      issue.code === "invalid_resolved_operation_plan_receipt"
+    ),
+    true,
+  );
+
+  const planless = structuredClone(queued);
+  delete (planless.agentRuns[0] as { resolvedOperationPlan?: unknown })
+    .resolvedOperationPlan;
+  delete (planless.commandReceipts!.at(-1)!.queuedRun as {
+    resolvedOperationPlan?: unknown;
+  }).resolvedOperationPlan;
+  assertEquals(
+    collectEngineeringProjectIssues(planless).some((issue) =>
+      issue.code === "missing_resolved_operation_plan"
+    ),
+    true,
+  );
+
+  const receiptWithoutPlan = structuredClone(queued);
+  delete (receiptWithoutPlan.commandReceipts!.at(-1)!.queuedRun as {
+    resolvedOperationPlan?: unknown;
+  }).resolvedOperationPlan;
+  assertEquals(
+    collectEngineeringProjectIssues(receiptWithoutPlan).some((issue) =>
+      issue.code === "invalid_resolved_operation_plan_receipt"
+    ),
+    true,
+  );
+
+  const cancelled = await commands.cancelQueuedRun(HUMAN, {
+    ...context("cancel-plan-2-terminal", queued.revision),
+    runId: planRef.planId,
+    rationale: "Cancel this recorded run before any claim or provider execution.",
+  });
+  assertEquals(cancelled.agentRuns[0]?.status, "cancelled");
+  const foreignTerminalPlan = structuredClone(cancelled);
+  (foreignTerminalPlan.agentRuns[0] as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  }).resolvedOperationPlan = foreignPlanRef;
+  const terminalQueueReceipt = foreignTerminalPlan.commandReceipts!.find((candidate) =>
+    candidate.type === "agent-run.queue" &&
+    candidate.queuedRun?.runId === planRef.planId
+  )!;
+  (terminalQueueReceipt.queuedRun as {
+    resolvedOperationPlan?: ResolvedOperationPlanRef;
+  }).resolvedOperationPlan = foreignPlanRef;
+  assertEquals(
+    collectEngineeringProjectIssues(foreignTerminalPlan).some((issue) =>
+      issue.code === "invalid_resolved_operation_plan_identity" &&
+      issue.path === "$.agentRuns[0].resolvedOperationPlan.planId"
+    ),
+    true,
+  );
+});
+
+Deno.test("a plan 2.0 sealing failure leaves the V3 project uncommitted", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const planning: EngineeringProjectPlanningDependencies = {
+    operations: recordedPlanTestRegistry(),
+    runPlanSealer: {
+      seal() {
+        return Promise.reject(new Error("CAS reread failed"));
+      },
+    },
+  };
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    planning,
+  );
+  const planned = await commands.publishPlan(
+    AGENT,
+    recordedPlanPlanCommand("publish-plan-2-failure", approved.revision),
+  );
+  const queueBasis = await addRecordedThreadQueueBasis(store, planned);
+  await assertCommandError(
+    () =>
+      commands.queueRun(AGENT, {
+        ...context("queue-plan-2-forged-plan", planned.revision),
+        runId: "run:plan-2-forged-plan",
+        workItemId: "simulate-modelica-recorded",
+        summary: "A caller must never choose a plan reference.",
+        basis: queueBasis,
+        resolvedOperationPlan: {
+          schemaVersion: "resolved-operation-plan-ref/1.0",
+          planId: "run:forged",
+          fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+          byteCount: 1,
+          casUri: `casys://resolved-operation-plan/sha256/${"b".repeat(64)}`,
+        },
+      } as unknown as QueueRunCommand),
+    "invalid_input",
+  );
+  await assertRejects(
+    () =>
+      commands.queueRun(AGENT, {
+        ...context("queue-plan-2-failure", planned.revision),
+        runId: "run:plan-2-failure",
+        workItemId: "simulate-modelica-recorded",
+        summary: "The synthetic sealer must stop the queue transition.",
+        basis: queueBasis,
+      }),
+    Error,
+    "CAS reread failed",
+  );
+  const unchanged = await store.get(PROJECT_ID);
+  assertEquals(unchanged?.revision, planned.revision);
+  assertEquals(unchanged?.agentRuns.length, 0);
+});
+
+Deno.test("a closed @2 operation cannot queue without a plan sealer or persist without matching seals", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: recordedPlanTestRegistry() },
+  );
+  const planned = await commands.publishPlan(
+    AGENT,
+    recordedPlanPlanCommand("publish-plan-2-no-sealer", approved.revision),
+  );
+  const queueBasis = await addRecordedThreadQueueBasis(store, planned);
+  await assertCommandError(
+    () =>
+      commands.queueRun(AGENT, {
+        ...context("queue-plan-2-no-sealer", planned.revision),
+        runId: "run:plan-2-no-sealer",
+        workItemId: "simulate-modelica-recorded",
+        summary: "A closed operation requires a server plan sealer.",
+        basis: queueBasis,
+      }),
+    "invalid_input",
+  );
+  const unchanged = await store.get(PROJECT_ID);
+  assertEquals(unchanged?.revision, planned.revision);
+  assertEquals(unchanged?.agentRuns.length, 0);
 });
 
 Deno.test("a living brief revision does not rewrite the historical approval that authorized the plan", async () => {
@@ -744,6 +1114,72 @@ function baselinePlanCommand(commandId: string, expectedRevision: number) {
     }],
     requiredDecisions: [],
   };
+}
+
+function recordedPlanPlanCommand(commandId: string, expectedRevision: number) {
+  const command = baselinePlanCommand(commandId, expectedRevision);
+  command.workItems[0] = {
+    ...command.workItems[0],
+    id: "simulate-modelica-recorded",
+    operation: {
+      id: "simulate.run-modelica-scenario",
+      version: "2",
+      bindings: [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+    },
+  };
+  return command;
+}
+
+function recordedPlanTestRegistry(): EngineeringProjectPlanOperationRegistry {
+  return {
+    validate(input) {
+      if (
+        input.operation.id !== "simulate.run-modelica-scenario" ||
+        input.operation.version !== "2"
+      ) {
+        throw new TypeError(
+          "Test registry permits only simulate.run-modelica-scenario@2.",
+        );
+      }
+      return {
+        operation: {
+          id: "simulate.run-modelica-scenario",
+          version: "2",
+          startingPoint: "idea-or-spec",
+          title: "Recorded Modelica simulation",
+          description: "Test-only closed operation marker; no executor is activated.",
+          workItemKind: "simulate",
+          execution: "trusted",
+          resolvedOperationPlan: "2.0",
+        },
+        bindings: input.operation.bindings,
+      };
+    },
+  };
+}
+
+async function addRecordedThreadQueueBasis(
+  store: MemoryProjectStore,
+  project: EngineeringProjectSnapshot,
+) {
+  const basis = {
+    kind: "thread-snapshot" as const,
+    snapshotId: `${project.project.subjectId}:thread:r1`,
+    revision: 1,
+    subjectId: project.project.subjectId,
+  };
+  await store.commit({
+    ...project,
+    threadSnapshots: [{
+      snapshotId: basis.snapshotId,
+      revision: basis.revision,
+      subjectId: basis.subjectId,
+    }],
+  }, project.revision);
+  return basis;
 }
 
 function briefItems(objective: string): readonly ProjectBriefItem[] {

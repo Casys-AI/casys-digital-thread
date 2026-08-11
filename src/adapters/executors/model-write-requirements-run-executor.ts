@@ -110,10 +110,19 @@ import {
   RequirementExtractionError,
 } from "../extractors/syson-requirements-extractor.ts";
 import {
-  ARCHITECTURE_CAPTURE_SCHEMA,
   findArchitectureArtifact,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
 } from "./model-write-architecture-run-executor.ts";
+import {
+  ARCHITECTURE_CAPTURE_SCHEMA,
+  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+  type ExactArchitectureCapture as ParsedArchCapture,
+  parseExactArchitectureCapture,
+} from "../captures/architecture-capture.ts";
+import {
+  requireCurrentArchitectureSourceAnalyses,
+  type SysmlSourceAnalysisReader,
+} from "../captures/sysml-source-analysis-capture.ts";
 import {
   requireBasis,
   requiredStart,
@@ -173,6 +182,8 @@ export interface ModelWriteRequirementsRunExecutorDependencies {
   readonly seedCaptures: FileCaptureStore<"syson-model-seed">;
   /** Generic architecture captures — read-only for target resolution. */
   readonly architectureCaptures: FileCaptureStore<"architecture-capture">;
+  /** Read-only proof port for current SysML source-analysis evidence. */
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly captures: FileCaptureStore<"requirements-capture">;
   readonly attempts: FileRequirementsAttemptStore;
   /** Fixed server-owned MCP client. No agent value reaches this boundary. */
@@ -307,6 +318,7 @@ export class ModelWriteRequirementsRunExecutor {
   readonly #seedCaptures: ModelWriteRequirementsRunExecutorDependencies["seedCaptures"];
   readonly #architectureCaptures:
     ModelWriteRequirementsRunExecutorDependencies["architectureCaptures"];
+  readonly #sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly #captures: FileCaptureStore<"requirements-capture">;
   readonly #attempts: FileRequirementsAttemptStore;
   readonly #syson: McpToolClient;
@@ -320,6 +332,7 @@ export class ModelWriteRequirementsRunExecutor {
     this.#snapshots = deps.snapshots;
     this.#seedCaptures = deps.seedCaptures;
     this.#architectureCaptures = deps.architectureCaptures;
+    this.#sysmlSourceAnalysis = deps.sysmlSourceAnalysis;
     this.#captures = deps.captures;
     this.#attempts = deps.attempts;
     this.#syson = deps.syson;
@@ -1004,6 +1017,17 @@ export class ModelWriteRequirementsRunExecutor {
     let archCapture: ParsedArchCapture;
     try {
       archCapture = parseArchCapture(archCaptureText);
+      if (deterministicJson(archCapture) !== archCaptureText) {
+        throw new Error("Architecture capture is not canonical JSON.");
+      }
+      if (
+        !fingerprintsEqual(
+          await sha256Fingerprint(archCapture),
+          architectureArtifact.fingerprint,
+        )
+      ) {
+        throw new Error("Architecture capture fingerprint is not exact.");
+      }
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
@@ -1016,21 +1040,43 @@ export class ModelWriteRequirementsRunExecutor {
     if (
       architectureArtifact.id !==
         `architecture-${architectureArtifact.fingerprint.digest}` ||
+      architectureArtifact.version !== architectureArtifact.fingerprint.digest ||
       architectureArtifact.kind !== "sysml-model" ||
       architectureArtifact.uri !==
         `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${architectureArtifact.fingerprint.digest}` ||
       architectureArtifact.mediaType !== "application/json" ||
       architectureArtifact.producer.serverId !== "syson" ||
       architectureArtifact.producer.tool !== "syson_element_insert_sysml" ||
-      archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
+      (archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA &&
+        archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA_LEGACY) ||
       archCapture.operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
       archCapture.operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
       archCapture.trustedRunId !== architectureArtifact.producer.runId
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The generic architecture artifact/capture pair is not exact schema-v2 evidence.",
+        "The generic architecture artifact/capture pair is not exact architecture evidence.",
       );
+    }
+    if (archCapture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
+      try {
+        await requireCurrentArchitectureSourceAnalyses(
+          archCapture.sourceAnalyses!,
+          this.#sysmlSourceAnalysis,
+          {
+            runId: architectureArtifact.producer.runId,
+            operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+            packageName: archCapture.packageName,
+          },
+        );
+      } catch (error) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `Current architecture source-analysis evidence is not exact: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
 
     const seedArtifact = base.artifacts.find((artifact) =>
@@ -1361,13 +1407,44 @@ export class ModelWriteRequirementsRunExecutor {
     try {
       if (!historicalCaptureText) throw new Error("capture is absent");
       historicalCapture = parseArchCapture(historicalCaptureText);
+      if (deterministicJson(historicalCapture) !== historicalCaptureText) {
+        throw new Error("capture is not canonical JSON");
+      }
+      if (
+        !fingerprintsEqual(
+          await sha256Fingerprint(historicalCapture),
+          historicalArchitecture!.fingerprint,
+        )
+      ) {
+        throw new Error("capture fingerprint is not exact");
+      }
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The historical architecture capture is not exact schema-v2 evidence: ${
+        `The historical architecture capture is not exact v2/v3 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+    }
+    if (historicalCapture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
+      try {
+        await requireCurrentArchitectureSourceAnalyses(
+          historicalCapture.sourceAnalyses!,
+          this.#sysmlSourceAnalysis,
+          {
+            runId: historicalArchitecture!.producer.runId,
+            operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+            packageName: historicalCapture.packageName,
+          },
+        );
+      } catch (error) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `Historical architecture source-analysis evidence is not exact: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
     const basisSnapshot = architectureBasis &&
         typeof architectureBasis.snapshotId === "string"
@@ -2281,43 +2358,14 @@ export class ModelWriteRequirementsRunExecutor {
   }
 }
 
-// ── Private: architecture capture parser ─────────────────────────────────────
-
-/**
- * Minimal structure of a parsed architecture capture v2.0 record.
- * We only read the fields the requirements executor needs.
- */
-interface ParsedArchCapture {
-  readonly schemaVersion: typeof ARCHITECTURE_CAPTURE_SCHEMA;
-  readonly operation: typeof MODEL_WRITE_ARCHITECTURE_OPERATION;
-  readonly trustedRunId: string;
-  readonly packageName: string;
-  readonly systemName: string;
-  readonly package: { readonly id: string; readonly label: string };
-  readonly partDefinitions: ReadonlyArray<{
-    readonly id: string;
-    readonly kind: "PartDefinition";
-    readonly label: string;
-    readonly usages: ReadonlyArray<{
-      readonly id: string;
-      readonly kind: "PartUsage";
-      readonly label: string;
-      readonly targetId: string;
-      readonly targetKind: "PartDefinition";
-      readonly targetLabel: string;
-    }>;
-  }>;
-  readonly seed: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-    readonly producerRunId: string;
-  };
-  readonly predecessor?: {
-    readonly artifactId: string;
-    readonly fingerprint: ContentFingerprint;
-    readonly producerRunId: string;
-  };
-  readonly insertedAt: string;
+function parseArchCapture(text: string): ParsedArchCapture {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error("Architecture capture is not JSON.");
+  }
+  return parseExactArchitectureCapture(value);
 }
 
 function assertExactKeys(
@@ -2335,234 +2383,6 @@ function assertExactKeys(
 function isExactIsoTimestamp(value: string): boolean {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
-}
-
-function parseArchCapture(text: string): ParsedArchCapture {
-  let record: unknown;
-  try {
-    record = JSON.parse(text);
-  } catch {
-    throw new Error("Architecture capture is not JSON.");
-  }
-  if (!record || typeof record !== "object" || Array.isArray(record)) {
-    throw new Error("Architecture capture is not an object.");
-  }
-  const r = record as Record<string, unknown>;
-  assertExactKeys(
-    r,
-    [
-      "schemaVersion",
-      "operation",
-      "trustedRunId",
-      "packageName",
-      "systemName",
-      "package",
-      "seed",
-      "predecessor",
-      "partDefinitions",
-      "insertedAt",
-    ],
-    "Architecture capture",
-  );
-
-  const operation = r.operation as Record<string, unknown> | undefined;
-  if (
-    r.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
-    !operation || operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
-    operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
-    typeof r.trustedRunId !== "string" || !r.trustedRunId.trim() ||
-    typeof r.packageName !== "string" || !r.packageName.trim() ||
-    typeof r.systemName !== "string" || !r.systemName.trim() ||
-    typeof r.insertedAt !== "string" || !isExactIsoTimestamp(r.insertedAt)
-  ) {
-    throw new Error(
-      `Architecture capture must be exact ${ARCHITECTURE_CAPTURE_SCHEMA} evidence ` +
-        `for ${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}.`,
-    );
-  }
-  assertExactKeys(operation, ["id", "version"], "Architecture capture operation");
-  if (!r.package || typeof r.package !== "object" || Array.isArray(r.package)) {
-    throw new Error("Architecture capture missing package.");
-  }
-  const pkg = r.package as Record<string, unknown>;
-  assertExactKeys(pkg, ["id", "label"], "Architecture capture package");
-  if (
-    typeof pkg.id !== "string" || !pkg.id.trim() ||
-    typeof pkg.label !== "string" || !pkg.label.trim() ||
-    pkg.label !== r.packageName
-  ) {
-    throw new Error("Architecture capture package missing id or label.");
-  }
-  if (!Array.isArray(r.partDefinitions)) {
-    throw new Error("Architecture capture missing partDefinitions.");
-  }
-  if (!r.seed || typeof r.seed !== "object" || Array.isArray(r.seed)) {
-    throw new Error("Architecture capture missing seed.");
-  }
-  const seed = r.seed as Record<string, unknown>;
-  assertExactKeys(
-    seed,
-    ["artifactId", "fingerprint", "producerRunId"],
-    "Architecture capture seed",
-  );
-  if (
-    typeof seed.artifactId !== "string" || !seed.artifactId.trim() ||
-    typeof seed.producerRunId !== "string" || !seed.producerRunId.trim() ||
-    !seed.fingerprint || typeof seed.fingerprint !== "object" ||
-    Array.isArray(seed.fingerprint) ||
-    (seed.fingerprint as Record<string, unknown>).algorithm !== "sha256" ||
-    typeof (seed.fingerprint as Record<string, unknown>).digest !== "string" ||
-    !/^[a-f0-9]{64}$/.test(
-      (seed.fingerprint as Record<string, unknown>).digest as string,
-    )
-  ) {
-    throw new Error("Architecture capture seed is missing required fields.");
-  }
-  assertExactKeys(
-    seed.fingerprint as Record<string, unknown>,
-    ["algorithm", "digest"],
-    "Architecture capture seed fingerprint",
-  );
-
-  let predecessor: ParsedArchCapture["predecessor"];
-  if (r.predecessor !== undefined) {
-    if (
-      !r.predecessor || typeof r.predecessor !== "object" ||
-      Array.isArray(r.predecessor)
-    ) {
-      throw new Error("Architecture capture predecessor is malformed.");
-    }
-    const previous = r.predecessor as Record<string, unknown>;
-    assertExactKeys(
-      previous,
-      ["artifactId", "fingerprint", "producerRunId"],
-      "Architecture capture predecessor",
-    );
-    if (
-      typeof previous.artifactId !== "string" || !previous.artifactId.trim() ||
-      typeof previous.producerRunId !== "string" || !previous.producerRunId.trim() ||
-      !isContentFingerprint(previous.fingerprint)
-    ) {
-      throw new Error("Architecture capture predecessor is malformed.");
-    }
-    assertExactKeys(
-      previous.fingerprint as unknown as Record<string, unknown>,
-      ["algorithm", "digest"],
-      "Architecture capture predecessor fingerprint",
-    );
-    predecessor = {
-      artifactId: previous.artifactId,
-      fingerprint: previous.fingerprint,
-      producerRunId: previous.producerRunId,
-    };
-  }
-
-  const semanticIds = new Set<string>([pkg.id]);
-  const partLabels = new Set<string>();
-  const partDefinitions = (r.partDefinitions as unknown[]).map((pd, index) => {
-    if (!pd || typeof pd !== "object" || Array.isArray(pd)) {
-      throw new Error(
-        `Architecture capture partDefinitions[${index}] is not an object.`,
-      );
-    }
-    const p = pd as Record<string, unknown>;
-    assertExactKeys(
-      p,
-      ["id", "kind", "label", "usages"],
-      `Architecture capture partDefinitions[${index}]`,
-    );
-    if (
-      typeof p.id !== "string" || !p.id.trim() ||
-      typeof p.label !== "string" || !p.label.trim() ||
-      p.kind !== "PartDefinition" || !Array.isArray(p.usages)
-    ) {
-      throw new Error(
-        `Architecture capture partDefinitions[${index}] is not an exact PartDefinition.`,
-      );
-    }
-    if (semanticIds.has(p.id) || partLabels.has(p.label)) {
-      throw new Error(
-        "Architecture capture repeats a PartDefinition id or label.",
-      );
-    }
-    semanticIds.add(p.id);
-    partLabels.add(p.label);
-    const usageLabels = new Set<string>();
-    const usages = (p.usages as unknown[]).map((u, ui) => {
-      if (!u || typeof u !== "object" || Array.isArray(u)) {
-        throw new Error(`partDefinitions[${index}].usages[${ui}] is not an object.`);
-      }
-      const usage = u as Record<string, unknown>;
-      assertExactKeys(
-        usage,
-        ["id", "kind", "label", "targetId", "targetKind", "targetLabel"],
-        `Architecture capture partDefinitions[${index}].usages[${ui}]`,
-      );
-      if (
-        typeof usage.id !== "string" || !usage.id.trim() ||
-        usage.kind !== "PartUsage" ||
-        typeof usage.label !== "string" || !usage.label.trim() ||
-        typeof usage.targetId !== "string" || !usage.targetId.trim() ||
-        usage.targetKind !== "PartDefinition" ||
-        typeof usage.targetLabel !== "string" || !usage.targetLabel.trim()
-      ) {
-        throw new Error(
-          `partDefinitions[${index}].usages[${ui}] is not an exact PartUsage.`,
-        );
-      }
-      if (semanticIds.has(usage.id) || usageLabels.has(usage.label)) {
-        throw new Error(
-          `partDefinitions[${index}] repeats a PartUsage id or label.`,
-        );
-      }
-      semanticIds.add(usage.id);
-      usageLabels.add(usage.label);
-      return {
-        id: usage.id,
-        kind: "PartUsage" as const,
-        label: usage.label,
-        targetId: usage.targetId,
-        targetKind: "PartDefinition" as const,
-        targetLabel: usage.targetLabel,
-      };
-    });
-    return { id: p.id, kind: "PartDefinition" as const, label: p.label, usages };
-  });
-
-  const partById = new Map(partDefinitions.map((part) => [part.id, part]));
-  for (const part of partDefinitions) {
-    for (const usage of part.usages) {
-      const target = partById.get(usage.targetId);
-      if (!target || target.label !== usage.targetLabel) {
-        throw new Error(
-          `Architecture capture PartUsage "${usage.label}" does not target its ` +
-            "exact captured PartDefinition identity.",
-        );
-      }
-    }
-  }
-  if (!partDefinitions.some((part) => part.label === r.systemName)) {
-    throw new Error(
-      `Architecture capture systemName "${r.systemName}" is not a captured PartDefinition.`,
-    );
-  }
-
-  return {
-    schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
-    operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
-    trustedRunId: r.trustedRunId,
-    packageName: r.packageName,
-    systemName: r.systemName,
-    package: { id: pkg.id, label: pkg.label },
-    partDefinitions,
-    seed: {
-      artifactId: seed.artifactId,
-      fingerprint: seed.fingerprint as ContentFingerprint,
-      producerRunId: seed.producerRunId,
-    },
-    ...(predecessor ? { predecessor } : {}),
-    insertedAt: r.insertedAt,
-  };
 }
 
 // ── Private: capture record builder ──────────────────────────────────────────

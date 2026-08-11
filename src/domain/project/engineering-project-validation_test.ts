@@ -70,6 +70,56 @@ Deno.test("EngineeringProjectSnapshot is cloned, deeply frozen and strictly vers
   );
 });
 
+Deno.test("one persisted MRTR decision cannot be scoped to two work items", async () => {
+  const invalid = await projectJson();
+  const original = invalid.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design"
+  )!;
+  const duplicate = {
+    ...structuredClone(original),
+    id: "verify-current-mechanical-design-duplicate-scope",
+  };
+  invalid.workItems.push(duplicate);
+  const phase = invalid.phases.find((item) => item.id === original.phaseId)!;
+  phase.workItemIds.push(duplicate.id);
+
+  const issues = collectEngineeringProjectIssues(invalid);
+  assertEquals(
+    issues.some((issue) =>
+      issue.code === "ambiguous_decision_scope" &&
+      issue.path === "$.workItems[6].decisionIds[0]"
+    ),
+    true,
+  );
+});
+
+Deno.test("blocker-mediated decision scope has one global work-item owner", async () => {
+  const sameOwner = await projectJson();
+  assertEquals(
+    collectEngineeringProjectIssues(sameOwner).some((issue) =>
+      issue.code === "ambiguous_decision_scope"
+    ),
+    false,
+    "a direct link and blocker link may repeat the same decision for the same work item",
+  );
+  for (
+    const scenario of [
+      "one-blocker-two-work-items",
+      "two-blockers-one-work-item-each",
+      "direct-and-blocker-different-work-items",
+    ] as const
+  ) {
+    const invalid = await projectWithAmbiguousBlockerDecisionScope(scenario);
+    assertEquals(
+      collectEngineeringProjectIssues(invalid).some((issue) =>
+        issue.code === "ambiguous_decision_scope"
+      ),
+      true,
+      scenario,
+    );
+  }
+});
+
 Deno.test("ordinary receipt issuedAt remains client audit metadata", async () => {
   const project = await projectJson();
   const previousSnapshotId = project.id;
@@ -315,6 +365,53 @@ async function projectJson(): Promise<Mutable<EngineeringProjectSnapshot>> {
   return JSON.parse(
     await Deno.readTextFile(CONFIG),
   ) as Mutable<EngineeringProjectSnapshot>;
+}
+
+async function projectWithAmbiguousBlockerDecisionScope(
+  scenario:
+    | "one-blocker-two-work-items"
+    | "two-blockers-one-work-item-each"
+    | "direct-and-blocker-different-work-items",
+): Promise<Mutable<EngineeringProjectSnapshot>> {
+  const project = await projectJson();
+  const first = project.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design"
+  )!;
+  const phase = project.phases.find((item) => item.id === first.phaseId)!;
+  const firstBlocker = project.blockers.find((item) =>
+    item.id === first.blockerIds[0]
+  )!;
+  const second = {
+    ...structuredClone(first),
+    id: "verify-current-mechanical-design-second",
+    status: "planned" as const,
+    decisionIds: [],
+    blockerIds: [] as string[],
+  };
+  project.workItems.push(second);
+  phase.workItemIds.push(second.id);
+
+  if (scenario === "one-blocker-two-work-items") {
+    first.status = "planned";
+    first.decisionIds = [];
+    second.blockerIds = [firstBlocker.id];
+    firstBlocker.workItemIds = [first.id, second.id];
+  } else if (scenario === "two-blockers-one-work-item-each") {
+    first.status = "planned";
+    first.decisionIds = [];
+    const secondBlocker = {
+      ...structuredClone(firstBlocker),
+      id: "missing-reviewed-mechanical-proof-case-second",
+      workItemIds: [second.id],
+    };
+    second.blockerIds = [secondBlocker.id];
+    project.blockers.push(secondBlocker);
+  } else {
+    first.blockerIds = [];
+    firstBlocker.workItemIds = [second.id];
+    second.blockerIds = [firstBlocker.id];
+  }
+  return project;
 }
 
 type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]

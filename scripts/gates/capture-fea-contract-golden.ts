@@ -29,6 +29,10 @@ import {
   contractCaptureSelections,
 } from "./fea-provider-smoke-inputs.ts";
 import { requireCleanCaptureForPersistence } from "./fea-contract-capture-lifecycle.ts";
+import {
+  ephemeralFeaExportCleanupScript,
+  validateEphemeralFeaExportCleanup,
+} from "./fea-build123d-cleanup.ts";
 
 const FLEET_PATH = "config/mcp-fleet.json";
 const FIXTURE_PATH =
@@ -272,26 +276,11 @@ result = part.part
       const cleanupResult = await build123dClient.callTool({
         name: "build123d_execute",
         arguments: {
-          script: [
-            "from build123d import Box",
-            "import os",
-            `path = ${JSON.stringify(exportPath)}`,
-            "removed = os.path.exists(path)",
-            "if removed: os.remove(path)",
-            "result = Box(1, 1, 1)",
-          ].join("\n"),
+          script: ephemeralFeaExportCleanupScript(exportPath),
         },
       });
-      if (
-        cleanupResult.structuredContent.schemaVersion !== "1.0" ||
-        cleanupResult.structuredContent.kind !== "execution"
-      ) {
-        cleanupFailure = new Error(
-          "build123d cleanup did not return a successful execution result.",
-        );
-      } else {
-        console.log(`Cleaned up ephemeral STEP ${exportPath}.`);
-      }
+      validateEphemeralFeaExportCleanup(cleanupResult.structuredContent);
+      console.log(`Cleaned up ephemeral STEP ${exportPath}.`);
     } catch (error) {
       console.error(
         `Warning: could not remove ${exportPath}: ${

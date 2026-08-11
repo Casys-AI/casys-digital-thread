@@ -71,10 +71,11 @@ export type ModelicaScenarioRunQuarantine = {
 };
 
 export class ModelicaScenarioOutcomeUnknownError extends Error {
-  constructor() {
+  constructor(options?: ErrorOptions) {
     super(
       "The Modelica scenario simulation outcome is unknown and will not be retried " +
         "automatically. The provider may already hold a persisted run.",
+      options,
     );
     this.name = "ModelicaScenarioOutcomeUnknownError";
   }

@@ -79,5 +79,5 @@ export function EvidenceVersionHistory({
 }
 
 function relationLabel(relation: string): string {
-  return relation.replaceAll("_", " ");
+  return relation.replaceAll("_", " ").replaceAll("-", " ");
 }

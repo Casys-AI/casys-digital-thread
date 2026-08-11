@@ -983,6 +983,7 @@ function threadSnapshot(): ThreadWorkbenchSnapshot {
       id: "height",
       label: "Height",
       source: "SysON",
+      sourceElementId: "fixture:height",
       expression: "height <= 450 mm",
       status: "unresolved",
       observationIds: [],

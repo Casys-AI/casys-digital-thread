@@ -20,6 +20,13 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import { exactRecord } from "../../domain/kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
+import type {
+  StaticStructuralCaptureToken,
+  StaticStructuralLoad,
+  StaticStructuralSolveExecution,
+  StaticStructuralSolveResult,
+  StaticStructuralSupport,
+} from "../../domain/analysis/static-structural-solver.ts";
 
 // ── Schema constant ───────────────────────────────────────────────────────────
 
@@ -44,41 +51,23 @@ export interface FeaSolverCaptureUpstreamIdentities {
   readonly stagedPath: string;
 }
 
-/** Verified, typed result of a successful `calculix_solve_static` response. */
+/** Strict wire DTO for a validated `calculix_solve_static` response. */
 export interface ParsedFeaSolverResult {
   readonly inputArtifact: {
-    /** CalculiX-private path of its staging copy inside the container. */
+    /** Provider-private path of its staging copy. */
     readonly path: string;
-    /** Original export path, verified to equal `expected.stagedPath`. */
+    /** Provider echo, verified against the exact dispatched staging path. */
     readonly sourcePath: string;
-    /** SHA-256 hex of the staged file, verified against `expected.stepDigest`. */
     readonly sha256: string;
-    /** Byte count of the staged file, verified against `expected.stepBytes`. */
     readonly bytes: number;
   };
   readonly constraints: {
-    /**
-     * Fixed selection names echoed by CalculiX, verified to equal
-     * `expected.fixedSelections` via `deterministicJson`.
-     *
-     * WHY NAMES AND NOT BOXES — the solver contract echoes which named
-     * selections it constrained, not their geometry. The boxes themselves are
-     * already attested upstream: the server derives them from the sealed proof
-     * case and sends them in the same request whose STEP digest is
-     * cross-attested. Demanding boxes back would assert an echo the provider
-     * never promised.
-     */
     readonly fixedSelections: readonly unknown[];
-    /** Loads echoed by CalculiX, verified to equal `expected.loads` via `deterministicJson`. */
     readonly loads: readonly unknown[];
   };
   readonly mesh: {
     readonly nodes: number;
     readonly elements: number;
-    /**
-     * Non-empty record of selection name → positive node count.
-     * Includes all keys returned by CalculiX (may include PART or others).
-     */
     readonly nodesPerSelection: Readonly<Record<string, number>>;
   };
   readonly metrics: {
@@ -95,6 +84,26 @@ export interface ParsedFeaSolverResult {
     };
   };
 }
+
+export interface FeaSolverResponseExpectation {
+  readonly stagedPath: string;
+  readonly stepDigest: string;
+  readonly stepBytes: number;
+  readonly fixedSelections: readonly unknown[];
+  readonly loads: readonly unknown[];
+}
+
+export interface StaticStructuralSemanticExpectation {
+  readonly inputFingerprint: ContentFingerprint;
+  readonly inputByteCount: number;
+  readonly supports: readonly StaticStructuralSupport[];
+  readonly loads: readonly StaticStructuralLoad[];
+}
+
+const exactCaptureByToken = new WeakMap<
+  StaticStructuralCaptureToken,
+  ParsedFeaSolverResult
+>();
 
 /**
  * Canonical content-addressed envelope persisted by `FileCaptureStore`.
@@ -141,13 +150,7 @@ export interface FeaSolverCaptureEnvelope {
  */
 export function parseFeaSolverResponse(
   structuredContent: unknown,
-  expected: {
-    readonly stagedPath: string;
-    readonly stepDigest: string;
-    readonly stepBytes: number;
-    readonly fixedSelections: readonly unknown[];
-    readonly loads: readonly unknown[];
-  },
+  expected: FeaSolverResponseExpectation,
 ): ParsedFeaSolverResult {
   const root = exactRecord(
     structuredContent,
@@ -224,6 +227,64 @@ export function parseFeaSolverResponse(
     mesh,
     metrics,
   };
+}
+
+/**
+ * Map the strict provider DTO to the semantic domain result while retaining an
+ * opaque handle to the exact validated record for the unchanged CAS capture.
+ */
+export function bindStaticStructuralSolveExecution(
+  parsed: ParsedFeaSolverResult,
+  expected: StaticStructuralSemanticExpectation,
+): StaticStructuralSolveExecution {
+  const captureToken = Object.freeze({}) as StaticStructuralCaptureToken;
+  exactCaptureByToken.set(captureToken, parsed);
+  const result: StaticStructuralSolveResult = {
+    inputAttestation: {
+      fingerprint: expected.inputFingerprint,
+      byteCount: expected.inputByteCount,
+    },
+    boundaryConditions: {
+      supports: expected.supports,
+      loads: expected.loads,
+    },
+    mesh: {
+      nodeCount: parsed.mesh.nodes,
+      elementCount: parsed.mesh.elements,
+    },
+    observations: {
+      maximumDisplacement: {
+        magnitude: {
+          value: parsed.metrics.maxDisplacement.value,
+          unit: parsed.metrics.maxDisplacement.unit,
+        },
+        vector: {
+          value: parsed.metrics.maxDisplacement.vectorMm,
+          unit: "mm",
+        },
+      },
+      maximumVonMisesStress: {
+        magnitude: {
+          value: parsed.metrics.maxVonMises.value,
+          unit: parsed.metrics.maxVonMises.unit,
+        },
+      },
+    },
+  };
+  return { result, captureToken };
+}
+
+/** Resolve the exact validated provider record at the capture boundary only. */
+export function exactFeaSolverResultForCapture(
+  captureToken: StaticStructuralCaptureToken,
+): ParsedFeaSolverResult {
+  const parsed = exactCaptureByToken.get(captureToken);
+  if (!parsed) {
+    throw new TypeError(
+      "Static structural capture token was not issued by the FEA capture adapter.",
+    );
+  }
+  return parsed;
 }
 
 // ── Envelope builder ──────────────────────────────────────────────────────────

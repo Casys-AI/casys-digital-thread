@@ -235,12 +235,12 @@ en donne ensuite une projection passive ; ce passage ne crée ni modèle SysON, 
 `ThreadSnapshot` technique. Aucun moteur réglementaire ne fait partie du Golden Path
 actuel.
 
-Ouvrir la page ne lance aucun solver. Les MCP Apps restent des réponses riches
-unitaires pour les agents, jamais des panneaux du produit. Le moteur de DAG YAML
+Ouvrir la page ne lance aucun solver. Les MCP Apps restent des réponses riches unitaires
+pour les agents, jamais des panneaux du produit. Le moteur de DAG YAML
 (`experiments/thread-workflow/`) est un prototype d'authoring gelé — décision revue du
 2026-08-09 : aucun code de production ne l'importe, un test d'architecture l'interdit,
-et la voie d'exécution reste les executors serveur-fixes du registre. Ports, contrats
-et frontières exacts : `docs/reference/workspace-map.md`.
+et la voie d'exécution reste les executors serveur-fixes du registre. Ports, contrats et
+frontières exacts : `docs/reference/workspace-map.md`.
 
 Le projet CM-01 suivi vit sous `config/projects/`. Il référence des IDs de snapshots
 exacts, jamais `latest`. `config/projects/baselines/` contient une capture observée r5
@@ -404,22 +404,24 @@ Puis la physique est devenue générique : le registre compte dix opérations tr
 `verify.seal-proof-case@1` scelle un `mechanical-proof-case/1.0` revu en artifact
 content-addressed — l'autorité d'exécution : catalogue serveur des sources, grammaire
 MRTR plate intégralement en clair (matériau, maillage, appuis, charges, seuils, jusqu'à
-l'union `cadSource`), tip requirements autoritatif relu depuis la capture signée,
-chaîne seed vérifiée. `verify.run-fea-static-proof@1` exécute la preuve : staging STEP
-purement content-addressed (`fea-<digest>.step` — aucun composant dérivé d'une valeur
-d'agent, même hashé), attestation croisée à trois points anti-TOCTOU, WAL à trois états
-dont `solver-recorded` embarque le texte canonique de la capture (reprise sans
-redispatch ; un CAS présent mais divergent est terminal), oracle
-`syson_constraint_evaluate` aux unités natives (SysON convertit MPa↔Pa — sondé), un
-verdict `fail` publiable avec violations nommées et actions proposées. Côté système,
-`simulate.seal-simulation-case@1` scelle le cas (kit et scénario liés par SHA-256,
-overrides explicites bornés par `modelica_kit_list`) et
-`simulate.run-modelica-scenario@1` publie observations et artefacts hashés, jamais un
-verdict : `not_evaluated` est forcé, un artifact provider de kind `verdict` est rejeté,
-le WAL `provider-run-known` embarque l'enveloppe simulate et la reprise ne fait que
-`modelica_run_get`. Aucune de ces quatre opérations n'a encore tourné en réel : les
-premiers seals (`coffee-machine-cm01-drip-tray-mechanical-v1`,
+l'union `cadSource`), tip requirements autoritatif relu depuis la capture signée, chaîne
+seed vérifiée. `verify.run-fea-static-proof@1` exécute la preuve : staging STEP purement
+content-addressed (`fea-<digest>.step` — aucun composant dérivé d'une valeur d'agent,
+même hashé), attestation croisée à trois points anti-TOCTOU, WAL à trois états dont
+`solver-recorded` embarque le texte canonique de la capture (reprise sans redispatch ;
+un CAS présent mais divergent est terminal), oracle `syson_constraint_evaluate` aux
+unités natives (SysON convertit MPa↔Pa — sondé), un verdict `fail` publiable avec
+violations nommées et actions proposées. Côté système, `simulate.seal-simulation-case@1`
+scelle le cas (kit et scénario liés par SHA-256, overrides explicites bornés par
+`modelica_kit_list`) et `simulate.run-modelica-scenario@1` publie observations et
+artefacts hashés, jamais un verdict : `not_evaluated` est forcé, un artifact provider de
+kind `verdict` est rejeté, le WAL `provider-run-known` embarque l'enveloppe simulate et
+la reprise ne fait que `modelica_run_get`. Aucune de ces quatre opérations n'a encore
+tourné en réel : les premiers seals (`coffee-machine-cm01-drip-tray-mechanical-v1`,
 `coffee-machine-cm01-thermal-nominal-v1` — ce dernier ancre son reviewBasis sur le r20
 du sujet V3) puis les premiers runs restent soumis au consentement explicite. Dette
-tracée : les tests d'intégration WAL complets du run Modelica sont différés à la gate
-d'intégration.
+tracée sur le live seulement : les tests locaux d'intégration du run Modelica passent
+par le vrai command service et le WAL fichier pour pincer la reprise
+`provider-run-known`, la quarantaine d'un acquittement malformé, l'outcome inconnu de
+transport et l'absence de redispatch ; ils ne constituent pas une exécution provider
+réelle.

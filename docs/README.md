@@ -37,6 +37,14 @@ categories deliberately answer different questions.
 - [Workspace map and local ports](reference/workspace-map.md) identifies the workflow,
   scenario-contract plan, observers, UI sources, generated bundle, harness, volumes, and
   every local endpoint.
+- [Source analysis and authority pipeline](reference/analysis-authority-pipeline.md)
+  separates native-language parsing, provider-neutral facts, human admission,
+  inspectable lowering and private provider dispatch; it also records the implemented
+  CAD and approved-brief verticals, the bounded production SysML vertical, and the exact
+  Modelica/CalculiX source-acquisition gaps.
+- [Providers, analyses, evidence and oracles](reference/provider-analysis-oracle-taxonomy.md)
+  distinguishes engines such as CalculiX, SPICE, PrusaSlicer and ERP connectors from
+  analysis families, evidence normalization, DFM rules and versioned verdict authority.
 - [Building blocks and artifact ownership](reference/building-blocks.md) maps the MCP
   packages and engineering repositories to their code, images, manifests, dashboards,
   and evidence outputs.

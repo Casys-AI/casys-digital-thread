@@ -373,6 +373,59 @@ export const GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
 };
 
 /**
+ * Exact native CAD sources captured before syntax analysis or sandbox preview.
+ *
+ * The stored record contains the unmodified source text plus its independent
+ * source-byte fingerprint and a selector (assembly or PartDefinition). Keeping
+ * this store separate from the later geometry draft makes the causal order
+ * explicit: source capture -> source analysis -> provider preview -> draft.
+ */
+export const GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "geometry-source"
+> = {
+  kind: "geometry-source",
+  directory: "state/local/geometry-source-captures",
+  uriNamespace: "geometry-source-capture",
+  label: "Geometry source",
+};
+
+/**
+ * Canonical project-brief source bytes captured before their local analysis.
+ * This store is documentary only: it does not turn a brief into an admission.
+ */
+export const BRIEF_SOURCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "brief-source-capture"
+> = {
+  kind: "brief-source-capture",
+  directory: "state/local/brief-source-captures",
+  uriNamespace: "brief-source-capture",
+  label: "Brief source",
+};
+
+/** Exact server-rendered SysML bytes and source map, captured before analysis. */
+export const SYSML_SOURCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sysml-source-capture"
+> = {
+  kind: "sysml-source-capture",
+  directory: "state/local/sysml-source-captures",
+  uriNamespace: "sysml-source-capture",
+  label: "SysML source",
+};
+
+/**
+ * Provider-neutral source-analysis bundles. These records contain inferred
+ * source-local facts only; their presence grants no execution authority.
+ */
+export const SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "source-analysis"
+> = {
+  kind: "source-analysis",
+  directory: "state/local/source-analysis-captures",
+  uriNamespace: "source-analysis-capture",
+  label: "Source analysis",
+};
+
+/**
  * Generic requirements capture store for `model.write-requirements@1`.
  *
  * Distinct from the CM-01 oracle-requirements store: this store serves the

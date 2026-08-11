@@ -9,22 +9,11 @@ import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../../domain/thread/thread-component-catalog.ts";
+export { CM01_V3_PRODUCT_STRUCTURE_IDENTITIES } from "../../domain/cm01/cm01-v3-product-structure-identities.ts";
 
 /** The bounded product whose architecture capture this projection understands. */
 export const COFFEE_MACHINE_CM01_V3_SUBJECT_ID =
   "project:coffee-machine-cm01-v3" as const;
-
-/**
- * Reviewed product-structure identities used by bounded CM-01 corrections.
- * These are workspace component ids, not provider labels or ERP identities.
- */
-export const CM01_V3_PRODUCT_STRUCTURE_IDENTITIES = Object.freeze({
-  dripTray: {
-    componentId: "cm01-v3:drip-tray",
-    provider: "syson" as const,
-    bindingKind: "part-definition" as const,
-  },
-});
 
 const CM01_V3_ARCHITECTURE_CAPTURE_SCHEMA =
   "coffee-machine-cm01-v3-architecture-capture/1.1" as const;

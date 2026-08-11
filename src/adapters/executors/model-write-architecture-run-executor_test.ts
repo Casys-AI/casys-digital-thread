@@ -29,18 +29,31 @@ import {
 import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
 import {
+  type InsertionItem,
+  parseArchitectureProposalParameters,
+} from "../../domain/platform/architecture-proposal.ts";
+import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_URI_PREFIX,
   FileCaptureStore,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+  SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
-import { FileArchitectureAttemptStore } from "../wal/file-architecture-attempt-store.ts";
+import {
+  architectureWritePlanDigest,
+  FileArchitectureAttemptStore,
+  writeArchitectureAttemptV2Fixture,
+} from "../wal/file-architecture-attempt-store.ts";
+import { RenderedArchitectureSysmlAnalyzer } from "../analyzers/rendered-architecture-sysml-analyzer.ts";
+import { SysmlSourceAnalysisCaptureService } from "../captures/sysml-source-analysis-capture.ts";
 import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-attempt-store.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
+import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 import type {
   McpToolCall,
@@ -688,6 +701,9 @@ interface ArchFixture {
   readonly seedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly archCaptures: FileCaptureStore<"architecture-capture">;
   readonly archAttempts: FileArchitectureAttemptStore;
+  readonly sysmlSourceCaptures: FileCaptureStore<"sysml-source-capture">;
+  readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
+  readonly sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly seedDecisionInputFp: ContentFingerprint;
   readonly queued: { readonly revision: number; readonly runId: string };
 }
@@ -720,6 +736,19 @@ async function queuedArchitectureFixture(
   });
   const seedAttempts = new FileSysonModelSeedAttemptStore(`${directory}/seed-attempts`);
   const archAttempts = new FileArchitectureAttemptStore(`${directory}/arch-attempts`);
+  const sysmlSourceCaptures = new FileCaptureStore({
+    ...SYSML_SOURCE_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/sysml-source-captures`,
+  });
+  const sourceAnalysisCaptures = new FileCaptureStore({
+    ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/source-analysis-captures`,
+  });
+  const sysmlSourceAnalysis = new SysmlSourceAnalysisCaptureService({
+    sourceCaptures: sysmlSourceCaptures,
+    analysisCaptures: sourceAnalysisCaptures,
+    frontend: new RenderedArchitectureSysmlAnalyzer(),
+  });
 
   let tick = 0;
   const now = () =>
@@ -767,7 +796,11 @@ async function queuedArchitectureFixture(
     new ExactThreadCompletionEvidenceValidator(snapshots),
     now,
     { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-    new ExactInitialBaselineEvidenceValidator(snapshots, baselineCaptures),
+    new ExactInitialBaselineEvidenceValidator(
+      snapshots,
+      baselineCaptures,
+      approvedBriefSourceAnalysisFixture(directory),
+    ),
   );
 
   // Publish plan with baseline work item only.
@@ -808,6 +841,7 @@ async function queuedArchitectureFixture(
     projects,
     commands,
     captures: baselineCaptures,
+    ...approvedBriefSourceAnalysisFixture(directory),
     snapshots,
     lease: new FileEngineeringProjectRunLease(`${directory}/baseline-leases`),
     now: () => "2026-08-08T12:05:00.000Z",
@@ -986,6 +1020,9 @@ async function queuedArchitectureFixture(
     seedCaptures,
     archCaptures,
     archAttempts,
+    sysmlSourceCaptures,
+    sourceAnalysisCaptures,
+    sysmlSourceAnalysis,
     seedDecisionInputFp: inputFp,
     queued: { revision: queued.revision, runId: "run:architecture" },
   };
@@ -1002,6 +1039,7 @@ function makeExecutor(
     snapshots?: ThreadSnapshotStore;
     attempts?: FileArchitectureAttemptStore;
     captures?: FileCaptureStore<"architecture-capture">;
+    sysmlSourceAnalysis?: SysmlSourceAnalysisCaptureService;
     projects?: EngineeringProjectRevisionStore;
     liveUpdates?: LiveThreadUpdateMilestoneJournal;
   },
@@ -1012,6 +1050,7 @@ function makeExecutor(
     snapshots: options.snapshots ?? fixture.snapshots,
     seedCaptures: fixture.seedCaptures,
     captures: options.captures ?? fixture.archCaptures,
+    sysmlSourceAnalysis: options.sysmlSourceAnalysis ?? fixture.sysmlSourceAnalysis,
     attempts: options.attempts ?? fixture.archAttempts,
     syson: options.syson,
     lease: new FileEngineeringProjectRunLease(
@@ -1066,6 +1105,61 @@ function executionCommand(
     expectedRevision: fixture.queued.revision,
     issuedAt: "2026-08-08T12:15:00.000Z",
     runId: fixture.queued.runId,
+  };
+}
+
+function selectorForWriteItem(item: InsertionItem, packageName: string) {
+  if (item.kind === "full-package") {
+    return { kind: "full-package" as const, packageName };
+  }
+  if (item.kind === "part-def") {
+    return {
+      kind: "part-def" as const,
+      packageName,
+      componentName: item.componentName,
+    };
+  }
+  return {
+    kind: "usage" as const,
+    packageName,
+    componentName: item.componentName,
+    usageName: item.usageName,
+    parentName: item.parentName,
+  };
+}
+
+async function currentWalInput(
+  fixture: Pick<ArchFixture, "sysmlSourceAnalysis">,
+  input: {
+    readonly runId: string;
+    readonly dispatchedAt: string;
+    readonly items?: readonly InsertionItem[];
+  },
+) {
+  const proposal = parseArchitectureProposalParameters(DRONE_PROPOSAL_PARAMS);
+  const items = input.items ?? [{ kind: "full-package" } as const];
+  const sourceAnalyses = await Promise.all(
+    items.map((item) =>
+      fixture.sysmlSourceAnalysis.capture({
+        proposal,
+        selector: selectorForWriteItem(item, proposal.packageName),
+        runId: input.runId,
+        operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+      })
+    ),
+  );
+  return {
+    projectId: PROJECT_ID,
+    runId: input.runId,
+    packageName: proposal.packageName,
+    items,
+    sourceAnalyses,
+    planDigest: await architectureWritePlanDigest({
+      packageName: proposal.packageName,
+      items,
+      sourceAnalyses,
+    }),
+    dispatchedAt: input.dispatchedAt,
   };
 }
 
@@ -1217,12 +1311,34 @@ Deno.test(
       const captureJson = JSON.parse(captureText) as Record<string, unknown>;
       assertEquals(captureJson.packageName, "DroneV4");
       assertEquals(captureJson.systemName, "DroneSystem");
+      assertEquals(captureJson.schemaVersion, "architecture-capture/3.0");
+      const sourceAnalyses = captureJson.sourceAnalyses as unknown[];
+      assertEquals(sourceAnalyses.length, 1);
+      const reopened = await fixture.sysmlSourceAnalysis.reopen(sourceAnalyses[0]);
+      const attempt = await fixture.archAttempts.readRun(
+        PROJECT_ID,
+        fixture.queued.runId,
+      );
+      assertEquals(attempt?.schemaVersion, "architecture-write-attempt/3.0");
+      assertEquals(
+        deterministicJson(
+          attempt?.schemaVersion === "architecture-write-attempt/3.0"
+            ? attempt.sourceAnalyses
+            : undefined,
+        ),
+        deterministicJson(sourceAnalyses),
+      );
 
       // At least one insert call was made.
       const insertCalls = syson.calls.filter(
         (c) => c.name === "syson_element_insert_sysml",
       );
       assertEquals(insertCalls.length >= 1, true);
+      assertEquals(
+        insertCalls[0]?.arguments?.sysml_text,
+        reopened.source.sourceText,
+        "SysON receives only the exact SysML bytes reopened from CAS.",
+      );
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -1738,7 +1854,7 @@ Deno.test(
 );
 
 Deno.test(
-  "model.write-architecture completed replay requires one exact completed v2 WAL acknowledgement",
+  "model.write-architecture completed replay requires one exact completed WAL acknowledgement",
   async () => {
     const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-wal-" });
     try {
@@ -1752,29 +1868,40 @@ Deno.test(
         candidate.id === fixture.queued.runId
       );
       assertExists(run?.startedAt);
+      const completedAttempt = await fixture.archAttempts.readRun(
+        PROJECT_ID,
+        run.id,
+      );
+      if (
+        completedAttempt?.status !== "completed" ||
+        completedAttempt.schemaVersion !== "architecture-write-attempt/3.0"
+      ) {
+        throw new Error("Expected the production execution to persist a v3 WAL.");
+      }
+      const exactWalInput = {
+        projectId: completedAttempt.projectId,
+        runId: completedAttempt.runId,
+        packageName: completedAttempt.packageName,
+        items: completedAttempt.items,
+        sourceAnalyses: completedAttempt.sourceAnalyses,
+        planDigest: completedAttempt.planDigest,
+        dispatchedAt: completedAttempt.dispatchedAt,
+      };
 
       const absent = new FileArchitectureAttemptStore(`${directory}/wal-absent`);
       const dispatched = new FileArchitectureAttemptStore(
         `${directory}/wal-dispatched`,
       );
-      await dispatched.begin({
-        projectId: PROJECT_ID,
-        runId: run.id,
-        planDigest: "d".repeat(64),
-        dispatchedAt: run.startedAt,
-      });
+      await dispatched.begin(exactWalInput);
       const wrongPackage = new FileArchitectureAttemptStore(
         `${directory}/wal-wrong-package`,
       );
-      const wrongPackageInput = {
-        projectId: PROJECT_ID,
-        runId: run.id,
-        planDigest: "e".repeat(64),
-        dispatchedAt: run.startedAt,
-      };
+      const wrongPackageInput = exactWalInput;
       await wrongPackage.begin(wrongPackageInput);
       await wrongPackage.complete({
-        ...wrongPackageInput,
+        projectId: wrongPackageInput.projectId,
+        runId: wrongPackageInput.runId,
+        planDigest: wrongPackageInput.planDigest,
         architecturePackageId: "forged-package-id",
       });
 
@@ -1980,9 +2107,25 @@ Deno.test(
       assertEquals(secondRun.evidenceRefs[0]?.id, current[0]?.id);
       assertEquals(current[0]?.inputArtifactIds.length, 2);
 
-      const insertsBeforeReplay = syson.calls.filter((call) =>
+      const captureText = await fixture.archCaptures.read(current[0]!.fingerprint);
+      assertExists(captureText);
+      const capture = JSON.parse(captureText) as {
+        sourceAnalyses: readonly unknown[];
+      };
+      const insertCalls = syson.calls.filter((call) =>
         call.name === "syson_element_insert_sysml"
-      ).length;
+      );
+      assertEquals(insertCalls.length, capture.sourceAnalyses.length);
+      for (const [index, reference] of capture.sourceAnalyses.entries()) {
+        const reopened = await fixture.sysmlSourceAnalysis.reopen(reference);
+        assertEquals(
+          insertCalls[index]?.arguments?.sysml_text,
+          reopened.source.sourceText,
+          `enrichment write ${index} must use its exact reopened CAS bytes`,
+        );
+      }
+
+      const insertsBeforeReplay = insertCalls.length;
       const replay = await executor.execute(AGENT, {
         ...command,
         expectedRevision: completed.revision,
@@ -1996,6 +2139,8 @@ Deno.test(
       const catalog = await resolveGenericProductStructureCatalog(
         resultSnapshot,
         fixture.archCaptures,
+        undefined,
+        fixture.sysmlSourceAnalysis,
       );
       assertEquals(
         catalog?.components.some((component) => component.label === "Motor"),
@@ -2376,16 +2521,30 @@ Deno.test(
         run.id === fixture.queued.runId
       );
       assertExists(claimedRun?.startedAt);
-      const persisted = {
-        projectId: PROJECT_ID,
+      const persisted = await currentWalInput(fixture, {
         runId: fixture.queued.runId,
-        planDigest: "c".repeat(64),
         dispatchedAt: claimedRun.startedAt,
-      };
+      });
       await fixture.archAttempts.begin(persisted);
       await fixture.archAttempts.complete({
-        ...persisted,
+        projectId: persisted.projectId,
+        runId: persisted.runId,
+        planDigest: persisted.planDigest,
         architecturePackageId: "arch-pkg-001",
+      });
+
+      class ReopenProbe extends SysmlSourceAnalysisCaptureService {
+        reopenCalls = 0;
+
+        override async reopen(value: unknown) {
+          this.reopenCalls++;
+          return await super.reopen(value);
+        }
+      }
+      const sourceEvidence = new ReopenProbe({
+        sourceCaptures: fixture.sysmlSourceCaptures,
+        analysisCaptures: fixture.sourceAnalysisCaptures,
+        frontend: new RenderedArchitectureSysmlAnalyzer(),
       });
 
       const syson = new InitialArchSyson();
@@ -2400,14 +2559,85 @@ Deno.test(
       });
       syson.calls.length = 0;
 
-      const result = await makeExecutor(fixture, { syson, directory }).execute(
-        AGENT,
-        command,
-      );
+      const result = await makeExecutor(fixture, {
+        syson,
+        directory,
+        sysmlSourceAnalysis: sourceEvidence,
+      }).execute(AGENT, command);
       assertEquals(
         result.agentRuns.find((run) => run.id === fixture.queued.runId)?.status,
         "completed",
       );
+      assertEquals(
+        syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
+        0,
+      );
+      assertEquals(
+        sourceEvidence.reopenCalls,
+        2,
+        "completed v3 recovery and completed-evidence replay must each reopen the sealed CAS",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture preserves historical v2 recovery without inventing source analysis",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-v2-resume-" });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const command = executionCommand(fixture);
+      const claimed = await fixture.commands.claimRun(AGENT, {
+        ...command,
+        commandId: `${command.commandId}:model-write-architecture:claim`,
+        summary: "Started the generic model-write-architecture run.",
+      });
+      const claimedRun = claimed.agentRuns.find((run) =>
+        run.id === fixture.queued.runId
+      );
+      assertExists(claimedRun?.startedAt);
+      await writeArchitectureAttemptV2Fixture(`${directory}/arch-attempts`, {
+        schemaVersion: "architecture-write-attempt/2.0",
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest: "c".repeat(64),
+        status: "completed",
+        dispatchedAt: claimedRun.startedAt,
+        result: {
+          inserted: "true",
+          architecturePackageId: "arch-pkg-001",
+        },
+      });
+
+      const syson = new InitialArchSyson();
+      await syson.callTool({
+        name: "syson_element_children",
+        arguments: {
+          editing_context_id: "editing-context-drone",
+          element_id: "root-pkg-drone",
+        },
+      });
+      syson.calls.length = 0;
+      const result = await makeExecutor(fixture, { syson, directory }).execute(
+        AGENT,
+        command,
+      );
+      const run = result.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertExists(run?.resultSnapshot);
+      const snapshot = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+      assertExists(snapshot);
+      const artifact = findArchitectureArtifact(snapshot);
+      assertExists(artifact);
+      const text = await fixture.archCaptures.read(artifact.fingerprint);
+      assertExists(text);
+      const capture = JSON.parse(text) as Record<string, unknown>;
+      assertEquals(capture.schemaVersion, "architecture-capture/2.0");
+      assertEquals(Object.hasOwn(capture, "sourceAnalyses"), false);
       assertEquals(
         syson.calls.filter((call) => call.name === "syson_element_insert_sysml").length,
         0,
@@ -2424,15 +2654,25 @@ Deno.test(
     const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-package-pin-" });
     try {
       const fixture = await queuedArchitectureFixture(directory);
-      const persisted = {
-        projectId: PROJECT_ID,
+      const command = executionCommand(fixture);
+      const claimed = await fixture.commands.claimRun(AGENT, {
+        ...command,
+        commandId: `${command.commandId}:model-write-architecture:claim`,
+        summary: "Started the generic model-write-architecture run.",
+      });
+      const claimedRun = claimed.agentRuns.find((run) =>
+        run.id === fixture.queued.runId
+      );
+      assertExists(claimedRun?.startedAt);
+      const persisted = await currentWalInput(fixture, {
         runId: fixture.queued.runId,
-        planDigest: "a".repeat(64),
-        dispatchedAt: "2026-08-08T12:15:00.000Z",
-      };
+        dispatchedAt: claimedRun.startedAt,
+      });
       await fixture.archAttempts.begin(persisted);
       await fixture.archAttempts.complete({
-        ...persisted,
+        projectId: persisted.projectId,
+        runId: persisted.runId,
+        planDigest: persisted.planDigest,
         architecturePackageId: "arch-pkg-acknowledged-A",
       });
 
@@ -2461,7 +2701,7 @@ Deno.test(
         () =>
           makeExecutor(fixture, { syson, directory, snapshots }).execute(
             AGENT,
-            executionCommand(fixture),
+            command,
           ),
         EngineeringProjectCommandError,
         "does not match the exact architecturePackageId",
@@ -2495,17 +2735,91 @@ Deno.test(
 );
 
 Deno.test(
+  "model.write-architecture rejects a self-consistent current WAL rendered from another proposal before SysON",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-wal-alternative-proposal-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const command = executionCommand(fixture);
+      const claimed = await fixture.commands.claimRun(AGENT, {
+        ...command,
+        commandId: `${command.commandId}:model-write-architecture:claim`,
+        summary: "Started the generic model-write-architecture run.",
+      });
+      const run = claimed.agentRuns.find((candidate) =>
+        candidate.id === fixture.queued.runId
+      );
+      assertExists(run?.startedAt);
+      const alternative = parseArchitectureProposalParameters(
+        DRONE_PROPOSAL_PARAMS.map((parameter) =>
+          parameter.key === "component.wing.name"
+            ? { ...parameter, value: "AlternativeWing" }
+            : parameter
+        ),
+      );
+      const items = [{ kind: "full-package" as const }];
+      const sourceAnalyses = await Promise.all(
+        items.map((item) =>
+          fixture.sysmlSourceAnalysis.capture({
+            proposal: alternative,
+            selector: selectorForWriteItem(item, alternative.packageName),
+            runId: fixture.queued.runId,
+            operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+          })
+        ),
+      );
+      const planDigest = await architectureWritePlanDigest({
+        packageName: alternative.packageName,
+        items,
+        sourceAnalyses,
+      });
+      await fixture.archAttempts.begin({
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        packageName: alternative.packageName,
+        items,
+        sourceAnalyses,
+        planDigest,
+        dispatchedAt: run.startedAt,
+      });
+      await fixture.archAttempts.complete({
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest,
+        architecturePackageId: "arch-pkg-alternative",
+      });
+
+      const syson = new InitialArchSyson();
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson, directory }).execute(
+            AGENT,
+            command,
+          ),
+        EngineeringProjectCommandError,
+        "does not exactly match the signed proposal render",
+      );
+      assertEquals(syson.calls, []);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   "model.write-architecture never preflights or inserts after a dispatched WAL under another plan digest",
   async () => {
     const directory = await Deno.makeTempDir({ prefix: "casys-arch-wal-unknown-" });
     try {
       const fixture = await queuedArchitectureFixture(directory);
-      await fixture.archAttempts.begin({
-        projectId: PROJECT_ID,
-        runId: fixture.queued.runId,
-        planDigest: "d".repeat(64),
-        dispatchedAt: "2026-08-08T12:15:00.000Z",
-      });
+      await fixture.archAttempts.begin(
+        await currentWalInput(fixture, {
+          runId: fixture.queued.runId,
+          dispatchedAt: "2026-08-08T12:15:00.000Z",
+        }),
+      );
       const syson = new InitialArchSyson();
       await assertRejects(
         () =>
@@ -2519,6 +2833,90 @@ Deno.test(
       assertEquals(syson.calls.length, 0);
     } finally {
       await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture rejects reordered v3 WAL items or selectors before CAS reopen and provider access",
+  async () => {
+    class ReopenProbe extends SysmlSourceAnalysisCaptureService {
+      reopenCalls = 0;
+
+      override async reopen(value: unknown) {
+        this.reopenCalls++;
+        return await super.reopen(value);
+      }
+    }
+    const items = [
+      { kind: "part-def", componentName: "Wing" },
+      {
+        kind: "usage",
+        componentName: "Wing",
+        usageName: "wing",
+        parentName: "DroneSystem",
+      },
+    ] as const;
+    for (const field of ["items", "sourceAnalyses"] as const) {
+      const directory = await Deno.makeTempDir({
+        prefix: `casys-arch-wal-${field}-tamper-`,
+      });
+      try {
+        const fixture = await queuedArchitectureFixture(directory);
+        const persisted = await currentWalInput(fixture, {
+          runId: fixture.queued.runId,
+          dispatchedAt: "2026-08-08T12:15:00.000Z",
+          items,
+        });
+        await fixture.archAttempts.begin(persisted);
+        await fixture.archAttempts.complete({
+          projectId: persisted.projectId,
+          runId: persisted.runId,
+          planDigest: persisted.planDigest,
+          architecturePackageId: "arch-pkg-001",
+        });
+
+        const [entry] = await Array.fromAsync(
+          Deno.readDir(`${directory}/arch-attempts`),
+        );
+        const path = `${directory}/arch-attempts/${entry!.name}`;
+        const record = JSON.parse(await Deno.readTextFile(path)) as Record<
+          string,
+          unknown
+        >;
+        record[field] = [
+          ...(record[field] as readonly unknown[]),
+        ].reverse();
+        await Deno.writeTextFile(path, `${deterministicJson(record)}\n`);
+
+        const sourceEvidence = new ReopenProbe({
+          sourceCaptures: fixture.sysmlSourceCaptures,
+          analysisCaptures: fixture.sourceAnalysisCaptures,
+          frontend: new RenderedArchitectureSysmlAnalyzer(),
+        });
+        const syson = new InitialArchSyson();
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, {
+              syson,
+              directory,
+              sysmlSourceAnalysis: sourceEvidence,
+            }).execute(
+              AGENT,
+              executionCommand(fixture),
+            ),
+          EngineeringProjectCommandError,
+          "outcome is unknown",
+        );
+        assertEquals(
+          syson.calls,
+          [],
+          `${field} tamper must stop before any provider access`,
+        );
+        assertEquals(sourceEvidence.reopenCalls, 0);
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
     }
   },
 );
@@ -2747,7 +3145,11 @@ Deno.test(
           new ExactThreadCompletionEvidenceValidator(snapshots2),
           now2,
           { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
-          new ExactInitialBaselineEvidenceValidator(snapshots2, baselineCaptures2),
+          new ExactInitialBaselineEvidenceValidator(
+            snapshots2,
+            baselineCaptures2,
+            approvedBriefSourceAnalysisFixture(directory2),
+          ),
         );
 
         proj2 = await commands2.publishPlan(AGENT, {
@@ -2779,6 +3181,7 @@ Deno.test(
           projects: projects2,
           commands: commands2,
           captures: baselineCaptures2,
+          ...approvedBriefSourceAnalysisFixture(directory2),
           snapshots: snapshots2,
           lease: new FileEngineeringProjectRunLease(`${directory2}/baseline-leases`),
           now: () => "2026-08-08T12:05:00.000Z",
@@ -2868,6 +3271,17 @@ Deno.test(
           snapshots: snapshots2,
           seedCaptures: seedCaptures2,
           captures: archCaptures2,
+          sysmlSourceAnalysis: new SysmlSourceAnalysisCaptureService({
+            sourceCaptures: new FileCaptureStore({
+              ...SYSML_SOURCE_CAPTURE_DESCRIPTOR,
+              directory: `${directory2}/sysml-source-captures`,
+            }),
+            analysisCaptures: new FileCaptureStore({
+              ...SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+              directory: `${directory2}/source-analysis-captures`,
+            }),
+            frontend: new RenderedArchitectureSysmlAnalyzer(),
+          }),
           attempts: archAttempts2,
           syson: {
             callTool: () => Promise.reject(new Error("must not call provider")),

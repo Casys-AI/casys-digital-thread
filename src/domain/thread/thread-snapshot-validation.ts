@@ -16,6 +16,10 @@ import type {
   ThreadViolation,
   TracedRequirement,
 } from "./thread-snapshot.ts";
+import {
+  type AnalysisGraph,
+  validateAnalysisGraph,
+} from "../analysis/analysis-graph.ts";
 
 export interface ThreadSnapshotValidationIssue {
   code: string;
@@ -64,7 +68,7 @@ export function collectThreadSnapshotIssues(
   const root = record(value, "$", issues);
   if (!root) return issues;
 
-  literal(root.schemaVersion, "1.0", "$.schemaVersion", issues);
+  oneOf(root.schemaVersion, ["1.0", "1.1"], "$.schemaVersion", issues);
   nonEmptyString(root.id, "$.id", issues);
   positiveInteger(root.revision, "$.revision", issues);
   isoDateTime(root.generatedAt, "$.generatedAt", issues);
@@ -88,11 +92,55 @@ export function collectThreadSnapshotIssues(
   validateArray(root.violations, "$.violations", issues, validateViolation);
   validateArray(root.provenance, "$.provenance", issues, validateProvenanceLink);
   validateArray(root.proposedActions, "$.proposedActions", issues, validateAction);
+  validateAnalysisGraphForSchema(root, issues);
 
   if (issues.length === 0) {
     validateInvariants(value as ThreadSnapshot, issues);
   }
   return issues;
+}
+
+/**
+ * `analysisGraph` is intentionally version-gated rather than treated as an
+ * optional convenience field.  A 1.0 record cannot silently gain semantic
+ * relations, and a 1.1 record cannot pretend that no graph was recorded.
+ */
+function validateAnalysisGraphForSchema(
+  root: Record<string, unknown>,
+  issues: ThreadSnapshotValidationIssue[],
+): void {
+  const hasAnalysisGraph = Object.hasOwn(root, "analysisGraph");
+  if (root.schemaVersion === "1.0") {
+    if (hasAnalysisGraph) {
+      issue(
+        issues,
+        "unsupported_analysis_graph",
+        "$.analysisGraph",
+        "is not supported by ThreadSnapshot schema 1.0",
+      );
+    }
+    return;
+  }
+  if (root.schemaVersion !== "1.1") return;
+  if (!hasAnalysisGraph) {
+    issue(
+      issues,
+      "missing_analysis_graph",
+      "$.analysisGraph",
+      "is required by ThreadSnapshot schema 1.1",
+    );
+    return;
+  }
+  try {
+    validateAnalysisGraph(root.analysisGraph);
+  } catch (error) {
+    issue(
+      issues,
+      "invalid_analysis_graph",
+      "$.analysisGraph",
+      error instanceof Error ? error.message : "is invalid",
+    );
+  }
 }
 
 function validateSubject(
@@ -484,6 +532,10 @@ function validateInvariants(
   const actions = indexed(snapshot.proposedActions, "$.proposedActions", issues);
   indexed(snapshot.provenance, "$.provenance", issues);
 
+  if (snapshot.analysisGraph) {
+    checkAnalysisGraphEvidence(snapshot.analysisGraph, artifacts, issues);
+  }
+
   if (snapshot.previous && snapshot.previous.revision >= snapshot.revision) {
     issue(
       issues,
@@ -691,6 +743,44 @@ function validateInvariants(
       `must be ${computedFreshness} to summarize its entities`,
     );
   }
+}
+
+/**
+ * Semantic assertions may cite only bytes retained by this immutable snapshot.
+ * The pair is checked exactly: an artifact id alone is not provenance, and a
+ * matching digest under another id cannot be substituted.
+ */
+function checkAnalysisGraphEvidence(
+  graph: AnalysisGraph,
+  artifacts: Map<string, ThreadArtifact>,
+  issues: ThreadSnapshotValidationIssue[],
+): void {
+  graph.relations.forEach((relation, relationIndex) => {
+    relation.assertion.evidence.forEach((evidence, evidenceIndex) => {
+      const path =
+        `$.analysisGraph.relations[${relationIndex}].assertion.evidence[${evidenceIndex}]`;
+      const artifact = artifacts.get(evidence.id);
+      if (!artifact) {
+        issue(
+          issues,
+          "missing_reference",
+          `${path}.id`,
+          "does not reference an artifact in this snapshot",
+        );
+        return;
+      }
+      if (
+        fingerprintKey(artifact.fingerprint) !== fingerprintKey(evidence.fingerprint)
+      ) {
+        issue(
+          issues,
+          "analysis_evidence_fingerprint_mismatch",
+          `${path}.fingerprint`,
+          "must exactly equal the referenced artifact fingerprint",
+        );
+      }
+    });
+  });
 }
 
 function checkArtifact(

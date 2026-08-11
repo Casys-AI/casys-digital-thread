@@ -1,10 +1,17 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import { validateSensitivityStudyCase } from "../../../domain/analysis/sensitivity-study.ts";
 import {
   createThreadSnapshot,
   validateThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot-validation.ts";
-import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
+import type {
+  EngineeringAgentRun,
+  EngineeringProjectSnapshot,
+} from "../../../domain/project/engineering-project.ts";
 import { FileSensitivityRunAttemptStore } from "../../wal/file-sensitivity-run-attempt-store.ts";
 import {
   COFFEE_MACHINE_CM01_V3_SENSITIVITY_OPERATION,
@@ -12,10 +19,13 @@ import {
   materializeSensitivitySnapshot,
   parseBuild123dSensitivityExport,
   parseCalculixSensitivitySolve,
+  readValidatedSensitivityCapture,
 } from "./coffee-machine-cm01-v3-sensitivity-run-executor.ts";
+import { FileCaptureStore } from "../../captures/file-capture-store.ts";
 
 const AT = "2026-08-04T00:00:00.000Z";
 const BASE_SHA = "a".repeat(64);
+const CASE_FP = { algorithm: "sha256" as const, digest: "d".repeat(64) };
 const CAPTURE_FP = { algorithm: "sha256" as const, digest: "c".repeat(64) };
 
 // ── Test 1 ────────────────────────────────────────────────────────────────────
@@ -35,15 +45,39 @@ Deno.test(
       baseThreadSnapshot(),
       "run-sensitivity-happy",
       validCase(),
+      CASE_FP,
       CAPTURE_FP,
       "casys://sensitivity-study-capture/sha256/" + "c".repeat(64),
-      BASE_SHA,
-      "b".repeat(64),
       baseMetrics,
       steppedMetrics,
       AT,
     );
     validateThreadSnapshot(snapshot);
+    assertEquals(snapshot.schemaVersion, "1.1");
+    const graph = snapshot.analysisGraph;
+    if (!graph) throw new Error("Sensitivity snapshot must carry its analysis graph.");
+    assertEquals(graph.relations.length, validCase().metrics.length);
+    assertEquals(graph.nodes.some((node) => node.kind === "component"), false);
+    const displacement = graph.relations.find((relation) =>
+      relation.assertion.to.id.endsWith(":assembly_max_displacement")
+    )?.assertion;
+    assertEquals(displacement?.measurement, {
+      method: "forward-finite-difference",
+      basePoint: { value: 30, unit: "mm" },
+      perturbationStep: { value: 1, unit: "mm" },
+      responseAtBase: { value: 0.1, unit: "mm" },
+      responseAtPerturbed: { value: 0.2, unit: "mm" },
+      derivative: { value: 0.1, unit: "mm/mm" },
+    });
+    assertEquals(displacement?.evidence.map((evidence) => evidence.id), [
+      "drip-tray-sensitivity-" + "c".repeat(64) + "-capture",
+    ]);
+    const sensitivityArtifacts = snapshot.artifacts.filter((artifact) =>
+      artifact.id.startsWith("drip-tray-sensitivity-")
+    );
+    assertEquals(sensitivityArtifacts.map((artifact) => artifact.kind), ["document"]);
+    assertEquals(sensitivityArtifacts[0]?.uri?.includes("#"), false);
+    assertEquals(snapshot.consumptions, []);
   },
 );
 
@@ -67,10 +101,9 @@ Deno.test(
       baseThreadSnapshot(),
       "run-sensitivity-deriv",
       validCase(),
+      CASE_FP,
       CAPTURE_FP,
       "casys://sensitivity-study-capture/sha256/" + "c".repeat(64),
-      BASE_SHA,
-      "b".repeat(64),
       baseMetrics,
       steppedMetrics,
       AT,
@@ -87,6 +120,58 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "two sensitivity captures for one case merge stable semantic nodes with parallel evidence occurrences",
+  () => {
+    const baseMetrics = new Map([
+      ["assembly_max_displacement", { value: 0.1, unit: "mm" }],
+      ["assembly_max_von_mises", { value: 0.5, unit: "MPa" }],
+    ]);
+    const steppedMetrics = new Map([
+      ["assembly_max_displacement", { value: 0.2, unit: "mm" }],
+      ["assembly_max_von_mises", { value: 0.6, unit: "MPa" }],
+    ]);
+    const first = materializeSensitivitySnapshot(
+      baseThreadSnapshot(),
+      "run-sensitivity-seal-1",
+      validCase(),
+      CASE_FP,
+      CAPTURE_FP,
+      "casys://sensitivity-study-capture/sha256/" + "c".repeat(64),
+      baseMetrics,
+      steppedMetrics,
+      AT,
+    );
+    const secondFingerprint = {
+      algorithm: "sha256" as const,
+      digest: "e".repeat(64),
+    };
+    const second = materializeSensitivitySnapshot(
+      first.snapshot,
+      "run-sensitivity-seal-2",
+      validCase(),
+      CASE_FP,
+      secondFingerprint,
+      "casys://sensitivity-study-capture/sha256/" + "e".repeat(64),
+      baseMetrics,
+      steppedMetrics,
+      "2026-08-04T00:02:00.000Z",
+    );
+
+    validateThreadSnapshot(second.snapshot);
+    assertEquals(second.snapshot.analysisGraph?.nodes.length, 3);
+    assertEquals(second.snapshot.analysisGraph?.relations.length, 4);
+    assertEquals(
+      new Set(
+        second.snapshot.analysisGraph?.relations.map((relation) =>
+          relation.assertion.evidence[0]?.fingerprint.digest
+        ),
+      ),
+      new Set([CAPTURE_FP.digest, secondFingerprint.digest]),
+    );
+  },
+);
+
 // ── Test 3 ────────────────────────────────────────────────────────────────────
 
 Deno.test(
@@ -96,6 +181,10 @@ Deno.test(
     try {
       const store = new FileSensitivityRunAttemptStore(dir);
       const caseDigest = "d".repeat(64);
+      const canonicalCaptureText = deterministicJson({ test: "capture" });
+      const captureFingerprint = await sha256Fingerprint(
+        JSON.parse(canonicalCaptureText),
+      );
       // First begin() → dispatched (providers would be called by the executor).
       const first = await store.begin({
         projectId: "coffee-machine-cm01-v3",
@@ -104,25 +193,264 @@ Deno.test(
         dispatchedAt: AT,
       });
       assertEquals(first.action, "dispatch");
-      // Simulate a completed capture.
+      // Simulate a durably recorded then completed capture.
+      await store.recordCapture({
+        projectId: "coffee-machine-cm01-v3",
+        runId: "run-wal-skip",
+        caseDigest,
+        dispatchedAt: AT,
+        recordedAt: "2026-08-04T00:00:30.000Z",
+        captureFingerprint,
+        canonicalCaptureText,
+      });
       await store.complete({
         projectId: "coffee-machine-cm01-v3",
         runId: "run-wal-skip",
         caseDigest,
         dispatchedAt: AT,
         completedAt: "2026-08-04T00:01:00.000Z",
-        captureFingerprint: CAPTURE_FP,
+        captureFingerprint,
       });
       // Second begin() → completed; the executor reads the CAS and skips providers.
       const second = await store.begin({
         projectId: "coffee-machine-cm01-v3",
         runId: "run-wal-skip",
         caseDigest,
-        dispatchedAt: "2026-08-04T01:00:00.000Z",
+        dispatchedAt: AT,
       });
-      assertEquals(second, { action: "completed", captureFingerprint: CAPTURE_FP });
+      assertEquals(second, {
+        action: "completed",
+        captureFingerprint,
+        canonicalCaptureText,
+      });
     } finally {
       await Deno.remove(dir, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "completed WAL replay rejects CAS captures substituted from another case or another run",
+  async () => {
+    const current = validCase();
+    const currentDigest = "d".repeat(64);
+    const currentRunId = "run-current";
+    const alternate = validateSensitivityStudyCase({
+      ...current,
+      id: "coffee-machine-cm01-v3-drip-tray-size-z-sensitivity-alternate",
+    });
+    const alternateDigest = "e".repeat(64);
+    const foreignCaseCapture = captureFor(alternate, alternateDigest, "run-other");
+    const foreignRunCapture = captureFor(current, currentDigest, "run-other");
+    const legacyCapture = {
+      ...captureFor(current, currentDigest, currentRunId),
+      schemaVersion: "sensitivity-study-capture/1.0" as const,
+    };
+    delete (legacyCapture as { trustedRunId?: string }).trustedRunId;
+    const undeclaredMetricCapture = structuredClone(
+      captureFor(current, currentDigest, currentRunId),
+    );
+    (undeclaredMetricCapture.base.metrics as Record<
+      string,
+      { value: number; unit: string }
+    >).undeclared_metric = { value: 42, unit: "mm" };
+    const directory = await Deno.makeTempDir();
+    try {
+      const captures = new FileCaptureStore({
+        kind: "sensitivity-study" as const,
+        directory,
+        uriNamespace: "test-sensitivity-study",
+        label: "Test sensitivity study",
+      });
+      const foreignCaseFingerprint = await sha256Fingerprint(foreignCaseCapture);
+      const foreignRunFingerprint = await sha256Fingerprint(foreignRunCapture);
+      const legacyFingerprint = await sha256Fingerprint(legacyCapture);
+      const undeclaredMetricFingerprint = await sha256Fingerprint(
+        undeclaredMetricCapture,
+      );
+      await captures.save(
+        foreignCaseFingerprint,
+        deterministicJson(foreignCaseCapture),
+      );
+      await captures.save(
+        foreignRunFingerprint,
+        deterministicJson(foreignRunCapture),
+      );
+      await captures.save(legacyFingerprint, deterministicJson(legacyCapture));
+      await captures.save(
+        undeclaredMetricFingerprint,
+        deterministicJson(undeclaredMetricCapture),
+      );
+
+      // Both CAS entries are exact and internally valid for their own seals.
+      await readValidatedSensitivityCapture(
+        captures,
+        foreignCaseFingerprint,
+        alternate,
+        alternateDigest,
+        "run-other",
+        AT,
+      );
+      await readValidatedSensitivityCapture(
+        captures,
+        foreignRunFingerprint,
+        current,
+        currentDigest,
+        "run-other",
+        AT,
+      );
+
+      await assertRejects(
+        () =>
+          readValidatedSensitivityCapture(
+            captures,
+            foreignCaseFingerprint,
+            current,
+            currentDigest,
+            currentRunId,
+            AT,
+          ),
+        Error,
+        "exact reviewed case, run, and start instant",
+      );
+      await assertRejects(
+        () =>
+          readValidatedSensitivityCapture(
+            captures,
+            legacyFingerprint,
+            current,
+            currentDigest,
+            currentRunId,
+            AT,
+          ),
+        Error,
+        "has no sealed run identity and cannot be replayed",
+      );
+      await assertRejects(
+        () =>
+          readValidatedSensitivityCapture(
+            captures,
+            undeclaredMetricFingerprint,
+            current,
+            currentDigest,
+            currentRunId,
+            AT,
+          ),
+        Error,
+        "undeclared_metric",
+      );
+      await assertRejects(
+        () =>
+          readValidatedSensitivityCapture(
+            captures,
+            foreignRunFingerprint,
+            current,
+            currentDigest,
+            currentRunId,
+            AT,
+          ),
+        Error,
+        "exact reviewed case, run, and start instant",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "validated sensitivity capture rejects pretty JSON despite a matching raw-byte fingerprint",
+  async () => {
+    const sensitivityCase = validCase();
+    const caseDigest = "d".repeat(64);
+    const record = captureFor(sensitivityCase, caseDigest, "run-pretty-json");
+    const prettyText = JSON.stringify(record, null, 2);
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(prettyText),
+    );
+    const fingerprint = {
+      algorithm: "sha256" as const,
+      digest: [...new Uint8Array(digest)].map((byte) =>
+        byte.toString(16).padStart(2, "0")
+      ).join(""),
+    };
+    const directory = await Deno.makeTempDir();
+    try {
+      const captures = new FileCaptureStore({
+        kind: "sensitivity-study" as const,
+        directory,
+        uriNamespace: "test-sensitivity-study",
+        label: "Test sensitivity study",
+      });
+      await captures.save(fingerprint, prettyText);
+      await assertRejects(
+        () =>
+          readValidatedSensitivityCapture(
+            captures,
+            fingerprint,
+            sensitivityCase,
+            caseDigest,
+            "run-pretty-json",
+            AT,
+          ),
+        Error,
+        "not canonical deterministic JSON",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "a crash after CAS readback and capture-recorded resumes without provider redispatch",
+  async () => {
+    const directory = await Deno.makeTempDir();
+    try {
+      const attempts = new CompleteOnceBeforeWriteSensitivityStore(
+        `${directory}/attempts`,
+      );
+      const captures = new CountingSensitivityCaptureStore(
+        `${directory}/captures`,
+      );
+      const providers = sensitivityProviders();
+      const executor = new CoffeeMachineCm01V3SensitivityRunExecutor({
+        ...minimalStubs(),
+        attempts,
+        captures,
+        build123d: providers.build123d,
+        calculix: providers.calculix,
+      });
+      const project = minimalQueuedProject("run-crash-recovery");
+      const run = project.agentRuns[0]!;
+      const caseDigest = (await sha256Fingerprint(
+        JSON.parse(deterministicJson(validCase())),
+      )).digest;
+      const captureOnce = (executor as unknown as {
+        captureOnce(
+          project: EngineeringProjectSnapshot,
+          run: EngineeringAgentRun,
+          dispatchedAt: string,
+          caseDigest: string,
+        ): Promise<{ record: { trustedRunId: string } }>;
+      }).captureOnce.bind(executor);
+
+      await assertRejects(
+        () => captureOnce(project, run, AT, caseDigest),
+        Error,
+        "capture is durable in CAS and WAL",
+      );
+      assertEquals(providers.calls, { build123d: 2, calculix: 2 });
+      const readbacksAfterFreshPath = captures.readCount;
+      assertEquals(readbacksAfterFreshPath >= 1, true);
+
+      const recovered = await captureOnce(project, run, AT, caseDigest);
+      assertEquals(recovered.record.trustedRunId, run.id);
+      assertEquals(providers.calls, { build123d: 2, calculix: 2 });
+      assertEquals(captures.readCount > readbacksAfterFreshPath, true);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
     }
   },
 );
@@ -382,6 +710,143 @@ function divergentCase() {
       limitations: ["Test limitation."],
     },
   });
+}
+
+function captureFor(
+  sensitivityCase: ReturnType<typeof validCase>,
+  caseDigest: string,
+  trustedRunId: string,
+) {
+  return {
+    schemaVersion: "sensitivity-study-capture/1.1" as const,
+    caseId: sensitivityCase.id,
+    caseRevision: sensitivityCase.revision,
+    caseDigest,
+    trustedRunId,
+    capturedAt: AT,
+    base: {
+      heightMm: sensitivityCase.baseValue.value,
+      exportName: "coffee-machine-cm01-v3-drip-tray-sensitivity-base",
+      stepSha256: BASE_SHA,
+      metrics: {
+        assembly_max_displacement: { value: 0.1, unit: "mm" },
+        assembly_max_von_mises: { value: 0.5, unit: "MPa" },
+      },
+    },
+    stepped: {
+      heightMm: sensitivityCase.baseValue.value + sensitivityCase.step.value,
+      exportName: "coffee-machine-cm01-v3-drip-tray-sensitivity-stepped",
+      stepSha256: "b".repeat(64),
+      metrics: {
+        assembly_max_displacement: { value: 0.2, unit: "mm" },
+        assembly_max_von_mises: { value: 0.6, unit: "MPa" },
+      },
+    },
+    derivatives: [
+      { metric: "assembly_max_displacement", value: 0.1, unit: "mm/mm" },
+      {
+        metric: "assembly_max_von_mises",
+        value: 0.09999999999999998,
+        unit: "MPa/mm",
+      },
+    ],
+    domain: {
+      approximationOrder: sensitivityCase.domain.approximationOrder,
+      base: sensitivityCase.baseValue.value,
+      step: sensitivityCase.step.value,
+      parameterUnit: sensitivityCase.baseValue.unit,
+      localValidityNote: sensitivityCase.domain.localValidityNote,
+      limitations: [...sensitivityCase.domain.limitations],
+    },
+  };
+}
+
+class CompleteOnceBeforeWriteSensitivityStore extends FileSensitivityRunAttemptStore {
+  #mustFail = true;
+
+  override complete(
+    input: Parameters<FileSensitivityRunAttemptStore["complete"]>[0],
+  ): Promise<void> {
+    if (this.#mustFail) {
+      this.#mustFail = false;
+      return Promise.reject(new Error("simulated crash before WAL completion"));
+    }
+    return super.complete(input);
+  }
+}
+
+class CountingSensitivityCaptureStore extends FileCaptureStore<"sensitivity-study"> {
+  readCount = 0;
+
+  constructor(directory: string) {
+    super({
+      kind: "sensitivity-study",
+      directory,
+      uriNamespace: "test-sensitivity-study",
+      label: "Test sensitivity study",
+    });
+  }
+
+  override read(
+    fingerprint: Parameters<FileCaptureStore<"sensitivity-study">["read"]>[0],
+  ): ReturnType<FileCaptureStore<"sensitivity-study">["read"]> {
+    this.readCount++;
+    return super.read(fingerprint);
+  }
+}
+
+function sensitivityProviders() {
+  const calls = { build123d: 0, calculix: 0 };
+  const build123d = {
+    callTool(call: { arguments?: Readonly<Record<string, unknown>> }) {
+      calls.build123d++;
+      const name = String(call.arguments?.name);
+      const digest = name.endsWith("-base") ? "a".repeat(64) : "b".repeat(64);
+      return Promise.resolve({
+        structuredContent: {
+          schemaVersion: "1.0",
+          kind: "export",
+          files: [{
+            format: "step",
+            path: `/exports/${name}.step`,
+            bytes: 12345,
+            sha256: digest,
+          }],
+        },
+        text: "",
+      });
+    },
+    callToolTextResult(): Promise<never> {
+      return Promise.reject(new Error("unused"));
+    },
+  };
+  const calculix = {
+    callTool(call: { arguments?: Readonly<Record<string, unknown>> }) {
+      calls.calculix++;
+      const sourcePath = String(call.arguments?.step_path);
+      const isBase = sourcePath.includes("sensitivity-base");
+      return Promise.resolve({
+        structuredContent: {
+          schemaVersion: "2.0",
+          kind: "static-solve",
+          inputArtifact: {
+            sourcePath,
+            sha256: String(call.arguments?.expected_step_sha256),
+            bytes: 12345,
+          },
+          metrics: {
+            maxDisplacement: { value: isBase ? 0.1 : 0.2, unit: "mm" },
+            maxVonMises: { value: isBase ? 0.5 : 0.6, unit: "MPa" },
+          },
+        },
+        text: "",
+      });
+    },
+    callToolTextResult(): Promise<never> {
+      return Promise.reject(new Error("unused"));
+    },
+  };
+  return { calls, build123d, calculix };
 }
 
 function baseThreadSnapshot() {

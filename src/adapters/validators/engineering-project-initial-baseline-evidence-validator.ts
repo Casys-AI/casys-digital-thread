@@ -7,6 +7,10 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
+import { exactRecord } from "../../domain/kernel/case-validation.ts";
+import { buildBriefAnalysisGraph } from "../../domain/analysis/brief-analysis-graph.ts";
+import type { SourceAnalysisBundle } from "../../domain/analysis/source-analysis.ts";
+import type { SourceAnalysisFrontendRegistry } from "../../domain/analysis/source-analysis-frontend-registry.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringOperationRef,
@@ -19,9 +23,16 @@ import type {
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import type { ExactThreadSnapshotReader } from "../stores/engineering-thread-snapshot-resolver.ts";
+import { requireBriefSourceAnalysis } from "../captures/brief-source-analysis-capture.ts";
 
 export interface ApprovedBriefBaselineCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+}
+
+export interface BriefSourceAnalysisCaptureReaders {
+  readonly sourceCaptures: ApprovedBriefBaselineCaptureReader;
+  readonly analysisCaptures: ApprovedBriefBaselineCaptureReader;
+  readonly frontends: SourceAnalysisFrontendRegistry;
 }
 
 /**
@@ -37,6 +48,7 @@ export class ExactInitialBaselineEvidenceValidator
   constructor(
     private readonly snapshots: ExactThreadSnapshotReader,
     private readonly captures: ApprovedBriefBaselineCaptureReader,
+    private readonly briefSourceAnalysis?: BriefSourceAnalysisCaptureReaders,
   ) {}
 
   async validateInitial(
@@ -62,7 +74,7 @@ export class ExactInitialBaselineEvidenceValidator
       );
     }
     const capture = await parseCanonicalCapture(captureText, document.fingerprint);
-    assertApprovedBriefCaptureMatchesRun(
+    const sourceAnalysisReference = assertApprovedBriefCaptureMatchesRun(
       capture,
       basis,
       operation,
@@ -70,6 +82,102 @@ export class ExactInitialBaselineEvidenceValidator
       document,
       runId,
     );
+    if (sourceAnalysisReference !== undefined) {
+      await this.assertExactBriefSourceAnalysis(
+        sourceAnalysisReference,
+        capture,
+        snapshot,
+        document,
+      );
+    } else if (snapshot.schemaVersion !== "1.0") {
+      invalidEvidence(
+        "A historical approved-brief capture without source analysis must use ThreadSnapshot schema 1.0.",
+      );
+    }
+  }
+
+  private async assertExactBriefSourceAnalysis(
+    reference: Record<string, unknown>,
+    capture: Record<string, unknown>,
+    snapshot: ThreadSnapshot,
+    document: ThreadArtifact,
+  ): Promise<void> {
+    if (!this.briefSourceAnalysis) {
+      invalidEvidence(
+        "Brief source-analysis stores are required to validate a 1.1 approved-brief baseline capture.",
+      );
+    }
+    const parsedReference = parseBriefSourceAnalysisReference(reference);
+    const approvedBrief = record(capture.approvedBrief, "capture.approvedBrief");
+    if (
+      parsedReference.briefId !== approvedBrief.briefId ||
+      parsedReference.briefSnapshotId !== approvedBrief.id ||
+      parsedReference.briefRevision !== approvedBrief.revision
+    ) {
+      invalidEvidence(
+        "Brief source-analysis reference does not name the exact approved brief.",
+      );
+    }
+    try {
+      const replay = await requireBriefSourceAnalysis(
+        parsedReference,
+        this.briefSourceAnalysis,
+      );
+      this.assertExactBriefSourceAgainstCapture(
+        replay.source.sourceText,
+        capture,
+      );
+      this.assertExpectedGraph(replay.bundle, snapshot, document);
+    } catch (error) {
+      invalidEvidence(`Brief source analysis is invalid: ${errorMessage(error)}`);
+    }
+  }
+
+  private assertExactBriefSourceAgainstCapture(
+    sourceText: string,
+    capture: Record<string, unknown>,
+  ): void {
+    let sourceBrief: unknown;
+    try {
+      sourceBrief = JSON.parse(sourceText);
+    } catch {
+      invalidEvidence("Brief source capture sourceText is not JSON.");
+    }
+    if (
+      deterministicJson(sourceBrief) !== sourceText ||
+      deterministicJson(sourceBrief) !== deterministicJson(capture.approvedBrief)
+    ) {
+      invalidEvidence(
+        "Brief source capture is not the exact approved brief sealed in the documentary baseline.",
+      );
+    }
+  }
+
+  private assertExpectedGraph(
+    bundle: SourceAnalysisBundle,
+    snapshot: ThreadSnapshot,
+    document: ThreadArtifact,
+  ): void {
+    const expectedGraph = buildBriefAnalysisGraph({
+      bundle,
+      evidence: { id: document.id, fingerprint: document.fingerprint },
+    });
+    if (expectedGraph === undefined) {
+      if (snapshot.schemaVersion !== "1.0" || snapshot.analysisGraph !== undefined) {
+        invalidEvidence(
+          "A brief with no declared dependencies must retain its sealed analysis but no ThreadSnapshot analysis graph.",
+        );
+      }
+      return;
+    }
+    if (
+      snapshot.schemaVersion !== "1.1" || snapshot.analysisGraph === undefined ||
+      deterministicJson(snapshot.analysisGraph) !== deterministicJson(expectedGraph)
+    ) {
+      invalidEvidence(
+        "Approved-brief analysis graph is absent or does not exactly reconstruct from the sealed source analysis.",
+      );
+    }
   }
 
   private async exactSnapshot(
@@ -213,9 +321,10 @@ function assertApprovedBriefCaptureMatchesRun(
   snapshot: ThreadSnapshot,
   document: ThreadArtifact,
   expectedRunId: string,
-): void {
+): Record<string, unknown> | undefined {
   if (
-    capture.schemaVersion !== "approved-brief-baseline-capture/1.0" ||
+    (capture.schemaVersion !== "approved-brief-baseline-capture/1.0" &&
+      capture.schemaVersion !== "approved-brief-baseline-capture/1.1") ||
     capture.kind !== "approved-brief-documentary-baseline" ||
     capture.scope !== "pre-technical-documentation" ||
     capture.capturedAt !== snapshot.generatedAt ||
@@ -224,6 +333,29 @@ function assertApprovedBriefCaptureMatchesRun(
     invalidEvidence(
       "Capture is not the exact approved-brief pre-technical record for this run.",
     );
+  }
+  try {
+    exactRecord(
+      capture,
+      [
+        "schemaVersion",
+        "kind",
+        "scope",
+        "statement",
+        "runId",
+        "capturedAt",
+        "operation",
+        "workItemId",
+        "projectDefinition",
+        "approvedBrief",
+        ...(capture.schemaVersion === "approved-brief-baseline-capture/1.1"
+          ? ["briefSourceAnalysis"]
+          : []),
+      ],
+      "capture",
+    );
+  } catch (error) {
+    invalidEvidence(`Approved-brief capture shape is invalid: ${errorMessage(error)}`);
   }
   const captureOperation = record(capture.operation, "capture.operation");
   const definition = record(
@@ -265,6 +397,72 @@ function assertApprovedBriefCaptureMatchesRun(
     basis,
     "capture.projectDefinition.plan.basis",
   );
+  if (capture.schemaVersion === "approved-brief-baseline-capture/1.0") {
+    if (Object.hasOwn(capture, "briefSourceAnalysis")) {
+      invalidEvidence("Approved-brief capture 1.0 must not contain source analysis.");
+    }
+    return undefined;
+  }
+  if (!Object.hasOwn(capture, "briefSourceAnalysis")) {
+    invalidEvidence(
+      "Approved-brief capture 1.1 must seal a brief source-analysis reference.",
+    );
+  }
+  return record(capture.briefSourceAnalysis, "capture.briefSourceAnalysis");
+}
+
+function parseBriefSourceAnalysisReference(
+  value: Record<string, unknown>,
+): {
+  readonly briefId: string;
+  readonly briefSnapshotId: string;
+  readonly briefRevision: number;
+  readonly sourceId: string;
+  readonly sourceFingerprint: ContentFingerprint;
+  readonly sourceCaptureFingerprint: ContentFingerprint;
+  readonly analysisFingerprint: ContentFingerprint;
+} {
+  const reference = exactRecord(
+    value,
+    [
+      "briefId",
+      "briefSnapshotId",
+      "briefRevision",
+      "sourceId",
+      "sourceFingerprint",
+      "sourceCaptureFingerprint",
+      "analysisFingerprint",
+    ],
+    "capture.briefSourceAnalysis",
+  );
+  const briefRevision = reference.briefRevision;
+  if (
+    typeof reference.briefId !== "string" ||
+    typeof reference.briefSnapshotId !== "string" ||
+    !Number.isSafeInteger(briefRevision) ||
+    (typeof briefRevision === "number" && briefRevision < 1) ||
+    typeof reference.sourceId !== "string"
+  ) {
+    invalidEvidence("capture.briefSourceAnalysis has an invalid exact identity.");
+  }
+  return {
+    briefId: reference.briefId,
+    briefSnapshotId: reference.briefSnapshotId,
+    briefRevision: briefRevision as number,
+    sourceId: reference.sourceId,
+    sourceFingerprint: requiredFingerprint(
+      reference.sourceFingerprint,
+      "capture.briefSourceAnalysis.sourceFingerprint",
+    ),
+    sourceCaptureFingerprint: requiredFingerprint(
+      reference.sourceCaptureFingerprint,
+      "capture.briefSourceAnalysis.sourceCaptureFingerprint",
+    ),
+    analysisFingerprint: requiredFingerprint(
+      reference.analysisFingerprint,
+      "capture.briefSourceAnalysis.analysisFingerprint",
+    ),
+  };
 }
 
 function assertApprovedBriefBasisRecord(
@@ -297,6 +495,18 @@ function fingerprintMatches(value: unknown, expected: ContentFingerprint): boole
   );
 }
 
+function requiredFingerprint(value: unknown, label: string): ContentFingerprint {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidEvidence(`${label} must be a SHA-256 fingerprint.`);
+  }
+  const candidate = value as Partial<ContentFingerprint>;
+  if (
+    candidate.algorithm !== "sha256" || typeof candidate.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(candidate.digest)
+  ) invalidEvidence(`${label} must be a canonical SHA-256 fingerprint.`);
+  return { algorithm: "sha256", digest: candidate.digest };
+}
+
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     invalidEvidence(`${label} must be an object.`);
@@ -306,4 +516,8 @@ function record(value: unknown, label: string): Record<string, unknown> {
 
 function invalidEvidence(message: string): never {
   throw new EngineeringProjectCommandError("invalid_input", message);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

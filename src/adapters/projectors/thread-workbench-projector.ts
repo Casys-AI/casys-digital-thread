@@ -20,13 +20,19 @@ import {
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import {
   CM01_V3_PRODUCT_STRUCTURE_IDENTITIES,
-} from "./cm01-v3-product-structure-catalog.ts";
+} from "../../domain/cm01/cm01-v3-product-structure-identities.ts";
 import {
   CM01_DRIP_TRAY_HEIGHT_28_TO_30_CORRECTION,
 } from "../../domain/cm01/cm01-drip-tray-height-correction.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
+import type { AnalysisGraph } from "../../domain/analysis/analysis-graph.ts";
+import type {
+  AssertionScope,
+  SemanticRef,
+} from "../../domain/analysis/engineering-assertion.ts";
 import type {
   ThreadAction,
+  ThreadAnalysisScope,
   ThreadArtifact,
   ThreadFlowStage,
   ThreadFreshness,
@@ -334,6 +340,7 @@ function projectRequirement(
     source: authority
       ? `${authority.producer.serverId} · ${requirement.trace.elementId}`
       : requirement.trace.elementId,
+    sourceElementId: requirement.trace.elementId,
     expression: criterionExpression(requirement),
     status: projectedEvaluationStatus(evaluation, context),
     observationIds: evaluation ? [...evaluation.observationIds] : [],
@@ -405,6 +412,11 @@ function projectGraph(
   components: ThreadWorkbenchSnapshot["components"],
 ): ThreadGraph {
   const componentStructure = projectComponentStructureGraph(context, components);
+  const analysis = projectAnalysisGraph(
+    snapshot.analysisGraph,
+    snapshot.freshness.status,
+    new Set(snapshot.artifacts.map((artifact) => artifact.id)),
+  );
   const nodes: ThreadGraphNode[] = [
     ...snapshot.changeSet.changes.map((change): ThreadGraphNode => ({
       id: graphNodeId({ kind: "change", id: change.id }),
@@ -519,6 +531,7 @@ function projectGraph(
         ? { selection: graphActionSelection(action) }
         : {}),
     })),
+    ...analysis.nodes,
     ...componentStructure.nodes,
   ];
   const nodeKeys = new Set(nodes.map((node) => entityKey(node.ref)));
@@ -531,9 +544,109 @@ function projectGraph(
         return edge ? [edge] : [];
       }),
       ...projectStructuralGraphEdges(snapshot, context),
+      ...analysis.edges,
       ...componentStructure.edges,
     ],
   };
+}
+
+/**
+ * Project canonical assertions as a distinct semantic subgraph. Provenance and
+ * structural relations keep their existing vocabularies and invariants.
+ */
+function projectAnalysisGraph(
+  graph: AnalysisGraph | undefined,
+  freshness: ThreadFreshnessStatus,
+  currentArtifactIds: ReadonlySet<string>,
+): ThreadGraph {
+  if (!graph) return { nodes: [], edges: [] };
+  const relations = graph.relations.filter((relation) =>
+    relation.assertion.evidence.every((evidence) => currentArtifactIds.has(evidence.id))
+  );
+  const referencedNodeIds = new Set(
+    relations.flatMap((relation) => [relation.fromNodeId, relation.toNodeId]),
+  );
+  return {
+    nodes: graph.nodes.filter((node) => referencedNodeIds.has(node.id)).map(
+      (node): ThreadGraphNode => ({
+        id: graphNodeId({ kind: "analysis-node", id: node.id }),
+        ref: { kind: "analysis-node", id: node.id },
+        entityKind: "analysis-node",
+        label: node.semanticRef.id,
+        system: node.semanticRef.domain,
+        freshness,
+        summary: `${node.kind} · ${node.semanticRef.domain}`,
+        analysis: { semanticRef: projectSemanticRef(node.semanticRef) },
+      }),
+    ),
+    edges: relations.map((relation): ThreadGraphEdge => {
+      const assertion = relation.assertion;
+      return {
+        id: assertion.id,
+        from: { kind: "analysis-node", id: relation.fromNodeId },
+        to: { kind: "analysis-node", id: relation.toNodeId },
+        relation: assertion.relation,
+        rationale: assertion.rationale,
+        origin: "analysis",
+        analysis: {
+          assertionId: assertion.id,
+          epistemicBasis: assertion.epistemicBasis,
+          assertedBy: { ...assertion.assertedBy },
+          evidence: assertion.evidence.map((item) => ({
+            id: item.id,
+            fingerprint: item.fingerprint.digest,
+          })),
+          scope: projectAnalysisScope(assertion.scope),
+          ...(assertion.measurement
+            ? { measurement: structuredClone(assertion.measurement) }
+            : {}),
+        },
+      };
+    }),
+  };
+}
+
+function projectSemanticRef(reference: SemanticRef) {
+  return {
+    domain: reference.domain,
+    kind: reference.kind,
+    id: reference.id,
+    ...(reference.basisFingerprint
+      ? { basisFingerprint: reference.basisFingerprint.digest }
+      : {}),
+  };
+}
+
+function projectAnalysisScope(scope: AssertionScope): ThreadAnalysisScope {
+  switch (scope.kind) {
+    case "basis":
+      return {
+        kind: scope.kind,
+        basisFingerprint: scope.basisFingerprint.digest,
+      };
+    case "source-span":
+      return {
+        kind: scope.kind,
+        source: projectSemanticRef(scope.source),
+        basisFingerprint: scope.basisFingerprint.digest,
+        start: { ...scope.start },
+        end: { ...scope.end },
+      };
+    case "scenario":
+      return {
+        kind: scope.kind,
+        scenario: projectSemanticRef(scope.scenario),
+        basisFingerprint: scope.basisFingerprint.digest,
+      };
+    case "local-neighborhood":
+      return {
+        kind: scope.kind,
+        parameter: projectSemanticRef(scope.parameter),
+        basisFingerprint: scope.basisFingerprint.digest,
+        lower: { ...scope.lower },
+        upper: { ...scope.upper },
+      };
+  }
 }
 
 /**

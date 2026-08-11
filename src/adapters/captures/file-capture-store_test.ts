@@ -8,9 +8,12 @@ import {
   CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
   COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
+  SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+  SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./file-capture-store.ts";
 
@@ -30,7 +33,7 @@ function _assertKindIncompatible(
   void _mechanical;
 }
 
-// ── URI namespace identity (the 8 expected strings are hardcoded) ────────────
+// ── URI namespace identity (the expected strings are hardcoded) ──────────────
 //
 // Any automated derivation of the namespace from the directory or kind would
 // silently produce the wrong URI for the architecture store
@@ -79,6 +82,18 @@ Deno.test(
         fp,
       ),
       `casys://oracle-requirements-seed-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://geometry-source-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://source-analysis-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(SYSML_SOURCE_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://sysml-source-capture/sha256/${d}`,
     );
   },
 );

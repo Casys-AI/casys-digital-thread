@@ -932,6 +932,7 @@ function requirement(
     id,
     label: id,
     source: "SysON",
+    sourceElementId: `fixture:${id}`,
     expression: "value <= 1 mm",
     status,
     observationIds: [],

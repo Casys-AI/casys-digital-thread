@@ -264,6 +264,9 @@ organized with [Diátaxis](https://diataxis.fr/): start at the
 [CM-01 V3 local golden-path guide](docs/how-to/run-cm01-v3-golden-local.md) and its
 [reviewed reference](docs/reference/cm01-v3-golden-reference.md). Look up exact paths
 and ports in the [workspace reference](docs/reference/workspace-map.md). The
+[source-analysis and authority pipeline](docs/reference/analysis-authority-pipeline.md)
+documents how native agent-authored code remains free while source capture, parsing,
+review and provider dispatch stay causally explicit. The
 [console reference](docs/reference/console.md) retains the observer contract, evidence
 model, and security boundary.
 

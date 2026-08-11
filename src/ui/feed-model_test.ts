@@ -830,9 +830,13 @@ function canonicalResultRef(
   node: ThreadGraphNode,
 ): Pick<EngineeringThreadEntityRef, "kind" | "id"> {
   const reference = node.ref;
-  if (reference.kind === "part-definition" || reference.kind === "part-usage") {
+  if (
+    reference.kind === "analysis-node" ||
+    reference.kind === "part-definition" ||
+    reference.kind === "part-usage"
+  ) {
     throw new Error(
-      "A browser-only SysML element cannot be review result evidence.",
+      "A browser-only analysis or SysML element cannot be review result evidence.",
     );
   }
   return { kind: reference.kind, id: reference.id };

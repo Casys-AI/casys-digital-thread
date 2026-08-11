@@ -22,16 +22,26 @@
  *   8. parsePrusaslicerEstimateResult parser contract.
  */
 
-import { assertEquals, assertExists, assertThrows } from "@std/assert";
+import { assertEquals, assertExists, assertRejects, assertThrows } from "@std/assert";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import { validatePrintEstimateCase } from "../../../domain/analysis/print-estimate-case.ts";
 import {
   createThreadSnapshot,
   validateThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot-validation.ts";
-import { FileCm01DripTrayPrintEstimateAttemptStore } from "../../wal/file-cm01-drip-tray-print-estimate-attempt-store.ts";
 import {
+  FileCm01DripTrayPrintEstimateAttemptStore,
+  PrintEstimateRunOutcomeUnknownError,
+} from "../../wal/file-cm01-drip-tray-print-estimate-attempt-store.ts";
+import {
+  assertCurrentCaptureEnvelope,
+  CoffeeMachineCm01V3PrintEstimateRunExecutor,
   materializePrintEstimateSnapshot,
   parseBuild123dStlExport,
+  parseCaptureRecord,
   parsePrusaslicerEstimateResult,
   type PrintEstimateCaptureRecord,
 } from "./coffee-machine-cm01-v3-print-estimate-run-executor.ts";
@@ -49,6 +59,167 @@ const PROFILE_SHA_OTHER = "a".repeat(64);
 
 // ── Test 1 ────────────────────────────────────────────────────────────────────
 
+Deno.test("print-estimate known capture-recorded never reconfirms after completion I/O fails", async () => {
+  let beginCalls = 0;
+  const executor = new CoffeeMachineCm01V3PrintEstimateRunExecutor({
+    ...printEstimateMinimalStubs(),
+    attempts: {
+      complete: () => Promise.reject(new Error("completion fsync interrupted")),
+      begin: () => {
+        beginCalls += 1;
+        return Promise.reject(new Error("confirmation I/O interrupted"));
+      },
+    } as never,
+  });
+  const complete = (executor as unknown as {
+    completeCapturedAttempt(input: Record<string, unknown>): Promise<void>;
+  }).completeCapturedAttempt.bind(executor);
+  await assertRejects(
+    () =>
+      complete({
+        projectId: "coffee-machine-cm01-v3",
+        runId: "run:print-estimate-recovery",
+        caseDigest: "d".repeat(64),
+        dispatchedAt: AT,
+        completedAt: AT,
+        captureFingerprint: CAPTURE_FP,
+      }),
+    Error,
+    "durable",
+  );
+  assertEquals(beginCalls, 0);
+});
+
+Deno.test(
+  "print-estimate recordCapture failure after durable capture-recorded requires a CAS-only recovery",
+  async () => {
+    let recordCalls = 0;
+    let completeCalls = 0;
+    let beginCalls = 0;
+    const executor = new CoffeeMachineCm01V3PrintEstimateRunExecutor({
+      ...printEstimateMinimalStubs(),
+      attempts: {
+        recordCapture: () => {
+          recordCalls += 1;
+          return Promise.reject(
+            new Error("fsync interrupted after durable capture-recorded"),
+          );
+        },
+        complete: () => {
+          completeCalls += 1;
+          return Promise.reject(new Error("fsync interrupted after capture-recorded"));
+        },
+        begin: () => {
+          beginCalls += 1;
+          return Promise.resolve({
+            action: "capture-recorded" as const,
+            recordedAt: AT,
+            captureFingerprint: CAPTURE_FP,
+            canonicalCaptureText: deterministicJson({ kind: "capture" }),
+          });
+        },
+      } as never,
+    });
+    const recordAndComplete = (executor as unknown as {
+      recordAndCompleteCapturedAttempt(
+        record: Record<string, unknown>,
+        complete: Record<string, unknown>,
+      ): Promise<void>;
+    }).recordAndCompleteCapturedAttempt.bind(executor);
+    await assertRejects(
+      () =>
+        recordAndComplete(
+          {
+            projectId: "coffee-machine-cm01-v3",
+            runId: "run:print-estimate-recovery",
+            caseDigest: "d".repeat(64),
+            dispatchedAt: AT,
+            recordedAt: AT,
+            canonicalCaptureText: deterministicJson({ kind: "capture" }),
+            captureFingerprint: CAPTURE_FP,
+          },
+          {
+            projectId: "coffee-machine-cm01-v3",
+            runId: "run:print-estimate-recovery",
+            caseDigest: "d".repeat(64),
+            dispatchedAt: AT,
+            completedAt: AT,
+            captureFingerprint: CAPTURE_FP,
+          },
+        ),
+      Error,
+      "durable",
+    );
+    assertEquals(
+      { recordCalls, completeCalls, beginCalls },
+      { recordCalls: 1, completeCalls: 0, beginCalls: 1 },
+    );
+  },
+);
+
+Deno.test(
+  "current print-estimate capture rejects a self-consistent foreign slicer envelope before publication",
+  () => {
+    const record: PrintEstimateCaptureRecord = {
+      ...captureRecord("10h 36m 28s", []),
+      schemaVersion: "print-estimate-capture/1.2",
+      trustedRunId: "run-print-estimate-envelope",
+      dispatchedAt: AT,
+      callParams: { filamentDensityGCm3: 1.24 },
+      profile: {
+        ...captureRecord("10h 36m 28s", []).profile,
+        profilePath: "/exports/foreign-but-self-consistent.ini",
+      },
+    };
+    assertThrows(
+      () =>
+        assertCurrentCaptureEnvelope(
+          record,
+          validCaseWithDensity(),
+          "d".repeat(64),
+          "run-print-estimate-envelope",
+          AT,
+        ),
+      Error,
+      "envelope",
+    );
+  },
+);
+
+Deno.test("current print-estimate capture rejects unsupported root fields", () => {
+  const record = {
+    ...captureRecord("10h 36m 28s", []),
+    schemaVersion: "print-estimate-capture/1.2",
+    trustedRunId: "run-print-estimate-envelope",
+    dispatchedAt: AT,
+    callParams: { filamentDensityGCm3: 1.24 },
+  };
+  assertThrows(
+    () => parseCaptureRecord({ ...record, extra: true }),
+    Error,
+    "unsupported",
+  );
+});
+
+Deno.test("current print-estimate capture rejects negative slicer measurements", () => {
+  const record = {
+    ...captureRecord("10h 36m 28s", []),
+    schemaVersion: "print-estimate-capture/1.2",
+    trustedRunId: "run-print-estimate-envelope",
+    dispatchedAt: AT,
+    callParams: { filamentDensityGCm3: 1.24 },
+  };
+  assertThrows(
+    () =>
+      parseCaptureRecord({
+        ...record,
+        estimate: { ...record.estimate, printTimeS: -1 },
+      }),
+    TypeError,
+    "non-negative",
+  );
+});
+
 Deno.test(
   "materializePrintEstimateSnapshot happy path produces a validateThreadSnapshot-passing snapshot",
   () => {
@@ -64,6 +235,54 @@ Deno.test(
     validateThreadSnapshot(snapshot);
   },
 );
+
+Deno.test("dispatched print-estimate WAL is outcome-unknown and never authorizes redispatch", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileCm01DripTrayPrintEstimateAttemptStore(dir);
+    const input = {
+      projectId: "coffee-machine-cm01-v3",
+      runId: "run-wal-print-estimate-dispatched",
+      caseDigest: "e".repeat(64),
+      dispatchedAt: AT,
+    };
+    await store.begin(input);
+    await assertRejects(
+      () => store.begin(input),
+      PrintEstimateRunOutcomeUnknownError,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("print-estimate WAL rejects noncanonical capture text before completion", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileCm01DripTrayPrintEstimateAttemptStore(dir);
+    const input = {
+      projectId: "coffee-machine-cm01-v3",
+      runId: "run-wal-print-estimate-noncanonical",
+      caseDigest: "f".repeat(64),
+      dispatchedAt: AT,
+    };
+    await store.begin(input);
+    const captureFingerprint = await sha256Fingerprint({ a: 1, b: 2 });
+    await assertRejects(
+      () =>
+        store.recordCapture({
+          ...input,
+          recordedAt: "2026-08-05T12:01:00.000Z",
+          captureFingerprint,
+          canonicalCaptureText: '{"b":2,"a":1}',
+        }),
+      Error,
+      "canonical",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
 
 // ── Test 2 ────────────────────────────────────────────────────────────────────
 
@@ -209,23 +428,36 @@ Deno.test(
         dispatchedAt: AT,
       });
       assertEquals(first.action, "dispatch");
+      const canonicalCaptureText = deterministicJson({ kind: "test" });
+      const captureFingerprint = await sha256Fingerprint({ kind: "test" });
+      await store.recordCapture({
+        projectId: "coffee-machine-cm01-v3",
+        runId: "run-wal-print-estimate-skip",
+        caseDigest,
+        dispatchedAt: AT,
+        recordedAt: "2026-08-05T12:01:00.000Z",
+        captureFingerprint,
+        canonicalCaptureText,
+      });
       await store.complete({
         projectId: "coffee-machine-cm01-v3",
         runId: "run-wal-print-estimate-skip",
         caseDigest,
         dispatchedAt: AT,
         completedAt: "2026-08-05T12:01:00.000Z",
-        captureFingerprint: CAPTURE_FP,
+        captureFingerprint,
       });
       const second = await store.begin({
         projectId: "coffee-machine-cm01-v3",
         runId: "run-wal-print-estimate-skip",
         caseDigest,
-        dispatchedAt: "2026-08-05T13:00:00.000Z",
+        dispatchedAt: AT,
       });
       assertEquals(second, {
         action: "completed",
-        captureFingerprint: CAPTURE_FP,
+        recordedAt: "2026-08-05T12:01:00.000Z",
+        captureFingerprint,
+        canonicalCaptureText,
       });
     } finally {
       await Deno.remove(dir, { recursive: true });
@@ -469,7 +701,7 @@ Deno.test(
 );
 
 Deno.test(
-  "materializePrintEstimateSnapshot STL artifact uses mesh kind not step",
+  "materializePrintEstimateSnapshot retains unpersisted STL and G-code digests only in its capture",
   () => {
     const record = captureRecord("10h 36m 28s", []);
     const { snapshot } = materializePrintEstimateSnapshot(
@@ -481,12 +713,21 @@ Deno.test(
       record,
     );
     validateThreadSnapshot(snapshot);
-    const stlArtifact = snapshot.artifacts.find((a) => a.name.includes("STL"));
-    assertExists(stlArtifact, "STL artifact must exist in snapshot");
+    const published = snapshot.artifacts.filter((artifact) =>
+      artifact.id.includes("drip-tray-print-estimate-")
+    );
+    assertEquals(published.map((artifact) => artifact.kind), ["document"]);
     assertEquals(
-      stlArtifact.kind,
-      "mesh",
-      "STL is a triangular-mesh format — kind must be mesh, not step",
+      published.some((artifact) => artifact.uri?.includes("#")),
+      false,
+    );
+    assertEquals(
+      snapshot.observations
+        .filter((observation) =>
+          observation.metric !== "drip_tray_print_estimate_not_checked_count"
+        )
+        .map((observation) => observation.source.operation.serverId),
+      ["prusaslicer", "prusaslicer", "prusaslicer", "prusaslicer"],
     );
   },
 );
@@ -529,6 +770,19 @@ function validCaseWithDensity() {
       note: "Profile values are reviewed engineering candidates.",
     },
   });
+}
+
+function printEstimateMinimalStubs() {
+  return {
+    projects: {} as never,
+    commands: {} as never,
+    snapshots: {} as never,
+    printEstimateCase: validCaseWithDensity(),
+    build123d: {} as never,
+    prusaslicer: {} as never,
+    captures: {} as never,
+    lease: {} as never,
+  };
 }
 
 function validCaseNoDensity() {

@@ -30,15 +30,15 @@
  *  8. claimRun (stamps startedAt).
  *  9. Re-read; re-check shape + claimed; completed idempotent return.
  * 10. assertCaseWithinPolicy (timeout cap — fail-fast before WAL).
- *     modelica_kit_list: kit present, each parameter in bounds (unit, finite
+ *     Qualified-method catalogue: kit present, each parameter in bounds (unit, finite
  *     min/max, value within range), each expectedMetric present with unit.
  * 11. planDigest = sha256({caseDigest, exactSimulateRequest, policyVersion}).
  *     WAL.begin.
  * 12. Three WAL paths (drive by WAL.begin action):
  *     completed → re-materialize ParsedModelicaRun from stored envelope;
  *                 repair absent CAS objects; skip provider calls entirely.
- *     provider-run-known → modelica_run_get only; double attestation.
- *     dispatch → modelica_simulate; WAL recordProviderRun; modelica_run_get;
+ *     provider-run-known → readback only; double attestation.
+ *     dispatch → simulate; WAL recordProviderRun; readback;
  *                double attestation.
  * 13. buildProviderRunRecordEnvelope → CAS save (recordCaptures) → readback.
  *     buildExecutionReceiptEnvelope → CAS save (receiptCaptures) → readback.
@@ -48,10 +48,12 @@
  *     applyThreadSnapshotExtensionIfNew; validateThreadSnapshot.
  * 15. ThreadSnapshot save; CAS readback; publishRun; completeRun; assertCompleted.
  * 16. Catch windows:
- *     ModelicaScenarioOutcomeUnknownError → terminal: record failure if owned.
+ *     ModelicaScenarioOutcomeUnknownError → preserve running/publishing for review.
  *     Error after providerAcknowledged, snapshot not durable → quarantine WAL,
- *     record failure if owned.
+ *     preserve running/publishing and rethrow the original error.
+ *     Existing quarantine → preserve running/publishing; never mutate project state.
  *     Snapshot durable, publish incomplete → idempotent re-attach or retry hint.
+ *     Only a failure proven to be pre-acknowledgement may fail the claimed run.
  */
 
 import {
@@ -105,20 +107,25 @@ import {
   assertCaseWithinPolicy,
   type SimulationExecutionPolicy,
 } from "../../domain/analysis/simulation-execution-policy.ts";
+import type {
+  DynamicSystemDispatchRecord,
+  DynamicSystemRun,
+  DynamicSystemSimulationPlan,
+  DynamicSystemSimulator,
+  SimulationCaseIdentity,
+  SimulationMethodCatalog,
+  SimulationPlanResolver,
+  SimulationRunReader,
+} from "../../domain/analysis/simulation-capabilities.ts";
+import { DynamicSystemResponseError } from "../../domain/analysis/simulation-capabilities.ts";
 import {
   type FileCaptureStore,
   MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
 import {
-  assertSimulateMatchesRunGet,
   buildExecutionReceiptEnvelope,
   buildProviderRunRecordEnvelope,
-  canonicalizeSimulateEnvelope,
-  type ParsedModelicaRun,
-  parseModelicaRunRecord,
-  parseSimulateEnvelopeMinimal,
-  type SimulationCaseIdentity,
 } from "../captures/modelica-scenario-run-capture.ts";
 import {
   FileModelicaScenarioAttemptStore,
@@ -132,7 +139,6 @@ import type {
 import {
   assertThreadSnapshotLineageIntact,
 } from "../stores/thread-snapshot-lineage.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import type {
   LiveThreadUpdateMilestoneJournal,
 } from "../stores/live-thread-update-store.ts";
@@ -185,8 +191,14 @@ export interface SimulateRunModelicaScenarioRunExecutorDependencies {
   readonly receiptCaptures: FileCaptureStore<"modelica-scenario-receipt">;
   /** Durable intent/state boundary around the non-idempotent provider call. */
   readonly attempts: FileModelicaScenarioAttemptStore;
-  /** Fixed server-owned MCP client; no agent value crosses this boundary. */
-  readonly modelica: McpToolClient;
+  /** Read-only authority over the server-owned qualified method catalogue. */
+  readonly methodCatalog: SimulationMethodCatalog;
+  /** Pure provider-owned lowering used to derive the exact plan digest. */
+  readonly planResolver: SimulationPlanResolver;
+  /** Non-idempotent dynamic-system execution capability. */
+  readonly simulator: DynamicSystemSimulator;
+  /** Durable provider-run normalization and readback capability. */
+  readonly runReader: SimulationRunReader;
   readonly policy: SimulationExecutionPolicy;
   readonly lease: EngineeringProjectRunLease;
   /** Presentation only; a journal failure cannot repeat the provider dispatch. */
@@ -213,7 +225,10 @@ export class SimulateRunModelicaScenarioRunExecutor {
   readonly #recordCaptures: FileCaptureStore<"modelica-scenario-run">;
   readonly #receiptCaptures: FileCaptureStore<"modelica-scenario-receipt">;
   readonly #attempts: FileModelicaScenarioAttemptStore;
-  readonly #modelica: McpToolClient;
+  readonly #methodCatalog: SimulationMethodCatalog;
+  readonly #planResolver: SimulationPlanResolver;
+  readonly #simulator: DynamicSystemSimulator;
+  readonly #runReader: SimulationRunReader;
   readonly #policy: SimulationExecutionPolicy;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
@@ -227,7 +242,10 @@ export class SimulateRunModelicaScenarioRunExecutor {
     this.#recordCaptures = deps.recordCaptures;
     this.#receiptCaptures = deps.receiptCaptures;
     this.#attempts = deps.attempts;
-    this.#modelica = deps.modelica;
+    this.#methodCatalog = deps.methodCatalog;
+    this.#planResolver = deps.planResolver;
+    this.#simulator = deps.simulator;
+    this.#runReader = deps.runReader;
     this.#policy = deps.policy;
     this.#lease = deps.lease;
     this.#liveUpdates = deps.liveUpdates;
@@ -460,10 +478,10 @@ export class SimulateRunModelicaScenarioRunExecutor {
       // Step 10 — policy cap (fail-fast before WAL; no uncertain provider state).
       assertCaseWithinPolicy(simulationCase, this.#policy);
 
-      // Step 11 — build the server-owned request and plan digest before any
-      // provider preflight. The provider schema accepts a dynamic object keyed
-      // by parameter id, not the sealed-case array representation.
-      const exactSimulateRequest = buildExactSimulateRequest(simulationCase);
+      // Step 11 — resolve the provider lowering through the private capability
+      // adapter, then bind its exact dispatch evidence into the plan digest.
+      const simulationPlan = this.#planResolver.resolve(simulationCase);
+      const exactSimulateRequest = simulationPlan.exactDispatchRecord;
       const planFp = await sha256Fingerprint({
         caseDigest,
         exactSimulateRequest,
@@ -472,12 +490,12 @@ export class SimulateRunModelicaScenarioRunExecutor {
       const planDigest = planFp.digest;
 
       // A completed WAL contains all evidence needed for re-materialization.
-      // Inspect local state before modelica_kit_list so completed recovery has
+      // Inspect local state before method discovery so completed recovery has
       // no provider dependency at all. A new dispatch still performs the live
       // kit gate before it reserves its sole simulate call.
       await preflightModelicaKitForAttempt({
         attempts: this.#attempts,
-        modelica: this.#modelica,
+        methodCatalog: this.#methodCatalog,
         projectId: command.projectId,
         runId: run.id,
         simulationCase,
@@ -502,21 +520,21 @@ export class SimulateRunModelicaScenarioRunExecutor {
         expectedMetrics: simulationCase.expectedMetrics,
       };
 
-      let parsedRun: ParsedModelicaRun;
+      let parsedRun: DynamicSystemRun;
       let canonicalSimulateEnvelopeText: string;
       let providerRunId: string;
 
       if (walResult.action === "completed") {
         // Re-materialize from stored WAL envelope; skip all provider calls.
+        providerAcknowledged = true;
         canonicalSimulateEnvelopeText = deterministicJson(
           walResult.canonicalSimulateEnvelope,
         );
-        parsedRun = parseModelicaRunRecord(
+        parsedRun = this.#runReader.normalizeRecordedRun(
           walResult.canonicalSimulateEnvelope,
           caseIdentity,
         );
         providerRunId = walResult.providerRunId;
-        providerAcknowledged = true;
       } else if (walResult.action === "provider-run-known") {
         // Resume from run_get only — never re-simulate on this path.
         canonicalSimulateEnvelopeText = deterministicJson(
@@ -524,32 +542,26 @@ export class SimulateRunModelicaScenarioRunExecutor {
         );
         providerRunId = walResult.providerRunId;
         providerAcknowledged = true;
-        const runGetResult = await this.#modelica.callTool({
-          name: "modelica_run_get",
-          arguments: { run_id: providerRunId },
-        });
-        parsedRun = parseModelicaRunRecord(
-          runGetResult.structuredContent,
-          caseIdentity,
+        parsedRun = await this.#runReader.readRun(providerRunId, caseIdentity);
+        this.#runReader.assertDispatchMatchesReadback(
+          canonicalSimulateEnvelopeText,
+          parsedRun,
         );
-        assertSimulateMatchesRunGet(canonicalSimulateEnvelopeText, parsedRun);
       } else {
-        // Dispatch path — the sole provider call gate in this executor.
-        const simResult = await this.#modelica.callTool({
-          name: "modelica_simulate",
-          arguments: exactSimulateRequest as Record<string, unknown>,
-        });
-        const minimal = parseSimulateEnvelopeMinimal(simResult.structuredContent);
-        if (minimal.status !== "succeeded") {
+        // Dispatch path — the private capability adapter owns the sole provider call.
+        const dispatch = await simulateAfterModelicaWalReservation(
+          this.#simulator,
+          simulationPlan,
+        );
+        providerAcknowledged = true;
+        if (dispatch.status !== "succeeded") {
           throw new EngineeringProjectCommandError(
             "invalid_transition",
-            `Modelica simulation ended with status "${minimal.status}" — not "succeeded".`,
+            `Modelica simulation ended with status "${dispatch.status}" — not "succeeded".`,
           );
         }
-        providerRunId = minimal.runId;
-        canonicalSimulateEnvelopeText = canonicalizeSimulateEnvelope(
-          simResult.structuredContent,
-        );
+        providerRunId = dispatch.providerRunId;
+        canonicalSimulateEnvelopeText = dispatch.canonicalProviderRecordText;
 
         // Durable WAL transition to provider-run-known before run_get.
         await this.#attempts.recordProviderRun({
@@ -557,22 +569,14 @@ export class SimulateRunModelicaScenarioRunExecutor {
           runId: run.id,
           planDigest,
           providerRunId,
-          canonicalSimulateEnvelope: simResult.structuredContent as Record<
-            string,
-            unknown
-          >,
+          canonicalSimulateEnvelope: dispatch.exactProviderRecord,
         });
-        providerAcknowledged = true;
 
-        const runGetResult = await this.#modelica.callTool({
-          name: "modelica_run_get",
-          arguments: { run_id: providerRunId },
-        });
-        parsedRun = parseModelicaRunRecord(
-          runGetResult.structuredContent,
-          caseIdentity,
+        parsedRun = await this.#runReader.readRun(providerRunId, caseIdentity);
+        this.#runReader.assertDispatchMatchesReadback(
+          canonicalSimulateEnvelopeText,
+          parsedRun,
         );
-        assertSimulateMatchesRunGet(canonicalSimulateEnvelopeText, parsedRun);
       }
 
       // Step 13 — build and persist both CAS objects; WAL.complete.
@@ -700,8 +704,8 @@ export class SimulateRunModelicaScenarioRunExecutor {
       }`;
 
       const recordArtifactProducer: ThreadOperationRef = {
-        serverId: "modelica",
-        tool: "modelica_run_get",
+        serverId: simulationPlan.readbackOperation.serverId,
+        tool: simulationPlan.readbackOperation.operationId,
         runId: providerRunId,
       };
       const receiptArtifactProducer: ThreadOperationRef = {
@@ -898,18 +902,25 @@ export class SimulateRunModelicaScenarioRunExecutor {
         }
       }
 
-      if (error instanceof ModelicaScenarioOutcomeUnknownError) {
-        // Window 1: dispatched state found — terminal, no quarantine.
-        await this.#recordFailureIfOwned(
-          origin,
-          command,
-          "simulate-modelica-scenario-outcome-unknown",
-          "The Modelica simulation outcome is unknown; the provider may hold a partial run.",
-        );
+      const failureWindow = classifyModelicaFailureWindow(error, {
+        providerAcknowledged,
+        snapshotPersisted,
+      });
+
+      if (failureWindow === "outcome-unknown") {
+        // A request may have reached the provider. Preserve the active run so
+        // an operator can reconcile the exact command and WAL without losing
+        // its ownership/status context.
         throw error;
       }
 
-      if (snapshotPersisted) {
+      if (failureWindow === "quarantined") {
+        // Quarantine is already durable. An exact retry is a read-only refusal:
+        // do not fail the still-reconcilable project run or rewrite the sentinel.
+        throw error;
+      }
+
+      if (failureWindow === "snapshot-persisted") {
         // Window 3: snapshot is durable but publish/complete didn't finish.
         const completed = await this.#completedFor(command);
         if (completed) return completed;
@@ -920,8 +931,10 @@ export class SimulateRunModelicaScenarioRunExecutor {
         );
       }
 
-      if (providerAcknowledged) {
-        // Window 2: provider acknowledged but structural failure before durable snapshot.
+      if (failureWindow === "post-acknowledgement") {
+        // Provider acknowledged but structural verification failed before a
+        // durable snapshot. Quarantine the exact run and leave project state
+        // running/publishing for operator reconciliation.
         try {
           await this.#attempts.quarantine({
             projectId: command.projectId,
@@ -931,14 +944,9 @@ export class SimulateRunModelicaScenarioRunExecutor {
         } catch {
           // Preserve original error; the quarantine write is best-effort.
         }
-        await this.#recordFailureIfOwned(
-          origin,
-          command,
-          "simulate-modelica-scenario-post-acknowledgement-quarantined",
-          "Modelica dispatch acknowledged but structural verification failed. " +
-            "The WAL is quarantined; operator review is required.",
-        );
       } else if (claimed) {
+        // This is the sole failure window in which the provider is known not
+        // to have acknowledged or possibly accepted a dispatch.
         await this.#recordFailureIfOwned(
           origin,
           command,
@@ -1257,46 +1265,6 @@ function parseCaseCaptureRecord(text: string): CaseCaptureRecord {
  * dynamic-object input schema. Sorting here makes the dispatched envelope,
  * plan digest, and receipt independent of an incidental in-memory array order.
  */
-export function buildExactSimulateRequest(simulationCase: SimulationCase): {
-  readonly model_id: string;
-  readonly scenario_id: string;
-  readonly parameter_overrides: Readonly<
-    Record<string, { readonly value: number; readonly unit: string }>
-  >;
-  readonly timeout_ms: number;
-} {
-  const entries: Array<
-    readonly [string, { readonly value: number; readonly unit: string }]
-  > = [];
-  const seen = new Set<string>();
-  for (
-    const parameter of [...simulationCase.parameters].sort((a, b) =>
-      a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-    )
-  ) {
-    if (seen.has(parameter.id)) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        `Simulation case contains duplicate parameter id "${parameter.id}".`,
-      );
-    }
-    seen.add(parameter.id);
-    entries.push([
-      parameter.id,
-      { value: parameter.value, unit: parameter.unit },
-    ]);
-  }
-  // Object.fromEntries defines even names such as "__proto__" as own data
-  // properties; ordinary indexed assignment would mutate the object's prototype.
-  const parameterOverrides = Object.fromEntries(entries);
-  return {
-    model_id: simulationCase.kit.modelId,
-    scenario_id: simulationCase.scenario.id,
-    parameter_overrides: parameterOverrides,
-    timeout_ms: simulationCase.timeoutMs,
-  };
-}
-
 /**
  * Pure dispatch decision shared by the executor and its no-provider recovery
  * tests. A durable run state never needs the mutable live kit catalogue.
@@ -1311,14 +1279,14 @@ export function needsModelicaKitListPreflight(
  * Resolve the sole live kit-list preflight site. Quarantine wins before both
  * WAL inspection and provider discovery. Completed recovery is fully offline;
  * provider-run-known recovery skips the mutable catalogue and later performs
- * only its required `modelica_run_get` readback.
+ * only its required run readback.
  */
 export async function preflightModelicaKitForAttempt(input: {
   readonly attempts: Pick<
     FileModelicaScenarioAttemptStore,
     "isQuarantined" | "readRun"
   >;
-  readonly modelica: McpToolClient;
+  readonly methodCatalog: SimulationMethodCatalog;
   readonly projectId: string;
   readonly runId: string;
   readonly simulationCase: SimulationCase;
@@ -1335,133 +1303,55 @@ export async function preflightModelicaKitForAttempt(input: {
   }
   if (!needsModelicaKitListPreflight(knownAttempt)) return;
 
-  const kitListResult = await input.modelica.callTool({
-    name: "modelica_kit_list",
-    arguments: {},
-  });
-  validateKitList(kitListResult.structuredContent, input.simulationCase);
+  await input.methodCatalog.assertMethodAvailable(input.simulationCase);
 }
 
-/** Validate the kit_list response against the simulation case requirements. */
-export function validateKitList(
-  structuredContent: unknown,
-  simulationCase: SimulationCase,
-): void {
+/**
+ * Execute the one call reserved by the Modelica WAL. A transport failure cannot
+ * establish whether the provider persisted a run, so it is terminal outcome-
+ * unknown. An acknowledged malformed response remains distinguishable and is
+ * quarantined by the executor without losing the original exception.
+ */
+export async function simulateAfterModelicaWalReservation(
+  simulator: DynamicSystemSimulator,
+  plan: DynamicSystemSimulationPlan,
+): Promise<DynamicSystemDispatchRecord> {
+  try {
+    return await simulator.simulate(plan);
+  } catch (error) {
+    if (error instanceof DynamicSystemResponseError) throw error;
+    throw new ModelicaScenarioOutcomeUnknownError({ cause: error });
+  }
+}
+
+export type ModelicaFailureWindow =
+  | "outcome-unknown"
+  | "quarantined"
+  | "snapshot-persisted"
+  | "post-acknowledgement"
+  | "pre-acknowledgement";
+
+/** Deterministic failure routing used by the executor catch window. */
+export function classifyModelicaFailureWindow(
+  error: unknown,
+  state: {
+    readonly providerAcknowledged: boolean;
+    readonly snapshotPersisted: boolean;
+  },
+): ModelicaFailureWindow {
+  if (error instanceof ModelicaScenarioRunQuarantinedError) {
+    return "quarantined";
+  }
+  if (error instanceof ModelicaScenarioOutcomeUnknownError) {
+    return "outcome-unknown";
+  }
+  if (state.snapshotPersisted) return "snapshot-persisted";
   if (
-    typeof structuredContent !== "object" ||
-    structuredContent === null ||
-    !Array.isArray((structuredContent as Record<string, unknown>).kits)
+    state.providerAcknowledged || error instanceof DynamicSystemResponseError
   ) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      "modelica_kit_list did not return a valid response with a kits array.",
-    );
+    return "post-acknowledgement";
   }
-
-  const kits = (structuredContent as { kits: unknown[] }).kits;
-  const kit = kits.find((k) => {
-    if (typeof k !== "object" || k === null) return false;
-    const kObj = k as Record<string, unknown>;
-    return (
-      kObj.id === simulationCase.kit.modelId &&
-      kObj.version === simulationCase.kit.modelVersion
-    );
-  });
-
-  if (!kit) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Kit "${simulationCase.kit.modelId}" v"${simulationCase.kit.modelVersion}" ` +
-        "is not present in modelica_kit_list. Ensure the kit is approved and loaded.",
-    );
-  }
-
-  const kitObj = kit as Record<string, unknown>;
-  /**
-   * WHY AN ARRAY, AND `minimum`/`maximum` — this shape is the provider's own
-   * `kit-list` outputSchema, not a convenience: each parameter is an object
-   * carrying `{id, unit, default, minimum, maximum}` inside a `parameters`
-   * array. Probed against the live server; a map or `min`/`max` short names
-   * would silently find nothing and let an out-of-bounds case reach dispatch.
-   */
-  const parameters = kitObj.parameters;
-  if (!Array.isArray(parameters)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Kit "${simulationCase.kit.modelId}" has no parameters array in kit_list.`,
-    );
-  }
-
-  // Every case parameter must be present in the kit with matching unit and
-  // finite bounds; the case value must be within [minimum, maximum].
-  for (const param of simulationCase.parameters) {
-    const kitParam = parameters.find(
-      (candidate) =>
-        typeof candidate === "object" &&
-        candidate !== null &&
-        (candidate as Record<string, unknown>).id === param.id,
-    ) as Record<string, unknown> | undefined;
-    if (!kitParam) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Kit parameter "${param.id}" is absent from kit_list.`,
-      );
-    }
-    if (kitParam.unit !== param.unit) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Kit parameter "${param.id}" unit "${kitParam.unit}" differs from ` +
-          `case unit "${param.unit}".`,
-      );
-    }
-    const min = Number(kitParam.minimum);
-    const max = Number(kitParam.maximum);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Kit parameter "${param.id}" has invalid bounds: min=${min} max=${max}.`,
-      );
-    }
-    if (param.value < min || param.value > max) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Case parameter "${param.id}" value ${param.value} is outside kit bounds ` +
-          `[${min}, ${max}].`,
-      );
-    }
-  }
-
-  // Every expected metric must be listed in the kit's produced_metrics with
-  // matching unit.
-  const producedMetrics = kitObj.produced_metrics;
-  if (!Array.isArray(producedMetrics)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Kit "${simulationCase.kit.modelId}" has no produced_metrics array in kit_list.`,
-    );
-  }
-
-  for (const expectedMetric of simulationCase.expectedMetrics) {
-    const kitMetric = producedMetrics.find(
-      (m) =>
-        typeof m === "object" &&
-        m !== null &&
-        (m as Record<string, unknown>).id === expectedMetric.id,
-    ) as Record<string, unknown> | undefined;
-    if (!kitMetric) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Expected metric "${expectedMetric.id}" is absent from kit produced_metrics.`,
-      );
-    }
-    if (kitMetric.unit !== expectedMetric.unit) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Kit metric "${expectedMetric.id}" unit "${kitMetric.unit}" differs from ` +
-          `case expected unit "${expectedMetric.unit}".`,
-      );
-    }
-  }
+  return "pre-acknowledgement";
 }
 
 /**
@@ -1473,7 +1363,7 @@ export function validateKitList(
  * values identical ensures that parsePersistedModelicaRunEvidence inside
  * createObservedModelicaRunExtension accepts the result without modification.
  */
-function parsedRunAsRunDetail(parsedRun: ParsedModelicaRun): RunDetail {
+function parsedRunAsRunDetail(parsedRun: DynamicSystemRun): RunDetail {
   return {
     id: `modelica:${parsedRun.runId}`,
     name: `${parsedRun.model.id} / ${parsedRun.scenario.id}`,

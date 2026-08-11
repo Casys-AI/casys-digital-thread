@@ -4,7 +4,6 @@ import type {
   ThreadComponentBinding,
   ThreadComponentPreview,
   ThreadGraphNode,
-  ThreadObservation,
   ThreadRequirement,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
@@ -736,11 +735,7 @@ export interface SysmlAnchoredRequirement {
   readonly status: "pass" | "fail" | "unresolved";
 }
 
-/**
- * An observation whose label suggests a sensitivity derivative produced by
- * the DripTray sensitivity study.  These are projected directly from the
- * canonical snapshot observations — no engineering inference is applied.
- */
+/** One qualified local-sensitivity assertion projected for the SysML facet. */
 export interface SysmlSensitivityRecord {
   readonly label: string;
   /** Formatted value with unit, e.g. "−0.008 mm/mm". */
@@ -773,9 +768,8 @@ export interface SysmlSubtreeModel {
    */
   readonly anchoredRequirements: readonly SysmlAnchoredRequirement[];
   /**
-   * Sensitivity derivative observations linked to this component.
-   * Identified by matching the canonical observation labels produced by the
-   * sensitivity-study executor.  Empty when no sensitivity study has run.
+   * Qualified local-sensitivity assertions bound to this exact component.
+   * Empty until the graph carries independently evidenced binding semantics.
    */
   readonly sensitivityRecords: readonly SysmlSensitivityRecord[];
 }
@@ -783,8 +777,7 @@ export interface SysmlSubtreeModel {
 /**
  * Build the SysML sub-tree read model for the selected component.
  *
- * Sources: snapshot.components.components, snapshot.requirements,
- * snapshot.observations — all from the existing BFF projection.
+ * Sources: snapshot components, requirements, and qualified analysis edges.
  * No MCP call, no provider inference, no label-based engineering reasoning.
  */
 export function buildSysmlSubtree(
@@ -814,22 +807,20 @@ export function buildSysmlSubtree(
   // The SysON element id for the selected component (from its syson binding).
   const sysonElementId = sysonBindingId(selected);
 
-  // Requirements whose source field references this component's element id.
-  // The projector formats source as "{producer} · {elementId}" so we check
-  // for the element id as a substring — intentionally not parsing the full
-  // source string, since the element id is the immutable anchor.
+  // Only the dedicated structured source identity anchors a requirement.
+  // Display provenance remains for people; it never participates in joins.
   const anchoredRequirements: SysmlAnchoredRequirement[] = sysonElementId
     ? snapshot.requirements
-      .filter((req) => req.source.includes(sysonElementId))
+      .filter((req) => req.sourceElementId === sysonElementId)
       .map(toAnchoredRequirement)
     : [];
 
-  // Sensitivity derivative observations are identified by their server-fixed
-  // canonical label prefix.  The executor always uses the pattern
-  // "DripTray {metric} sensitivity (size-z)".
-  const sensitivityRecords: SysmlSensitivityRecord[] = snapshot.observations
-    .filter(isSensitivityObservation)
-    .map(toSensitivityRecord);
+  // A finite-difference case identifies its driver and responses, but does not
+  // prove that the driver is bound to this exact product component. Keep the
+  // canonical relation visible in the global evidence graph; the component
+  // facet remains empty until an architecture/source binding is itself
+  // captured and verified. Labels are never used as a substitute identity.
+  const sensitivityRecords: SysmlSensitivityRecord[] = [];
 
   return {
     root,
@@ -866,25 +857,6 @@ function toAnchoredRequirement(
     expression: req.expression,
     status: req.status,
   };
-}
-
-/**
- * A sensitivity observation has a canonical label produced by the
- * sensitivity-study executor:  "DripTray {metric} sensitivity (size-z)".
- * No other label pattern is treated as a sensitivity record.
- */
-function isSensitivityObservation(obs: ThreadObservation): boolean {
-  return (
-    obs.label.startsWith("DripTray ") &&
-    obs.label.includes("sensitivity") &&
-    obs.label.endsWith(")")
-  );
-}
-
-function toSensitivityRecord(
-  obs: ThreadObservation,
-): SysmlSensitivityRecord {
-  return { label: obs.label, display: obs.display };
 }
 
 // ── CAD mesh explicit state ───────────────────────────────────────────────────

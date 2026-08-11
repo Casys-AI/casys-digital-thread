@@ -14,11 +14,10 @@
  *     to `resolved-parameters` (hyphen); all other kinds are identity.
  *     Verified indirectly through a valid `parsedRunAsRunDetail` shape.
  *
- * Full project execution paths (WAL dispatch, idempotent replay, and durable
- * file-store recovery) are deferred to the integration gate, which runs the
- * verified operation registry through real file stores. The preflight helper
- * is unit-tested here so completed and provider-run-known recovery cannot
- * consult the mutable kit catalogue before their respective recovery paths.
+ * Full command-service, WAL, and executor recovery paths live in the companion
+ * `simulate-run-modelica-scenario-run-executor_integration_test.ts` suite. The
+ * small preflight and dispatch functions remain unit-tested here at their own
+ * seam and are not presented as executor-path proof.
  */
 
 import {
@@ -26,6 +25,7 @@ import {
   assertNotEquals,
   assertRejects,
   assertStrictEquals,
+  assertThrows,
 } from "@std/assert";
 import {
   EngineeringProjectCommandError,
@@ -38,15 +38,26 @@ import {
   parseSimulateEnvelopeMinimal,
 } from "../captures/modelica-scenario-run-capture.ts";
 import {
-  buildExactSimulateRequest,
+  classifyModelicaFailureWindow,
   needsModelicaKitListPreflight,
   preflightModelicaKitForAttempt,
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+  simulateAfterModelicaWalReservation,
   SimulateRunModelicaScenarioRunExecutor,
-  validateKitList,
 } from "./simulate-run-modelica-scenario-run-executor.ts";
-import { ModelicaScenarioRunQuarantinedError } from "../wal/file-modelica-scenario-attempt-store.ts";
+import {
+  lowerModelicaSimulationCase as buildExactSimulateRequest,
+  validateModelicaMethodCatalogRecord as validateKitList,
+} from "../providers/modelica/mcp-modelica-provider.ts";
+import {
+  ModelicaScenarioOutcomeUnknownError,
+  ModelicaScenarioRunQuarantinedError,
+} from "../wal/file-modelica-scenario-attempt-store.ts";
 import type { SimulationCase } from "../../domain/analysis/simulation-case.ts";
+import {
+  DynamicSystemResponseError,
+  type DynamicSystemSimulator,
+} from "../../domain/analysis/simulation-capabilities.ts";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -165,7 +176,10 @@ Deno.test(
       recordCaptures: {} as never,
       receiptCaptures: {} as never,
       attempts: {} as never,
-      modelica: {} as never,
+      methodCatalog: {} as never,
+      planResolver: {} as never,
+      simulator: {} as never,
+      runReader: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -192,7 +206,10 @@ Deno.test(
       recordCaptures: {} as never,
       receiptCaptures: {} as never,
       attempts: {} as never,
-      modelica: {} as never,
+      methodCatalog: {} as never,
+      planResolver: {} as never,
+      simulator: {} as never,
+      runReader: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -229,7 +246,10 @@ Deno.test(
       recordCaptures: {} as never,
       receiptCaptures: {} as never,
       attempts: {} as never,
-      modelica: {} as never,
+      methodCatalog: {} as never,
+      planResolver: {} as never,
+      simulator: {} as never,
+      runReader: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -298,7 +318,10 @@ Deno.test(
       recordCaptures: {} as never,
       receiptCaptures: {} as never,
       attempts: {} as never,
-      modelica: {} as never,
+      methodCatalog: {} as never,
+      planResolver: {} as never,
+      simulator: {} as never,
+      runReader: {} as never,
       policy: {} as never,
       lease: {} as never,
     });
@@ -663,6 +686,25 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "Modelica simulate contract accepts a parameter dictionary and rejects the sealed-case array",
+  () => {
+    const request = buildExactSimulateRequest(makeMinimalSimCase([
+      { id: "T_brew", value: 95, unit: "degC" },
+    ]));
+    assertModelicaSimulateContract(request);
+    assertThrows(
+      () =>
+        assertModelicaSimulateContract({
+          ...request,
+          parameter_overrides: [{ id: "T_brew", value: 95, unit: "degC" }],
+        }),
+      Error,
+      "parameter_overrides must be a dictionary",
+    );
+  },
+);
+
 Deno.test("Modelica parameter ids cannot mutate the request object prototype", () => {
   const request = buildExactSimulateRequest(makeMinimalSimCase([
     { id: "__proto__", value: 3, unit: "K" },
@@ -684,6 +726,46 @@ Deno.test("Modelica parameter ids cannot mutate the request object prototype", (
     },
   );
 });
+
+/**
+ * A deliberately small stand-in for the pinned `modelica_simulate` MCP input
+ * contract.  The sealed SimulationCase stays an ordered array for review, but
+ * the provider boundary accepts only an id → { value, unit } dictionary.
+ */
+function assertModelicaSimulateContract(value: unknown): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("modelica_simulate arguments must be an object.");
+  }
+  const request = value as Record<string, unknown>;
+  const keys = Object.keys(request).sort();
+  if (
+    keys.length !== 4 ||
+    keys.join(",") !==
+      "model_id,parameter_overrides,scenario_id,timeout_ms"
+  ) {
+    throw new Error("modelica_simulate arguments have an unexpected shape.");
+  }
+  if (
+    !request.parameter_overrides ||
+    typeof request.parameter_overrides !== "object" ||
+    Array.isArray(request.parameter_overrides)
+  ) {
+    throw new Error("modelica_simulate.parameter_overrides must be a dictionary.");
+  }
+  for (const [id, override] of Object.entries(request.parameter_overrides)) {
+    if (!id || !override || typeof override !== "object" || Array.isArray(override)) {
+      throw new Error("modelica_simulate parameter override is invalid.");
+    }
+    const parameter = override as Record<string, unknown>;
+    if (
+      Object.keys(parameter).sort().join(",") !== "unit,value" ||
+      typeof parameter.value !== "number" || !Number.isFinite(parameter.value) ||
+      typeof parameter.unit !== "string" || !parameter.unit.trim()
+    ) {
+      throw new Error("modelica_simulate parameter override is invalid.");
+    }
+  }
+}
 
 Deno.test(
   "completed Modelica WAL recovery skips the sole live kit-list preflight",
@@ -708,8 +790,8 @@ Deno.test(
         isQuarantined: () => Promise.resolve(false),
         readRun: () => Promise.resolve(completedAttempt),
       },
-      modelica: {
-        callTool: () => {
+      methodCatalog: {
+        assertMethodAvailable: () => {
           providerCalls += 1;
           return Promise.reject(new Error("completed recovery must be offline"));
         },
@@ -737,8 +819,8 @@ Deno.test(
               return Promise.resolve(undefined);
             },
           },
-          modelica: {
-            callTool: () => {
+          methodCatalog: {
+            assertMethodAvailable: () => {
               providerCalls += 1;
               return Promise.reject(new Error("quarantine must be offline"));
             },
@@ -763,17 +845,18 @@ Deno.test(
         isQuarantined: () => Promise.resolve(false),
         readRun: () => Promise.resolve(undefined),
       },
-      modelica: {
-        callTool: (request: { name: string; arguments: Record<string, unknown> }) => {
+      methodCatalog: {
+        assertMethodAvailable: (simulationCase: SimulationCase) => {
           providerCalls += 1;
-          assertEquals(request, { name: "modelica_kit_list", arguments: {} });
-          return Promise.resolve({
-            structuredContent: makeKitListContent({
+          validateKitList(
+            makeKitListContent({
               kitParams: {
                 T_brew: { unit: "degC", min: 80, max: 100 },
               },
             }),
-          });
+            simulationCase,
+          );
+          return Promise.resolve();
         },
       } as never,
       projectId: PROJECT_ID,
@@ -785,50 +868,63 @@ Deno.test(
 );
 
 Deno.test(
-  "provider-run-known recovery reaches modelica_run_get without a kit-list preflight",
+  "post-WAL dispatch helper wraps transport failure as outcome-unknown with its cause",
   async () => {
-    const calls: string[] = [];
-    const providerRunId = "prov-run-001";
-    const knownAttempt = {
-      schemaVersion: "modelica-scenario-attempt/1.0" as const,
-      projectId: PROJECT_ID,
-      runId: RUN_ID,
-      planDigest: "d".repeat(64),
-      status: "provider-run-known" as const,
-      dispatchedAt: "2026-08-09T12:00:00.000Z",
-      providerRunId,
-      canonicalSimulateEnvelope: RUN_GET_ENVELOPE_VALID,
+    const transportFailure = new Error("connection reset after request write");
+    const simulator: DynamicSystemSimulator = {
+      simulate: () => Promise.reject(transportFailure),
     };
-    const modelica = {
-      callTool: (request: {
-        name: string;
-        arguments: Record<string, unknown>;
-      }) => {
-        calls.push(request.name);
-        assertEquals(request, {
-          name: "modelica_run_get",
-          arguments: { run_id: providerRunId },
-        });
-        return Promise.resolve({ structuredContent: RUN_GET_ENVELOPE_VALID });
-      },
+    const plan = {
+      exactDispatchRecord: {},
+      readbackOperation: { serverId: "modelica", operationId: "read" },
     };
 
-    await preflightModelicaKitForAttempt({
-      attempts: {
-        isQuarantined: () => Promise.resolve(false),
-        readRun: () => Promise.resolve(knownAttempt),
-      },
-      modelica: modelica as never,
-      projectId: PROJECT_ID,
-      runId: RUN_ID,
-      simulationCase: makeMinimalSimCase(CASE_IDENTITY.parameters),
-    });
+    const failure = await assertRejects(
+      () => simulateAfterModelicaWalReservation(simulator, plan),
+      ModelicaScenarioOutcomeUnknownError,
+    );
 
-    await modelica.callTool({
-      name: "modelica_run_get",
-      arguments: { run_id: providerRunId },
-    });
-    assertEquals(calls, ["modelica_run_get"]);
+    assertStrictEquals(failure.cause, transportFailure);
+    assertStrictEquals(
+      classifyModelicaFailureWindow(failure, {
+        providerAcknowledged: false,
+        snapshotPersisted: false,
+      }),
+      "outcome-unknown",
+    );
+  },
+);
+
+Deno.test(
+  "post-WAL dispatch helper preserves an acknowledged malformed response error",
+  async () => {
+    const parseFailure = new Error("missing run_id");
+    const malformed = new DynamicSystemResponseError(
+      "modelica_simulate response is malformed",
+      { cause: parseFailure },
+    );
+    const simulator: DynamicSystemSimulator = {
+      simulate: () => Promise.reject(malformed),
+    };
+    const plan = {
+      exactDispatchRecord: {},
+      readbackOperation: { serverId: "modelica", operationId: "read" },
+    };
+
+    const failure = await assertRejects(
+      () => simulateAfterModelicaWalReservation(simulator, plan),
+      DynamicSystemResponseError,
+    );
+
+    assertStrictEquals(failure, malformed);
+    assertStrictEquals(failure.cause, parseFailure);
+    assertStrictEquals(
+      classifyModelicaFailureWindow(failure, {
+        providerAcknowledged: false,
+        snapshotPersisted: false,
+      }),
+      "post-acknowledgement",
+    );
   },
 );
 

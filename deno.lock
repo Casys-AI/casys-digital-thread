@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@casys/mcp-server@*": "0.24.1",
     "jsr:@casys/mcp-server@0.24.1": "0.24.1",
     "jsr:@std/assert@1.0.14": "1.0.14",
     "jsr:@std/cli@1": "1.0.30",
@@ -9,6 +10,7 @@
     "jsr:@std/path@*": "1.1.6",
     "jsr:@std/yaml@1": "1.1.2",
     "npm:@dagrejs/dagre@^3.1.0": "3.1.0",
+    "npm:@lezer/python@1.1.19": "1.1.19",
     "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3",
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.30.0_zod@4.4.3",
     "npm:@opentelemetry/api@^1.9.0": "1.9.1",
@@ -69,6 +71,29 @@
       "integrity": "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==",
       "dependencies": [
         "hono"
+      ]
+    },
+    "@lezer/common@1.5.2": {
+      "integrity": "sha512-sxQE460fPZyU3sdc8lafxiPwJHBzZRy/udNFynGQky1SePYBdhkBl1kOagA9uT3pxR8K09bOrmTUqA9wb/PjSQ=="
+    },
+    "@lezer/highlight@1.2.3": {
+      "integrity": "sha512-qXdH7UqTvGfdVBINrgKhDsVTJTxactNNxLk7+UMwZhU13lMHaOBlJe9Vqp907ya56Y3+ed2tlqzys7jDkTmW0g==",
+      "dependencies": [
+        "@lezer/common"
+      ]
+    },
+    "@lezer/lr@1.4.10": {
+      "integrity": "sha512-rnCpTIBafOx4mRp43xOxDJbFipJm/c0cia/V5TiGlhmMa+wsSdoGmUN3w5Bqrks/09Q/D4tNAmWaT8p6NRi77A==",
+      "dependencies": [
+        "@lezer/common"
+      ]
+    },
+    "@lezer/python@1.1.19": {
+      "integrity": "sha512-MhQIURHRytsNzP/YXnqpYKW6la6voAH3kyplTOOiCdjyFY6cWWGFVmYVdHIPrElqSDf4iCDktQCockB9FxuhzQ==",
+      "dependencies": [
+        "@lezer/common",
+        "@lezer/highlight",
+        "@lezer/lr"
       ]
     },
     "@modelcontextprotocol/ext-apps@1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3": {
@@ -616,6 +641,7 @@
       "jsr:@std/cli@1",
       "jsr:@std/yaml@1",
       "npm:@dagrejs/dagre@^3.1.0",
+      "npm:@lezer/python@1.1.19",
       "npm:graphology@0.26"
     ]
   }

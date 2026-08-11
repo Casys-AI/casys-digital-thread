@@ -13,13 +13,23 @@ import type {
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  type SourceAnalysisFrontendRegistry,
+} from "../../domain/analysis/source-analysis-frontend-registry.ts";
+import { validateSourceAnalysisBundle } from "../../domain/analysis/source-analysis.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import {
   APPROVED_BRIEF_BASELINE_OPERATION,
   materializeApprovedBriefBaseline,
+  prepareApprovedBriefBaselineEligibility,
 } from "../../orchestration/operations/approved-brief-baseline.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { FileCaptureStore } from "../captures/file-capture-store.ts";
+import {
+  BriefSourceAnalysisCaptureService,
+  requireBriefSourceAnalysis,
+} from "../captures/brief-source-analysis-capture.ts";
+import type { BriefSourceAnalysisReference } from "../../domain/analysis/brief-source-analysis-reference.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 
 type ApprovedBriefBaselineMaterialization = Awaited<
@@ -39,6 +49,13 @@ export interface ApprovedBriefBaselineRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: EngineeringProjectCommandService;
   readonly captures: FileCaptureStore<"approved-brief">;
+  /** Passive local parser front-end; it is not an admission or MCP provider. */
+  readonly briefSourceAnalysis: BriefSourceAnalysisCaptureService;
+  readonly briefSourceCaptures: FileCaptureStore<"brief-source-capture">;
+  /** Shared provider-neutral CAS, also used by CAD source analysis. */
+  readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
+  /** Exact parser-version registry used to reopen sealed brief analysis. */
+  readonly briefSourceAnalysisFrontends: SourceAnalysisFrontendRegistry;
   readonly snapshots: ThreadSnapshotStore;
   /** Cross-process ownership for the exact project/run execution. */
   readonly lease: EngineeringProjectRunLease;
@@ -76,6 +93,10 @@ export class ApprovedBriefBaselineRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
   readonly #captures: FileCaptureStore<"approved-brief">;
+  readonly #briefSourceAnalysis: BriefSourceAnalysisCaptureService;
+  readonly #briefSourceCaptures: FileCaptureStore<"brief-source-capture">;
+  readonly #sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
+  readonly #briefSourceAnalysisFrontends: SourceAnalysisFrontendRegistry;
   readonly #snapshots: ThreadSnapshotStore;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
@@ -85,6 +106,10 @@ export class ApprovedBriefBaselineRunExecutor {
     this.#projects = dependencies.projects;
     this.#commands = dependencies.commands;
     this.#captures = dependencies.captures;
+    this.#briefSourceAnalysis = dependencies.briefSourceAnalysis;
+    this.#briefSourceCaptures = dependencies.briefSourceCaptures;
+    this.#sourceAnalysisCaptures = dependencies.sourceAnalysisCaptures;
+    this.#briefSourceAnalysisFrontends = dependencies.briefSourceAnalysisFrontends;
     this.#snapshots = dependencies.snapshots;
     this.#lease = dependencies.lease;
     this.#liveUpdates = dependencies.liveUpdates;
@@ -259,11 +284,24 @@ export class ApprovedBriefBaselineRunExecutor {
         "The exact project revision containing the approved brief is no longer readable.",
       );
     }
+    // This pure probe performs all project/plan/approved-brief eligibility
+    // checks before the source service can write any CAS record.
+    const eligibility = prepareApprovedBriefBaselineEligibility({
+      project,
+      approvedProject,
+      runId: run.id,
+      capturedAt,
+    });
+    const reference = await this.#briefSourceAnalysis.capture({
+      brief: eligibility.brief,
+    });
+    const verified = await this.reopenBriefSourceAnalysis(reference);
     const first = await materializeApprovedBriefBaseline({
       project,
       approvedProject,
       runId: run.id,
       capturedAt,
+      briefSourceAnalysis: { reference: verified.reference, bundle: verified.bundle },
     });
     const result = await materializeApprovedBriefBaseline({
       project,
@@ -271,6 +309,7 @@ export class ApprovedBriefBaselineRunExecutor {
       runId: run.id,
       capturedAt,
       captureUri: this.#captures.uriFor(first.sha256),
+      briefSourceAnalysis: { reference: verified.reference, bundle: verified.bundle },
     });
     if (
       deterministicJson(first.capture) !== deterministicJson(result.capture) ||
@@ -280,6 +319,32 @@ export class ApprovedBriefBaselineRunExecutor {
       throw new Error("Approved-brief baseline materialization was not stable.");
     }
     return result;
+  }
+
+  /**
+   * The capture service already checks save/readback. Reopen independently at
+   * the execution boundary so the only bundle used for the ThreadSnapshot is
+   * the exact content-addressed record named by the sealed reference.
+   */
+  private async reopenBriefSourceAnalysis(
+    reference: BriefSourceAnalysisReference,
+  ): Promise<{
+    readonly reference: BriefSourceAnalysisReference;
+    readonly bundle: ReturnType<typeof validateSourceAnalysisBundle>;
+  }> {
+    try {
+      const replay = await requireBriefSourceAnalysis(reference, {
+        sourceCaptures: this.#briefSourceCaptures,
+        analysisCaptures: this.#sourceAnalysisCaptures,
+        frontends: this.#briefSourceAnalysisFrontends,
+      });
+      return { reference: replay.reference, bundle: replay.bundle };
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Brief source analysis is invalid after capture: ${errorMessage(error)}`,
+      );
+    }
   }
 
   private async assertExactPersistedSnapshot(
@@ -552,4 +617,8 @@ function stepCommandId(commandId: string, step: string): string {
 function safeNow(now: () => string): string {
   const value = now();
   return Number.isNaN(Date.parse(value)) ? new Date().toISOString() : value;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

@@ -1,4 +1,5 @@
 import type { ContentFingerprint, IsoDateTime } from "../kernel/types.ts";
+import type { AnalysisGraph } from "../analysis/analysis-graph.ts";
 
 export type { ContentFingerprint } from "../kernel/types.ts";
 
@@ -9,7 +10,12 @@ export type { ContentFingerprint } from "../kernel/types.ts";
  * UI state intentionally live outside this module.
  */
 
-export type ThreadSnapshotSchemaVersion = "1.0";
+/**
+ * 1.0 contains lifecycle and provenance evidence only.
+ * 1.1 additionally contains a non-empty, separately typed semantic analysis
+ * graph.  The runtime validator enforces the version-specific presence rule.
+ */
+export type ThreadSnapshotSchemaVersion = "1.0" | "1.1";
 
 export type ThreadFreshnessStatus = "fresh" | "stale" | "running" | "failed";
 
@@ -284,4 +290,10 @@ export interface ThreadSnapshot {
   violations: ThreadViolation[];
   provenance: ThreadProvenanceLink[];
   proposedActions: ProposedThreadAction[];
+  /**
+   * Provider-neutral semantic facts. This is intentionally not provenance:
+   * `derived_from` and `caused_by` retain their execution/violation semantics.
+   * Present exactly for schema 1.1; see validateThreadSnapshot.
+   */
+  analysisGraph?: AnalysisGraph;
 }

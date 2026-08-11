@@ -73,6 +73,7 @@ export type DisplayKind =
   | "change"
   | "consumption"
   | "action"
+  | "analysis"
   | "sysml-element";
 
 /**
@@ -89,6 +90,7 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
   "change": "Changes",
   "consumption": "Consumptions",
   "action": "Actions",
+  "analysis": "Qualified analysis",
   "sysml-element": "SysML component view",
 };
 
@@ -104,6 +106,7 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
  * model continue to work without a circular dependency.
  */
 export function displayKindOf(node: ThreadGraphNode): DisplayKind {
+  if (node.entityKind === "analysis-node") return "analysis";
   if (
     node.entityKind === "part-definition" ||
     node.entityKind === "part-usage"

@@ -22,16 +22,12 @@ Deno.test("CM-01 V3 ERP capture reads exactly the reviewed BOM and returns porta
     arguments: { name: CM01_V3_ERPNEXT_BOM.name },
   }]);
   assertEquals(capture, {
-    schemaVersion: "cm01-erpnext-bom-capture/1.0",
+    schemaVersion: "cm01-erpnext-bom-capture/2.0",
     kind: "cm01-erpnext-bom-capture",
     capturedAt: "2026-08-03T10:00:00.000Z",
     artifact: {
       role: "erp-bom",
       kind: "bom",
-      fingerprint: {
-        algorithm: "sha256",
-        digest: "b6c62ec8c0460ee3e7d5a2c5ede73ae4219337f1dc6cf9e427adc4d79ef5c2ef",
-      },
       producer: { serverId: "erpnext", tool: "erpnext_bom_get" },
       identity: {
         bomName: "BOM-CASYS-CM01-001",
@@ -39,7 +35,10 @@ Deno.test("CM-01 V3 ERP capture reads exactly the reviewed BOM and returns porta
         itemName: "Coffee Machine CM-01",
       },
       quantity: { value: 1, unit: "Nos" },
-      componentCount: 2,
+      components: [
+        { index: 1, itemCode: "CASYS-CM01-ENC", quantity: 1, unit: "Nos" },
+        { index: 2, itemCode: "CASYS-CM01-TANK", quantity: 1, unit: "Nos" },
+      ],
     },
   });
   const serialized = JSON.stringify(capture);
