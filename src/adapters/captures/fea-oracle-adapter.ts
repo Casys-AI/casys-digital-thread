@@ -36,6 +36,7 @@ import type {
   RequirementEvaluation,
   RequirementEvaluationStatus,
   ThreadFreshness,
+  ThreadOperationRef,
 } from "../../domain/thread/thread-snapshot.ts";
 import {
   buildConstraintAst,
@@ -190,15 +191,69 @@ export async function callFeaConstraintOracle(
   requirements: readonly MechanicalRequirement[],
   values: Record<string, { readonly value: number; readonly unit: string }>,
 ): Promise<ReadonlyMap<string, ParsedOracleResult>> {
+  return (await callCapturedFeaConstraintOracle(syson, requirements, values)).outcomes;
+}
+
+/**
+ * Exact call envelope and parsed result for a recorded SysON evaluation.
+ *
+ * The caller owns durable capture of `request` and `structuredContent` before
+ * treating the parsed outcome as Thread evidence.  Keeping this alongside the
+ * existing projection/parser prevents a second, subtly different FEA-to-SysON
+ * translation at the recorded-executor boundary.
+ */
+export interface CapturedFeaConstraintOracleCall {
+  readonly request: {
+    readonly name: "syson_constraint_evaluate";
+    readonly arguments: Readonly<Record<string, unknown>>;
+  };
+  readonly structuredContent: Readonly<Record<string, unknown>>;
+  readonly outcomes: ReadonlyMap<string, ParsedOracleResult>;
+}
+
+export function prepareFeaConstraintOracleCall(
+  requirements: readonly MechanicalRequirement[],
+  values: Record<string, { readonly value: number; readonly unit: string }>,
+): CapturedFeaConstraintOracleCall["request"] {
   const oracleRequirements: OracleRequirement[] = requirements.map(
     projectProofRequirementToOracle,
   );
   const constraints = oracleRequirements.map(buildConstraintAst);
-  const result = await syson.callTool({
+  return {
     name: "syson_constraint_evaluate",
     arguments: { constraints, values },
+  };
+}
+
+/** Reopen a persisted exact SysON structured result with the shared parser. */
+export function parseCapturedFeaConstraintOracleOutcome(
+  structuredContent: Readonly<Record<string, unknown>>,
+  requirements: readonly MechanicalRequirement[],
+): ReadonlyMap<string, ParsedOracleResult> {
+  return parseOracleOutcome(
+    structuredContent,
+    requirements.map(projectProofRequirementToOracle),
+  );
+}
+
+export async function callCapturedFeaConstraintOracle(
+  syson: McpToolClient,
+  requirements: readonly MechanicalRequirement[],
+  values: Record<string, { readonly value: number; readonly unit: string }>,
+): Promise<CapturedFeaConstraintOracleCall> {
+  const request = prepareFeaConstraintOracleCall(requirements, values);
+  const result = await syson.callTool({
+    name: request.name,
+    arguments: request.arguments,
   });
-  return parseOracleOutcome(result.structuredContent, oracleRequirements);
+  return {
+    request,
+    structuredContent: result.structuredContent,
+    outcomes: parseCapturedFeaConstraintOracleOutcome(
+      result.structuredContent,
+      requirements,
+    ),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +288,8 @@ export interface FeaEvaluationContext {
    * holds the basis snapshot the requirements were traced into.
    */
   readonly threadRequirementIds: ReadonlyMap<string, string>;
+  /** Exact orchestration identity when the caller has one; legacy @1 omits it. */
+  readonly evaluator?: ThreadOperationRef;
 }
 
 /**
@@ -267,6 +324,7 @@ export function feaEvaluationsFromOracle(
     evidenceArtifactId,
     observationIds,
     threadRequirementIds,
+    evaluator: exactEvaluator,
   } = context;
 
   if (!/^[a-f0-9]{64}$/.test(verdictCaptureFp)) {
@@ -282,12 +340,9 @@ export function feaEvaluationsFromOracle(
     invalidatedByChangeIds: [],
   };
 
-  /**
-   * evaluator.runId is set to evidenceArtifactId because the verdict capture
-   * artifact uniquely identifies this specific oracle call session.  The
-   * artifact ID is stable across re-materializations of the same capture.
-   */
-  const evaluator = {
+  // Recorded callers supply the exact orchestration run. The fallback retains
+  // the established @1 identity without changing historical materialization.
+  const evaluator: ThreadOperationRef = exactEvaluator ?? {
     serverId: "syson",
     tool: "syson_constraint_evaluate",
     runId: evidenceArtifactId,

@@ -17,13 +17,27 @@ interface ThreadArtifactReaderPort {
   read(artifact: Readonly<ThreadArtifact>): Promise<Uint8Array | undefined>;
 }
 
+/** Mirrors the receipt-bearing FEA artifact reader port. */
+interface ExactThreadArtifactReaderPort {
+  readArtifact(artifact: Readonly<ThreadArtifact>): Promise<
+    | {
+      readonly uri: string;
+      readonly mediaType: string;
+      readonly byteCount: number;
+      readonly sha256: string;
+      readonly bytes: Uint8Array;
+    }
+    | undefined
+  >;
+}
+
 /** Mirrors the tuple reader port consumed by the recorded Modelica executor. */
 interface TupleReaderPort {
   read(expected: Readonly<RecordedAnalysisCasTuple>): Promise<Uint8Array | undefined>;
 }
 
 Deno.test(
-  "RecordedAnalysisCasReader reads every reviewed Modelica byte store and the FEA proof text store",
+  "RecordedAnalysisCasReader reads every reviewed Modelica byte store plus proof and requirements captures",
   async () => {
     const fixture = await createFixture();
     try {
@@ -35,22 +49,49 @@ Deno.test(
         saveBytes(fixture.qualificationCaptures, "qualification capture"),
       ]);
       const proof = await saveText(fixture.proofCaptures, "proof capture");
+      const requirements = await saveRequirementsText(
+        fixture.requirementsCaptures,
+        "FixtureComponent",
+      );
 
       const reader = fixture.reader();
       const modelicaReader: TupleReaderPort = reader;
       const recordedPlanReader: ThreadArtifactReaderPort = reader;
-      const feaPlanReader: ThreadArtifactReaderPort = reader;
+      const feaPlanReader: ExactThreadArtifactReaderPort = reader;
       assertEquals(typeof modelicaReader.read, "function");
       assertEquals(typeof recordedPlanReader.read, "function");
-      assertEquals(typeof feaPlanReader.read, "function");
+      assertEquals(typeof feaPlanReader.readArtifact, "function");
 
       for (const value of modelicaValues) {
         assertEquals(await reader.read(value.tuple), value.bytes);
       }
       assertEquals(await reader.read(proof.tuple), proof.bytes);
+      assertEquals(await reader.read(requirements.tuple), requirements.bytes);
       assertEquals(
         await reader.read(threadArtifact(proof.tuple, proof.fingerprint)),
         proof.bytes,
+      );
+      const requirementsArtifact = threadArtifact(
+        requirements.tuple,
+        requirements.fingerprint,
+      );
+      const openedRequirements = await reader.readArtifact(requirementsArtifact);
+      assertEquals(openedRequirements, {
+        uri: requirements.tuple.uri,
+        mediaType: requirements.tuple.mediaType,
+        byteCount: requirements.bytes.byteLength,
+        sha256: requirements.fingerprint.digest,
+        bytes: requirements.bytes,
+      });
+      await assertRejects(
+        () =>
+          reader.read({
+            ...requirements.tuple,
+            uri:
+              `casys://requirements-capture/TransplantedComponent/sha256/${requirements.fingerprint.digest}`,
+          }),
+        TypeError,
+        "does not bind",
       );
     } finally {
       await Deno.remove(fixture.directory, { recursive: true });
@@ -72,6 +113,7 @@ Deno.test(
       tuple(`casys://simulation-case-v2/sha256/${digest}`, digest, "text/plain"),
       tuple(`file:///private/recorded-analysis/${digest}`, digest),
       tuple(`mcp://modelica/resources/${digest}`, digest),
+      tuple(`casys://requirements-capture/sha256/${digest}`, digest),
     ];
 
     for (const input of rejected) {
@@ -148,6 +190,16 @@ Deno.test(
         encoder.encode("tampered proof bytes"),
       );
       await assertRejects(() => fixture.reader().read(proof.tuple), Error);
+
+      const requirements = await saveRequirementsText(
+        fixture.requirementsCaptures,
+        "FixtureComponent",
+      );
+      await Deno.writeFile(
+        fixture.requirementsCaptures.pathFor(requirements.fingerprint),
+        encoder.encode("tampered requirements bytes"),
+      );
+      await assertRejects(() => fixture.reader().read(requirements.tuple), Error);
     } finally {
       await Deno.remove(fixture.directory, { recursive: true });
     }
@@ -163,6 +215,7 @@ interface Fixture {
   readonly sourceCaptures: FileByteStore<"modelica-qualified-source-capture">;
   readonly qualificationCaptures: FileByteStore<"simulation-case-qualification">;
   readonly proofCaptures: FileCaptureStore<"fea-proof-case">;
+  readonly requirementsCaptures: FileCaptureStore<"requirements-capture">;
   readonly bindings: () => RecordedAnalysisCasStoreBinding[];
   readonly reader: () => RecordedAnalysisCasReader;
 }
@@ -201,6 +254,12 @@ async function createFixture(): Promise<Fixture> {
     uriNamespace: "fea-proof-case-capture",
     label: "FEA proof case",
   });
+  const requirementsCaptures = new FileCaptureStore({
+    kind: "requirements-capture",
+    directory: `${directory}/requirements-captures`,
+    uriNamespace: "requirements-capture",
+    label: "Requirements",
+  });
   const bindings = (): RecordedAnalysisCasStoreBinding[] => [
     { namespace: "simulation-case-v2", storage: "bytes", store: simulationCases },
     {
@@ -228,6 +287,11 @@ async function createFixture(): Promise<Fixture> {
       storage: "text",
       store: proofCaptures,
     },
+    {
+      namespace: "requirements-capture",
+      storage: "text",
+      store: requirementsCaptures,
+    },
   ];
   return {
     directory,
@@ -238,6 +302,7 @@ async function createFixture(): Promise<Fixture> {
     sourceCaptures,
     qualificationCaptures,
     proofCaptures,
+    requirementsCaptures,
     bindings,
     reader: () => new RecordedAnalysisCasReader({ stores: bindings() }),
   };
@@ -283,6 +348,29 @@ async function saveText(
     fingerprint,
     tuple: {
       uri: saved.uri,
+      byteCount: bytes.byteLength,
+      sha256: fingerprint.digest,
+      mediaType: "application/json",
+    },
+  };
+}
+
+async function saveRequirementsText(
+  store: FileCaptureStore<"requirements-capture">,
+  component: string,
+): Promise<StoredValue> {
+  const text = JSON.stringify({
+    containerComponent: component,
+    schemaVersion: "requirements-capture/2.0",
+  });
+  const bytes = encoder.encode(text);
+  const fingerprint = await contentFingerprint(bytes);
+  await store.save(fingerprint, text);
+  return {
+    bytes,
+    fingerprint,
+    tuple: {
+      uri: `casys://requirements-capture/${component}/sha256/${fingerprint.digest}`,
       byteCount: bytes.byteLength,
       sha256: fingerprint.digest,
       mediaType: "application/json",
@@ -345,7 +433,7 @@ function countingBindings(
         return Promise.resolve(undefined);
       },
     }) as unknown as FileByteStore<K>;
-  const text = (namespace: string) =>
+  const text = <K extends string>(namespace: string) =>
     ({
       uriFor: (fingerprint: ContentFingerprint) =>
         `casys://${namespace}/sha256/${fingerprint.digest}`,
@@ -353,7 +441,7 @@ function countingBindings(
         onRead();
         return Promise.resolve(undefined);
       },
-    }) as unknown as FileCaptureStore<"fea-proof-case">;
+    }) as unknown as FileCaptureStore<K>;
   return [
     {
       namespace: "simulation-case-v2",
@@ -383,7 +471,12 @@ function countingBindings(
     {
       namespace: "fea-proof-case-capture",
       storage: "text",
-      store: text("fea-proof-case-capture"),
+      store: text<"fea-proof-case">("fea-proof-case-capture"),
+    },
+    {
+      namespace: "requirements-capture",
+      storage: "text",
+      store: text<"requirements-capture">("requirements-capture"),
     },
   ];
 }

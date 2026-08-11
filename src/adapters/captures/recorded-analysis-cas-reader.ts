@@ -47,6 +47,10 @@ const PROFILE = {
     storage: "text",
     mediaTypes: ["application/json"],
   },
+  "requirements-capture": {
+    storage: "text",
+    mediaTypes: ["application/json"],
+  },
 } as const;
 
 export type RecordedAnalysisCasNamespace = keyof typeof PROFILE;
@@ -91,6 +95,12 @@ type FeaProofCaptureStoreBinding = {
   readonly store: FileCaptureStore<"fea-proof-case">;
 };
 
+type RequirementsCaptureStoreBinding = {
+  readonly namespace: "requirements-capture";
+  readonly storage: "text";
+  readonly store: FileCaptureStore<"requirements-capture">;
+};
+
 /**
  * This union is intentionally closed. A caller may inject only the reviewed
  * stores; it cannot register an arbitrary namespace, provider URI, or STEP
@@ -98,7 +108,8 @@ type FeaProofCaptureStoreBinding = {
  */
 export type RecordedAnalysisCasStoreBinding =
   | ModelicaByteStoreBinding
-  | FeaProofCaptureStoreBinding;
+  | FeaProofCaptureStoreBinding
+  | RequirementsCaptureStoreBinding;
 
 export interface RecordedAnalysisCasReaderOptions {
   readonly stores: readonly RecordedAnalysisCasStoreBinding[];
@@ -114,6 +125,14 @@ interface ByteStoreReader {
 interface TextStoreReader {
   uriFor(fingerprint: ContentFingerprint): string;
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+}
+
+export interface RecordedAnalysisArtifactRead {
+  readonly uri: string;
+  readonly mediaType: string;
+  readonly byteCount: number;
+  readonly sha256: string;
+  readonly bytes: Uint8Array;
 }
 
 type RegisteredStore =
@@ -191,6 +210,24 @@ export class RecordedAnalysisCasReader {
     return await this.#readArtifact(input);
   }
 
+  /**
+   * Exact Thread-artifact receipt for FEA executors that must attest both the
+   * byte count and full content hash before publishing a consumption.
+   */
+  async readArtifact(
+    artifact: Readonly<ThreadArtifact>,
+  ): Promise<RecordedAnalysisArtifactRead | undefined> {
+    const bytes = await this.#readArtifact(artifact);
+    if (!bytes) return undefined;
+    return Object.freeze({
+      uri: artifact.uri!,
+      mediaType: artifact.mediaType!,
+      byteCount: bytes.byteLength,
+      sha256: artifact.fingerprint.digest,
+      bytes: Uint8Array.from(bytes),
+    });
+  }
+
   async #readArtifact(
     artifact: Readonly<ThreadArtifact>,
   ): Promise<Uint8Array | undefined> {
@@ -249,7 +286,13 @@ export class RecordedAnalysisCasReader {
       algorithm: "sha256",
       digest: expected.sha256,
     };
-    if (registered.store.uriFor(fingerprint) !== expected.uri) {
+    const requirementsComponent = namespace === "requirements-capture"
+      ? requirementsComponentFromUri(expected.uri, expected.sha256)
+      : undefined;
+    if (
+      requirementsComponent === undefined &&
+      registered.store.uriFor(fingerprint) !== expected.uri
+    ) {
       throw new TypeError(
         "Recorded-analysis CAS URI does not match its exact local store.",
       );
@@ -261,6 +304,14 @@ export class RecordedAnalysisCasReader {
     if (await fingerprintResourceBytes(bytes) !== expected.sha256) {
       throw new TypeError(
         "Recorded-analysis CAS bytes do not match their exact sha256.",
+      );
+    }
+    if (requirementsComponent !== undefined) {
+      assertRequirementsCaptureUriIdentity(
+        bytes,
+        requirementsComponent,
+        expected.uri,
+        expected.sha256,
       );
     }
     return Uint8Array.from(bytes);
@@ -289,6 +340,62 @@ export class RecordedAnalysisCasReader {
       }
       return bytes;
     }
+  }
+}
+
+function requirementsComponentFromUri(uri: string, sha256: string): string {
+  const parsed = new URL(uri);
+  const parts = parsed.pathname.split("/");
+  if (
+    parts.length !== 4 || parts[0] !== "" || parts[1] === "" ||
+    parts[2] !== "sha256" || parts[3] !== sha256 || parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new TypeError(
+      "Recorded-analysis requirements URI is not an exact component-scoped capture URI.",
+    );
+  }
+  let component: string;
+  try {
+    component = decodeURIComponent(parts[1]);
+  } catch {
+    throw new TypeError(
+      "Recorded-analysis requirements URI has an invalid component segment.",
+    );
+  }
+  if (
+    component.length === 0 ||
+    `casys://requirements-capture/${component}/sha256/${sha256}` !== uri
+  ) {
+    throw new TypeError(
+      "Recorded-analysis requirements URI is not canonical for its component.",
+    );
+  }
+  return component;
+}
+
+function assertRequirementsCaptureUriIdentity(
+  bytes: Uint8Array,
+  component: string,
+  uri: string,
+  sha256: string,
+): void {
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new TypeError(
+      "Recorded-analysis requirements capture is not exact UTF-8 JSON.",
+    );
+  }
+  if (
+    !value || typeof value !== "object" || Array.isArray(value) ||
+    (value as Record<string, unknown>).containerComponent !== component ||
+    uri !== `casys://requirements-capture/${component}/sha256/${sha256}`
+  ) {
+    throw new TypeError(
+      "Recorded-analysis requirements URI does not bind its captured component.",
+    );
   }
 }
 
