@@ -154,7 +154,7 @@ export function validateEphemeralFeaExportCleanup(
   }
   expectedVector(
     metrics.center_of_mass_mm,
-    [0.5, 0.5, 0.5],
+    [0, 0, 0],
     "build123d cleanup metrics.center_of_mass_mm",
   );
   const boundingBox = record(
@@ -168,12 +168,12 @@ export function validateEphemeralFeaExportCleanup(
   );
   expectedVector(
     boundingBox.min,
-    [0, 0, 0],
+    [-0.5, -0.5, -0.5],
     "build123d cleanup metrics.bounding_box_mm.min",
   );
   expectedVector(
     boundingBox.max,
-    [1, 1, 1],
+    [0.5, 0.5, 0.5],
     "build123d cleanup metrics.bounding_box_mm.max",
   );
   expectedVector(

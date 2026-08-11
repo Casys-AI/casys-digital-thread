@@ -10,10 +10,10 @@ const cleanExecution = {
   metrics: {
     volume_mm3: 1,
     area_mm2: 6,
-    center_of_mass_mm: [0.5, 0.5, 0.5],
+    center_of_mass_mm: [0, 0, 0],
     bounding_box_mm: {
-      min: [0, 0, 0],
-      max: [1, 1, 1],
+      min: [-0.5, -0.5, -0.5],
+      max: [0.5, 0.5, 0.5],
       size: [1, 1, 1],
     },
     solids: 1,
@@ -49,10 +49,10 @@ Deno.test("FEA ephemeral cleanup accepts only a complete build123d execution pro
       ...cleanExecution.metrics,
       volume_mm3: 1 + 5e-10,
       area_mm2: 6 - 5e-10,
-      center_of_mass_mm: [0.5 + 5e-10, 0.5, 0.5],
+      center_of_mass_mm: [5e-10, 0, 0],
       bounding_box_mm: {
-        min: [5e-10, 0, 0],
-        max: [1 - 5e-10, 1, 1],
+        min: [-0.5 + 5e-10, -0.5, -0.5],
+        max: [0.5 - 5e-10, 0.5, 0.5],
         size: [1 + 5e-10, 1, 1],
       },
     },
