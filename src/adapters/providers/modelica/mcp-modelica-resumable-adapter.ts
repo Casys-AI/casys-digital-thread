@@ -20,7 +20,9 @@ import {
   MODELICA_RESUMABLE_CONTRACT_VERSION,
   type ModelicaResumableArtifact,
   type ModelicaResumableCapturedEvidence,
+  type ModelicaResumableCapturedEvidenceNormalizer,
   type ModelicaResumableCapturedResource,
+  type ModelicaResumableCapturedResourceTuple,
   type ModelicaResumableCompletedRun,
   type ModelicaResumableEngineIdentity,
   type ModelicaResumableEvidenceVerifier,
@@ -65,7 +67,8 @@ export class McpModelicaResumableAdapter
     ModelicaResumableManifestReader,
     ModelicaResumableSubmitter,
     ModelicaResumableRequestReader,
-    ModelicaResumableEvidenceVerifier {
+    ModelicaResumableEvidenceVerifier,
+    ModelicaResumableCapturedEvidenceNormalizer {
   constructor(private readonly client: McpToolClient) {}
 
   async getManifest(
@@ -108,6 +111,16 @@ export class McpModelicaResumableAdapter
     return await verifyCapturedModelicaResumableEvidence(
       submission,
       completed,
+      resources,
+    );
+  }
+
+  async normalizeCapturedEvidence(
+    submission: ModelicaResumableSubmission,
+    resources: readonly ModelicaResumableCapturedResourceTuple[],
+  ): Promise<ModelicaResumableCapturedEvidence> {
+    return await normalizeCapturedModelicaResumableEvidence(
+      submission,
       resources,
     );
   }
@@ -242,6 +255,99 @@ export async function parseRequestEnvelope(
 }
 
 /**
+ * Reconstruct recorded evidence from an already acquired closed resource set.
+ * This function is deterministic and performs no MCP/provider I/O: run.json
+ * supplies the completed-run ledger, and every supplied tuple is checked
+ * against both its bytes and the reconstructed ledger before normalization.
+ */
+export async function normalizeCapturedModelicaResumableEvidence(
+  submissionValue: ModelicaResumableSubmission,
+  capturedValue: readonly ModelicaResumableCapturedResourceTuple[],
+): Promise<ModelicaResumableCapturedEvidence> {
+  const submission = await validateSubmissionManifest(submissionValue);
+  const captured = await Promise.all(capturedValue.map(async (item, index) => {
+    const path = `captured resources[${index}]`;
+    const role = canonical(item.role, `${path}.role`);
+    const resource = validateExpectedProviderResource(
+      item.resource,
+      `${path}.resource`,
+    );
+    if (!(item.bytes instanceof Uint8Array)) {
+      throw new TypeError(`${path}.bytes must be a byte value.`);
+    }
+    const bytes = Uint8Array.from(item.bytes);
+    if (
+      bytes.byteLength !== resource.byteCount ||
+      await fingerprintResourceBytes(bytes) !== resource.sha256
+    ) {
+      throw new TypeError(
+        `Captured Modelica resource ${role} differs from its supplied tuple.`,
+      );
+    }
+    return { role, resource, bytes };
+  }));
+  rejectDuplicates(
+    captured.map((item) => item.role),
+    "captured Modelica resource roles",
+  );
+  rejectDuplicates(
+    captured.map((item) => item.resource.uri),
+    "captured Modelica resource URIs",
+  );
+
+  const runJsonResources = captured.filter((item) => item.role === "run.json");
+  if (runJsonResources.length !== 1) {
+    throw new TypeError(
+      "Captured Modelica resources must contain exactly one run.json tuple.",
+    );
+  }
+  const runJson = runJsonResources[0]!;
+  const runLedger = parseCapturedRunLedger(runJson.bytes);
+  const expectedRequestSha256 = (await sha256Fingerprint(lowerSubmission(submission)))
+    .digest;
+  const completed = await parseCompletedRun(
+    { ...runLedger, run_json: providerResourceWire(runJson.resource) },
+    submission,
+    expectedRequestSha256,
+    submission.manifest.fingerprint,
+  );
+  const expected = expectedModelicaResumableResources({
+    requestId: submission.requestId,
+    requestSha256: expectedRequestSha256,
+    manifestSha256: submission.manifest.fingerprint,
+    status: "completed",
+    completedRun: completed,
+  });
+  if (captured.length !== expected.length) {
+    throw new TypeError(
+      "Captured Modelica tuple set differs from the reconstructed run ledger.",
+    );
+  }
+  const capturedByRole = new Map(captured.map((item) => [item.role, item]));
+  for (const expectedResource of expected) {
+    const actual = capturedByRole.get(expectedResource.role);
+    if (
+      !actual ||
+      deterministicJson(actual.resource) !== deterministicJson({
+          uri: expectedResource.uri,
+          mediaType: expectedResource.mediaType,
+          byteCount: expectedResource.byteCount,
+          sha256: expectedResource.sha256,
+        })
+    ) {
+      throw new TypeError(
+        `Captured Modelica tuple ${expectedResource.role} differs from run.json.`,
+      );
+    }
+  }
+  return await verifyCapturedModelicaResumableEvidence(
+    submission,
+    completed,
+    captured.map(({ role, bytes }) => ({ role, bytes })),
+  );
+}
+
+/**
  * Re-open the exact resource set selected by the completed provider envelope
  * and cross-attest its canonical request, run ledger, lowering and evidence.
  * CSV interpretation remains owned by the exact normalizer sealed in the
@@ -352,8 +458,7 @@ export async function verifyCapturedModelicaResumableEvidence(
     );
   }
 
-  const runText = canonicalJsonText(requiredCaptured(byRole, "run.json"), "run.json");
-  const runValue = JSON.parse(runText) as Record<string, unknown>;
+  const runValue = parseCapturedRunLedger(requiredCaptured(byRole, "run.json"));
   const reparsed = await parseCompletedRun(
     { ...runValue, run_json: providerResourceWire(completed.runJson) },
     submission,
@@ -1148,6 +1253,25 @@ function requiredCaptured(
   const bytes = resources.get(role);
   if (!bytes) throw new TypeError(`Captured Modelica resource ${role} is missing.`);
   return bytes;
+}
+
+function parseCapturedRunLedger(bytes: Uint8Array): Record<string, unknown> {
+  const text = canonicalJsonText(bytes, "run.json");
+  return exactRecord(JSON.parse(text), [
+    "schemaVersion",
+    "kind",
+    "request_id",
+    "request_sha256",
+    "manifest",
+    "run_id",
+    "status",
+    "started_at",
+    "completed_at",
+    "resolved_parameters",
+    "metrics",
+    "artifacts",
+    "warnings",
+  ], "captured run.json");
 }
 
 function utf8Text(bytes: Uint8Array, role: string): string {

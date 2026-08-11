@@ -16,6 +16,7 @@ import {
   lowerSubmission,
   McpModelicaResumableAdapter,
   McpModelicaResumableResponseError,
+  normalizeCapturedModelicaResumableEvidence,
   parseManifestEnvelope,
   parseRequestEnvelope,
   verifyCapturedModelicaResumableEvidence,
@@ -234,6 +235,53 @@ Deno.test("resumable Modelica captured evidence re-attests request, lowering, ru
       ),
     TypeError,
     "does not equal the sealed lowering",
+  );
+});
+
+Deno.test("resumable Modelica CAS-only normalization rebuilds evidence from run.json and exact tuples without MCP I/O", async () => {
+  const fixture = await capturedFixture();
+  const request = await parseRequestEnvelope(fixture.envelope, fixture.submission);
+  const expected = expectedModelicaResumableResources(request);
+  const resources = fixture.resources.map(({ role, bytes }) => {
+    const resource = expected.find((item) => item.role === role);
+    if (!resource) throw new Error(`Fixture lacks tuple ${role}.`);
+    return {
+      role,
+      resource: {
+        uri: resource.uri,
+        mediaType: resource.mediaType,
+        byteCount: resource.byteCount,
+        sha256: resource.sha256,
+      },
+      bytes,
+    };
+  });
+  let mcpCalls = 0;
+  const adapter = new McpModelicaResumableAdapter({
+    callTool() {
+      mcpCalls += 1;
+      return Promise.reject(new Error("CAS-only normalization contacted MCP."));
+    },
+    callToolTextResult() {
+      mcpCalls += 1;
+      return Promise.reject(new Error("CAS-only normalization contacted MCP."));
+    },
+  });
+
+  const normalized = await adapter.normalizeCapturedEvidence(
+    fixture.submission,
+    resources,
+  );
+  assertEquals(normalized.metrics, {
+    temperature: { value: 91, unit: "degC" },
+  });
+  assertEquals(mcpCalls, 0);
+  assertEquals(
+    normalized,
+    await normalizeCapturedModelicaResumableEvidence(
+      fixture.submission,
+      resources,
+    ),
   );
 });
 

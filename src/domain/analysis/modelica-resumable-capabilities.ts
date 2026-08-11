@@ -656,6 +656,16 @@ export interface ModelicaResumableCapturedResource {
 }
 
 /**
+ * One exact provider-ledger tuple and the already captured bytes it selects.
+ * A CAS-only normalizer receives this closed set; it cannot discover or fetch
+ * any provider resource while reconstructing the recorded evidence.
+ */
+export interface ModelicaResumableCapturedResourceTuple
+  extends ModelicaResumableCapturedResource {
+  readonly resource: ExpectedProviderResource;
+}
+
+/**
  * Post-acquisition semantic attestation. It proves internal consistency of the
  * exact provider resources; it is still an observation, never a requirement
  * verdict or an MRTR decision.
@@ -675,6 +685,18 @@ export interface ModelicaResumableEvidenceVerifier {
     submission: ModelicaResumableSubmission,
     completed: ModelicaResumableCompletedRun,
     resources: readonly ModelicaResumableCapturedResource[],
+  ): Promise<ModelicaResumableCapturedEvidence>;
+}
+
+/**
+ * Pure, CAS-only reconstruction boundary. Implementations must derive the
+ * completed run from run.json and the exact supplied tuples/bytes. They have
+ * no authority to read the provider or discover replacement resources.
+ */
+export interface ModelicaResumableCapturedEvidenceNormalizer {
+  normalizeCapturedEvidence(
+    submission: ModelicaResumableSubmission,
+    resources: readonly ModelicaResumableCapturedResourceTuple[],
   ): Promise<ModelicaResumableCapturedEvidence>;
 }
 
