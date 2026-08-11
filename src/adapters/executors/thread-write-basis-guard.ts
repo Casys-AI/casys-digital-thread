@@ -21,6 +21,11 @@ import type {
 import { assertApprovedUncertainWriterBasisRelease } from "../../domain/project/uncertain-writer-basis-release.ts";
 import { assertApprovedUncertainWriterReconciliation } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+} from "../../orchestration/operations/recorded-analysis.ts";
 
 const THREAD_WRITE_OPERATIONS = new Set([
   `${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}`,
@@ -30,6 +35,9 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
   `${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.version}`,
   `${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.id}@${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.version}`,
+  `${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.version}`,
+  `${SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION.id}@${SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION.version}`,
+  `${VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION.version}`,
 ]);
 /**
  * Exported alongside TERMINAL_THREAD_WRITE_FAILURES so the reconcile executor

@@ -19,6 +19,10 @@ import {
   uncertainWriterBasisReleaseText,
 } from "../../domain/project/uncertain-writer-basis-release.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+} from "../../orchestration/operations/recorded-analysis.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -86,6 +90,42 @@ Deno.test("an active cross-operation sibling blocks the same Thread basis", asyn
     EngineeringProjectCommandError,
     "active, completed, or uncertain durable write",
   );
+});
+
+Deno.test("recorded @2 writers participate in the same basis exclusion", async () => {
+  const current = run("geometry", "queued");
+  for (
+    const [index, operation] of [
+      SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+      VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+    ].entries()
+  ) {
+    const sibling = {
+      ...run("geometry", "running"),
+      id: `recorded-v2-${index}`,
+      workItemId: `work-recorded-v2-${index}`,
+    };
+    const initial = project([current, sibling]);
+    const value: EngineeringProjectSnapshot = {
+      ...initial,
+      workItems: initial.workItems.map((item) =>
+        item.id === sibling.workItemId
+          ? {
+            ...item,
+            operation: {
+              ...operation,
+              bindings: item.operation?.bindings ?? [],
+            },
+          }
+          : item
+      ),
+    };
+    await assertRejects(
+      () => assertThreadWriteBasisAvailable(value, current),
+      EngineeringProjectCommandError,
+      "active, completed, or uncertain durable write",
+    );
+  }
 });
 
 Deno.test("a terminal uncertain provider sibling blocks after its lease is released", async () => {
