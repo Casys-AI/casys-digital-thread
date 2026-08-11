@@ -16,6 +16,7 @@ import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requir
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
+import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts";
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -586,6 +587,10 @@ const OPERATIONS = [
   // executor is explicitly registered for each one.
   ...listCoffeeMachineCm01V3OperationDescriptors(),
   ...listInspectionDroneV4OperationDescriptors(),
+  // The recorded-analysis descriptors become reachable only with the
+  // composition-root resolver/sealer and fixed executors. Their provider
+  // details remain absent from this planning boundary.
+  ...RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
 ] as const satisfies readonly RegisteredEngineeringOperation[];
 
 const OPERATION_BY_KEY = new Map(

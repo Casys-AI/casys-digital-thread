@@ -33,6 +33,29 @@ Deno.test("console CLI binds its durable review outbox independently of MCP port
   );
 });
 
+Deno.test("server composes one historical proof and requirements CAS for @1 and ROP2", async () => {
+  const source = await Deno.readTextFile("server.ts");
+  assertStringIncludes(
+    source,
+    "const feaProofCaptures = new FileCaptureStore(\n    FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,\n  );",
+  );
+  assertStringIncludes(source, "store: feaProofCaptures,");
+  assertStringIncludes(source, "proofCaseCaptures: feaProofCaptures,");
+  assertStringIncludes(source, "proofCaptures: feaProofCaptures,");
+  assertStringIncludes(
+    source,
+    "const requirementsCaptures = new FileCaptureStore({\n    ...REQUIREMENTS_CAPTURE_DESCRIPTOR,\n    directory: options.requirementsCaptureDirectory ??\n      DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,\n  });",
+  );
+  assertStringIncludes(source, 'namespace: "requirements-capture",');
+  assertStringIncludes(source, "store: requirementsCaptures,");
+  assertStringIncludes(source, "captures: requirementsCaptures,");
+  assertEquals(source.match(/requirementsCaptures,/g)?.length, 4);
+  assertEquals(
+    source.includes("${recordedAnalysisDirectory}/calculix/proof-cases"),
+    false,
+  );
+});
+
 Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
   const activeProjectDirectory = await Deno.makeTempDir({
     prefix: "casys-project-tools-",
@@ -56,6 +79,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_snapshot",
     "project_agent_run_cancel",
     "project_agent_run_execute",
+    "project_agent_run_plan_get",
     "project_agent_run_queue",
     "project_answer_record",
     "project_brief_confirm",
@@ -117,6 +141,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_snapshot",
       "project_agent_run_cancel",
       "project_agent_run_execute",
+      "project_agent_run_plan_get",
       "project_agent_run_queue",
       "project_answer_record",
       "project_brief_confirm",
@@ -328,6 +353,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(
         annotations.readOnlyHint,
         tool.name === "project_snapshot" ||
+          tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_review_intent_list",
       );
       assertEquals(
@@ -342,6 +368,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_brief_confirm" ||
           tool.name === "project_agent_run_cancel" ||
           tool.name === "project_agent_run_execute" ||
+          tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_agent_run_queue" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject",

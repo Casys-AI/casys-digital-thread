@@ -5,6 +5,7 @@ import {
 } from "./src/adapters/docker-observer.ts";
 import { HttpMcpProbe, type McpProbe } from "./src/adapters/mcp/http-mcp-probe.ts";
 import { HttpMcpToolClient } from "./src/adapters/mcp/http-mcp-tool-client.ts";
+import { HttpMcpResourceReader } from "./src/adapters/mcp/http-mcp-resource-reader.ts";
 import { loadFleetManifest } from "./src/adapters/manifest.ts";
 import {
   isExplicitLoopbackHostname,
@@ -134,11 +135,28 @@ import {
 import { validateFeaExecutionPolicy } from "./src/domain/analysis/fea-execution-policy.ts";
 import { validateSimulationExecutionPolicy } from "./src/domain/analysis/simulation-execution-policy.ts";
 import { FileCanonicalAssetReader } from "./src/adapters/executors/canonical-asset-reader.ts";
+import { SimulateSealSimulationCaseV2RunExecutor } from "./src/adapters/executors/simulate-seal-simulation-case-v2-run-executor.ts";
+import { SimulateRunModelicaScenarioV2RunExecutor } from "./src/adapters/executors/simulate-run-modelica-scenario-v2-run-executor.ts";
+import { VerifyRunFeaStaticProofV2RunExecutor } from "./src/adapters/executors/verify-run-fea-static-proof-v2-run-executor.ts";
 import { DockerVolumeAssetStager } from "./src/adapters/executors/container-asset-stager.ts";
 import { FileFeaStaticProofAttemptStore } from "./src/adapters/wal/file-fea-static-proof-attempt-store.ts";
 import { FileModelicaScenarioAttemptStore } from "./src/adapters/wal/file-modelica-scenario-attempt-store.ts";
+import { FileModelicaQualifiedSealAttemptStore } from "./src/adapters/wal/file-modelica-qualified-seal-attempt-store.ts";
+import { FileModelicaRecordedScenarioAttemptStore } from "./src/adapters/wal/file-modelica-recorded-scenario-attempt-store.ts";
+import { FileCalculixRecordedStaticAttemptStore } from "./src/adapters/wal/file-calculix-recorded-static-attempt-store.ts";
 import { McpModelicaProvider } from "./src/adapters/providers/modelica/mcp-modelica-provider.ts";
+import { McpModelicaResumableAdapter } from "./src/adapters/providers/modelica/mcp-modelica-resumable-adapter.ts";
 import { McpCalculixStaticStructuralSolver } from "./src/adapters/providers/calculix/mcp-calculix-static-structural-solver.ts";
+import { McpCalculixRecordedStaticAdapter } from "./src/adapters/providers/calculix/mcp-calculix-recorded-static-adapter.ts";
+import { FileByteStore } from "./src/adapters/captures/file-byte-store.ts";
+import { ModelicaQualifiedSourceCaptureService } from "./src/adapters/captures/modelica-qualified-source-capture.ts";
+import { ProviderResourceCaptureService } from "./src/adapters/captures/provider-resource-capture-service.ts";
+import { RecordedAnalysisCasReader } from "./src/adapters/captures/recorded-analysis-cas-reader.ts";
+import {
+  CaptureBackedRunPlanSealer,
+  RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR,
+} from "./src/adapters/plans/capture-backed-run-plan-sealer.ts";
+import { RecordedOperationPlanResolver } from "./src/adapters/plans/recorded-operation-plan-resolver.ts";
 import {
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR,
@@ -241,6 +259,11 @@ import {
 } from "./src/domain/cm01/cm01-drip-tray-mechanical-proof.ts";
 import { ProjectBriefCommandService } from "./src/domain/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+} from "./src/orchestration/operations/recorded-analysis.ts";
 import type {
   FleetManifest,
   ObservedRunCatalog,
@@ -412,6 +435,11 @@ const DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY =
 const DEFAULT_PROJECT_BASELINE_DIRECTORY = "config/projects/baselines";
 const DEFAULT_CM01_PART_DEFINITIONS_CAPTURE_DIRECTORY =
   "state/local/cm01-part-definitions-captures";
+/**
+ * One closed local root for the recorded-analysis vertical. Every child store
+ * has a fixed CAS namespace; this path changes persistence placement only.
+ */
+const DEFAULT_RECORDED_ANALYSIS_DIRECTORY = "state/local/recorded-analysis";
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -499,6 +527,8 @@ export interface CreateConsoleServerOptions {
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   cm01PartDefinitionsCaptureDirectory?: string;
+  /** Root of the closed CAS/WAL layout used by recorded-analysis @2 operations. */
+  recordedAnalysisDirectory?: string;
 }
 
 export async function createConsoleServer(
@@ -690,6 +720,152 @@ async function createProjectControl(
     options.engineeringProjectRunLeaseDirectory ??
       DEFAULT_ENGINEERING_PROJECT_RUN_LEASE_DIRECTORY,
   );
+  // This closed local store family is composed before the command runtime so
+  // queueRun can seal a ROP2 reference atomically with its project revision.
+  // Constructing MCP clients/readers later is inert: no provider I/O happens
+  // until each executor has admitted its exact queued run and source bytes.
+  const recordedAnalysisDirectory = options.recordedAnalysisDirectory ??
+    DEFAULT_RECORDED_ANALYSIS_DIRECTORY;
+  const recordedSimulationCases = new FileByteStore({
+    kind: "simulation-case-v2",
+    directory: `${recordedAnalysisDirectory}/modelica/simulation-cases`,
+    uriNamespace: "simulation-case-v2",
+    label: "Recorded Modelica simulation case",
+  });
+  const recordedModelicaManifests = new FileByteStore({
+    kind: "modelica-qualified-provider-manifest",
+    directory: `${recordedAnalysisDirectory}/modelica/provider-manifests`,
+    uriNamespace: "modelica-qualified-provider-manifest",
+    label: "Recorded qualified Modelica manifest",
+  });
+  const recordedModelicaSources = new FileByteStore({
+    kind: "modelica-qualified-source",
+    directory: `${recordedAnalysisDirectory}/modelica/qualified-sources`,
+    uriNamespace: "modelica-qualified-source",
+    label: "Recorded qualified Modelica source",
+  });
+  const recordedModelicaSourceCaptures = new FileByteStore({
+    kind: "modelica-qualified-source-capture",
+    directory: `${recordedAnalysisDirectory}/modelica/qualified-source-captures`,
+    uriNamespace: "modelica-qualified-source-capture",
+    label: "Recorded qualified Modelica source capture",
+  });
+  const recordedModelicaQualifications = new FileByteStore({
+    kind: "simulation-case-qualification",
+    directory: `${recordedAnalysisDirectory}/modelica/qualifications`,
+    uriNamespace: "simulation-case-qualification",
+    label: "Recorded Modelica simulation-case qualification",
+  });
+  const recordedModelicaResources = new FileByteStore({
+    kind: "modelica-recorded-resource",
+    directory: `${recordedAnalysisDirectory}/modelica/run-resources`,
+    uriNamespace: "modelica-recorded-resource",
+    label: "Recorded Modelica provider resource",
+  });
+  const recordedModelicaLedgers = new FileByteStore({
+    kind: "modelica-recorded-resource-ledger",
+    directory: `${recordedAnalysisDirectory}/modelica/run-ledgers`,
+    uriNamespace: "modelica-recorded-resource-ledger",
+    label: "Recorded Modelica resource ledger",
+  });
+  const recordedModelicaCaptureManifests = new FileByteStore({
+    kind: "modelica-recorded-resource-manifest",
+    directory: `${recordedAnalysisDirectory}/modelica/run-manifests`,
+    uriNamespace: "modelica-recorded-resource-manifest",
+    label: "Recorded Modelica resource capture manifest",
+  });
+  const recordedCalculixResources = new FileByteStore({
+    kind: "calculix-recorded-resource",
+    directory: `${recordedAnalysisDirectory}/calculix/run-resources`,
+    uriNamespace: "calculix-recorded-resource",
+    label: "Recorded CalculiX provider resource",
+  });
+  const recordedCalculixLedgers = new FileByteStore({
+    kind: "calculix-recorded-ledger",
+    directory: `${recordedAnalysisDirectory}/calculix/run-ledgers`,
+    uriNamespace: "calculix-recorded-ledger",
+    label: "Recorded CalculiX resource ledger",
+  });
+  const recordedCalculixCaptureManifests = new FileByteStore({
+    kind: "calculix-recorded-manifest",
+    directory: `${recordedAnalysisDirectory}/calculix/run-manifests`,
+    uriNamespace: "calculix-recorded-manifest",
+    label: "Recorded CalculiX resource capture manifest",
+  });
+  const recordedCalculixEvaluations = new FileByteStore({
+    kind: "calculix-recorded-syson-evaluation",
+    directory: `${recordedAnalysisDirectory}/calculix/syson-evaluations`,
+    uriNamespace: "calculix-recorded-syson-evaluation",
+    label: "Recorded CalculiX SysON evaluation",
+  });
+  // One historical proof CAS instance is deliberately shared by the @1 seal,
+  // @1 run and ROP2 reader. Its descriptor owns the pre-existing on-disk
+  // location; moving it beneath the new recorded-analysis root would make
+  // already sealed @1 proof artifacts invisible to the trusted @1 executor.
+  const feaProofCaptures = new FileCaptureStore(
+    FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+  );
+  // Requirements are likewise a historical shared CAS. Model authoring, both
+  // @1 FEA operations and the ROP2 reader must resolve the same immutable
+  // bytes, including when a deployment overrides only their storage directory.
+  const requirementsCaptures = new FileCaptureStore({
+    ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
+    directory: options.requirementsCaptureDirectory ??
+      DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
+  });
+  const recordedAnalysisCas = new RecordedAnalysisCasReader({
+    stores: [
+      {
+        namespace: "simulation-case-v2",
+        storage: "bytes",
+        store: recordedSimulationCases,
+      },
+      {
+        namespace: "modelica-qualified-provider-manifest",
+        storage: "bytes",
+        store: recordedModelicaManifests,
+      },
+      {
+        namespace: "modelica-qualified-source",
+        storage: "bytes",
+        store: recordedModelicaSources,
+      },
+      {
+        namespace: "modelica-qualified-source-capture",
+        storage: "bytes",
+        store: recordedModelicaSourceCaptures,
+      },
+      {
+        namespace: "simulation-case-qualification",
+        storage: "bytes",
+        store: recordedModelicaQualifications,
+      },
+      {
+        namespace: "fea-proof-case-capture",
+        storage: "text",
+        store: feaProofCaptures,
+      },
+      {
+        namespace: "requirements-capture",
+        storage: "text",
+        store: requirementsCaptures,
+      },
+    ],
+  });
+  const recordedPlanResolver = new RecordedOperationPlanResolver({
+    snapshots: threadSnapshots,
+    artifacts: recordedAnalysisCas,
+    stepAssets: new FileCanonicalAssetReader({
+      directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+    }),
+  });
+  const recordedRunPlans = new CaptureBackedRunPlanSealer({
+    store: new FileByteStore({
+      ...RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR,
+      directory: `${recordedAnalysisDirectory}/resolved-operation-plans`,
+    }),
+    resolver: recordedPlanResolver,
+  });
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
   const runtime = await createEngineeringProjectCommandRuntime({
@@ -699,6 +875,7 @@ async function createProjectControl(
     evidenceSnapshots: threadSnapshots,
     planning: {
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
+      runPlanSealer: recordedRunPlans,
     },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       activeThreadSnapshots,
@@ -795,11 +972,7 @@ async function createProjectControl(
       seedCaptures: sysonModelSeedCaptures,
       architectureCaptures: genericArchitectureCaptures,
       sysmlSourceAnalysis,
-      captures: new FileCaptureStore({
-        ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
-        directory: options.requirementsCaptureDirectory ??
-          DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
-      }),
+      captures: requirementsCaptures,
       attempts: new FileRequirementsAttemptStore(
         options.requirementsAttemptDirectory ?? DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY,
       ),
@@ -1025,12 +1198,9 @@ async function createProjectControl(
     projects: runtime.projects,
     commands: runtime.commands,
     snapshots: activeThreadSnapshots,
-    proofCaseCaptures: new FileCaptureStore(FEA_PROOF_CASE_CAPTURE_DESCRIPTOR),
+    proofCaseCaptures: feaProofCaptures,
     geometryCaptures: new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR),
-    requirementsCaptures: new FileCaptureStore({
-      ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
-      directory: DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
-    }),
+    requirementsCaptures,
     seedCaptures: sysonModelSeedCaptures,
     canonicalAssetReader: new FileCanonicalAssetReader({
       directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
@@ -1042,11 +1212,8 @@ async function createProjectControl(
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
-      proofCaptures: new FileCaptureStore(FEA_PROOF_CASE_CAPTURE_DESCRIPTOR),
-      requirementsCaptures: new FileCaptureStore({
-        ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
-        directory: DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
-      }),
+      proofCaptures: feaProofCaptures,
+      requirementsCaptures,
       canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
       solverCaptures: new FileCaptureStore(FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR),
       verdictCaptures: new FileCaptureStore(FEA_VERDICT_CAPTURE_DESCRIPTOR),
@@ -1099,6 +1266,105 @@ async function createProjectControl(
       policy: simulationExecutionPolicy,
       lease,
       liveUpdates,
+    })
+    : undefined;
+  const recordedModelica = modelicaMcpUrl
+    ? new McpModelicaResumableAdapter(
+      new HttpMcpToolClient({ mcpUrl: modelicaMcpUrl, timeoutMs: 150_000 }),
+    )
+    : undefined;
+  // The two recorded Modelica operations share one exact resources/read
+  // adapter. It has no discovery method and performs no I/O during setup.
+  const recordedModelicaProviderResources = modelicaMcpUrl
+    ? new HttpMcpResourceReader({ mcpUrl: modelicaMcpUrl, timeoutMs: 150_000 })
+    : undefined;
+  const recordedModelicaSeal = recordedModelica && recordedModelicaProviderResources
+    ? new SimulateSealSimulationCaseV2RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      lease,
+      attempts: new FileModelicaQualifiedSealAttemptStore(
+        `${recordedAnalysisDirectory}/modelica/seal-attempts`,
+      ),
+      manifestReader: recordedModelica,
+      providerResources: new ModelicaQualifiedSourceCaptureService({
+        reader: recordedModelicaProviderResources,
+        artifacts: recordedModelicaSources,
+        captures: recordedModelicaSourceCaptures,
+      }),
+      simulationCases: recordedSimulationCases,
+      providerManifests: recordedModelicaManifests,
+      qualificationCaptures: recordedModelicaQualifications,
+    })
+    : undefined;
+  const recordedModelicaRun = recordedModelica && recordedModelicaProviderResources
+    ? new SimulateRunModelicaScenarioV2RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      plans: recordedRunPlans,
+      lease,
+      attempts: new FileModelicaRecordedScenarioAttemptStore(
+        `${recordedAnalysisDirectory}/modelica/run-attempts`,
+      ),
+      sources: recordedAnalysisCas,
+      provider: recordedModelica,
+      captures: new ProviderResourceCaptureService({
+        reader: recordedModelicaProviderResources,
+        artifactStore: recordedModelicaResources,
+        ledgerStore: recordedModelicaLedgers,
+        manifestStore: recordedModelicaCaptureManifests,
+      }),
+      capturedResources: recordedModelicaResources,
+      captureLedgers: recordedModelicaLedgers,
+      captureManifests: recordedModelicaCaptureManifests,
+    })
+    : undefined;
+  const recordedCalculix = calculixMcpUrl
+    ? new McpCalculixRecordedStaticAdapter(
+      new HttpMcpToolClient({ mcpUrl: calculixMcpUrl, timeoutMs: 180_000 }),
+    )
+    : undefined;
+  // One exact resources/read capability for CalculiX is shared by capture and
+  // recovery; no provider read is reachable before executor admission.
+  const recordedCalculixProviderResources = calculixMcpUrl
+    ? new HttpMcpResourceReader({ mcpUrl: calculixMcpUrl, timeoutMs: 180_000 })
+    : undefined;
+  const recordedCalculixRun = sysonMcpUrl && recordedCalculix &&
+      recordedCalculixProviderResources
+    ? new VerifyRunFeaStaticProofV2RunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      plans: recordedRunPlans,
+      artifacts: recordedAnalysisCas,
+      canonicalAssets: new FileCanonicalAssetReader({
+        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      }),
+      canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      stager: new DockerVolumeAssetStager({
+        service: "mcp-calculix",
+        containerDirectory: "/inputs",
+      }),
+      solver: recordedCalculix,
+      runReader: recordedCalculix,
+      evidenceVerifier: recordedCalculix,
+      providerCaptures: new ProviderResourceCaptureService({
+        reader: recordedCalculixProviderResources,
+        artifactStore: recordedCalculixResources,
+        ledgerStore: recordedCalculixLedgers,
+        manifestStore: recordedCalculixCaptureManifests,
+      }),
+      resourceCaptureStore: recordedCalculixResources,
+      ledgerCaptureStore: recordedCalculixLedgers,
+      manifestCaptureStore: recordedCalculixCaptureManifests,
+      sysonEvaluationCaptureStore: recordedCalculixEvaluations,
+      attempts: new FileCalculixRecordedStaticAttemptStore(
+        `${recordedAnalysisDirectory}/calculix/run-attempts`,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
     })
     : undefined;
   const cm01NominalThermal = modelicaMcpUrl
@@ -1448,6 +1714,10 @@ async function createProjectControl(
     control: {
       projects: runtime.projects,
       commands: runtime.commands,
+      // The same CAS-backed object seals at queue time and reads through the
+      // agent-visible plan inspection tool. No alternate plan authority is
+      // composed for execution or control-plane reads.
+      runPlanReader: recordedRunPlans,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
           DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,
@@ -1537,6 +1807,27 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted generic simulate.run-modelica-scenario@1 executor " +
               "configured for this run (Modelica provider is required).",
+          },
+          {
+            operation: SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+            executor: recordedModelicaSeal,
+            unavailableMessage:
+              "The server has no trusted simulate.seal-simulation-case@2 executor " +
+              "configured for this run (Modelica provider is required).",
+          },
+          {
+            operation: SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+            executor: recordedModelicaRun,
+            unavailableMessage:
+              "The server has no trusted simulate.run-modelica-scenario@2 executor " +
+              "configured for this run (Modelica provider is required).",
+          },
+          {
+            operation: VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+            executor: recordedCalculixRun,
+            unavailableMessage:
+              "The server has no trusted verify.run-fea-static-proof@2 executor " +
+              "configured for this run (SysON and CalculiX providers are required).",
           },
           {
             operation: COFFEE_MACHINE_CM01_V3_ARCHITECTURE_OPERATION,
