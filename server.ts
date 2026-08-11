@@ -1053,7 +1053,7 @@ async function createProjectControl(
       attempts: new FileFeaStaticProofAttemptStore(),
       stager: new DockerVolumeAssetStager({
         service: "mcp-calculix",
-        containerDirectory: "/exports",
+        containerDirectory: "/inputs",
       }),
       assetReader: new FileCanonicalAssetReader({
         directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,

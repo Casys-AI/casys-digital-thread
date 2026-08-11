@@ -2,8 +2,11 @@
  * Provider-neutral static structural solve capability.
  *
  * The domain names the sealed mechanical case, the exact input identity and
- * the normalized engineering observations. Provider paths, response echoes
- * and mesh bookkeeping remain private to the adapter/capture boundary.
+ * the normalized engineering observations. Provider response echoes and mesh
+ * bookkeeping remain private to the adapter/capture boundary. The sole runtime
+ * location crossing this port is code-owned and returned by the staging
+ * adapter; it is never derived from a proof case, an agent proposal, or a
+ * provider response.
  */
 
 import type { ContentFingerprint } from "../kernel/types.ts";
@@ -15,6 +18,13 @@ export interface StaticStructuralSolveInput {
   readonly inputArtifact: {
     readonly fingerprint: ContentFingerprint;
     readonly byteCount: number;
+    /**
+     * Opaque, code-owned provider-readable location returned by the staging
+     * port. Planning and proof data never select or construct this path.
+     */
+    readonly stagedAsset: {
+      readonly location: string;
+    };
   };
 }
 

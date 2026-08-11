@@ -121,7 +121,10 @@ function resolveCalculixStaticStructuralSolve(
       "Static structural input identity must match the sealed proof CAD artifact.",
     );
   }
-  const stagedPath = `/exports/fea-${stepDigest}.step`;
+  const stagedPath = requireCodeOwnedStagedAssetLocation(
+    input.inputArtifact.stagedAsset.location,
+    stepDigest,
+  );
   const fixedSelections = proof.analysis.supports.map((support) =>
     support.selection.name
   );
@@ -194,4 +197,27 @@ function resolveCalculixStaticStructuralSolve(
       },
     },
   };
+}
+
+function requireCodeOwnedStagedAssetLocation(
+  location: string,
+  digest: string,
+): string {
+  const expectedFilename = `fea-${digest}.step`;
+  const segments = location.split("/");
+  if (
+    !location.startsWith("/") ||
+    segments.length < 3 ||
+    segments.at(-1) !== expectedFilename ||
+    segments.slice(1).some((segment) =>
+      segment === "" || segment === "." || segment === ".." ||
+      !/^[A-Za-z0-9._-]+$/.test(segment)
+    )
+  ) {
+    throw new TypeError(
+      "Static structural staged asset location must be an absolute safe path ending " +
+        `with ${expectedFilename}.`,
+    );
+  }
+  return location;
 }

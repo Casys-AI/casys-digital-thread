@@ -25,12 +25,13 @@ the full path:
 docker network inspect erpnext-docker_frappe_network >/dev/null
 ```
 
-Choose a fresh, shell-local Compose project and Modelica volume. The explicit
-`MODELICA_RUNS_VOLUME` matters: the default Modelica volume intentionally retains prior
-run records. The Compose project name separately scopes the SysON database and the
-shared CAD/CalculiX exports volume. This isolates data, not host ports: Compose binds
-the fixed loopback ports `3009`, `3012`, `3014`–`3016`, and `8180`, so only one such
-topology can run at a time.
+Choose a fresh, shell-local Compose project and provider volumes. The explicit
+`MODELICA_RUNS_VOLUME` and `CALCULIX_RUNS_VOLUME` matter: their defaults intentionally
+retain prior run records. `CALCULIX_INPUTS_VOLUME` isolates only generic FEA staging; its
+content-addressed STEP files are not records or evidence. The Compose project name
+separately scopes the SysON database and the shared CAD/CalculiX exports volume. This
+isolates data, not host ports: Compose binds the fixed loopback ports `3009`, `3012`,
+`3014`–`3016`, and `8180`, so only one such topology can run at a time.
 
 For this V3 path, `syson_project_create` and the later SysON mutations must return
 machine-readable `structuredContent`. The currently verified local sidecar is
@@ -41,6 +42,8 @@ command for CAD or CalculiX cannot silently replace it with the older shared ima
 cm01_run="cm01v3-$(date +%Y%m%d%H%M%S)"
 export COMPOSE_PROJECT_NAME="$cm01_run"
 export MODELICA_RUNS_VOLUME="casys-${cm01_run}-modelica-runs"
+export CALCULIX_RUNS_VOLUME="casys-${cm01_run}-calculix-runs"
+export CALCULIX_INPUTS_VOLUME="casys-${cm01_run}-calculix-inputs"
 export MCP_SYSON_IMAGE="casys-engineering-toolchain:syson-0.5.2-local"
 
 docker compose config --quiet
@@ -53,9 +56,10 @@ If an earlier local topology owns those ports, stop **that known Compose project
 does not remove its volumes; do not add `-v`. Never delete an unknown project or a
 volume merely to free a port.
 
-Do **not** run `docker compose down -v`, delete `casys-digital-thread-modelica-runs`, or
-remove a pre-existing Compose project as part of this run. To stop only this isolated
-topology while retaining its new evidence for inspection, use:
+Do **not** run `docker compose down -v`, delete `casys-digital-thread-modelica-runs` or
+`casys-digital-thread-calculix-runs`, or remove a pre-existing Compose project as part
+of this run. To stop only this isolated topology while retaining its new evidence for
+inspection, use:
 
 ```bash
 docker compose down
@@ -63,6 +67,9 @@ docker compose down
 
 `docker compose config --volumes` shows the precise volume names allocated to this
 isolated run. The prior default volumes and any other Compose project are not targets.
+The explicit `CALCULIX_INPUTS_VOLUME` is the sole non-authoritative staging volume: after
+the stopped run is no longer being diagnosed, it may be removed by exact name to bound
+local staging storage. Never use this exception for the two provider run volumes.
 
 ## 2. Wait for the local MCP endpoints
 
@@ -292,9 +299,10 @@ For durable, file-level inspection, the server owns these local records:
 | `state/local/cm01-drip-tray-mechanical-{attempts,captures}/`           | Bounded mechanical proof recovery state and capture                                              |
 | `state/local/cm01-v3-local-runs/<timestamp>/`                          | One isolated harness project, its normalized captures, live feed, golden observation and summary |
 
-The Modelica sidecar keeps its provider-native run record in the fresh volume selected
-in step 1. The CAD and CalculiX containers share only this run's Compose-scoped
-`exports` volume. A shared path is not provenance: the canonical snapshot retains the
+The Modelica and CalculiX sidecars keep their provider-native run records in the fresh
+volumes selected in step 1. CalculiX mounts this run's Compose-scoped `exports` CAD
+exchange read-only, and its separate `inputs` volume only stages content-addressed generic
+FEA STEP bytes. A shared path is not provenance: the canonical snapshot retains the
 exported STEP hash and the exact hash consumed by CalculiX.
 
 ## 6. Compare a completed run with the golden contract

@@ -149,15 +149,21 @@
     {
       "id": "calculix",
       "displayName": "CalculiX",
-      "role": "STEP meshing and linear static finite-element solve",
+      "role": "Finite-element analysis: static, modal, buckling, creep and coupled thermal",
       "serviceName": "mcp-calculix",
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3015/mcp",
       "healthUrl": "http://127.0.0.1:3015/health",
-      "image": "ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c",
+      "image": "ghcr.io/casys-ai/mcp-calculix@sha256:76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8",
       "required": true,
       "expectedTools": [
-        "calculix_solve_static"
+        "calculix_solve_static",
+        "calculix_solve_modal",
+        "calculix_solve_buckling",
+        "calculix_solve_creep",
+        "calculix_solve_coupled_thermal",
+        "calculix_solve_static_recorded",
+        "calculix_run_get"
       ],
       "expectedViews": [
         "ui://mcp-calculix/results-viewer"
@@ -166,7 +172,9 @@
         "exposure": "loopback-only",
         "composeNetwork": "chain",
         "sharedVolumes": [
-          "exports:/exports"
+          "exports:/exports:ro",
+          "casys-digital-thread-calculix-inputs:/inputs",
+          "casys-digital-thread-calculix-runs:/var/lib/mcp-calculix-runs"
         ],
         "upstreams": []
       },
@@ -174,7 +182,7 @@
         "level": "first-party-local",
         "executesArbitraryCode": false,
         "notes": [
-          "The solver consumes files from the shared exports volume.",
+          "The solver mounts /exports read-only. Generic content-addressed FEA inputs are staged by the Digital Thread into provider-private /inputs on a dedicated volume; it is neither a shared exchange nor evidence. Every solve snapshots its input privately, while only recorded static runs retain evidence in the separate run ledger.",
           "Native meshing and solver processes still require untrusted-input hardening."
         ]
       }
@@ -187,13 +195,20 @@
       "transport": "streamable-http",
       "mcpUrl": "http://127.0.0.1:3016/mcp",
       "healthUrl": "http://127.0.0.1:3016/health",
-      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:fc4ae7ea54e95e0df81d615e2f89482d4acb6af0476c83286164c1506405e0a9",
+      "image": "ghcr.io/casys-ai/mcp-modelica@sha256:7df4328181db78911bd9a3c4b1d7204f0f7ee01709262a5bc5c111d7c5e45961",
       "required": true,
       "expectedTools": [
         "modelica_kit_list",
         "modelica_simulate",
         "modelica_run_list",
-        "modelica_run_get"
+        "modelica_run_get",
+        "modelica_kit_list_recorded",
+        "modelica_simulate_recorded",
+        "modelica_run_list_recorded",
+        "modelica_run_get_recorded",
+        "modelica_simulation_manifest_get",
+        "modelica_simulation_submit",
+        "modelica_simulation_request_get"
       ],
       "expectedViews": [
         "ui://mcp-modelica/results-viewer",

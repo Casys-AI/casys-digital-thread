@@ -122,6 +122,23 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "DockerVolumeAssetStager rejects a non-absolute or traversable target directory",
+  () => {
+    for (const containerDirectory of ["inputs", "/", "/inputs/../exports"]) {
+      assertThrows(
+        () =>
+          new DockerVolumeAssetStager({
+            service: "calculix",
+            containerDirectory,
+          }),
+        TypeError,
+        "safe absolute path",
+      );
+    }
+  },
+);
+
 // ── stage() input guards (TypeError) ────────────────────────────────────────
 
 Deno.test(
@@ -291,12 +308,15 @@ Deno.test(
       commandRunner: runner,
       hostFileReader: readerFor(FIXTURE),
     });
-    await stager.stage({
+    const planned = stager.resolveTarget({ containerFileName: "file.step" });
+    const staged = await stager.stage({
       sourcePath: "/host/file.step",
       expectedDigest: fixtureDigest,
       expectedBytes: FIXTURE.length,
       containerFileName: "file.step",
     });
+    assertEquals(staged, planned);
+    assertEquals(Object.isFrozen(staged), true);
     assertEquals(calls.length, 1); // only the idempotency exec, no cp, no post-read
     // Confirm it was an exec call, not a cp call.
     assertEquals(calls[0].args.includes("exec"), true);
@@ -421,12 +441,15 @@ Deno.test(
       commandRunner: runner,
       hostFileReader: readerFor(FIXTURE),
     });
-    await stager.stage({
+    const planned = stager.resolveTarget({ containerFileName: "file.step" });
+    const staged = await stager.stage({
       sourcePath: "/host/file.step",
       expectedDigest: fixtureDigest,
       expectedBytes: FIXTURE.length,
       containerFileName: "file.step",
     });
+    assertEquals(staged, planned);
+    assertEquals(Object.isFrozen(staged), true);
     assertEquals(calls.length, 3);
     // Verify command sequence: exec (idempotency), cp, exec (post-read).
     assertEquals(calls[0].args.includes("exec"), true);

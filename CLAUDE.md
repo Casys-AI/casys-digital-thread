@@ -8,11 +8,11 @@ this repository.
 Ce repo est **l'atelier** de la chaîne « executable digital thread » : exigence → modèle
 SysML v2 → géométrie → physique → preuve. Les serveurs MCP d'ingénierie vivent dans
 leurs propres repos et s'exécutent depuis des images publiées : `engineering-toolchain`
-pour SysON/CAD/CalculiX, et `mcp-modelica` pour OpenModelica + MSL. On ne clone ici
-aucune source de ces serveurs. Ce repo contient en revanche la source de la Console MCP
-read-only, du workflow lié et du Workbench natif (`server.ts`, `src/`). Pour éditer un
-serveur d'ingénierie, cloner son repo (`Casys-AI/mcp-syson`, `mcp-build123d`,
-`mcp-calculix`, `mcp-modelica`, `constraint-solver`).
+pour SysON/CAD, `mcp-calculix` pour CalculiX et `mcp-modelica` pour OpenModelica + MSL.
+On ne clone ici aucune source de ces serveurs. Ce repo contient en revanche la source de
+la Console MCP read-only, du workflow lié et du Workbench natif (`server.ts`, `src/`).
+Pour éditer un serveur d'ingénierie, cloner son repo (`Casys-AI/mcp-syson`,
+`mcp-build123d`, `mcp-calculix`, `mcp-modelica`, `constraint-solver`).
 
 ## Commandes
 
@@ -160,15 +160,22 @@ chemin de compatibilité legacy.
 - `build123d_execute` / `build123d_export` — CAD as code (Python/OCCT) : le script
   assigne `result`, masse **uniquement** si `density_kg_m3` explicite. Exports
   STEP/STL/GLB dans le volume partagé `/exports`.
-- `calculix_solve_static` — FEA : STEP → maillage Gmsh (faces désignées par bounding
-  boxes nommées, mm) → statique linéaire → déplacement max + von Mises max. Tout le
-  physique est explicite (mesh_size_mm, e_mpa, nu, forces totales). Unités fixes : mm,
-  N, MPa.
-- `modelica_kit_list` / `modelica_simulate` / `modelica_run_list` / `modelica_run_get` —
-  simulation système OpenModelica de kits approuvés : température, temps, énergie et
-  puissance. Le cockpit découvre les records via les deux outils de lecture, jamais via
-  le volume Docker. Une simulation réussie produit des observations et artefacts hashés
-  ; le verdict reste du ressort de SysON + `constraint-solver`.
+- `calculix_solve_static`, `calculix_solve_modal`, `calculix_solve_buckling`,
+  `calculix_solve_creep`, `calculix_solve_coupled_thermal`,
+  `calculix_solve_static_recorded` et `calculix_run_get` — CalculiX. La statique prend
+  un STEP, maille avec Gmsh (faces par bounding boxes nommées, mm) et rend déplacement
+  max + von Mises max ; tout le physique reste explicite. Les runs enregistrés vivent
+  dans leur volume dédié et sont récupérables par identité. CalculiX ne monte `/exports`
+  qu'en lecture seule. Le flux FEA générique stage un asset content-addressed dans son
+  volume `/inputs` privé, jamais dans l'échange CAD ni le ledger ; CalculiX le
+  snapshotte vers son workdir privé avant le solve.
+- `modelica_kit_list`, `modelica_simulate`, `modelica_run_list`, `modelica_run_get`,
+  leurs quatre variantes `_recorded`, `modelica_simulation_manifest_get`,
+  `modelica_simulation_submit` et `modelica_simulation_request_get` — simulation système
+  OpenModelica de kits approuvés : température, temps, énergie et puissance. Le cockpit
+  découvre les records via les outils de lecture, jamais via le volume Docker. Une
+  simulation réussie produit des observations et artefacts hashés ; le verdict reste du
+  ressort de SysON + `constraint-solver`.
 - `erpnext_*` — chiffrage et manufacturing : un bridge provider-native sur `3012`. Le
   backend appelle seulement les tools revus par le workflow ; le navigateur ne reçoit ni
   credentials ERP ni autorité MCP générique.

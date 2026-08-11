@@ -103,14 +103,16 @@ the reviewed read tools required by a workflow and projects their data into the 
 thread; the browser never receives ERP credentials or calls ERPNext directly. The bridge
 joins the existing ERPNext Docker network rather than owning that database.
 
-The `cad-exports` named volume is shared between build123d and CalculiX, but a shared
-path is not provenance. The native thread contract requires `build123d_export` to hash
-the exact STEP bytes and `calculix_solve_static` to attest the hash it consumed. This is
-now supplied by published `@casys/mcp-build123d@0.4.1` and `@casys/mcp-calculix@0.4.0`
-contracts, including fail-fast rejection of a false expected hash. Compose pins their
-released engineering-toolchain image by digest. `casys-digital-thread-modelica-runs` is
-separate and retains bounded, hashed OpenModelica run records for `modelica_run_list`
-and `modelica_run_get`.
+The `exports` named volume is build123d's CAD exchange and is mounted read-only by
+CalculiX, but a shared path is not provenance. The native thread contract requires
+`build123d_export` to hash the exact STEP bytes and CalculiX to attest the hash it
+consumed. Generic, content-addressed FEA inputs are staged instead in CalculiX's
+provider-private `/inputs` volume: it is neither an exchange nor evidence.
+CalculiX has a separately pinned release and retains its bounded run ledger in
+`casys-digital-thread-calculix-runs`; that ledger is not the CAD exchange. The separate
+`casys-digital-thread-modelica-runs` volume retains bounded, hashed OpenModelica records.
+Both provider run volumes survive a normal Compose restart and are read through their
+identity-bound MCP tools, never directly by the cockpit.
 
 ## Console and native Workbench
 

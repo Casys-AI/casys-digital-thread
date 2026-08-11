@@ -1024,7 +1024,6 @@ export class VerifyRunFeaStaticProofRunExecutor {
       // lets recovery reject corrupt WAL evidence before any provider effect,
       // while a fresh staging failure cannot poison the WAL as "dispatched".
       const containerFileName = `fea-${stepDigest}.step`;
-      const stagedPath = `/exports/${containerFileName}`;
       // Step 12 — policy asserted; planDigest computed.
       try {
         assertProofWithinPolicy(proofCase, this.#policy);
@@ -1038,11 +1037,16 @@ export class VerifyRunFeaStaticProofRunExecutor {
         );
       }
 
+      const plannedStagedAsset = this.#stager.resolveTarget({
+        containerFileName,
+      });
+
       const solvePlan = this.#solver.resolve({
         proof: proofCase,
         inputArtifact: {
           fingerprint: proofCapture.stepArtifact.fingerprint,
           byteCount: stepBytes,
+          stagedAsset: { location: plannedStagedAsset.containerPath },
         },
       });
       const exactSolverRequest = solvePlan.exactRequest;
@@ -1116,12 +1120,17 @@ export class VerifyRunFeaStaticProofRunExecutor {
 
       if (walResult === undefined) {
         try {
-          await this.#stager.stage({
+          const stagedAsset = await this.#stager.stage({
             sourcePath: `${this.#canonicalAssetDirectory}/${stepDigest}.step`,
             expectedDigest: stepDigest,
             expectedBytes: stepBytes,
             containerFileName,
           });
+          if (stagedAsset.containerPath !== plannedStagedAsset.containerPath) {
+            throw new TypeError(
+              "Container staging returned a location different from the planned location.",
+            );
+          }
         } catch (error) {
           throw new EngineeringProjectCommandError(
             "invalid_transition",
@@ -1177,7 +1186,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
               proofDigest: proofCapture.proofDigest,
               stepArtifactId: proofCapture.stepArtifact.id,
               stepFingerprint: proofCapture.stepArtifact.fingerprint,
-              stagedPath,
+              stagedPath: plannedStagedAsset.containerPath,
             },
             capturedAt,
           },

@@ -79,6 +79,10 @@ const COMMAND_BASE = {
   runId: RUN_ID,
 };
 
+function stagedTarget(containerFileName: string) {
+  return Object.freeze({ containerPath: `/inputs/${containerFileName}` });
+}
+
 // ── Minimal ThreadSnapshot helper ─────────────────────────────────────────────
 
 /**
@@ -559,7 +563,7 @@ async function buildFixtures() {
   } as unknown as EngineeringProjectSnapshot;
 
   // Staged path and expected solver request shape (matches buildCalculixRequest).
-  const stagedPath = `/exports/fea-${STEP_SHA256}-001.step`;
+  const stagedPath = `/inputs/fea-${STEP_SHA256}-001.step`;
   const expectedSupports = proofCase.analysis.supports.map((s) => ({
     name: s.selection.name,
     box: s.selection.box,
@@ -1181,9 +1185,11 @@ Deno.test(
       } as never,
       canonicalAssetDirectory: "state/local/thread-assets",
       stager: {
+        resolveTarget: ({ containerFileName }: { containerFileName: string }) =>
+          stagedTarget(containerFileName),
         stage: () => {
           stageCallCount++;
-          return Promise.resolve();
+          return Promise.resolve(stagedTarget(`fea-${STEP_SHA256}.step`));
         },
       } as never,
       assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
@@ -1324,7 +1330,7 @@ Deno.test(
     const solverFp = (await sha256Fingerprint(JSON.parse(solverText))).digest;
     const replayCapturedAt = AT;
     const replayRequest = {
-      step_path: `/exports/fea-${STEP_SHA256}.step`,
+      step_path: `/inputs/fea-${STEP_SHA256}.step`,
       expected_step_sha256: STEP_SHA256,
       mesh_size_mm: fx.proofCase.analysis.mesh.targetSize.value,
       material: {
@@ -1445,9 +1451,11 @@ Deno.test(
       } as never,
       canonicalAssetDirectory: "state/local/thread-assets",
       stager: {
+        resolveTarget: ({ containerFileName }: { containerFileName: string }) =>
+          stagedTarget(containerFileName),
         stage: () => {
           stageCalls++;
-          return Promise.resolve();
+          return Promise.resolve(stagedTarget(`fea-${STEP_SHA256}.step`));
         },
       } as never,
       assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
@@ -1519,7 +1527,7 @@ Deno.test(
       solverCaptureFp: "b".repeat(64),
       oracleOutcomes: [],
       policyVersion: FEA_EXECUTION_POLICY_VERSION,
-      exactSolverRequest: { step_path: "/exports/fea.step" },
+      exactSolverRequest: { step_path: "/inputs/fea.step" },
     };
     const text = deterministicJson(verdict);
     const fingerprint = (await sha256Fingerprint(verdict)).digest;
@@ -1569,7 +1577,11 @@ Deno.test(
         },
       } as never,
       canonicalAssetDirectory: "state/local/thread-assets",
-      stager: { stage: () => Promise.resolve() } as never,
+      stager: {
+        resolveTarget: ({ containerFileName }: { containerFileName: string }) =>
+          stagedTarget(containerFileName),
+        stage: () => Promise.resolve(stagedTarget(`fea-${STEP_SHA256}.step`)),
+      } as never,
       assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
       // Oracle must pass for policy check to be reached.
       syson: {
@@ -1605,6 +1617,77 @@ Deno.test(
       false,
       "WAL begin must NOT be called on policy violation",
     );
+  },
+);
+
+Deno.test(
+  "verify-run-fea-static-proof rejects a staged location that diverges from its planned request before WAL or solver dispatch",
+  async () => {
+    const fx = await buildFixtures();
+    let walBeginCalled = false;
+    let solverCalled = false;
+    const executor = new VerifyRunFeaStaticProofRunExecutor({
+      projects: { get: () => Promise.resolve(fx.project) } as never,
+      commands: { claimRun: () => Promise.resolve({} as never) } as never,
+      snapshots: { get: () => Promise.resolve(fx.basisSnapshot) } as never,
+      proofCaptures: { read: () => Promise.resolve(fx.proofCaptureText) } as never,
+      requirementsCaptures: {
+        read: () =>
+          Promise.resolve(JSON.stringify({ containerComponent: CONTAINER_COMPONENT })),
+      } as never,
+      solverCaptures: {} as never,
+      verdictCaptures: {} as never,
+      attempts: {
+        preflight: () => Promise.resolve(undefined),
+        begin: () => {
+          walBeginCalled = true;
+          return Promise.resolve({ action: "dispatch" as const });
+        },
+      } as never,
+      canonicalAssetDirectory: "state/local/thread-assets",
+      stager: {
+        resolveTarget: ({ containerFileName }: { containerFileName: string }) =>
+          stagedTarget(containerFileName),
+        stage: () =>
+          Promise.resolve(Object.freeze({
+            containerPath: "/inputs/wrong-asset.step",
+          })),
+      } as never,
+      assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
+      syson: {
+        callTool: () =>
+          Promise.resolve({
+            structuredContent: {
+              constraints: fx.proofCase.requirements.map(buildConstraintRow),
+            },
+          }),
+      } as never,
+      solver: {
+        resolve: lowerCalculixStaticStructuralSolve,
+        solve: () => {
+          solverCalled = true;
+          return Promise.reject(new Error("solver must not dispatch"));
+        },
+      } as never,
+      policy: {
+        policyVersion: FEA_EXECUTION_POLICY_VERSION,
+        meshTargetSizeMinMm: 0.5,
+        forceMagnitudeMaxN: 1000,
+        stepBytesMax: 1000000,
+        selectionsMax: 10,
+      } as never,
+      lease: {
+        withLease: (_: unknown, __: unknown, fn: () => Promise<unknown>) => fn(),
+      } as never,
+    });
+
+    await assertRejects(
+      () => executor.execute(AGENT, COMMAND_BASE),
+      EngineeringProjectCommandError,
+      "different from the planned location",
+    );
+    assertStrictEquals(walBeginCalled, false);
+    assertStrictEquals(solverCalled, false);
   },
 );
 
@@ -1687,7 +1770,11 @@ Deno.test(
         quarantine: () => Promise.resolve(),
       } as never,
       canonicalAssetDirectory: "state/local/thread-assets",
-      stager: { stage: () => Promise.resolve() } as never,
+      stager: {
+        resolveTarget: ({ containerFileName }: { containerFileName: string }) =>
+          stagedTarget(containerFileName),
+        stage: () => Promise.resolve(stagedTarget(`fea-${STEP_SHA256}.step`)),
+      } as never,
       assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
       syson: {
         callTool: () =>
@@ -1768,7 +1855,11 @@ Deno.test(
         quarantine: () => Promise.resolve(),
       } as never,
       canonicalAssetDirectory: "state/local/thread-assets",
-      stager: { stage: () => Promise.resolve() } as never,
+      stager: {
+        resolveTarget: ({ containerFileName }: { containerFileName: string }) =>
+          stagedTarget(containerFileName),
+        stage: () => Promise.resolve(stagedTarget(`fea-${STEP_SHA256}.step`)),
+      } as never,
       assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
       syson: {
         callTool: () =>

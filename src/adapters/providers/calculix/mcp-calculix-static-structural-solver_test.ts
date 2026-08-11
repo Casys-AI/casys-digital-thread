@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
 import {
   validateMechanicalProofCase,
@@ -15,7 +15,7 @@ Deno.test("CalculiX adapter lowers a sealed proof to the exact static-solve requ
       "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
     ),
   ));
-  const stagedPath = `/exports/fea-${proof.expectedCadArtifact.sha256}.step`;
+  const stagedPath = `/inputs/fea-${proof.expectedCadArtifact.sha256}.step`;
   const plan = lowerCalculixStaticStructuralSolve({
     proof,
     inputArtifact: {
@@ -24,6 +24,7 @@ Deno.test("CalculiX adapter lowers a sealed proof to the exact static-solve requ
         digest: proof.expectedCadArtifact.sha256,
       },
       byteCount: proof.expectedCadArtifact.bytes,
+      stagedAsset: { location: stagedPath },
     },
   });
 
@@ -51,13 +52,38 @@ Deno.test("CalculiX adapter lowers a sealed proof to the exact static-solve requ
   });
 });
 
+Deno.test("CalculiX adapter rejects a staged location not bound to the exact STEP identity", async () => {
+  const proof = validateMechanicalProofCase(JSON.parse(
+    await Deno.readTextFile(
+      "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+    ),
+  ));
+
+  assertThrows(
+    () =>
+      lowerCalculixStaticStructuralSolve({
+        proof,
+        inputArtifact: {
+          fingerprint: {
+            algorithm: "sha256",
+            digest: proof.expectedCadArtifact.sha256,
+          },
+          byteCount: proof.expectedCadArtifact.bytes,
+          stagedAsset: { location: "/inputs/other.step" },
+        },
+      }),
+    TypeError,
+    "staged asset location",
+  );
+});
+
 Deno.test("CalculiX adapter owns the exact static-solve tool dispatch", async () => {
   const proof = validateMechanicalProofCase(JSON.parse(
     await Deno.readTextFile(
       "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
     ),
   ));
-  const stagedPath = `/exports/fea-${proof.expectedCadArtifact.sha256}.step`;
+  const stagedPath = `/inputs/fea-${proof.expectedCadArtifact.sha256}.step`;
   const calls: unknown[] = [];
   const providerResponse = {
     schemaVersion: "2.0",
@@ -108,6 +134,7 @@ Deno.test("CalculiX adapter owns the exact static-solve tool dispatch", async ()
         digest: proof.expectedCadArtifact.sha256,
       },
       byteCount: proof.expectedCadArtifact.bytes,
+      stagedAsset: { location: stagedPath },
     },
   });
 

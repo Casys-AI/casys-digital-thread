@@ -40,6 +40,16 @@
 
 export interface ContainerAssetStager {
   /**
+   * Resolve the code-owned provider location for a safe filename without any
+   * Docker I/O. The executor uses this identity to lower its exact request
+   * before WAL preflight, so recovery never stages merely to learn a path.
+   */
+  resolveTarget(input: {
+    /** Safe filename for the target path inside the container directory. */
+    readonly containerFileName: string;
+  }): StagedContainerAsset;
+
+  /**
    * Copy a named file from the host into the provider container, then verify
    * its SHA-256 against `expectedDigest`.
    *
@@ -66,7 +76,16 @@ export interface ContainerAssetStager {
     readonly expectedBytes: number;
     /** Safe filename for the target path inside the container directory. */
     readonly containerFileName: string;
-  }): Promise<void>;
+  }): Promise<StagedContainerAsset>;
+}
+
+/**
+ * Code-owned, provider-readable location of an asset after staging. It is
+ * constructed by the staging adapter from a fixed directory and a validated
+ * filename; callers never supply a path.
+ */
+export interface StagedContainerAsset {
+  readonly containerPath: string;
 }
 
 export type ContainerAssetStagingCode =
@@ -117,7 +136,7 @@ export type HostFileReader = (path: string) => Promise<Uint8Array | undefined>;
 export interface DockerVolumeAssetStagerOptions {
   /** Compose service that owns the target volume, e.g. "mcp-calculix". */
   readonly service: string;
-  /** Absolute container-side directory, e.g. "/exports". */
+  /** Absolute, code-owned container-side directory, e.g. "/inputs". */
   readonly containerDirectory: string;
   /**
    * Path to the directory containing `docker-compose.yml`.
@@ -153,10 +172,21 @@ export class DockerVolumeAssetStager implements ContainerAssetStager {
       );
     }
     this.#service = options.service;
-    this.#containerDirectory = options.containerDirectory.replace(/\/+$/, "");
+    this.#containerDirectory = requireSafeContainerDirectory(
+      options.containerDirectory,
+    );
     this.#composeProjectDirectory = options.composeProjectDirectory ?? ".";
     this.#run = options.commandRunner ?? defaultCommandRunner;
     this.#readHost = options.hostFileReader ?? defaultHostFileReader;
+  }
+
+  resolveTarget(input: {
+    readonly containerFileName: string;
+  }): StagedContainerAsset {
+    requireSafeContainerFilename(input.containerFileName);
+    return Object.freeze({
+      containerPath: `${this.#containerDirectory}/${input.containerFileName}`,
+    });
   }
 
   async stage(input: {
@@ -164,9 +194,10 @@ export class DockerVolumeAssetStager implements ContainerAssetStager {
     readonly expectedDigest: string;
     readonly expectedBytes: number;
     readonly containerFileName: string;
-  }): Promise<void> {
+  }): Promise<StagedContainerAsset> {
     requireSafeContainerFilename(input.containerFileName);
     requireSha256Digest(input.expectedDigest, input.containerFileName);
+    const target = this.resolveTarget(input);
 
     // Pre-verify the host file before touching the container at all.
     const hostBytes = await this.#readHost(input.sourcePath);
@@ -212,11 +243,11 @@ export class DockerVolumeAssetStager implements ContainerAssetStager {
     // Idempotency: if the container file already exists with the right digest,
     // skip the copy. Failure to read the container file is not an error here;
     // it simply means the file is absent and the copy must proceed.
-    const containerPath = `${this.#containerDirectory}/${input.containerFileName}`;
+    const containerPath = target.containerPath;
     if (
       await this.#existsInContainerWithDigest(containerPath, input.expectedDigest)
     ) {
-      return;
+      return target;
     }
 
     // Copy host → container.
@@ -284,6 +315,7 @@ export class DockerVolumeAssetStager implements ContainerAssetStager {
           `got ${containerDigest.slice(0, 16)}….`,
       );
     }
+    return target;
   }
 
   /**
@@ -369,6 +401,23 @@ function requireSafeContainerFilename(filename: string): void {
         `(must match /^[A-Za-z0-9._-]+$/).`,
     );
   }
+}
+
+function requireSafeContainerDirectory(directory: string): string {
+  const normalized = directory.replace(/\/+$/, "");
+  if (
+    !normalized.startsWith("/") ||
+    normalized === "/" ||
+    normalized.split("/").slice(1).some((segment) =>
+      segment === "" || segment === "." || segment === ".." ||
+      !/^[A-Za-z0-9._-]+$/.test(segment)
+    )
+  ) {
+    throw new TypeError(
+      `DockerVolumeAssetStager: container directory "${directory}" is not a safe absolute path.`,
+    );
+  }
+  return normalized;
 }
 
 function requireSha256Digest(digest: string, filename: string): void {

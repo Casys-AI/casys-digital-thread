@@ -27,8 +27,13 @@ write-ahead record shows whether the solve completed.
 
 ```bash
 docker compose ps mcp-calculix
-docker exec "$(docker compose ps -q mcp-calculix)" ls -la /exports/fea-<digest>.step
+docker exec "$(docker compose ps -q mcp-calculix)" ls -la /inputs/fea-<digest>.step
 ```
+
+`/inputs` is a provider-private, content-addressed staging volume, not the CAD exchange
+or a ledger. It may survive a container restart, but its contents are never evidence and
+do not settle the provider outcome; use the write-ahead record and recorded-run resources
+for that.
 
 The write-ahead record under `state/local/fea-static-proof-attempts/` tells you whether
 the solver ran and whether both captures were taken. A `completed` status there with a

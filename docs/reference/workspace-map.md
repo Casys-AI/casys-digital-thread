@@ -145,25 +145,25 @@
 
 ## Local endpoints
 
-| Endpoint                     | Owner                       | Purpose                                                                                   |
-| ---------------------------- | --------------------------- | ----------------------------------------------------------------------------------------- |
-| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                                         |
-| `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                                        |
-| `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                                  |
-| `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | CAD execution and exports                                                                 |
-| `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Agent-proposed geometry, private export volume                                            |
-| `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Meshing and static FEA                                                                    |
-| `http://127.0.0.1:3016/mcp`  | `mcp-modelica`              | Approved simulations and run records                                                      |
-| `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | FDM printability checks on produced STL                                                   |
-| `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                                           |
-| `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                                  |
-| `http://127.0.0.1:3023/mcp`  | `mcp-spice`                 | ngspice operating points and transients                                                   |
-| `http://127.0.0.1:3020/mcp`  | `deno task start`           | Fleet reads plus agent project control                                                    |
-| `http://127.0.0.1:3021/`     | `deno task preview:browser` | Console MCP App browser harness                                                           |
-| `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Canonical project cockpit and live Project tab                                            |
-| `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Direct engineering-view development preview                                               |
-| `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft bytes; 404 if absent or hash-mismatched; Cache-Control: no-store |
-| `/api/review-intents`        | BFF (native Workbench)      | Loopback POST/list of review intents only; never a project decision command               |
+| Endpoint                     | Owner                       | Purpose                                                                                     |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------------------------------- |
+| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                                           |
+| `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                                          |
+| `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                                    |
+| `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | CAD execution and exports                                                                   |
+| `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Agent-proposed geometry, private export volume                                              |
+| `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Static, modal, buckling, creep and coupled-thermal FEA; identity-bound recorded static runs |
+| `http://127.0.0.1:3016/mcp`  | `mcp-modelica`              | Approved simulations, recorded ledgers and resumable qualified requests                     |
+| `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | FDM printability checks on produced STL                                                     |
+| `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                                             |
+| `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                                    |
+| `http://127.0.0.1:3023/mcp`  | `mcp-spice`                 | ngspice operating points and transients                                                     |
+| `http://127.0.0.1:3020/mcp`  | `deno task start`           | Fleet reads plus agent project control                                                      |
+| `http://127.0.0.1:3021/`     | `deno task preview:browser` | Console MCP App browser harness                                                             |
+| `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Canonical project cockpit and live Project tab                                              |
+| `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Direct engineering-view development preview                                                 |
+| `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft bytes; 404 if absent or hash-mismatched; Cache-Control: no-store   |
+| `/api/review-intents`        | BFF (native Workbench)      | Loopback POST/list of review intents only; never a project decision command                 |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
@@ -323,7 +323,9 @@ manufacturing, certification, cost, or un-attested quantity.
 | Data                         | Owner                       | Workspace access                                                                         |
 | ---------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- |
 | SysML and requirements       | SysON                       | Provider MCP; no automatic mutation                                                      |
-| CAD exports                  | `exports` volume            | Hash-attested build123d to CalculiX exchange                                             |
+| CAD exports                  | `exports` volume            | Hash-attested build123d to CalculiX read-only exchange                                   |
+| Generic FEA staging          | CalculiX `calculix-inputs` volume | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence |
+| CalculiX recorded runs       | `calculix-runs` volume      | Read through `calculix_run_get`; separate from the shared CAD exchange                   |
 | Modelica runs                | `modelica-runs` volume      | Read through `modelica_run_list/get`                                                     |
 | ERP data                     | External ERPNext database   | Provider-native MCP from backend only                                                    |
 | Native `ThreadSnapshot`      | Immutable local file store  | Read-only projection in the native Workbench                                             |

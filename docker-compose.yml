@@ -13,9 +13,14 @@
 # reachable through the port mapping); the mapping itself is loopback-only,
 # so nothing is exposed beyond this machine.
 #
-# build123d and calculix share the /exports volume: a STEP exported by
-# build123d_export is immediately readable by calculix_solve_static at
-# /exports/<name>.step.
+# build123d and CalculiX share the /exports volume: a STEP exported by
+# build123d_export is immediately readable by CalculiX at /exports/<name>.step;
+# CalculiX mounts that CAD exchange read-only.
+# The Digital Thread stages its generic content-addressed FEA input in the
+# provider-private calculix-inputs volume at /inputs. It is neither an exchange
+# nor evidence: CalculiX snapshots and hashes the file into its private workdir.
+# CalculiX keeps its own bounded, durable run ledger in calculix-runs; it never
+# treats the shared CAD exchange as its evidence store.
 #
 services:
   syson-db:
@@ -133,12 +138,24 @@ services:
       - ALL
 
   mcp-calculix:
-    image: "${TOOLCHAIN_IMAGE:-ghcr.io/casys-ai/engineering-toolchain@sha256:4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c}"
-    command: ["calculix", "--port=3015", "--hostname=0.0.0.0"]
+    # CalculiX has its own release and durable-record contract. In particular,
+    # its published entrypoint already owns HTTP startup; do not pass the
+    # legacy engineering-toolchain subcommand here.
+    image: "${MCP_CALCULIX_IMAGE:-ghcr.io/casys-ai/mcp-calculix@sha256:76c9630eeecfe164c6b3c4d8b845c51fa7f8b48528773cb149b6c7a0ae2799a8}"
     ports:
       - "127.0.0.1:3015:3015"
+    environment:
+      CALCULIX_RUNS_DIRECTORY: /var/lib/mcp-calculix-runs
+      CALCULIX_MAX_RECORDED_RUNS: "24"
     volumes:
-      - exports:/exports
+      - exports:/exports:ro
+      - calculix-inputs:/inputs
+      - calculix-runs:/var/lib/mcp-calculix-runs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3015/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     networks: [chain]
 
   # This image is intentionally independent from engineering-toolchain: OMC
@@ -146,7 +163,7 @@ services:
   mcp-modelica:
     # MCP_MODELICA_IMAGE lets a locally verified sidecar be tested without
     # spending a GitHub Actions image build. The committed default stays pinned.
-    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:fc4ae7ea54e95e0df81d615e2f89482d4acb6af0476c83286164c1506405e0a9}"
+    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:7df4328181db78911bd9a3c4b1d7204f0f7ee01709262a5bc5c111d7c5e45961}"
     ports:
       - "127.0.0.1:3016:3016"
     volumes:
@@ -287,6 +304,16 @@ volumes:
   build123d-sandbox-exports:
   syson-db-data:
   exports:
+  # Generic FEA staging is content-addressed and non-authoritative. It may be
+  # removed only as the explicit, known input volume of a stopped topology;
+  # it is never a run ledger or evidence store.
+  calculix-inputs:
+    name: "${CALCULIX_INPUTS_VOLUME:-casys-digital-thread-calculix-inputs}"
+  # Retained CalculiX ledgers support calculix_run_get recovery across a
+  # container restart. A local integration run can select a fresh volume
+  # instead of deleting the default evidence history.
+  calculix-runs:
+    name: "${CALCULIX_RUNS_VOLUME:-casys-digital-thread-calculix-runs}"
   # An explicit Docker name preserves immutable Modelica run records across
   # Compose restarts for modelica_run_get. An opt-in local integration run may
   # set MODELICA_RUNS_VOLUME to a fresh name instead of deleting retained
