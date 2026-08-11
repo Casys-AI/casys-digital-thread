@@ -39,7 +39,6 @@ import {
 } from "../../domain/project/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
-  EngineeringAgentRunUncertainWriterReconciliation,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
   EngineeringThreadSnapshotRef,
@@ -49,7 +48,14 @@ import {
   TERMINAL_THREAD_WRITE_FAILURES,
 } from "./thread-write-basis-guard.ts";
 import { requireBasis, requireRun } from "./executor-run-helpers.ts";
-import { fingerprintsEqual } from "../../domain/kernel/deterministic-json.ts";
+import {
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
+import {
+  parseReconcileUncertainWriterProposal,
+  RECONCILE_UNCERTAIN_WRITER_OPERATION,
+} from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants — operation identity
@@ -61,10 +67,7 @@ import { fingerprintsEqual } from "../../domain/kernel/deterministic-json.ts";
  * WHY EXPORTED — server.ts must register the same identity object in the
  * `additional` array of `RegisteredProjectRunExecutor`.
  */
-export const RECONCILE_UNCERTAIN_WRITER_OPERATION = {
-  id: "record.reconcile-uncertain-writer",
-  version: "1",
-} as const;
+export { RECONCILE_UNCERTAIN_WRITER_OPERATION };
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -81,7 +84,6 @@ export interface ReconcileUncertainWriterRunExecutorCommand {
 export interface ReconcileUncertainWriterRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: EngineeringProjectCommandService;
-  readonly now?: () => string;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,12 +93,10 @@ export interface ReconcileUncertainWriterRunExecutorDependencies {
 export class ReconcileUncertainWriterRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
   readonly #commands: EngineeringProjectCommandService;
-  readonly #now: () => string;
 
   constructor(dependencies: ReconcileUncertainWriterRunExecutorDependencies) {
     this.#projects = dependencies.projects;
     this.#commands = dependencies.commands;
-    this.#now = dependencies.now ?? (() => new Date().toISOString());
   }
 
   async execute(
@@ -119,29 +119,16 @@ export class ReconcileUncertainWriterRunExecutor {
 
     // 3. Extract MRTR-approved decision and resolve the target failed run.
     const workItem = project.workItems.find((item) => item.id === run.workItemId)!;
-    const { approval, proposal } = requireMrtrApproval(project, run, workItem);
+    const { approval, proposal } = await requireMrtrApproval(project, run, workItem);
 
-    const failedRunId = requireProposalParam(proposal, "reconcileRunId");
-    const expectedFailureCode = requireProposalParam(proposal, "reconcileFailureCode");
-    const expectedBasisSnapshotId = requireProposalParam(
-      proposal,
-      "reconcileBasisSnapshotId",
-    );
-    const outcome = requireProposalParam(
-      proposal,
-      "reconcileOutcome",
-    ) as "provider-did-not-write" | "write-effect-accepted";
-    if (outcome !== "provider-did-not-write" && outcome !== "write-effect-accepted") {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        `MRTR reconcileOutcome must be "provider-did-not-write" or "write-effect-accepted"; ` +
-          `got "${outcome}".`,
-      );
-    }
-    const providerInspectionAttestation = requireProposalParam(
-      proposal,
-      "reconcileAttestation",
-    );
+    const parsed = parseApprovedProposal(proposal);
+    const {
+      failedRunId,
+      failureCode: expectedFailureCode,
+      basisSnapshotId: expectedBasisSnapshotId,
+      outcome,
+      providerInspectionAttestation,
+    } = parsed;
 
     // 4. Validate the target failed run.
     const failedRun = requireRun(project, failedRunId);
@@ -166,22 +153,6 @@ export class ReconcileUncertainWriterRunExecutor {
           "Only terminal-uncertain failures are eligible for reconciliation.",
       );
     }
-    if (failedRun.uncertainWriterReconciliation !== undefined) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Target run ${failedRunId} already has an uncertainWriterReconciliation.  ` +
-          "A run can be reconciled only once.",
-      );
-    }
-    if (failedRun.evidenceRefs.length !== 0) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Target run ${failedRunId} has evidence refs; uncertain writer reconciliation ` +
-          "is not applicable to runs that produced evidence.",
-      );
-    }
-
-    // Verify the basis snapshot named in the MRTR matches the failed run's basis.
     const failedRunBasis = requireBasis(failedRun);
     if (failedRunBasis.snapshotId !== expectedBasisSnapshotId) {
       throw new EngineeringProjectCommandError(
@@ -191,46 +162,47 @@ export class ReconcileUncertainWriterRunExecutor {
           "The MRTR must name the exact basis snapshot.",
       );
     }
+    if (failedRun.uncertainWriterReconciliation !== undefined) {
+      // The command service owns immutable command-id replay.  Re-enter it
+      // with the persisted annotation, rather than rejecting before it can
+      // inspect its receipt.  A different commandId still fails closed there.
+      const replay = await this.#commands.reconcileAnnotationRun(origin, {
+        commandId: command.commandId,
+        projectId: command.projectId,
+        expectedRevision: command.expectedRevision,
+        issuedAt: command.issuedAt,
+        reconciliationRunId: command.runId,
+        failedRunId,
+        decisionId: failedRun.uncertainWriterReconciliation.decisionId,
+        outcome: failedRun.uncertainWriterReconciliation.outcome,
+        providerInspectionAttestation:
+          failedRun.uncertainWriterReconciliation.providerInspectionAttestation,
+      });
+      assertCompleted(replay, command);
+      return replay;
+    }
+    if (failedRun.evidenceRefs.length !== 0) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Target run ${failedRunId} has evidence refs; uncertain writer reconciliation ` +
+          "is not applicable to runs that produced evidence.",
+      );
+    }
 
-    // 5. Build the reconciliation annotation from the approved MRTR.
-    const reconciliation: EngineeringAgentRunUncertainWriterReconciliation = {
-      kind: "uncertain-writer-resolved",
-      outcome,
-      reconciledAt: this.#now(),
-      reconciledBy: { id: origin.actorId, origin: origin.kind },
-      decisionId: approval.decisionId,
-      providerInspectionAttestation,
-    };
-
-    // 6. Prepare the optional blocker for "write-effect-accepted".
-    // phaseId is omitted: the domain derives it from the failed work item,
-    // preventing the reconciliation run's phase from being used by accident.
-    const openBlocker = outcome === "write-effect-accepted"
-      ? {
-        id: `blocker:uncertain-write-accepted:${command.runId}`,
-        title: "Uncertain provider write accepted — review before re-run",
-        description:
-          `Run ${failedRunId} was reconciled with outcome "write-effect-accepted": ` +
-          "the provider may have produced output that was not captured in the thread.  " +
-          "Review the provider state and resolve this blocker before queuing a new run " +
-          "from the same basis.",
-      }
-      : undefined;
-
-    // 7. Single atomic write — no WAL, no ThreadSnapshot.
-    await this.#commands.reconcileAnnotationRun(origin, {
+    // 5. Single atomic write — no WAL, no ThreadSnapshot. The service stamps
+    // the annotation actor/time and creates the server-fixed release
+    // blocker/decision when the accepted outcome needs it.
+    const result = await this.#commands.reconcileAnnotationRun(origin, {
       commandId: command.commandId,
       projectId: command.projectId,
       expectedRevision: command.expectedRevision,
       issuedAt: command.issuedAt,
       reconciliationRunId: command.runId,
       failedRunId,
-      reconciliation,
-      openBlocker,
+      decisionId: approval.decisionId,
+      outcome,
+      providerInspectionAttestation,
     });
-
-    // 8. CAS readback.
-    const result = await this.#requiredProject(command.projectId);
     assertCompleted(result, command);
     return result;
   }
@@ -283,7 +255,8 @@ function requireShape(
 
 interface ApprovedMrtr {
   readonly approval: { readonly decisionId: string };
-  readonly proposal: ReadonlyMap<string, string | number | boolean>;
+  readonly proposal:
+    readonly import("../../domain/project/engineering-project.ts").EngineeringDecisionProposalParameter[];
 }
 
 /**
@@ -297,11 +270,11 @@ interface ApprovedMrtr {
  * run from being reused) and the same input fingerprint as the decision
  * (preventing proposal substitution).
  */
-function requireMrtrApproval(
+async function requireMrtrApproval(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
   workItem: { readonly decisionIds: readonly string[] },
-): ApprovedMrtr {
+): Promise<ApprovedMrtr> {
   const basis = requireBasis(run);
   const candidates: ApprovedMrtr[] = [];
 
@@ -312,27 +285,37 @@ function requireMrtrApproval(
     if (!sameSnapshotBasis(decision.baseSnapshot, basis)) continue;
     // Decision must carry a fingerprint (unfingerprinted decisions are ineligible).
     if (!decision.inputFingerprint) continue;
+    const expectedFingerprint = await sha256Fingerprint({
+      baseSnapshot: decision.baseSnapshot,
+      inputEvidenceRefs: decision.inputEvidenceRefs,
+      proposal: {
+        summary: decision.proposal.summary,
+        parameters: decision.proposal.parameters,
+      },
+    });
+    if (!fingerprintsEqual(expectedFingerprint, decision.inputFingerprint)) continue;
 
-    const params = new Map(
-      decision.proposal.parameters.map((p) => [p.key, p.value]),
-    );
-    if (params.get("reconcileAction") !== "resolve-uncertain-writer") continue;
-    if (
-      params.get("reconcileOperation") !==
-        `${RECONCILE_OP.id}@${RECONCILE_OP.version}`
-    ) continue;
+    try {
+      parseReconcileUncertainWriterProposal(decision.proposal.parameters);
+    } catch {
+      continue;
+    }
 
     // Find exactly one human approval whose basis and fingerprint match the decision.
     const exactHumanApprovals = project.approvals.filter((a) =>
       a.decisionId === decision.id &&
       a.status === "approved" &&
       a.decidedByOrigin === "human" &&
+      decision.approvalIds.includes(a.id) &&
       sameSnapshotBasis(a.baseSnapshot, basis) &&
       fingerprintsEqual(a.inputFingerprint, decision.inputFingerprint)
     );
     if (exactHumanApprovals.length !== 1) continue;
 
-    candidates.push({ approval: { decisionId }, proposal: params });
+    candidates.push({
+      approval: { decisionId },
+      proposal: decision.proposal.parameters,
+    });
   }
 
   if (candidates.length !== 1) {
@@ -356,18 +339,20 @@ function sameSnapshotBasis(
     value?.subjectId === basis.subjectId;
 }
 
-function requireProposalParam(
-  params: ReadonlyMap<string, string | number | boolean>,
-  key: string,
-): string {
-  const value = params.get(key);
-  if (typeof value !== "string" || !value.trim()) {
+function parseApprovedProposal(
+  parameters:
+    readonly import("../../domain/project/engineering-project.ts").EngineeringDecisionProposalParameter[],
+) {
+  try {
+    return parseReconcileUncertainWriterProposal(parameters);
+  } catch (error) {
     throw new EngineeringProjectCommandError(
       "invalid_input",
-      `MRTR proposal is missing a non-empty string parameter "${key}".`,
+      `MRTR reconciliation proposal is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
-  return value;
 }
 
 // ---------------------------------------------------------------------------

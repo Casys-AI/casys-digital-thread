@@ -18,6 +18,12 @@ import {
   registerProjectControlTools,
 } from "./project-control.ts";
 import { parseGeometryDecisionParameters } from "../domain/platform/geometry-proposal.ts";
+import {
+  UNCERTAIN_WRITER_BASIS_RELEASE_ACTION,
+  UNCERTAIN_WRITER_BASIS_RELEASE_OUTCOME,
+  uncertainWriterBasisReleaseIds,
+  uncertainWriterBasisReleaseText,
+} from "../domain/project/uncertain-writer-basis-release.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const APPROVAL_ID = "approval:airframe-material:proposal-1";
@@ -544,6 +550,10 @@ Deno.test("project decision approval and rejection require a verified human elic
     (request.params as Record<string, unknown>).message as string,
     "Composite airframe",
   );
+  assertStringIncludes(
+    (request.params as Record<string, unknown>).message as string,
+    '"key":"material"',
+  );
   assertEquals(approved, []);
 
   await assertRejects(
@@ -597,6 +607,108 @@ Deno.test("project decision approval and rejection require a verified human elic
       inputFingerprint: FINGERPRINT,
     },
   }]);
+});
+
+Deno.test("decision elicitation renders the complete parameter array as injective canonical JSON", async () => {
+  const elicit = async (
+    parameters: NonNullable<
+      EngineeringProjectSnapshot["decisions"][number]["proposal"]
+    >["parameters"],
+  ): Promise<string> => {
+    const base = projectSnapshot({ withDecision: true });
+    const snapshot: EngineeringProjectSnapshot = {
+      ...base,
+      decisions: base.decisions.map((decision) => ({
+        ...decision,
+        proposal: decision.proposal ? { ...decision.proposal, parameters } : undefined,
+      })),
+    };
+    const app = new CapturingApp();
+    registerProjectControlTools(app as unknown as McpApp, dependencies(snapshot));
+    const result = await app.handler("project_decision_approve")({
+      ...COMMON,
+      decisionId: "airframe-material",
+      inputFingerprint: FINGERPRINT,
+      rationale: "Review exact parameters.",
+    }, clientContext()) as Record<string, unknown>;
+    const request = (result.inputRequests as Record<string, unknown>)
+      .decision_confirmation as Record<string, unknown>;
+    return (request.params as Record<string, unknown>).message as string;
+  };
+
+  // Both arrays rendered as `label: value; ...` used to collide.
+  const messageA = await elicit([
+    { key: "first", label: "a", value: "b; c: d" },
+  ]);
+  const messageB = await elicit([
+    { key: "second", label: "a: b; c", value: "d" },
+  ]);
+  assertEquals(messageA === messageB, false);
+  assertStringIncludes(
+    messageA,
+    'Exact parameters: [{"key":"first","label":"a","value":"b; c: d"}]',
+  );
+  assertStringIncludes(messageB, '"key":"second"');
+  assertStringIncludes(await elicit([]), "Exact parameters: []");
+});
+
+Deno.test("project_decision_propose applies the server-fixed basis-release contract without the failed writer grammar", async () => {
+  const snapshot = {
+    ...basisReleaseSnapshot(),
+    threadSnapshots: [
+      RELEASE_BASIS,
+      {
+        snapshotId: "chat-first-subject:thread:r8",
+        revision: 8,
+        subjectId: RELEASE_BASIS.subjectId,
+      },
+    ],
+  };
+  const proposed: unknown[] = [];
+  const app = new CapturingApp();
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    dependencies(snapshot, {
+      proposeDecision: (_origin, command) => {
+        proposed.push(command);
+        return Promise.resolve(snapshot);
+      },
+    }),
+  );
+  const parameters = basisReleaseParameters();
+  const args = {
+    ...COMMON,
+    decisionId: "decision:uncertain-write-release:run:failed-writer",
+    proposal: { summary: "Release this exact reviewed basis.", parameters },
+  };
+  await app.handler("project_decision_propose")(args, clientContext());
+  assertEquals(proposed.length, 1);
+  assertEquals(
+    (proposed[0] as { baseSnapshot: unknown }).baseSnapshot,
+    {
+      snapshotId: RELEASE_BASIS.snapshotId,
+      revision: RELEASE_BASIS.revision,
+      subjectId: RELEASE_BASIS.subjectId,
+    },
+  );
+
+  await assertRejects(
+    () =>
+      app.handler("project_decision_propose")({
+        ...args,
+        proposal: {
+          ...args.proposal,
+          parameters: parameters.map((parameter) =>
+            parameter.key === "snapshotId"
+              ? { ...parameter, value: "forged:snapshot" }
+              : parameter
+          ),
+        },
+      }, clientContext()) as Promise<unknown>,
+    Error,
+    'Basis-release parameter "snapshotId" must equal the exact persisted value',
+  );
+  assertEquals(proposed.length, 1);
 });
 
 Deno.test("decision elicitation spells out the exact evidence targets the approval seals", async () => {
@@ -1452,6 +1564,130 @@ function projectSnapshot(
       : [],
     blockers: [],
     commandReceipts: [],
+  };
+}
+
+const RELEASE_BASIS = {
+  kind: "thread-snapshot" as const,
+  snapshotId: "chat-first-subject:thread:r7",
+  revision: 7,
+  subjectId: "chat-first-subject",
+};
+
+function basisReleaseParameters() {
+  const ids = uncertainWriterBasisReleaseIds("run:failed-writer");
+  return [
+    {
+      key: "releaseAction",
+      label: "Action",
+      value: UNCERTAIN_WRITER_BASIS_RELEASE_ACTION,
+    },
+    {
+      key: "releaseOutcome",
+      label: "Outcome",
+      value: UNCERTAIN_WRITER_BASIS_RELEASE_OUTCOME,
+    },
+    { key: "failedRunId", label: "Failed run", value: "run:failed-writer" },
+    {
+      key: "failureCode",
+      label: "Failure",
+      value: "model-write-architecture-provider-outcome-unknown",
+    },
+    { key: "subjectId", label: "Subject", value: RELEASE_BASIS.subjectId },
+    { key: "snapshotId", label: "Snapshot", value: RELEASE_BASIS.snapshotId },
+    { key: "revision", label: "Revision", value: RELEASE_BASIS.revision },
+    { key: "blockerId", label: "Blocker", value: ids.blockerId },
+    {
+      key: "reconciliationDecisionId",
+      label: "Reconciliation",
+      value: "decision:reconcile",
+    },
+    {
+      key: "reconciliationOutcome",
+      label: "Reconciliation outcome",
+      value: "write-effect-accepted",
+    },
+    {
+      key: "releaseAttestation",
+      label: "Attestation",
+      value: "Provider state was reviewed.",
+    },
+  ];
+}
+
+function basisReleaseSnapshot(): EngineeringProjectSnapshot {
+  const base = projectSnapshot({ threadSnapshots: [RELEASE_BASIS] });
+  const ids = uncertainWriterBasisReleaseIds("run:failed-writer");
+  const text = uncertainWriterBasisReleaseText("run:failed-writer");
+  const failedWork = {
+    id: "work:failed-writer",
+    phaseId: "architecture",
+    title: "Failed writer",
+    description: "Terminal uncertain architecture writer.",
+    kind: "architect" as const,
+    operation: { id: "model.write-architecture", version: "1", bindings: [] },
+    status: "ready" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [] as string[],
+    evidenceRefs: [],
+    decisionIds: [],
+    blockerIds: [ids.blockerId],
+  };
+  return {
+    ...base,
+    phases: [{
+      id: "architecture",
+      name: "Architecture",
+      order: 1,
+      description: "Architecture phase.",
+      workItemIds: [failedWork.id],
+      requiredDecisionIds: [ids.decisionId],
+      evidenceRefs: [],
+    }],
+    workItems: [failedWork],
+    agentRuns: [{
+      id: "run:failed-writer",
+      workItemId: failedWork.id,
+      status: "failed",
+      summary: "Provider outcome unknown.",
+      queuedAt: "2026-08-03T11:00:00.000Z",
+      basis: RELEASE_BASIS,
+      evidenceRefs: [],
+      failure: {
+        code: "model-write-architecture-provider-outcome-unknown",
+        message: "Provider outcome unknown.",
+      },
+      uncertainWriterReconciliation: {
+        kind: "uncertain-writer-resolved",
+        outcome: "write-effect-accepted",
+        reconciledAt: "2026-08-03T11:30:00.000Z",
+        reconciledBy: { id: "operator", origin: "human" },
+        decisionId: "decision:reconcile",
+        providerInspectionAttestation: "Provider history shows the write.",
+      },
+    }],
+    decisions: [{
+      id: ids.decisionId,
+      phaseId: "architecture",
+      title: text.decisionTitle,
+      question: text.decisionQuestion,
+      status: "required",
+      requestedAt: "2026-08-03T11:30:00.000Z",
+      inputEvidenceRefs: [],
+      approvalIds: [],
+    }],
+    approvals: [],
+    blockers: [{
+      id: ids.blockerId,
+      phaseId: "architecture",
+      title: text.blockerTitle,
+      description: text.blockerDescription,
+      kind: "tool-failure",
+      status: "open",
+      openedAt: "2026-08-03T11:30:00.000Z",
+      workItemIds: [failedWork.id],
+      decisionIds: [ids.decisionId],
+    }],
   };
 }
 

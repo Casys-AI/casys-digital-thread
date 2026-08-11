@@ -421,7 +421,7 @@ export class DesignWriteGeometryRunExecutor {
       // before claim, draft/capture reads, binary promotion, or snapshot writes
       // if another run has already started, failed after possible durable
       // effects, or published from this same immutable basis.
-      assertThreadWriteBasisAvailable(
+      await assertThreadWriteBasisAvailable(
         preClaim,
         requireRun(preClaim, command.runId),
       );

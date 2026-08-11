@@ -22,6 +22,7 @@
  *
  * Exit 0 = contract valid.
  * Exit 1 = contract invalid.
+ * Exit 2 = INCONCLUSIVE (the committed fixture is explicitly synthetic).
  *
  * Usage: deno run --allow-read=state/fixtures,config scripts/gates/verify-fea-provider-contract.ts
  */
@@ -48,6 +49,17 @@ interface GoldenFixture {
     readonly capturedFromImageDigest: string;
     readonly note: string;
   };
+  readonly request?: {
+    readonly exportAttestation: {
+      readonly path: string;
+      readonly sha256: string;
+      readonly bytes: number;
+    };
+    readonly solver: {
+      readonly fixedSelections: readonly unknown[];
+      readonly loads: readonly unknown[];
+    };
+  };
   readonly response: unknown;
 }
 
@@ -56,6 +68,11 @@ const repoRoot = new URL("../../", import.meta.url);
 function fail(message: string): never {
   console.error(`FAIL ${message}`);
   Deno.exit(1);
+}
+
+function inconclusive(message: string): never {
+  console.error(`INCONCLUSIVE ${message}`);
+  Deno.exit(2);
 }
 
 // ── Read golden fixture ───────────────────────────────────────────────────────
@@ -92,7 +109,7 @@ if (
   typeof fixture.meta.note === "string" &&
   fixture.meta.note.includes(SYNTHETIC_FIXTURE_SENTINEL)
 ) {
-  fail(
+  inconclusive(
     `Golden fixture ${FIXTURE_PATH} is synthetic (its note contains ` +
       `"${SYNTHETIC_FIXTURE_SENTINEL}"). This gate validates the parser against a ` +
       `real provider capture, not against itself. ` +
@@ -137,54 +154,39 @@ if (fixture.meta.capturedFromImageDigest !== fleetDigest) {
   );
 }
 
-// ── Extract expected values from the fixture response ─────────────────────────
+// ── Read sealed request evidence, separately from the response under test ────
 
 /**
- * The gate derives the `expected` parameter for `parseFeaSolverResponse` from
- * the fixture itself. CalculiX echoes back exactly what was sent in the request,
- * so the fixture's `inputArtifact` and `constraints` fields are authoritative
- * for both the response content AND the expected request values.
- *
- * WHY SELF-REFERENTIAL — the fixture represents a real CalculiX response. The
- * parser verifies that the echoed values match the expected (sent) values exactly.
- * By reading expected from the fixture, the gate validates the echo invariant
- * without needing the original request.
+ * The response is the object being tested. Expected values are persisted from
+ * build123d's export attestation and the solver request before CalculiX replies;
+ * deriving them from response fields would make the gate self-referential.
  */
-const resp = fixture.response as Record<string, unknown>;
-const inputArtifact = resp.inputArtifact as Record<string, unknown>;
-const constraints = resp.constraints as Record<string, unknown>;
-
-if (!inputArtifact || typeof inputArtifact !== "object") {
-  fail("Golden fixture response.inputArtifact is missing or not an object.");
-}
-if (!constraints || typeof constraints !== "object") {
-  fail("Golden fixture response.constraints is missing or not an object.");
-}
-
-const stagedPath = inputArtifact.sourcePath;
-const stepDigest = inputArtifact.sha256;
-const stepBytes = inputArtifact.bytes;
-const fixedSelections = constraints.fixedSelections;
-const loads = constraints.loads;
+const attestation = fixture.request?.exportAttestation;
+const solver = fixture.request?.solver;
+const stagedPath = attestation?.path;
+const stepDigest = attestation?.sha256;
+const stepBytes = attestation?.bytes;
+const fixedSelections = solver?.fixedSelections;
+const loads = solver?.loads;
 
 if (typeof stagedPath !== "string" || !stagedPath.trim()) {
-  fail("Golden fixture response.inputArtifact.sourcePath is missing or empty.");
+  fail("Golden fixture request.exportAttestation.path is missing or empty.");
 }
 if (typeof stepDigest !== "string" || !/^[0-9a-f]{64}$/.test(stepDigest)) {
   fail(
-    "Golden fixture response.inputArtifact.sha256 is not a 64-char hex SHA-256.",
+    "Golden fixture request.exportAttestation.sha256 is not a 64-char hex SHA-256.",
   );
 }
 if (!Number.isInteger(stepBytes) || (stepBytes as number) < 1) {
   fail(
-    "Golden fixture response.inputArtifact.bytes is not a positive integer.",
+    "Golden fixture request.exportAttestation.bytes is not a positive integer.",
   );
 }
 if (!Array.isArray(fixedSelections)) {
-  fail("Golden fixture response.constraints.fixedSelections is not an array.");
+  fail("Golden fixture request.solver.fixedSelections is not an array.");
 }
 if (!Array.isArray(loads)) {
-  fail("Golden fixture response.constraints.loads is not an array.");
+  fail("Golden fixture request.solver.loads is not an array.");
 }
 
 // ── Call the parser ───────────────────────────────────────────────────────────

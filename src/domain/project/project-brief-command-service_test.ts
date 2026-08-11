@@ -291,6 +291,39 @@ Deno.test("gate claims resolve only to canonical V2 gates and preserve link stat
   assertEquals(typeof statusIssue?.recovery, "string");
 });
 
+Deno.test("an agent cannot preempt the server-reserved uncertain-writer release decision namespace", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+  );
+  const reservedId = "decision:uncertain-write-release:future-run";
+  const plan = baselinePlanCommand("reject-reserved-release-id", approved.revision);
+
+  await assertCommandError(
+    () =>
+      commands.publishPlan(AGENT, {
+        ...plan,
+        workItems: plan.workItems.map((item) => ({
+          ...item,
+          decisionIds: [reservedId],
+        })),
+        requiredDecisions: [{
+          id: reservedId,
+          phaseId: "phase-baseline",
+          title: "Forged release",
+          question: "Can an agent reserve a future release id?",
+        }],
+      }),
+    "invalid_input",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, approved.revision);
+});
+
 Deno.test("a rejected update preserves the approved brief and stale proposals cannot be approved", async () => {
   const store = new MemoryProjectStore();
   const service = serviceFor(store);

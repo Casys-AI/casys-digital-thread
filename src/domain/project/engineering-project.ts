@@ -352,8 +352,9 @@ export interface EngineeringAgentRun {
   /**
    * Present only on a terminal-uncertain failed run that a human operator has
    * explicitly resolved after inspecting the provider.  The run remains
-   * `failed`; this annotation tells the thread-write basis guard that the lock
-   * may be lifted.  See EngineeringAgentRunUncertainWriterReconciliation.
+   * `failed`; a did-not-write annotation can release the basis, while an
+   * accepted write remains blocked until its separate human release decision
+   * resolves.  See EngineeringAgentRunUncertainWriterReconciliation.
    */
   readonly uncertainWriterReconciliation?:
     EngineeringAgentRunUncertainWriterReconciliation;
@@ -380,7 +381,7 @@ export interface EngineeringAgentRunFailure {
  *
  * WHY THIS EXISTS — an executor may crash after the provider has acknowledged a
  * write but before the ThreadSnapshot is published.  The failure code enters
- * TERMINAL_THREAD_WRITE_FAILURES (write-basis-guard.ts), making the basis
+ * TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES (reconciliation domain contract), making the basis
  * permanently unavailable from the server side.  A human operator who inspects
  * the provider and determines the side-effect is known can seal this annotation
  * to unblock the basis.  The trust model is identical to every MRTR mechanism:

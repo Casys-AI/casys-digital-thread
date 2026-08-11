@@ -19,15 +19,17 @@ running the task writes local state. Scripts that write always write under
 
 ## gates/ — read-only verification; no provider calls, no local writes
 
-| Script                                                    | Task                             | Risk  |
-| --------------------------------------------------------- | -------------------------------- | ----- |
-| `gates/verify-coffee-machine-cm01-v3-correction-loop.ts`  | `verify:cm01-v3-correction-loop` | read  |
-| `gates/verify-coffee-machine-cm01-v3-golden-reference.ts` | `verify:cm01-v3-golden`          | read  |
-| `gates/verify-console-evidence.ts`                        | `verify:evidence`                | read  |
-| `gates/verify-native-workbench-presentation.ts`           | `verify:thread:presentation`     | read  |
-| `gates/verify-fea-provider-contract.ts`                   | `verify:fea:contract`            | read  |
-| `gates/capture-fea-contract-golden.ts`                    | `capture:fea:contract-golden`    | write |
-| `gates/verify-fea-live-smoke.ts`                          | `verify:fea:live`                | write |
+| Script                                                    | Task                                              | Risk  |
+| --------------------------------------------------------- | ------------------------------------------------- | ----- |
+| `gates/verify-coffee-machine-cm01-v3-correction-loop.ts`  | `verify:cm01-v3-correction-loop`                  | read  |
+| `gates/verify-coffee-machine-cm01-v3-golden-reference.ts` | `verify:cm01-v3-golden`                           | read  |
+| `gates/verify-console-evidence.ts`                        | `verify:evidence`                                 | read  |
+| `gates/verify-native-workbench-presentation.ts`           | `verify:thread:presentation`                      | read  |
+| `gates/fea-provider-smoke-inputs.ts`                      | `capture:fea:contract-golden` / `verify:fea:live` | read  |
+| `gates/fea-contract-capture-lifecycle.ts`                 | `capture:fea:contract-golden`                     | write |
+| `gates/verify-fea-provider-contract.ts`                   | `verify:fea:contract`                             | read  |
+| `gates/capture-fea-contract-golden.ts`                    | `capture:fea:contract-golden`                     | write |
+| `gates/verify-fea-live-smoke.ts`                          | `verify:fea:live`                                 | write |
 
 ## probes/ — read-only diagnostic; `thread:capture-syson-inventory` writes a capture
 

@@ -37,6 +37,10 @@ import {
   parseRequirementsProposalParameters,
 } from "../../domain/platform/requirements-proposal.ts";
 import type { EngineeringDecisionProposalParameter } from "../../domain/project/engineering-project.ts";
+import {
+  parseReconcileUncertainWriterProposal,
+  RECONCILE_UNCERTAIN_WRITER_OPERATION,
+} from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 
 /** Operation identity as `id@version`, the key used across the registry. */
 export type OperationKey = string;
@@ -88,6 +92,10 @@ const PROPOSAL_VALIDATORS = new Map<
       );
     },
   ],
+  [
+    keyOf(RECONCILE_UNCERTAIN_WRITER_OPERATION),
+    parseReconcileUncertainWriterProposal,
+  ],
 ]);
 
 /** Raised when a proposal cannot be parsed by the grammar of its operation. */
@@ -111,20 +119,33 @@ export class ProposalGrammarError extends Error {
  * left untouched: this gate narrows the accepted set, it never invents one.
  */
 export function assertProposalMatchesOperationGrammar(
-  operation: { readonly id: string; readonly version: string } | undefined,
+  operations:
+    | { readonly id: string; readonly version: string }
+    | readonly { readonly id: string; readonly version: string }[]
+    | undefined,
   parameters: readonly EngineeringDecisionProposalParameter[],
 ): void {
-  if (!operation) return;
-  const operationKey = keyOf(operation);
-  const validate = PROPOSAL_VALIDATORS.get(operationKey);
-  if (!validate) return;
-  try {
-    validate(parameters);
-  } catch (error) {
-    throw new ProposalGrammarError(
-      operationKey,
-      error instanceof Error ? error.message : String(error),
-    );
+  const distinct = new Map<string, { readonly id: string; readonly version: string }>();
+  for (
+    const operation of operations === undefined
+      ? []
+      : Array.isArray(operations)
+      ? operations
+      : [operations]
+  ) {
+    distinct.set(keyOf(operation), operation);
+  }
+  for (const [operationKey] of distinct) {
+    const validate = PROPOSAL_VALIDATORS.get(operationKey);
+    if (!validate) continue;
+    try {
+      validate(parameters);
+    } catch (error) {
+      throw new ProposalGrammarError(
+        operationKey,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 }
 

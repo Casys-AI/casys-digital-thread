@@ -15,6 +15,7 @@ import {
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
 import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
+import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -499,21 +500,23 @@ const OPERATIONS = [
    * names the exact `runId`, `failureCode`, `basisSnapshotId`, `outcome`, and
    * `providerInspectionAttestation`.
    *
-   * WHY HUMAN-ONLY — an agent cannot inspect a provider.  Lifting the write-basis
-   * lock on a terminal uncertain failure requires a conscious human decision.
+   * WHY HUMAN-ONLY — an agent cannot inspect a provider. A did-not-write outcome
+   * releases the basis; an accepted write creates a separate server-fixed release
+   * decision whose exact basis contract needs its own later human approval.
    * `mustOrigin: "human"` is enforced at the executor gate; this descriptor
    * documents the intent for the planning layer.
    */
   {
-    id: "record.reconcile-uncertain-writer",
-    version: "1",
+    id: RECONCILE_UNCERTAIN_WRITER_OPERATION.id,
+    version: RECONCILE_UNCERTAIN_WRITER_OPERATION.version,
     startingPoint: "idea-or-spec",
     allowedBasisKinds: ["thread-snapshot"],
     title: "Reconcile a terminal uncertain provider write",
     description:
       "Resolve the write-uncertainty on a terminal failed run after a human operator " +
       "has inspected the provider.  Adds the reconciliation annotation to the failed run " +
-      "and lifts the thread-write basis lock.  No provider is called.  " +
+      "and, for an accepted write, opens a separate governed basis-release decision.  " +
+      "No provider is called.  " +
       "Requires a human-approved MRTR decision naming the exact run, failure code, " +
       "basis snapshot, outcome, and provider inspection attestation.",
     workItemKind: "review",

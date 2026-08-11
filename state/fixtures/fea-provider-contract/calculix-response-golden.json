@@ -1,38 +1,80 @@
 {
   "meta": {
     "capturedFromImageDigest": "4d6bb732aa427bab2af96f00b814f71ba688a1feb60f141891d3d9824fc82b0c",
-    "note": "Synthetic fixture constructed from the parser contract. Run `deno task capture:fea:contract-golden` with live CalculiX to replace with a real provider capture.",
-    "stepSource": "examples/bracket/bracket.step"
+    "capturedAt": "2026-08-11T03:43:19.791Z",
+    "note": "Captured from live CalculiX provider. Refresh with `deno task capture:fea:contract-golden` after each image update.",
+    "stepSource": "build123d_export ephemeral box"
+  },
+  "request": {
+    "exportAttestation": {
+      "path": "/exports/fea-contract-golden-0314ca26bd5a41f4ad93a9c442cdad8b.step",
+      "sha256": "2f441f534cb4c6ea8ade55757379dba390d89a25d35635a3acf4d2a630a0be52",
+      "bytes": 23640
+    },
+    "solver": {
+      "fixedSelections": [
+        "FIXED"
+      ],
+      "loads": [
+        {
+          "selection": "LOADED",
+          "forceN": [
+            0,
+            0,
+            -500
+          ]
+        }
+      ]
+    }
   },
   "response": {
     "schemaVersion": "2.0",
     "kind": "static-solve",
     "inputArtifact": {
-      "bytes": 35319,
-      "path": "/workspace/fea-7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac.step",
-      "sha256": "7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac",
-      "sourcePath": "/exports/fea-7e8bcb45b8ad081b701f7f5e15fd79b8e75db27bb09fba2d821fafc6c4c585ac.step"
-    },
-    "constraints": {
-      "fixedSelections": ["FIXED"],
-      "loads": [{ "forceN": [0, 0, -500], "selection": "LOADED" }]
+      "path": "/tmp/calculix-input-f59e346a8943be23/input.step",
+      "sourcePath": "/exports/fea-contract-golden-0314ca26bd5a41f4ad93a9c442cdad8b.step",
+      "sha256": "2f441f534cb4c6ea8ade55757379dba390d89a25d35635a3acf4d2a630a0be52",
+      "bytes": 23640
     },
     "mesh": {
-      "elements": 1423,
-      "nodes": 2847,
-      "nodesPerSelection": { "FIXED": 312 }
+      "nodes": 2241,
+      "elements": 1203,
+      "nodesPerSelection": {
+        "FIXED": 260,
+        "LOADED": 260,
+        "PART": 2241
+      }
+    },
+    "constraints": {
+      "fixedSelections": [
+        "FIXED"
+      ],
+      "loads": [
+        {
+          "selection": "LOADED",
+          "forceN": [
+            0,
+            0,
+            -500
+          ]
+        }
+      ]
     },
     "metrics": {
       "maxDisplacement": {
-        "nodeId": 1842,
+        "value": 0.0002700822482463009,
         "unit": "mm",
-        "value": 0.312,
-        "vectorMm": [0.001, 0.002, 0.312]
+        "nodeId": 84,
+        "vectorMm": [
+          0.00008935089,
+          -0.00006719688,
+          -0.0002458565
+        ]
       },
       "maxVonMises": {
-        "elementId": 934,
+        "value": 1.4160325432405796,
         "unit": "MPa",
-        "value": 26.6
+        "elementId": 1337
       }
     }
   }

@@ -18,6 +18,9 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
 } from "../../domain/project/engineering-project.ts";
+import { assertApprovedUncertainWriterBasisRelease } from "../../domain/project/uncertain-writer-basis-release.ts";
+import { assertApprovedUncertainWriterReconciliation } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
+import { TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 
 const THREAD_WRITE_OPERATIONS = new Set([
   `${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}`,
@@ -43,19 +46,7 @@ export const GEOMETRY_WRITE_OPERATION =
  * itself is the canonical reader; this export exists solely to avoid duplicating
  * the constant in the executor.
  */
-export const TERMINAL_THREAD_WRITE_FAILURES = new Set([
-  "model-write-architecture-provider-outcome-unknown",
-  "model-write-architecture-post-acknowledgement-quarantined",
-  "model-write-architecture-quarantine-write-failed",
-  "model-write-requirements-provider-outcome-unknown",
-  "model-write-requirements-post-acknowledgement-quarantined",
-  "model-write-requirements-quarantine-write-failed",
-  "verify-run-fea-static-proof-provider-outcome-unknown",
-  "verify-run-fea-static-proof-post-acknowledgement-quarantined",
-  "verify-run-fea-static-proof-quarantine-write-failed",
-  "simulate-modelica-scenario-outcome-unknown",
-  "simulate-modelica-scenario-post-acknowledgement-quarantined",
-]);
+export const TERMINAL_THREAD_WRITE_FAILURES = TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES;
 
 /**
  * One linear Thread subject has only one legal `basis.revision + 1` successor.
@@ -81,10 +72,10 @@ export function threadWriteBasisLeaseScope(run: EngineeringAgentRun): string {
  * this gate before capture, provider, asset, or ThreadSnapshot writes. A live
  * or terminal-uncertain sibling remains blocking after process death.
  */
-export function assertThreadWriteBasisAvailable(
+export async function assertThreadWriteBasisAvailable(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): void {
+): Promise<void> {
   const basis = requireThreadBasis(run);
   const subjectReferences = project.threadSnapshots.filter((reference) =>
     reference.subjectId === basis.subjectId
@@ -118,15 +109,38 @@ export function assertThreadWriteBasisAvailable(
     ) continue;
     if (
       sibling.status === "running" || sibling.status === "publishing" ||
-      sibling.status === "completed" ||
-      (sibling.status === "failed" && sibling.failure &&
-        !sibling.uncertainWriterReconciliation &&
-        (operationKey === GEOMETRY_WRITE_OPERATION ||
-          TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code)))
+      sibling.status === "completed"
     ) {
       throw unavailableBasis(
         `sibling run ${sibling.id} has an active, completed, or uncertain durable write`,
       );
+    }
+    const isTerminalUncertainFailure = sibling.status === "failed" &&
+      !!sibling.failure &&
+      (operationKey === GEOMETRY_WRITE_OPERATION ||
+        TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code));
+    if (isTerminalUncertainFailure && !sibling.uncertainWriterReconciliation) {
+      throw unavailableBasis(
+        `sibling run ${sibling.id} has an active, completed, or uncertain durable write`,
+      );
+    }
+    if (isTerminalUncertainFailure) {
+      try {
+        await assertApprovedUncertainWriterReconciliation(project, sibling);
+      } catch {
+        throw unavailableBasis(
+          `uncertain write in sibling run ${sibling.id} has no exact approved human reconciliation`,
+        );
+      }
+      if (sibling.uncertainWriterReconciliation!.outcome === "write-effect-accepted") {
+        try {
+          await assertApprovedUncertainWriterBasisRelease(project, sibling);
+        } catch {
+          throw unavailableBasis(
+            `accepted uncertain write in sibling run ${sibling.id} still requires an approved human basis release`,
+          );
+        }
+      }
     }
   }
 }

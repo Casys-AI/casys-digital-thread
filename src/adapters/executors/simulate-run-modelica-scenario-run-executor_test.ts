@@ -14,10 +14,11 @@
  *     to `resolved-parameters` (hyphen); all other kinds are identity.
  *     Verified indirectly through a valid `parsedRunAsRunDetail` shape.
  *
- * Tests that require a full project execution path (WAL dispatch/
- * provider-run-known/completed, idempotent replay, quarantine) are deferred
- * to the integration gate, which runs the verified operation registry through
- * real file stores.
+ * Full project execution paths (WAL dispatch, idempotent replay, and durable
+ * file-store recovery) are deferred to the integration gate, which runs the
+ * verified operation registry through real file stores. The preflight helper
+ * is unit-tested here so completed and provider-run-known recovery cannot
+ * consult the mutable kit catalogue before their respective recovery paths.
  */
 
 import {
@@ -37,10 +38,14 @@ import {
   parseSimulateEnvelopeMinimal,
 } from "../captures/modelica-scenario-run-capture.ts";
 import {
+  buildExactSimulateRequest,
+  needsModelicaKitListPreflight,
+  preflightModelicaKitForAttempt,
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
   SimulateRunModelicaScenarioRunExecutor,
   validateKitList,
 } from "./simulate-run-modelica-scenario-run-executor.ts";
+import { ModelicaScenarioRunQuarantinedError } from "../wal/file-modelica-scenario-attempt-store.ts";
 import type { SimulationCase } from "../../domain/analysis/simulation-case.ts";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -466,7 +471,7 @@ Deno.test(
     const exactSimulateRequest = {
       model_id: "CoffeeMachine",
       scenario_id: "nominal-brew",
-      parameter_overrides: [{ id: "T_brew", value: 95.0, unit: "degC" }],
+      parameter_overrides: { T_brew: { value: 95.0, unit: "degC" } },
       timeout_ms: 10000,
     };
 
@@ -622,7 +627,7 @@ Deno.test(
       exactSimulateRequest: {
         model_id: "CoffeeMachine",
         scenario_id: "nominal-brew",
-        parameter_overrides: [{ id: "T_brew", value: 95.0, unit: "degC" }],
+        parameter_overrides: { T_brew: { value: 95.0, unit: "degC" } },
         timeout_ms: 10000,
       },
       policyVersion: "simulation-execution-policy/1",
@@ -636,6 +641,194 @@ Deno.test(
       "Identical inputs must produce an identical execution receipt fingerprint",
     );
     assertStrictEquals(first.canonicalText, second.canonicalText);
+  },
+);
+
+Deno.test(
+  "exact Modelica simulate request normalizes parameter overrides to a sorted dynamic object",
+  () => {
+    const request = buildExactSimulateRequest(makeMinimalSimCase([
+      { id: "zeta", value: 2, unit: "W" },
+      { id: "alpha", value: 1, unit: "degC" },
+    ]));
+    assertEquals(request, {
+      model_id: "CoffeeMachine",
+      scenario_id: "nominal-brew",
+      parameter_overrides: {
+        alpha: { value: 1, unit: "degC" },
+        zeta: { value: 2, unit: "W" },
+      },
+      timeout_ms: 10000,
+    });
+  },
+);
+
+Deno.test("Modelica parameter ids cannot mutate the request object prototype", () => {
+  const request = buildExactSimulateRequest(makeMinimalSimCase([
+    { id: "__proto__", value: 3, unit: "K" },
+    { id: "toString", value: 4, unit: "s" },
+  ]));
+  assertStrictEquals(
+    Object.hasOwn(request.parameter_overrides, "__proto__"),
+    true,
+  );
+  assertEquals(request.parameter_overrides["__proto__"], {
+    value: 3,
+    unit: "K",
+  });
+  assertEquals(
+    Object.getOwnPropertyDescriptor(request.parameter_overrides, "toString")?.value,
+    {
+      value: 4,
+      unit: "s",
+    },
+  );
+});
+
+Deno.test(
+  "completed Modelica WAL recovery skips the sole live kit-list preflight",
+  async () => {
+    let providerCalls = 0;
+    const completedAttempt = {
+      schemaVersion: "modelica-scenario-attempt/1.0" as const,
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      planDigest: "1".repeat(64),
+      status: "completed" as const,
+      dispatchedAt: COMMAND_BASE.issuedAt,
+      providerRunId: "prov-run-001",
+      canonicalSimulateEnvelope: RUN_GET_ENVELOPE_VALID,
+      providerRunRecordFp: "2".repeat(64),
+      receiptFp: "3".repeat(64),
+    };
+
+    assertStrictEquals(needsModelicaKitListPreflight(completedAttempt), false);
+    await preflightModelicaKitForAttempt({
+      attempts: {
+        isQuarantined: () => Promise.resolve(false),
+        readRun: () => Promise.resolve(completedAttempt),
+      },
+      modelica: {
+        callTool: () => {
+          providerCalls += 1;
+          return Promise.reject(new Error("completed recovery must be offline"));
+        },
+      } as never,
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      simulationCase: makeMinimalSimCase(CASE_IDENTITY.parameters),
+    });
+    assertStrictEquals(providerCalls, 0);
+  },
+);
+
+Deno.test(
+  "quarantined Modelica recovery rejects before WAL inspection or provider preflight",
+  async () => {
+    let walReads = 0;
+    let providerCalls = 0;
+    await assertRejects(
+      () =>
+        preflightModelicaKitForAttempt({
+          attempts: {
+            isQuarantined: () => Promise.resolve(true),
+            readRun: () => {
+              walReads += 1;
+              return Promise.resolve(undefined);
+            },
+          },
+          modelica: {
+            callTool: () => {
+              providerCalls += 1;
+              return Promise.reject(new Error("quarantine must be offline"));
+            },
+          } as never,
+          projectId: PROJECT_ID,
+          runId: RUN_ID,
+          simulationCase: makeMinimalSimCase(CASE_IDENTITY.parameters),
+        }),
+      ModelicaScenarioRunQuarantinedError,
+    );
+    assertStrictEquals(walReads, 0);
+    assertStrictEquals(providerCalls, 0);
+  },
+);
+
+Deno.test(
+  "new Modelica dispatch performs exactly one live kit-list preflight",
+  async () => {
+    let providerCalls = 0;
+    await preflightModelicaKitForAttempt({
+      attempts: {
+        isQuarantined: () => Promise.resolve(false),
+        readRun: () => Promise.resolve(undefined),
+      },
+      modelica: {
+        callTool: (request: { name: string; arguments: Record<string, unknown> }) => {
+          providerCalls += 1;
+          assertEquals(request, { name: "modelica_kit_list", arguments: {} });
+          return Promise.resolve({
+            structuredContent: makeKitListContent({
+              kitParams: {
+                T_brew: { unit: "degC", min: 80, max: 100 },
+              },
+            }),
+          });
+        },
+      } as never,
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      simulationCase: makeMinimalSimCase(CASE_IDENTITY.parameters),
+    });
+    assertStrictEquals(providerCalls, 1);
+  },
+);
+
+Deno.test(
+  "provider-run-known recovery reaches modelica_run_get without a kit-list preflight",
+  async () => {
+    const calls: string[] = [];
+    const providerRunId = "prov-run-001";
+    const knownAttempt = {
+      schemaVersion: "modelica-scenario-attempt/1.0" as const,
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      planDigest: "d".repeat(64),
+      status: "provider-run-known" as const,
+      dispatchedAt: "2026-08-09T12:00:00.000Z",
+      providerRunId,
+      canonicalSimulateEnvelope: RUN_GET_ENVELOPE_VALID,
+    };
+    const modelica = {
+      callTool: (request: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        calls.push(request.name);
+        assertEquals(request, {
+          name: "modelica_run_get",
+          arguments: { run_id: providerRunId },
+        });
+        return Promise.resolve({ structuredContent: RUN_GET_ENVELOPE_VALID });
+      },
+    };
+
+    await preflightModelicaKitForAttempt({
+      attempts: {
+        isQuarantined: () => Promise.resolve(false),
+        readRun: () => Promise.resolve(knownAttempt),
+      },
+      modelica: modelica as never,
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      simulationCase: makeMinimalSimCase(CASE_IDENTITY.parameters),
+    });
+
+    await modelica.callTool({
+      name: "modelica_run_get",
+      arguments: { run_id: providerRunId },
+    });
+    assertEquals(calls, ["modelica_run_get"]);
   },
 );
 

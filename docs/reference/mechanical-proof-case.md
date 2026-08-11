@@ -86,4 +86,7 @@ An error after CalculiX acknowledges the dispatch quarantines the run: it may no
 retried automatically, and the write-basis guard blocks its sibling runs until a human
 reconciles it through `record.reconcile-uncertain-writer@1`. The terminal receipt
 carries the structural cause verbatim and bounded — without it a quarantined run cannot
-be diagnosed from its own record, which is exactly how one project stalled for a day.
+be diagnosed from its own record, which is exactly how one project stalled for a day. If
+inspection accepts an uncaptured write effect, reconciliation does not lift the lock:
+the server opens a separate exact basis-release decision, and the guard requires its
+re-hashed proposal plus one matching human approval before any sibling writer proceeds.

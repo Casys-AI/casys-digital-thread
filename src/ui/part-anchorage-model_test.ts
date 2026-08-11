@@ -110,6 +110,7 @@ function edge(
 function catalogBinding(
   evidenceArtifactId: string,
   provider: "syson" | "build123d" | "digital-thread" = "build123d",
+  id = evidenceArtifactId,
 ): {
   provider: "syson" | "build123d" | "digital-thread";
   kind: "artifact";
@@ -121,8 +122,8 @@ function catalogBinding(
   return {
     provider,
     kind: "artifact",
-    id: evidenceArtifactId,
-    label: evidenceArtifactId.slice(-24),
+    id,
+    label: id.slice(-24),
     evidenceArtifactId,
     status: "verified",
   };
@@ -332,16 +333,12 @@ const FIXTURE_CATALOG: ThreadComponentCatalog = {
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "fixture topology yields zero orphans and zero ambiguous nodes",
+  "fixture topology yields zero orphans and retains the shared architecture capture ambiguity",
   () => {
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const coverage = anchorageCoverage(map, FIXTURE_GRAPH);
     assertEquals(coverage.orphan, 0, "orphan count must be zero");
-    assertEquals(
-      coverage.ambiguous,
-      0,
-      `ambiguous count must be zero; ${coverage.ambiguous} nodes remain unresolved`,
-    );
+    assertEquals(coverage.ambiguous, 1);
   },
 );
 
@@ -567,17 +564,18 @@ Deno.test(
 );
 
 Deno.test(
-  "architecture artifact resolves to assembly via catalog assembly-wins merge",
+  "shared architecture capture remains ambiguous across catalog components",
   () => {
-    // The architecture artifact id appears in the syson binding of all three
-    // components (assembly → enclosure → drip-tray, in order).  buildCatalogMap
-    // now uses assembly-wins merge semantics: assembly is processed first,
-    // then each subsequent part merges with the assembly target and loses.
-    // Final value is "assembly", which is also what prefix rule b-1 would give.
-    const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
-    const anchor = map.get(`artifact:${ARCH_ID}`);
-    assertEquals(anchor?.target, "assembly");
-    assertEquals(anchor?.criterion, "catalog");
+    const resolution = buildPartAnchorageResolution(
+      FIXTURE_GRAPH,
+      FIXTURE_CATALOG,
+    );
+    assertEquals(resolution.anchors.has(`artifact:${ARCH_ID}`), false);
+    assertEquals(resolution.ambiguousByRef.get(`artifact:${ARCH_ID}`), [
+      "assembly",
+      "cm01-v3:drip-tray",
+      "cm01-v3:enclosure",
+    ]);
   },
 );
 
@@ -795,5 +793,129 @@ Deno.test(
       "geometry-<hex> must resolve to assembly",
     );
     assertEquals(anchor?.criterion, "prefix");
+  },
+);
+
+Deno.test(
+  "a digital-thread binding id anchors its exact component while the shared capture stays ambiguous and carries its FEA lineage",
+  () => {
+    const digest = "c".repeat(64);
+    const stepId = "artifact:build123d:articulated-arm:step:v7";
+    const sharedCaptureId = `geometry-${digest}`;
+    const proofId = `fea-proof-${digest}`;
+    const resultId = `fea-solver-result-${digest}`;
+    const verdictId = `fea-verdict-${digest}`;
+    const observationId = `fea-observation-${digest}-stress`;
+    const graph: ThreadGraph = {
+      nodes: [
+        node(stepId, "artifact", { artifactKind: "step" }),
+        node(sharedCaptureId, "artifact", { artifactKind: "cad-model" }),
+        node(proofId, "artifact", { artifactKind: "document" }),
+        node(resultId, "artifact", { artifactKind: "solver-result" }),
+        node(verdictId, "artifact", { artifactKind: "document" }),
+        node(observationId, "observation", { system: "calculix" }),
+      ],
+      edges: [
+        edge(
+          "step-to-proof",
+          "artifact",
+          stepId,
+          "artifact",
+          proofId,
+          "derived_from",
+        ),
+        edge(
+          "step-to-result",
+          "artifact",
+          stepId,
+          "artifact",
+          resultId,
+          "derived_from",
+        ),
+        edge(
+          "result-to-verdict",
+          "artifact",
+          resultId,
+          "artifact",
+          verdictId,
+          "derived_from",
+        ),
+        edge(
+          "result-to-observation",
+          "artifact",
+          resultId,
+          "observation",
+          observationId,
+          "derived_from",
+        ),
+      ],
+    };
+    const catalog: ThreadComponentCatalog = {
+      ...FIXTURE_CATALOG,
+      components: [
+        {
+          id: "robot:articulated-arm",
+          label: "ArticulatedArm",
+          kind: "part",
+          quantity: 1,
+          bindings: [
+            catalogBinding(sharedCaptureId, "digital-thread", stepId),
+          ],
+        },
+        {
+          id: "robot:gripper",
+          label: "Gripper",
+          kind: "part",
+          quantity: 1,
+          bindings: [
+            catalogBinding(
+              sharedCaptureId,
+              "digital-thread",
+              "artifact:build123d:gripper:step:v7",
+            ),
+          ],
+        },
+      ],
+    };
+
+    const resolution = buildPartAnchorageResolution(graph, catalog);
+    for (const id of [stepId, proofId, resultId, verdictId, observationId]) {
+      assertEquals(
+        resolution.anchors.get(
+          `${id === observationId ? "observation" : "artifact"}:${id}`,
+        )?.target,
+        "robot:articulated-arm",
+        `${id} must retain ArticulatedArm as its target`,
+      );
+    }
+    assertEquals(resolution.ambiguousByRef.get(`artifact:${sharedCaptureId}`), [
+      "robot:articulated-arm",
+      "robot:gripper",
+    ]);
+  },
+);
+
+Deno.test(
+  "generic-looking observations and actions never become assembly anchors",
+  () => {
+    const digest = "d".repeat(64);
+    const graph: ThreadGraph = {
+      nodes: [
+        node("requirements-agent-note", "observation", { system: "syson" }),
+        node("architecture-freeform-draft", "action", { system: "syson" }),
+        node(`fea-proof-${digest}`, "observation", { system: "calculix" }),
+      ],
+      edges: [],
+    };
+    const resolution = buildPartAnchorageResolution(graph, FIXTURE_CATALOG);
+    assertEquals(resolution.anchors.size, 0);
+    assertEquals(
+      resolution.orphanRefKeys,
+      new Set([
+        "observation:requirements-agent-note",
+        "action:architecture-freeform-draft",
+        `observation:fea-proof-${digest}`,
+      ]),
+    );
   },
 );

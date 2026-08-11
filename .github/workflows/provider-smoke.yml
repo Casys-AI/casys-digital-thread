@@ -2,11 +2,10 @@ name: Provider Smoke (FEA live)
 
 # Manual trigger only — never on PR or push.
 #
-# WHY MANUAL — the smoke gate creates and deletes ephemeral SysON projects and
-# calls live CalculiX + build123d. Triggering it automatically on every PR would
-# require live providers in CI (not available) and could interfere with real
-# engineering runs. Trigger it manually after a provider image update to validate
-# the end-to-end pipeline before promoting the image to the fleet manifest.
+# WHY MANUAL — the smoke gate probes SysON read-only, writes one locally named
+# ephemeral STEP through build123d, and calls live CalculiX. Triggering it on
+# every PR would require live providers in CI (not available). Trigger it after
+# a provider image update to validate the provider chain before promotion.
 #
 # Exit code semantics — the gate is intentionally strict:
 #   0 = providers healthy and the FEA pipeline works.
@@ -39,11 +38,11 @@ jobs:
         with:
           deno-version: v2.9.2
 
-      - name: Verify FEA provider contract (couche 2 — no providers needed)
+      - name: Verify committed live provider contract
         run: deno task verify:fea:contract
 
       - name: Start Docker Compose provider stack
-        run: docker compose up -d syson-db syson-app build123d calculix
+        run: docker compose up -d syson-db syson-app mcp-syson mcp-build123d mcp-calculix
         # Providers may not be available in this CI environment. The smoke gate
         # exits 2 (INCONCLUSIVE) if they are not healthy; the next step handles
         # that exit code as a non-failure.
@@ -64,7 +63,7 @@ jobs:
           echo "Providers not ready after 120s — smoke gate will exit 2 (INCONCLUSIVE)."
         continue-on-error: true
 
-      - name: Run FEA live smoke gate (couche 3)
+      - name: Run read-only SysON and FEA live smoke gate (couche 3)
         id: smoke
         run: |
           # Capture exit code without relying on set -e behaviour.

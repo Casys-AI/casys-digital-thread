@@ -143,6 +143,12 @@ export class FileModelicaScenarioAttemptStore {
 
     await Deno.mkdir(this.directory, { recursive: true });
 
+    // Quarantine is keyed only by run identity: it must win before reading or
+    // creating an attempt record, including after a crash left no WAL entry.
+    if (await this.isQuarantined(input.projectId, input.runId)) {
+      throw new ModelicaScenarioRunQuarantinedError();
+    }
+
     let current: ModelicaScenarioAttempt | undefined;
     try {
       current = await this.readRun(input.projectId, input.runId);

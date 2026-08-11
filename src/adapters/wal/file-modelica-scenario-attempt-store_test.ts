@@ -3,6 +3,7 @@ import {
   FileModelicaScenarioAttemptStore,
   ModelicaScenarioIllegalTransitionError,
   ModelicaScenarioOutcomeUnknownError,
+  ModelicaScenarioRunQuarantinedError,
 } from "./file-modelica-scenario-attempt-store.ts";
 
 const PLAN = "a".repeat(64);
@@ -298,6 +299,17 @@ Deno.test("Modelica scenario WAL quarantine is idempotent for the same run", asy
       store.quarantine({ ...identity(), quarantinedAt: AT }),
     ]);
     assertEquals(await store.isQuarantined(PROJ, RUN_ID), true);
+  });
+});
+
+Deno.test("Modelica scenario WAL quarantine blocks begin before any attempt record", async () => {
+  await withStore(async (store) => {
+    await store.quarantine({ ...identity(), quarantinedAt: AT });
+    await assertRejects(
+      () => store.begin(beginInput()),
+      ModelicaScenarioRunQuarantinedError,
+    );
+    assertEquals(await store.readRun(PROJ, RUN_ID), undefined);
   });
 });
 

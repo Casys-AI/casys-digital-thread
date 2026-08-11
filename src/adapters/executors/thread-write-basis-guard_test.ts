@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/platform/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
@@ -12,6 +12,13 @@ import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
+import {
+  UNCERTAIN_WRITER_BASIS_RELEASE_ACTION,
+  UNCERTAIN_WRITER_BASIS_RELEASE_OUTCOME,
+  uncertainWriterBasisReleaseIds,
+  uncertainWriterBasisReleaseText,
+} from "../../domain/project/uncertain-writer-basis-release.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -30,14 +37,14 @@ Deno.test("all generic Thread writers share one lease for an exact basis", () =>
   assertEquals(new Set(scopes).size, 1);
 });
 
-Deno.test("a queued sibling may wait for the shared basis lease", () => {
+Deno.test("a queued sibling may wait for the shared basis lease", async () => {
   const current = run("architecture", "queued");
   const sibling = run("geometry", "queued");
 
-  assertThreadWriteBasisAvailable(project([current, sibling]), current);
+  await assertThreadWriteBasisAvailable(project([current, sibling]), current);
 });
 
-Deno.test("a stale queued basis is refused before another Thread write", () => {
+Deno.test("a stale queued basis is refused before another Thread write", async () => {
   const current = run("requirements", "queued");
   const initial = project([current]);
   const value: EngineeringProjectSnapshot = {
@@ -48,14 +55,14 @@ Deno.test("a stale queued basis is refused before another Thread write", () => {
     ],
   };
 
-  assertThrows(
+  await assertRejects(
     () => assertThreadWriteBasisAvailable(value, current),
     EngineeringProjectCommandError,
     "no longer the unique declared project Thread head",
   );
 });
 
-Deno.test("a Thread basis cannot be transplanted to another project subject", () => {
+Deno.test("a Thread basis cannot be transplanted to another project subject", async () => {
   const current = run("geometry", "queued");
   const initial = project([current]);
   const transplanted: EngineeringProjectSnapshot = {
@@ -63,25 +70,25 @@ Deno.test("a Thread basis cannot be transplanted to another project subject", ()
     project: { ...initial.project, subjectId: "foreign-subject" },
   };
 
-  assertThrows(
+  await assertRejects(
     () => assertThreadWriteBasisAvailable(transplanted, current),
     EngineeringProjectCommandError,
     "basis is no longer the unique declared project Thread head",
   );
 });
 
-Deno.test("an active cross-operation sibling blocks the same Thread basis", () => {
+Deno.test("an active cross-operation sibling blocks the same Thread basis", async () => {
   const current = run("geometry", "queued");
   const sibling = run("requirements", "publishing");
 
-  assertThrows(
+  await assertRejects(
     () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
     EngineeringProjectCommandError,
     "active, completed, or uncertain durable write",
   );
 });
 
-Deno.test("a terminal uncertain provider sibling blocks after its lease is released", () => {
+Deno.test("a terminal uncertain provider sibling blocks after its lease is released", async () => {
   const current = run("geometry", "queued");
   const sibling = {
     ...run("architecture", "failed"),
@@ -91,14 +98,14 @@ Deno.test("a terminal uncertain provider sibling blocks after its lease is relea
     },
   };
 
-  assertThrows(
+  await assertRejects(
     () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
     EngineeringProjectCommandError,
     "active, completed, or uncertain durable write",
   );
 });
 
-Deno.test("a reconciled terminal sibling does not block the thread write basis", () => {
+Deno.test("a reconciled did-not-write sibling does not block the thread write basis", async () => {
   const current = run("geometry", "queued");
   const sibling = {
     ...run("architecture", "failed"),
@@ -116,12 +123,148 @@ Deno.test("a reconciled terminal sibling does not block the thread write basis",
     },
   };
 
-  // A terminal uncertain sibling whose operator resolved the uncertainty must
-  // NOT block a new queued run from the same basis.
-  assertThreadWriteBasisAvailable(project([current, sibling]), current);
+  const annotationOnly = project([current, sibling]);
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(annotationOnly, current),
+    EngineeringProjectCommandError,
+    "has no exact approved human reconciliation",
+  );
+  await assertThreadWriteBasisAvailable(
+    await reconciledProject(annotationOnly, sibling),
+    current,
+  );
 });
 
-Deno.test("a reconciled geometry sibling does not block the thread write basis", () => {
+Deno.test("an accepted uncertain write rejects a homonymous resolved blocker and releases only after the exact human ceremony", async () => {
+  const current = run("geometry", "queued");
+  const sibling = {
+    ...run("architecture", "failed"),
+    failure: {
+      code: "model-write-architecture-provider-outcome-unknown",
+      message: "Provider outcome is unknown.",
+    },
+    uncertainWriterReconciliation: {
+      kind: "uncertain-writer-resolved" as const,
+      outcome: "write-effect-accepted" as const,
+      reconciledAt: "2026-08-10T00:00:00.000Z",
+      reconciledBy: { id: "op-1", origin: "human" as const },
+      decisionId: "decision-reconcile-1",
+      providerInspectionAttestation: "Provider history shows a write.",
+    },
+  };
+  const blocked = await reconciledProject(project([current, sibling]), sibling);
+  const forgedReconciliation: EngineeringProjectSnapshot = {
+    ...blocked,
+    decisions: blocked.decisions.map((decision) =>
+      decision.id === sibling.uncertainWriterReconciliation.decisionId &&
+        decision.proposal
+        ? {
+          ...decision,
+          proposal: {
+            ...decision.proposal,
+            summary: "Mutated after the fingerprint was sealed.",
+          },
+        }
+        : decision
+    ),
+  };
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(forgedReconciliation, current),
+    EngineeringProjectCommandError,
+    "has no exact approved human reconciliation",
+  );
+  const forgedReceipt: EngineeringProjectSnapshot = {
+    ...blocked,
+    commandReceipts: blocked.commandReceipts?.map((receipt) =>
+      receipt.type === "agent-run.reconcile-annotation"
+        ? {
+          ...receipt,
+          requestFingerprint: {
+            algorithm: "sha256",
+            digest: "f".repeat(64),
+          },
+        }
+        : receipt
+    ),
+  };
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(forgedReceipt, current),
+    EngineeringProjectCommandError,
+    "has no exact approved human reconciliation",
+  );
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(blocked, current),
+    EngineeringProjectCommandError,
+    "requires an approved human basis release",
+  );
+  const fakeResolved: EngineeringProjectSnapshot = {
+    ...blocked,
+    blockers: [{
+      id: "blocker:uncertain-write-accepted:run:architecture",
+      phaseId: "phase",
+      title: "Uncertain provider write accepted — review before re-run",
+      description: "Human release was approved.",
+      kind: "tool-failure",
+      status: "resolved",
+      openedAt: "2026-08-10T00:00:00.000Z",
+      resolvedAt: "2026-08-10T00:01:00.000Z",
+      resolution: "Resolved by approved decision.",
+      workItemIds: [sibling.workItemId],
+      decisionIds: ["decision:uncertain-write-release:run:architecture"],
+    }],
+  };
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(fakeResolved, current),
+    EngineeringProjectCommandError,
+    "requires an approved human basis release",
+  );
+
+  const released = await releasedProject(blocked, sibling);
+  await assertThreadWriteBasisAvailable(released, current);
+  const forgedRelease: EngineeringProjectSnapshot = {
+    ...released,
+    decisions: released.decisions.map((decision) =>
+      decision.id.startsWith("decision:uncertain-write-release:") &&
+        decision.proposal
+        ? {
+          ...decision,
+          proposal: {
+            ...decision.proposal,
+            summary: "Coordinated digest equality cannot hide this mutation.",
+          },
+        }
+        : decision
+    ),
+  };
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(forgedRelease, current),
+    EngineeringProjectCommandError,
+    "requires an approved human basis release",
+  );
+  const forgedReleaseEvidence: EngineeringProjectSnapshot = {
+    ...released,
+    approvals: released.approvals.map((approval) =>
+      approval.decisionId.startsWith("decision:uncertain-write-release:")
+        ? {
+          ...approval,
+          inputEvidenceRefs: [{
+            snapshotId: BASIS.snapshotId,
+            snapshotRevision: BASIS.revision,
+            kind: "artifact",
+            id: "forged-release-input",
+          }],
+        }
+        : approval
+    ),
+  };
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(forgedReleaseEvidence, current),
+    EngineeringProjectCommandError,
+    "requires an approved human basis release",
+  );
+});
+
+Deno.test("a reconciled geometry sibling does not block the thread write basis", async () => {
   const current = run("architecture", "queued");
   const sibling = {
     ...run("geometry", "failed"),
@@ -137,27 +280,30 @@ Deno.test("a reconciled geometry sibling does not block the thread write basis",
   };
 
   // A reconciled geometry sibling must also be unblocked.
-  assertThreadWriteBasisAvailable(project([current, sibling]), current);
+  await assertThreadWriteBasisAvailable(
+    await reconciledProject(project([current, sibling]), sibling),
+    current,
+  );
 });
 
-Deno.test("an ordinary pre-write failed sibling does not poison the basis", () => {
+Deno.test("an ordinary pre-write failed sibling does not poison the basis", async () => {
   const current = run("requirements", "queued");
   const sibling = {
     ...run("architecture", "failed"),
     failure: { code: "invalid-input", message: "No provider call occurred." },
   };
 
-  assertThreadWriteBasisAvailable(project([current, sibling]), current);
+  await assertThreadWriteBasisAvailable(project([current, sibling]), current);
 });
 
-Deno.test("a failed geometry sibling is conservatively treated as durable", () => {
+Deno.test("a failed geometry sibling is conservatively treated as durable", async () => {
   const current = run("architecture", "queued");
   const sibling = {
     ...run("geometry", "failed"),
     failure: { code: "geometry-failed", message: "Seal outcome is uncertain." },
   };
 
-  assertThrows(
+  await assertRejects(
     () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
     EngineeringProjectCommandError,
     "active, completed, or uncertain durable write",
@@ -207,7 +353,15 @@ function project(runs: readonly EngineeringAgentRun[]): EngineeringProjectSnapsh
       revision: BASIS.revision,
       subjectId: BASIS.subjectId,
     }],
-    phases: [],
+    phases: [{
+      id: "phase",
+      name: "Phase",
+      order: 1,
+      description: "Test phase.",
+      workItemIds: runs.map((candidate) => candidate.workItemId),
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
     workItems: runs.map((candidate) => {
       const name = candidate.id.slice("run:".length) as OperationName;
       return {
@@ -229,5 +383,275 @@ function project(runs: readonly EngineeringAgentRun[]): EngineeringProjectSnapsh
     decisions: [],
     approvals: [],
     blockers: [],
+  };
+}
+
+async function releasedProject(
+  value: EngineeringProjectSnapshot,
+  failedRun: EngineeringAgentRun,
+): Promise<EngineeringProjectSnapshot> {
+  const ids = uncertainWriterBasisReleaseIds(failedRun.id);
+  const text = uncertainWriterBasisReleaseText(failedRun.id);
+  const reconciliation = failedRun.uncertainWriterReconciliation!;
+  const failure = failedRun.failure!;
+  const parameters = [
+    {
+      key: "releaseAction",
+      label: "Release action",
+      value: UNCERTAIN_WRITER_BASIS_RELEASE_ACTION,
+    },
+    {
+      key: "releaseOutcome",
+      label: "Release outcome",
+      value: UNCERTAIN_WRITER_BASIS_RELEASE_OUTCOME,
+    },
+    { key: "failedRunId", label: "Failed run", value: failedRun.id },
+    { key: "failureCode", label: "Failure code", value: failure.code },
+    { key: "subjectId", label: "Thread subject", value: BASIS.subjectId },
+    { key: "snapshotId", label: "Basis snapshot", value: BASIS.snapshotId },
+    { key: "revision", label: "Basis revision", value: BASIS.revision },
+    { key: "blockerId", label: "Blocker", value: ids.blockerId },
+    {
+      key: "reconciliationDecisionId",
+      label: "Reconciliation decision",
+      value: reconciliation.decisionId,
+    },
+    {
+      key: "reconciliationOutcome",
+      label: "Reconciliation outcome",
+      value: "write-effect-accepted",
+    },
+    {
+      key: "releaseAttestation",
+      label: "Release attestation",
+      value: "Provider state and the uncaptured effect were reviewed.",
+    },
+  ];
+  const proposalInput = {
+    summary: "Release the exact basis after human review.",
+    parameters,
+  };
+  const fingerprint = await sha256Fingerprint({
+    baseSnapshot: BASIS,
+    inputEvidenceRefs: [],
+    proposal: proposalInput,
+  });
+  const workItems = value.workItems.map((item) =>
+    item.id === failedRun.workItemId
+      ? { ...item, blockerIds: [...item.blockerIds, ids.blockerId] }
+      : item
+  );
+  return {
+    ...value,
+    phases: value.phases.map((phase) => ({
+      ...phase,
+      requiredDecisionIds: [...phase.requiredDecisionIds, ids.decisionId],
+    })),
+    workItems,
+    decisions: [...value.decisions, {
+      id: ids.decisionId,
+      phaseId: "phase",
+      title: text.decisionTitle,
+      question: text.decisionQuestion,
+      status: "approved",
+      requestedAt: "2026-08-10T00:00:00.000Z",
+      baseSnapshot: BASIS,
+      inputFingerprint: fingerprint,
+      inputEvidenceRefs: [],
+      approvalIds: [`approval:${ids.decisionId}`],
+      proposal: {
+        ...proposalInput,
+        proposedAt: "2026-08-10T00:00:10.000Z",
+        proposedBy: { id: "agent-1", origin: "agent" },
+      },
+    }],
+    approvals: [...value.approvals, {
+      id: `approval:${ids.decisionId}`,
+      decisionId: ids.decisionId,
+      status: "approved",
+      requestedAt: "2026-08-10T00:00:10.000Z",
+      decidedAt: "2026-08-10T00:01:00.000Z",
+      decidedBy: "operator-1",
+      decidedByOrigin: "human",
+      rationale: "Reviewed the provider and accepted release of this exact basis.",
+      baseSnapshot: BASIS,
+      inputFingerprint: fingerprint,
+      inputEvidenceRefs: [],
+    }],
+    blockers: [{
+      id: ids.blockerId,
+      phaseId: "phase",
+      title: text.blockerTitle,
+      description: text.blockerDescription,
+      kind: "tool-failure",
+      status: "resolved",
+      openedAt: "2026-08-10T00:00:00.000Z",
+      resolvedAt: "2026-08-10T00:01:00.000Z",
+      resolution: `Resolved by approved decision: ${ids.decisionId}.`,
+      workItemIds: [failedRun.workItemId],
+      decisionIds: [ids.decisionId],
+    }],
+  };
+}
+
+async function reconciledProject(
+  value: EngineeringProjectSnapshot,
+  failedRun: EngineeringAgentRun,
+): Promise<EngineeringProjectSnapshot> {
+  const reconciliation = failedRun.uncertainWriterReconciliation!;
+  const decisionId = reconciliation.decisionId;
+  const reconciliationWorkItemId = `work:reconcile:${failedRun.id}`;
+  const reconciliationRunId = `run:reconcile:${failedRun.id}`;
+  const reconciliationCommandId = `command:reconcile:${failedRun.id}`;
+  const authoritativeAt = new Date(
+    Date.parse(reconciliation.reconciledAt) + 4,
+  ).toISOString();
+  const parameters = [
+    {
+      key: "reconcileAction",
+      label: "Action",
+      value: "resolve-uncertain-writer",
+    },
+    {
+      key: "reconcileOperation",
+      label: "Operation",
+      value: "record.reconcile-uncertain-writer@1",
+    },
+    { key: "reconcileRunId", label: "Run", value: failedRun.id },
+    {
+      key: "reconcileFailureCode",
+      label: "Failure",
+      value: failedRun.failure!.code,
+    },
+    {
+      key: "reconcileBasisSnapshotId",
+      label: "Basis",
+      value: BASIS.snapshotId,
+    },
+    {
+      key: "reconcileOutcome",
+      label: "Outcome",
+      value: reconciliation.outcome,
+    },
+    {
+      key: "reconcileAttestation",
+      label: "Attestation",
+      value: reconciliation.providerInspectionAttestation,
+    },
+  ];
+  const proposalInput = {
+    summary: "Record the exact inspected provider outcome.",
+    parameters,
+  };
+  const fingerprint = await sha256Fingerprint({
+    baseSnapshot: BASIS,
+    inputEvidenceRefs: [],
+    proposal: proposalInput,
+  });
+  const receiptIssuedAt = "2026-08-09T23:59:59.000Z";
+  const resultingRevision = value.revision - 1;
+  const requestFingerprint = await sha256Fingerprint({
+    type: "agent-run.reconcile-annotation",
+    origin: {
+      kind: reconciliation.reconciledBy.origin,
+      actorId: reconciliation.reconciledBy.id,
+    },
+    command: {
+      commandId: reconciliationCommandId,
+      projectId: value.project.id,
+      expectedRevision: resultingRevision - 1,
+      issuedAt: receiptIssuedAt,
+      reconciliationRunId,
+      failedRunId: failedRun.id,
+      reconciliation,
+    },
+  });
+  return {
+    ...value,
+    phases: value.phases.map((phase) => ({
+      ...phase,
+      workItemIds: [...phase.workItemIds, reconciliationWorkItemId],
+      requiredDecisionIds: [...phase.requiredDecisionIds, decisionId],
+    })),
+    workItems: [...value.workItems, {
+      id: reconciliationWorkItemId,
+      phaseId: "phase",
+      title: "Reconcile uncertain writer",
+      description: "Record the exact inspected provider outcome.",
+      kind: "review",
+      operation: {
+        id: "record.reconcile-uncertain-writer",
+        version: "1",
+        bindings: [],
+      },
+      status: "completed",
+      owner: "human",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [decisionId],
+      blockerIds: [],
+    }],
+    agentRuns: [...value.agentRuns, {
+      id: reconciliationRunId,
+      workItemId: reconciliationWorkItemId,
+      status: "completed",
+      summary: "Uncertain-writer reconciliation completed by human operator.",
+      queuedAt: "2026-08-09T23:59:00.000Z",
+      completedAt: authoritativeAt,
+      basis: BASIS,
+      evidenceRefs: [],
+      annotationOnly: true,
+      statusHistory: [{
+        commandId: reconciliationCommandId,
+        status: "completed",
+        at: authoritativeAt,
+        actor: reconciliation.reconciledBy,
+        summary: "Uncertain-writer reconciliation completed by human operator.",
+      }],
+    }],
+    decisions: [...value.decisions, {
+      id: decisionId,
+      phaseId: "phase",
+      title: "Reconcile uncertain writer",
+      question: "What exact effect did the provider produce?",
+      status: "approved",
+      requestedAt: "2026-08-10T00:00:00.000Z",
+      baseSnapshot: BASIS,
+      inputFingerprint: fingerprint,
+      inputEvidenceRefs: [],
+      approvalIds: [`approval:${decisionId}`],
+      proposal: {
+        ...proposalInput,
+        proposedAt: "2026-08-10T00:00:00.000Z",
+        proposedBy: { id: "agent-1", origin: "agent" },
+      },
+    }],
+    approvals: [...value.approvals, {
+      id: `approval:${decisionId}`,
+      decisionId,
+      status: "approved",
+      requestedAt: "2026-08-10T00:00:00.000Z",
+      decidedAt: "2026-08-10T00:00:01.000Z",
+      decidedBy: reconciliation.reconciledBy.id,
+      decidedByOrigin: "human",
+      rationale: "Inspected provider state.",
+      baseSnapshot: BASIS,
+      inputFingerprint: fingerprint,
+      inputEvidenceRefs: [],
+    }],
+    commandReceipts: [...(value.commandReceipts ?? []), {
+      commandId: reconciliationCommandId,
+      type: "agent-run.reconcile-annotation",
+      actor: reconciliation.reconciledBy,
+      issuedAt: receiptIssuedAt,
+      appliedAt: authoritativeAt,
+      requestFingerprint,
+      resultingSnapshot: {
+        snapshotId: `${value.project.id}:project:r${resultingRevision}:${
+          requestFingerprint.digest.slice(0, 16)
+        }`,
+        revision: resultingRevision,
+      },
+    }],
   };
 }

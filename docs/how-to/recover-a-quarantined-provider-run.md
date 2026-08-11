@@ -85,11 +85,39 @@ The operation is human-only: `project_agent_run_execute` recognises
 confirmation before dispatching under a human origin. An agent-originated call is
 refused at the executor gate.
 
-Once it completes, the annotation is attached to the failed run and the write-basis lock
-is lifted. The failed run stays failed — reconciliation records a judgement, it never
-converts a failure into a success.
+Once it completes, the annotation is attached to the failed run. The failed run stays
+failed — reconciliation records a judgement, it never converts a failure into a success.
+`provider-did-not-write` can release the basis only while its exact signed MRTR ceremony
+remains valid. `write-effect-accepted` deliberately keeps the basis locked and creates a
+separate server-fixed release decision linked to the blocker.
 
-## 6. Requeue the work
+## 6. Approve the basis release when the write effect was accepted
+
+For `write-effect-accepted`, propose the generated release decision with all eleven
+exact parameters:
+
+| Parameter                  | Value                                                         |
+| -------------------------- | ------------------------------------------------------------- |
+| `releaseAction`            | `release-thread-write-basis`                                  |
+| `releaseOutcome`           | `approved-after-provider-state-review`                        |
+| `failedRunId`              | the exact accepted failed run                                 |
+| `failureCode`              | that run's exact terminal failure code                        |
+| `subjectId`                | the failed run basis subject                                  |
+| `snapshotId`               | the failed run basis snapshot                                 |
+| `revision`                 | the failed run basis revision, as an integer                  |
+| `blockerId`                | the exact server-generated release blocker                    |
+| `reconciliationDecisionId` | the exact approved reconciliation decision                    |
+| `reconciliationOutcome`    | `write-effect-accepted`                                       |
+| `releaseAttestation`       | a non-empty, agent-proposed statement for the human to review |
+
+The release attestation is not a server observation or provider proof: it becomes
+authority only when the human reviews and signs the exact proposal. The project-control
+surface cross-checks every other value against the failed run and basis before recording
+the proposal. A later signed human approval resolves the blocker. The write guard then
+re-hashes both decision proposals and verifies their exact human approvals; a legacy or
+partial record stays blocked.
+
+## 7. Requeue the work
 
 Append a new work item for the retry and take it through the normal path: propose,
 approve, queue, execute. The original work item keeps its failed run in history.

@@ -8,11 +8,18 @@ import {
 /** Stable 64-char hex digests used as test fixtures. */
 const PLAN_DIGEST = "a".repeat(64);
 const PLAN_DIGEST_OTHER = "b".repeat(64);
-const SOLVER_FP = "c".repeat(64);
 const SOLVER_FP_OTHER = "d".repeat(64);
 const VERDICT_FP = "e".repeat(64);
 const CANONICAL_TEXT =
   '{"schemaVersion":"fea-solver-capture/1.0","kind":"static-solve"}';
+const SOLVER_FP = await sha256Text(CANONICAL_TEXT);
+
+async function sha256Text(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 const IDENTITY = {
   projectId: "inspection-drone-v4",
@@ -191,6 +198,42 @@ Deno.test("recordSolver advances a dispatched attempt to solver-recorded", async
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+Deno.test(
+  "readRun rejects a shape-valid WAL whose solver fingerprint does not hash its canonical text",
+  async () => {
+    const directory = await Deno.makeTempDir({ prefix: "casys-fea-wal-" });
+    try {
+      const store = new FileFeaStaticProofAttemptStore(directory);
+      await store.begin({
+        ...IDENTITY,
+        planDigest: PLAN_DIGEST,
+        dispatchedAt: "2026-08-10T10:00:00.000Z",
+      });
+      await store.recordSolver({
+        ...IDENTITY,
+        planDigest: PLAN_DIGEST,
+        solverCaptureFp: SOLVER_FP,
+        canonicalSolverCaptureText: CANONICAL_TEXT,
+      });
+      const entry = (await Array.fromAsync(Deno.readDir(directory))).find((item) =>
+        item.name.startsWith("run-")
+      );
+      if (!entry) throw new Error("test WAL file missing");
+      const path = `${directory}/${entry.name}`;
+      const record = JSON.parse(await Deno.readTextFile(path));
+      record.solverCaptureFp = "f".repeat(64);
+      await Deno.writeTextFile(path, JSON.stringify(record));
+      await assertRejects(
+        () => store.readRun(IDENTITY.projectId, IDENTITY.runId),
+        Error,
+        "does not match canonicalSolverCaptureText",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
 
 Deno.test(
   "recordSolver is idempotent when called with identical data on a solver-recorded attempt",

@@ -120,7 +120,18 @@ export type AnchorFamily =
   | "fea-solver-result"
   | "fea-verdict";
 
-type PrefixResult = { target: PartTarget; family: AnchorFamily } | null;
+type PrefixResult = {
+  target: PartTarget;
+  family: AnchorFamily;
+  /**
+   * Generic ids are only authoritative for the artifact shape their
+   * server-fixed executor emits. This prevents a similarly named fact from
+   * becoming whole-assembly evidence merely because its id has that prefix.
+   */
+  expectedArtifactKind?: string;
+  /** Generic forms are fallbacks: a sealed component lineage is more specific. */
+  fallback?: true;
+} | null;
 type PrefixMatcher = (id: string) => PrefixResult;
 
 /**
@@ -293,29 +304,60 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
 
   // (b-19) Generic architecture SysML artifact — id: architecture-{HEX64}
   //        model-write-architecture-run-executor.ts:1743
-  sp("architecture-", "assembly", "architecture"),
+  re(new RegExp(`^architecture-${HEX64}$`), () => ({
+    target: "assembly",
+    family: "architecture",
+    expectedArtifactKind: "sysml-model",
+    fallback: true,
+  })),
 
   // (b-20) Generic geometry bundle capture — id: geometry-{HEX64}
   //        design-write-geometry-run-executor.ts:1525
-  sp("geometry-", "assembly", "cad"),
+  re(new RegExp(`^geometry-${HEX64}$`), () => ({
+    target: "assembly",
+    family: "cad",
+    expectedArtifactKind: "cad-model",
+    fallback: true,
+  })),
 
   // (b-21) Generic FEA proof-case document — id: fea-proof-{HEX64}
   //        verify-seal-proof-case-run-executor.ts:508
-  sp("fea-proof-", "assembly", "fea-proof"),
+  re(new RegExp(`^fea-proof-${HEX64}$`), () => ({
+    target: "assembly",
+    family: "fea-proof",
+    expectedArtifactKind: "document",
+    fallback: true,
+  })),
 
   // (b-22) Generic FEA solver result — id: fea-solver-result-{HEX64}
   //        verify-run-fea-static-proof-run-executor.ts:1137
-  sp("fea-solver-result-", "assembly", "fea-solver-result"),
+  re(new RegExp(`^fea-solver-result-${HEX64}$`), () => ({
+    target: "assembly",
+    family: "fea-solver-result",
+    expectedArtifactKind: "solver-result",
+    fallback: true,
+  })),
 
   // (b-23) Generic FEA verdict document — id: fea-verdict-{HEX64}
   //        verify-run-fea-static-proof-run-executor.ts:1138
-  sp("fea-verdict-", "assembly", "fea-verdict"),
+  re(new RegExp(`^fea-verdict-${HEX64}$`), () => ({
+    target: "assembly",
+    family: "fea-verdict",
+    expectedArtifactKind: "document",
+    fallback: true,
+  })),
 
   // (b-24) Generic requirements artifact
   //        id: requirements-{containerComponent}-{HEX64}
   //        model-write-requirements-run-executor.ts:1284
-  //        Simple prefix match because containerComponent varies per project.
-  sp("requirements-", "assembly", "requirements"),
+  //        The component segment varies per project, but the complete shape
+  //        remains anchored by its terminal capture digest.
+  re(new RegExp(`^requirements-.+?-${HEX64}$`), () => ({
+    target: "assembly",
+    family: "requirements",
+    expectedArtifactKind: "sysml-model",
+    fallback: true,
+  })),
 ];
 
 // ---------------------------------------------------------------------------
@@ -335,48 +377,73 @@ function edgeToKey(edge: ThreadGraphEdge): string {
 }
 
 /**
- * Build a lookup map from evidence artifact id to component target using the
- * catalog's binding declarations.  Assembly components yield "assembly"; parts
- * yield their catalog component id.
+ * Build catalog lookups with their two deliberately distinct identities.
+ * `binding.id` is the exact provider-owned identity and can anchor an artifact
+ * to one component. `evidenceArtifactId` is the immutable capture supporting
+ * that claim; it can legitimately be shared across components and therefore
+ * must retain an explicit ambiguity rather than silently selecting a part.
  *
- * Duplicate evidenceArtifactId values across DIFFERENT components are resolved
- * with assembly-wins merge semantics: if both an assembly
- * component and a part component bind the same evidenceArtifactId, "assembly"
- * wins. Two different parts that bind the same id remain an explicit
- * ambiguity; lower-priority criteria must not erase it.
+ * Duplicate evidenceArtifactId values across different components stay
+ * explicitly ambiguous, including an assembly/part combination. The capture
+ * proves where identities were read; it does not identify one component.
+ * Lower-priority criteria must not erase that ambiguity.
  *
- * Note: the catalog validator rejects duplicate provider:kind:id combinations
- * within a single component's bindings, but it does NOT reject the same
- * evidenceArtifactId appearing in bindings of different components — for
- * example, the architecture artifact is bound by every component (assembly and
- * all parts) because each SysML element definition was read from that artifact.
+ * The catalog validator rejects duplicate provider:kind:id combinations within
+ * a single component but permits a shared evidenceArtifactId across components:
+ * several provider identities may have been captured by one artifact.
  */
 function buildCatalogCandidates(
   components: ThreadComponentCatalog,
-): ReadonlyMap<string, readonly PartTarget[]> {
-  const candidates = new Map<string, Set<PartTarget>>();
+): {
+  readonly bindingId: ReadonlyMap<string, readonly PartTarget[]>;
+  readonly evidenceArtifactId: ReadonlyMap<string, readonly PartTarget[]>;
+} {
+  const bindingId = new Map<string, Set<PartTarget>>();
+  const evidenceArtifactId = new Map<string, Set<PartTarget>>();
   for (const component of components.components) {
     const target: PartTarget = component.kind === "assembly"
       ? "assembly"
       : component.id;
     for (const binding of component.bindings) {
-      const values = candidates.get(binding.evidenceArtifactId) ?? new Set();
-      values.add(target);
-      candidates.set(binding.evidenceArtifactId, values);
+      // A graph artifact is a digital-thread artifact id; other provider ids
+      // (for example a SysON element id) are not graph artifact identities.
+      if (
+        binding.provider === "digital-thread" && binding.kind === "artifact"
+      ) {
+        const values = bindingId.get(binding.id) ?? new Set();
+        values.add(target);
+        bindingId.set(binding.id, values);
+      }
+      const evidence = evidenceArtifactId.get(binding.evidenceArtifactId) ??
+        new Set();
+      evidence.add(target);
+      evidenceArtifactId.set(binding.evidenceArtifactId, evidence);
     }
   }
-  const map = new Map<string, readonly PartTarget[]>();
-  for (const [artifactId, values] of candidates) {
-    map.set(artifactId, sortTargets(values));
-  }
-  return map;
+  const normalize = (candidates: ReadonlyMap<string, Set<PartTarget>>) =>
+    new Map(
+      [...candidates].map(([id, targets]) => [id, sortTargets(targets)]),
+    );
+  return {
+    bindingId: normalize(bindingId),
+    evidenceArtifactId: normalize(evidenceArtifactId),
+  };
 }
 
 /** Apply the prefix table against a node ref id — returns the PartTarget only. */
-function anchorByPrefix(id: string): PartTarget | null {
+function anchorByPrefix(
+  node: ThreadGraphNode,
+  includeFallback = true,
+): PartTarget | null {
   for (const matcher of PREFIX_TABLE) {
-    const result = matcher(id);
-    if (result !== null) return result.target;
+    const result = matcher(node.ref.id);
+    if (
+      result !== null &&
+      (includeFallback || result.fallback === undefined) &&
+      (result.expectedArtifactKind === undefined ||
+        (node.entityKind === "artifact" &&
+          node.artifactKind === result.expectedArtifactKind))
+    ) return result.target;
   }
   return null;
 }
@@ -454,6 +521,21 @@ function stateFromTargets(
   }
   if (sorted.length === 1) {
     return { kind: "unique", anchor: { target: sorted[0]!, criterion } };
+  }
+  return { kind: "ambiguous", targets: sorted };
+}
+
+/** A shared capture is not a component identity; competing bindings stay open. */
+function stateFromEvidenceCaptureTargets(
+  targets: Iterable<PartTarget>,
+): AnchorState | undefined {
+  const sorted = sortTargets(targets);
+  if (sorted.length === 0) return undefined;
+  if (sorted.length === 1) {
+    return {
+      kind: "unique",
+      anchor: { target: sorted[0]!, criterion: "catalog" },
+    };
   }
   return { kind: "ambiguous", targets: sorted };
 }
@@ -563,7 +645,8 @@ function propagateChangeConsumption(
         // Edge direction: change → artifact (changes, forward).
         const artifacts = outgoing.get(key)?.filter((e) =>
           e.relation === "changes"
-        ) ?? [];
+        ) ??
+          [];
         candidates = artifacts.flatMap((artifact) =>
           stateTargets(states.get(artifact.key))
         );
@@ -605,13 +688,13 @@ function propagateChangeConsumption(
  *
  * Criteria applied in order (first match wins):
  *
- * (a) Catalog `evidenceArtifactId` binding — artifact id declared in a
- *     catalog component binding.  Applies to artifact nodes only.
+ * (a) Catalog exact `binding.id` — a digital-thread artifact binding resolves
+ *     to its declared component. A shared `evidenceArtifactId` remains a
+ *     capture fallback and is explicitly ambiguous across components.
  *
- * (b) Server-fixed prefix table — the explicit table above maps well-known
- *     id prefixes to component targets.  Applies to ALL node kinds because
- *     observation, consumption and other derived ids share the same
- *     server-fixed prefix as the artifact they trace back to.
+ * (b) Product-specific server-fixed prefix table — explicit CM-01 forms map
+ *     well-known ids to component targets. Applies to all node kinds where
+ *     those server-fixed ids are shared by derived facts.
  *
  * (c) Machine-level nature — certain artifact kinds or producer systems are
  *     always whole-machine scope (sysml-model, thermal, BOM, brief, seed).
@@ -623,6 +706,9 @@ function propagateChangeConsumption(
  * (e) Change / consumption / adjacent inheritance — change and consumption
  *     nodes inherit from their directly connected artifact; other non-artifact
  *     nodes inherit from any adjacent resolved node.  Iterates until stable.
+ *
+ * (f) Generic server-fixed artifact forms — complete id + artifact kind forms
+ *     fill only gaps left by the more-specific catalog and lineage criteria.
  *
  * Only uniquely-resolved nodes appear in the returned map; use
  * `buildPartAnchorageResolution` when the caller must also inspect conflicts.
@@ -643,21 +729,24 @@ export function buildPartAnchorageResolution(
 ): PartAnchorageResolution {
   const states = new Map<string, AnchorState>();
 
-  // (a) Catalog evidenceArtifactId binding.
+  // (a) Catalog exact binding id, then immutable capture fallback.
   const catalogCandidates = buildCatalogCandidates(components);
   for (const node of [...graph.nodes].sort(compareNodes)) {
     if (node.entityKind !== "artifact") continue;
     const state = stateFromTargets(
-      catalogCandidates.get(node.ref.id) ?? [],
+      catalogCandidates.bindingId.get(node.ref.id) ?? [],
       "catalog",
+    ) ?? stateFromEvidenceCaptureTargets(
+      catalogCandidates.evidenceArtifactId.get(node.ref.id) ?? [],
     );
     if (state) states.set(refKey(node), state);
   }
 
-  // (b) Server-fixed prefix table — all node kinds.
+  // (b) Product-specific server-fixed prefixes — all node kinds. Generic
+  // forms remain fallbacks so a component's sealed evidence lineage wins.
   for (const node of [...graph.nodes].sort(compareNodes)) {
     if (states.has(refKey(node))) continue;
-    const target = anchorByPrefix(node.ref.id);
+    const target = anchorByPrefix(node, false);
     if (target !== null) {
       states.set(refKey(node), {
         kind: "unique",
@@ -682,6 +771,23 @@ export function buildPartAnchorageResolution(
   propagateDerivedFrom(graph, states);
 
   // (e) Change / consumption / adjacent inheritance.
+  propagateChangeConsumption(graph, states);
+
+  // (f) Generic whole-assembly forms only fill gaps left by explicit catalog
+  // identity and provenance. Their complete shape and artifact kind are
+  // checked by anchorByPrefix.
+  for (const node of [...graph.nodes].sort(compareNodes)) {
+    if (states.has(refKey(node))) continue;
+    const target = anchorByPrefix(node);
+    if (target !== null) {
+      states.set(refKey(node), {
+        kind: "unique",
+        anchor: { target, criterion: "prefix" },
+      });
+    }
+  }
+
+  // A generic fallback can in turn anchor an adjacent fact.
   propagateChangeConsumption(graph, states);
 
   const anchors = new Map<string, PartAnchor>();

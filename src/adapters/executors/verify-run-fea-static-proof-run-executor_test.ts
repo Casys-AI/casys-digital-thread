@@ -41,6 +41,7 @@ import type {
 import {
   assertFeaResultArtifactNotRemoved,
   FeaResultArtifactRemovedError,
+  readCompletedVerdictCapture,
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
   VerifyRunFeaStaticProofRunExecutor,
 } from "./verify-run-fea-static-proof-run-executor.ts";
@@ -1088,6 +1089,7 @@ Deno.test(
   async () => {
     const fx = await buildFixtures();
     let calculixCallCount = 0;
+    let stageCallCount = 0;
 
     // Canned solver capture text — structure only, not fully validated in this test.
     const cannedSolverText = JSON.stringify({
@@ -1108,7 +1110,15 @@ Deno.test(
         sha256: STEP_SHA256,
         bytes: STEP_BYTES,
       },
-      constraints: { supports: fx.expectedSupports, loads: fx.expectedLoads },
+      constraints: {
+        fixedSelections: fx.proofCase.analysis.supports.map((support) =>
+          support.selection.name
+        ),
+        loads: fx.proofCase.analysis.loads.map((load) => ({
+          selection: load.selection.name,
+          forceN: load.force.value,
+        })),
+      },
       mesh: { nodes: 10000, elements: 5000, nodesPerSelection: { SupportBase: 400 } },
       metrics: {
         maxDisplacement: {
@@ -1141,19 +1151,25 @@ Deno.test(
       } as never,
       verdictCaptures: {} as never,
       attempts: {
-        begin: () =>
+        preflight: () =>
           Promise.resolve({
             action: "solver-recorded" as const,
             solverCaptureFp: cannedFp,
             canonicalSolverCaptureText: cannedSolverText,
           }),
+        begin: () => Promise.reject(new Error("begin must not run on recovery")),
         recordSolver: () =>
           Promise.reject(new Error("recordSolver must not be called on recovery")),
         complete: () => Promise.resolve(),
         quarantine: () => Promise.resolve(),
       } as never,
       canonicalAssetDirectory: "state/local/thread-assets",
-      stager: { stage: () => Promise.resolve() } as never,
+      stager: {
+        stage: () => {
+          stageCallCount++;
+          return Promise.resolve();
+        },
+      } as never,
       assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
       // WHY correct constraints format: extractAndVerifyOracleRequirements calls
       // syson_constraint_extract and expects structuredContent.constraints (not
@@ -1193,6 +1209,294 @@ Deno.test(
       calculixCallCount,
       0,
       "CalculiX must NOT be dispatched on WAL solver-recorded recovery",
+    );
+    assertStrictEquals(
+      stageCallCount,
+      0,
+      "Docker staging must NOT run on WAL solver-recorded recovery",
+    );
+  },
+);
+
+Deno.test(
+  "verify-run-fea-static-proof completed WAL crash replay does not re-observe the solver image or re-complete",
+  async () => {
+    const fx = await buildFixtures();
+    const replayBasis: ThreadSnapshot = {
+      ...fx.basisSnapshot,
+      requirements: fx.proofCase.requirements.map((requirement) => ({
+        id: `thread-${requirement.id}`,
+        name: requirement.name,
+        statement: `${requirement.name} must satisfy its sealed limit.`,
+        version: "1.0",
+        criterion: {
+          metric: requirement.feature,
+          operator: requirement.operator,
+          limit: requirement.limit,
+        },
+        trace: {
+          sourceArtifactId: REQS_ARTIFACT_ID,
+          elementId: REQS_ELEMENT_ID,
+          targetArtifactIds: [fx.stepArtifact.id],
+        },
+        freshness: frs(),
+      })),
+      provenance: fx.proofCase.requirements.map((requirement) => ({
+        id: `prov-thread-${requirement.id}-traces-step`,
+        relation: "traces_to" as const,
+        from: { kind: "requirement" as const, id: `thread-${requirement.id}` },
+        to: { kind: "artifact" as const, id: fx.stepArtifact.id },
+        rationale: "The sealed requirement constrains the staged STEP artifact.",
+      })),
+    };
+    let currentProject = fx.project;
+    let persistedSnapshot: ThreadSnapshot | undefined;
+    const solverText = JSON.stringify({
+      schemaVersion: "fea-solver-result-capture/1.0",
+      operation:
+        `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
+      trustedRunId: RUN_ID,
+      capturedAt: AT,
+      upstreamIdentities: {
+        proofDigest: fx.proofDigest,
+        stepArtifactId: fx.stepArtifact.id,
+        stepFingerprint: fx.stepArtifact.fingerprint,
+        stagedPath: fx.stagedPath,
+      },
+      inputArtifact: {
+        path: "/tmp/staged/drip.step",
+        sourcePath: fx.stagedPath,
+        sha256: STEP_SHA256,
+        bytes: STEP_BYTES,
+      },
+      constraints: {
+        fixedSelections: fx.proofCase.analysis.supports.map((support) =>
+          support.selection.name
+        ),
+        loads: fx.proofCase.analysis.loads.map((load) => ({
+          selection: load.selection.name,
+          forceN: load.force.value,
+        })),
+      },
+      mesh: { nodes: 10000, elements: 5000, nodesPerSelection: { SupportBase: 400 } },
+      metrics: {
+        maxDisplacement: {
+          value: 0.45,
+          unit: "mm",
+          nodeId: 1001,
+          vectorMm: [0, 0, 0.45],
+        },
+        maxVonMises: { value: 8.2, unit: "MPa", elementId: 2001 },
+      },
+    });
+    const solverFp = (await sha256Fingerprint(JSON.parse(solverText))).digest;
+    const replayCapturedAt = AT;
+    const replayRequest = {
+      step_path: `/exports/fea-${STEP_SHA256}.step`,
+      expected_step_sha256: STEP_SHA256,
+      mesh_size_mm: fx.proofCase.analysis.mesh.targetSize.value,
+      material: {
+        e_mpa: fx.proofCase.analysis.material.youngModulus.value,
+        nu: fx.proofCase.analysis.material.poissonRatio.value,
+      },
+      selections: [
+        ...fx.proofCase.analysis.supports.map((support) => ({
+          name: support.selection.name,
+          box: { min: support.selection.box.min, max: support.selection.box.max },
+        })),
+        ...fx.proofCase.analysis.loads.map((load) => ({
+          name: load.selection.name,
+          box: { min: load.selection.box.min, max: load.selection.box.max },
+        })),
+      ],
+      fixed: fx.proofCase.analysis.supports.map((support) => support.selection.name),
+      loads: fx.proofCase.analysis.loads.map((load) => ({
+        selection: load.selection.name,
+        force_n: load.force.value,
+      })),
+    };
+    const verdict = {
+      schemaVersion: "fea-verdict-capture/1.0",
+      operation:
+        `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
+      trustedRunId: RUN_ID,
+      capturedAt: replayCapturedAt,
+      proofDigest: fx.proofDigest,
+      solverCaptureFp: solverFp,
+      oracleOutcomes: fx.proofCase.requirements.map((requirement) => ({
+        requirementId: requirement.id,
+        status: "pass" as const,
+        computedValue: requirement.metric === "maximum-displacement" ? 0.45 : 8.2,
+        threshold: requirement.limit.value,
+        unit: requirement.limit.unit,
+        margin: requirement.limit.value -
+          (requirement.metric === "maximum-displacement" ? 0.45 : 8.2),
+      })),
+      policyVersion: FEA_EXECUTION_POLICY_VERSION,
+      exactSolverRequest: replayRequest,
+    };
+    const verdictText = deterministicJson(verdict);
+    const verdictFp = (await sha256Fingerprint(verdict)).digest;
+    let imageObservations = 0;
+    let sysonCalls = 0;
+    let completeCalls = 0;
+    let stageCalls = 0;
+    let verdictReadFp: string | undefined;
+    const executor = new VerifyRunFeaStaticProofRunExecutor({
+      projects: { get: () => Promise.resolve(currentProject) } as never,
+      commands: {
+        claimRun: () => Promise.resolve({} as never),
+        failRun: () => Promise.resolve({} as never),
+        publishRun: () => {
+          currentProject = {
+            ...currentProject,
+            revision: currentProject.revision + 1,
+            agentRuns: currentProject.agentRuns.map((run) =>
+              run.id === RUN_ID ? { ...run, status: "publishing" as const } : run
+            ),
+          };
+          return Promise.resolve({} as never);
+        },
+        completeRun: () => {
+          currentProject = {
+            ...currentProject,
+            revision: currentProject.revision + 1,
+            agentRuns: currentProject.agentRuns.map((run) =>
+              run.id === RUN_ID ? { ...run, status: "completed" as const } : run
+            ),
+          };
+          return Promise.resolve({} as never);
+        },
+      } as never,
+      snapshots: {
+        get: (id: string) =>
+          Promise.resolve(id === replayBasis.id ? replayBasis : persistedSnapshot),
+        save: (snapshot: ThreadSnapshot) => {
+          persistedSnapshot = snapshot;
+          return Promise.resolve();
+        },
+      } as never,
+      proofCaptures: { read: () => Promise.resolve(fx.proofCaptureText) } as never,
+      requirementsCaptures: {
+        read: () =>
+          Promise.resolve(JSON.stringify({ containerComponent: CONTAINER_COMPONENT })),
+      } as never,
+      solverCaptures: {
+        read: () => Promise.resolve(solverText),
+        save: () => Promise.resolve(),
+      } as never,
+      verdictCaptures: {
+        read: (fingerprint: { digest: string }) => {
+          verdictReadFp = fingerprint.digest;
+          return Promise.resolve(verdictText);
+        },
+      } as never,
+      attempts: {
+        preflight: () =>
+          Promise.resolve({
+            action: "completed" as const,
+            solverCaptureFp: solverFp,
+            verdictCaptureFp: verdictFp,
+            canonicalSolverCaptureText: solverText,
+          }),
+        begin: () => Promise.reject(new Error("begin must not run on recovery")),
+        complete: () => {
+          completeCalls++;
+          return Promise.resolve();
+        },
+        quarantine: () => Promise.resolve(),
+      } as never,
+      canonicalAssetDirectory: "state/local/thread-assets",
+      stager: {
+        stage: () => {
+          stageCalls++;
+          return Promise.resolve();
+        },
+      } as never,
+      assetReader: { read: () => Promise.resolve(new Uint8Array(STEP_BYTES)) } as never,
+      syson: {
+        callTool: () => {
+          sysonCalls++;
+          return Promise.resolve({
+            structuredContent: {
+              constraints: fx.proofCase.requirements.map(buildConstraintRow),
+            },
+          });
+        },
+      } as never,
+      calculix: {
+        callTool: () => Promise.reject(new Error("must not dispatch")),
+      } as never,
+      policy: {
+        policyVersion: FEA_EXECUTION_POLICY_VERSION,
+        meshTargetSizeMinMm: 0.5,
+        forceMagnitudeMaxN: 1000,
+        stepBytesMax: 1000000,
+        selectionsMax: 10,
+      } as never,
+      lease: {
+        withLease: (_: unknown, __: unknown, fn: () => Promise<unknown>) => fn(),
+      } as never,
+      solverImageObserver: () => {
+        imageObservations++;
+        return Promise.resolve({
+          image: "unexpected",
+          digest: "d".repeat(64),
+          observedAt: AT,
+        });
+      },
+    });
+    const completed = await executor.execute(AGENT, COMMAND_BASE);
+    assertEquals(
+      completed.agentRuns.find((run) => run.id === RUN_ID)?.status,
+      "completed",
+    );
+    const verdictArtifact = persistedSnapshot?.artifacts.find((artifact) =>
+      artifact.id === `fea-verdict-${verdictFp}`
+    );
+    assertEquals(verdictArtifact?.fingerprint.digest, verdictFp);
+    assertEquals(verdictArtifact?.freshness.changedAt, replayCapturedAt);
+    assertStrictEquals(imageObservations, 0);
+    assertStrictEquals(verdictReadFp, verdictFp);
+    assertStrictEquals(sysonCalls, 0, "completed replay must not contact SysON");
+    assertStrictEquals(stageCalls, 0, "completed replay must not stage through Docker");
+    assertStrictEquals(completeCalls, 0);
+  },
+);
+
+Deno.test(
+  "completed WAL rejects a valid ISO verdict timestamp different from requiredStart",
+  async () => {
+    const verdict = {
+      schemaVersion: "fea-verdict-capture/1.0",
+      operation:
+        `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
+      trustedRunId: RUN_ID,
+      capturedAt: "2026-08-09T12:34:56.000Z",
+      proofDigest: "a".repeat(64),
+      solverCaptureFp: "b".repeat(64),
+      oracleOutcomes: [],
+      policyVersion: FEA_EXECUTION_POLICY_VERSION,
+      exactSolverRequest: { step_path: "/exports/fea.step" },
+    };
+    const text = deterministicJson(verdict);
+    const fingerprint = (await sha256Fingerprint(verdict)).digest;
+    await assertRejects(
+      () =>
+        readCompletedVerdictCapture(
+          { read: () => Promise.resolve(text) } as never,
+          fingerprint,
+          {
+            trustedRunId: RUN_ID,
+            capturedAt: AT,
+            proofDigest: verdict.proofDigest,
+            solverCaptureFp: verdict.solverCaptureFp,
+            policyVersion: FEA_EXECUTION_POLICY_VERSION,
+            exactSolverRequest: verdict.exactSolverRequest,
+          },
+        ),
+      EngineeringProjectCommandError,
+      "does not bind this exact run",
     );
   },
 );
@@ -1326,12 +1630,13 @@ Deno.test(
       } as never,
       verdictCaptures: {} as never,
       attempts: {
-        begin: () =>
+        preflight: () =>
           Promise.resolve({
             action: "solver-recorded" as const,
             solverCaptureFp: cannedFp,
             canonicalSolverCaptureText: cannedText,
           }),
+        begin: () => Promise.reject(new Error("begin must not run on recovery")),
         recordSolver: () => Promise.resolve(),
         complete: () => Promise.resolve(),
         quarantine: () => Promise.resolve(),
@@ -1404,12 +1709,13 @@ Deno.test(
       } as never,
       verdictCaptures: {} as never,
       attempts: {
-        begin: () =>
+        preflight: () =>
           Promise.resolve({
             action: "solver-recorded" as const,
             solverCaptureFp: fp,
             canonicalSolverCaptureText: walCanonicalText,
           }),
+        begin: () => Promise.reject(new Error("begin must not run on recovery")),
         complete: () => Promise.resolve(),
         quarantine: () => Promise.resolve(),
       } as never,

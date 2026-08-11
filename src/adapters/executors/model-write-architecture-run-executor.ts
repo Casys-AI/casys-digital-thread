@@ -407,7 +407,7 @@ export class ModelWriteArchitectureRunExecutor {
         await this.#reconcileLive(alreadyCompleted.project.subjectId, command.runId);
         return alreadyCompleted;
       }
-      assertThreadWriteBasisAvailable(
+      await assertThreadWriteBasisAvailable(
         preClaim,
         requireRun(preClaim, command.runId),
       );

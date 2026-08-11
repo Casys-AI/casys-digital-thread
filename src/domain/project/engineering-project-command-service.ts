@@ -39,6 +39,16 @@ import {
   projectBriefContractVersion,
 } from "./project-brief.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../platform/geometry-proposal.ts";
+import {
+  type ReconcileUncertainWriterOutcome,
+  requireApprovedUncertainWriterReconciliationDecision,
+  TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
+} from "./reconcile-uncertain-writer-proposal.ts";
+import {
+  isReservedUncertainWriterBasisReleaseDecisionId,
+  uncertainWriterBasisReleaseIds,
+  uncertainWriterBasisReleaseText,
+} from "./uncertain-writer-basis-release.ts";
 
 export interface EngineeringProjectRevisionStore {
   get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
@@ -171,19 +181,10 @@ export interface ReconcileAnnotationRunCommand extends EngineeringProjectCommand
   readonly reconciliationRunId: string;
   /** The id of the terminal failed run whose write-uncertainty is being resolved. */
   readonly failedRunId: string;
-  /** Validated annotation from the executor, derived from the MRTR decision. */
-  readonly reconciliation: EngineeringAgentRunUncertainWriterReconciliation;
-  /**
-   * When `reconciliation.outcome === "write-effect-accepted"`, the executor
-   * provides a blocker to open on the project to prevent a blind re-run.
-   * `phaseId` is intentionally absent: the domain derives it from the failed
-   * run's work item, making the cross-reference unforgeable.
-   */
-  readonly openBlocker?: {
-    readonly id: string;
-    readonly title: string;
-    readonly description: string;
-  };
+  /** Exact human-approved MRTR decision authorizing this annotation. */
+  readonly decisionId: string;
+  readonly outcome: ReconcileUncertainWriterOutcome;
+  readonly providerInspectionAttestation: string;
 }
 
 /**
@@ -193,24 +194,11 @@ export interface ReconcileAnnotationRunCommand extends EngineeringProjectCommand
  * terminal regardless of code) are eligible for uncertain-writer reconciliation.
  *
  * WHY IN DOMAIN — eligibility is a domain invariant enforced by
- * `reconcileAnnotationRun`, not just an adapter-level gate.  The adapter's
- * `TERMINAL_THREAD_WRITE_FAILURES` is kept as the authoritative source that
- * the basis-guard reads; this domain constant carries the same values so the
- * command service can enforce the invariant without importing from adapters.
+ * `reconcileAnnotationRun`, not just an adapter-level gate. The domain set is
+ * the single authority; the executor and basis guard import or alias it.
  */
-export const ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES: ReadonlySet<string> = new Set([
-  "model-write-architecture-provider-outcome-unknown",
-  "model-write-architecture-post-acknowledgement-quarantined",
-  "model-write-architecture-quarantine-write-failed",
-  "model-write-requirements-provider-outcome-unknown",
-  "model-write-requirements-post-acknowledgement-quarantined",
-  "model-write-requirements-quarantine-write-failed",
-  "verify-run-fea-static-proof-provider-outcome-unknown",
-  "verify-run-fea-static-proof-post-acknowledgement-quarantined",
-  "verify-run-fea-static-proof-quarantine-write-failed",
-  "simulate-modelica-scenario-outcome-unknown",
-  "simulate-modelica-scenario-post-acknowledgement-quarantined",
-]);
+export const ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES =
+  TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES;
 
 /**
  * Close one failed work item only when an independently completed successor
@@ -1106,9 +1094,22 @@ export class EngineeringProjectCommandService {
       origin,
       "agent-run.reconcile-annotation",
       command,
-      (draft, appliedAt) => {
+      async (draft, appliedAt) => {
         nonEmpty(command.reconciliationRunId, "reconciliationRunId");
         nonEmpty(command.failedRunId, "failedRunId");
+        nonEmpty(command.decisionId, "decisionId");
+        nonEmpty(
+          command.providerInspectionAttestation,
+          "providerInspectionAttestation",
+        );
+        if (
+          command.outcome !== "provider-did-not-write" &&
+          command.outcome !== "write-effect-accepted"
+        ) {
+          invalidInput(
+            'outcome must be "provider-did-not-write" or "write-effect-accepted".',
+          );
+        }
         if (command.reconciliationRunId === command.failedRunId) {
           invalidInput("A reconciliation run cannot target itself as the failed run.");
         }
@@ -1179,35 +1180,84 @@ export class EngineeringProjectCommandService {
           );
         }
 
-        // Apply the annotation to the target run.
-        failedRun.uncertainWriterReconciliation = structuredClone(
-          command.reconciliation,
-        );
+        try {
+          await requireApprovedUncertainWriterReconciliationDecision(
+            draft,
+            reconciliationRun,
+            failedRun,
+            {
+              decisionId: command.decisionId,
+              outcome: command.outcome,
+              providerInspectionAttestation: command.providerInspectionAttestation,
+            },
+          );
+        } catch (error) {
+          invalidTransition(
+            `The reconciliation command has no exact approved MRTR authority: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
 
-        // If the provider may have written, open a blocker to prevent a blind re-run.
-        // phaseId is derived from the FAILED work item — the blocker belongs to the
-        // failed writer's phase, not the reconciliation run's phase.
-        // workItemIds references the FAILED work item, not the reconciliation run id:
-        // the blocker encumbers the work that might have an uncertain provider effect.
-        if (command.openBlocker) {
-          if (draft.blockers.some((b) => b.id === command.openBlocker!.id)) {
-            invalidInput(`Blocker id ${command.openBlocker.id} already exists.`);
+        // The service owns provenance. Caller-supplied actors or timestamps can
+        // never masquerade as the authoritative application event.
+        failedRun.uncertainWriterReconciliation = {
+          kind: "uncertain-writer-resolved",
+          outcome: command.outcome,
+          reconciledAt: appliedAt,
+          reconciledBy: actor(origin),
+          decisionId: command.decisionId,
+          providerInspectionAttestation: command.providerInspectionAttestation,
+        };
+
+        // An accepted provider effect creates a server-owned blocker plus a
+        // separate required decision. The decision is phase/blocker-linked but
+        // deliberately not attached to the failed writer work item: doing so
+        // would apply that writer operation's proposal grammar to this release.
+        if (command.outcome === "write-effect-accepted") {
+          const ids = uncertainWriterBasisReleaseIds(failedRun.id);
+          const text = uncertainWriterBasisReleaseText(failedRun.id);
+          if (draft.blockers.some((b) => b.id === ids.blockerId)) {
+            invalidInput(`Blocker id ${ids.blockerId} already exists.`);
           }
-          draft.blockers.push({
-            id: command.openBlocker.id,
+          if (findDecision(draft, ids.decisionId)) {
+            invalidInput(
+              `Resolution decision id ${ids.decisionId} already exists.`,
+            );
+          }
+          const resolutionDecision: Mutable<EngineeringDecision> = {
+            id: ids.decisionId,
             phaseId: failedWorkItem.phaseId,
-            title: command.openBlocker.title,
-            description: command.openBlocker.description,
+            title: text.decisionTitle,
+            question: text.decisionQuestion,
+            status: "required",
+            requestedAt: appliedAt,
+            inputEvidenceRefs: [],
+            approvalIds: [],
+          };
+          draft.decisions.push(resolutionDecision);
+          const phase = draft.phases.find((item) =>
+            item.id === failedWorkItem.phaseId
+          )!;
+          phase.requiredDecisionIds = [
+            ...phase.requiredDecisionIds,
+            resolutionDecision.id,
+          ];
+          draft.blockers.push({
+            id: ids.blockerId,
+            phaseId: failedWorkItem.phaseId,
+            title: text.blockerTitle,
+            description: text.blockerDescription,
             kind: "tool-failure",
             status: "open",
             openedAt: appliedAt,
             workItemIds: [failedWorkItem.id],
-            decisionIds: [],
+            decisionIds: [resolutionDecision.id],
           });
           // Bidirectional cross-reference: the failed work item must know it has a blocker.
           failedWorkItem.blockerIds = [
             ...failedWorkItem.blockerIds,
-            command.openBlocker.id,
+            ids.blockerId,
           ];
         }
 
@@ -1549,7 +1599,18 @@ export class EngineeringProjectCommandService {
         `Engineering project ${command.projectId} does not exist.`,
       );
     }
-    const replay = await this.replay(current, command.commandId, requestFingerprint);
+    const replayFingerprints = await reconciliationReplayFingerprints(
+      current,
+      type,
+      origin,
+      normalizedCommand,
+      requestFingerprint,
+    );
+    const replay = await this.replay(
+      current,
+      command.commandId,
+      replayFingerprints,
+    );
     if (replay) return replay;
     if (current.revision !== command.expectedRevision) {
       throw stale(command.projectId, command.expectedRevision, current.revision);
@@ -1599,7 +1660,13 @@ export class EngineeringProjectCommandService {
         const concurrentReplay = await this.replay(
           winner,
           command.commandId,
-          requestFingerprint,
+          await reconciliationReplayFingerprints(
+            winner,
+            type,
+            origin,
+            normalizedCommand,
+            requestFingerprint,
+          ),
         );
         if (concurrentReplay) return concurrentReplay;
         throw stale(command.projectId, command.expectedRevision, winner.revision);
@@ -1611,13 +1678,17 @@ export class EngineeringProjectCommandService {
   private async replay(
     current: EngineeringProjectSnapshot,
     commandId: string,
-    fingerprint: ContentFingerprint,
+    fingerprints: readonly ContentFingerprint[],
   ): Promise<EngineeringProjectSnapshot | undefined> {
     const receipt = current.commandReceipts?.find((item) =>
       item.commandId === commandId
     );
     if (!receipt) return undefined;
-    if (!fingerprintsEqual(receipt.requestFingerprint, fingerprint)) {
+    if (
+      !fingerprints.some((fingerprint) =>
+        fingerprintsEqual(receipt.requestFingerprint, fingerprint)
+      )
+    ) {
       throw new EngineeringProjectCommandError(
         "command_id_conflict",
         `Command id ${commandId} was already used for a different request.`,
@@ -1635,6 +1706,49 @@ export class EngineeringProjectCommandService {
     }
     return result;
   }
+}
+
+/**
+ * Preserve immutable replay across the server-stamped provenance upgrade.
+ * Old commands carried the complete annotation, including an adapter clock;
+ * only an already-persisted annotation may reconstruct that legacy fingerprint.
+ */
+async function reconciliationReplayFingerprints(
+  current: EngineeringProjectSnapshot,
+  type: EngineeringProjectCommandType,
+  origin: EngineeringProjectCommandOrigin,
+  command: EngineeringProjectCommandInput,
+  currentFingerprint: ContentFingerprint,
+): Promise<readonly ContentFingerprint[]> {
+  if (type !== "agent-run.reconcile-annotation") return [currentFingerprint];
+  const input = command as unknown as ReconcileAnnotationRunCommand;
+  const annotation = current.agentRuns.find((run) => run.id === input.failedRunId)
+    ?.uncertainWriterReconciliation;
+  if (!annotation) return [currentFingerprint];
+  if (
+    input.decisionId !== annotation.decisionId ||
+    input.outcome !== annotation.outcome ||
+    input.providerInspectionAttestation !==
+      annotation.providerInspectionAttestation
+  ) {
+    return [currentFingerprint];
+  }
+  const legacyFingerprint = await sha256Fingerprint({
+    type,
+    origin,
+    command: {
+      commandId: input.commandId,
+      projectId: input.projectId,
+      expectedRevision: input.expectedRevision,
+      issuedAt: input.issuedAt,
+      reconciliationRunId: input.reconciliationRunId,
+      failedRunId: input.failedRunId,
+      reconciliation: structuredClone(
+        annotation,
+      ) as EngineeringAgentRunUncertainWriterReconciliation,
+    },
+  });
+  return [currentFingerprint, legacyFingerprint];
 }
 
 function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
@@ -2093,6 +2207,11 @@ function validatePlannedChange(
   }
   for (const [index, decision] of command.requiredDecisions.entries()) {
     nonEmpty(decision.id, `requiredDecisions[${index}].id`);
+    if (isReservedUncertainWriterBasisReleaseDecisionId(decision.id)) {
+      invalidInput(
+        `requiredDecisions[${index}].id uses the server-reserved uncertain-writer basis-release namespace.`,
+      );
+    }
     nonEmpty(decision.phaseId, `requiredDecisions[${index}].phaseId`);
     nonEmpty(decision.title, `requiredDecisions[${index}].title`);
     nonEmpty(decision.question, `requiredDecisions[${index}].question`);

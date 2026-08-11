@@ -5,6 +5,7 @@ import {
   ProposalGrammarError,
 } from "./proposal-validation.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },
@@ -71,6 +72,62 @@ Deno.test("an operation without a declared grammar is left untouched", () => {
   );
 });
 
+Deno.test("reconciliation grammar rejects duplicate, extra, typed and invalid-outcome parameters", () => {
+  const valid = [
+    { key: "reconcileAction", label: "Action", value: "resolve-uncertain-writer" },
+    {
+      key: "reconcileOperation",
+      label: "Operation",
+      value: "record.reconcile-uncertain-writer@1",
+    },
+    { key: "reconcileRunId", label: "Run", value: "run:failed" },
+    {
+      key: "reconcileFailureCode",
+      label: "Failure",
+      value: "provider-outcome-unknown",
+    },
+    { key: "reconcileBasisSnapshotId", label: "Basis", value: "thread:r4" },
+    { key: "reconcileOutcome", label: "Outcome", value: "write-effect-accepted" },
+    {
+      key: "reconcileAttestation",
+      label: "Attestation",
+      value: "Inspected provider history.",
+    },
+  ];
+  for (
+    const invalid of [
+      [...valid, { key: "extra", label: "Extra", value: "x" }],
+      [...valid, valid[0]!],
+      valid.map((item) =>
+        item.key === "reconcileOutcome" ? { ...item, value: "maybe" } : item
+      ),
+      valid.map((item) =>
+        item.key === "reconcileRunId" ? { ...item, value: 42 } : item
+      ),
+    ]
+  ) {
+    assertThrows(
+      () =>
+        assertProposalMatchesOperationGrammar(
+          RECONCILE_UNCERTAIN_WRITER_OPERATION,
+          invalid,
+        ),
+      ProposalGrammarError,
+    );
+  }
+});
+
+Deno.test("a decision shared by distinct operations must satisfy every declared grammar", () => {
+  assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar([
+        { id: "record.archive-lineage", version: "1" },
+        MODEL_WRITE_ARCHITECTURE_OPERATION,
+      ], [{ key: "anything", label: "Free form", value: "accepted" }]),
+    ProposalGrammarError,
+  );
+});
+
 Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // Adding a sealed or model-writing operation without registering its grammar
   // would silently reopen the round trip this module exists to close.
@@ -78,6 +135,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "design.write-geometry@1",
     "model.write-architecture@1",
     "model.write-requirements@1",
+    "record.reconcile-uncertain-writer@1",
     "simulate.seal-simulation-case@1",
     "verify.seal-proof-case@1",
   ]);

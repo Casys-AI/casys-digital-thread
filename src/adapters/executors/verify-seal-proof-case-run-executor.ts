@@ -404,7 +404,7 @@ export class VerifySealProofCaseRunExecutor {
       if (alreadyCompleted) return alreadyCompleted;
 
       // Step 7 — pre-claim guards inside the lease.
-      assertThreadWriteBasisAvailable(
+      await assertThreadWriteBasisAvailable(
         preClaim,
         requireRun(preClaim, command.runId),
       );

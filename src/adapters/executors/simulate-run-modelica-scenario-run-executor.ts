@@ -122,7 +122,9 @@ import {
 } from "../captures/modelica-scenario-run-capture.ts";
 import {
   FileModelicaScenarioAttemptStore,
+  type ModelicaScenarioAttempt,
   ModelicaScenarioOutcomeUnknownError,
+  ModelicaScenarioRunQuarantinedError,
 } from "../wal/file-modelica-scenario-attempt-store.ts";
 import type {
   EngineeringProjectRunLease,
@@ -408,7 +410,7 @@ export class SimulateRunModelicaScenarioRunExecutor {
       if (alreadyCompleted) return alreadyCompleted;
 
       // Step 7 — pre-claim guards inside the lease.
-      assertThreadWriteBasisAvailable(
+      await assertThreadWriteBasisAvailable(
         preClaim,
         requireRun(preClaim, command.runId),
       );
@@ -458,26 +460,28 @@ export class SimulateRunModelicaScenarioRunExecutor {
       // Step 10 — policy cap (fail-fast before WAL; no uncertain provider state).
       assertCaseWithinPolicy(simulationCase, this.#policy);
 
-      // kit_list validation: kit present, parameters in bounds, metrics present.
-      const kitListResult = await this.#modelica.callTool({
-        name: "modelica_kit_list",
-        arguments: {},
-      });
-      validateKitList(kitListResult.structuredContent, simulationCase);
-
-      // Step 11 — build exactSimulateRequest and planDigest; open WAL.
-      const exactSimulateRequest = {
-        model_id: simulationCase.kit.modelId,
-        scenario_id: simulationCase.scenario.id,
-        parameter_overrides: simulationCase.parameters,
-        timeout_ms: simulationCase.timeoutMs,
-      };
+      // Step 11 — build the server-owned request and plan digest before any
+      // provider preflight. The provider schema accepts a dynamic object keyed
+      // by parameter id, not the sealed-case array representation.
+      const exactSimulateRequest = buildExactSimulateRequest(simulationCase);
       const planFp = await sha256Fingerprint({
         caseDigest,
         exactSimulateRequest,
         policyVersion: this.#policy.policyVersion,
       });
       const planDigest = planFp.digest;
+
+      // A completed WAL contains all evidence needed for re-materialization.
+      // Inspect local state before modelica_kit_list so completed recovery has
+      // no provider dependency at all. A new dispatch still performs the live
+      // kit gate before it reserves its sole simulate call.
+      await preflightModelicaKitForAttempt({
+        attempts: this.#attempts,
+        modelica: this.#modelica,
+        projectId: command.projectId,
+        runId: run.id,
+        simulationCase,
+      });
 
       const walResult = await this.#attempts.begin({
         projectId: command.projectId,
@@ -1246,6 +1250,96 @@ function parseCaseCaptureRecord(text: string): CaseCaptureRecord {
     );
   }
   return { schemaVersion, caseDigest, canonicalCaseText, trustedRunId };
+}
+
+/**
+ * Translate the sealed case's ordered parameter list to the pinned provider's
+ * dynamic-object input schema. Sorting here makes the dispatched envelope,
+ * plan digest, and receipt independent of an incidental in-memory array order.
+ */
+export function buildExactSimulateRequest(simulationCase: SimulationCase): {
+  readonly model_id: string;
+  readonly scenario_id: string;
+  readonly parameter_overrides: Readonly<
+    Record<string, { readonly value: number; readonly unit: string }>
+  >;
+  readonly timeout_ms: number;
+} {
+  const entries: Array<
+    readonly [string, { readonly value: number; readonly unit: string }]
+  > = [];
+  const seen = new Set<string>();
+  for (
+    const parameter of [...simulationCase.parameters].sort((a, b) =>
+      a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    )
+  ) {
+    if (seen.has(parameter.id)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Simulation case contains duplicate parameter id "${parameter.id}".`,
+      );
+    }
+    seen.add(parameter.id);
+    entries.push([
+      parameter.id,
+      { value: parameter.value, unit: parameter.unit },
+    ]);
+  }
+  // Object.fromEntries defines even names such as "__proto__" as own data
+  // properties; ordinary indexed assignment would mutate the object's prototype.
+  const parameterOverrides = Object.fromEntries(entries);
+  return {
+    model_id: simulationCase.kit.modelId,
+    scenario_id: simulationCase.scenario.id,
+    parameter_overrides: parameterOverrides,
+    timeout_ms: simulationCase.timeoutMs,
+  };
+}
+
+/**
+ * Pure dispatch decision shared by the executor and its no-provider recovery
+ * tests. A durable run state never needs the mutable live kit catalogue.
+ */
+export function needsModelicaKitListPreflight(
+  knownAttempt: ModelicaScenarioAttempt | undefined,
+): boolean {
+  return knownAttempt === undefined;
+}
+
+/**
+ * Resolve the sole live kit-list preflight site. Quarantine wins before both
+ * WAL inspection and provider discovery. Completed recovery is fully offline;
+ * provider-run-known recovery skips the mutable catalogue and later performs
+ * only its required `modelica_run_get` readback.
+ */
+export async function preflightModelicaKitForAttempt(input: {
+  readonly attempts: Pick<
+    FileModelicaScenarioAttemptStore,
+    "isQuarantined" | "readRun"
+  >;
+  readonly modelica: McpToolClient;
+  readonly projectId: string;
+  readonly runId: string;
+  readonly simulationCase: SimulationCase;
+}): Promise<void> {
+  if (await input.attempts.isQuarantined(input.projectId, input.runId)) {
+    throw new ModelicaScenarioRunQuarantinedError();
+  }
+
+  let knownAttempt: ModelicaScenarioAttempt | undefined;
+  try {
+    knownAttempt = await input.attempts.readRun(input.projectId, input.runId);
+  } catch {
+    throw new ModelicaScenarioOutcomeUnknownError();
+  }
+  if (!needsModelicaKitListPreflight(knownAttempt)) return;
+
+  const kitListResult = await input.modelica.callTool({
+    name: "modelica_kit_list",
+    arguments: {},
+  });
+  validateKitList(kitListResult.structuredContent, input.simulationCase);
 }
 
 /** Validate the kit_list response against the simulation case requirements. */

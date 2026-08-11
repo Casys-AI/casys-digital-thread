@@ -21,6 +21,7 @@ import {
   EngineeringProjectValidationError,
   validateEngineeringProjectSnapshot,
 } from "./engineering-project-validation.ts";
+import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
 
 const CONFIG = new URL(
   "../../../config/projects/coffee-machine-cm01.project.json",
@@ -1637,10 +1638,88 @@ async function reconcileAnnotationProject(
   verifyItem.decisionIds = [];
   verifyItem.evidenceRefs = [];
   base.blockers = [];
-  base.decisions = [];
-  base.approvals = [];
   const verifyPhase = base.phases.find((p) => p.id === "verification")!;
-  verifyPhase.requiredDecisionIds = [];
+  const head = base.threadSnapshots.at(-1)!;
+  const basis = { kind: "thread-snapshot" as const, ...head };
+  const eligibleCode = failureCode ??
+    "model-write-architecture-provider-outcome-unknown";
+  const decisionId = "decision-mrtr-1";
+  const attestation =
+    "Inspected the SysON history: the element was written successfully.";
+  const proposal = {
+    summary: "Record the exact inspected provider outcome.",
+    proposedAt: "2026-08-01T10:00:03.000Z",
+    proposedBy: { id: AGENT.actorId, origin: "agent" as const },
+    parameters: [
+      {
+        key: "reconcileAction",
+        label: "Action",
+        value: "resolve-uncertain-writer",
+      },
+      {
+        key: "reconcileOperation",
+        label: "Operation",
+        value: "record.reconcile-uncertain-writer@1",
+      },
+      {
+        key: "reconcileRunId",
+        label: "Failed run",
+        value: "run:uncertain-write-failed",
+      },
+      {
+        key: "reconcileFailureCode",
+        label: "Failure code",
+        value: eligibleCode,
+      },
+      {
+        key: "reconcileBasisSnapshotId",
+        label: "Basis snapshot",
+        value: basis.snapshotId,
+      },
+      {
+        key: "reconcileOutcome",
+        label: "Outcome",
+        value: "write-effect-accepted",
+      },
+      {
+        key: "reconcileAttestation",
+        label: "Inspection attestation",
+        value: attestation,
+      },
+    ],
+  };
+  const inputFingerprint = await sha256Fingerprint({
+    baseSnapshot: head,
+    inputEvidenceRefs: [],
+    proposal: { summary: proposal.summary, parameters: proposal.parameters },
+  });
+  base.decisions = [{
+    id: decisionId,
+    phaseId: "verification",
+    title: "Reconcile uncertain writer",
+    question: "What exact effect did the provider persist?",
+    status: "approved",
+    requestedAt: "2026-08-01T10:00:03.000Z",
+    proposal,
+    baseSnapshot: head,
+    inputFingerprint,
+    inputEvidenceRefs: [],
+    approvalIds: ["approval-mrtr-1"],
+  }];
+  base.approvals = [{
+    id: "approval-mrtr-1",
+    decisionId,
+    status: "approved",
+    requestedAt: "2026-08-01T10:00:03.000Z",
+    decidedAt: "2026-08-01T10:00:04.000Z",
+    decidedBy: "reviewer-1",
+    decidedByOrigin: "human",
+    rationale: "Provider history inspected.",
+    baseSnapshot: head,
+    inputFingerprint,
+    inputEvidenceRefs: [],
+  }];
+  verifyPhase.requiredDecisionIds = [decisionId];
 
   // Add a human-owned reconciliation work item to the same phase.
   const reconcileItem = {
@@ -1652,17 +1731,20 @@ async function reconcileAnnotationProject(
     kind: "review" as const,
     status: "ready" as const,
     owner: "human" as const,
+    operation: {
+      id: "record.reconcile-uncertain-writer",
+      version: "1",
+      bindings: [],
+    },
     dependsOnWorkItemIds: [] as string[],
     evidenceRefs: [] as typeof verifyItem.evidenceRefs,
-    decisionIds: [] as string[],
+    decisionIds: [decisionId],
     blockerIds: [] as string[],
   };
   verifyPhase.workItemIds = [...verifyPhase.workItemIds, reconcileItem.id];
   base.workItems.push(reconcileItem);
 
   // Wire up the two agent runs.
-  const eligibleCode = failureCode ??
-    "model-write-architecture-provider-outcome-unknown";
   base.agentRuns = [
     {
       id: "run:uncertain-write-failed",
@@ -1675,6 +1757,8 @@ async function reconcileAnnotationProject(
       completedAt: "2026-08-01T10:00:02.000Z",
       claimedAt: "2026-08-01T10:00:01.000Z",
       claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
+      baseSnapshot: head,
+      inputFingerprint,
       evidenceRefs: [],
       failure: {
         code: eligibleCode,
@@ -1688,6 +1772,8 @@ async function reconcileAnnotationProject(
       status: "queued",
       summary: "Pending human reconciliation.",
       queuedAt: "2026-08-01T10:00:03.000Z",
+      baseSnapshot: head,
+      inputFingerprint,
       evidenceRefs: [],
     },
   ];
@@ -1696,62 +1782,26 @@ async function reconcileAnnotationProject(
 }
 
 Deno.test(
-  "reconcileAnnotationRun write-effect-accepted creates a structurally valid blocker cross-reference",
+  "reconcileAnnotationRun rejects a legacy V1 ceremony without an exact V3 basis",
   async () => {
-    // This test would have caught the BLOQUANT: the domain was placing the
-    // reconciliation RUN ID in workItemIds instead of the failed WORK ITEM ID,
-    // so validateEngineeringProjectSnapshot always rejected the snapshot.
     const project = await reconcileAnnotationProject();
     const store = new MemoryRevisionStore(project);
     const service = serviceFor(store);
 
-    const result = await service.reconcileAnnotationRun(HUMAN, {
+    const command = {
       ...context("reconcile-write-effect-accepted", project.revision),
       reconciliationRunId: "run:reconcile-annotation",
       failedRunId: "run:uncertain-write-failed",
-      reconciliation: {
-        kind: "uncertain-writer-resolved",
-        outcome: "write-effect-accepted",
-        reconciledAt: "2026-08-01T10:00:10.000Z",
-        reconciledBy: { id: HUMAN.actorId, origin: HUMAN.kind },
-        decisionId: "decision-mrtr-1",
-        providerInspectionAttestation:
-          "Inspected the SysON history: the element was written successfully.",
-      },
-      openBlocker: {
-        id: "blocker:uncertain-write-accepted:run:reconcile-annotation",
-        title: "Uncertain provider write accepted — review before re-run",
-        description:
-          "Run run:uncertain-write-failed was reconciled with write-effect-accepted.",
-      },
-    });
-
-    // The blocker must reference the FAILED WORK ITEM, not the reconciliation run.
-    const blocker = result.blockers.find((b) =>
-      b.id === "blocker:uncertain-write-accepted:run:reconcile-annotation"
-    )!;
-    assert(blocker, "blocker must be present");
-    assertEquals(blocker.workItemIds, ["verify-current-mechanical-design"]);
-    assertEquals(blocker.phaseId, "verification");
-
-    // Bidirectional cross-reference: the failed work item must know the blocker.
-    const failedItem = findWorkItem(result, "verify-current-mechanical-design");
-    assert(
-      failedItem.blockerIds.includes(
-        "blocker:uncertain-write-accepted:run:reconcile-annotation",
-      ),
-      "failed work item must have the blocker id in its blockerIds",
+      decisionId: "decision-mrtr-1",
+      outcome: "write-effect-accepted",
+      providerInspectionAttestation:
+        "Inspected the SysON history: the element was written successfully.",
+    } as const;
+    await assertCommandError(
+      () => service.reconcileAnnotationRun(HUMAN, command),
+      "invalid_transition",
     );
-
-    // The reconciliation run must be completed as annotation-only.
-    const reconcileRun = result.agentRuns.find((r) =>
-      r.id === "run:reconcile-annotation"
-    )!;
-    assertEquals(reconcileRun.status, "completed");
-    assertEquals(reconcileRun.annotationOnly, true);
-
-    // The snapshot must survive full validation — this is what the BLOQUANT broke.
-    validateEngineeringProjectSnapshot(result);
+    assertEquals((await store.get(project.project.id))?.revision, project.revision);
   },
 );
 
@@ -1776,17 +1826,47 @@ Deno.test(
           ...context("reconcile-ineligible-code", project.revision),
           reconciliationRunId: "run:reconcile-annotation",
           failedRunId: "run:uncertain-write-failed",
-          reconciliation: {
-            kind: "uncertain-writer-resolved",
-            outcome: "provider-did-not-write",
-            reconciledAt: "2026-08-01T10:00:10.000Z",
-            reconciledBy: { id: HUMAN.actorId, origin: HUMAN.kind },
-            decisionId: "decision-mrtr-2",
-            providerInspectionAttestation:
-              "Confirmed: the provider did not write anything.",
-          },
+          decisionId: "decision-mrtr-1",
+          outcome: "provider-did-not-write",
+          providerInspectionAttestation:
+            "Confirmed: the provider did not write anything.",
         }),
       "invalid_transition",
     );
+  },
+);
+
+Deno.test(
+  "reconcileAnnotationRun rejects a homonymous decision on a non-canonical work item without mutation",
+  async () => {
+    const base = structuredClone(await reconcileAnnotationProject()) as Mutable<
+      EngineeringProjectSnapshot
+    >;
+    const workItem = base.workItems.find((item) =>
+      item.id === "reconcile-uncertain-writer"
+    )!;
+    workItem.operation = {
+      id: "model.write-architecture",
+      version: "1",
+      bindings: [],
+    };
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+
+    await assertCommandError(
+      () =>
+        service.reconcileAnnotationRun(HUMAN, {
+          ...context("reject-homonymous-reconciliation", project.revision),
+          reconciliationRunId: "run:reconcile-annotation",
+          failedRunId: "run:uncertain-write-failed",
+          decisionId: "decision-mrtr-1",
+          outcome: "write-effect-accepted",
+          providerInspectionAttestation:
+            "Inspected the SysON history: the element was written successfully.",
+        }),
+      "invalid_transition",
+    );
+    assertEquals((await store.get(project.project.id))?.revision, project.revision);
   },
 );

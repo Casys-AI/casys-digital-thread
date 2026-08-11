@@ -48,6 +48,23 @@ const CONTRACT_ARTIFACT_KINDS = [
   "other",
 ] as const satisfies readonly ThreadArtifactKind[];
 
+type ContractArtifactKind = (typeof CONTRACT_ARTIFACT_KINDS)[number];
+type MissingContractArtifactKinds = Exclude<
+  ThreadArtifactKind,
+  ContractArtifactKind
+>;
+type ExtraContractArtifactKinds = Exclude<
+  ContractArtifactKind,
+  ThreadArtifactKind
+>;
+
+// `satisfies` rejects invalid list values, but does not reject omissions from
+// a union. This assignment makes that parity bidirectional at type-check time.
+const _CONTRACT_ARTIFACT_KINDS_ARE_EXHAUSTIVE: [
+  MissingContractArtifactKinds,
+  ExtraContractArtifactKinds,
+] extends [never, never] ? true : never = true;
+
 // ---------------------------------------------------------------------------
 // Expected classification for each kind.
 //
@@ -57,7 +74,7 @@ const CONTRACT_ARTIFACT_KINDS = [
 // ---------------------------------------------------------------------------
 
 const EXPECTED_CLASSIFICATION: Record<
-  (typeof CONTRACT_ARTIFACT_KINDS)[number],
+  ContractArtifactKind,
   "supporting" | "essential"
 > = {
   // SysML model and geometry outputs are primary engineering deliverables.

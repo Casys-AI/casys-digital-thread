@@ -381,7 +381,7 @@ export class ModelWriteRequirementsRunExecutor {
         return alreadyCompleted;
       }
 
-      assertThreadWriteBasisAvailable(
+      await assertThreadWriteBasisAvailable(
         preClaim,
         requireRun(preClaim, command.runId),
       );

@@ -135,6 +135,31 @@ export class FileFeaStaticProofAttemptStore {
   ) {}
 
   /**
+   * Read-only recovery preflight. It never creates a WAL entry, so a staging
+   * failure cannot leave a false dispatched marker. An existing quarantine or
+   * dispatched-only attempt remains terminal.
+   */
+  async preflight(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly planDigest: string;
+  }): Promise<BeginResult | undefined> {
+    nonEmpty(input.projectId, "projectId");
+    nonEmpty(input.runId, "runId");
+    nonEmpty(input.planDigest, "planDigest");
+    if (await this.isQuarantined(input.projectId, input.runId)) {
+      throw new FeaStaticProofRunQuarantinedError();
+    }
+    let current: FeaStaticProofAttempt | undefined;
+    try {
+      current = await this.readRun(input.projectId, input.runId);
+    } catch {
+      throw new FeaStaticProofOutcomeUnknownError();
+    }
+    return current ? actionFor(current, input.planDigest) : undefined;
+  }
+
+  /**
    * Atomically reserve the sole CalculiX dispatch allowed for this run.
    *
    * Returns { action: "dispatch" } when the run may proceed. If a durable
@@ -203,6 +228,10 @@ export class FileFeaStaticProofAttemptStore {
     if (existing.status === "completed") {
       throw new FeaStaticProofIllegalTransitionError("completed", "solver-recorded");
     }
+    await assertSolverCaptureIntegrity(
+      input.canonicalSolverCaptureText,
+      input.solverCaptureFp,
+    );
     const recorded: FeaStaticProofAttempt = {
       schemaVersion: SCHEMA,
       projectId: existing.projectId,
@@ -353,7 +382,14 @@ export class FileFeaStaticProofAttemptStore {
     runId: string,
   ): Promise<FeaStaticProofAttempt | undefined> {
     try {
-      return parseAttempt(await Deno.readTextFile(path), projectId, runId);
+      const attempt = parseAttempt(await Deno.readTextFile(path), projectId, runId);
+      if (attempt.status !== "dispatched") {
+        await assertSolverCaptureIntegrity(
+          attempt.canonicalSolverCaptureText,
+          attempt.solverCaptureFp,
+        );
+      }
+      return attempt;
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return undefined;
       throw error;
@@ -660,6 +696,18 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function assertSolverCaptureIntegrity(
+  canonicalText: string,
+  expectedFingerprint: string,
+): Promise<void> {
+  const actual = await sha256Hex(canonicalText);
+  if (actual !== expectedFingerprint) {
+    throw new Error(
+      "FEA static-proof solverCaptureFp does not match canonicalSolverCaptureText SHA-256.",
+    );
+  }
 }
 
 function nonEmpty(value: string, label: string): string {

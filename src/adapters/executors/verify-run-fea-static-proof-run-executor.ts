@@ -494,6 +494,160 @@ function buildVerdictCapture(options: {
   return capture;
 }
 
+/**
+ * Re-read the immutable verdict selected by a completed WAL entry.  A completed
+ * WAL is evidence that the oracle result was already captured, not permission to
+ * call the oracle (or observe a possibly changed container image) again.
+ */
+export async function readCompletedVerdictCapture(
+  captures: FileCaptureStore<"fea-verdict">,
+  fingerprint: string,
+  expected: {
+    readonly trustedRunId: string;
+    readonly proofDigest: string;
+    readonly solverCaptureFp: string;
+    readonly policyVersion: string;
+    readonly exactSolverRequest: unknown;
+    readonly capturedAt: string;
+  },
+): Promise<FeaVerdictCapture> {
+  const contentFp: ContentFingerprint = { algorithm: "sha256", digest: fingerprint };
+  const text = await captures.read(contentFp);
+  if (text === undefined) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_missing: The completed WAL designates a verdict " +
+        "capture that is absent from CAS; replay is forbidden pending operator inspection.",
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_invalid: The completed WAL verdict is not valid JSON.",
+    );
+  }
+  if (
+    !parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+    deterministicJson(parsed) !== text
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_invalid: The completed WAL verdict is not canonical.",
+    );
+  }
+  const actual = (await sha256Fingerprint(parsed)).digest;
+  if (actual !== fingerprint) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_integrity_violation: The WAL fingerprint does not " +
+        "match the persisted verdict bytes.",
+    );
+  }
+  const verdict = parsed as FeaVerdictCapture;
+  if (
+    verdict.schemaVersion !== FEA_VERDICT_CAPTURE_SCHEMA ||
+    verdict.operation !==
+      `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}` ||
+    verdict.trustedRunId !== expected.trustedRunId ||
+    verdict.proofDigest !== expected.proofDigest ||
+    verdict.solverCaptureFp !== expected.solverCaptureFp ||
+    verdict.policyVersion !== expected.policyVersion ||
+    verdict.capturedAt !== expected.capturedAt ||
+    deterministicJson(verdict.exactSolverRequest) !==
+      deterministicJson(expected.exactSolverRequest) ||
+    !Array.isArray(verdict.oracleOutcomes)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_invalid: The completed WAL verdict does not bind " +
+        "this exact run, proof, solver capture, policy, and sealed request.",
+    );
+  }
+  if (
+    typeof verdict.capturedAt !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(verdict.capturedAt) ||
+    Number.isNaN(Date.parse(verdict.capturedAt))
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_invalid: The completed WAL verdict has no valid ISO capturedAt.",
+    );
+  }
+  return verdict;
+}
+
+function oracleResultsFromVerdict(
+  verdict: FeaVerdictCapture,
+  requirements: MechanicalProofCase["requirements"],
+): ReadonlyMap<string, ParsedOracleResult> {
+  if (verdict.oracleOutcomes.length !== requirements.length) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_invalid: The completed WAL verdict has an incomplete oracle outcome set.",
+    );
+  }
+  const outcomes = new Map<string, ParsedOracleResult>();
+  for (const requirement of requirements) {
+    const outcome = verdict.oracleOutcomes.find((item) =>
+      item.requirementId === requirement.id
+    );
+    if (!outcome || outcomes.has(requirement.id)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "fea_completed_verdict_capture_invalid: The completed WAL verdict does not name each proof requirement exactly once.",
+      );
+    }
+    if (outcome.status === "pass" || outcome.status === "fail") {
+      const { computedValue, threshold, margin } = outcome;
+      if (
+        outcome.unit !== requirement.limit.unit ||
+        typeof computedValue !== "number" || !Number.isFinite(computedValue) ||
+        typeof threshold !== "number" || !Number.isFinite(threshold) ||
+        typeof margin !== "number" || !Number.isFinite(margin)
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "fea_completed_verdict_capture_invalid: A numeric oracle outcome is malformed or has the wrong unit.",
+        );
+      }
+      if (threshold !== requirement.limit.value) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "fea_completed_verdict_capture_invalid: A numeric oracle threshold diverges from the sealed requirement.",
+        );
+      }
+      outcomes.set(requirement.id, {
+        status: outcome.status,
+        computedValue,
+        threshold,
+        margin,
+        marginPercent: 0,
+        unit: outcome.unit,
+      });
+    } else if (outcome.status === "error" || outcome.status === "unresolved") {
+      outcomes.set(requirement.id, { status: outcome.status });
+    } else {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "fea_completed_verdict_capture_invalid: The completed WAL verdict has an unknown oracle status.",
+      );
+    }
+  }
+  if (
+    new Set(verdict.oracleOutcomes.map((item) => item.requirementId)).size !==
+      requirements.length
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "fea_completed_verdict_capture_invalid: The completed WAL verdict has duplicate or foreign oracle outcomes.",
+    );
+  }
+  return outcomes;
+}
+
 // ── Command and dependency types ──────────────────────────────────────────────
 
 export interface VerifyRunFeaStaticProofRunExecutorCommand {
@@ -670,7 +824,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
       }
 
       // Step 5 — assertThreadWriteBasisAvailable.
-      assertThreadWriteBasisAvailable(
+      await assertThreadWriteBasisAvailable(
         preClaim,
         requireRun(preClaim, command.runId),
       );
@@ -862,54 +1016,12 @@ export class VerifyRunFeaStaticProofRunExecutor {
         );
       }
 
-      // Step 10 — fidélité oracle: verify SysON still reflects the proof requirements.
-      const oracleRequirements = proofCase.requirements.map(
-        projectProofRequirementToOracle,
-      );
-      try {
-        await extractAndVerifyOracleRequirements(
-          this.#syson,
-          proofCapture.seedIdentity.editingContextId,
-          proofCapture.requirementsElementId,
-          oracleRequirements,
-        );
-      } catch (error) {
-        if (error instanceof RequirementExtractionError) {
-          throw new EngineeringProjectCommandError(
-            "invalid_transition",
-            `Oracle requirements fidelity check failed (${error.code}): ` +
-              `${error.message} Recovery: ${error.recovery}`,
-          );
-        }
-        throw error;
-      }
-
-      // Step 11 — staging: copy STEP into the container. The staged name is
-      // derived exclusively from the sealed authority: the full content digest
-      // names the bytes and nothing else. No run- or command-derived component
-      // may reach a provider argument — even hashed, it would keep an
-      // agent-to-provider authority flow. Collisions are impossible by
-      // construction: an identical name implies identical bytes, and the
-      // stager is idempotent on a matching digest.
+      // Steps 10-11 are ordered after the read-only WAL preflight below. That
+      // lets recovery reject corrupt WAL evidence before any provider effect,
+      // while a fresh staging failure cannot poison the WAL as "dispatched".
       const containerFileName = `fea-${stepDigest}.step`;
       const stagedPath = `/exports/${containerFileName}`;
-      try {
-        await this.#stager.stage({
-          sourcePath: `${this.#canonicalAssetDirectory}/${stepDigest}.step`,
-          expectedDigest: stepDigest,
-          expectedBytes: stepBytes,
-          containerFileName,
-        });
-      } catch (error) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `STEP staging failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-
-      // Step 12 — policy asserted; planDigest computed; WAL begin.
+      // Step 12 — policy asserted; planDigest computed.
       try {
         assertProofWithinPolicy(proofCase, this.#policy);
         assertStepBytesWithinPolicy(stepBytes, this.#policy);
@@ -959,13 +1071,65 @@ export class VerifyRunFeaStaticProofRunExecutor {
         throw unexpectedStatus(run, "running");
       }
 
-      // WAL begin — dispatched state reserves the sole CalculiX dispatch.
-      const walResult = await this.#attempts.begin({
+      // Read-only WAL/quarantine preflight. A completed/solver-recorded replay
+      // performs no Docker staging and does not call begin again. For a fresh
+      // run, staging happens before begin; begin remains the unique atomic
+      // reservation immediately preceding the CalculiX dispatch.
+      let walResult = await this.#attempts.preflight({
         projectId: command.projectId,
         runId: command.runId,
         planDigest,
-        dispatchedAt: capturedAt,
       });
+
+      if (walResult?.action !== "completed") {
+        // Fidelity is required before a fresh oracle call, including
+        // solver-recorded recovery. A completed verdict is immutable evidence
+        // and does not contact SysON during replay.
+        const oracleRequirements = proofCase.requirements.map(
+          projectProofRequirementToOracle,
+        );
+        try {
+          await extractAndVerifyOracleRequirements(
+            this.#syson,
+            proofCapture.seedIdentity.editingContextId,
+            proofCapture.requirementsElementId,
+            oracleRequirements,
+          );
+        } catch (error) {
+          if (error instanceof RequirementExtractionError) {
+            throw new EngineeringProjectCommandError(
+              "invalid_transition",
+              `Oracle requirements fidelity check failed (${error.code}): ` +
+                `${error.message} Recovery: ${error.recovery}`,
+            );
+          }
+          throw error;
+        }
+      }
+
+      if (walResult === undefined) {
+        try {
+          await this.#stager.stage({
+            sourcePath: `${this.#canonicalAssetDirectory}/${stepDigest}.step`,
+            expectedDigest: stepDigest,
+            expectedBytes: stepBytes,
+            containerFileName,
+          });
+        } catch (error) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            `STEP staging failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        walResult = await this.#attempts.begin({
+          projectId: command.projectId,
+          runId: command.runId,
+          planDigest,
+          dispatchedAt: capturedAt,
+        });
+      }
 
       // From WAL begin, any error after CalculiX ACK → quarantine.
       let solverCaptureFp: string;
@@ -1062,60 +1226,81 @@ export class VerifyRunFeaStaticProofRunExecutor {
       // Re-parse envelope from WAL text to get typed result for oracle.
       const parsedEnvelope = parseFeaSolverCaptureEnvelope(canonicalSolverCaptureText);
 
-      // Step 16 — oracle: buildOracleValues + callFeaConstraintOracle.
-      const oracleValues = buildOracleValues(
-        parsedEnvelope.metrics,
-        proofCase.requirements,
-      );
-      const oracleResults = await callFeaConstraintOracle(
-        this.#syson,
-        proofCase.requirements,
-        oracleValues,
-      );
+      let oracleResults: ReadonlyMap<string, ParsedOracleResult>;
+      let verdictCaptureFp: string;
+      let verdictContentFp: ContentFingerprint;
+      let verdictCapturedAt: string;
+      if (walResult.action === "completed") {
+        // A completed WAL selects immutable evidence. Do not re-run the oracle,
+        // re-observe the image, or call complete() again: all three would make
+        // crash recovery depend on current state rather than recorded evidence.
+        const verdict = await readCompletedVerdictCapture(
+          this.#verdictCaptures,
+          walResult.verdictCaptureFp,
+          {
+            trustedRunId: command.runId,
+            proofDigest: proofCapture.proofDigest,
+            solverCaptureFp,
+            policyVersion: this.#policy.policyVersion,
+            exactSolverRequest,
+            capturedAt,
+          },
+        );
+        oracleResults = oracleResultsFromVerdict(verdict, proofCase.requirements);
+        verdictCaptureFp = walResult.verdictCaptureFp;
+        verdictContentFp = { algorithm: "sha256", digest: verdictCaptureFp };
+        verdictCapturedAt = verdict.capturedAt;
+      } else {
+        // Step 16 — oracle: buildOracleValues + callFeaConstraintOracle.
+        const oracleValues = buildOracleValues(
+          parsedEnvelope.metrics,
+          proofCase.requirements,
+        );
+        oracleResults = await callFeaConstraintOracle(
+          this.#syson,
+          proofCase.requirements,
+          oracleValues,
+        );
 
-      // Collect weak solver image observation.
-      let solverImage: FeaVerdictCapture["solverImage"];
-      if (this.#solverImageObserver) {
-        try {
-          solverImage = await this.#solverImageObserver();
-        } catch {
-          // Weak observation — swallow silently.
+        // Collect weak solver image observation.
+        let solverImage: FeaVerdictCapture["solverImage"];
+        if (this.#solverImageObserver) {
+          try {
+            solverImage = await this.#solverImageObserver();
+          } catch { /* weak observation */ }
         }
-      }
 
-      // Step 17 — verdict capture constructed → CAS write → readback → WAL completed.
-      const verdictCaptureRaw = buildVerdictCapture({
-        trustedRunId: command.runId,
-        capturedAt,
-        proofDigest: proofCapture.proofDigest,
-        solverCaptureFp,
-        oracleResults,
-        requirements: proofCase.requirements,
-        policyVersion: this.#policy.policyVersion,
-        exactSolverRequest,
-        solverImage,
-      });
-      const verdictFp = await sha256Fingerprint(verdictCaptureRaw);
-      const verdictCaptureText = deterministicJson(verdictCaptureRaw);
-      const verdictContentFp: ContentFingerprint = {
-        algorithm: "sha256",
-        digest: verdictFp.digest,
-      };
-      await this.#verdictCaptures.save(verdictContentFp, verdictCaptureText);
-      const readBackVerdict = await this.#verdictCaptures.read(verdictContentFp);
-      if (readBackVerdict !== verdictCaptureText) {
-        throw new Error("FEA verdict capture was not durably readable after save.");
+        // Step 17 — verdict capture constructed → CAS write → readback → WAL completed.
+        const verdictCaptureRaw = buildVerdictCapture({
+          trustedRunId: command.runId,
+          capturedAt,
+          proofDigest: proofCapture.proofDigest,
+          solverCaptureFp,
+          oracleResults,
+          requirements: proofCase.requirements,
+          policyVersion: this.#policy.policyVersion,
+          exactSolverRequest,
+          solverImage,
+        });
+        const verdictFp = await sha256Fingerprint(verdictCaptureRaw);
+        const verdictCaptureText = deterministicJson(verdictCaptureRaw);
+        verdictCaptureFp = verdictFp.digest;
+        verdictContentFp = { algorithm: "sha256", digest: verdictCaptureFp };
+        await this.#verdictCaptures.save(verdictContentFp, verdictCaptureText);
+        const readBackVerdict = await this.#verdictCaptures.read(verdictContentFp);
+        if (readBackVerdict !== verdictCaptureText) {
+          throw new Error("FEA verdict capture was not durably readable after save.");
+        }
+        await this.#attempts.complete({
+          projectId: command.projectId,
+          runId: command.runId,
+          planDigest,
+          verdictCaptureFp,
+        });
+        verdictCapturedAt = capturedAt;
       }
-
-      await this.#attempts.complete({
-        projectId: command.projectId,
-        runId: command.runId,
-        planDigest,
-        verdictCaptureFp: verdictFp.digest,
-      });
 
       // Step 18 — extension: artifacts, observations, evaluations, violations, consumptions.
-      const verdictCaptureFp = verdictFp.digest;
       const verdictArtifactUri =
         `${FEA_VERDICT_ARTIFACT_URI_ROOT}${proofCapture.proofDigest}/sha256/${verdictCaptureFp}`;
       const solverArtifactUri =
@@ -1123,7 +1308,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
 
       const freshness: ThreadFreshness = {
         status: "fresh",
-        changedAt: capturedAt,
+        changedAt: verdictCapturedAt,
         invalidatedByChangeIds: [],
       };
       const calculixOp: ThreadOperationRef = {
@@ -1183,7 +1368,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
           source: {
             operation: calculixOp,
             artifactIds: [solverResultArtifactId],
-            capturedAt,
+            capturedAt: verdictCapturedAt,
           },
           freshness,
         };
@@ -1222,7 +1407,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
         proofCase.requirements,
         {
           verdictCaptureFp,
-          evaluatedAt: capturedAt,
+          evaluatedAt: verdictCapturedAt,
           evidenceArtifactId: verdictArtifactId,
           observationIds,
           threadRequirementIds,
@@ -1239,7 +1424,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
           evaluationId: ev.id,
           severity: "error" as const,
           status: "open" as const,
-          detectedAt: capturedAt,
+          detectedAt: verdictCapturedAt,
           observationIds: ev.observationIds,
           evidenceArtifactIds: [verdictArtifactId, solverResultArtifactId],
           summary: ev.message,

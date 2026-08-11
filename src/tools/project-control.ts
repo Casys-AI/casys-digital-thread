@@ -1,6 +1,12 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import { assertProposalMatchesOperationGrammar } from "../orchestration/operations/proposal-validation.ts";
+import {
+  assertUncertainWriterBasisReleaseDecisionSeal,
+  assertUncertainWriterBasisReleaseProposal,
+  isUncertainWriterBasisReleaseDecision,
+  uncertainWriterBasisReleaseBaseSnapshot,
+} from "../domain/project/uncertain-writer-basis-release.ts";
 import { getRegisteredEngineeringOperation } from "../orchestration/operations/registry.ts";
 import type { RegisteredProjectRunExecutor } from "../adapters/registered-project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
@@ -450,17 +456,31 @@ export function registerProjectControlTools(
      * read back.
      */
     assertProposalMatchesOperationGrammar(
-      current.workItems.find((item) => item.decisionIds.includes(decisionId))
-        ?.operation,
+      current.workItems
+        .filter((item) => item.decisionIds.includes(decisionId))
+        .flatMap((item) => item.operation ? [item.operation] : []),
       proposal.parameters,
     );
+    const isBasisRelease = isUncertainWriterBasisReleaseDecision(
+      current,
+      decisionId,
+    );
+    if (isBasisRelease) {
+      assertUncertainWriterBasisReleaseProposal(
+        current,
+        decisionId,
+        proposal.parameters,
+      );
+    }
     const snapshot = await dependencies.commands.proposeDecision(
       agentOrigin(context),
       {
         ...common,
         decisionId,
         proposal,
-        baseSnapshot: declaredProjectHead(current),
+        baseSnapshot: isBasisRelease
+          ? uncertainWriterBasisReleaseBaseSnapshot(current, decisionId)
+          : declaredProjectHead(current),
       },
     );
     return projectResult(
@@ -1533,6 +1553,9 @@ async function handleDecisionElicitation(
     decisionId,
     inputFingerprint,
   );
+  if (isUncertainWriterBasisReleaseDecision(current, decisionId)) {
+    await assertUncertainWriterBasisReleaseDecisionSeal(current, decisionId);
+  }
   const confirmation = decisionConfirmationResponse(context);
   if (confirmation === undefined) {
     return decisionConfirmationRequest(current, decisionId, action, rationale);
@@ -1947,11 +1970,7 @@ function decisionConfirmationRequest(
   const decision = snapshot.decisions.find((candidate) => candidate.id === decisionId)!;
   const proposal = decision.proposal!;
   const disposition = action === "approve" ? "approve" : "reject";
-  const parameters = proposal.parameters.map((parameter) =>
-    `${parameter.label}: ${String(parameter.value)}${
-      parameter.unit ? ` ${parameter.unit}` : ""
-    }`
-  ).join("; ");
+  const parameters = deterministicJson(proposal.parameters);
   /**
    * WHY THE EVIDENCE REFS ARE SPELLED OUT — the approval cryptographically
    * seals the server-stamped inputEvidenceRefs, and executors (e.g.
@@ -1977,9 +1996,7 @@ function decisionConfirmationRequest(
         params: {
           mode: "form",
           message:
-            `The agent proposes to ${disposition} “${decision.title}”. Proposal: ${proposal.summary}${
-              parameters ? `. Parameters: ${parameters}` : ""
-            }${
+            `The agent proposes to ${disposition} “${decision.title}”. Proposal: ${proposal.summary}. Exact parameters: ${parameters}${
               evidenceRefs ? `. Exact evidence targets: ${evidenceRefs}` : ""
             }. Recorded rationale: ${rationale}. Confirm this exact ${disposition} action, or decline and continue the conversation.`,
           requestedSchema: {

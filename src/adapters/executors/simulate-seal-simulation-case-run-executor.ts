@@ -347,7 +347,7 @@ export class SimulateSealSimulationCaseRunExecutor {
       if (alreadyCompleted) return alreadyCompleted;
 
       // Step 9 — pre-claim guards inside the lease.
-      assertThreadWriteBasisAvailable(
+      await assertThreadWriteBasisAvailable(
         preClaim,
         requireRun(preClaim, command.runId),
       );

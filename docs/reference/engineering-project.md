@@ -508,7 +508,12 @@ elicitation, so the operation becomes executable by nobody and whatever state it
 to unlock stays locked. That is not hypothetical: it stranded two projects on a
 quarantined provider write until the marker was added.
 
-`record.reconcile-uncertain-writer@1` is the only human-only operation today.
+`record.reconcile-uncertain-writer@1` is the only human-only operation today. Its
+annotation is not authority by itself: the basis guard re-hashes the exact MRTR and
+requires its matching human approval for either outcome. When the outcome is
+`write-effect-accepted`, the server creates a separate required decision linked to the
+blocker. Only that decision's exact eleven-field proposal and later human approval can
+release the basis; incomplete legacy snapshots remain blocked.
 
 ### Failed-work reconciliation
 

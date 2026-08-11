@@ -46,7 +46,6 @@ const PROJECT_ID = "project:fea-state-machine-test";
 const RUN_ID = "run:fea-sm-001";
 const PLAN_DIGEST = "a".repeat(64);
 const DISPATCHED_AT = "2026-08-10T12:00:00.000Z";
-const SOLVER_FP = "b".repeat(64);
 const VERDICT_FP = "c".repeat(64);
 // Canonical solver text must be non-empty; content is opaque to the WAL.
 const SOLVER_TEXT = JSON.stringify({
@@ -54,6 +53,14 @@ const SOLVER_TEXT = JSON.stringify({
   trustedRunId: RUN_ID,
   test: true,
 });
+const SOLVER_FP = await sha256Text(SOLVER_TEXT);
+
+async function sha256Text(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 // ── Temp directory helper ─────────────────────────────────────────────────────
 
