@@ -30,18 +30,18 @@ facts, symbols, local dependencies, diagnostics|
         |                 v                     |
         |    BFF -> Graphology MultiDirectedGraph (read only)
         |                                      |
-        +--> authority-admission/1.0 [not yet wired]
-             assertion hash + reviewed decision + basis
+        +--> human MRTR + qualified method
+             exact decision, approval and thread basis
                          |
                          v
-             resolved-operation-plan/1.0 [not yet wired]
-             inspectable causal inputs + versioned lowering
+             resolved-operation-plan/2.0
+             one server-owned action, sealed when the run is queued
                          |
                          v
-             server-fixed executor -> private provider MCP
+             server-fixed executor -> private MCP tools + identity-bound resources/read
                          |
                          v
-             captured receipt, observations and thread lineage
+             CAS capture, recovery and thread lineage
 ```
 
 ## Contracts and ownership
@@ -72,25 +72,24 @@ fingerprint.
 fingerprint to an exact operation, basis and reviewed decision input. An analysis
 result, AST node or MCP tool annotation never authorizes execution by itself.
 
-`resolved-operation-plan/1.0` is the inspectable output of the server-owned resolver. It
-records captured sources, analyses, admissions, causal dispatch inputs, provider
-contract versions and a versioned lowering. It contains semantic arguments, not a
-provider wire envelope. Transport credentials, service endpoints and filesystem paths
-are absent by construction of the code-owned resolver, not by guessing from JSON field
-names. The adapter named by `lowering` produces the envelope immediately before the
-backend call; the execution receipt captures what was actually sent and observed. An
-analysis reference binds both the exact `sourceRefId` and its fingerprint, so two
-semantically distinct PartDefinitions may share source bytes without becoming
-interchangeable.
+`resolved-operation-plan/2.0` is the recorded-analysis contract. The server creates it
+while queueing one registered run, stores it by content address and keeps only its exact
+reference on that run. It binds the immutable project queue basis, one work item and
+operation fingerprint, the signed human MRTR decision and approval, the qualified
+method, one exact thread-snapshot basis, source artefacts, a fixed provider
+contract/lowering and one recovery policy. It has exactly one action arm: it is not a
+workflow language and there is no generic `execute-plan` tool.
 
-That paragraph describes the contract's intended ownership, not an activated runtime
-path. Version 1.0 is not yet sufficient to sit between queueing and execution: it does
-not durably bind a plan to one queued run and its MRTR decision, and it cannot fully
-describe conditional WAL recovery or bind a provider output value into a later dispatch
-argument. It also requires a provider dispatch, whereas documentary baseline and
-geometry sealing deliberately have none. Activation therefore requires a successor
-contract, a content-addressed plan store, a run-to-plan reference and code-owned
-operation-specific lowerings. There must not be a second generic `execute-plan` tool.
+The agent may author the reviewed artefact and select an already registered operation,
+but cannot provide a provider name, tool, envelope, endpoint, path, recovery transition
+or plan JSON. The executor rereads the plan and all its bound artefacts before the lease
+or provider boundary. Transport credentials and endpoints stay out of the plan. The
+code-owned adapter lowers the semantic action immediately before dispatch; the executor
+captures the exact provider resources that were actually observed.
+
+`resolved-operation-plan/1.0` remains readable as an earlier design contract. It is not
+the queue-to-execution authority for recorded analysis. Existing `@1` operations remain
+unchanged; `@2` is a successor vertical, not a reinterpretation of old captures.
 
 ## Authority rules
 
@@ -235,19 +234,24 @@ reviewed declaration
   -> measured local response, when an experiment exists
 ```
 
-A `simulation-case/1.0` or `mechanical-proof-case/1.0` is a reviewed declaration, not a
-Modelica `.mo` file or CalculiX `.inp` deck. The current Modelica MCP can run a sealed
-kit/scenario and return run artifacts, but Digital Thread cannot read the kit's native
-source bytes through MCP. The current CalculiX MCP accepts a high-level static-solve
-request but does not return the lowered input deck, mesh, solver log or result file.
-Those absences prohibit source spans, static value-flow claims and native-source AST
-facts for both providers.
+A `simulation-case/1.0` or `mechanical-proof-case/1.0` remains a reviewed declaration,
+not a generic native-source AST. The recorded vertical crosses an exact, identity-bound
+MCP `resources/read` boundary and saves then rereads every acquired byte through local
+CAS.
 
-Provider evolution should add read-only, identity-bound artifact reads. Modelica needs
-the exact kit/scenario sources and the generated/consumed run sources; CalculiX needs a
-stable run id plus exact input deck, mesh, log and result artifacts. Each response must
-carry media type, byte count and independently verified SHA-256. A provider-returned AST
-or semantic manifest may supplement those bytes but must never replace them.
+For Modelica, the `@2` seal accepts only a provider-qualified kit manifest, captures its
+exact model, scenario and optional parameter-schema sources, and seals distinct case,
+method, source and qualification artefacts. The later `@2` run captures the resumable
+request, resolved parameters, model, scenario, script, diagnostics, evidence, `run.json`
+and, on success, result CSV. It publishes normalized observations only: no requirement,
+evaluation, violation, action or verdict is manufactured.
+
+For CalculiX, the `@2` run rereads the sealed proof and exact STEP before staging the
+private provider input. It captures the fixed nine-resource profile: STEP, request, Gmsh
+input/log, mesh, CalculiX deck/log/data and result. The proof, requirements and result
+remain distinct inputs to the separate SysON evaluation call and its exact
+request/structured-response capture. These bytes make runtime provenance inspectable;
+they do not claim that an agent-authored arbitrary `.inp` deck is accepted or parsed.
 
 ## Current authority boundary
 
@@ -276,16 +280,16 @@ component sensitivity from historical observation labels; such labels can neithe
 a relation nor establish authority.
 
 The CM-01 DFM and PrusaSlicer paths are likewise observational, not generic oracles.
-Their current WALs use a three-state
-`dispatched -> capture-recorded -> completed` lifecycle. Once dispatch may have happened,
-an unrecorded outcome is terminally unknown rather than eligible for blind redispatch;
-once the canonical capture is recorded, recovery reopens the same CAS bytes and never
-calls the provider again. Current printability and print-estimate captures bind the exact
-case digest, trusted run and dispatch basis. Only the persisted JSON capture is published
-as an artifact: STEP, STL and G-code digests remain attested fields because those binary
-bytes are not retained and reread by these executors. DFM conditions and slicer estimates
-become observations; they do not become requirements, evaluations or violations without
-a separately reviewed oracle contract.
+Their current WALs use a three-state `dispatched -> capture-recorded -> completed`
+lifecycle. Once dispatch may have happened, an unrecorded outcome is terminally unknown
+rather than eligible for blind redispatch; once the canonical capture is recorded,
+recovery reopens the same CAS bytes and never calls the provider again. Current
+printability and print-estimate captures bind the exact case digest, trusted run and
+dispatch basis. Only the persisted JSON capture is published as an artifact: STEP, STL
+and G-code digests remain attested fields because those binary bytes are not retained
+and reread by these executors. DFM conditions and slicer estimates become observations;
+they do not become requirements, evaluations or violations without a separately reviewed
+oracle contract.
 
 Already-published evidence is never repaired by editing an old snapshot or by teaching a
 projector a URI heuristic. When later code proves that a historical entity overstated
@@ -295,15 +299,26 @@ old revision remains readable; the new head omits the retired branch from the cu
 Workbench projection. Re-running a provider is a separate reviewed operation and cannot
 retroactively turn the old occurrence into exact evidence.
 
-`authority-admission/1.0` and `resolved-operation-plan/1.0` remain contracts, not an
-activated generic admission/resolution path. In particular, validating a plan is not
-proof that a registered resolver created it. Any future activation must use server-owned
-builders which re-read the exact decision and basis before dispatch, and must first
-close the run/decision/WAL limitations described above.
+The `@2` resolver is server-owned: validating a plan does not establish that an agent
+created it, and an opaque plan id is merely an inspection handle. Plan sealing, reading
+and execution use the same closed CAS-backed capability. The provider call stays behind
+the registered executor, including post-acknowledgement WAL recovery: a known request is
+read back, never blindly dispatched again. Once solver resources are captured, that
+provider phase is CAS-only. An operation with a separate evaluator records another WAL
+intent before its one allowed evaluation call; after the evaluation capture, its
+recovery is CAS-only. An unknown effect remains quarantined for human review.
 
-Future native-language frontends should follow the same port and storage sequence
-without sharing a universal AST. Modelica equations and CalculiX input dependencies
-remain blocked on exact provider-readable source bytes; case-level declarations and
-runtime receipts must not be mislabeled as those native facts. Any later facts can feed
-the existing canonical analysis graph only as qualified assertions with exact evidence;
-Graphology remains a read-only projection.
+Future native-language frontends should reuse this sequence without inventing a
+universal AST: reviewed declaration -> exact identity-bound bytes -> local analysis when
+the language contract supports it -> qualified method -> one-action plan -> captured
+runtime evidence. Arbitrary agent-authored Modelica source and native CalculiX input
+decks are deliberately deferred. Later facts may feed the analysis graph only as
+qualified assertions with exact evidence; Graphology remains a read-only projection.
+
+## Implementation status
+
+This reference follows the current code for the recorded-analysis `@2` vertical. It is
+not a claim that a real provider run or an MRTR approval has already been performed in
+the current environment. Until integration gates and the live test are completed,
+provider availability remains an explicit runtime capability rather than a documented
+success.

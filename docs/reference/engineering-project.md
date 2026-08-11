@@ -12,8 +12,9 @@ records but never owns, rewrites, or manufactures their evidence.
 
 Its trace is a control substrate, not merely an audit log: the paired agent can use
 proven impact to observe, evaluate, propose a bounded correction, and request a
-recomputation. The human reviews and authorizes consequential changes. This reference
-does not claim that the generic executor for that feedback loop exists yet.
+recomputation. The human reviews and authorizes consequential changes. The recorded
+Modelica and CalculiX `@2` executors are the current generic, bounded implementation of
+that route; they do not imply a generic workflow language or a live-run success.
 
 The current creation format is schema `3.0`: the project exists from the first intent
 and its living brief evolves inside that same immutable revision stream. Older snapshots
@@ -108,6 +109,9 @@ entry-point registry contains:
 | Sealed simulation-case artifact in basis; thread-entity binding required      | `simulate.run-modelica-scenario@1` |
 | Human-reviewed FEA proof case; exact geometry and requirements-tip in basis   | `verify.seal-proof-case@1`         |
 | Sealed proof-case and geometry artifacts in basis; thread-entity bindings     | `verify.run-fea-static-proof@1`    |
+| Human-reviewed simulation case, qualified Modelica kit required               | `simulate.seal-simulation-case@2`  |
+| Sealed case and qualified method-manifest, exact MRTR required                | `simulate.run-modelica-scenario@2` |
+| Sealed proof case and geometry, exact MRTR required                           | `verify.run-fea-static-proof@2`    |
 | Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`         |
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
@@ -124,7 +128,40 @@ blocker, concrete decision proposal, or completed/cancelled work exists. After t
 point it may append a bounded change, but cannot use either command to erase execution
 or review history.
 
-Ten generic operations have trusted executors in the current V3 idea/spec slice.
+The ten foundational `@1` operations have their existing trusted executors. The three
+recorded-analysis `@2` successors are additive: their planless Modelica seal qualifies
+and captures a provider kit; their Modelica and CalculiX runs require a server-sealed
+`resolved-operation-plan/2.0`. No `@1` capture, queue record or recovery route is
+reinterpreted by this addition.
+
+## Recorded-analysis `@2` authority
+
+When an agent queues either recorded run, the server reopens the exact basis and direct
+approved MRTR decision, derives one one-action plan, stores it in local CAS and attaches
+its exact reference to that run. The plan carries no provider endpoint, tool, raw
+arguments, path or agent-authored recovery graph. `project_agent_run_plan_get` is an
+inspection read; it does not execute a plan.
+
+`simulate.seal-simulation-case@2` is deliberately planless. It validates the reviewed
+case against a qualified Modelica manifest, acquires the manifest-declared model,
+scenario and optional schema by exact MCP resource identity, then seals the distinct
+case/method/source/qualification artefacts. `simulate.run-modelica-scenario@2` rereads
+them, journals before submission, captures every returned resource to CAS and publishes
+observations only. If the provider request is known it uses `request_get`; after the
+resource capture, recovery uses only local CAS.
+
+`verify.run-fea-static-proof@2` rereads the sealed proof and exact STEP before the
+private CalculiX staging boundary. It journals the solve, captures the fixed nine
+provider resources, and then journals a separate SysON constraint evaluation. The
+evaluation capture binds proof, requirements and result inputs; its Digital Thread
+artifact is evidence for the SysON outcome. Unlike Modelica, this qualified proof may
+publish evaluations, violations and proposed actions. Neither route accepts arbitrary
+agent-authored Modelica source or native CalculiX decks.
+
+The composition root is the reference for these `@2` routes. This document does not
+claim that a real provider call, an MRTR approval, or a live project has yet been run
+through them.
+
 `baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
 registered work item, the backend records the exact approved brief and reviewed plan as
 canonical JSON, fingerprints its bytes with SHA-256, stores them immutably, and cites

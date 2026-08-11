@@ -28,6 +28,9 @@ categories deliberately answer different questions.
   does not do.
 - [Add a result-viewer MCP App](how-to/add-mcp-app.md) scaffolds, builds, registers, and
   verifies a standard structured-result view without broadening its server grants.
+- [Add a recorded analysis engine](how-to/add-a-recorded-analysis-engine.md) gives the
+  short repeatable checklist for a qualified provider capability without giving agents a
+  raw provider or plan-authoring surface.
 
 ## Reference — look up exact contracts and locations
 
@@ -39,9 +42,9 @@ categories deliberately answer different questions.
   every local endpoint.
 - [Source analysis and authority pipeline](reference/analysis-authority-pipeline.md)
   separates native-language parsing, provider-neutral facts, human admission,
-  inspectable lowering and private provider dispatch; it also records the implemented
-  CAD and approved-brief verticals, the bounded production SysML vertical, and the exact
-  Modelica/CalculiX source-acquisition gaps.
+  inspectable lowering and private provider dispatch; it documents the recorded
+  `resolved-operation-plan/2.0` vertical for qualified Modelica and CalculiX evidence,
+  alongside the implemented CAD, approved-brief and bounded SysML verticals.
 - [Providers, analyses, evidence and oracles](reference/provider-analysis-oracle-taxonomy.md)
   distinguishes engines such as CalculiX, SPICE, PrusaSlicer and ERP connectors from
   analysis families, evidence normalization, DFM rules and versioned verdict authority.
