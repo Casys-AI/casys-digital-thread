@@ -167,6 +167,7 @@ async function planFor(
     throw new Error("Test fixture requires a thread-snapshot candidate.");
   }
   const sourceFingerprint = fingerprint("3");
+  const qualificationFingerprint = fingerprint("7");
   return {
     schemaVersion: "resolved-operation-plan/2.0",
     id: run.id,
@@ -194,9 +195,9 @@ async function planFor(
         approvalFingerprint: await sha256Fingerprint(mrtrApproval()),
       },
       methodQualification: {
-        id: "qualified-modelica-thermal",
+        id: "qualified-modelica-resumable",
         version: "2.1",
-        fingerprint: fingerprint("7"),
+        fingerprint: qualificationFingerprint,
       },
     },
     basis: {
@@ -207,19 +208,19 @@ async function planFor(
       fingerprint: fingerprint("8"),
     },
     sources: [{
-      bindingName: "modelSource",
-      role: "model-source",
+      bindingName: "simulationCase",
+      role: "simulation-case",
       threadRef: {
         snapshotId: basis.snapshotId,
         snapshotRevision: basis.revision,
         kind: "artifact",
-        id: "artifact.modelica",
+        id: "artifact.simulation-case",
       },
       artifact: {
-        fingerprint: sourceFingerprint,
-        byteCount: 10,
-        mediaType: "text/plain",
-        casUri: `casys://modelica-source/sha256/${sourceFingerprint.digest}`,
+        fingerprint: fingerprint("9"),
+        byteCount: 12,
+        mediaType: "application/json",
+        casUri: `casys://simulation-case-capture/sha256/${"9".repeat(64)}`,
       },
     }, {
       bindingName: "methodManifest",
@@ -237,19 +238,65 @@ async function planFor(
         casUri: `casys://modelica-provider-manifest/sha256/${"b".repeat(64)}`,
       },
     }, {
-      bindingName: "simulationCase",
-      role: "simulation-case",
+      bindingName: "qualificationAuthority",
+      role: "qualification-authority",
       threadRef: {
         snapshotId: basis.snapshotId,
         snapshotRevision: basis.revision,
         kind: "artifact",
-        id: "artifact.simulation-case",
+        id: "artifact.modelica-qualification-authority",
       },
       artifact: {
-        fingerprint: fingerprint("9"),
-        byteCount: 12,
+        fingerprint: qualificationFingerprint,
+        byteCount: 13,
         mediaType: "application/json",
-        casUri: `casys://simulation-case-capture/sha256/${"9".repeat(64)}`,
+        casUri:
+          `casys://modelica-qualification-authority/sha256/${qualificationFingerprint.digest}`,
+      },
+    }, {
+      bindingName: "modelSource",
+      role: "model-source",
+      threadRef: {
+        snapshotId: basis.snapshotId,
+        snapshotRevision: basis.revision,
+        kind: "artifact",
+        id: "artifact.modelica",
+      },
+      artifact: {
+        fingerprint: sourceFingerprint,
+        byteCount: 10,
+        mediaType: "text/x-modelica",
+        casUri: `casys://modelica-source/sha256/${sourceFingerprint.digest}`,
+      },
+    }, {
+      bindingName: "scenarioSource",
+      role: "scenario-source",
+      threadRef: {
+        snapshotId: basis.snapshotId,
+        snapshotRevision: basis.revision,
+        kind: "artifact",
+        id: "artifact.modelica-scenario",
+      },
+      artifact: {
+        fingerprint: fingerprint("c"),
+        byteCount: 14,
+        mediaType: "application/json",
+        casUri: `casys://modelica-scenario-source/sha256/${"c".repeat(64)}`,
+      },
+    }, {
+      bindingName: "parameterSchema",
+      role: "parameter-schema",
+      threadRef: {
+        snapshotId: basis.snapshotId,
+        snapshotRevision: basis.revision,
+        kind: "artifact",
+        id: "artifact.modelica-parameter-schema",
+      },
+      artifact: {
+        fingerprint: fingerprint("d"),
+        byteCount: 15,
+        mediaType: "application/json",
+        casUri: `casys://modelica-parameter-schema/sha256/${"d".repeat(64)}`,
       },
     }],
     action: {

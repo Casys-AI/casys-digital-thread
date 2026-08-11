@@ -46,7 +46,7 @@ function validPlan(): Record<string, unknown> {
         approvalFingerprint: fingerprint("5"),
       },
       methodQualification: {
-        id: "qualified-modelica-thermal",
+        id: "qualified-modelica-resumable",
         version: "2.1",
         fingerprint: fingerprint("6"),
       },
@@ -71,24 +71,24 @@ function validPlan(): Record<string, unknown> {
         artifact: {
           fingerprint: sourceFingerprint,
           byteCount: 123,
-          mediaType: "text/plain",
+          mediaType: "text/x-modelica",
           casUri: `casys://modelica-source/sha256/${sourceFingerprint.digest}`,
         },
       },
       {
-        bindingName: "auxiliaryModelSource",
-        role: "model-source",
+        bindingName: "scenarioSource",
+        role: "scenario-source",
         threadRef: {
           snapshotId: "thread.cm01",
           snapshotRevision: 12,
           kind: "artifact",
-          id: "artifact.modelica-auxiliary-source",
+          id: "artifact.modelica-scenario-source",
         },
         artifact: {
           fingerprint: fingerprint("8"),
           byteCount: 124,
-          mediaType: "text/plain",
-          casUri: `casys://modelica-auxiliary-source/sha256/${"8".repeat(64)}`,
+          mediaType: "application/json",
+          casUri: `casys://modelica-scenario-source/sha256/${"8".repeat(64)}`,
         },
       },
       {
@@ -121,6 +121,38 @@ function validPlan(): Record<string, unknown> {
           byteCount: 126,
           mediaType: "application/json",
           casUri: `casys://modelica-provider-manifest/sha256/${"b".repeat(64)}`,
+        },
+      },
+      {
+        bindingName: "qualificationAuthority",
+        role: "qualification-authority",
+        threadRef: {
+          snapshotId: "thread.cm01",
+          snapshotRevision: 12,
+          kind: "artifact",
+          id: "artifact.modelica-qualification-authority",
+        },
+        artifact: {
+          fingerprint: fingerprint("6"),
+          byteCount: 127,
+          mediaType: "application/json",
+          casUri: `casys://modelica-qualification/sha256/${"6".repeat(64)}`,
+        },
+      },
+      {
+        bindingName: "parameterSchema",
+        role: "parameter-schema",
+        threadRef: {
+          snapshotId: "thread.cm01",
+          snapshotRevision: 12,
+          kind: "artifact",
+          id: "artifact.modelica-parameter-schema",
+        },
+        artifact: {
+          fingerprint: fingerprint("a"),
+          byteCount: 128,
+          mediaType: "application/json",
+          casUri: `casys://modelica-parameter-schema/sha256/${"a".repeat(64)}`,
         },
       },
     ],
@@ -176,7 +208,13 @@ function validCalculixPlan(): Record<string, unknown> {
     id: "verify.run-fea-static-proof",
     version: "2",
   };
-  (plan.sources as Record<string, unknown>[]).push({
+  (plan.authorization as Record<string, Record<string, unknown>>)
+    .methodQualification = {
+      id: "qualified-static-structural-proof-case",
+      version: "1.0",
+      fingerprint: fingerprint("c"),
+    };
+  plan.sources = [{
     bindingName: "proofCase",
     role: "proof-case",
     threadRef: {
@@ -192,7 +230,7 @@ function validCalculixPlan(): Record<string, unknown> {
       casUri: `casys://fea-proof-case-capture/sha256/${"c".repeat(64)}`,
     },
   }, {
-    bindingName: "geometryStep",
+    bindingName: "geometry",
     role: "geometry-source",
     threadRef: {
       snapshotId: "thread.cm01",
@@ -206,7 +244,7 @@ function validCalculixPlan(): Record<string, unknown> {
       mediaType: "model/step",
       casUri: `casys://geometry-step/sha256/${"d".repeat(64)}`,
     },
-  });
+  }];
   plan.action = {
     kind: "static-structural-analysis",
     provider: {
@@ -224,7 +262,7 @@ function validCalculixPlan(): Record<string, unknown> {
         fingerprint: fingerprint("c"),
         sourceBinding: "proofCase",
       },
-      geometrySourceBinding: "geometryStep",
+      geometrySourceBinding: "geometry",
       effectiveElementOrder: 2,
       effectiveTimeoutMs: 60_000,
     },
@@ -250,9 +288,11 @@ function validCalculixPlan(): Record<string, unknown> {
 Deno.test("ResolvedOperationPlan 2.0 canonicalizes unordered evidence and freezes the closed Modelica action", async () => {
   const plan = validateResolvedOperationPlanV2(validPlan());
   assertEquals(plan.sources.map((source) => source.bindingName), [
-    "auxiliaryModelSource",
     "methodManifest",
     "modelSource",
+    "parameterSchema",
+    "qualificationAuthority",
+    "scenarioSource",
     "simulationCase",
   ]);
   assertEquals(plan.expectedProviderResources.resourceProfile, {
@@ -300,9 +340,13 @@ Deno.test("ResolvedOperationPlan 2.0 binds every authority and effective executi
     (plan) =>
       ((plan.action as Record<string, unknown>).input as Record<string, unknown>)
         .effectiveTimeoutMs = 31_000,
-    (plan) =>
+    (plan) => {
       (plan.expectedProviderResources as Record<string, unknown>).parameterSchema =
-        "absent",
+        "absent";
+      plan.sources = (plan.sources as Record<string, unknown>[]).filter((source) =>
+        source.bindingName !== "parameterSchema"
+      );
+    },
   ];
   for (const mutate of variants) {
     const variant = validPlan();
@@ -320,6 +364,7 @@ Deno.test("ResolvedOperationPlan 2.0 admits only code-owned provider, lowering, 
     { role: "script", mediaType: "text/plain" },
     { role: "diagnostics", mediaType: "text/plain" },
     { role: "evidence", mediaType: "application/json" },
+    { role: "run.json", mediaType: "application/json" },
   ]);
   assertEquals(MODELICA_RESUMABLE_RESOURCE_PROFILE.whenParameterSchemaRequired, {
     role: "parameter_schema",
@@ -394,6 +439,8 @@ Deno.test("ResolvedOperationPlan 2.0 admits only code-owned provider, lowering, 
     (plan) =>
       (plan.recovery as Record<string, unknown>).policy =
         "mcp-modelica.resumable-recovery@2.1",
+    (plan) => (((plan.authorization as Record<string, unknown>)
+      .methodQualification as Record<string, unknown>).fingerprint = fingerprint("e")),
   ];
   for (const mutate of calculixMutations) {
     const plan = validCalculixPlan();
@@ -435,11 +482,13 @@ Deno.test("ResolvedOperationPlan 2.0 rejects DAG vocabulary, noncanonical media,
   );
 
   const duplicateModelSourceRole = validPlan();
-  assertEquals(
-    validateResolvedOperationPlanV2(duplicateModelSourceRole).sources.filter((source) =>
-      source.role === "model-source"
-    ).length,
-    2,
+  (duplicateModelSourceRole.sources as Record<string, unknown>[]).find((source) =>
+    source.bindingName === "scenarioSource"
+  )!.role = "model-source";
+  assertThrows(
+    () => validateResolvedOperationPlanV2(duplicateModelSourceRole),
+    TypeError,
+    "must name a scenario-source source",
   );
 
   const emptySources = validPlan();
@@ -549,7 +598,7 @@ Deno.test("ResolvedOperationPlan 2.0 keeps Modelica case and method manifest on 
   assertThrows(
     () => validateResolvedOperationPlanV2(sameThreadRef),
     TypeError,
-    "distinct threadRef artifacts",
+    "thread artifact ids must not contain duplicates",
   );
 
   const sameArtifact = validPlan();
@@ -564,7 +613,7 @@ Deno.test("ResolvedOperationPlan 2.0 keeps Modelica case and method manifest on 
   assertThrows(
     () => validateResolvedOperationPlanV2(sameArtifact),
     TypeError,
-    "distinct artifact bytes",
+    "CAS URIs must not contain duplicates",
   );
 });
 
@@ -584,13 +633,13 @@ Deno.test("ResolvedOperationPlan 2.0 keeps CalculiX proof case and geometry on d
     source.bindingName === "proofCase"
   )!.threadRef as Record<string, unknown>;
   const geometryThreadRef = sameThreadSources.find((source) =>
-    source.bindingName === "geometryStep"
+    source.bindingName === "geometry"
   )!.threadRef as Record<string, unknown>;
   geometryThreadRef.id = proofThreadRef.id;
   assertThrows(
     () => validateResolvedOperationPlanV2(sameThreadRef),
     TypeError,
-    "distinct threadRef artifacts",
+    "thread artifact ids must not contain duplicates",
   );
 
   const sameArtifactBytes = validCalculixPlan();
@@ -599,7 +648,7 @@ Deno.test("ResolvedOperationPlan 2.0 keeps CalculiX proof case and geometry on d
     source.bindingName === "proofCase"
   )!.artifact as Record<string, unknown>;
   const geometryArtifact = sameArtifactSources.find((source) =>
-    source.bindingName === "geometryStep"
+    source.bindingName === "geometry"
   )!.artifact as Record<string, unknown>;
   geometryArtifact.fingerprint = structuredClone(proofArtifact.fingerprint);
   geometryArtifact.casUri = `casys://geometry-step/sha256/${"c".repeat(64)}`;

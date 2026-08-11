@@ -40,6 +40,10 @@ export const MODELICA_RESUMABLE_RESOURCE_PROFILE = deepFreeze(
       { role: "script", mediaType: "text/plain" },
       { role: "diagnostics", mediaType: "text/plain" },
       { role: "evidence", mediaType: "application/json" },
+      // The resumable 2.1 provider seals run.json separately from the
+      // artifact array.  It is nevertheless exact provider evidence and must
+      // cross the same resources/read -> CAS boundary as every other item.
+      { role: "run.json", mediaType: "application/json" },
     ],
     whenParameterSchemaRequired: {
       role: "parameter_schema",
@@ -296,6 +300,14 @@ export function validateResolvedOperationPlanV2(
     sources.map((source) => source.bindingName),
     "$plan.sources bindingNames",
   );
+  rejectDuplicates(
+    sources.map((source) => source.threadRef.id),
+    "$plan.sources thread artifact ids",
+  );
+  rejectDuplicates(
+    sources.map((source) => source.artifact.casUri),
+    "$plan.sources CAS URIs",
+  );
   for (const source of sources) {
     if (
       source.threadRef.snapshotId !== basis.snapshotId ||
@@ -319,6 +331,8 @@ export function validateResolvedOperationPlanV2(
   }
   assertProviderEvidenceMatchesAction(
     action,
+    authorization,
+    sources,
     expectedProviderResources,
     recovery,
     "$plan",
@@ -1007,6 +1021,8 @@ function assertDistinctSourceEvidence(
 
 function assertProviderEvidenceMatchesAction(
   action: ResolvedOperationPlanV2["action"],
+  authorization: ResolvedOperationPlanV2["authorization"],
+  sources: readonly ResolvedOperationPlanSource[],
   expected: ResolvedOperationPlanExpectedResources,
   recovery: ResolvedOperationPlanRecovery,
   path: string,
@@ -1014,10 +1030,47 @@ function assertProviderEvidenceMatchesAction(
   if (action.kind === "dynamic-system-simulation") {
     if (
       expected.resourceProfile.id !== MODELICA_RESUMABLE_RESOURCE_PROFILE.id ||
+      !("parameterSchema" in expected) ||
       recovery.policy !== "mcp-modelica.resumable-recovery@2.1"
     ) {
       throw new TypeError(
         `${path} Modelica action requires its exact resource and recovery profiles.`,
+      );
+    }
+    if (
+      authorization.methodQualification.id !== "qualified-modelica-resumable" ||
+      authorization.methodQualification.version !== "2.1"
+    ) {
+      throw new TypeError(
+        `${path} Modelica action requires the qualified-modelica-resumable@2.1 method.`,
+      );
+    }
+    const required: Array<readonly [string, string, string]> = [
+      ["simulationCase", "simulation-case", "application/json"],
+      ["methodManifest", "provider-manifest", "application/json"],
+      ["qualificationAuthority", "qualification-authority", "application/json"],
+      ["modelSource", "model-source", "text/x-modelica"],
+      ["scenarioSource", "scenario-source", "application/json"],
+    ];
+    if (expected.parameterSchema === "required") {
+      required.push([
+        "parameterSchema",
+        "parameter-schema",
+        "application/json",
+      ]);
+    }
+    assertClosedSourceProfile(sources, required, `${path}.sources`);
+    const qualification = sources.find((source) =>
+      source.bindingName === "qualificationAuthority"
+    )!;
+    if (
+      !fingerprintsEqual(
+        qualification.artifact.fingerprint,
+        authorization.methodQualification.fingerprint,
+      )
+    ) {
+      throw new TypeError(
+        `${path}.authorization.methodQualification.fingerprint must equal the exact qualification authority artifact.`,
       );
     }
     return;
@@ -1028,6 +1081,58 @@ function assertProviderEvidenceMatchesAction(
   ) {
     throw new TypeError(
       `${path} CalculiX action requires its exact resource and recovery profiles.`,
+    );
+  }
+  if (
+    authorization.methodQualification.id !==
+      "qualified-static-structural-proof-case" ||
+    authorization.methodQualification.version !== "1.0"
+  ) {
+    throw new TypeError(
+      `${path} CalculiX action requires the qualified-static-structural-proof-case@1.0 method.`,
+    );
+  }
+  assertClosedSourceProfile(
+    sources,
+    [
+      ["proofCase", "proof-case", "application/json"],
+      ["geometry", "geometry-source", "model/step"],
+    ],
+    `${path}.sources`,
+  );
+  const proofCase = sources.find((source) => source.bindingName === "proofCase")!;
+  if (
+    !fingerprintsEqual(
+      proofCase.artifact.fingerprint,
+      authorization.methodQualification.fingerprint,
+    )
+  ) {
+    throw new TypeError(
+      `${path}.authorization.methodQualification.fingerprint must equal the exact proof-case authority artifact.`,
+    );
+  }
+}
+
+function assertClosedSourceProfile(
+  sources: readonly ResolvedOperationPlanSource[],
+  expected: readonly (readonly [string, string, string])[],
+  path: string,
+): void {
+  if (sources.length !== expected.length) {
+    throw new TypeError(
+      `${path} must contain exactly the code-owned source profile for this action.`,
+    );
+  }
+  for (const [bindingName, role, mediaType] of expected) {
+    const source = sources.find((candidate) => candidate.bindingName === bindingName);
+    if (!source) {
+      throw new TypeError(`${path} is missing binding ${bindingName}.`);
+    }
+    assertSourceRoleAndMedia(
+      source,
+      role,
+      mediaType,
+      `${path}.${bindingName}`,
     );
   }
 }
