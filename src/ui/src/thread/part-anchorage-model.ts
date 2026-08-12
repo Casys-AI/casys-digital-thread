@@ -10,7 +10,7 @@ import type {
  *
  * The literal "assembly" denotes the whole-assembly component (the catalog
  * component with kind === "assembly"). Any other string is the catalog id of a
- * specific part component (e.g., "cm01-v3:drip-tray").
+ * specific part component (for example, "robot:articulated-arm").
  */
 export type PartTarget = "assembly" | string;
 
@@ -91,30 +91,14 @@ const HEX64 = "[0-9a-f]{64}";
  * Consumers import `anchorFamilyByPrefix` to classify node ids without
  * re-declaring the prefix strings.
  *
- * Family → engineering-step reading (historical station mapping, kept for
- * reference):
- *   architecture | oracle-requirements | sensitivity-edges |
- *   sensitivity-relations  →  model
- *   cad                    →  geometry
- *   mechanical | sensitivity-study | drip-tray-correction |
- *   run-queue-mechanical   →  verification
- *   printability           →  observations
- *   erpnext-bom | print-estimate  →  industrialization
+ * Family → engineering-step reading:
+ *   architecture | requirements → model
+ *   cad → geometry
+ *   fea-proof | fea-solver-result | fea-verdict → verification
  */
 export type AnchorFamily =
   | "architecture"
-  | "oracle-requirements"
-  | "sensitivity-edges"
-  | "sensitivity-relations"
-  | "erpnext-bom"
   | "cad"
-  | "mechanical"
-  | "sensitivity-study"
-  | "printability"
-  | "print-estimate"
-  | "drip-tray-correction"
-  | "run-queue-mechanical"
-  // Generic multi-project families (no product-specific names)
   | "requirements"
   | "fea-proof"
   | "fea-solver-result"
@@ -129,21 +113,8 @@ type PrefixResult = {
    * becoming whole-assembly evidence merely because its id has that prefix.
    */
   expectedArtifactKind?: string;
-  /** Generic forms are fallbacks: a sealed component lineage is more specific. */
-  fallback?: true;
 } | null;
 type PrefixMatcher = (id: string) => PrefixResult;
-
-/**
- * Return a matcher that fires when `id` starts with `prefix`.
- */
-function sp(
-  prefix: string,
-  target: PartTarget,
-  family: AnchorFamily,
-): PrefixMatcher {
-  return (id) => (id.startsWith(prefix) ? { target, family } : null);
-}
 
 /**
  * Return a matcher for an id of the form `{base}{HEX64}{suffix-start}`.
@@ -163,191 +134,52 @@ function re(
 /**
  * Explicit server-fixed prefix table.
  *
- * Assembly-level entries appear first; drip-tray-specific entries follow.
- * More-specific patterns (versioned) precede their generic base patterns so
- * that -r2- and -r3- variants are not swallowed by the plain-digest pattern.
+ * Entries are constrained to active generic operation contracts. An archived
+ * golden-path naming scheme is intentionally not a UI fallback: old evidence
+ * must supply its own exact component catalog.
  */
 const PREFIX_TABLE: readonly PrefixMatcher[] = [
-  // (b-1) Architecture SysML model artifact
-  //       coffee-machine-cm01-v3-architecture-run-executor.ts:651
-  sp("coffee-machine-cm01-v3-architecture-", "assembly", "architecture"),
-
-  // (b-2) Oracle requirements SysML artifact
-  //       coffee-machine-cm01-v3-oracle-requirements-run-executor.ts:920
-  sp("oracle-requirements-", "assembly", "oracle-requirements"),
-
-  // (b-3) Oracle requirements capture document (extensionId)
-  //       coffee-machine-cm01-v3-oracle-requirements-run-executor.ts:988
-  sp("capture-oracle-requirements-", "assembly", "oracle-requirements"),
-
-  // (b-4) Sensitivity edges SysML artifact
-  //       coffee-machine-cm01-v3-sensitivity-edges-run-executor.ts:827
-  sp("sensitivity-edges-", "assembly", "sensitivity-edges"),
-
-  // (b-5) Sensitivity relations SysML artifact
-  //       coffee-machine-cm01-v3-sensitivity-relations-run-executor.ts:805
-  sp("sensitivity-relations-", "assembly", "sensitivity-relations"),
-
-  // (b-6) ERP BOM artifacts (erpnext-bom-quantity-*, erpnext-bom-components-*)
-  //       coffee-machine-cm01-v3-erpnext-bom-run-executor.ts:504
-  sp("erpnext-bom-", "assembly", "erpnext-bom"),
-
-  // (b-7) CAD R2 whole-assembly artifacts (plan, script, step)
-  //       coffee-machine-cm01-v3-r2-successor-materializer.ts:52
-  re(
-    new RegExp(`^coffee-machine-cm01-v3-cad-r2-${HEX64}-`),
-    () => ({ target: "assembly", family: "cad" }),
-  ),
-
-  // (b-8) CAD R3/R4 artifacts — cad-r3-run-executor.ts:513
-  //       plan, script, step, mesh-assembly → assembly
-  //       mesh-{semanticKey} → cm01-v3:{semanticKey} (per-part mesh)
-  re(
-    new RegExp(`^coffee-machine-cm01-v3-cad-r3-${HEX64}-(.+)$`),
-    (m) => {
-      const suffix = m[1]!;
-      if (
-        suffix === "plan" || suffix === "script" || suffix === "step" ||
-        suffix === "mesh-assembly"
-      ) {
-        return { target: "assembly", family: "cad" };
-      }
-      if (suffix.startsWith("mesh-")) {
-        // "mesh-drip-tray" → "cm01-v3:drip-tray"
-        return {
-          target: `cm01-v3:${suffix.slice("mesh-".length)}`,
-          family: "cad",
-        };
-      }
-      // Other suffixes (consumptions etc.) may be caught by later criteria.
-      return null;
-    },
-  ),
-
-  // (b-9) CAD R1 whole-assembly artifacts (plan, script, step)
-  //       coffee-machine-cm01-v3-cad-run-executor.ts:476
-  //       Pattern: coffee-machine-cm01-v3-cad-{64hex}-{...}
-  //       The regex uses HEX64 immediately after "cad-" to avoid matching
-  //       "cad-r2-" or "cad-r3-" which start with the letter 'r' (not hex).
-  re(
-    new RegExp(`^coffee-machine-cm01-v3-cad-${HEX64}-`),
-    () => ({ target: "assembly", family: "cad" }),
-  ),
-
-  // (b-10) Mechanical R3 DripTray artifacts (proof, isolated-step, solve, …)
-  //        coffee-machine-cm01-v3-r3-successor-materializer.ts:102
-  re(
-    new RegExp(`^coffee-machine-cm01-v3-mechanical-r3-${HEX64}-`),
-    () => ({ target: "cm01-v3:drip-tray", family: "mechanical" }),
-  ),
-
-  // (b-11) Mechanical R2 DripTray artifacts (proof, isolated-step, solve, …)
-  //        coffee-machine-cm01-v3-r2-successor-materializer.ts:214
-  re(
-    new RegExp(`^coffee-machine-cm01-v3-mechanical-r2-${HEX64}-`),
-    () => ({ target: "cm01-v3:drip-tray", family: "mechanical" }),
-  ),
-
-  // (b-12) Mechanical R1 DripTray artifacts (proof, step, solve, observations)
-  //        coffee-machine-cm01-v3-mechanical-run-executor.ts:549
-  //        HEX64 guard prevents matching -r2- and -r3- variants.
-  re(
-    new RegExp(`^coffee-machine-cm01-v3-mechanical-${HEX64}-`),
-    () => ({ target: "cm01-v3:drip-tray", family: "mechanical" }),
-  ),
-
-  // (b-13) DripTray sensitivity study (capture, STEPs, solves, observations)
-  //        coffee-machine-cm01-v3-sensitivity-run-executor.ts:571
-  sp("drip-tray-sensitivity-", "cm01-v3:drip-tray", "sensitivity-study"),
-
-  // (b-14) DripTray printability DFM (step, capture, observations)
-  //        coffee-machine-cm01-v3-printability-run-executor.ts:570
-  sp("drip-tray-printability-", "cm01-v3:drip-tray", "printability"),
-
-  // (b-15) DripTray print estimate (STL, gcode, observations)
-  //        coffee-machine-cm01-v3-print-estimate-run-executor.ts:588
-  sp("drip-tray-print-estimate-", "cm01-v3:drip-tray", "print-estimate"),
-
-  // (b-16) DripTray height-correction action and run-queue artifacts
-  //        src/domain/cm01/cm01-drip-tray-height-correction.ts:38,143
-  sp(
-    "coffee-machine-cm01-v3-drip-tray-height-",
-    "cm01-v3:drip-tray",
-    "drip-tray-correction",
-  ),
-
-  // (b-17) Mechanical R2 re-verification run-queue artifact
-  //        src/domain/cm01/cm01-v3-r11-closeout.ts:19
-  sp(
-    "run:cm01-v3-r7-r10-28-to-30-queue-mechanical-r2:",
-    "cm01-v3:drip-tray",
-    "run-queue-mechanical",
-  ),
-
-  // (b-18) Printability run artifacts — id ends with :drip-tray-printability
-  //        coffee-machine-cm01-v3-printability-run-executor.ts:495
-  re(
-    /:drip-tray-printability$/,
-    () => ({ target: "cm01-v3:drip-tray", family: "printability" }),
-  ),
-
-  // -------------------------------------------------------------------------
-  // Generic multi-project entries (b-19 … b-24)
-  //
-  // These patterns apply to any project, not only CM-01.  They are placed
-  // AFTER all CM-01 specific entries so that more-specific product prefixes
-  // always win.  No collision exists: CM-01 ids start with
-  // "coffee-machine-cm01-v3-…", "oracle-requirements-…", etc. — all
-  // structurally distinct from the generic "architecture-", "geometry-",
-  // "fea-…", and "requirements-" prefixes below.
-  // -------------------------------------------------------------------------
-
-  // (b-19) Generic architecture SysML artifact — id: architecture-{HEX64}
+  // (b-1) Generic architecture SysML artifact — id: architecture-{HEX64}
   //        model-write-architecture-run-executor.ts:1743
   re(new RegExp(`^architecture-${HEX64}$`), () => ({
     target: "assembly",
     family: "architecture",
     expectedArtifactKind: "sysml-model",
-    fallback: true,
   })),
 
-  // (b-20) Generic geometry bundle capture — id: geometry-{HEX64}
+  // (b-2) Generic geometry bundle capture — id: geometry-{HEX64}
   //        design-write-geometry-run-executor.ts:1525
   re(new RegExp(`^geometry-${HEX64}$`), () => ({
     target: "assembly",
     family: "cad",
     expectedArtifactKind: "cad-model",
-    fallback: true,
   })),
 
-  // (b-21) Generic FEA proof-case document — id: fea-proof-{HEX64}
+  // (b-3) Generic FEA proof-case document — id: fea-proof-{HEX64}
   //        verify-seal-proof-case-run-executor.ts:508
   re(new RegExp(`^fea-proof-${HEX64}$`), () => ({
     target: "assembly",
     family: "fea-proof",
     expectedArtifactKind: "document",
-    fallback: true,
   })),
 
-  // (b-22) Generic FEA solver result — id: fea-solver-result-{HEX64}
+  // (b-4) Generic FEA solver result — id: fea-solver-result-{HEX64}
   //        verify-run-fea-static-proof-run-executor.ts:1137
   re(new RegExp(`^fea-solver-result-${HEX64}$`), () => ({
     target: "assembly",
     family: "fea-solver-result",
     expectedArtifactKind: "solver-result",
-    fallback: true,
   })),
 
-  // (b-23) Generic FEA verdict document — id: fea-verdict-{HEX64}
+  // (b-5) Generic FEA verdict document — id: fea-verdict-{HEX64}
   //        verify-run-fea-static-proof-run-executor.ts:1138
   re(new RegExp(`^fea-verdict-${HEX64}$`), () => ({
     target: "assembly",
     family: "fea-verdict",
     expectedArtifactKind: "document",
-    fallback: true,
   })),
 
-  // (b-24) Generic requirements artifact
+  // (b-6) Generic requirements artifact
   //        id: requirements-{containerComponent}-{HEX64}
   //        model-write-requirements-run-executor.ts:1284
   //        The component segment varies per project, but the complete shape
@@ -356,7 +188,6 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
     target: "assembly",
     family: "requirements",
     expectedArtifactKind: "sysml-model",
-    fallback: true,
   })),
 ];
 
@@ -431,15 +262,11 @@ function buildCatalogCandidates(
 }
 
 /** Apply the prefix table against a node ref id — returns the PartTarget only. */
-function anchorByPrefix(
-  node: ThreadGraphNode,
-  includeFallback = true,
-): PartTarget | null {
+function anchorByPrefix(node: ThreadGraphNode): PartTarget | null {
   for (const matcher of PREFIX_TABLE) {
     const result = matcher(node.ref.id);
     if (
       result !== null &&
-      (includeFallback || result.fallback === undefined) &&
       (result.expectedArtifactKind === undefined ||
         (node.entityKind === "artifact" &&
           node.artifactKind === result.expectedArtifactKind))
@@ -467,10 +294,11 @@ export function anchorFamilyByPrefix(id: string): AnchorFamily | null {
 }
 
 /**
- * Criterion (c): machine-level nature.
+ * Criterion (b): assembly-level nature.
  *
  * Certain artifact kinds or producer systems are always whole-machine scope.
- * This criterion fires ONLY for artifact nodes not already resolved by (a)/(b).
+ * This criterion fires only for artifact nodes not already resolved by the
+ * exact component catalog.
  *
  * Named categories:
  *   "architecture" — sysml-model artifacts not caught by the explicit prefix
@@ -692,22 +520,18 @@ function propagateChangeConsumption(
  *     to its declared component. A shared `evidenceArtifactId` remains a
  *     capture fallback and is explicitly ambiguous across components.
  *
- * (b) Product-specific server-fixed prefix table — explicit CM-01 forms map
- *     well-known ids to component targets. Applies to all node kinds where
- *     those server-fixed ids are shared by derived facts.
- *
- * (c) Machine-level nature — certain artifact kinds or producer systems are
+ * (b) Assembly-level nature — certain artifact kinds or producer systems are
  *     always whole-machine scope (sysml-model, thermal, BOM, brief, seed).
  *     Applies to artifact nodes only.
  *
- * (d) Transitive `derived_from` propagation — iterative BFS through
+ * (c) Transitive `derived_from` propagation — iterative BFS through
  *     derived_from graph edges.  Assembly wins on conflict between parts.
  *
- * (e) Change / consumption / adjacent inheritance — change and consumption
+ * (d) Change / consumption / adjacent inheritance — change and consumption
  *     nodes inherit from their directly connected artifact; other non-artifact
  *     nodes inherit from any adjacent resolved node.  Iterates until stable.
  *
- * (f) Generic server-fixed artifact forms — complete id + artifact kind forms
+ * (e) Generic server-fixed artifact forms — complete id + artifact kind forms
  *     fill only gaps left by the more-specific catalog and lineage criteria.
  *
  * Only uniquely-resolved nodes appear in the returned map; use
@@ -742,20 +566,7 @@ export function buildPartAnchorageResolution(
     if (state) states.set(refKey(node), state);
   }
 
-  // (b) Product-specific server-fixed prefixes — all node kinds. Generic
-  // forms remain fallbacks so a component's sealed evidence lineage wins.
-  for (const node of [...graph.nodes].sort(compareNodes)) {
-    if (states.has(refKey(node))) continue;
-    const target = anchorByPrefix(node, false);
-    if (target !== null) {
-      states.set(refKey(node), {
-        kind: "unique",
-        anchor: { target, criterion: "prefix" },
-      });
-    }
-  }
-
-  // (c) Machine-level nature — artifact nodes only.
+  // (b) Assembly-level nature — artifact nodes only.
   for (const node of [...graph.nodes].sort(compareNodes)) {
     if (states.has(refKey(node))) continue;
     const target = anchorByNature(node);
@@ -767,13 +578,13 @@ export function buildPartAnchorageResolution(
     }
   }
 
-  // (d) Transitive derived_from propagation.
+  // (c) Transitive derived_from propagation.
   propagateDerivedFrom(graph, states);
 
-  // (e) Change / consumption / adjacent inheritance.
+  // (d) Change / consumption / adjacent inheritance.
   propagateChangeConsumption(graph, states);
 
-  // (f) Generic whole-assembly forms only fill gaps left by explicit catalog
+  // (e) Generic whole-assembly forms only fill gaps left by exact catalog
   // identity and provenance. Their complete shape and artifact kind are
   // checked by anchorByPrefix.
   for (const node of [...graph.nodes].sort(compareNodes)) {

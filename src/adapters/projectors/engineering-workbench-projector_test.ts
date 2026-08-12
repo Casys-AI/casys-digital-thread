@@ -8,7 +8,7 @@ import {
   LIVE_THREAD_OVERLAY_SCHEMA,
   type LiveThreadWorkbenchSnapshot,
 } from "../stores/live-thread-update-store.ts";
-import { COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE } from "../../ui/src/project/fixture.ts";
+import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "../../ui/src/project/fixture.ts";
 
 Deno.test("engineering Workbench composes project intent and observed proof without mutation", () => {
   const thread = threadFixture();
@@ -91,11 +91,11 @@ function projectFixture(
     revision,
     generatedAt: "2026-08-01T12:00:00.000Z",
     project: {
-      id: "project-cm01",
-      name: "Coffee Machine CM-01",
+      id: "project-generic",
+      name: "Generic Product GEN-01",
       subjectId,
       objective: {
-        title: "Build a verifiable coffee machine",
+        title: "Build a verifiable generic product",
         statement: "Connect project intent to observed technical proof.",
       },
     },
@@ -118,7 +118,7 @@ function planningProjectFixture(): EngineeringProjectSnapshot {
 
 function threadFixture(): LiveThreadWorkbenchSnapshot {
   return {
-    ...structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE.thread),
+    ...structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE.thread),
     live: { schemaVersion: LIVE_THREAD_OVERLAY_SCHEMA, version: 0, active: [] },
   };
 }

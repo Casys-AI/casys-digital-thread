@@ -1,11 +1,11 @@
 /**
  * Tests for verify-seal-proof-case-run-executor.ts (Op 1 of the FEA proof chain).
  *
- * WHY A FICTITIOUS NON-CM01 PROJECT — the executor is generic; "fea-seal-test"
- * proves that no project.id hardcoding leaks from the CM-01 path.
+ * WHY A FICTITIOUS PROJECT — the executor is generic; "fea-seal-test" proves
+ * that no product-specific project.id hardcoding leaks into the path.
  *
  * WHY STUB readTextFile — the catalog path
- * "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json" does not
+ * "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json" does not
  * need to exist on disk; tests supply an in-memory stub so the suite can run on any
  * checkout without a pre-existing file.
  *
@@ -15,10 +15,9 @@
  * having run first. The real file-backed FileCaptureStore is used only for
  * proofCaseCaptures (the executor writes there).
  *
- * WHY A STUB OPERATION REGISTRY — verify.seal-proof-case@1 is not yet in the
- * main registry (modifying registry.ts is out of scope for Op 1). The stub
- * accepts it as trusted + thread-snapshot basis. All other operations delegate
- * to the real registry.
+ * WHY AN EXPLICIT OPERATION REGISTRY — the fixture pins the trusted operation
+ * and thread-snapshot basis while delegating every other operation to the real
+ * registry.
  *
  * Coverage:
  *   1. Human-origin rejection — no I/O touched
@@ -96,6 +95,7 @@ const HUMAN: EngineeringProjectCommandOrigin = {
 /** Fictitious non-CM01 project id. */
 const PROJECT_ID = "fea-seal-test";
 const SUBJECT_ID = `project:${PROJECT_ID}`;
+const RETIRED_CM01_PROOF_CASE_ID = "coffee-machine-cm01-drip-tray-mechanical-v1";
 
 /** The model element ID that the proof case declares as its FEA target. */
 const TARGET_ELEMENT_ID = "drip-tray-element-test-001";
@@ -231,16 +231,18 @@ Deno.test(
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "verify-seal-proof-case executor rejects when the proof case ID is absent from the server-side catalog",
+  "verify-seal-proof-case executor rejects the retired CM-01 proof case before a source read",
   async () => {
     const directory = await Deno.makeTempDir({
       prefix: "casys-fea-seal-catalog-absent-",
     });
     try {
-      // Build a case whose ID is NOT in FEA_PROOF_CASE_SOURCES.
-      const unknownId = "unknown-case-not-in-catalog";
-      const unknownCase = makeTestCase("snap-001", unknownId, "snap-001");
-      const caseFp = await sha256Fingerprint(unknownCase);
+      const retiredCase = makeTestCase(
+        "snap-001",
+        RETIRED_CM01_PROOF_CASE_ID,
+        "snap-001",
+      );
+      const caseFp = await sha256Fingerprint(retiredCase);
       const proofDigest = caseFp.digest;
 
       const geomArtifact = makeGeomArtifact();
@@ -248,19 +250,20 @@ Deno.test(
 
       const params = encodeFeaProofDecisionParameters(
         proofDigest,
-        unknownCase,
+        retiredCase,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
       );
 
       const fixture = await queuedSealFixture(directory, {
-        proofCase: unknownCase,
+        proofCase: retiredCase,
         proofDigest,
         params: [...params],
         geomArtifact,
         reqArtifact,
       });
 
+      let sourceReads = 0;
       const executor = new VerifySealProofCaseRunExecutor({
         projects: fixture.projects,
         commands: fixture.commands,
@@ -274,10 +277,10 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: () =>
-          Promise.reject(
-            new Error("must not reach readTextFile for unknown case"),
-          ),
+        readTextFile: () => {
+          sourceReads += 1;
+          return Promise.reject(new Error("retired proof case must not be read"));
+        },
       });
 
       await assertRejects(
@@ -292,6 +295,7 @@ Deno.test(
         EngineeringProjectCommandError,
         "server-side catalog",
       );
+      assertEquals(sourceReads, 0, "A retired proof case must not reach its source.");
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -840,7 +844,7 @@ Deno.test(
         decisionId: "seal-decision",
         baseSnapshot: r2Ref,
         proposal: {
-          summary: "Seal the coffee-machine-cm01-drip-tray-mechanical-v1 proof case.",
+          summary: "Seal the desk-lamp-dl04-arm-cantilever proof case.",
           parameters: [...proposalParameters],
         },
       });
@@ -861,7 +865,7 @@ Deno.test(
         ...ctx("queue-seal", project.revision),
         runId,
         workItemId: "seal-item",
-        summary: "Seal the coffee-machine-cm01-drip-tray-mechanical-v1 proof case.",
+        summary: "Seal the desk-lamp-dl04-arm-cantilever proof case.",
         basis: { kind: "thread-snapshot" as const, ...r2Ref },
       });
 
@@ -1037,7 +1041,7 @@ Deno.test(
       // Build a proof case using cadSource.kind === "imported-or-reconstructed".
       const proofCase = validateMechanicalProofCase({
         schemaVersion: "mechanical-proof-case/1.0",
-        id: "coffee-machine-cm01-drip-tray-mechanical-v1",
+        id: "desk-lamp-dl04-arm-cantilever",
         revision: 1,
         scope: "structural-concept",
         evidenceBoundary: "demo",
@@ -1863,7 +1867,7 @@ function makeCanonicalAssetReader(): { read: () => Promise<Uint8Array> } {
 /**
  * Build a valid MechanicalProofCase for PROJECT_ID / SUBJECT_ID.
  *
- * The proof case uses "coffee-machine-cm01-drip-tray-mechanical-v1" as its id
+ * The proof case uses "desk-lamp-dl04-arm-cantilever" as its id
  * so it resolves in FEA_PROOF_CASE_SOURCES; tests that want an unknown id pass
  * one explicitly.
  *
@@ -1878,7 +1882,7 @@ function makeTestCase(
 ): ReturnType<typeof validateMechanicalProofCase> {
   return validateMechanicalProofCase({
     schemaVersion: "mechanical-proof-case/1.0",
-    id: overrideId ?? "coffee-machine-cm01-drip-tray-mechanical-v1",
+    id: overrideId ?? "desk-lamp-dl04-arm-cantilever",
     revision: 1,
     scope: "structural-concept",
     evidenceBoundary: "demo",

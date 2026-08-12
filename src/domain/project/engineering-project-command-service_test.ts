@@ -24,7 +24,7 @@ import {
 import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
 
 const CONFIG = new URL(
-  "../../../config/projects/coffee-machine-cm01.project.json",
+  "../../testing/generic-engineering-project.fixture.json",
   import.meta.url,
 );
 const HUMAN = { kind: "human" as const, actorId: "operator-7" };
@@ -39,7 +39,7 @@ Deno.test("a failed work item closes only through exact successor reconciliation
     .evidenceRefs;
   const successorRunSnapshot = project.threadSnapshots[0]!;
   const successorSnapshot = {
-    snapshotId: "coffee-machine-cm01:r6:reconciliation-closeout",
+    snapshotId: "generic-test-system:r6:reconciliation-closeout",
     revision: 6,
     subjectId: PROJECT_ID,
   };
@@ -179,7 +179,7 @@ Deno.test(
 );
 
 Deno.test(
-  "direct reconciliation rejects a declared but non-head successor run snapshot",
+  "direct reconciliation accepts a declared successor snapshot when the injected lineage validator proves it is a current-head ancestor",
   async () => {
     // Push a second snapshot onto the project so the original r5 is no longer
     // the head. assertDeclaredSnapshot must pass (r5 is declared), but the
@@ -187,9 +187,9 @@ Deno.test(
     const base = await reconciliableProject();
     const mutable = structuredClone(base) as Mutable<EngineeringProjectSnapshot>;
     (mutable.threadSnapshots as EngineeringThreadSnapshotRef[]).push({
-      snapshotId: "coffee-machine-cm01:r6:guard-test-head",
+      snapshotId: "generic-test-system:r6:guard-test-head",
       revision: 6,
-      subjectId: "coffee-machine-cm01",
+      subjectId: "generic-test-system",
     });
     const project = validateEngineeringProjectSnapshot(mutable);
     const store = new MemoryRevisionStore(project);
@@ -197,20 +197,131 @@ Deno.test(
     const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
       .evidenceRefs;
 
-    // r5 is at index [0]; r6 is at index [1] = at(-1). The guard checks at(-1).
+    // r5 is at index [0]; r6 is at index [1] = at(-1). The injected
+    // persistence validator is the authority that proves r6 descends from r5.
     const declaredButNotHead = project.threadSnapshots[0]!;
 
+    const reconciled = await service.reconcileWorkItemWithSuccessor(AGENT, {
+      ...context("ancestor-lineage-guard", project.revision),
+      failedWorkItemId: "verify-current-mechanical-design",
+      failedRunId: "run:mechanical-r2-failed",
+      successorRunId: "run:mechanical-r3-completed",
+      successorRunSnapshot: declaredButNotHead,
+      successorEvidenceRefs: evidence,
+      rationale: "The persisted current head descends from the completed successor.",
+    });
+    assertEquals(
+      findWorkItem(reconciled, "verify-current-mechanical-design").status,
+      "cancelled",
+    );
+  },
+);
+
+Deno.test(
+  "a human supersedes an evidence-free unstarted Modelica seal only through its approved @2 decision successor",
+  async () => {
+    const project = structuredClone(await unstartedModelicaSealProject()) as Mutable<
+      EngineeringProjectSnapshot
+    >;
+    delete (findDecision(project, "approve-modelica-case-v2") as {
+      supersedesDecisionId?: string;
+    }).supersedesDecisionId;
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const command = {
+      ...context("supersede-unstarted-modelica-v1", project.revision),
+      workItemId: "seal-modelica-case-v1",
+      predecessorDecisionId: "approve-modelica-case-v1",
+      successorWorkItemId: "seal-modelica-case-v2",
+      successorDecisionId: "approve-modelica-case-v2",
+      rationale:
+        "The legacy V1 seal was never queued; the exact V2 approval supersedes it.",
+    };
+
+    const superseded = await service.supersedeUnstartedWorkItem(HUMAN, command);
+    const work = findWorkItem(superseded, command.workItemId);
+    assertEquals(work.status, "cancelled");
+    assertEquals(work.evidenceRefs, []);
+    assertEquals(superseded.agentRuns, []);
+    assertEquals(work.reconciliation?.kind, "superseded-by-successor");
+    assertEquals(
+      work.reconciliation && "successorWorkItemId" in work.reconciliation
+        ? work.reconciliation.successorWorkItemId
+        : undefined,
+      command.successorWorkItemId,
+    );
+    assertEquals(
+      findDecision(superseded, command.predecessorDecisionId).status,
+      "superseded",
+    );
+    assertEquals(
+      findDecision(superseded, command.predecessorDecisionId)
+        .supersededByDecisionId,
+      command.successorDecisionId,
+    );
+    assertEquals(
+      superseded.approvals.find((approval) => approval.id === "approval-modelica-v1")
+        ?.status,
+      "revoked",
+    );
+    assertEquals(
+      superseded.commandReceipts?.at(-1)?.type,
+      "work-item.supersede-unstarted",
+    );
+    assertEquals(superseded.commandReceipts?.at(-1)?.actor.origin, "human");
+
+    // The unstarted closure is historical, not technical completion: even if
+    // another work item later completes, this evidence-free predecessor phase
+    // must not become a positive completed phase just because its decision is
+    // terminally superseded.
+    const terminal = structuredClone(superseded) as Mutable<EngineeringProjectSnapshot>;
+    const terminalSuccessor = findWorkItem(
+      terminal,
+      command.successorWorkItemId,
+    ) as Mutable<EngineeringProjectSnapshot>["workItems"][number];
+    terminalSuccessor.status = "completed";
+    terminalSuccessor.evidenceRefs = structuredClone(
+      findWorkItem(terminal, "build-current-cad").evidenceRefs,
+    ) as Mutable<EngineeringProjectSnapshot>["workItems"][number]["evidenceRefs"];
+    const terminalProject = validateEngineeringProjectSnapshot(terminal);
+    assertEquals(
+      deriveEngineeringPhaseStatus(terminalProject, "verification"),
+      "planned",
+    );
+
+    const replay = await service.supersedeUnstartedWorkItem(HUMAN, command);
+    assertEquals(replay.id, superseded.id);
+  },
+);
+
+Deno.test(
+  "unstarted Modelica seal supersession fails closed for an agent or non-@2 successor",
+  async () => {
+    const project = await unstartedModelicaSealProject();
+    const command = {
+      ...context("supersede-unstarted-forbidden", project.revision),
+      workItemId: "seal-modelica-case-v1",
+      predecessorDecisionId: "approve-modelica-case-v1",
+      successorWorkItemId: "seal-modelica-case-v2",
+      successorDecisionId: "approve-modelica-case-v2",
+      rationale: "Test the narrow transition boundary.",
+    };
     await assertCommandError(
       () =>
-        service.reconcileWorkItemWithSuccessor(AGENT, {
-          ...context("head-guard-declared-stale", project.revision),
-          failedWorkItemId: "verify-current-mechanical-design",
-          failedRunId: "run:mechanical-r2-failed",
-          successorRunId: "run:mechanical-r3-completed",
-          successorRunSnapshot: declaredButNotHead,
-          successorEvidenceRefs: evidence,
-          rationale: "Explicitly exercises the head-position guard.",
-        }),
+        new EngineeringProjectCommandService(new MemoryRevisionStore(project))
+          .supersedeUnstartedWorkItem(AGENT, command),
+      "permission_denied",
+    );
+
+    const invalid = structuredClone(project) as Mutable<EngineeringProjectSnapshot>;
+    (findWorkItem(invalid, command.successorWorkItemId).operation as {
+      version: string;
+    }).version = "3";
+    const invalidStore = new MemoryRevisionStore(
+      validateEngineeringProjectSnapshot(invalid),
+    );
+    await assertCommandError(
+      () => serviceFor(invalidStore).supersedeUnstartedWorkItem(HUMAN, command),
       "invalid_input",
     );
   },
@@ -1238,7 +1349,7 @@ Deno.test("completion refuses a result that does not advance the exact run base"
   assertEquals((await store.get(PROJECT_ID))?.revision, project.revision);
 });
 
-const PROJECT_ID = "coffee-machine-cm01";
+const PROJECT_ID = "generic-test-system";
 
 async function memoryStore(): Promise<MemoryRevisionStore> {
   return new MemoryRevisionStore(await projectFixture());
@@ -1277,6 +1388,15 @@ function serviceFor(
           successorSnapshot.revision !== successorRunSnapshot.revision + 1
         ) {
           return Promise.reject(new Error("invalid synthetic closeout snapshot"));
+        }
+        return Promise.resolve();
+      },
+      validateCurrentHeadDescendsFrom(currentHead, ancestor) {
+        if (
+          currentHead.subjectId !== ancestor.subjectId ||
+          currentHead.revision < ancestor.revision
+        ) {
+          return Promise.reject(new Error("invalid synthetic direct lineage"));
         }
         return Promise.resolve();
       },
@@ -1367,6 +1487,121 @@ async function reconciliableProject(): Promise<EngineeringProjectSnapshot> {
   return validateEngineeringProjectSnapshot(project);
 }
 
+async function unstartedModelicaSealProject(): Promise<EngineeringProjectSnapshot> {
+  const project = structuredClone(await projectFixture()) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const phase = project.phases.find((candidate) => candidate.id === "verification")!;
+  const predecessorWork = project.workItems.find((candidate) =>
+    candidate.id === "verify-current-mechanical-design"
+  )!;
+  predecessorWork.id = "seal-modelica-case-v1";
+  predecessorWork.title = "Seal Modelica simulation case V1";
+  predecessorWork.description = "Legacy unstarted simulation-case seal.";
+  predecessorWork.kind = "simulate";
+  predecessorWork.status = "waiting-for-decision";
+  predecessorWork.operation = {
+    id: "simulate.seal-simulation-case",
+    version: "1",
+    bindings: [],
+  };
+  predecessorWork.decisionIds = ["approve-modelica-case-v1"];
+  predecessorWork.evidenceRefs = [];
+  predecessorWork.blockerIds = [];
+  predecessorWork.dependsOnWorkItemIds = [];
+
+  const predecessorDecision = project.decisions.find((candidate) =>
+    candidate.id === "review-mechanical-proof-case"
+  )!;
+  predecessorDecision.id = "approve-modelica-case-v1";
+  predecessorDecision.phaseId = phase.id;
+  predecessorDecision.title = "Approve Modelica simulation case V1";
+  predecessorDecision.question = "Approve the legacy V1 Modelica simulation-case seal?";
+  predecessorDecision.status = "proposed";
+  predecessorDecision.baseSnapshot = structuredClone(project.threadSnapshots[0]!);
+  predecessorDecision.inputFingerprint = {
+    algorithm: "sha256",
+    digest: "1".repeat(64),
+  };
+  predecessorDecision.proposal = {
+    summary: "Seal the reviewed legacy Modelica case.",
+    parameters: [{ key: "sim.case.id", label: "Case", value: "legacy-v1" }],
+    proposedAt: "2026-08-01T10:00:00.000Z",
+    proposedBy: { id: AGENT.actorId, origin: AGENT.kind },
+  };
+  predecessorDecision.approvalIds = ["approval-modelica-v1"];
+
+  const successorWork = {
+    id: "seal-modelica-case-v2",
+    phaseId: phase.id,
+    title: "Seal Modelica simulation case V2",
+    description: "Approved qualified replacement simulation-case seal.",
+    kind: "simulate" as const,
+    operation: {
+      id: "simulate.seal-simulation-case",
+      version: "2",
+      bindings: [],
+    },
+    status: "ready" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: ["approve-modelica-case-v2"],
+    blockerIds: [],
+  };
+  const successorDecision = {
+    id: "approve-modelica-case-v2",
+    phaseId: phase.id,
+    title: "Approve Modelica simulation case V2",
+    question: "Approve the qualified V2 Modelica simulation-case seal?",
+    status: "approved" as const,
+    requestedAt: "2026-08-01T10:01:00.000Z",
+    baseSnapshot: structuredClone(project.threadSnapshots[0]!),
+    inputFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+    inputEvidenceRefs: [],
+    approvalIds: ["approval-modelica-v2"],
+    supersedesDecisionId: predecessorDecision.id,
+    proposal: {
+      summary: "Seal the reviewed qualified Modelica case.",
+      parameters: [{ key: "sim.case.id", label: "Case", value: "qualified-v2" }],
+      proposedAt: "2026-08-01T10:01:01.000Z",
+      proposedBy: { id: AGENT.actorId, origin: AGENT.kind },
+    },
+  };
+  project.workItems.push(successorWork);
+  phase.workItemIds = [predecessorWork.id, successorWork.id];
+  phase.requiredDecisionIds = [predecessorDecision.id, successorDecision.id];
+  phase.evidenceRefs = [];
+  project.decisions = [predecessorDecision, successorDecision];
+  project.approvals = [
+    {
+      id: "approval-modelica-v1",
+      decisionId: predecessorDecision.id,
+      status: "pending" as const,
+      requestedAt: "2026-08-01T10:00:01.000Z",
+      baseSnapshot: structuredClone(project.threadSnapshots[0]!),
+      inputFingerprint: structuredClone(predecessorDecision.inputFingerprint),
+      inputEvidenceRefs: structuredClone(predecessorDecision.inputEvidenceRefs),
+    },
+    {
+      id: "approval-modelica-v2",
+      decisionId: successorDecision.id,
+      status: "approved" as const,
+      requestedAt: "2026-08-01T10:01:02.000Z",
+      decidedAt: "2026-08-01T10:01:03.000Z",
+      decidedBy: HUMAN.actorId,
+      decidedByOrigin: HUMAN.kind,
+      rationale: "Approved qualified replacement.",
+      baseSnapshot: structuredClone(project.threadSnapshots[0]!),
+      inputFingerprint: structuredClone(successorDecision.inputFingerprint),
+      inputEvidenceRefs: [],
+    },
+  ];
+  project.agentRuns = [];
+  project.blockers = [];
+  return validateEngineeringProjectSnapshot(project);
+}
+
 function context(commandId: string, expectedRevision: number) {
   return {
     commandId,
@@ -1420,7 +1655,7 @@ async function approveAll(
 
 function completionCommand(project: EngineeringProjectSnapshot): CompleteRunCommand {
   const resultSnapshot = {
-    snapshotId: "coffee-machine-cm01:r6:verified-result",
+    snapshotId: "generic-test-system:r6:verified-result",
     revision: 6,
     subjectId: PROJECT_ID,
   };
@@ -1587,7 +1822,7 @@ Deno.test(
           successorRunId: "run:mechanical-r3-completed",
           successorRunSnapshot: project.threadSnapshots.at(-1)!,
           successorSnapshot: {
-            snapshotId: "coffee-machine-cm01:r6:reconciliation-closeout",
+            snapshotId: "generic-test-system:r6:reconciliation-closeout",
             revision: 6,
             subjectId: PROJECT_ID,
           },
@@ -1646,7 +1881,7 @@ Deno.test(
       successorRunId: "run:mechanical-r3-completed",
       successorRunSnapshot: project.threadSnapshots.at(-1)!,
       successorSnapshot: {
-        snapshotId: "coffee-machine-cm01:r6:reconciliation-closeout",
+        snapshotId: "generic-test-system:r6:reconciliation-closeout",
         revision: 6,
         subjectId: PROJECT_ID,
       },
@@ -1669,7 +1904,7 @@ Deno.test(
 /**
  * Builds a minimal valid V1 project with one failed run (eligible failure code)
  * and one queued reconciliation run, ready for uncertain-writer reconciliation.
- * Uses the coffee-machine V1 project as a base to avoid duplicating the full
+ * Uses the generic V1 project as a base to avoid duplicating the full
  * snapshot structure, then splices in the two runs needed for these tests.
  */
 async function reconcileAnnotationProject(

@@ -36,6 +36,10 @@ import {
 } from "../domain/project/uncertain-writer-basis-release.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
+
+type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+  : T;
 const APPROVAL_ID = "approval:airframe-material:proposal-1";
 const COMMON = {
   commandId: "chat-command-1",
@@ -1053,6 +1057,80 @@ Deno.test("project queued-run cancellation requires a verified human elicitation
   }
 });
 
+Deno.test("project unstarted supersession requires a verified human MRTR retry", async () => {
+  const snapshot = unstartedSupersessionSnapshot();
+  const app = new CapturingApp();
+  const calls: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    dependencies(snapshot, {
+      supersedeUnstartedWorkItem: (origin, command) => {
+        calls.push({ origin, command: command as unknown as Record<string, unknown> });
+        return Promise.resolve(snapshot);
+      },
+    }),
+  );
+  const args = {
+    ...COMMON,
+    workItemId: "seal-v1",
+    predecessorDecisionId: "seal-v1-decision",
+    successorWorkItemId: "seal-v2",
+    successorDecisionId: "seal-v2-decision",
+    rationale: "The V1 seal was never queued; V2 is the reviewed replacement.",
+  };
+  const supersede = app.handler("project_work_item_supersede_unstarted");
+  const first = await supersede(args, clientContext()) as Record<string, unknown>;
+  assertEquals(first.resultType, "input_required");
+  assertEquals(calls, []);
+  const request = (first.inputRequests as Record<string, unknown>)
+    .unstarted_work_item_supersession_confirmation as Record<string, unknown>;
+  assertEquals(request.method, "elicitation/create");
+  assertStringIncludes(
+    (request.params as Record<string, unknown>).message as string,
+    "no agent run, provider call, or ThreadSnapshot will be created",
+  );
+  await assertRejects(
+    async () => {
+      await supersede(args, {
+        ...clientContext(),
+        retryVerified: false,
+        inputResponses: {
+          unstarted_work_item_supersession_confirmation: {
+            action: "accept",
+            content: { confirmed: true },
+          },
+        },
+      });
+    },
+    TypeError,
+    "verified signed request state",
+  );
+  assertEquals(calls, []);
+  await supersede(args, {
+    ...clientContext(),
+    retryVerified: true,
+    inputResponses: {
+      unstarted_work_item_supersession_confirmation: {
+        action: "accept",
+        content: { confirmed: true },
+      },
+    },
+  });
+  assertEquals(calls, [{
+    origin: { kind: "human", actorId: "mcp-elicitation:paired-chat@1" },
+    command: args,
+  }]);
+  const schema = app.tool("project_work_item_supersede_unstarted")
+    .inputSchema as Record<
+      string,
+      unknown
+    >;
+  const serialized = JSON.stringify(schema);
+  for (const forbidden of ["provider", "toolName", "resultSnapshot", "evidenceRefs"]) {
+    assertEquals(serialized.includes(forbidden), false, `${forbidden} is server-owned`);
+  }
+});
+
 Deno.test("project review intent tools list and acknowledge exact pending intent without changing project truth", async () => {
   const directory = await Deno.makeTempDir({ prefix: "project-review-intent-mcp-" });
   const journal = new FileProjectReviewIntentStore(directory);
@@ -1974,6 +2052,97 @@ function projectSnapshot(
     blockers: [],
     commandReceipts: [],
   };
+}
+
+function unstartedSupersessionSnapshot(): EngineeringProjectSnapshot {
+  const snapshot = structuredClone(projectSnapshot()) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const predecessor = snapshot.workItems[0]!;
+  predecessor.id = "seal-v1";
+  predecessor.phaseId = "modelica";
+  predecessor.status = "waiting-for-decision";
+  predecessor.operation = {
+    id: "simulate.seal-simulation-case",
+    version: "1",
+    bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+  };
+  predecessor.decisionIds = ["seal-v1-decision"];
+  const successor: Mutable<EngineeringProjectSnapshot>["workItems"][number] = {
+    ...structuredClone(predecessor),
+    id: "seal-v2",
+    title: "Qualified Modelica seal V2",
+    status: "ready" as const,
+    operation: {
+      id: "simulate.seal-simulation-case",
+      version: "2",
+      bindings: [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+    },
+    decisionIds: ["seal-v2-decision"],
+  };
+  snapshot.workItems.push(successor);
+  snapshot.decisions = [
+    {
+      id: "seal-v1-decision",
+      phaseId: "modelica",
+      title: "Legacy seal V1",
+      question: "Approve the legacy seal?",
+      status: "proposed",
+      requestedAt: "2026-08-03T11:58:00.000Z",
+      inputFingerprint: FINGERPRINT,
+      inputEvidenceRefs: [],
+      approvalIds: ["seal-v1-approval"],
+      proposal: {
+        summary: "Legacy V1 seal.",
+        parameters: [{ key: "case", label: "Case", value: "v1" }],
+        proposedAt: "2026-08-03T11:58:00.000Z",
+        proposedBy: { id: "agent:paired-chat", origin: "agent" },
+      },
+    },
+    {
+      id: "seal-v2-decision",
+      phaseId: "modelica",
+      title: "Qualified seal V2",
+      question: "Approve the qualified seal?",
+      status: "approved",
+      requestedAt: "2026-08-03T11:58:00.000Z",
+      inputFingerprint: FINGERPRINT,
+      inputEvidenceRefs: [],
+      approvalIds: ["seal-v2-approval"],
+      proposal: {
+        summary: "Qualified V2 seal.",
+        parameters: [{ key: "case", label: "Case", value: "v2" }],
+        proposedAt: "2026-08-03T11:58:00.000Z",
+        proposedBy: { id: "agent:paired-chat", origin: "agent" },
+      },
+    },
+  ];
+  snapshot.approvals = [
+    {
+      id: "seal-v1-approval",
+      decisionId: "seal-v1-decision",
+      status: "pending",
+      requestedAt: "2026-08-03T11:58:00.000Z",
+      inputFingerprint: FINGERPRINT,
+      inputEvidenceRefs: [],
+    },
+    {
+      id: "seal-v2-approval",
+      decisionId: "seal-v2-decision",
+      status: "approved",
+      requestedAt: "2026-08-03T11:58:00.000Z",
+      decidedAt: "2026-08-03T11:59:00.000Z",
+      decidedBy: "operator",
+      decidedByOrigin: "human",
+      rationale: "Approved qualified replacement.",
+      inputFingerprint: FINGERPRINT,
+      inputEvidenceRefs: [],
+    },
+  ];
+  return snapshot;
 }
 
 const RELEASE_BASIS = {

@@ -7,10 +7,11 @@ import {
 import { loadAndCompileThreadWorkflow, loadThreadWorkflow } from "./loader.ts";
 import type { CompiledBinding } from "./types.ts";
 
-const COFFEE_WORKFLOW = "experiments/thread-workflow/coffee-machine-mechanical-v1.yaml";
+const GENERIC_WORKFLOW =
+  "experiments/thread-workflow/generic-static-mechanical-v1.yaml";
 
-Deno.test("coffee workflow compiles the canonical STEP to FEA to normalization to SysON data chain", async () => {
-  const workflow = await loadAndCompileThreadWorkflow(COFFEE_WORKFLOW);
+Deno.test("generic workflow compiles the canonical STEP to FEA to normalization to SysON data chain", async () => {
+  const workflow = await loadAndCompileThreadWorkflow(GENERIC_WORKFLOW);
 
   assertEquals(workflow.kind, "thread-workflow-dag");
   assertEquals(workflow.nodes.map((node) => node.id), [

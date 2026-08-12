@@ -140,21 +140,9 @@ Deno.test("a decision shared by distinct operations must satisfy every declared 
   );
 });
 
-Deno.test("simulation-case proposal validation routes @1 to V1 and seal @2 to the closed V2 grammar", async () => {
-  const v1 = validateSimulationCase(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
-      ),
-    ),
-  );
-  const v2 = validateSimulationCaseV2(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v2.json",
-      ),
-    ),
-  );
+Deno.test("simulation-case proposal validation routes @1 to V1 and seal @2 to the closed V2 grammar", () => {
+  const v1 = neutralSimulationCaseV1();
+  const v2 = neutralSimulationCaseV2();
   const v1Parameters = encodeSimulationCaseDecisionParameters("a".repeat(64), v1);
   const v2Parameters = encodeSimulationCaseV2DecisionParameters("b".repeat(64), v2);
   assertProposalMatchesOperationGrammar(
@@ -182,6 +170,68 @@ Deno.test("simulation-case proposal validation routes @1 to V1 and seal @2 to th
     ProposalGrammarError,
   );
 });
+
+function neutralSimulationCaseV1() {
+  return validateSimulationCase({
+    schemaVersion: "simulation-case/1.0",
+    id: "thermal-system-nominal-v1",
+    revision: 1,
+    scope: "Neutral thermal-system routing fixture.",
+    evidenceBoundary: "Proposal grammar only; no provider run is asserted.",
+    project: {
+      id: "thermal-system-project",
+      subjectId: "project:thermal-system",
+      baseThreadSnapshot: {
+        id: "project:thermal-system:r3",
+        revision: 3,
+        subjectId: "project:thermal-system",
+      },
+    },
+    kit: {
+      modelId: "thermal-system-model",
+      modelVersion: "1.0.0",
+      modelSha256: "c".repeat(64),
+    },
+    scenario: { id: "nominal-heating", sha256: "d".repeat(64) },
+    parameters: [{ id: "targetTemperature", value: 333.15, unit: "K" }],
+    expectedMetrics: [{ id: "peakTemperature", unit: "K" }],
+    parameterMode: "explicit-overrides",
+    timeoutMs: 15_000,
+  });
+}
+
+function neutralSimulationCaseV2() {
+  return validateSimulationCaseV2({
+    schemaVersion: "simulation-case/2.0",
+    id: "thermal-system-nominal-v2",
+    revision: 1,
+    scope: "Neutral thermal-system routing fixture.",
+    evidenceBoundary: "Proposal grammar only; no provider run is asserted.",
+    project: {
+      id: "thermal-system-project",
+      subjectId: "project:thermal-system",
+      baseThreadSnapshot: {
+        id: "project:thermal-system:r3",
+        revision: 3,
+        subjectId: "project:thermal-system",
+      },
+    },
+    kit: {
+      modelId: "thermal-system-model",
+      modelVersion: "2.0.0",
+      modelSha256: "e".repeat(64),
+    },
+    scenario: {
+      id: "nominal-heating",
+      sourceSha256: "f".repeat(64),
+      projectionSha256: "0".repeat(64),
+    },
+    parameters: [{ id: "targetTemperature", value: 333.15, unit: "K" }],
+    expectedMetrics: [{ id: "peakTemperature", unit: "K" }],
+    parameterMode: "explicit-overrides",
+    timeoutMs: 15_000,
+  });
+}
 
 Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // Adding a sealed or model-writing operation without registering its grammar

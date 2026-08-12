@@ -20,20 +20,7 @@ export type SimulationCaseV2Catalog = ReadonlyMap<string, SimulationCaseV2Catalo
 export const SIMULATION_CASE_V2_CATALOG: ReadonlyMap<
   string,
   SimulationCaseV2CatalogEntry
-> = new Map([
-  [
-    simulationCaseV2CatalogKey({
-      schemaVersion: "simulation-case/2.0",
-      id: "coffee-machine-cm01-thermal-nominal-v2",
-      revision: 1,
-    }),
-    {
-      sourcePath: "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v2.json",
-      canonicalDigest:
-        "7efeebf57c20cd2462395f8f47626392c3bb9be450c7ac2d471a9c2e060979bb",
-    },
-  ],
-]);
+> = new Map();
 
 export function simulationCaseV2CatalogKey(input: {
   readonly schemaVersion: string;

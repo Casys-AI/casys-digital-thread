@@ -12,18 +12,41 @@ import {
   verifySimulationCaseV2ParametersMatchCase,
 } from "./simulation-case-v2-proposal.ts";
 
-async function cm01Case() {
-  return validateSimulationCaseV2(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v2.json",
-      ),
-    ),
-  );
+function caseInput(): Record<string, unknown> {
+  return {
+    schemaVersion: "simulation-case/2.0",
+    id: "thermal-system-nominal-v2",
+    revision: 1,
+    scope: "Neutral thermal-system proposal fixture.",
+    evidenceBoundary: "Proposal encoding only; no provider run is asserted.",
+    project: {
+      id: "thermal-system-project",
+      subjectId: "project:thermal-system",
+      baseThreadSnapshot: {
+        id: "project:thermal-system:r3",
+        revision: 3,
+        subjectId: "project:thermal-system",
+      },
+    },
+    kit: {
+      modelId: "thermal-system-model",
+      modelVersion: "1.0.0",
+      modelSha256: "a".repeat(64),
+    },
+    scenario: {
+      id: "nominal-heating",
+      sourceSha256: "b".repeat(64),
+      projectionSha256: "c".repeat(64),
+    },
+    parameters: [{ id: "ambientTemperature", value: 293.15, unit: "K" }],
+    expectedMetrics: [{ id: "peakTemperature", unit: "K" }],
+    parameterMode: "explicit-overrides",
+    timeoutMs: 15_000,
+  };
 }
 
 async function proposal() {
-  const simulationCase = await cm01Case();
+  const simulationCase = validateSimulationCaseV2(caseInput());
   const digest = await fingerprintResourceBytes(
     new TextEncoder().encode(canonicalSimulationCaseV2Text(simulationCase)),
   );
@@ -65,7 +88,7 @@ Deno.test("V2 simulation-case proposal explicitly rejects obsolete scenario sha2
 Deno.test("V2 simulation-case proposal rejects a source hash substitution after parsing", async () => {
   const { simulationCase, parameters } = await proposal();
   const altered = new Map(simulationCaseV2DecisionParametersToMap(parameters));
-  altered.set("sim.case.scenario.sourceSha256", "b".repeat(64));
+  altered.set("sim.case.scenario.sourceSha256", "d".repeat(64));
   const parsed = parseSimulationCaseV2DecisionParameters(altered);
   const error = assertThrows(
     () => verifySimulationCaseV2ParametersMatchCase(parsed, simulationCase),

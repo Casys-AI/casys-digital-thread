@@ -6,7 +6,8 @@
  * verdict, no threshold, no provider detail can enter here. The reviewed case
  * file declares the step, mesh, and base value; the executor only reads them.
  * Keeping this in the domain layer enforces that invariant structurally.
- * Project-specific script renderers and recipe guards live in domain/cm01/.
+ * Project-specific script renderers and recipe guards live outside this
+ * generic schema.
  */
 
 import {

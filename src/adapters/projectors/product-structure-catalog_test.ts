@@ -351,7 +351,7 @@ Deno.test(
   "resolveGenericProductStructureCatalog returns undefined when the snapshot has no architecture artifact",
   async () => {
     // Snapshot with a sysml-model artifact whose URI does NOT start with the
-    // generic prefix (e.g., it uses a CM-01-specific prefix).
+    // generic prefix (e.g., it uses a GEN-01-specific prefix).
     const aFp = fingerprint("a");
     const snapshot = validateThreadSnapshot({
       schemaVersion: "1.0",
@@ -387,7 +387,7 @@ Deno.test(
         version: aFp.digest,
         fingerprint: aFp,
         // URI does NOT start with ARCHITECTURE_CAPTURE_URI_PREFIX
-        uri: "casys://coffee-machine-cm01-v3-architecture/sha256/" + aFp.digest,
+        uri: "casys://generic-product-v3-architecture/sha256/" + aFp.digest,
         producer: {
           serverId: "syson",
           tool: "syson_element_insert_sysml",

@@ -14,6 +14,14 @@ la Console MCP read-only, du workflow lié et du Workbench natif (`server.ts`, `
 Pour éditer un serveur d'ingénierie, cloner son repo (`Casys-AI/mcp-syson`,
 `mcp-build123d`, `mcp-calculix`, `mcp-modelica`, `constraint-solver`).
 
+> **Statut CM-01.** CM-01 est retiré du code, de la configuration, des scripts, des
+> catalogues et des surfaces actives. Il ne reste que la fixture golden statique sous
+> `state/fixtures/retired/cm01-v3/` et les révisions historiques immuables déjà écrites
+> sous `state/local/`. Ne jamais les enregistrer, les rejouer, les prendre comme
+> fallback ou les présenter comme une admission provider. Le Workbench est focus-only ;
+> `desk-lamp-dl04` est le candidat générique pour qualifier CalculiX
+> `verify.run-fea-static-proof@2`.
+
 ## Commandes
 
 Runtime backend : **Deno** (tâches dans `deno.json`). Bundles UI : **npm + Vite** dans
@@ -57,19 +65,14 @@ deno task preview:thread      # :5173 — cockpit projet natif (reads/SSE passif
 deno task preview:cockpit     # :5175 — même cockpit, port explicite de démonstration
 ```
 
-Le chemin fermé `coffee-machine-cm01-v3` — ses runners de correction et de récupération
-appellent le plan de contrôle MCP seulement après consentement explicite ;
-`thread:recover-coffee-machine-cm01-v3-mechanical-r3-identity` reconstruit une identité
-R3 depuis une capture achevée, et `thread:close-coffee-machine-cm01-v3-r11` crée le
-closeout R12. Ces deux dernières étapes ne rejouent aucun provider ; elles restent
-néanmoins des écritures immuables, pas des commandes de diagnostic.
-
 Diagnostic pur, sans écriture ni révision — `probe:constraint-solver` lit les
-contraintes d'un contexte SysON puis interroge z3. Il ne publie rien ; on peut le lancer
-librement :
+contraintes d'un contexte SysON explicitement nommé puis interroge z3. Il n'a aucun
+contexte produit par défaut et ne publie rien :
 
 ```bash
-deno task probe:constraint-solver
+deno task probe:constraint-solver \
+  --editing-context-id=<editing-context-id> \
+  --element-id=<element-id>
 ```
 
 **Piège `deno task check`** : la tâche énumère les fichiers un par un dans `deno.json`.
@@ -90,17 +93,17 @@ commiter le bundle régénéré, sinon le preview et la ressource MCP servent l'
 
 Hexagonal explicite ; les dépendances pointent toujours vers `src/domain/`.
 
-| Couche                          | Rôle                                                                                                                                                                                                                                                                                                                                                                         |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*`. Sous-familles : `kernel/` (types, hashing, validation), `thread/` (snapshot, catalogues), `project/` (brief, commandes projet), `analysis/` (proof-case, sensibilité, correction), `platform/` (focus, SysON seed, dérive), `cm01/` (preuves et plans spécifiques CoffeeMachine) |
-| `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/`                                                                                                                                                                                               |
-| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning                                                                                                                                                                                                                                                                                                 |
-| `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                                                                                                                                                                                                                                                                                                         |
-| `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                                                                                                                                                                                                                                                                                                               |
-| `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)                                                                                                                                                                                                                                                                                      |
-| `src/testing/`                  | Fixtures partagées entre suites                                                                                                                                                                                                                                                                                                                                              |
-| `scripts/`                      | Entry points par rôle : `runners/` (écritures immuables), `gates/` (vérification read-only), `probes/` (sondes diagnostiques), `serve/` (preview). `lib/` : modules partagés, pas des entry points.                                                                                                                                                                          |
-| `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine                                                                                                                                                                                                                                                                                            |
+| Couche                          | Rôle                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/domain/`                   | Contrats, validation stricte, transitions. **Aucun I/O** : pas de `fetch`, pas de `Deno.*`. Sous-familles : `kernel/` (types, hashing, validation), `thread/` (snapshot, catalogues), `project/` (brief, commandes projet), `analysis/` (proof-case, sensibilité, correction), `platform/` (focus, SysON seed, dérive) |
+| `src/adapters/`                 | I/O : gardes plats (composition root, cross-boundary) + sous-familles `executors/`, `captures/`, `stores/`, `wal/`, `projectors/`, `extractors/`, `validators/`, `historical/`                                                                                                                                         |
+| `src/orchestration/operations/` | Registre code-owned des opérations d'ingénierie revues, exposées au planning                                                                                                                                                                                                                                           |
+| `src/tools/`                    | Surfaces MCP : `register.ts` (fleet read-only), `project-control.ts`                                                                                                                                                                                                                                                   |
+| `src/contracts/`                | DTO browser-safe partagés backend ↔ UI (`thread-workbench.ts`)                                                                                                                                                                                                                                                         |
+| `src/ui/src/`                   | Preact : `project/` (cockpit, brief, projection), `thread/` (feed, graphe, inspecteurs)                                                                                                                                                                                                                                |
+| `src/testing/`                  | Fixtures partagées entre suites                                                                                                                                                                                                                                                                                        |
+| `scripts/`                      | Entry points par rôle : `runners/` (écritures immuables), `gates/` (vérification read-only), `probes/` (sondes diagnostiques), `serve/` (preview). `lib/` : modules partagés, pas des entry points.                                                                                                                    |
+| `server.ts`                     | **Composition root** : c'est là que les adapters sont câblés aux services domaine                                                                                                                                                                                                                                      |
 
 Les invariants suivants sont structurels — les casser casse le produit, pas seulement un
 test :
@@ -189,44 +192,12 @@ SHA-256 → le résultat (masse, contrainte) se vérifie contre le modèle via
 Les runs Modelica restent dans leur volume dédié `/runs` : ils ne partagent ni export
 CAD ni socket Docker.
 
-Dans le baseline CM-01 r5, le seul verdict CoffeeMachine est le contrat de scénario
-provisoire `config/verification-plans/coffee-machine-nominal-v1.json` :
-`water_temperature_max >= 90 degC`, appelé en lecture seule via
-`syson_constraint_evaluate` et lié aux hashes modèle/scénario. Ce n'est pas une exigence
-produit/SysON ; les 900 s sont seulement la provenance du scénario. Le chemin CM-01 V3
-fermé porte séparément deux critères mécaniques de concept DripTray et leurs évaluations
-courantes ; il ne prouve ni la machine entière, ni une fabrication, ni une
-certification.
-
-Ces deux évaluations mécaniques sont désormais rendues par `syson_constraint_evaluate`
-et non plus par une comparaison TypeScript : les unités sont comparées comme des
-valeurs, et `error` comme `unresolved` atteignent le snapshot publié sans jamais devenir
-`pass`. Cela vaut sur **tous** les chemins — principal, correction R2, reprise R3,
-récupération d'identité et chaîne historique r5/r6 — et pas seulement sur le chemin
-principal.
-
-Un verdict `fail` y est publiable, ce qui n'allait pas de soi :
-`thread-snapshot-validation.ts` exige qu'une évaluation en échec nomme une violation, et
-qu'une violation ouverte porte une action proposée. Trois chemins écrivaient ces
-tableaux vides et n'auraient donc su matérialiser qu'un succès. Un test de verdict doit
-passer par `validateThreadSnapshot` et non inspecter un objet en mémoire : c'est ce qui
-distingue « le snapshot se construit » de « le snapshot est publiable », et le défaut a
-survécu à trois commits faute de cette distinction. Les seuils restent déclarés dans un
-proof-case revu, mais l'opération
-`model.write-coffee-machine-cm01-oracle-requirements@1` sait désormais les ancrer comme
-contraintes SysML dans le modèle : texte serveur-fixe rendu depuis le proof commité,
-vérifié par ré-extraction, jamais fourni par un agent. Une fois l'artifact d'exigences
-présent dans une révision, le cliquet de monotonie interdit qu'une révision ultérieure
-l'omette (`requirements_artifact_removed`), et chaque run mécanique re-vérifie la
-fidélité du modèle avant tout dispatch provider. L'ancrage réel a été exécuté le
-2026-08-04 avec le consentement explicite de l'opérateur, par le chemin agent complet
-(`project_change_append` → queue → execute) : le snapshot thread R13 du projet partagé
-ancre les deux exigences DripTray dans le modèle SysON, vérifiées par ré-extraction. Le
-même jour, le run local complet a produit la première arête de sensibilité mesurée sur
-CalculiX : ∂(déplacement)/∂(size-z) = −0,008 mm/mm et ∂(von Mises)/∂(size-z) = −0,036
-MPa/mm, à 30 ± 1 mm. `syson_constraint_solve` (z3) reste délibérément hors du chemin de
-run : toutes les contraintes ayant la forme `feature op littéral` sur des variables
-indépendantes, il répondrait invariablement `sat` — une porte qui dit toujours oui.
+Un verdict `fail` est publiable : `thread-snapshot-validation.ts` exige qu'une
+évaluation en échec nomme une violation et qu'une violation ouverte porte une action
+proposée. Les critères d'une preuve mécanique viennent d'un proof-case revu ; le solver
+produit des observations, puis `syson_constraint_evaluate` porte le verdict avec ses
+unités. Un test de verdict doit passer par `validateThreadSnapshot`, pas seulement
+inspecter un objet en mémoire.
 
 Le produit est un cockpit Preact natif sur une enveloppe `engineering-workbench/0.2` :
 la surface `planning` porte un `EngineeringProjectSnapshot` immuable avant toute preuve
@@ -249,12 +220,6 @@ pour les agents, jamais des panneaux du produit. Le moteur de DAG YAML
 et la voie d'exécution reste les executors serveur-fixes du registre. Ports, contrats et
 frontières exacts : `docs/reference/workspace-map.md`.
 
-Le projet CM-01 suivi vit sous `config/projects/`. Il référence des IDs de snapshots
-exacts, jamais `latest`. `config/projects/baselines/` contient une capture observée r5
-et son STL de présentation lossless pour rendre le preview reproductible sans provider.
-Le store local actif reste prioritaire ; le baseline ne peut satisfaire que le même ID
-ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service actif.
-
 ## Principes non négociables (hérités des règles AgentCards)
 
 - **Le calcul est l'oracle, pas le produit** : aucune intelligence dans la couche outil
@@ -272,9 +237,8 @@ ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service 
 - **Desired ≠ observed** : le manifeste ne prouve jamais qu'un service tourne. Les
   sondes MCP/Docker restent la vérité d'exécution, y compris lorsqu'elles répondent
   `unavailable`.
-- **Demo ≠ live** : l'exemple bracket reste un fixture de démonstration hashé, hors du
-  sujet produit CM-01. Son FEA est documenté, jamais présenté comme un solve fraîchement
-  exécuté ni rattaché automatiquement au thread courant.
+- **Demo ≠ live** : une fixture de démonstration hashée n'est jamais présentée comme un
+  solve fraîchement exécuté ni rattachée automatiquement au thread courant.
 
 ## Conventions
 
@@ -292,143 +256,19 @@ ou nom d'asset exact et ne constitue ni un nouveau run ni une preuve de service 
   documentary » et « unverified » sont des labels contractuels. Ne jamais les retirer
   d'une sortie pour la rendre plus lisible.
 
-## État et prochaine étape
+## État actuel
 
-Le chemin local CM-01 V3 démontre maintenant une correction bornée `28 mm → 30 mm` : le
-run R2 sans preuve reste un échec historique, un successeur R3 correctement identifié
-porte la preuve mécanique, puis R12 ferme explicitement la famille d'exigences et la
-réconciliation de projet. C'est un seul cas de concept, pas un mécanisme de correction
-générique ni une certification.
+Les parcours actifs sont génériques et passent par le registre, une décision humaine
+MRTR exacte, des exécutants serveur-fixes, une capture persistée et une relecture. Le
+scellement d'un proof-case et l'admission de son exécution sont deux autorités
+distinctes pour `verify.seal-proof-case@1` et `verify.run-fea-static-proof@2`.
 
-Deux marches ont été franchies depuis. Les sept capture stores content-addressed sont
-maintenant un seul `FileCaptureStore<Kind>` : un nouveau type de preuve coûte un
-descripteur, pas une classe, et le paramètre de type continue d'interdire qu'un executor
-reçoive le store d'une autre famille. Et le verdict mécanique appartient à l'oracle, à
-travers `src/domain/analysis/proof-case.ts` — un contrat d'exigence sans rien de
-CalculiX ni de CM-01, où l'unité est obligatoire et où le critère ignore d'où vient la
-mesure. C'est cette indifférence à la source qui le rend réutilisable par un second
-projet.
+`desk-lamp-dl04` est le candidat courant pour qualifier le chemin CalculiX enregistré.
+Il ne devient une preuve `@2` réelle qu'après le run provider, la persistance de toutes
+ses ressources et leur relecture. L'archive CM-01 ne peut satisfaire aucune de ces
+étapes.
 
-Les trois marches suivantes ont été franchies le 2026-08-05, chacune par le chemin agent
-complet (append → queue → execute) avec consentement explicite : la sensibilité
-re-mesurée sur le projet partagé (R14, dérivées identiques au run local —
-reproductible), la première observation d'un nouvel oracle du parc (R15, printability
-dfm : mesures et `not_checked`, jamais un verdict), et **les relations de sensibilité
-ancrées comme élément SysML du modèle** (R16, `DripTraySensitivityRelations` : quatre
-attributs unités, deux contraintes de voisinage, provenance du run de mesure, cliquet
-`sensitivity_relations_artifact_removed`). Le modèle porte désormais structure,
-exigences et physique mesurée. Chaque échec du chemin a été retenu comme état de
-première classe : le contrat DFM réel a invalidé deux fois les mocks du chantier, et
-l'identification par exclusion d'IDs est morte le jour où le paquet a grandi — elle est
-désormais idempotente par nom serveur-fixe, avec adoption d'un élément déjà inséré.
-
-Les deux marches suivantes ont été franchies le 2026-08-05, en code seulement — aucune
-exécution sur le projet partagé. D'abord z3 : `probe:coupled-correction` compose le
-système u ≈ u₀ + k·(z−z₀) depuis les données extraites du modèle réel (aucune constante
-en dur) et obtient de `syson_constraint_solve` une valeur de driver en `sat` et un
-`unsat` avec conflit nommé hors voisinage — la porte ne dit plus toujours oui. Limite
-découverte : le solve inline n'accepte que la forme `ref op littéral`, la réduction
-analytique des bornes précède donc l'appel ; z3 répond en unités SI de base (mètres).
-Ensuite la généralisation : `src/domain/analysis/sensitivity-edge.ts` (arête = driver +
-voisinage + réponse + dérivée + provenance, tout unité, indifférent à la source),
-`proposeVectorCorrection` (`src/domain/analysis/propose-vector-correction.ts` —
-proposition bornée au voisinage déclaré ou `unresolved` motivé : `no-applicable-edge`,
-`out-of-neighborhood`, `zero-derivative`, unités incompatibles ; jamais de clamp ni
-d'epsilon), et `buildCorrectionMrtrProposal` qui produit le DTO de décision humaine. La
-reproduction du 28→30 depuis les arêtes R16 réelles est un test. L'opération
-`sensitivityRelations@2` porte l'élément générique `DripTraySensitivityEdges` (N usages
-— `specializes` évité car il dégrade les `featurePaths` à la ré-extraction) ;
-`design.apply-vector-correction@1` reste enregistrée planning-only.
-
-Les deux exécutions consenties ont suivi le même jour, chacune par le chemin agent
-complet (append → queue → execute) : R17 ancre `DripTraySensitivityEdges` dans le modèle
-partagé en conservant l'artefact relations historique — le cliquet interdit de l'omettre
-— et R18 matérialise les 11 STL de présentation attestés (assemblage + 10 parts, kind
-`mesh`) qui alimentent les fiches Product. Deux leçons de couture au passage : une
-opération `trusted` au registre ne suffit pas, son executor doit être branché dans le
-composition root (`server.ts`) — le refus « not backed by a trusted registered executor
-» est le fail-fast qui protège cette frontière ; et le preview a deux modes —
-`preview:thread` sert le dossier documentaire historique, seul `preview:cockpit`
-(`--workspace-id=primary`) lit le focus cockpit et sert le projet actif.
-
-Le 2026-08-06, le chantier rangement a restructuré le repo sans en changer le
-comportement : ~1 250 lignes dupliquées résorbées dans quatre modules partagés
-(`case-validation`, `executor-run-helpers`, `wal/file-attempt-store`, `scripts/cli` —
-première lib JSR, `@std/cli`), puis `src/adapters/` rangé en neuf familles avec 17
-fichiers gardés à plat pour raison documentée. Le geste protecteur a précédé le geste :
-`kit-source-refs_test.ts` pince l'existence sur disque de chaque chemin cité par la
-qualification des kits. La méthode a aussi changé : entre un workflow qui produit des
-findings et un workflow qui les implémente s'insère désormais un fact-check indépendant
-(VRAI/FAUX/NUANCE, ancré sur un commit) — il a attrapé deux prémisses fausses que les
-reviews d'implémentation n'auraient jamais vues, dont un store de briefs approuvés
-jamais migré après un renommage de code. Enfin, `design.build-coffee-machine-cm01-cad@4`
-est enregistrée et câblée : elle matérialise les octets STL attestés du volume Docker
-vers `state/local/thread-assets` (vérification SHA-256 fail-closed) — son premier run
-reste soumis au consentement ; les viewers actuels servent la matérialisation manuelle
-vérifiée du R18.
-
-Le chemin ne s'arrête plus au seed générique r2 : le projet `inspection-drone-v4` a
-atteint la révision 23. Son r1 est le baseline documentaire du brief approuvé, r2 la
-capture d'identité du conteneur SysON, et r3 une architecture qualitative relue : cinq
-usages typés et quatre exigences avec leurs inconnues explicites. Le run
-`run:queue-drone-v4-product-structure-20260808` est terminé et a publié r4,
-`project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`.
-Sa capture SHA-256 `7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`
-retient six `PartDefinition` : `InspectionDrone`, `Airframe`, `EnergySystem`,
-`PropulsionSystem`, `AvionicsAndFlightControl` et `InspectionCameraPayload`.
-`InspectionDrone` porte cinq `PartUsage` directs, chacun typé par l'une de ces cinq
-définitions enfants et avec une quantité `1` attestée par le fournisseur. Le Workbench
-est aligné sur r4 et le catalogue expose cette racine et ses cinq enfants. Cela
-n'établit aucune CAO, physique, coût, fabrication, certification ni verdict.
-
-CM-01 a aussi gagné un r19 de `PartDefinition` : les captures content-addressed de
-`CoffeeMachine` et `DripTray` sont liées à l'architecture et à la preuve existante. Le
-contrat vérifie les identités, le contexte et les hashes, distingue les stores de
-capture, et refuse qu'une révision ultérieure supprime silencieusement cette famille
-d'artefacts. L'archivage gouverné retire, après décision humaine MRTR portant les cibles
-exactes, une ligne d'artefact ou d'exigence et ses observations, évaluations et
-violations dérivées ; l'historique reste lisible tandis que les vues courantes
-l'excluent.
-
-Un run seulement `queued` peut désormais être annulé avec `project_agent_run_cancel` :
-la confirmation humaine signée est obligatoire avant tout claim, et le reçu scelle le
-run, son work item et le reçu de queue. L'annulation rend le work item à son état
-dérivé, permet une nouvelle queue, et conserve la compatibilité des anciens reçus.
-Enfin, `.github/workflows/quality.yml` exécute sur PR et sur `main` les gates formatage,
-lint, type-check, tests, vérification d'évidence et Workbench.
-
-Trois marches de généralisation ont suivi les 2026-08-09/10, en code seulement. Le lot
-de purge d'abord : `src/domain/analysis/` ne contient plus aucun symbole CM-01 (les
-renderers DripTray vivent dans `src/domain/cm01/cm01-drip-tray-analysis-scripts.ts`),
-`record.archive-lineage@1` est l'archivage gouverné générique, et l'élicitation MRTR
-rend les cibles scellées en JSON canonique — un encodage injectif, aucun ID ne peut
-forger la liste affichée à l'approbateur. Ensuite le gel : le moteur de DAG YAML est un
-prototype d'authoring sous `experiments/thread-workflow/`, avec ses 15 tests dont un
-test d'architecture qui interdit tout import de production — la voie d'exécution est et
-reste les executors serveur-fixes du registre.
-
-Puis la physique est devenue générique : le registre compte dix opérations trusted.
-`verify.seal-proof-case@1` scelle un `mechanical-proof-case/1.0` revu en artifact
-content-addressed — l'autorité d'exécution : catalogue serveur des sources, grammaire
-MRTR plate intégralement en clair (matériau, maillage, appuis, charges, seuils, jusqu'à
-l'union `cadSource`), tip requirements autoritatif relu depuis la capture signée, chaîne
-seed vérifiée. `verify.run-fea-static-proof@1` exécute la preuve : staging STEP purement
-content-addressed (`fea-<digest>.step` — aucun composant dérivé d'une valeur d'agent,
-même hashé), attestation croisée à trois points anti-TOCTOU, WAL à trois états dont
-`solver-recorded` embarque le texte canonique de la capture (reprise sans redispatch ;
-un CAS présent mais divergent est terminal), oracle `syson_constraint_evaluate` aux
-unités natives (SysON convertit MPa↔Pa — sondé), un verdict `fail` publiable avec
-violations nommées et actions proposées. Côté système, `simulate.seal-simulation-case@1`
-scelle le cas (kit et scénario liés par SHA-256, overrides explicites bornés par
-`modelica_kit_list`) et `simulate.run-modelica-scenario@1` publie observations et
-artefacts hashés, jamais un verdict : `not_evaluated` est forcé, un artifact provider de
-kind `verdict` est rejeté, le WAL `provider-run-known` embarque l'enveloppe simulate et
-la reprise ne fait que `modelica_run_get`. Aucune de ces quatre opérations n'a encore
-tourné en réel : les premiers seals (`coffee-machine-cm01-drip-tray-mechanical-v1`,
-`coffee-machine-cm01-thermal-nominal-v1` — ce dernier ancre son reviewBasis sur le r20
-du sujet V3) puis les premiers runs restent soumis au consentement explicite. Dette
-tracée sur le live seulement : les tests locaux d'intégration du run Modelica passent
-par le vrai command service et le WAL fichier pour pincer la reprise
-`provider-run-known`, la quarantaine d'un acquittement malformé, l'outcome inconnu de
-transport et l'absence de redispatch ; ils ne constituent pas une exécution provider
-réelle.
+Un run seulement `queued` peut être annulé avec `project_agent_run_cancel` après
+confirmation humaine signée. `.github/workflows/quality.yml` exécute sur PR et sur
+`main` les gates de formatage, lint, type-check, tests, vérification d'évidence et
+Workbench.

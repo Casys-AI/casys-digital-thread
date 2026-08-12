@@ -14,12 +14,12 @@ Deno.test("r11-shaped identity recovery keeps direct proof, STEP, solve, and req
   const graph = r11ShapedGraph();
 
   const projection = projectEvidenceFamilyGraph(graph, {
-    snapshotId: "project:coffee-machine-cm01-v3:r11:mechanical-r3",
+    snapshotId: "project:generic-product-v3:r11:mechanical-r3",
     revision: 11,
   });
 
   assertEquals(projection.asOf, {
-    snapshotId: "project:coffee-machine-cm01-v3:r11:mechanical-r3",
+    snapshotId: "project:generic-product-v3:r11:mechanical-r3",
     revision: 11,
   });
   assertEquals(projection.schemaVersion, "thread-evidence-family-graph/1.0");

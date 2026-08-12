@@ -14,8 +14,10 @@
  * --target=<id>   Entity id to nominate as a retirement seed. Repeatable.
  * --kind=<kind>   ThreadEntityKind for the target (default: artifact).
  *                 Accepted values: artifact | observation | requirement.
- * --snapshot=<id> Exact snapshot id to read (default: the latest snapshot
- *                 referenced by the CM-01 project head revision).
+ * --snapshot=<id> Exact snapshot id to read. Required unless --project-id is
+ *                 provided.
+ * --project-id    Project whose latest thread snapshot is read when --snapshot
+ *                 is omitted.
  * --projects-dir  Override the project store directory.
  * --snapshots-dir Override the snapshot store directory.
  *
@@ -44,7 +46,6 @@ import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-s
 
 const DEFAULT_PROJECTS_DIR = "state/local/engineering-projects";
 const DEFAULT_SNAPSHOTS_DIR = "state/local/thread-snapshots";
-const DEFAULT_PROJECT_ID = "coffee-machine-cm01-v3";
 /**
  * Only artifacts and requirements are valid DIRECT archive seeds — the
  * cascade reaches observations, evaluations and violations transitively.
@@ -70,6 +71,7 @@ const parsedMulti = _denoParseArgs(Deno.args, { collect: ["target"] });
 const targetIds = (parsedMulti["target"] as string[]) ?? [];
 const targetKind = (rawArgs["kind"] ?? "artifact") as ThreadEntityKind;
 const explicitSnapshot = rawArgs["snapshot"];
+const projectId = rawArgs["project-id"];
 const projectsDir = rawArgs["projects-dir"] ?? DEFAULT_PROJECTS_DIR;
 const snapshotsDir = rawArgs["snapshots-dir"] ?? DEFAULT_SNAPSHOTS_DIR;
 
@@ -93,24 +95,25 @@ if (!SEED_ENTITY_KINDS.includes(targetKind)) {
 // Load snapshot
 // ---------------------------------------------------------------------------
 
-const projects = new FileEngineeringProjectRevisionStore(projectsDir);
 const snapshots = new FileThreadSnapshotStore(snapshotsDir);
 
-const project = await projects.get(DEFAULT_PROJECT_ID);
-if (!project) {
-  console.error(
-    `probe:archive-cascade: project "${DEFAULT_PROJECT_ID}" not found in ${projectsDir}.`,
-  );
-  Deno.exit(1);
+let snapshotId = explicitSnapshot;
+if (!snapshotId && projectId) {
+  const projects = new FileEngineeringProjectRevisionStore(projectsDir);
+  const project = await projects.get(projectId);
+  if (!project) {
+    console.error(
+      `probe:archive-cascade: project "${projectId}" not found in ${projectsDir}.`,
+    );
+    Deno.exit(1);
+  }
+  snapshotId = project.threadSnapshots.at(-1)?.snapshotId;
 }
-
-const snapshotId = explicitSnapshot ??
-  project.threadSnapshots.at(-1)?.snapshotId;
 
 if (!snapshotId) {
   console.error(
-    "probe:archive-cascade: the project has no thread snapshots. " +
-      "Run the baseline and architecture runners first, or supply --snapshot=<id>.",
+    "probe:archive-cascade: supply --snapshot=<id> or --project-id=<id> with a " +
+      "thread snapshot.",
   );
   Deno.exit(1);
 }

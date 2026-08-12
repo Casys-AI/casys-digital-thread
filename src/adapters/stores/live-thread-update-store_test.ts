@@ -1,5 +1,5 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "../../ui/src/thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "../../ui/src/thread/fixture.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -16,7 +16,7 @@ Deno.test("file live journal is shared across processes and reconcile tombstones
   try {
     const writer = new FileLiveThreadUpdateStore(directory);
     const reader = new FileLiveThreadUpdateStore(directory);
-    const canonical = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+    const canonical = structuredClone(GENERIC_THREAD_FIXTURE);
     await writer.append({
       subjectId: canonical.subject.id,
       runId: "run-cross-process",
@@ -66,7 +66,7 @@ Deno.test("file live journal serializes concurrent agent writers", async () => {
     const first = new FileLiveThreadUpdateStore(directory);
     const second = new FileLiveThreadUpdateStore(directory);
     const input = {
-      subjectId: "coffee-machine-cm01",
+      subjectId: "generic-product",
       runId: "parallel-run",
       baseRevision: 5,
       state: "running" as const,
@@ -96,7 +96,7 @@ Deno.test("file live journal atomically records one idempotent lifecycle milesto
     const first = new FileLiveThreadUpdateStore(directory);
     const second = new FileLiveThreadUpdateStore(directory);
     const input = {
-      subjectId: "coffee-machine-cm01",
+      subjectId: "generic-product",
       runId: "same-command-run",
       operationId: "baseline.from-approved-brief",
       baseRevision: 0,
@@ -143,7 +143,7 @@ Deno.test("file live journal atomically records one idempotent lifecycle milesto
 Deno.test("regular append remains append-only for matching lifecycle identities", async () => {
   const store = new LiveThreadUpdateStore();
   const input = {
-    subjectId: "coffee-machine-cm01",
+    subjectId: "generic-product",
     runId: "append-only-run",
     operationId: "agent-progress",
     baseRevision: 5,
@@ -160,7 +160,7 @@ Deno.test("regular append remains append-only for matching lifecycle identities"
 
 Deno.test("live thread journal is append-only and collapses one operation identity in place", async () => {
   const store = new LiveThreadUpdateStore();
-  const canonical = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const canonical = structuredClone(GENERIC_THREAD_FIXTURE);
   const node = artifactNode("cad-live", "running");
 
   const started = await store.append({
@@ -212,7 +212,7 @@ Deno.test("live thread journal is append-only and collapses one operation identi
 
 Deno.test("a newer canonical snapshot reconciles a matching provisional identity", async () => {
   const store = new LiveThreadUpdateStore();
-  const canonical = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const canonical = structuredClone(GENERIC_THREAD_FIXTURE);
   const provisional = artifactNode("cad-live", "running");
   await store.append({
     subjectId: canonical.subject.id,
@@ -244,7 +244,7 @@ Deno.test("a newer canonical snapshot reconciles a matching provisional identity
 
 Deno.test("same-base live nodes override canonical freshness until publication", async () => {
   const store = new LiveThreadUpdateStore();
-  const canonical = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const canonical = structuredClone(GENERIC_THREAD_FIXTURE);
   const target = canonical.graph.nodes.find((node) => node.entityKind === "artifact")!;
   await store.append({
     subjectId: canonical.subject.id,
@@ -297,7 +297,7 @@ function artifactNode(
     ref: { kind: "artifact", id },
     entityKind: "artifact",
     artifactKind: "cad-model",
-    label: "CoffeeMachine CAD assembly",
+    label: "GenericAssembly CAD assembly",
     system: "mcp-build123d",
     freshness,
     summary: "CAD assembly export",
@@ -307,7 +307,7 @@ function artifactNode(
 }
 
 function edgeFromCanonical(node: ThreadGraphNode): ThreadGraphEdge {
-  const canonical = COFFEE_MACHINE_THREAD_FIXTURE.graph.nodes[0];
+  const canonical = GENERIC_THREAD_FIXTURE.graph.nodes[0];
   return {
     id: `live-edge:${canonical.id}:${node.id}`,
     from: canonical.ref,

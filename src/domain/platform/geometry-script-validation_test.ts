@@ -21,13 +21,13 @@ const VALID_SCRIPT = `from build123d import Box
 result = Box(10, 10, 10)
 `;
 
-// ── Non-regression: CM-01 server-rendered script ──────────────────────────────
+// ── Non-regression: representative server-rendered script ────────────────────
 //
-// The CM-01 semantic CAD plan renderer (coffee-machine-cm01-semantic-cad-plan.ts)
-// produces a script with this exact import line.  This test pins the allowlist
-// against the only server-rendered geometry script in production use.
+// This retired multi-component fixture exercises the complete build123d import
+// allowlist without implying that a product-specific renderer remains active.
 
-const CM01_SCRIPT = `from build123d import Align, Box, Compound, Cylinder, Pos, Rot
+const REPRESENTATIVE_SCRIPT =
+  `from build123d import Align, Box, Compound, Cylinder, Pos, Rot
 
 components = []
 
@@ -54,9 +54,9 @@ Deno.test("validateGeometryScript accepts a minimal valid build123d script", () 
   validateGeometryScript(VALID_SCRIPT);
 });
 
-Deno.test("validateGeometryScript accepts the CM-01 server-rendered script (non-regression)", () => {
+Deno.test("validateGeometryScript accepts a representative multi-component script", () => {
   // Pins: Align, Box, Compound, Cylinder, Pos, Rot all in ALLOWED_BUILD123D_NAMES.
-  validateGeometryScript(CM01_SCRIPT);
+  validateGeometryScript(REPRESENTATIVE_SCRIPT);
 });
 
 Deno.test("validateGeometryScript accepts a script with a math import", () => {

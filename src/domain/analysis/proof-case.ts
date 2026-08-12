@@ -22,8 +22,8 @@ import {
  * numbers without first checking their unit is forbidden: a 0.53 MPa result
  * evaluated against a Pa limit silently wrong-passes when treated as a scalar.
  *
- * This module is intentionally discipline-agnostic: no CalculiX, no CM-01
- * identifiers. The same contract is reusable by Modelica simulations, ERP
+ * This module is intentionally discipline-agnostic: no provider or product
+ * identifiers. The same contract is reusable by simulations, ERP
  * checks, or any future oracle that exposes a scalar limit through
  * syson_constraint_evaluate.
  */
@@ -44,7 +44,7 @@ export interface OracleLimit {
 
 /**
  * A single scalar requirement expressed as a dimensioned limit comparison.
- * Discipline-agnostic: no CalculiX, no CM-01 identifiers.
+ * Discipline-agnostic: no provider or product identifiers.
  */
 export interface OracleRequirement {
   readonly id: string;
@@ -57,8 +57,8 @@ export interface OracleRequirement {
 
 /**
  * AST node consumed by syson_constraint_evaluate.
- * Shape matches ScenarioConstraint in src/adapters/scenario-contract-verifier.ts,
- * which is the sole active caller of that tool today.
+ * Shape matches the fixed constraint payload accepted by
+ * syson_constraint_evaluate.
  */
 export interface ConstraintAst {
   readonly id: string;
@@ -135,10 +135,8 @@ export function validateOracleRequirements(
 /**
  * Build the AST node consumed by syson_constraint_evaluate for one requirement.
  *
- * The shape is identical to ScenarioConstraint in
- * src/adapters/scenario-contract-verifier.ts, the sole active caller of
- * syson_constraint_evaluate today. Any change to the wire shape there must be
- * reflected here.
+ * The shape is the fixed syson_constraint_evaluate payload. Any change to the
+ * provider wire contract must be reflected here.
  */
 export function buildConstraintAst(requirement: OracleRequirement): ConstraintAst {
   return deepFreeze({

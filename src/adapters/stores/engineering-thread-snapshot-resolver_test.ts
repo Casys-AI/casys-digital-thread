@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
   type ExactThreadSnapshotFileEntry,
   type ExactThreadSnapshotFileIo,
@@ -8,23 +9,30 @@ import {
   OrderedExactThreadSnapshotReader,
 } from "./engineering-thread-snapshot-resolver.ts";
 
-const BASELINE_DIRECTORY = "config/projects/baselines";
-const BASELINE_ID =
-  "coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension";
+const BASELINE_ID = "generic-bracket:r1:baseline";
 
-Deno.test("checked-in engineering baseline resolves by its canonical ID, not filename", async () => {
-  const reader = new FileExactThreadSnapshotDirectory(BASELINE_DIRECTORY);
+Deno.test("engineering snapshot directory resolves by canonical ID, not filename", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "exact-thread-snapshot-" });
+  try {
+    await Deno.writeTextFile(
+      `${directory}/presentation-name.json`,
+      `${JSON.stringify(baselineSnapshot())}\n`,
+    );
+    const reader = new FileExactThreadSnapshotDirectory(directory);
 
-  const snapshot = await reader.get(BASELINE_ID);
+    const snapshot = await reader.get(BASELINE_ID);
 
-  assertEquals(snapshot?.id, BASELINE_ID);
-  assertEquals(snapshot?.revision, 5);
-  assertEquals(snapshot?.subject.id, "coffee-machine-cm01");
-  assertEquals(await reader.get("another-snapshot-id"), undefined);
+    assertEquals(snapshot?.id, BASELINE_ID);
+    assertEquals(snapshot?.revision, 1);
+    assertEquals(snapshot?.subject.id, "generic-bracket");
+    assertEquals(await reader.get("another-snapshot-id"), undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
 });
 
 Deno.test("ordered exact resolver gives the active store priority for the same ID", async () => {
-  const baseline = await baselineSnapshot();
+  const baseline = baselineSnapshot();
   const active = structuredClone(baseline);
   active.subject.name = "Active store copy";
   const reader = new OrderedExactThreadSnapshotReader([
@@ -38,7 +46,7 @@ Deno.test("ordered exact resolver gives the active store priority for the same I
 });
 
 Deno.test("ordered exact resolver never accepts another snapshot as fallback", async () => {
-  const baseline = await baselineSnapshot();
+  const baseline = baselineSnapshot();
   const reader = new OrderedExactThreadSnapshotReader([
     new MemoryExactReader(new Map([[baseline.id, baseline]]), true),
   ]);
@@ -72,12 +80,59 @@ Deno.test("baseline directory treats an absent directory as no exact capture", a
   assertEquals(await reader.get(BASELINE_ID), undefined);
 });
 
-async function baselineSnapshot(): Promise<ThreadSnapshot> {
-  const snapshot = await new FileExactThreadSnapshotDirectory(BASELINE_DIRECTORY).get(
-    BASELINE_ID,
-  );
-  if (!snapshot) throw new Error("Test baseline is missing.");
-  return snapshot;
+function baselineSnapshot(): ThreadSnapshot {
+  const at = "2026-08-01T03:03:48.000Z";
+  return validateThreadSnapshot({
+    schemaVersion: "1.0",
+    id: BASELINE_ID,
+    revision: 1,
+    generatedAt: at,
+    subject: {
+      id: "generic-bracket",
+      name: "Generic bracket",
+      kind: "part",
+      version: "1",
+      modelArtifactId: "generic-bracket-step",
+    },
+    freshness: { status: "fresh", changedAt: at, invalidatedByChangeIds: [] },
+    changeSet: {
+      id: "generic-baseline",
+      name: "Capture the generic bracket baseline",
+      status: "applied",
+      createdAt: at,
+      appliedAt: at,
+      changes: [{
+        id: "capture-generic-step",
+        kind: "created",
+        target: { kind: "artifact", id: "generic-bracket-step" },
+        summary: "Capture the exact generic STEP artifact.",
+        afterFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      }],
+    },
+    artifacts: [{
+      id: "generic-bracket-step",
+      name: "Generic bracket STEP",
+      kind: "step",
+      version: "1",
+      fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      producer: { serverId: "build123d", tool: "export", runId: "generic-cad" },
+      inputArtifactIds: [],
+      freshness: { status: "fresh", changedAt: at, invalidatedByChangeIds: [] },
+    }],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [{
+      id: "generic-baseline-created-step",
+      relation: "changes",
+      from: { kind: "change", id: "capture-generic-step" },
+      to: { kind: "artifact", id: "generic-bracket-step" },
+      rationale: "The baseline change created the exact STEP artifact.",
+    }],
+    proposedActions: [],
+  });
 }
 
 class MemoryExactReader implements ExactThreadSnapshotReader {

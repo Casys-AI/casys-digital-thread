@@ -252,7 +252,7 @@ Deno.test("recorded CalculiX lowering rejects a caller-selected provider path an
 async function buildFixture() {
   const base = validateMechanicalProofCase(JSON.parse(
     await Deno.readTextFile(
-      "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+      "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
     ),
   ));
   const inputBytes = encoder.encode("ISO-10303-21; recorded fixture");
@@ -306,7 +306,7 @@ async function buildFixture() {
     mesh: { nodes: 8, elements: 4, nodesPerSelection: { FIXED: 4, LOADED: 4 } },
     constraints: {
       fixedSelections: ["FIXED"],
-      loads: [{ selection: "LOADED", forceN: [0, 0, -100] }],
+      loads: [{ selection: "LOADED", forceN: [0, 0, -4.903325] }],
     },
     metrics: {
       maxDisplacement: { value: 0.1, unit: "mm", nodeId: 8, vectorMm: [0, 0, -0.1] },

@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { createEngineeringProjectCommandRuntime } from "./engineering-project-command-runtime.ts";
 
 Deno.test("project command runtimes share active revisions and use the tracked manifest only as initial fallback", async () => {
@@ -8,12 +8,12 @@ Deno.test("project command runtimes share active revisions and use the tracked m
   };
   try {
     const first = await createEngineeringProjectCommandRuntime({
-      projectId: "coffee-machine-cm01",
-      trackedManifestPath: "config/projects/coffee-machine-cm01.project.json",
+      projectId: "generic-test-system",
+      trackedManifestPath: "src/testing/generic-engineering-project.fixture.json",
       activeDirectory: directory,
       evidenceSnapshots,
     });
-    const initial = (await first.projects.get("coffee-machine-cm01"))!;
+    const initial = (await first.projects.get("generic-test-system"))!;
     assertEquals(initial.revision, 1);
 
     const next = await first.commands.proposeDecision(
@@ -39,14 +39,47 @@ Deno.test("project command runtimes share active revisions and use the tracked m
     assertEquals(next.revision, 2);
 
     const second = await createEngineeringProjectCommandRuntime({
-      projectId: "coffee-machine-cm01",
-      trackedManifestPath: "config/projects/coffee-machine-cm01.project.json",
+      projectId: "generic-test-system",
+      trackedManifestPath: "src/testing/generic-engineering-project.fixture.json",
       activeDirectory: directory,
       evidenceSnapshots,
     });
     assertEquals(
-      (await second.projects.get("coffee-machine-cm01"))?.revision,
+      (await second.projects.get("generic-test-system"))?.revision,
       2,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("project command runtime starts without a bundled product seed", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "casys-project-runtime-empty-" });
+  try {
+    const runtime = await createEngineeringProjectCommandRuntime({
+      activeDirectory: directory,
+      evidenceSnapshots: { get: () => Promise.resolve(undefined) },
+    });
+    assertEquals(await runtime.projects.get("generic-test-system"), undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("project command runtime rejects a partial explicit seed", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "casys-project-runtime-partial-",
+  });
+  try {
+    await assertRejects(
+      () =>
+        createEngineeringProjectCommandRuntime({
+          projectId: "isolated-project",
+          activeDirectory: directory,
+          evidenceSnapshots: { get: () => Promise.resolve(undefined) },
+        }),
+      TypeError,
+      "requires projectId and trackedManifestPath together",
     );
   } finally {
     await Deno.remove(directory, { recursive: true });

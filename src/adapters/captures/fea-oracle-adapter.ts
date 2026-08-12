@@ -20,15 +20,15 @@
  * projection happens; every caller obtains the correct OracleRequirement
  * without knowing the internal distinction.
  *
- * Reuses parseOracleOutcome from cm01-drip-tray-mechanical-oracle — it is
- * the only module that may own the oracle response parse.  Do not copy it.
+ * Reuses parseOracleOutcome from syson-constraint-oracle-outcome — it is the
+ * only module that may own the oracle response parse. Do not copy it.
  *
  * UNIT CONVENTION
  *   CalculiX reports: maxDisplacement in mm, maxVonMises in MPa.
  *   The proof declares limits in mm (displacement) and Pa (von Mises).
  *   SysON converts units internally when calling syson_constraint_evaluate —
  *   confirmed by probe on 2026-08-04 (Pa and MPa round-trip documented in
- *   cm01-drip-tray-mechanical-oracle.ts).  Local arithmetic is intentionally
+ *   syson-constraint-oracle-outcome.ts). Local arithmetic is intentionally
  *   absent: the oracle is the sole authority on the verdict.
  */
 
@@ -47,7 +47,7 @@ import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
 import {
   type ParsedOracleResult,
   parseOracleOutcome,
-} from "./cm01-drip-tray-mechanical-oracle.ts";
+} from "./syson-constraint-oracle-outcome.ts";
 
 // ---------------------------------------------------------------------------
 // FEA_METRIC_TO_CALCULIX — closed mapping: metric kind → CalculiX field
@@ -179,7 +179,7 @@ export function buildOracleValues(
  * pre-built values map.
  *
  * Uses buildConstraintAst (proof-case.ts) to build the AST nodes and
- * parseOracleOutcome (cm01-drip-tray-mechanical-oracle.ts) to parse the
+ * parseOracleOutcome (syson-constraint-oracle-outcome.ts) to parse the
  * response.  Neither is re-implemented here; this function assembles the
  * pieces without duplicating the logic.
  *

@@ -22,7 +22,6 @@ import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestrat
 import {
   createFocusedWorkspaceHandler,
   createNativeWorkbenchHandler,
-  NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
   resolveNativeWorkbenchProjectId,
   resolveNativeWorkbenchStartupTarget,
   resolveNativeWorkbenchSubjectId,
@@ -41,11 +40,11 @@ Deno.test("native Workbench resolves an agent-selected project and its subject",
 
   assertEquals(
     resolveNativeWorkbenchProjectId(undefined, undefined),
-    NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
+    undefined,
   );
   assertEquals(
     resolveNativeWorkbenchProjectId(undefined, "subject-one"),
-    "subject-one",
+    undefined,
   );
   assertEquals(
     resolveNativeWorkbenchProjectId("project-one", "subject-one"),
@@ -61,7 +60,7 @@ Deno.test("native Workbench resolves an agent-selected project and its subject",
   );
 });
 
-Deno.test("native Workbench no-seed startup can rely only on durable focus", () => {
+Deno.test("native Workbench startup requires a durable focus or explicit target", () => {
   assertEquals(
     resolveNativeWorkbenchStartupTarget({
       "no-seed": "true",
@@ -76,14 +75,20 @@ Deno.test("native Workbench no-seed startup can rely only on durable focus", () 
       explicitSubjectId: undefined,
     },
   );
-  assertEquals(
-    resolveNativeWorkbenchStartupTarget({}).projectId,
-    NATIVE_WORKBENCH_LEGACY_PROJECT_ID,
+  assertThrows(
+    () => resolveNativeWorkbenchStartupTarget({}),
+    TypeError,
+    "--workspace-id or --project-id is required",
   );
   assertThrows(
     () => resolveNativeWorkbenchStartupTarget({ "no-seed": "true" }),
     TypeError,
-    "--no-seed requires --workspace-id, --project-id, or --subject.",
+    "--workspace-id or --project-id is required",
+  );
+  assertThrows(
+    () => resolveNativeWorkbenchStartupTarget({ subject: "subject-one" }),
+    TypeError,
+    "--subject requires --project-id.",
   );
 });
 
@@ -96,7 +101,10 @@ Deno.test("native Workbench rejects a non-loopback bind host", () => {
     );
   }
   assertEquals(
-    resolveNativeWorkbenchStartupTarget({ host: "localhost" }).hostname,
+    resolveNativeWorkbenchStartupTarget({
+      host: "localhost",
+      "workspace-id": "primary",
+    }).hostname,
     "localhost",
   );
 });
@@ -671,7 +679,6 @@ Deno.test("native Workbench reports an unknown selected project without substitu
   const handler = createNativeWorkbenchHandler({
     store: new EmptyThreadStore(),
     projectStore: new ProjectStore([]),
-    subjectId: "subject-one",
     cockpitFocus: new MutableFocus(focusSnapshot("missing")),
     html: "unused",
   });

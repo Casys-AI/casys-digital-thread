@@ -147,12 +147,12 @@ export { SIMULATION_CASE_CAPTURE_URI_PREFIX };
  * and one JSON file at the declared path.  The executor never falls back to a
  * derived path, directory scan, or pattern match.
  */
-export const SIMULATION_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
-  [
-    "coffee-machine-cm01-thermal-nominal-v1",
-    "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
-  ],
-]);
+/**
+ * Active V1 simulation admission is deliberately closed until a generic case
+ * has passed the reviewed qualification path. Historical case JSON remains
+ * readable as evidence, but an identifier absent from this map cannot seal.
+ */
+export const SIMULATION_CASE_SOURCES: ReadonlyMap<string, string> = new Map();
 
 /**
  * The descriptor lives in file-capture-store.ts (the canonical home for every
@@ -217,6 +217,8 @@ export interface SimulateSealSimulationCaseRunExecutorDependencies {
   readonly snapshots: ThreadSnapshotStore;
   readonly simulationCaseCaptures: FileCaptureStore<"simulation-case">;
   readonly lease: EngineeringProjectRunLease;
+  /** Test-only alternate closed catalogue; production uses the code-owned default. */
+  readonly simulationCaseSources?: ReadonlyMap<string, string>;
   /**
    * Injected file reader — defaults to Deno.readTextFile.  Tests stub this to
    * avoid real filesystem access; production code passes undefined to use the
@@ -237,6 +239,7 @@ export class SimulateSealSimulationCaseRunExecutor {
   readonly #snapshots: ThreadSnapshotStore;
   readonly #simulationCaseCaptures: FileCaptureStore<"simulation-case">;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #simulationCaseSources: ReadonlyMap<string, string>;
   readonly #readTextFile: (path: string) => Promise<string>;
   readonly #now: () => string;
 
@@ -246,6 +249,7 @@ export class SimulateSealSimulationCaseRunExecutor {
     this.#snapshots = deps.snapshots;
     this.#simulationCaseCaptures = deps.simulationCaseCaptures;
     this.#lease = deps.lease;
+    this.#simulationCaseSources = deps.simulationCaseSources ?? SIMULATION_CASE_SOURCES;
     this.#readTextFile = deps.readTextFile ?? Deno.readTextFile.bind(Deno);
     this.#now = deps.now ?? (() => new Date().toISOString());
   }
@@ -558,7 +562,7 @@ export class SimulateSealSimulationCaseRunExecutor {
   }> {
     // Step 5a — catalog lookup (fail-fast before any snapshot or lease access).
     const caseId = decisionParams.id;
-    const casePath = SIMULATION_CASE_SOURCES.get(caseId);
+    const casePath = this.#simulationCaseSources.get(caseId);
     if (!casePath) {
       throw new EngineeringProjectCommandError(
         "invalid_input",

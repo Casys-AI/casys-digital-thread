@@ -134,10 +134,3 @@ receipt; `desk-lamp-dl03` and `desk-lamp-dl04` walked that path end to end on
 2026-08-10, each publishing a mechanical verdict on an isolated part. Every step still
 needs its own reviewed operation and evidence contract — the route is generic, not
 open-ended.
-
-The current technical reference is the fixed `coffee-machine-cm01-v3` catalog. It uses
-the same approved-brief and exact-basis discipline, then executes reviewed CM-01
-architecture, CAD, thermal, BOM, and isolated DripTray proof operations. Its bounded 28
-mm → 30 mm correction has a separate R11 identity recovery and R12 closeout; see the
-[CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). This is evidence for
-one product case, not a generic authoring capability.

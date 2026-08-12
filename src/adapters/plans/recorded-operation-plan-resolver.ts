@@ -21,7 +21,13 @@ import {
 import {
   fingerprintResourceBytes,
 } from "../../domain/analysis/provider-resource-reader.ts";
-import { canonicalProofText } from "../../domain/analysis/fea-proof-proposal.ts";
+import {
+  canonicalProofText,
+  feaProofDecisionParametersToMap,
+  parseFeaProofDecisionParameters,
+  VERIFY_SEAL_PROOF_CASE_OPERATION,
+  verifyFeaProofParametersMatchCase,
+} from "../../domain/analysis/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../../domain/analysis/mechanical-proof-case.ts";
 import {
   canonicalSimulationCaseV2Text,
@@ -35,8 +41,13 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/types.ts";
 import type {
+  EngineeringAgentRun,
+  EngineeringApproval,
   EngineeringDecision,
   EngineeringOperationInputBinding,
+  EngineeringThreadEntityRef,
+  EngineeringThreadSnapshotBasis,
+  EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
 import type { RegisteredRunPlanSealInput } from "../../domain/project/resolved-run-plan-sealer.ts";
 import type {
@@ -413,18 +424,23 @@ export class RecordedOperationPlanResolver {
     );
     if (
       proof.case.project.id !== input.project.project.id ||
-      proof.case.project.subjectId !== snapshot.subject.id ||
-      proof.case.authorization.workItemId !== input.workItem.id ||
-      proof.case.authorization.decisionId !== common.authorization.mrtr.decisionId
+      proof.case.project.subjectId !== snapshot.subject.id
     ) {
       throw new TypeError(
-        "FEA proof case does not bind the exact recorded-plan authority.",
+        "FEA proof case does not bind the recorded-plan project subject.",
       );
     }
     await this.#assertCaseBasisIsAncestor(
       snapshot,
       proof.case.project.baseThreadSnapshot,
       "FEA proof case",
+    );
+    await assertFeaProofSealProjectHistory(
+      input,
+      snapshot,
+      proof,
+      proofArtifact,
+      this.options.snapshots,
     );
     if (
       proof.step.id !== geometry.id ||
@@ -800,6 +816,7 @@ export class RecordedOperationPlanResolver {
     return {
       case: proofCase,
       trustedRunId,
+      sealedAt,
       geometry,
       requirements,
       step: {
@@ -822,6 +839,7 @@ type PlanCommon = Omit<
 interface ProofCapture {
   readonly case: ReturnType<typeof validateMechanicalProofCase>;
   readonly trustedRunId: string;
+  readonly sealedAt: string;
   readonly geometry: ProofArtifactRef;
   readonly requirements: ProofArtifactRef;
   readonly step: {
@@ -1134,6 +1152,220 @@ async function assertAuthorityProjectHistory(
       "Modelica qualification authority MRTR does not match the immutable project history.",
     );
   }
+}
+
+/**
+ * Resolve the distinct human authority that produced a sealed FEA proof before
+ * a later ROP2 run may bind it.  The run's own MRTR was already selected by
+ * authorizationFor(); this history check deliberately never compares those
+ * two decision or work-item IDs.
+ */
+async function assertFeaProofSealProjectHistory(
+  input: RegisteredRunPlanSealInput,
+  currentBasis: ThreadSnapshot,
+  proof: ProofCapture,
+  proofArtifact: ThreadArtifact,
+  snapshots: ExactThreadSnapshotReader,
+): Promise<void> {
+  const workItem = input.project.workItems.find((item) =>
+    item.id === proof.case.authorization.workItemId
+  );
+  const run = input.project.agentRuns.find((item) => item.id === proof.trustedRunId);
+  const decision = input.project.decisions.find((item) =>
+    item.id === proof.case.authorization.decisionId
+  );
+  if (
+    !workItem ||
+    workItem.operation?.id !== VERIFY_SEAL_PROOF_CASE_OPERATION.id ||
+    workItem.operation.version !== VERIFY_SEAL_PROOF_CASE_OPERATION.version ||
+    deterministicJson(workItem.operation.bindings) !== deterministicJson([{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" },
+      }]) ||
+    !workItem.decisionIds.includes(proof.case.authorization.decisionId) ||
+    !run ||
+    run.workItemId !== workItem.id ||
+    run.status !== "completed" ||
+    !run.resultSnapshot ||
+    run.evidenceRefs.length === 0 ||
+    run.basis?.kind !== "thread-snapshot" ||
+    run.startedAt !== proof.sealedAt ||
+    !decision ||
+    decision.status !== "approved" ||
+    !decision.proposal ||
+    !decision.inputFingerprint ||
+    !sameDeclaredBasis(decision.baseSnapshot, run.basis)
+  ) {
+    throw new TypeError(
+      "FEA proof authority is not backed by its completed registered verify.seal-proof-case@1 run.",
+    );
+  }
+  const approval = await exactHumanApproval(input, decision, run.basis);
+  if (!approval) {
+    throw new TypeError(
+      "FEA proof authority does not retain one exact human MRTR approval.",
+    );
+  }
+  await assertFeaSealRunInputFingerprint(input, run, workItem);
+  await assertFeaSealDecisionMatchesProof(decision, proof);
+
+  const resultReference = run.resultSnapshot;
+  const rawResult = await snapshots.get(resultReference.snapshotId);
+  const rawBasis = await snapshots.get(run.basis.snapshotId);
+  if (
+    !rawResult ||
+    rawResult.id !== resultReference.snapshotId ||
+    rawResult.revision !== resultReference.revision ||
+    rawResult.subject.id !== resultReference.subjectId ||
+    !rawBasis ||
+    rawBasis.id !== run.basis.snapshotId ||
+    rawBasis.revision !== run.basis.revision ||
+    rawBasis.subject.id !== run.basis.subjectId
+  ) {
+    throw new TypeError(
+      "FEA proof authority completed seal result or exact seal basis is absent.",
+    );
+  }
+  const sealResult = validateThreadSnapshot(rawResult);
+  const sealBasis = validateThreadSnapshot(rawBasis);
+  if (
+    sealResult.revision !== sealBasis.revision + 1 ||
+    sealResult.previous?.snapshotId !== sealBasis.id ||
+    sealResult.previous.revision !== sealBasis.revision ||
+    !await threadSnapshotDescendsFrom(sealResult, sealBasis, snapshots)
+  ) {
+    throw new TypeError(
+      "FEA proof authority completed seal result is not the direct immutable child of its exact seal basis.",
+    );
+  }
+  const sealedArtifact = artifactById(sealResult, proofArtifact.id);
+  if (
+    !sameExactArtifactIdentity(sealedArtifact, proofArtifact) ||
+    !isExactFeaSealArtifact(sealedArtifact, run.id) ||
+    !exactArtifactEvidence(run.evidenceRefs, resultReference, proofArtifact.id) ||
+    !await threadSnapshotDescendsFrom(currentBasis, sealResult, snapshots)
+  ) {
+    throw new TypeError(
+      "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
+    );
+  }
+}
+
+async function exactHumanApproval(
+  input: RegisteredRunPlanSealInput,
+  decision: EngineeringDecision,
+  basis: EngineeringThreadSnapshotBasis,
+): Promise<EngineeringApproval | undefined> {
+  const candidates = input.project.approvals.filter((approval) =>
+    approval.decisionId === decision.id &&
+    approval.status === "approved" &&
+    approval.decidedByOrigin === "human" &&
+    sameDeclaredBasis(approval.baseSnapshot, basis) &&
+    sameEvidence(decision, approval.inputEvidenceRefs) &&
+    fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
+  );
+  const approval = candidates.length === 1 ? candidates[0] : undefined;
+  if (!approval || !decision.approvalIds.includes(approval.id)) return undefined;
+  const expectedDecisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: decision.baseSnapshot,
+    inputEvidenceRefs: decision.inputEvidenceRefs,
+    proposal: {
+      summary: decision.proposal!.summary,
+      parameters: decision.proposal!.parameters,
+    },
+  });
+  return fingerprintsEqual(expectedDecisionFingerprint, decision.inputFingerprint)
+    ? approval
+    : undefined;
+}
+
+async function assertFeaSealRunInputFingerprint(
+  input: RegisteredRunPlanSealInput,
+  run: EngineeringAgentRun,
+  workItem: EngineeringWorkItem,
+): Promise<void> {
+  if (!run.inputFingerprint || run.basis?.kind !== "thread-snapshot") {
+    throw new TypeError(
+      "FEA proof authority completed seal run has no exact queue fingerprint and basis.",
+    );
+  }
+  const approvedDecisions = workItem.decisionIds.map((decisionId) => {
+    const decision = input.project.decisions.find((candidate) =>
+      candidate.id === decisionId
+    );
+    if (!decision?.inputFingerprint || decision.status !== "approved") {
+      throw new TypeError(
+        "FEA proof authority seal work item has a decision that is not exactly approved.",
+      );
+    }
+    return { id: decision.id, inputFingerprint: decision.inputFingerprint };
+  });
+  const expected = await sha256Fingerprint({
+    workItemId: workItem.id,
+    basis: run.basis,
+    operation: {
+      id: workItem.operation!.id,
+      version: workItem.operation!.version,
+      bindings: workItem.operation!.bindings,
+    },
+    approvedDecisions,
+  });
+  if (!fingerprintsEqual(run.inputFingerprint, expected)) {
+    throw new TypeError(
+      "FEA proof authority completed seal run input fingerprint is not exact.",
+    );
+  }
+}
+
+async function assertFeaSealDecisionMatchesProof(
+  decision: EngineeringDecision,
+  proof: ProofCapture,
+): Promise<void> {
+  try {
+    const parameters = parseFeaProofDecisionParameters(
+      feaProofDecisionParametersToMap(decision.proposal!.parameters),
+    );
+    verifyFeaProofParametersMatchCase(parameters, proof.case);
+    const digest = (await sha256Fingerprint(proof.case)).digest;
+    if (
+      parameters.proofDigest !== digest ||
+      parameters.geometryArtifact.id !== proof.geometry.id ||
+      !fingerprintsEqual(
+        parameters.geometryArtifact.fingerprint,
+        proof.geometry.fingerprint,
+      ) ||
+      parameters.requirementsArtifact.id !== proof.requirements.id ||
+      !fingerprintsEqual(
+        parameters.requirementsArtifact.fingerprint,
+        proof.requirements.fingerprint,
+      )
+    ) {
+      throw new Error("sealed declaration or source artifact identity diverges");
+    }
+  } catch (cause) {
+    throw new TypeError(
+      `FEA proof authority MRTR does not match the sealed proof: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }.`,
+    );
+  }
+}
+
+function isExactFeaSealArtifact(artifact: ThreadArtifact, runId: string): boolean {
+  return artifact.producer.serverId === "digital-thread" &&
+    artifact.producer.tool === "verify.seal-proof-case@1" &&
+    artifact.producer.runId === runId;
+}
+
+function exactArtifactEvidence(
+  evidenceRefs: readonly EngineeringThreadEntityRef[],
+  result: { readonly snapshotId: string; readonly revision: number },
+  artifactId: string,
+): boolean {
+  return evidenceRefs.length === 1 &&
+    evidenceRefs[0]?.snapshotId === result.snapshotId &&
+    evidenceRefs[0]?.snapshotRevision === result.revision &&
+    evidenceRefs[0]?.kind === "artifact" && evidenceRefs[0]?.id === artifactId;
 }
 
 function isExactSealArtifact(artifact: ThreadArtifact, runId: string): boolean {

@@ -114,6 +114,21 @@ export class ExactThreadReconciliationSnapshotValidator
       );
     }
   }
+
+  async validateCurrentHeadDescendsFrom(
+    currentHeadReference: EngineeringThreadSnapshotRef,
+    ancestorReference: EngineeringThreadSnapshotRef,
+  ): Promise<void> {
+    const [currentHead, ancestor] = await Promise.all([
+      exactSnapshot(this.snapshots, "Current project head", currentHeadReference),
+      exactSnapshot(this.snapshots, "Successor result", ancestorReference),
+    ]);
+    if (!await threadSnapshotDescendsFrom(currentHead, ancestor, this.snapshots)) {
+      invalidEvidence(
+        `Current project head ${currentHeadReference.snapshotId}@${currentHeadReference.revision} does not descend from successor result ${ancestorReference.snapshotId}@${ancestorReference.revision}.`,
+      );
+    }
+  }
 }
 
 async function exactSnapshot(

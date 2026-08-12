@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
-import { COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
 import {
   nextLiveActivityNode,
   shouldAcceptWorkbenchUpdate,
@@ -11,14 +11,14 @@ import type {
 } from "./src/thread/types.ts";
 
 Deno.test("same-id projection detects a genuinely new feed node without prescribing focus", () => {
-  const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const previous = structuredClone(GENERIC_THREAD_FIXTURE);
   const incoming = structuredClone(previous);
   incoming.graph.nodes.push({
     id: "graph:artifact:cad-live",
     ref: { kind: "artifact", id: "cad-live" },
     entityKind: "artifact",
     artifactKind: "cad-model",
-    label: "CoffeeMachine CAD assembly",
+    label: "GenericAssembly CAD assembly",
     system: "mcp-build123d",
     freshness: "running",
     summary: "Generating from observed SysML dimensions",
@@ -31,7 +31,7 @@ Deno.test("same-id projection detects a genuinely new feed node without prescrib
 });
 
 Deno.test("same-id projection detects a server-declared live milestone", () => {
-  const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const previous = structuredClone(GENERIC_THREAD_FIXTURE);
   const incoming = structuredClone(previous);
   incoming.graph.nodes.push({
     id: "graph:artifact:projector-milestone",
@@ -53,7 +53,7 @@ Deno.test("same-id projection detects a server-declared live milestone", () => {
 });
 
 Deno.test("same-id in-place update adds no new live activity", () => {
-  const previous = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const previous = structuredClone(GENERIC_THREAD_FIXTURE);
   const incoming = structuredClone(previous);
   incoming.graph.nodes[0].freshness = "running";
   incoming.graph.nodes[0].summary = "Rereading current SysML element";
@@ -63,7 +63,7 @@ Deno.test("same-id in-place update adds no new live activity", () => {
 });
 
 Deno.test("delayed SSE cannot overwrite a newer project snapshot", () => {
-  const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
+  const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const current = { ...fixture, project: { ...fixture.project, revision: 3 } };
   const delayed = { ...fixture, project: { ...fixture.project, revision: 2 } };
 
@@ -72,7 +72,7 @@ Deno.test("delayed SSE cannot overwrite a newer project snapshot", () => {
 
 Deno.test("equal project revision accepts a newer thread or live sequence only", () => {
   const current = withLiveVersion(
-    structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE),
+    structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE),
     4,
   );
   const newerLive = withLiveVersion(structuredClone(current), 5);
@@ -91,7 +91,7 @@ Deno.test("equal project revision accepts a newer thread or live sequence only",
 });
 
 Deno.test("a documentary record has no live evidence overlay to compare", () => {
-  const fixture = COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE;
+  const fixture = GENERIC_ENGINEERING_WORKBENCH_FIXTURE;
   const current: EngineeringDocumentaryWorkbenchSnapshot = {
     schemaVersion: "engineering-workbench/0.2",
     surface: "documentary",
@@ -120,7 +120,7 @@ Deno.test("a documentary record has no live evidence overlay to compare", () => 
 });
 
 Deno.test("a documentary record accepts a newer closed technical-start feed", () => {
-  const fixture = COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE;
+  const fixture = GENERIC_ENGINEERING_WORKBENCH_FIXTURE;
   const current: EngineeringDocumentaryWorkbenchSnapshot = {
     schemaVersion: "engineering-workbench/0.2",
     surface: "documentary",

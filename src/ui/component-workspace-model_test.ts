@@ -9,7 +9,7 @@ import {
   sealedAssemblyGeometryBlocker,
   sealedAssemblyGlbAsset,
 } from "./src/thread/component-workspace-model.ts";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import type {
   ThreadArtifact,
   ThreadComponent,
@@ -19,17 +19,17 @@ import type {
 } from "./src/thread/types.ts";
 
 Deno.test("global CAD resolves by exact URI and preview hash without linking children", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
   const root: ThreadComponent = {
-    id: "cm01",
-    label: "CoffeeMachine CM-01",
+    id: "generic",
+    label: "GenericAssembly GEN-01",
     kind: "assembly",
     quantity: 1,
     bindings: [{
       provider: "build123d",
       kind: "artifact",
-      id: "/exports/coffee-machine.step",
-      label: "CM-01 STEP assembly",
+      id: "/exports/generic-product.step",
+      label: "GEN-01 STEP assembly",
       evidenceArtifactId: "superseded-run-step",
       status: "unverified",
       reason: "The declared evidence artifact is absent from this revision.",
@@ -38,7 +38,7 @@ Deno.test("global CAD resolves by exact URI and preview hash without linking chi
       provider: "build123d",
       artifactId: "superseded-run-stl",
       mediaType: "model/stl",
-      url: "/api/thread/assets/coffee-machine.stl",
+      url: "/api/thread/assets/generic-product.stl",
       sha256: "b".repeat(64),
     },
   };
@@ -60,8 +60,8 @@ Deno.test("global CAD resolves by exact URI and preview hash without linking chi
   };
   snapshot.components.components = [root, child];
   snapshot.artifacts.push(
-    artifact("current-step", "step", "/exports/coffee-machine.step", "a"),
-    artifact("current-stl", "mesh", "/exports/coffee-machine.stl", "b"),
+    artifact("current-step", "step", "/exports/generic-product.step", "a"),
+    artifact("current-stl", "mesh", "/exports/generic-product.stl", "b"),
   );
 
   const surface = resolveCadSurface(snapshot, root);
@@ -82,10 +82,10 @@ Deno.test("global CAD resolves by exact URI and preview hash without linking chi
 });
 
 Deno.test("global CAD does not resolve from a label or a foreign provider", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
   const root: ThreadComponent = {
-    id: "cm01",
-    label: "CoffeeMachine CM-01",
+    id: "generic",
+    label: "GenericAssembly GEN-01",
     kind: "assembly",
     quantity: 1,
     bindings: [{
@@ -705,9 +705,9 @@ Deno.test("an incomplete active geometry projection is a motivated blocker", () 
 });
 
 Deno.test("component revisions require an explicit catalog anchor", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
@@ -744,32 +744,32 @@ Deno.test("component revisions require an explicit catalog anchor", () => {
 // ── @3 per-part mesh resolution ───────────────────────────────────────────────
 
 Deno.test("per-part mesh binding resolves via resolveCadSurface as a part surface with preview", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
-  const meshArtifactId = "coffee-machine-cm01-v3-cad-r3-" + "a".repeat(64) +
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
+  const meshArtifactId = "generic-product-v3-cad-r3-" + "a".repeat(64) +
     "-mesh-drip-tray";
   const meshArtifact: ThreadArtifact = {
     id: meshArtifactId,
-    label: "CM-01 30 mm drip-tray presentation STL",
+    label: "GEN-01 30 mm drip-tray presentation STL",
     kind: "mesh",
     system: "build123d",
     revision: "a".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "a".repeat(64),
-    uri: "cm01-semantic-cad-r3-capture://test#coffee-machine-cm01-v3-r3-drip-tray.stl",
+    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
-    parentId: "cm01-v3:coffee-machine",
+    parentId: "generic-v3:generic-product",
     bindings: [{
       provider: "build123d",
       kind: "artifact",
       id: meshArtifactId,
-      label: "CM-01 30 mm drip-tray presentation STL",
+      label: "GEN-01 30 mm drip-tray presentation STL",
       evidenceArtifactId: meshArtifactId,
       status: "verified",
       selection: { kind: "artifact", id: meshArtifactId },
@@ -778,7 +778,7 @@ Deno.test("per-part mesh binding resolves via resolveCadSurface as a part surfac
       provider: "build123d",
       artifactId: meshArtifactId,
       mediaType: "model/stl",
-      url: "/api/thread/assets/coffee-machine-cm01-v3-r3-drip-tray.stl",
+      url: "/api/thread/assets/generic-product-v3-r3-drip-tray.stl",
       sha256: "a".repeat(64),
     },
   };
@@ -793,25 +793,25 @@ Deno.test("per-part mesh binding resolves via resolveCadSurface as a part surfac
 });
 
 Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported from no-binding", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
-  const meshArtifactId = "coffee-machine-cm01-v3-cad-r3-" + "b".repeat(64) +
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
+  const meshArtifactId = "generic-product-v3-cad-r3-" + "b".repeat(64) +
     "-mesh-drip-tray";
   const meshArtifact: ThreadArtifact = {
     id: meshArtifactId,
-    label: "CM-01 30 mm drip-tray presentation STL",
+    label: "GEN-01 30 mm drip-tray presentation STL",
     kind: "mesh",
     system: "build123d",
     revision: "b".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "b".repeat(64),
-    uri: "cm01-semantic-cad-r3-capture://test#coffee-machine-cm01-v3-r3-drip-tray.stl",
+    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
 
   // Component with build123d artifact binding AND a valid preview — ready
   const partWithPreview: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
@@ -827,14 +827,14 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
       provider: "build123d",
       artifactId: meshArtifactId,
       mediaType: "model/stl",
-      url: "/api/thread/assets/coffee-machine-cm01-v3-r3-drip-tray.stl",
+      url: "/api/thread/assets/generic-product-v3-r3-drip-tray.stl",
       sha256: "b".repeat(64),
     },
   };
 
   // Component with binding but no preview (operation not yet run)
   const partWithBinding: ThreadComponent = {
-    id: "cm01-v3:boiler",
+    id: "generic-v3:boiler",
     label: "Boiler",
     kind: "part",
     quantity: 1,
@@ -851,7 +851,7 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
 
   // Component with no build123d binding
   const partNoBind: ThreadComponent = {
-    id: "cm01-v3:enclosure",
+    id: "generic-v3:enclosure",
     label: "Enclosure",
     kind: "part",
     quantity: 1,
@@ -885,25 +885,25 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
 Deno.test("buildSysmlSubtree returns the parent assembly as root and correct siblings for a part", () => {
   const snapshot = minimalSnapshot();
   const assembly: ThreadComponent = {
-    id: "cm01-v3:coffee-machine",
-    label: "CoffeeMachine",
+    id: "generic-v3:generic-product",
+    label: "GenericAssembly",
     kind: "assembly",
     quantity: 1,
     bindings: [{
       provider: "syson",
       kind: "part-definition",
-      id: "sysml-coffee-machine",
-      label: "CoffeeMachine",
+      id: "sysml-generic-product",
+      label: "GenericAssembly",
       evidenceArtifactId: "arch",
       status: "verified",
     }],
   };
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
-    parentId: "cm01-v3:coffee-machine",
+    parentId: "generic-v3:generic-product",
     bindings: [{
       provider: "syson",
       kind: "part-definition",
@@ -914,38 +914,38 @@ Deno.test("buildSysmlSubtree returns the parent assembly as root and correct sib
     }],
   };
   const boiler: ThreadComponent = {
-    id: "cm01-v3:boiler",
+    id: "generic-v3:boiler",
     label: "Boiler",
     kind: "part",
     quantity: 1,
-    parentId: "cm01-v3:coffee-machine",
+    parentId: "generic-v3:generic-product",
     bindings: [],
   };
   snapshot.components.components = [assembly, dripTray, boiler];
 
   const subtree = buildSysmlSubtree(snapshot, dripTray);
 
-  assertEquals(subtree.root.id, "cm01-v3:coffee-machine");
+  assertEquals(subtree.root.id, "generic-v3:generic-product");
   assertEquals(subtree.root.isCurrent, false);
-  assertEquals(subtree.selected.id, "cm01-v3:drip-tray");
+  assertEquals(subtree.selected.id, "generic-v3:drip-tray");
   assertEquals(subtree.selected.isCurrent, true);
   assertEquals(subtree.selected.elementId, "sysml-drip-tray");
   assertEquals(subtree.siblings.length, 1);
-  assertEquals(subtree.siblings[0]?.id, "cm01-v3:boiler");
+  assertEquals(subtree.siblings[0]?.id, "generic-v3:boiler");
 });
 
 Deno.test("buildSysmlSubtree returns the assembly itself as root and selected when the assembly is selected", () => {
   const snapshot = minimalSnapshot();
   const assembly: ThreadComponent = {
-    id: "cm01-v3:coffee-machine",
-    label: "CoffeeMachine",
+    id: "generic-v3:generic-product",
+    label: "GenericAssembly",
     kind: "assembly",
     quantity: 1,
     bindings: [{
       provider: "syson",
       kind: "part-definition",
-      id: "sysml-coffee-machine",
-      label: "CoffeeMachine",
+      id: "sysml-generic-product",
+      label: "GenericAssembly",
       evidenceArtifactId: "arch",
       status: "verified",
     }],
@@ -954,20 +954,20 @@ Deno.test("buildSysmlSubtree returns the assembly itself as root and selected wh
 
   const subtree = buildSysmlSubtree(snapshot, assembly);
 
-  assertEquals(subtree.root.id, "cm01-v3:coffee-machine");
+  assertEquals(subtree.root.id, "generic-v3:generic-product");
   assertEquals(subtree.root.isCurrent, true);
-  assertEquals(subtree.selected.id, "cm01-v3:coffee-machine");
+  assertEquals(subtree.selected.id, "generic-v3:generic-product");
   assertEquals(subtree.siblings.length, 0);
 });
 
 Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identity", () => {
   const snapshot = minimalSnapshot();
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
-    parentId: "cm01-v3:coffee-machine",
+    parentId: "generic-v3:generic-product",
     bindings: [{
       provider: "syson",
       kind: "part-definition",
@@ -1070,7 +1070,7 @@ Deno.test("buildSysmlSubtree never treats a prefix SysML identity as an anchor",
 Deno.test("buildSysmlSubtree never binds legacy sensitivity labels to a component", () => {
   const snapshot = minimalSnapshot();
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
@@ -1121,7 +1121,7 @@ Deno.test("buildSysmlSubtree never binds legacy sensitivity labels to a componen
 Deno.test("an unbound canonical sensitivity stays out of the component facet", () => {
   const snapshot = minimalSnapshot();
   const selected: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
@@ -1207,14 +1207,14 @@ Deno.test("an unbound canonical sensitivity stays out of the component facet", (
 Deno.test("a canonical sensitivity is not shown for a different selected component", () => {
   const snapshot = minimalSnapshot();
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
     bindings: [],
   };
   const boiler: ThreadComponent = {
-    id: "cm01-v3:boiler",
+    id: "generic-v3:boiler",
     label: "Boiler",
     kind: "part",
     quantity: 1,
@@ -1235,7 +1235,7 @@ Deno.test("a canonical sensitivity is not shown for a different selected compone
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function minimalSnapshot(): ThreadWorkbenchSnapshot {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
   snapshot.components.components = [];
   snapshot.requirements = [];
   snapshot.observations = [];

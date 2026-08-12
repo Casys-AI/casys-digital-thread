@@ -4,18 +4,12 @@ This repository uses the [Diátaxis](https://diataxis.fr/) framework: choose a p
 the job you are trying to do, rather than by the component you happen to know. The four
 categories deliberately answer different questions.
 
-## Tutorials — learn by doing
-
-- [Run the first CoffeeMachine evidence](tutorials/coffee-machine-nominal.md) starts the
-  stateless local services, creates a real Modelica run, reads its immutable structured
-  evidence, and then follows its separate provisional scenario comparison.
-
 ## How-to guides — achieve a focused task
 
-- [Run the CM-01 V3 golden path locally](how-to/run-cm01-v3-golden-local.md) starts a
-  fresh isolated Compose topology without deleting retained evidence. It follows the
-  documentary baseline and SysON seed into the five fixed CM-01 operations, then
-  documents the bounded correction, identity recovery, and closeout path separately.
+- The active qualification candidate is `desk-lamp-dl04`: it holds generic sealed
+  geometry, requirements and proof evidence suitable for the next
+  `verify.run-fea-static-proof@2` admission. Until that distinct run has completed,
+  persisted and been read back, it is not live CalculiX `@2` proof.
 - [Recover a quarantined provider run](how-to/recover-a-quarantined-provider-run.md)
   covers the one path out of a dispatch the executor could not settle: inspect the
   provider, sign the seven-parameter reconciliation, execute it as a human, and requeue.
@@ -32,14 +26,19 @@ categories deliberately answer different questions.
   short repeatable checklist for a qualified provider capability without giving agents a
   raw provider or plan-authoring surface.
 
+## Legacy and golden records — audit, not operation
+
+- [CM-01 V3 archived golden dossier](legacy/cm01-v3.md) is the sole documentation entry
+  point for the static fixture and immutable historical records. It describes no active
+  code or runnable path.
+
 ## Reference — look up exact contracts and locations
 
 - [MCP console reference](reference/console.md) documents the console resource, tools,
   evidence model, agent project-control tools, signed MRTR elicitation, and authority
   boundary.
 - [Workspace map and local ports](reference/workspace-map.md) identifies the workflow,
-  scenario-contract plan, observers, UI sources, generated bundle, harness, volumes, and
-  every local endpoint.
+  observers, UI sources, generated bundle, harness, volumes, and every local endpoint.
 - [Source analysis and authority pipeline](reference/analysis-authority-pipeline.md)
   separates native-language parsing, provider-neutral facts, human admission,
   inspectable lowering and private provider dispatch; it documents the recorded
@@ -57,16 +56,16 @@ categories deliberately answer different questions.
   boundary.
 - [EngineeringProjectSnapshot contract](reference/engineering-project.md) defines
   project intent, derived phases, human-agent work, decisions and approvals, blockers,
-  execution runs, the fixed CM-01 V3 operation catalog, immutable revisions, command
-  receipts, authority, and exact references into immutable thread evidence.
+  execution runs, registered generic operations, immutable revisions, command receipts,
+  authority, and exact references into immutable thread evidence.
 - [Living project brief](reference/project-brief.md) defines intent, guided questions,
   sourced answers, proposal versus canonical truth, exact human confirmation, the
   versioned V2 gate contract with its declared dependencies, and the approved-brief
   documentary baseline inside one project.
 - [Mechanical proof case and its execution receipt](reference/mechanical-proof-case.md)
-  defines the strict declaration schema, its limited identity binding, and the run that
-  turns a sealed case into a published verdict — including the provenance every
-  published run must satisfy.
+  defines the strict declaration schema, the distinct seal and execution authorities,
+  and the run that turns a sealed case into a published verdict — including the
+  provenance every published run must satisfy.
 - [Cross-tool component identity](reference/thread-components.md) defines the reviewed
   SysON PartUsage, build123d artifact, and ERPNext Item bindings used by the native
   **Parts** workspace, including visible trace gaps.
@@ -78,9 +77,6 @@ categories deliberately answer different questions.
 - [Product direction and delivery boundary](explanations/product-direction.md) is the
   canonical product compass: beginner-first human-agent work, idea/CAD/product entry
   points, vendor independence, and the verified-now/V1/V2 boundary.
-- [CoffeeMachine verification architecture](reference/verification-architecture.md)
-  explains the Modelica/SysON/CalculiX split and why the current comparison is a
-  provisional scenario contract rather than a product requirement.
 - [Proofs and verdicts](explanations/proofs-and-verdicts.md) explains why CAD, FEA,
   physical simulation, and constraint evaluation remain separate stages.
 - [Industry positioning and state of the art](explanations/positioning.md) explains the
@@ -102,11 +98,5 @@ categories deliberately answer different questions.
 ## Read the status labels literally
 
 `succeeded` means that a simulation completed. `passed` or `failed` means a comparison
-has been attached. The CoffeeMachine thermal comparison is a versioned **provisional
-scenario contract** with one condition, `water_temperature_max >= 90 degC`; it is
-neither a product requirement nor a requirement stored in a SysON project. The tracked
-r5 CM-01 baseline has no model-owned mechanical criterion and therefore no product
-verdict. The approved r6 DripTray extension instead contains two model-owned criteria
-and two passing evaluations, bounded to that concept case. A demo fixture is always
-labelled demo, and `unavailable`, `unresolved`, and `error` are evidence states, not
-hidden successes.
+has been attached. A demo or retired fixture is never active evidence. `unavailable`,
+`unresolved`, and `error` are evidence states, not hidden successes.

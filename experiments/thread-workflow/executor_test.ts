@@ -237,7 +237,7 @@ Deno.test("WorkflowExecutor validates declared runtime inputs before calling too
   assertEquals(calls, 0);
 });
 
-Deno.test("coffee workflow blocks SysON evaluation when CalculiX attests different STEP bytes", async () => {
+Deno.test("generic workflow blocks SysON evaluation when CalculiX attests different STEP bytes", async () => {
   const producerHash = "a".repeat(64);
   const consumedHash = "b".repeat(64);
   const calls: Array<{ server: string; call: McpToolCall }> = [];
@@ -269,13 +269,13 @@ Deno.test("coffee workflow blocks SysON evaluation when CalculiX attests differe
     ],
   ]);
   const workflow = await loadAndCompileThreadWorkflow(
-    "experiments/thread-workflow/coffee-machine-mechanical-v1.yaml",
+    "experiments/thread-workflow/generic-static-mechanical-v1.yaml",
   );
 
   const execution = await executor(clients).execute(workflow, {
-    syson_editing_context_id: "coffee-context",
+    syson_editing_context_id: "generic-context",
     syson_mechanical_requirements_element_id: "mechanical-requirements",
-    cad_step_path: "/exports/coffee-machine-current.step",
+    cad_step_path: "/exports/generic-product-current.step",
     cad_step_sha256: producerHash,
     reviewed_mesh_size_mm: 4,
     reviewed_material_e_mpa: 70_000,

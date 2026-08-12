@@ -106,7 +106,7 @@ Deno.test("large portrait graph keeps a selected fact readable and pannable", ()
 });
 
 Deno.test("real 64-fact graph opens at a readable inspection scale", () => {
-  // Dimensions measured from the canonical coffee-machine graph after its
+  // Dimensions measured from the canonical generic-product graph after its
   // wide-canvas component packing.
   const layout = {
     width: 5369,

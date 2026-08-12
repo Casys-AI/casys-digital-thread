@@ -123,15 +123,6 @@ two bounded bootstrap operations:
    blank SysML document, and root package, reads the root back, normalizes its
    identities into `syson-model-seed-capture/2.0`, and publishes r2.
 
-The separate `coffee-machine-cm01-v3` golden path registers five bounded operations for
-its fixed architecture, semantic CAD, nominal Modelica observation, read-only ERP BOM
-observation, and isolated DripTray proof. They do not turn the historical CM-01 r6
-record into a fallback. Its five case-specific correction/recovery operations then lead
-to provider-free R10 → R11 identity recovery; local R11 → R12 closeout reconciles the
-retained failed R2 work without relabelling its run. See the
-[local CM-01 V3 guide](../how-to/run-cm01-v3-golden-local.md) for exact scope, provider
-topology, evidence locations, and comparison boundary.
-
 Neither caller can choose a provider, tool, argument, file, SysML text, or result.
 Before every non-idempotent SysON write is dispatched, the executor writes a durable
 attempt record. An unknown provider outcome fails closed for review; it is never blindly
@@ -145,8 +136,7 @@ baseline and r2 SysON seed: a qualitative architecture with five typed usages an
 requirements whose unresolved points remain explicit. It establishes neither CAD,
 physical analysis, cost, compliance, certification, nor a requirement verdict. Other
 architecture, CAD, physics, cost, compliance, or verified-requirement capabilities still
-need their own reviewed executor and output contract. CM-01 remains the sole current
-CAD/physics proof case.
+need their own reviewed executor and output contract.
 
 Its separate read-only product-structure successor,
 `model.capture-inspection-drone-part-definitions@1`, completed
@@ -161,20 +151,6 @@ definition and with provider-attested quantity `1`. It is a recorded SysON produ
 structure only: it establishes no CAD, physical analysis, cost, manufacturing,
 certification, compliance, or verdict.
 
-The tracked r5 CM-01 baseline assembles captured or read-only observed branches from
-SysON, build123d, Modelica, and ERPNext through an explicit identity manifest. Its
-captured SysON inventory has no mechanical `ConstraintUsage`, so no mechanical verdict
-or CalculiX branch exists **in that clean baseline**. Assembly does not claim that
-independent thermal or ERP evidence was caused by the CAD branch.
-
-The separately authorized 2026-08-02 reference run added the exact reviewed DripTray
-`1 mm` and `20 MPa` constraints to SysON, generated a content-addressed build123d STEP,
-verified its CalculiX consumption, normalized the observations, and published two
-passing SysON evaluations in r6. Active project revision 10 records that run and its
-work item as completed. This later local evidence does not turn the r5 baseline into a
-mechanical baseline and does not establish whole-machine, release, or certification
-proof.
-
 ERPNext remains one provider-native MCP on port `3012`. The backend selects reviewed
 read tools and projects their results; the browser receives neither ERP credentials nor
 generic tool-call authority.
@@ -184,11 +160,9 @@ lifecycle calls. Such an executor owns the bounded provider calls, canonical cap
 snapshot persistence and read-back, attachment, validation, and its internal lifecycle
 transitions. A caller cannot supply a provider/tool name, raw arguments, result
 snapshot, or evidence payload to make that happen. The public V3 baseline executor makes
-no provider call; the provider-backed seed and CM-01 catalog have the closed contracts
-above. Any other architecture, requirements, CAD, simulation, measurement, or
-verification operation still needs its own reviewed executor and output contract.
-CM-01's historical r6 remains required provenance for the bounded V3 loop; the V3 route
-uses fresh identities and distinct registered executors instead.
+no provider call; the provider-backed seed has the closed contract above. Any other
+architecture, requirements, CAD, simulation, measurement, or verification operation
+still needs its own reviewed executor and output contract.
 
 ## Signed human elicitation
 

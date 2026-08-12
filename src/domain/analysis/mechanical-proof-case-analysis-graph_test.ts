@@ -11,15 +11,18 @@ const PROOF_DECLARATION_FINGERPRINT = {
   algorithm: "sha256" as const,
   digest: "d".repeat(64),
 };
+const PROOF_CASE_URL = new URL(
+  "../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
+  import.meta.url,
+);
+const PROOF_CASE_TEXT = await Deno.readTextFile(PROOF_CASE_URL);
 
-Deno.test("mechanical proof graph records declared target inputs and requirements only", async () => {
-  const proofCase = validateMechanicalProofCase(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
-      ),
-    ),
-  );
+function proofCaseInput(): unknown {
+  return JSON.parse(PROOF_CASE_TEXT);
+}
+
+Deno.test("mechanical proof graph records declared target inputs and requirements only", () => {
+  const proofCase = validateMechanicalProofCase(proofCaseInput());
   const graph = buildMechanicalProofCaseAnalysisGraph({
     proofCase,
     proofFingerprint: PROOF_DECLARATION_FINGERPRINT,
@@ -70,12 +73,8 @@ Deno.test("mechanical proof graph records declared target inputs and requirement
   );
 });
 
-Deno.test("mechanical proof graph is deterministic for a reordered declaration", async () => {
-  const source = JSON.parse(
-    await Deno.readTextFile(
-      "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
-    ),
-  ) as Record<string, unknown>;
+Deno.test("mechanical proof graph is deterministic for a reordered declaration", () => {
+  const source = proofCaseInput() as Record<string, unknown>;
   const proofCase = validateMechanicalProofCase(source);
   const reordered = validateMechanicalProofCase({
     ...source,
@@ -101,14 +100,8 @@ Deno.test("mechanical proof graph is deterministic for a reordered declaration",
   );
 });
 
-Deno.test("mechanical proof graph rejects an evidence artifact without an exact fingerprint", async () => {
-  const proofCase = validateMechanicalProofCase(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
-      ),
-    ),
-  );
+Deno.test("mechanical proof graph rejects an evidence artifact without an exact fingerprint", () => {
+  const proofCase = validateMechanicalProofCase(proofCaseInput());
   assertThrows(
     () =>
       buildMechanicalProofCaseAnalysisGraph({
@@ -124,14 +117,8 @@ Deno.test("mechanical proof graph rejects an evidence artifact without an exact 
   );
 });
 
-Deno.test("mechanical proof nodes remain stable across seal occurrences while assertion evidence stays distinct", async () => {
-  const proofCase = validateMechanicalProofCase(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
-      ),
-    ),
-  );
+Deno.test("mechanical proof nodes remain stable across seal occurrences while assertion evidence stays distinct", () => {
+  const proofCase = validateMechanicalProofCase(proofCaseInput());
   const first = buildMechanicalProofCaseAnalysisGraph({
     proofCase,
     proofFingerprint: PROOF_DECLARATION_FINGERPRINT,

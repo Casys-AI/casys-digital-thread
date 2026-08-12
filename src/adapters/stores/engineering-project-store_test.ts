@@ -12,17 +12,20 @@ import {
 } from "../../domain/project/engineering-project-command-service.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 
-Deno.test("FileEngineeringProjectStore loads the validated CM-01 project manifest read-only", async () => {
-  const store = new FileEngineeringProjectStore(
-    "config/projects/coffee-machine-cm01.project.json",
-  );
+Deno.test("FileEngineeringProjectStore loads a validated project manifest read-only", async () => {
+  await withTempDirectory(async (directory) => {
+    const fixture = projectFixture();
+    const path = `${directory}/generic-project.json`;
+    await Deno.writeTextFile(path, `${deterministicJson(fixture)}\n`);
+    const store = new FileEngineeringProjectStore(path);
 
-  const project = await store.get();
+    const project = await store.get();
 
-  assertEquals(project?.schemaVersion, "1.0");
-  assertEquals(project?.project.id, "coffee-machine-cm01");
-  assertEquals(project?.project.subjectId, "coffee-machine-cm01");
-  assertEquals("save" in store, false);
+    assertEquals(project?.schemaVersion, "1.0");
+    assertEquals(project?.project.id, "generic-project");
+    assertEquals(project?.project.subjectId, "generic-subject");
+    assertEquals("save" in store, false);
+  });
 });
 
 Deno.test("FileEngineeringProjectStore reports an absent manifest without manufacturing a fixture", async () => {
@@ -69,7 +72,7 @@ class StubFileIo implements EngineeringProjectFileIo {
 Deno.test("FileEngineeringProjectRevisionStore writes deterministic immutable revisions", async () => {
   await withTempDirectory(async (directory) => {
     const store = new FileEngineeringProjectRevisionStore(directory);
-    const initial = await projectFixture();
+    const initial = projectFixture();
     await store.createInitial(initial);
 
     const raw = await Deno.readTextFile(
@@ -86,7 +89,7 @@ Deno.test("FileEngineeringProjectRevisionStore writes deterministic immutable re
 
 Deno.test("cross-process createNew CAS admits only one command at the same expected revision", async () => {
   await withTempDirectory(async (directory) => {
-    const initial = await projectFixture();
+    const initial = projectFixture();
     const firstStore = new FileEngineeringProjectRevisionStore(directory);
     const secondStore = new FileEngineeringProjectRevisionStore(directory);
     await firstStore.createInitial(initial);
@@ -96,11 +99,11 @@ Deno.test("cross-process createNew CAS admits only one command at the same expec
     const results = await Promise.allSettled([
       first.proposeDecision(
         HUMAN,
-        proposalCommand(initial, "command-a", "review-mechanical-proof-case"),
+        proposalCommand(initial, "command-a", "review-generic-input"),
       ),
       second.proposeDecision(
         HUMAN,
-        proposalCommand(initial, "command-b", "review-mechanical-proof-case"),
+        proposalCommand(initial, "command-b", "review-generic-input"),
       ),
     ]);
 
@@ -119,14 +122,14 @@ Deno.test("cross-process createNew CAS admits only one command at the same expec
 
 Deno.test("same command id racing across stores is idempotent", async () => {
   await withTempDirectory(async (directory) => {
-    const initial = await projectFixture();
+    const initial = projectFixture();
     const firstStore = new FileEngineeringProjectRevisionStore(directory);
     const secondStore = new FileEngineeringProjectRevisionStore(directory);
     await firstStore.createInitial(initial);
     const command = proposalCommand(
       initial,
       "same-command",
-      "review-mechanical-proof-case",
+      "review-generic-input",
     );
     const [left, right] = await Promise.all([
       commandService(firstStore, "2026-08-01T11:00:01.000Z").proposeDecision(
@@ -147,7 +150,7 @@ Deno.test("same command id racing across stores is idempotent", async () => {
 Deno.test("highest claimed corrupt revision fails closed instead of falling back", async () => {
   await withTempDirectory(async (directory) => {
     const store = new FileEngineeringProjectRevisionStore(directory);
-    const initial = await projectFixture();
+    const initial = projectFixture();
     await store.createInitial(initial);
     await Deno.writeTextFile(
       `${directory}/${encodeURIComponent(initial.project.id)}/0000000002.json`,
@@ -166,7 +169,7 @@ Deno.test("active project paths reject dot-segment and non-alphanumeric prefixes
     await assertRejects(() => store.get(".hidden"), TypeError);
     await assertRejects(() => store.get("-option"), TypeError);
 
-    const unsafe = structuredClone(await projectFixture()) as Mutable<
+    const unsafe = structuredClone(projectFixture()) as Mutable<
       EngineeringProjectSnapshot
     >;
     unsafe.project.id = "..";
@@ -174,16 +177,64 @@ Deno.test("active project paths reject dot-segment and non-alphanumeric prefixes
   });
 });
 
-const PROJECT_CONFIG = new URL(
-  "../../../config/projects/coffee-machine-cm01.project.json",
-  import.meta.url,
-);
 const HUMAN = { kind: "human" as const, actorId: "store-test-human" };
 
-async function projectFixture(): Promise<EngineeringProjectSnapshot> {
-  return validateEngineeringProjectSnapshot(
-    JSON.parse(await Deno.readTextFile(PROJECT_CONFIG)),
-  );
+function projectFixture(): EngineeringProjectSnapshot {
+  return validateEngineeringProjectSnapshot({
+    schemaVersion: "1.0",
+    id: "engineering-project-generic-r1",
+    revision: 1,
+    generatedAt: "2026-08-01T10:36:58.345Z",
+    project: {
+      id: "generic-project",
+      name: "Generic project",
+      subjectId: "generic-subject",
+      objective: {
+        title: "Verify a generic engineering input",
+        statement: "Exercise immutable project storage without a product fixture.",
+      },
+    },
+    threadSnapshots: [{
+      snapshotId: "generic-thread-r1",
+      revision: 1,
+      subjectId: "generic-subject",
+    }],
+    phases: [{
+      id: "verification",
+      name: "Verification",
+      order: 1,
+      description: "Review the bounded verification input.",
+      workItemIds: ["verify-generic-input"],
+      requiredDecisionIds: ["review-generic-input"],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: "verify-generic-input",
+      phaseId: "verification",
+      title: "Verify the generic input",
+      description: "Wait for the exact input decision before execution.",
+      kind: "verify",
+      status: "waiting-for-decision",
+      owner: "shared",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: ["review-generic-input"],
+      blockerIds: [],
+    }],
+    agentRuns: [],
+    decisions: [{
+      id: "review-generic-input",
+      phaseId: "verification",
+      title: "Review the generic input",
+      question: "Which exact input should govern the generic verification?",
+      status: "required",
+      requestedAt: "2026-08-01T10:36:58.345Z",
+      inputEvidenceRefs: [],
+      approvalIds: [],
+    }],
+    approvals: [],
+    blockers: [],
+  });
 }
 
 function proposalCommand(

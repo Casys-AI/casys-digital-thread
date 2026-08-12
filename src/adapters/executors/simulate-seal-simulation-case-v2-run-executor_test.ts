@@ -18,6 +18,7 @@ import {
   encodeSimulationCaseDecisionParameters,
 } from "../../domain/analysis/simulation-case-proposal.ts";
 import {
+  type SimulationCaseV2Catalog,
   simulationCaseV2CatalogKey,
 } from "../../domain/analysis/simulation-case-v2-catalog.ts";
 import {
@@ -327,6 +328,76 @@ Deno.test(
 );
 
 Deno.test(
+  "qualified Modelica seal rejects an uncatalogued V2 case before source or provider reads",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-qualified-modelica-uncatalogued-",
+    });
+    try {
+      const fixture = await fixtureProject(directory);
+      let sourceReads = 0;
+      let manifestCalls = 0;
+      let providerReads = 0;
+      const executor = createExecutor({
+        directory,
+        fixture,
+        sourceCapture: new ModelicaQualifiedSourceCaptureService({
+          reader: {
+            read() {
+              providerReads += 1;
+              return Promise.reject(
+                new Error("uncatalogued case must not read provider bytes"),
+              );
+            },
+          },
+          artifacts: byteStore(
+            "modelica-qualified-source",
+            `${directory}/source-bytes`,
+            "modelica-qualified-source",
+          ),
+          captures: byteStore(
+            "modelica-qualified-source-capture",
+            `${directory}/source-captures`,
+            "modelica-qualified-source-capture",
+          ),
+        }),
+        manifestReader: {
+          getManifest() {
+            manifestCalls += 1;
+            return Promise.reject(
+              new Error("uncatalogued case must not read manifest"),
+            );
+          },
+        },
+        simulationCaseCatalog: new Map(),
+        readTextFile: () => {
+          sourceReads += 1;
+          return Promise.reject(
+            new Error("uncatalogued case must not read its source"),
+          );
+        },
+      });
+
+      await assertRejects(
+        () => executor.execute(AGENT, command(fixture.queued.revision, fixture.runId)),
+        Error,
+        "server-side catalog",
+      );
+      assertEquals(sourceReads, 0);
+      assertEquals(manifestCalls, 0);
+      assertEquals(providerReads, 0);
+      const project = await fixture.projects.get(PROJECT_ID);
+      assertEquals(
+        project?.agentRuns.find((run) => run.id === fixture.runId)?.status,
+        "queued",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   "qualified Modelica seal @2 rejects an actually approved V1 proposal before manifest, source, claim, or collection",
   async () => {
     const directory = await Deno.makeTempDir({
@@ -334,13 +405,7 @@ Deno.test(
     });
     try {
       const fixture = await fixtureProject(directory);
-      const v1Case = validateSimulationCase(
-        JSON.parse(
-          await Deno.readTextFile(
-            "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
-          ),
-        ),
-      );
+      const v1Case = fixtureV1Case(fixture.simulationCase);
       const originalDecision = fixture.queued.decisions.find((decision) =>
         decision.id === "qualified-seal-decision"
       )!;
@@ -387,6 +452,7 @@ Deno.test(
           return typeof value === "function" ? value.bind(target) : value;
         },
       }) as EngineeringProjectRevisionStore;
+      let sourceCalls = 0;
       let manifestCalls = 0;
       let resourceCalls = 0;
       const executor = createExecutor({
@@ -421,12 +487,19 @@ Deno.test(
             );
           },
         },
+        readTextFile: () => {
+          sourceCalls += 1;
+          return Promise.reject(
+            new Error("V1 proposal must stop before case source read"),
+          );
+        },
       });
 
       await assertRejects(
         () => executor.execute(AGENT, command(v1Project.revision, fixture.runId)),
         Error,
       );
+      assertEquals(sourceCalls, 0);
       assertEquals(manifestCalls, 0);
       assertEquals(resourceCalls, 0);
       assertEquals(
@@ -727,6 +800,8 @@ function createExecutor(input: {
   readonly manifestReader: {
     getManifest: () => Promise<Awaited<ReturnType<typeof fixtureManifest>>>;
   };
+  readonly simulationCaseCatalog?: SimulationCaseV2Catalog;
+  readonly readTextFile?: (path: string) => Promise<string>;
 }) {
   return new SimulateSealSimulationCaseV2RunExecutor({
     projects: input.projects ?? input.fixture.projects,
@@ -751,15 +826,15 @@ function createExecutor(input: {
       `${input.directory}/qualification`,
       "simulation-case-qualification",
     ),
-    simulationCaseCatalog: new Map([[
+    simulationCaseCatalog: input.simulationCaseCatalog ?? new Map([[
       simulationCaseV2CatalogKey(input.fixture.simulationCase),
       {
         sourcePath: "fixture-case.json",
         canonicalDigest: input.fixture.caseDigest,
       },
     ]]),
-    readTextFile: () =>
-      Promise.resolve(deterministicJson(input.fixture.simulationCase)),
+    readTextFile: input.readTextFile ??
+      (() => Promise.resolve(deterministicJson(input.fixture.simulationCase))),
   });
 }
 
@@ -1039,7 +1114,7 @@ async function fixtureCase(basisSnapshotId: string) {
       baseThreadSnapshot: { id: basisSnapshotId, revision: 1, subjectId: SUBJECT_ID },
     },
     kit: {
-      modelId: "cm01-thermal-model",
+      modelId: "thermal-system-model",
       modelVersion: "1.0.0",
       modelSha256: await fingerprintResourceBytes(model),
     },
@@ -1057,13 +1132,35 @@ async function fixtureCase(basisSnapshotId: string) {
   });
 }
 
+function fixtureV1Case(
+  v2Case: Awaited<ReturnType<typeof fixtureCase>>,
+) {
+  return validateSimulationCase({
+    schemaVersion: "simulation-case/1.0",
+    id: "fixture-modelica-case-v1",
+    revision: 1,
+    scope: v2Case.scope,
+    evidenceBoundary: v2Case.evidenceBoundary,
+    project: v2Case.project,
+    kit: v2Case.kit,
+    scenario: {
+      id: v2Case.scenario.id,
+      sha256: v2Case.scenario.sourceSha256,
+    },
+    parameters: v2Case.parameters,
+    expectedMetrics: v2Case.expectedMetrics,
+    parameterMode: v2Case.parameterMode,
+    timeoutMs: v2Case.timeoutMs,
+  });
+}
+
 async function fixtureManifest(
   selection: {
     modelId: string;
     modelVersion: string;
     scenarioId: string;
   } = {
-    modelId: "cm01-thermal-model",
+    modelId: "thermal-system-model",
     modelVersion: "1.0.0",
     scenarioId: "nominal-heatup",
   },

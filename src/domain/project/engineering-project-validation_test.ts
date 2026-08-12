@@ -14,11 +14,11 @@ import {
 import type { ThreadArtifact, ThreadSnapshot } from "../thread/thread-snapshot.ts";
 
 const CONFIG = new URL(
-  "../../../config/projects/coffee-machine-cm01.project.json",
+  "../../testing/generic-engineering-project.fixture.json",
   import.meta.url,
 );
 
-Deno.test("CM-01 project reports observed phases and an honest blocked verification phase", async () => {
+Deno.test("generic project reports observed phases and an honest blocked verification phase", async () => {
   const project = validateEngineeringProjectSnapshot(await projectJson());
 
   assertEquals(deriveEngineeringProjectStatus(project), "attention-required");
@@ -54,7 +54,7 @@ Deno.test("EngineeringProjectSnapshot is cloned, deeply frozen and strictly vers
   const project = validateEngineeringProjectSnapshot(input);
   (input as Record<string, unknown>).id = "mutated-outside-validator";
 
-  assertEquals(project.id, "engineering-project-coffee-machine-cm01-r1");
+  assertEquals(project.id, "engineering-project-generic-test-system-r1");
   assertEquals(Object.isFrozen(project), true);
   assertEquals(Object.isFrozen(project.project), true);
   assertEquals(Object.isFrozen(project.phases), true);
@@ -123,7 +123,7 @@ Deno.test("blocker-mediated decision scope has one global work-item owner", asyn
 Deno.test("ordinary receipt issuedAt remains client audit metadata", async () => {
   const project = await projectJson();
   const previousSnapshotId = project.id;
-  project.id = "engineering-project-coffee-machine-cm01-r2";
+  project.id = "engineering-project-generic-test-system-r2";
   project.revision = 2;
   project.previous = { snapshotId: previousSnapshotId, revision: 1 };
   project.generatedAt = "2026-08-02T06:04:27.475Z";
@@ -514,7 +514,7 @@ Deno.test(
       },
     });
     target.operation = {
-      id: "record.archive-coffee-machine-cm01-lineage",
+      id: "record.archive-project-lineage",
       version: "1",
       bindings: [
         { name: "archiveTarget", source: ref("artifact-a") },
@@ -549,7 +549,7 @@ Deno.test("the exact same binding may never be supplied twice", async () => {
     },
   };
   target.operation = {
-    id: "record.archive-coffee-machine-cm01-lineage",
+    id: "record.archive-project-lineage",
     version: "1",
     bindings: [binding, binding],
   };

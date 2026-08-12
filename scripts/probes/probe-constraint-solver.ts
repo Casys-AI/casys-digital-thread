@@ -20,18 +20,16 @@ import { parseZ3Result, type Z3Result } from "../../src/adapters/mcp/z3-result.t
  *   exercised against a live provider before it enters a production execution
  *   path. This probe is that live exercise.
  *
- * Default context: the CM-01 DripTray mechanical requirements element.
- * Override with --editing-context-id=<uuid> and --element-id=<uuid>.
+ * The caller must name the exact SysON editing context and element. There is
+ * deliberately no product-specific default: a diagnostic probe must never
+ * select a model on the operator's behalf.
  */
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:3009/mcp";
-const DEFAULT_EDITING_CONTEXT_ID = "01942665-3ded-4d3a-9902-08691eae190e";
-const DEFAULT_ELEMENT_ID = "09e35cdc-5bca-4234-a765-5640b313e93f";
-
 export interface ProbeConstraintSolverOptions {
   readonly endpoint?: string;
-  readonly editingContextId?: string;
-  readonly elementId?: string;
+  readonly editingContextId: string;
+  readonly elementId: string;
   /** Test seam — omit in production; defaults to HttpMcpToolClient. */
   readonly client?: McpToolClient;
 }
@@ -56,11 +54,16 @@ export interface ProbeConstraintSolverResult {
  * every call in a try/catch.
  */
 export async function probeConstraintSolver(
-  options: ProbeConstraintSolverOptions = {},
+  options: ProbeConstraintSolverOptions,
 ): Promise<ProbeConstraintSolverResult> {
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
-  const editingContextId = options.editingContextId ?? DEFAULT_EDITING_CONTEXT_ID;
-  const elementId = options.elementId ?? DEFAULT_ELEMENT_ID;
+  const editingContextId = options.editingContextId.trim();
+  const elementId = options.elementId.trim();
+  if (editingContextId.length === 0 || elementId.length === 0) {
+    throw new Error(
+      "probe-constraint-solver requires non-empty editingContextId and elementId",
+    );
+  }
   const client = options.client ?? new HttpMcpToolClient({
     mcpUrl: endpoint,
     timeoutMs: 60_000,
@@ -111,10 +114,17 @@ export async function probeConstraintSolver(
 
 if (import.meta.main) {
   const args = parseArgs(Deno.args);
+  const editingContextId = args["editing-context-id"];
+  const elementId = args["element-id"];
+  if (!editingContextId || !elementId) {
+    throw new Error(
+      "Usage: deno task probe:constraint-solver -- --editing-context-id=<uuid> --element-id=<uuid>",
+    );
+  }
   const result = await probeConstraintSolver({
     endpoint: args["endpoint"],
-    editingContextId: args["editing-context-id"],
-    elementId: args["element-id"],
+    editingContextId,
+    elementId,
   });
   console.log(JSON.stringify(result, null, 2));
   if (result.z3.status === "error") Deno.exitCode = 1;

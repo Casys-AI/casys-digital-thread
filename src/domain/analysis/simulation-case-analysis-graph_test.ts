@@ -12,14 +12,46 @@ const CASE_DECLARATION_FINGERPRINT = {
   digest: "d".repeat(64),
 };
 
-Deno.test("simulation case graph records only declared case incidences with its exact artifact", async () => {
-  const simulationCase = validateSimulationCase(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
-      ),
-    ),
-  );
+function caseInput(): Record<string, unknown> {
+  return {
+    schemaVersion: "simulation-case/1.0",
+    id: "thermal-system-nominal-v1",
+    revision: 1,
+    scope: "Neutral thermal-system analysis-graph fixture.",
+    evidenceBoundary: "Declared graph structure only; no causal influence is asserted.",
+    project: {
+      id: "thermal-system-project",
+      subjectId: "project:thermal-system",
+      baseThreadSnapshot: {
+        id: "project:thermal-system:r2",
+        revision: 2,
+        subjectId: "project:thermal-system",
+      },
+    },
+    kit: {
+      modelId: "thermal-system-model",
+      modelVersion: "1.0.0",
+      modelSha256: "a".repeat(64),
+    },
+    scenario: {
+      id: "nominal-heating",
+      sha256: "b".repeat(64),
+    },
+    parameters: [
+      { id: "targetTemperature", value: 333.15, unit: "K" },
+      { id: "ambientTemperature", value: 293.15, unit: "K" },
+    ],
+    expectedMetrics: [
+      { id: "settlingTime", unit: "s" },
+      { id: "peakTemperature", unit: "K" },
+    ],
+    parameterMode: "explicit-overrides",
+    timeoutMs: 15_000,
+  };
+}
+
+Deno.test("simulation case graph records only declared case incidences with its exact artifact", () => {
+  const simulationCase = validateSimulationCase(caseInput());
   const graph = buildSimulationCaseAnalysisGraph({
     simulationCase,
     caseFingerprint: CASE_DECLARATION_FINGERPRINT,
@@ -55,12 +87,8 @@ Deno.test("simulation case graph records only declared case incidences with its 
   );
 });
 
-Deno.test("simulation case graph identity is deterministic and does not depend on case ordering", async () => {
-  const source = JSON.parse(
-    await Deno.readTextFile(
-      "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
-    ),
-  ) as Record<string, unknown>;
+Deno.test("simulation case graph identity is deterministic and does not depend on case ordering", () => {
+  const source = caseInput();
   const simulationCase = validateSimulationCase(source);
   const reversed = validateSimulationCase({
     ...source,
@@ -87,14 +115,8 @@ Deno.test("simulation case graph identity is deterministic and does not depend o
   );
 });
 
-Deno.test("simulation case graph rejects an evidence artifact without an exact fingerprint", async () => {
-  const simulationCase = validateSimulationCase(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
-      ),
-    ),
-  );
+Deno.test("simulation case graph rejects an evidence artifact without an exact fingerprint", () => {
+  const simulationCase = validateSimulationCase(caseInput());
   assertThrows(
     () =>
       buildSimulationCaseAnalysisGraph({
@@ -110,14 +132,8 @@ Deno.test("simulation case graph rejects an evidence artifact without an exact f
   );
 });
 
-Deno.test("simulation case nodes remain stable across seal occurrences while assertions retain distinct evidence", async () => {
-  const simulationCase = validateSimulationCase(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v1.json",
-      ),
-    ),
-  );
+Deno.test("simulation case nodes remain stable across seal occurrences while assertions retain distinct evidence", () => {
+  const simulationCase = validateSimulationCase(caseInput());
   const first = buildSimulationCaseAnalysisGraph({
     simulationCase,
     caseFingerprint: CASE_DECLARATION_FINGERPRINT,

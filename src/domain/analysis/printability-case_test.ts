@@ -6,15 +6,15 @@ import { validatePrintabilityCheckCase } from "./printability-case.ts";
 function validCaseInput() {
   return {
     schemaVersion: "printability-check-case/1.0",
-    id: "coffee-machine-cm01-v3-drip-tray-fdm-v1",
+    id: "generic-product-v1-support-bracket-fdm-v1",
     revision: 2,
-    scope: "FDM printability check for the isolated CM-01 DripTray.",
+    scope: "FDM printability check for the isolated support bracket.",
     evidenceBoundary: "Observations only; not a verdict or certification.",
     project: {
-      id: "coffee-machine-cm01-v3",
-      subjectId: "project:coffee-machine-cm01-v3",
+      id: "generic-product-v1",
+      subjectId: "project:generic-product-v1",
     },
-    target: { componentKey: "drip-tray" },
+    target: { componentKey: "support-bracket" },
     thresholds: {
       minWallThicknessMm: { value: 1.2, unit: "mm" },
       maxOverhangAngleDeg: { value: 45.0, unit: "deg" },
@@ -43,7 +43,7 @@ function validCaseInput() {
 Deno.test("validatePrintabilityCheckCase accepts a valid case", () => {
   const result = validatePrintabilityCheckCase(validCaseInput());
   assertEquals(result.schemaVersion, "printability-check-case/1.0");
-  assertEquals(result.id, "coffee-machine-cm01-v3-drip-tray-fdm-v1");
+  assertEquals(result.id, "generic-product-v1-support-bracket-fdm-v1");
   assertEquals(result.revision, 2);
   assertEquals(result.thresholds.minWallThicknessMm, { value: 1.2, unit: "mm" });
   assertEquals(result.thresholds.maxOverhangAngleDeg, { value: 45.0, unit: "deg" });

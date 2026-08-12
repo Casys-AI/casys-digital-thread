@@ -322,16 +322,6 @@ None of these four operations has yet been executed against a real project. Ever
 seal and first run remains gated by a reviewed MRTR proposal and explicit operator
 consent in the paired conversation.
 
-The fixed `coffee-machine-cm01-v3` reference path is a separate code-owned catalog, not
-a generic project template. After the documentary baseline and SysON seed, it supplies
-five bounded product operations for CM-01 architecture, semantic CAD, nominal Modelica,
-read-only ERP BOM observation, and the isolated DripTray proof. Its recorded correction
-adds five further operations: the 28 mm → 30 mm correction, replacement CAD, mechanical
-R2, mechanical R3 recovery, and R3 identity recovery. Each has a reviewed operation ID,
-version, binding contract, capture/materializer, and evidence boundary. None makes an
-arbitrary new CAD, simulation, or verification work item executable; see the
-[CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md).
-
 ## V3 execution bases, documentary baseline, and SysON seed
 
 V3 does not invent an empty technical snapshot merely to satisfy a bootstrap API. Each
@@ -377,9 +367,7 @@ technical operation must capture and validate its own provider evidence before i
 make any of those claims.
 
 The generic bootstrap stops at the container identity. Any future architecture, CAD,
-simulation, measurement, or verification operation needs its own reviewed contract. The
-CM-01 V3 catalog is the one current exception: it is fixed to that product, its reviewed
-inputs, and its own evidence boundary.
+simulation, measurement, or verification operation needs its own reviewed contract.
 
 ## Exact thread references
 
@@ -387,9 +375,9 @@ A root thread reference always names the full immutable identity:
 
 ```json
 {
-  "snapshotId": "coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension",
-  "revision": 5,
-  "subjectId": "coffee-machine-cm01"
+  "snapshotId": "project:system-alpha:r8",
+  "revision": 8,
+  "subjectId": "system-alpha"
 }
 ```
 
@@ -397,10 +385,10 @@ Evidence references add the entity kind and ID inside that exact revision:
 
 ```json
 {
-  "snapshotId": "coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension",
-  "snapshotRevision": 5,
+  "snapshotId": "project:system-alpha:r8",
+  "snapshotRevision": 8,
   "kind": "artifact",
-  "id": "coffee-machine-build-coffee-machine-cm01-cad-baseline-step"
+  "id": "geometry-system-alpha-step"
 }
 ```
 
@@ -459,9 +447,8 @@ or `project_change_append`; older immutable revisions may lack it and are never 
 into the new execution path by implication. The generic V3 route has trusted executors
 for the documentary baseline, the brief-bound SysON container, reviewed architecture,
 reviewed integer scalar requirements, and the sealing of an exact reviewed geometry
-draft. The separate CM-01 V3 catalog supplies its reviewed product-specific simulation,
-verification, ERP, correction, and closeout operations. Any operation outside those
-exact contracts remains planning-only until a separate reviewed executor exists.
+draft. Any active operation outside the registered generic contracts remains
+planning-only until a separate reviewed executor exists.
 
 `waiting-for-decision` requires at least one linked unresolved decision. A phase lists
 all work items assigned to it, exactly once.
@@ -566,17 +553,6 @@ requires its matching human approval for either outcome. When the outcome is
 blocker. Only that decision's exact eleven-field proposal and later human approval can
 release the basis; incomplete legacy snapshots remain blocked.
 
-### Failed-work reconciliation
-
-A failed run is never converted into a success. The CM-01 R11 → R12 closeout accepts a
-failed work item only when its named run remains failed and evidence-free, the exact R3
-successor work and run are completed with their own evidence, and the persisted R12
-snapshot is a direct child that records the requirement-family links. It changes only
-the obsolete work item to `cancelled` with an explicit `superseded-by-successor`
-reconciliation. The failed R2 run remains failed. A phase treats that cancellation as
-complete only under this exact reconciliation rule. This is a code-owned CM-01 closeout,
-not a generic retry, provider call, or public MCP mutation.
-
 ## Command and authority surfaces
 
 Every mutation carries `commandId`, `projectId`, `expectedRevision`, and `issuedAt`.
@@ -620,24 +596,23 @@ is currently process-local, so a shared signing key alone is not sufficient for
 multi-instance operation. That deployment needs a shared, durable replay store with
 atomic consume semantics.
 
-The source dispatcher materializes ten generic V3 operations, the reviewed
-`inspection-drone-v4` qualitative-architecture and product-structure operations, and the
-fixed CM-01 catalog. `baseline.from-approved-brief@1` has no provider invocation and
-persists its canonical capture before publishing the cited root snapshot.
-`architecture.seed-syson-model@2` owns only the fixed SysON
-project/document/root-package sequence, closed capture, materializer, and result
-validator before publishing revision 2. `model.write-architecture@1` and
-`model.write-requirements@1` each perform a closed SysON write/readback sequence and
-publish content-addressed evidence. The architecture writer renders the reviewed
-package, reusable PartDefinitions, and scoped PartUsages; the requirements writer
-renders only reviewed, server-parsed integer model thresholds. `design.write-geometry@1`
-promotes only a matching human-reviewed draft after exact hash and architecture checks;
-for v2, the manifest must cover every captured PartUsage and every distinct targeted
-PartDefinition. The provider execution occurred earlier in the isolated preview
-boundary. `record.archive-lineage@1` runs the governed retirement cascade with no
-provider call, gated by a human-approved decision sealing the exact thread-entity
-targets. `simulate.seal-simulation-case@1` resolves the reviewed case through
-`SIMULATION_CASE_SOURCES`, cross-checks every MRTR field, and publishes the
+The source dispatcher materializes generic V3 operations and the reviewed
+`inspection-drone-v4` qualitative-architecture and product-structure operations.
+`baseline.from-approved-brief@1` has no provider invocation and persists its canonical
+capture before publishing the cited root snapshot. `architecture.seed-syson-model@2`
+owns only the fixed SysON project/document/root-package sequence, closed capture,
+materializer, and result validator before publishing revision 2.
+`model.write-architecture@1` and `model.write-requirements@1` each perform a closed
+SysON write/readback sequence and publish content-addressed evidence. The architecture
+writer renders the reviewed package, reusable PartDefinitions, and scoped PartUsages;
+the requirements writer renders only reviewed, server-parsed integer model thresholds.
+`design.write-geometry@1` promotes only a matching human-reviewed draft after exact hash
+and architecture checks; for v2, the manifest must cover every captured PartUsage and
+every distinct targeted PartDefinition. The provider execution occurred earlier in the
+isolated preview boundary. `record.archive-lineage@1` runs the governed retirement
+cascade with no provider call, gated by a human-approved decision sealing the exact
+thread-entity targets. `simulate.seal-simulation-case@1` resolves the reviewed case
+through `SIMULATION_CASE_SOURCES`, cross-checks every MRTR field, and publishes the
 content-addressed simulation-case mandate with empty `inputArtifactIds` and no provider
 call. `simulate.run-modelica-scenario@1` verifies kit bounds through
 `modelica_kit_list`, dispatches `modelica_simulate`, double-attests the result through
@@ -667,96 +642,9 @@ records exactly six SysON `PartDefinition` elements: `InspectionDrone`, `Airfram
 `InspectionCameraPayload`. Root `InspectionDrone` has five direct `PartUsage` elements,
 each typed by one of those five child definitions and with provider-attested quantity
 `1`. This product-structure record remains neither CAD, physics, cost, manufacturing,
-certification, nor a verdict. The CM-01 catalog adds its own architecture, CAD,
-Modelica, ERP, correction, governed lineage retirement, PartDefinition, and mechanical
-capture/materializer contracts; see the
-[CM-01 V3 golden-run guide](../how-to/run-cm01-v3-golden-local.md). Neither MCP planning
-nor queueing is an indirect CAD, FEA, Modelica, SysON, or ERPNext endpoint: execution is
-available only through these exact reviewed operations and their server-owned contracts.
-
-## CM-01 baseline
-
-[`coffee-machine-cm01.project.json`](../../config/projects/coffee-machine-cm01.project.json)
-is project snapshot revision 1. It cites only the clean CM-01 thread baseline:
-
-```text
-coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension
-```
-
-That exact thread revision contains the observed SysON system definition, product
-architecture, whole-machine build123d CAD, Modelica run, and ERPNext BOM evidence. It
-does not cite the historical support-bracket demo.
-
-The project honestly derives these phase states:
-
-| Phase             | Status      | Basis                                                   |
-| ----------------- | ----------- | ------------------------------------------------------- |
-| Definition        | `completed` | Exact SysON inventory artifact                          |
-| Architecture      | `completed` | Exact observed SysON architecture artifact              |
-| Design            | `completed` | Exact whole-machine STEP artifact                       |
-| Simulation        | `completed` | Exact observed Modelica result artifact                 |
-| Verification      | `blocked`   | The bundled mechanical proof case has not been reviewed |
-| Industrialization | `completed` | Exact ERPNext BOM-detail artifact                       |
-
-The missing mechanical inputs form one `required` proof-case decision and one open
-blocker. There are no approvals and zero agent runs. This is still the clean state
-seeded on a fresh active store; real operator or agent commands may create later local
-revisions. The Modelica scenario observation does not become a product requirement, and
-the project snapshot invents no stress, temperature, material, support, or load
-threshold.
-
-## Historical CM-01 reference lifecycle
-
-The 2026-08-02 local reference execution demonstrates the intended immutable progression
-without changing the tracked revision-1 seed. A human approved the exact
-`review-mechanical-proof-case` proposal and queued
-`run:erwan-authorize-cm01-mechanical-run-v1`; an agent claimed it, ran the providers,
-entered `publishing`, attached canonical technical evidence, and then completed it.
-
-Active project revision 10 records both that agent run and
-`verify-current-mechanical-design` as `completed`. Their exact result is:
-
-```text
-coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechanical-run-v1-extension
-```
-
-That snapshot contains exact DripTray STEP consumption, two unit-bearing CalculiX
-observations, the approved `1 mm` / `20 MPa` SysON requirements, and two passing
-evaluations. The evidence boundary remains the isolated ABS-like concept DripTray under
-the reviewed `100 N` case. This historical work-item completion does not imply current
-corrected-path closure, whole-machine verification, fabrication release, or
-certification. A later design change must carry its own replacement evidence and
-explicit project-plan closure.
-
-## Fixed CM-01 V3 correction closure
-
-`coffee-machine-cm01-v3` is distinct from the historical `coffee-machine-cm01` r5/r6
-record. Its code-owned 28 mm → 30 mm correction retains the failed mechanical R2 attempt
-as evidence-free history. The successful R3 result was first retained at R10 with an R2
-artifact identity; R10 remains immutable and superseded. The provider-free identity
-recovery creates the correctly named R11 successor without rerunning a solver. The
-separate provider-free R11 → R12 closeout writes the direct requirement-family successor
-and performs the narrow failed-work reconciliation described above.
-
-This is one bounded CM-01 correction dossier, not a generic correction engine. It does
-not make the historical r6 verdict current, validate the whole CoffeeMachine, authorize
-fabrication, or establish certification.
-
-## CM-01 PartDefinition and governed retirement
-
-CM-01 r19 retains content-addressed PartDefinition captures for `CoffeeMachine` and
-`DripTray`, bound to the exact architecture package, editing context, identities, and
-capture hashes. The capture stores are intentionally distinct from architecture capture;
-lineage checks fail closed if a later basis silently drops established PartDefinition
-artifacts. It records documentary structure and provenance, not a new physical,
-manufacturing, or certification claim.
-
-The governed archive operation accepts only an exact approved human MRTR decision whose
-proposal names the retirement targets. It can retire an artifact or requirement and its
-dependent observations, evaluations, and violations as a recorded cascade. No historic
-record is deleted: the snapshot retains the archived changes and provenance, while
-current-state projections filter the retired entities. A fully retired cascade cannot be
-run again as if it were new.
+certification, nor a verdict. Neither MCP planning nor queueing is an indirect CAD, FEA,
+Modelica, SysON, or ERPNext endpoint: execution is available only through exact reviewed
+operations and their server-owned contracts.
 
 ## Validation and persistence
 
@@ -767,13 +655,13 @@ decision/approval states, undeclared snapshot revisions, and mismatched executio
 inputs.
 
 [`FileEngineeringProjectStore`](../../src/adapters/stores/engineering-project-store.ts)
-remains the validated tracked-manifest loader. At runtime it seeds revision 1 only when
-no active project exists.
+is the validated tracked-manifest loader used only when a controlled deployment provides
+an explicit matching project ID and manifest path. Normal composition has no implicit
+product seed.
 [`FileEngineeringProjectRevisionStore`](../../src/adapters/stores/engineering-project-store.ts)
 then owns append-only active state under `state/local/engineering-projects/<project>/`.
 Each numbered revision is deterministic JSON; an exclusive claim file is the
-cross-process compare-and-swap boundary. A later active revision always wins over the
-tracked seed, and a claimed but unpublished head fails closed.
+cross-process compare-and-swap boundary. A claimed but unpublished head fails closed.
 
 Every read validates again. Every write extends the exact current `id` and revision,
 records `previous`, and passes the full domain validator before publication. Loading or

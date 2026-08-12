@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { COFFEE_MACHINE_PROJECT_FIXTURE } from "./src/project/fixture.ts";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_PROJECT_FIXTURE } from "./src/project/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   agentRunRecordedAt,
   agentRunSummary,
@@ -10,7 +10,6 @@ import {
   buildProjectPath,
   PROJECT_PATH_PRESENTATION_POLICY,
   projectBriefStatusLabel,
-  projectPathStatusLabel,
   projectStatusLabel,
   selectCurrentProjectFocus,
   verificationChainDetail,
@@ -19,7 +18,7 @@ import {
 import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
 
 Deno.test("project brief derives factual gates and operator attention", () => {
-  const brief = buildProjectBrief(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const brief = buildProjectBrief(GENERIC_PROJECT_FIXTURE);
 
   assertEquals(brief.completedPhases, 3);
   assertEquals(brief.phases.length, 6);
@@ -33,8 +32,8 @@ Deno.test("project brief derives factual gates and operator attention", () => {
 
 Deno.test("project brief separates agent preparation from human review", () => {
   const proposed = {
-    ...structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE),
-    decisions: COFFEE_MACHINE_PROJECT_FIXTURE.decisions.map((decision, index) =>
+    ...structuredClone(GENERIC_PROJECT_FIXTURE),
+    decisions: GENERIC_PROJECT_FIXTURE.decisions.map((decision, index) =>
       index === 0 ? { ...decision, status: "proposed" as const } : decision
     ),
   };
@@ -48,9 +47,9 @@ Deno.test("project brief separates agent preparation from human review", () => {
 });
 
 Deno.test("overview verification copy counts current criteria before retained history", () => {
-  const seed = COFFEE_MACHINE_THREAD_FIXTURE.requirements[0]!;
+  const seed = GENERIC_THREAD_FIXTURE.requirements[0]!;
   const thread = {
-    ...COFFEE_MACHINE_THREAD_FIXTURE,
+    ...GENERIC_THREAD_FIXTURE,
     requirements: [
       { ...seed, id: "REQ-R1", status: "unresolved" as const },
       { ...seed, id: "REQ-R2", status: "pass" as const },
@@ -133,10 +132,10 @@ Deno.test("Project Path keeps a component correction and failed retry below its 
   // Raw r10-style additions must never become top-level Project Path cards.
   assertEquals(
     path.phases.some((item) =>
-      item.phase.id === "cm01-v3-drip-tray-height-correction" ||
-      item.phase.id === "cm01-v3-drip-tray-height-30-cad" ||
-      item.phase.id === "cm01-v3-drip-tray-height-30-mechanical" ||
-      item.phase.id === "cm01-v3-drip-tray-height-30-mechanical-r3-retry"
+      item.phase.id === "generic-v3-drip-tray-height-correction" ||
+      item.phase.id === "generic-v3-drip-tray-height-30-cad" ||
+      item.phase.id === "generic-v3-drip-tray-height-30-mechanical" ||
+      item.phase.id === "generic-v3-drip-tray-height-30-mechanical-r3-retry"
     ),
     false,
   );
@@ -153,9 +152,7 @@ Deno.test("Project Path reads an unfinished lifecycle as retained history, never
   (retry as unknown as { status: string }).status = "ready";
 
   const path = buildProjectPath(mutable, thread);
-  const mechanical = path.phases.find((item) =>
-    item.phase.id === "verification"
-  );
+  const mechanical = path.phases.find((item) => item.phase.id === "verification");
   assertEquals(mechanical?.lifecycle?.state, "retained");
   for (const item of path.phases) {
     if (!item.lifecycle) continue;
@@ -277,9 +274,7 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
     "a measurement feeding a folded enrichment folds with it — it is " +
       "instrumentation of the model, not an engineering gate",
   );
-  const architecture = path.phases.find((item) =>
-    item.phase.id === "architecture"
-  );
+  const architecture = path.phases.find((item) => item.phase.id === "architecture");
   assertEquals(architecture?.lifecycle, {
     affectedComponentIds: [],
     correctionCount: 0,
@@ -290,48 +285,8 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
   });
 });
 
-Deno.test("Project Path folds the exact R3 identity repair into Mechanical proof", () => {
-  const { project, thread } = correctionPathFixture({
-    includeIdentityRepair: true,
-  });
-  const path = buildProjectPath(project, thread);
-  const mechanical = path.phases.find((item) =>
-    item.phase.id === "verification"
-  );
-
-  assertEquals(
-    PROJECT_PATH_PRESENTATION_POLICY.identityRepair.operationId,
-    "repair.coffee-machine-cm01-drip-tray-mechanical-r3-identity",
-  );
-  assertEquals(path.phases.map((item) => item.phase.id), [
-    "cad",
-    "verification",
-  ]);
-  assertEquals(path.completedPhases, 2);
-  assertEquals(path.status, "completed");
-  // The shell and Overview both consume this projection, never the raw r11
-  // project status that still contains the immutable failed R2 phase.
-  assertEquals(projectPathStatusLabel(path), "Completed");
-  assertEquals(mechanical?.lifecycle, {
-    affectedComponentIds: ["component:drip-tray"],
-    correctionCount: 1,
-    revisionAttemptCount: 2,
-    identityRepairCount: 1,
-    state: "current",
-  });
-  assertEquals(
-    path.phases.some((item) =>
-      item.phase.id ===
-        "cm01-v3-drip-tray-height-30-mechanical-r3-identity-recovery"
-    ),
-    false,
-  );
-});
-
 Deno.test("current project work prefers an explicit successor reconciliation", () => {
-  const { project } = correctionPathFixture({
-    includeIdentityRepair: true,
-  });
+  const { project } = correctionPathFixture();
   const reconciled = {
     ...project,
     workItems: project.workItems.map((item) =>
@@ -348,12 +303,12 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
             successorRunSnapshot: {
               snapshotId: "thread-correction",
               revision: 10,
-              subjectId: "CM-01",
+              subjectId: "GEN-01",
             },
             successorSnapshot: {
               snapshotId: "thread-correction",
               revision: 10,
-              subjectId: "CM-01",
+              subjectId: "GEN-01",
             },
             successorEvidenceRefs: [
               {
@@ -363,8 +318,7 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
                 snapshotRevision: 10,
               },
             ],
-            rationale:
-              "The recorded R3 successor closed the failed R2 attempt.",
+            rationale: "The recorded R3 successor closed the failed R2 attempt.",
           },
         }
         : item
@@ -379,7 +333,7 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
 });
 
 Deno.test("browser project contract rejects a half-defined input anchor", () => {
-  const valid = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const valid = structuredClone(GENERIC_PROJECT_FIXTURE);
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
   const invalid = JSON.parse(JSON.stringify(valid)) as {
@@ -438,7 +392,7 @@ Deno.test("browser project contract accepts a V3 planning envelope and rejects m
     source: {
       kind: "thread-entity",
       reference: {
-        snapshotId: "thread-cm01",
+        snapshotId: "thread-generic",
         snapshotRevision: 0,
         kind: "artifact",
         id: "ART-CAD-018",
@@ -453,14 +407,12 @@ Deno.test("browser project contract accepts an approved-brief baseline and rejec
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
   const forgedBasis = structuredClone(valid) as Record<string, unknown>;
-  const forgedRun =
-    (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const forgedRun = (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
   (forgedRun.basis as Record<string, unknown>).briefId = "other-approved-brief";
   assertEquals(isEngineeringProjectSnapshot(forgedBasis), false);
 
   const v1Fallback = structuredClone(valid) as Record<string, unknown>;
-  const fallbackRun =
-    (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const fallbackRun = (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
   delete fallbackRun.basis;
   fallbackRun.baseSnapshot = (v1Fallback.threadSnapshots as unknown[])[0];
   assertEquals(isEngineeringProjectSnapshot(v1Fallback), false);
@@ -473,10 +425,9 @@ Deno.test("browser project contract accepts an approved-brief baseline and rejec
 
 Deno.test("browser project contract accepts a V3 run anchored to its declared thread snapshot", () => {
   const project = structuredClone(
-    COFFEE_MACHINE_PROJECT_FIXTURE,
+    GENERIC_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
-  const reference =
-    (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
+  const reference = (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
   project.schemaVersion = "3.0";
   project.agentRuns = [{
     id: "run-v3-thread-snapshot",
@@ -578,8 +529,8 @@ Deno.test("browser project contract accepts only exact human queued-run cancella
 
 Deno.test("project brief keeps a rejected decision actionable", () => {
   const rejected = {
-    ...structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE),
-    decisions: COFFEE_MACHINE_PROJECT_FIXTURE.decisions.map((decision, index) =>
+    ...structuredClone(GENERIC_PROJECT_FIXTURE),
+    decisions: GENERIC_PROJECT_FIXTURE.decisions.map((decision, index) =>
       index === 0 ? { ...decision, status: "rejected" as const } : decision
     ),
   };
@@ -591,7 +542,7 @@ Deno.test("project brief keeps a rejected decision actionable", () => {
 });
 
 Deno.test("current project focus follows phase order and linked proposals despite reversed history arrays", () => {
-  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
   const v1Work = {
     ...base.workItems.find((item) => item.id === "work-simulate")!,
     title: "V1 seal retained in history",
@@ -652,7 +603,7 @@ Deno.test("current project focus follows phase order and linked proposals despit
 });
 
 Deno.test("current project focus gives an active run and its linked proposal priority over a later phase", () => {
-  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
   const v1Work = {
     ...base.workItems.find((item) => item.id === "work-simulate")!,
     decisionIds: ["decision-v1"],
@@ -712,7 +663,7 @@ Deno.test("current project focus gives an active run and its linked proposal pri
 });
 
 Deno.test("current project focus uses the recorded phase work order as its stable tie-breaker", () => {
-  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
   const first = {
     ...base.workItems.find((item) => item.id === "work-simulate")!,
     title: "First recorded Modelica action",
@@ -725,9 +676,7 @@ Deno.test("current project focus uses the recorded phase work order as its stabl
   const snapshot = {
     ...base,
     phases: base.phases.map((phase) =>
-      phase.id === "simulate"
-        ? { ...phase, workItemIds: [first.id, second.id] }
-        : phase
+      phase.id === "simulate" ? { ...phase, workItemIds: [first.id, second.id] } : phase
     ),
     // The append-only storage order is intentionally the opposite of the plan.
     workItems: [
@@ -742,7 +691,7 @@ Deno.test("current project focus uses the recorded phase work order as its stabl
 });
 
 Deno.test("cockpit falls back to a named work item for an accidental run summary", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const snapshot = structuredClone(GENERIC_PROJECT_FIXTURE);
   const run = { ...snapshot.agentRuns[0]!, summary: "dsadsadas" };
 
   assertEquals(
@@ -753,7 +702,7 @@ Deno.test("cockpit falls back to a named work item for an accidental run summary
 
 function v3PlanningProjectEnvelope(): Record<string, unknown> {
   const project = structuredClone(
-    COFFEE_MACHINE_PROJECT_FIXTURE,
+    GENERIC_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
   project.schemaVersion = "3.0";
   project.threadSnapshots = [];
@@ -839,8 +788,7 @@ function v3CancelledQueuedRunEnvelope(): Record<string, unknown> {
     },
     evidenceRefs: [],
     cancellation: {
-      rationale:
-        "The reviewed queue entry was retired before any worker claim.",
+      rationale: "The reviewed queue entry was retired before any worker claim.",
       cancelledAt,
       cancelledBy: { id: "human:owner", origin: "human" },
     },
@@ -903,10 +851,8 @@ function canonicalBriefFraming(
   };
 }
 
-function correctionPathFixture(
-  { includeIdentityRepair = false }: { includeIdentityRepair?: boolean } = {},
-) {
-  const baseProject = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+function correctionPathFixture() {
+  const baseProject = structuredClone(GENERIC_PROJECT_FIXTURE);
   const ref = (id: string) => ({
     kind: "artifact" as const,
     id,
@@ -975,27 +921,27 @@ function correctionPathFixture(
       "proof-r1-solve",
     ),
     phase(
-      "cm01-v3-drip-tray-height-correction",
+      "generic-v3-drip-tray-height-correction",
       "unrelated label must not matter",
       3,
       "correction",
       "correction-record",
     ),
     phase(
-      "cm01-v3-drip-tray-height-30-cad",
+      "generic-v3-drip-tray-height-30-cad",
       "not a path gate",
       4,
       "cad-v2",
       "cad-r2-step",
     ),
     phase(
-      "cm01-v3-drip-tray-height-30-mechanical",
+      "generic-v3-drip-tray-height-30-mechanical",
       "not a path gate",
       5,
       "mechanical-v2",
     ),
     phase(
-      "cm01-v3-drip-tray-height-30-mechanical-r3-retry",
+      "generic-v3-drip-tray-height-30-mechanical-r3-retry",
       "not a path gate",
       6,
       "mechanical-v3",
@@ -1019,27 +965,27 @@ function correctionPathFixture(
     ),
     work(
       "correction",
-      "cm01-v3-drip-tray-height-correction",
+      "generic-v3-drip-tray-height-correction",
       "completed",
       operation("design.correct", "1"),
       "correction-record",
     ),
     work(
       "cad-v2",
-      "cm01-v3-drip-tray-height-30-cad",
+      "generic-v3-drip-tray-height-30-cad",
       "completed",
       operation("design.cad", "2", true),
       "cad-r2-step",
     ),
     work(
       "mechanical-v2",
-      "cm01-v3-drip-tray-height-30-mechanical",
+      "generic-v3-drip-tray-height-30-mechanical",
       "ready",
       operation("verify.static", "2", true),
     ),
     work(
       "mechanical-v3",
-      "cm01-v3-drip-tray-height-30-mechanical-r3-retry",
+      "generic-v3-drip-tray-height-30-mechanical-r3-retry",
       "completed",
       operation("verify.static", "3", true),
       "proof-r3-solve",
@@ -1065,45 +1011,6 @@ function correctionPathFixture(
       evidenceRefs: [ref("proof-r3-solve")],
     },
   ];
-  if (includeIdentityRepair) {
-    phases.push(
-      phase(
-        "cm01-v3-drip-tray-height-30-mechanical-r3-identity-recovery",
-        "still not a path gate",
-        7,
-        "mechanical-r3-identity-repair",
-        "proof-r3-identified-solve",
-      ),
-    );
-    workItems.push(
-      work(
-        "mechanical-r3-identity-repair",
-        "cm01-v3-drip-tray-height-30-mechanical-r3-identity-recovery",
-        "completed",
-        {
-          id: "repair.coffee-machine-cm01-drip-tray-mechanical-r3-identity",
-          version: "1",
-          bindings: [{
-            name: "historicalMechanicalR3Result",
-            source: {
-              kind: "thread-entity" as const,
-              reference: ref("proof-r3-solve"),
-            },
-          }],
-        },
-        "proof-r3-identified-solve",
-      ),
-    );
-    agentRuns.push({
-      id: "r3-identity-repair-complete",
-      workItemId: "mechanical-r3-identity-repair",
-      status: "completed" as const,
-      summary: "Correctly identified the preserved R3 evidence.",
-      queuedAt: "2026-08-03T12:05:00.000Z",
-      completedAt: "2026-08-03T12:06:00.000Z",
-      evidenceRefs: [ref("proof-r3-identified-solve")],
-    });
-  }
   const project = {
     ...baseProject,
     phases,
@@ -1115,7 +1022,7 @@ function correctionPathFixture(
   };
 
   const thread = {
-    ...structuredClone(COFFEE_MACHINE_THREAD_FIXTURE),
+    ...structuredClone(GENERIC_THREAD_FIXTURE),
     graph: {
       nodes: [
         graphNode("cad-r1-plan", "artifact"),
@@ -1160,17 +1067,6 @@ function correctionPathFixture(
       ],
     },
   };
-  if (includeIdentityRepair) {
-    thread.graph.nodes.push(graphNode("proof-r3-identified-solve", "artifact"));
-    thread.graph.edges.push(
-      graphEdge(
-        "r3-identity-supersedes",
-        "proof-r3-solve",
-        "proof-r3-identified-solve",
-        "supersedes",
-      ),
-    );
-  }
   return { project, thread };
 }
 
@@ -1208,7 +1104,7 @@ function graphEdge(
 }
 
 Deno.test("the agent panel keeps the most recent settled run when nothing is in flight", () => {
-  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
   const settled = (
     id: string,
     completedAt: string,
@@ -1239,7 +1135,7 @@ Deno.test("the agent panel keeps the most recent settled run when nothing is in 
 });
 
 Deno.test("the agent panel dates a queued cancellation by its terminal human record", () => {
-  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
   const template = base.agentRuns[0]!;
   const completed = {
     ...template,
@@ -1273,7 +1169,7 @@ Deno.test("the agent panel dates a queued cancellation by its terminal human rec
 });
 
 Deno.test("agent-now presentation prioritises active work, then current work, then settled history", () => {
-  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
   const active = {
     ...base.agentRuns[0]!,
     id: "run-active",
@@ -1313,7 +1209,7 @@ Deno.test("agent-now presentation prioritises active work, then current work, th
 });
 
 Deno.test("agent-now presentation retains a cancelled run as dated history", () => {
-  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
   const cancelled = {
     ...base.agentRuns[0]!,
     id: "run-cancelled",
@@ -1342,7 +1238,7 @@ Deno.test("agent-now presentation retains a cancelled run as dated history", () 
 });
 
 Deno.test("an in-flight run never counts as the last settled run", () => {
-  const brief = buildProjectBrief(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const brief = buildProjectBrief(GENERIC_PROJECT_FIXTURE);
 
   assertEquals(brief.activeRuns[0]?.status, "waiting-for-decision");
   assertEquals(brief.lastSettledRun, undefined);

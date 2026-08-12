@@ -1,7 +1,7 @@
 # Native digital-thread Workbench: compose evidence, not applications
 
 **Status: accepted target — native schema-3.0 project cockpit, generic documentary/
-SysON bootstrap, and the fixed CM-01 V3 golden evidence path, 2026-08-03**
+SysON bootstrap, focus-only project selection, and recorded analysis**
 
 The first Workbench proved that five independent MCP Apps can be discovered,
 capability-bounded, mounted, and synchronized. It also exposed the product limit of that
@@ -104,11 +104,11 @@ passive. A provider recomputation is a separately orchestrated agent action with
 identified change set, durable run state, and provenance.
 
 The current BFF serves the focused durable project and a same-origin SSE stream which
-announces newer persisted revisions. A historical CM-01 focus still resolves its exact
-technical snapshot; a new V3 focus starts on the living project brief and never falls
-back to CM-01 evidence. The BFF exposes no product command or provider-execution
-authority. Human intent enters through the paired conversation and consequential
-decisions are bound to exact revisions through signed MCP elicitation.
+announces newer persisted revisions. It has no default project or fallback: without
+durable focus or an explicit project ID it reports awaiting project context. The BFF
+exposes no product command or provider-execution authority. Human intent enters through
+the paired conversation and consequential decisions are bound to exact revisions through
+signed MCP elicitation.
 
 The same project is visible to agents through the Console MCP server. MCP exposes
 snapshot, proposal, signed human approval or rejection elicitation, append-only project
@@ -137,20 +137,10 @@ for review instead of being blindly retried. r2 proves only the editable contain
 identity: it is not a system architecture, requirements, CAD, simulation, measurement,
 or a verdict.
 
-The generic V3 route intentionally stops at r2 container identity. The current technical
-path is instead the fixed `coffee-machine-cm01-v3` catalog: its reviewed operations
-produce CM-01 architecture, CAD, nominal Modelica, ERP BOM and isolated DripTray proof
-evidence. The later 28 mm → 30 mm correction retains its failed R2 attempt, creates the
-correctly identified R11 successor without rerunning a provider, and closes its
-requirement family at R12. This establishes one bounded evidence path, not a generic
-architecture, CAD, or verification executor.
-
-The tracked r5 technical snapshot is assembled from captured SysON inventory, attested
-build123d evidence, one persisted Modelica run, and reviewed ERPNext reads. It
-deliberately stops before a mechanical verdict because that historical inventory has no
-mechanical `ConstraintUsage`. The approved DripTray runner later adds the exact reviewed
-constraints, provider evidence, and evaluations as r6. Completing its project run still
-requires that separately published exact `ThreadSnapshot` and resolvable cited evidence.
+The generic route continues beyond r2 only through separately registered operations for
+reviewed architecture, requirements, geometry, proof sealing and recorded analysis. Each
+operation must publish and reread its own exact descendant `ThreadSnapshot`; no earlier
+project or superficially similar artifact can satisfy completion.
 
 The browser does not call the five MCP endpoints directly. The Deno backend owns service
 endpoints, credentials, workflow execution, and result validation. Provider tools keep
@@ -204,55 +194,28 @@ viewports, or CSS layout.
 
 ## Current acceptance slice
 
-The first real vertical slice is deliberately narrower than a five-panel cockpit. The
-clean r5 baseline groups four observed branches through a reviewed CM-01 identity
-manifest. The approved reference run extends it with one bounded DripTray mechanical
-branch:
+The current vertical slice is deliberately bounded:
 
-1. build123d produces an identified STEP artifact and measurements;
-2. build123d hashes the exported STEP bytes;
-3. CalculiX snapshots its input, recomputes its hash, and refuses an
-   `expected_step_sha256` mismatch before meshing;
-4. the r6 CAD → FEA edge is accepted only because the produced and consumed DripTray
-   STEP hashes are equal; no such edge is claimed by the clean r5 baseline;
-5. solver observations are normalized with units and source identities before SysON
-   evaluates them;
-6. the r5 SysON inventory establishes the historical absence of a mechanical constraint;
-   the runner adds only the human-approved `1 mm` and `20 MPa` DripTray limits and
-   re-extracts them before continuing;
-7. Modelica contributes one persisted model/scenario run and unit-bearing thermal
-   observations;
-8. ERPNext contributes one active default BOM observation and the exact number of Bin
-   rows returned by its read query;
-9. the UI follows persisted revisions as a lineage feed, renders recorded dependencies
-   as inline and full native graphs, keeps unlinked provider branches separate, and
-   opens one contextual tool inspector;
-10. the part-centric workspace preserves one component selection across ten exact
-    SysON-to-ERP identities and one real build123d geometry, while exposing every
-    missing facet;
-11. reloading the shell starts no engineering computation.
-12. **Project** exposes a lightweight notification view, **Activity** supplies the live
-    evidence and lineage for review, and **Product** routes specification inspection to
-    the affected SysON context; correction and consequential human decisions happen in
-    the paired conversation and append immutable project revisions;
-13. agents queue and advance only registered, server-derived runs, and cannot confirm
-    their own proposals;
-14. run completion fails closed until an exact descendant snapshot contains evidence
-    that is new or content-changed from the run base;
-15. the historical r6/r10 evidence records keep provider execution, canonical
-    attachment, and project lifecycle transitions distinct: `publishing` → attach →
-    `completed`. A later corrected successor still needs its own requirement/evaluation
-    closure; a historical completed run does not silently complete a corrected project
-    path.
+1. build123d produces and hashes an identified STEP artifact;
+2. CalculiX snapshots its exact input and rejects an expected-hash mismatch before
+   meshing;
+3. solver observations are normalized with units and source identities before SysON
+   evaluates model-owned criteria;
+4. the UI follows persisted revisions, renders recorded dependencies, keeps unlinked
+   provider branches separate and opens one contextual inspector;
+5. reloading the shell starts no engineering computation;
+6. consequential human decisions happen in the paired conversation and append immutable
+   project revisions;
+7. agents queue only registered, server-derived runs and cannot confirm their own
+   proposals; and
+8. completion fails closed until an exact descendant snapshot contains new or
+   content-changed evidence from the run basis.
 
 This is an evidence assembly, not a causal merger. CAD → FEA becomes an attested edge
-only after a solver run consumes the exact STEP and its result is canonically published;
-r6 contains that edge for the isolated concept DripTray, while the clean r5 baseline
-does not. Modelica's scenario and ERPNext's provider reads are independent branches
-until an explicit transformation or requirement trace links them. In particular, zero
-ERP Bin rows is not a stock conclusion, and a successful Modelica run is not a
-compliance verdict. The passing DripTray evaluations are likewise not whole-machine,
-fabrication-release, or certification evidence.
+only after a solver run consumes the exact STEP and its result is canonically published.
+Modelica and ERPNext records remain independent branches until an explicit
+transformation or requirement trace links them. A successful provider run is never by
+itself a compliance, fabrication-release or certification verdict.
 
 ## Product rule
 

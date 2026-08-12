@@ -17,8 +17,8 @@ Loading, validating, or compiling a workflow performs no MCP call.
 ```yaml
 schemaVersion: "1.0"
 kind: thread-workflow
-id: coffee-machine-mechanical-v1
-name: Coffee machine mechanical verification
+id: component-mechanical-v1
+name: Component mechanical verification
 inputs:
   syson_editing_context_id:
     type: string
@@ -56,8 +56,8 @@ nodes:
 
 Top-level `inputs` declare the typed runtime values that an explicit execution request
 must supply. A workflow cannot read them from dashboard state or silently invent a SysON
-identifier. The CoffeeMachine mechanical workflow also requires reviewed density,
-elastic constants, and load instead of embedding example physics as product defaults.
+identifier. A mechanical workflow must require reviewed density, elastic constants and
+loads instead of embedding example physics as product defaults.
 
 Each node declares:
 
@@ -123,57 +123,6 @@ creation, the executor persists a write-ahead attempt record. If the provider ou
 unknown, it stops for explicit review instead of blindly retrying a possibly successful
 creation. This control flow is a closed executor contract, not a reusable YAML-node
 pattern.
-
-## Historical r6 mechanical slice
-
-[`coffee-machine-mechanical-v1.yaml`](../../experiments/thread-workflow/coffee-machine-mechanical-v1.yaml)
-drives the retained r6 provenance only. The current CM-01 V3 golden path uses its own
-registered code-owned executors and captures, not a generic YAML operation; see the
-[golden-run guide](../how-to/run-cm01-v3-golden-local.md).
-
-That historical YAML declares the solve/normalize/evaluate DAG. The CM-01 product runner
-surrounds it with the approved SysON preflight and build123d generation:
-
-```text
-SysON preflight ──▶ build123d STEP ──▶ CalculiX ──▶ normalization ──▶ SysON evaluation
-       └──────────────── extracted constraints ────────────────────────────┘
-```
-
-The runner supplies `cad_step_path` and `cad_step_sha256` from the exact
-content-attested DripTray export it just generated. It accepts only CalculiX
-`static-solve` structured content schema `2.0`, whose required `inputArtifact` records
-the consumed bytes. CalculiX accepts `expected_step_sha256`, recomputes
-`inputArtifact.sha256`, and rejects a mismatch before solving. Material, meshing,
-support boxes, load boxes, and force components are required workflow inputs with no
-defaults.
-
-Constraint extraction may honestly return an empty array. The generic workflow preserves
-that state: an empty evaluation is not a pass. The CM-01 product runner adds a stricter
-preflight around this DAG. It accepts only the exact human-approved DripTray proposal;
-when the tracked r5 model has no mechanical constraints, it inserts the proposal-derived
-`1 mm` displacement and `20 MPa` von Mises limits, re-extracts them, and refuses to
-continue unless the exact pair is present.
-
-The product boundaries are:
-
-- no public BFF endpoint triggers the executor; the explicit CLI runner persists a
-  capture and the separate attach task persists its resulting `ThreadSnapshot`;
-- the native Workbench reads an immutable persisted `ThreadSnapshot` through passive
-  GET/SSE paths and exposes no workflow command;
-- the tracked r5 inventory has two `RequirementUsage` elements but zero mechanical
-  `ConstraintUsage` elements; the approved runner's bounded SysON mutation is later
-  evidence, not a rewrite of that baseline;
-- the published r6 result covers one isolated DripTray concept only. No reviewed
-  whole-machine material/support/load declaration or certification case exists;
-- project lifecycle is separate: an agent enters `publishing`, the attach task saves and
-  reads back canonical evidence, and only then may the agent complete against the exact
-  returned references.
-
-The completed reference run published the exact CalculiX-consumed STEP and both passing
-SysON evaluations in
-`coffee-machine-cm01:r6:coffee-machine-mechanical-run:erwan-authorize-cm01-mechanical-run-v1-extension`.
-Active project revision 10 records the bound run and verification work item as
-`completed`.
 
 ## Presentation separation
 

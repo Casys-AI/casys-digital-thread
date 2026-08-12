@@ -32,6 +32,13 @@ const PROJECT_ID = "project-rop2-guard";
 const AGENT = { kind: "agent" as const, actorId: "agent:rop2-guard" };
 const HUMAN = { kind: "human" as const, actorId: "human:rop2-guard" };
 const AT = "2026-08-12T08:00:00.000Z";
+const MODELICA_SIMULATION_CASE = "generic-modelica-simulation-case";
+const MODELICA_METHOD_MANIFEST = "generic-modelica-method-manifest";
+const MODELICA_MODEL_SOURCE = "generic-modelica-model-source";
+const MODELICA_SCENARIO_SOURCE = "generic-modelica-scenario-source";
+const MODELICA_QUALIFICATION = "generic-modelica-qualification";
+const CALCULIX_PROOF_CASE = "generic-calculix-proof-case";
+const CALCULIX_GEOMETRY = "generic-calculix-geometry";
 
 type RecordedKind = "modelica" | "calculix";
 
@@ -466,58 +473,49 @@ async function createFixture(kind: RecordedKind): Promise<Fixture> {
   return { kind, project, snapshot, store, ...sealed };
 }
 
-async function exactSnapshotFor(kind: RecordedKind): Promise<ThreadSnapshot> {
-  const snapshot = structuredClone(
-    JSON.parse(
-      await Deno.readTextFile(
-        "config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
-      ),
-    ),
-  ) as ThreadSnapshot;
-  // The copied baseline supplies structurally valid artefacts.  This fixture
-  // owns a distinct project, so its technical basis must name that project's
-  // subject rather than borrowing CM-01 authority.
-  snapshot.subject.id = `project:${PROJECT_ID}`;
-  const sources = kind === "modelica"
+function exactSnapshotFor(kind: RecordedKind): ThreadSnapshot {
+  const artifacts = kind === "modelica"
     ? [
-      artifact(
-        snapshot,
-        "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-resolved-parameters-5a16751e9545",
-      ),
-      artifact(
-        snapshot,
-        "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-request-f770b8a321b6",
-      ),
-      artifact(
-        snapshot,
-        "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-model-a641b63a4934",
-      ),
-      artifact(
-        snapshot,
-        "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-scenario-5db8a0659205",
-      ),
-      artifact(
-        snapshot,
-        "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-diagnostics-6424edeb104d",
-      ),
+      sourceArtifact(MODELICA_SIMULATION_CASE, "a", "application/json"),
+      sourceArtifact(MODELICA_METHOD_MANIFEST, "b", "application/json"),
+      sourceArtifact(MODELICA_MODEL_SOURCE, "c", "text/x-modelica"),
+      sourceArtifact(MODELICA_SCENARIO_SOURCE, "d", "application/json"),
+      sourceArtifact(MODELICA_QUALIFICATION, "e", "application/json"),
     ]
     : [
-      artifact(
-        snapshot,
-        "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-request-f770b8a321b6",
-      ),
-      artifact(snapshot, "coffee-machine-build-coffee-machine-cm01-cad-baseline-step"),
+      sourceArtifact(CALCULIX_PROOF_CASE, "f", "application/json"),
+      sourceArtifact(CALCULIX_GEOMETRY, "9", "model/step", "step"),
     ];
-  for (const source of sources) {
-    source.uri = `casys://guard-source/sha256/${source.fingerprint.digest}`;
-  }
-  if (kind === "modelica") {
-    artifact(
-      snapshot,
-      "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-scenario-5db8a0659205",
-    ).mediaType = "application/json";
-  }
-  return validateThreadSnapshot(snapshot);
+  return validateThreadSnapshot({
+    schemaVersion: "1.0",
+    id: `thread:${PROJECT_ID}:${kind}:r1`,
+    revision: 1,
+    generatedAt: AT,
+    subject: {
+      id: `project:${PROJECT_ID}`,
+      name: "Generic recorded-analysis subject",
+      kind: "system",
+      version: "1",
+      modelArtifactId: artifacts[0].id,
+    },
+    freshness: { status: "fresh", changedAt: AT, invalidatedByChangeIds: [] },
+    changeSet: {
+      id: `change:${kind}:baseline`,
+      name: "Capture exact generic recorded-analysis sources",
+      status: "applied",
+      createdAt: AT,
+      appliedAt: AT,
+      changes: [],
+    },
+    artifacts,
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+  });
 }
 
 function sourcesFor(kind: RecordedKind, snapshot: ThreadSnapshot) {
@@ -540,23 +538,23 @@ function sourcesFor(kind: RecordedKind, snapshot: ThreadSnapshot) {
   if (kind === "modelica") {
     const simulationCase = artifact(
       snapshot,
-      "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-resolved-parameters-5a16751e9545",
+      MODELICA_SIMULATION_CASE,
     );
     const methodManifest = artifact(
       snapshot,
-      "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-request-f770b8a321b6",
+      MODELICA_METHOD_MANIFEST,
     );
     const model = artifact(
       snapshot,
-      "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-model-a641b63a4934",
+      MODELICA_MODEL_SOURCE,
     );
     const scenario = artifact(
       snapshot,
-      "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-scenario-5db8a0659205",
+      MODELICA_SCENARIO_SOURCE,
     );
     const qualificationAuthority = artifact(
       snapshot,
-      "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-diagnostics-6424edeb104d",
+      MODELICA_QUALIFICATION,
     );
     return {
       directBindings: [
@@ -578,11 +576,11 @@ function sourcesFor(kind: RecordedKind, snapshot: ThreadSnapshot) {
   }
   const proofCase = artifact(
     snapshot,
-    "modelica-run-41d5e485-b6a1-48d4-bc72-5aab6fd35f25-request-f770b8a321b6",
+    CALCULIX_PROOF_CASE,
   );
   const geometry = artifact(
     snapshot,
-    "coffee-machine-build-coffee-machine-cm01-cad-baseline-step",
+    CALCULIX_GEOMETRY,
   );
   return {
     directBindings: [
@@ -851,6 +849,31 @@ function artifact(snapshot: ThreadSnapshot, id: string): ThreadArtifact {
   const value = snapshot.artifacts.find((candidate) => candidate.id === id);
   if (!value) throw new Error(`Fixture artifact ${id} is absent.`);
   return value;
+}
+
+function sourceArtifact(
+  id: string,
+  digestCharacter: string,
+  mediaType: string,
+  kind: ThreadArtifact["kind"] = "document",
+): ThreadArtifact {
+  const digest = digestCharacter.repeat(64);
+  return {
+    id,
+    name: id,
+    kind,
+    version: "1",
+    fingerprint: { algorithm: "sha256", digest },
+    uri: `casys://guard-source/sha256/${digest}`,
+    mediaType,
+    producer: {
+      serverId: "fixture-source",
+      tool: "capture",
+      runId: `run:${id}`,
+    },
+    inputArtifactIds: [],
+    freshness: { status: "fresh", changedAt: AT, invalidatedByChangeIds: [] },
+  };
 }
 
 function queueReceiptFor(project: EngineeringProjectSnapshot, runId: string) {

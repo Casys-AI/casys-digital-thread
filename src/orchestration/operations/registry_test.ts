@@ -8,7 +8,6 @@ import {
   validateRegisteredEngineeringOperationInput,
 } from "./registry.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
-import { COFFEE_MACHINE_CM01_V3_OPERATION_REFS } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
@@ -129,130 +128,26 @@ Deno.test("reviewed operations validate only their declared current plan and que
   assertEquals(wrongBasis.code, "unsupported_basis");
 });
 
-Deno.test("CM-01 V3 golden-path kits remain reviewed trusted operations", () => {
-  // sensitivityRelationsV2 (@2) was registered planning-only until the operator
-  // consented in chat on 2026-08-05 to migrating the live @1 element. Every
-  // registered CM-01 V3 reference is now trusted.
-  for (const operation of Object.values(COFFEE_MACHINE_CM01_V3_OPERATION_REFS)) {
-    const registered = getRegisteredEngineeringOperation(operation);
-    assertEquals(registered?.execution, "trusted");
-    assertEquals(registered?.allowedBasisKinds, ["thread-snapshot"]);
-  }
-});
-
-Deno.test("CM-01 correction operations require an exact thread entity binding", () => {
-  const reference = {
-    snapshotId: "project:coffee-machine-cm01-v3:r8:correction",
-    snapshotRevision: 8,
-    kind: "artifact" as const,
-    id: "coffee-machine-cm01-v3-drip-tray-height-28-to-30:record",
+Deno.test("retired CM-01 operations are neither lookupable nor queueable", () => {
+  const operation = {
+    id: "verify.coffee-machine-cm01-drip-tray-mechanical",
+    version: "3",
   };
-  const validated = validateRegisteredEngineeringOperationInput({
-    operation: {
-      id: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30.id,
-      version: COFFEE_MACHINE_CM01_V3_OPERATION_REFS.cadDripTrayHeight30.version,
-      bindings: [
-        { name: "approvedBrief", source: { kind: "approved-brief" } },
-        {
-          name: "dripTrayHeightCorrection",
-          source: { kind: "thread-entity", reference },
-        },
-      ],
-    },
-    stage: "queue",
-    basisKind: "thread-snapshot",
-  });
-  assertEquals(validated.bindings[1], {
-    name: "dripTrayHeightCorrection",
-    source: { kind: "thread-entity", reference },
-  });
-});
+  assertEquals(getRegisteredEngineeringOperation(operation), undefined);
 
-Deno.test("CM-01 archive lineage accepts explicit N targets and rejects non-retirable entities", () => {
-  const target = (kind: "artifact" | "requirement" | "observation") => ({
-    snapshotId: "project:coffee-machine-cm01-v3:r8:archive-basis",
-    snapshotRevision: 8,
-    kind,
-    id: `${kind}-target`,
-  });
-  const validated = validateRegisteredEngineeringOperationInput({
-    operation: {
-      ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage,
-      bindings: [
-        { name: "approvedBrief", source: { kind: "approved-brief" } },
-        {
-          name: "archiveTarget",
-          source: { kind: "thread-entity", reference: target("artifact") },
-        },
-        {
-          name: "archiveTarget",
-          source: { kind: "thread-entity", reference: target("requirement") },
-        },
-        {
-          name: "archiveTarget",
-          source: { kind: "thread-entity", reference: target("observation") },
-        },
-      ],
-    },
-    stage: "planning",
-  });
-  assertEquals(
-    validated.bindings.filter((binding) => binding.name === "archiveTarget").length,
-    3,
-  );
-
-  for (const kind of ["consumption", "change", "action"] as const) {
-    const error = assertThrows(
-      () =>
-        validateRegisteredEngineeringOperationInput({
-          operation: {
-            ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage,
-            bindings: [
-              { name: "approvedBrief", source: { kind: "approved-brief" } },
-              {
-                name: "archiveTarget",
-                source: {
-                  kind: "thread-entity",
-                  reference: {
-                    snapshotId: "project:coffee-machine-cm01-v3:r8:archive-basis",
-                    snapshotRevision: 8,
-                    kind,
-                    id: `${kind}-target`,
-                  },
-                },
-              },
-            ],
-          },
-          stage: "queue",
-          basisKind: "thread-snapshot",
-        }),
-      EngineeringOperationRegistryError,
-    );
-    assertEquals(error.code, "invalid_bindings");
-  }
-
-  const duplicate = assertThrows(
+  const error = assertThrows(
     () =>
       validateRegisteredEngineeringOperationInput({
         operation: {
-          ...COFFEE_MACHINE_CM01_V3_OPERATION_REFS.archiveLineage,
-          bindings: [
-            { name: "approvedBrief", source: { kind: "approved-brief" } },
-            {
-              name: "archiveTarget",
-              source: { kind: "thread-entity", reference: target("artifact") },
-            },
-            {
-              name: "archiveTarget",
-              source: { kind: "thread-entity", reference: target("artifact") },
-            },
-          ],
+          ...operation,
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
         },
-        stage: "planning",
+        stage: "queue",
+        basisKind: "thread-snapshot",
       }),
     EngineeringOperationRegistryError,
   );
-  assertEquals(duplicate.code, "invalid_bindings");
+  assertEquals(error.code, "unknown_operation");
 });
 
 Deno.test("a human-only operation declares its origin so a human can reach it", () => {

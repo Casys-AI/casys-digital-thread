@@ -82,6 +82,7 @@ const SUBJECT_ID = `project:${PROJECT_ID}`;
 const PROVIDER_RUN_ID = "provider-run-integration-001";
 const MODEL_SHA256 = "a".repeat(64);
 const SCENARIO_SHA256 = "b".repeat(64);
+const SIMULATION_CASE_SOURCE_PATH = "fixture-modelica-recovery-case.json";
 
 const POLICY: SimulationExecutionPolicy = {
   policyVersion: SIMULATION_EXECUTION_POLICY_VERSION,
@@ -117,7 +118,7 @@ const PROVIDER_RUN_ENVELOPE = {
     fingerprint: "d".repeat(64),
     metrics: { T_max: { unit: "K", value: 368.15 } },
     model: {
-      id: "cm01-thermal-model",
+      id: "thermal-system-integration-model",
       sha256: MODEL_SHA256,
       version: "1.0.0",
     },
@@ -554,7 +555,7 @@ async function queuedModelicaRunFixture(
 
   const simulationCase = validateSimulationCase({
     schemaVersion: "simulation-case/1.0",
-    id: "coffee-machine-cm01-thermal-nominal-v1",
+    id: "thermal-system-recovery-v1",
     revision: 1,
     scope: "thermal-nominal",
     evidenceBoundary: "demo",
@@ -568,7 +569,7 @@ async function queuedModelicaRunFixture(
       },
     },
     kit: {
-      modelId: "cm01-thermal-model",
+      modelId: "thermal-system-integration-model",
       modelVersion: "1.0.0",
       modelSha256: MODEL_SHA256,
     },
@@ -639,6 +640,13 @@ async function queuedModelicaRunFixture(
     snapshots,
     simulationCaseCaptures: caseCaptures,
     lease: new FileEngineeringProjectRunLease(`${directory}/seal-leases`),
+    // The production catalogue is intentionally empty after CM-01 retirement.
+    // This isolated lifecycle fixture supplies its own closed source identity;
+    // it neither revives nor expands production admission.
+    simulationCaseSources: new Map([[
+      simulationCase.id,
+      SIMULATION_CASE_SOURCE_PATH,
+    ]]),
     readTextFile: () => Promise.resolve(canonicalSimulationCaseText(simulationCase)),
     now,
   }).execute(AGENT, {

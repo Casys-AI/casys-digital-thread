@@ -1,13 +1,11 @@
 /**
  * Generic FEA solver result capture for `verify.run-fea-static-proof@1`.
  *
- * WHY THIS MODULE EXISTS — `cm01-drip-tray-mechanical-capture.ts` is
- * project-specific: it knows the exact proof, selection names, and export
- * identity. The generic executor needs a proof-agnostic parseur that only
- * checks structural invariants (sourcePath matches stagedPath, hash/bytes
- * match, fixedSelections/loads echo is exact via deterministicJson, units are
- * two reviewed ones) and produces a canonical content-addressed envelope for
- * the WAL and CAS store.
+ * The generic executor needs a proof-agnostic parser that checks only
+ * structural invariants: sourcePath matches stagedPath, hash/bytes match,
+ * fixedSelections/loads echo exactly via deterministicJson, and units are the
+ * two reviewed ones. It then produces a canonical content-addressed envelope
+ * for the WAL and CAS store.
  *
  * Timestamp invariant: `capturedAt` always comes from the run's
  * `requiredStart`, never from `Date.now()`. This makes the envelope

@@ -1,30 +1,30 @@
 /**
  * Tests for part-anchorage-model.ts
  *
- * The fixture topology is derived from the real CM-01 V3 projection captured at
+ * The fixture topology is derived from the real GEN-01 V3 projection captured at
  * revision 18 of the primary workspace (http://127.0.0.1:5173/api/thread/workbench,
  * 2026-08-07, 175 nodes / 256 edges). Real artifact IDs are used so that the
  * prefix-table entries and catalog bindings can be verified against the server-fixed
  * naming contracts cited in the source comments of part-anchorage-model.ts.
  *
- * The fixture is a representative subset (21 nodes) covering every anchorage
- * criterion in order:
+ * The fixture is a representative subset (21 nodes) used to compare its
+ * preserved exact catalog/provenance against active generic anchorage:
  *   (a) catalog evidenceArtifactId binding
- *   (b) server-fixed prefix table
- *   (c) machine-level nature
- *   (d) transitive derived_from propagation
- *   (e) change / consumption / adjacent inheritance
+ *   (b) assembly-level nature
+ *   (c) transitive derived_from propagation
+ *   (d) change / consumption / adjacent inheritance
+ *   (e) generic server-fixed forms
  *
  * Invariants under test:
- *  1. Zero orphan count — the implementation is designed to cover all node kinds.
+ *  1. The historic-only facts remain unanchored rather than selecting GEN-01.
  *  2. The formerly-ambiguous R3 whole-assembly artifacts (plan, script, step)
  *     resolve to "assembly" via catalog after commit 0473bc1.
- *  3. The R3 drip-tray presentation mesh resolves to "cm01-v3:drip-tray" via catalog.
- *  4. Unique anchorage coverage is >= 95 % on the fixture topology.
+ *  3. The R3 drip-tray presentation mesh resolves to "generic-v3:drip-tray" via catalog.
+ *  4. Exact catalog and provenance still cover the retained fixture topology.
  *  5. buildPartAnchorage is deterministic: two calls on the same input are identical.
  */
 
-import { assertEquals, assertGreaterOrEqual } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import {
   anchorageCoverage,
   buildPartAnchorage,
@@ -39,7 +39,7 @@ import type {
 } from "./src/thread/types.ts";
 
 // ---------------------------------------------------------------------------
-// Stable IDs derived from the real CM-01 V3 projection (2026-08-07, R18)
+// Stable IDs derived from the real GEN-01 V3 projection (2026-08-07, R18)
 //
 // The R3 capture digest and the architecture digest are server-fixed — they are
 // the actual immutable hashes produced by the run executors and stored in the
@@ -47,12 +47,12 @@ import type {
 // ---------------------------------------------------------------------------
 
 const R3_DIGEST = "8484b759a788c018477f062863aff5f5a3ebaf06d28c5045534fb716c19d58f3";
-const R3 = `coffee-machine-cm01-v3-cad-r3-${R3_DIGEST}`;
+const R3 = `generic-product-v3-cad-r3-${R3_DIGEST}`;
 
 const ARCH_ID =
-  "coffee-machine-cm01-v3-architecture-b4c805a45d9f3ac9ae67318d2822804ceaaa00e121b7079e13c62dce38d4add7";
+  "generic-product-v3-architecture-b4c805a45d9f3ac9ae67318d2822804ceaaa00e121b7079e13c62dce38d4add7";
 const MECH_R3_PROOF_ID =
-  "coffee-machine-cm01-v3-mechanical-r3-ec23ad25f52a9a467bfc8e8fa07e62ee8da1efb48c570c0554c1066b21d48297-proof";
+  "generic-product-v3-mechanical-r3-ec23ad25f52a9a467bfc8e8fa07e62ee8da1efb48c570c0554c1066b21d48297-proof";
 const ORACLE_REQ_ID =
   "oracle-requirements-944e2515fb349d631e9aa4d85a3b9394420990c9610d5dfff8c290f032d633e3";
 const SENS_REL_ID =
@@ -132,7 +132,7 @@ function catalogBinding(
 // ---------------------------------------------------------------------------
 // Representative fixture topology
 //
-// 21 nodes derived from the real CM-01 V3 graph, chosen so that each
+// 21 nodes derived from the real GEN-01 V3 graph, chosen so that each
 // anchorage criterion fires at least once.  Change and consumption nodes
 // use the real IDs produced by the @3 CAD run executor.
 // ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ const FIXTURE_GRAPH: ThreadGraph = {
     node(`${R3}-mesh-enclosure`, "artifact", { artifactKind: "mesh" }),
 
     // Architecture artifact — present in every component's syson binding;
-    // last-writer-wins in buildCatalogMap gives it cm01-v3:drip-tray.
+    // last-writer-wins in buildCatalogMap gives it generic-v3:drip-tray.
     node(ARCH_ID, "artifact", { artifactKind: "sysml-model", system: "syson" }),
 
     // ── Criterion (b): server-fixed prefix table ─────────────────────────────
@@ -163,9 +163,9 @@ const FIXTURE_GRAPH: ThreadGraph = {
       artifactKind: "sysml-model",
       system: "syson",
     }),
-    // Mechanical R3 — prefix b-10 → cm01-v3:drip-tray
+    // Mechanical R3 — prefix b-10 → generic-v3:drip-tray
     node(MECH_R3_PROOF_ID, "artifact", { artifactKind: "document" }),
-    // DripTray sensitivity study — prefix b-13 → cm01-v3:drip-tray
+    // DripTray sensitivity study — prefix b-13 → generic-v3:drip-tray
     node(DT_SENS_CAPTURE_ID, "artifact", { artifactKind: "document" }),
 
     // ── Criterion (c): machine-level nature ─────────────────────────────────
@@ -271,7 +271,7 @@ const FIXTURE_GRAPH: ThreadGraph = {
   ],
 };
 
-// The catalog mirrors the live CM-01 V3 catalog (R18).
+// The catalog mirrors the live GEN-01 V3 catalog (R18).
 //
 // Key bindings exercised:
 //   - Assembly gets architecture (syson), mesh-assembly, plan, script, step.
@@ -281,18 +281,18 @@ const FIXTURE_GRAPH: ThreadGraph = {
 //
 // Note: the architecture artifact appears in all three components' bindings.
 // buildCatalogMap processes components in order (assembly → enclosure → drip-tray)
-// so the architecture id ends up mapped to cm01-v3:drip-tray.
+// so the architecture id ends up mapped to generic-v3:drip-tray.
 const FIXTURE_CATALOG: ThreadComponentCatalog = {
   schemaVersion: "thread-components/1.0",
   authority: "workspace-declared",
-  subjectId: "project:coffee-machine-cm01-v3",
+  subjectId: "project:generic-product-v3",
   rationale:
-    "Representative fixture catalog derived from the live CM-01 V3 workspace (2026-08-07, R18).",
+    "Representative fixture catalog derived from the live GEN-01 V3 workspace (2026-08-07, R18).",
   systemViews: {},
   components: [
     {
-      id: "cm01-v3:coffee-machine",
-      label: "CoffeeMachine",
+      id: "generic-v3:generic-product",
+      label: "GenericAssembly",
       kind: "assembly",
       quantity: 1,
       bindings: [
@@ -304,22 +304,22 @@ const FIXTURE_CATALOG: ThreadComponentCatalog = {
       ],
     },
     {
-      id: "cm01-v3:enclosure",
+      id: "generic-v3:enclosure",
       label: "Enclosure",
       kind: "part",
       quantity: 1,
-      parentId: "cm01-v3:coffee-machine",
+      parentId: "generic-v3:generic-product",
       bindings: [
         catalogBinding(ARCH_ID, "syson"),
         catalogBinding(`${R3}-mesh-enclosure`),
       ],
     },
     {
-      id: "cm01-v3:drip-tray",
+      id: "generic-v3:drip-tray",
       label: "DripTray",
       kind: "part",
       quantity: 1,
-      parentId: "cm01-v3:coffee-machine",
+      parentId: "generic-v3:generic-product",
       bindings: [
         catalogBinding(ARCH_ID, "syson"),
         catalogBinding(`${R3}-mesh-drip-tray`),
@@ -333,12 +333,11 @@ const FIXTURE_CATALOG: ThreadComponentCatalog = {
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "fixture topology yields zero orphans and retains the shared architecture capture ambiguity",
+  "archived fixture retains exact catalog anchors while legacy-only records stay unanchored",
   () => {
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const coverage = anchorageCoverage(map, FIXTURE_GRAPH);
-    assertEquals(coverage.orphan, 0, "orphan count must be zero");
-    assertEquals(coverage.ambiguous, 1);
+    assertEquals(coverage, { unique: 17, ambiguous: 1, orphan: 2 });
   },
 );
 
@@ -388,27 +387,22 @@ Deno.test(
 );
 
 Deno.test(
-  "R3 drip-tray presentation mesh resolves to cm01-v3:drip-tray via catalog criterion",
+  "R3 drip-tray presentation mesh resolves to generic-v3:drip-tray via catalog criterion",
   () => {
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const anchor = map.get(`artifact:${R3}-mesh-drip-tray`);
-    assertEquals(anchor?.target, "cm01-v3:drip-tray");
+    assertEquals(anchor?.target, "generic-v3:drip-tray");
     assertEquals(anchor?.criterion, "catalog");
   },
 );
 
 Deno.test(
-  "unique anchorage coverage is at least 95 % on the representative fixture",
+  "archived fixture coverage depends on exact catalog and provenance, not legacy prefixes",
   () => {
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const coverage = anchorageCoverage(map, FIXTURE_GRAPH);
-    const totalNodes = FIXTURE_GRAPH.nodes.length;
-    // unique + ambiguous + orphan === totalNodes (orphan always 0 by convention)
-    assertGreaterOrEqual(
-      coverage.unique,
-      Math.ceil(totalNodes * 0.95),
-      `unique (${coverage.unique}/${totalNodes}) must be >= 95 %`,
-    );
+    assertEquals(coverage.unique, 17);
+    assertEquals(coverage.ambiguous + coverage.orphan, 3);
   },
 );
 
@@ -473,7 +467,7 @@ Deno.test("anchorage retains conflict targets and distinguishes ambiguous from o
   assertEquals(resolution.anchors.size, 0);
   assertEquals(
     resolution.ambiguousByRef.get("artifact:ambiguous-evidence"),
-    ["cm01-v3:drip-tray", "cm01-v3:enclosure"],
+    ["generic-v3:drip-tray", "generic-v3:enclosure"],
   );
   assertEquals(
     resolution.orphanRefKeys.has("observation:unanchored-fact"),
@@ -497,45 +491,40 @@ Deno.test("anchorage retains conflict targets and distinguishes ambiguous from o
 });
 
 Deno.test(
-  "mechanical R3 proof resolves to cm01-v3:drip-tray via prefix criterion (b-10)",
+  "archived mechanical proof does not receive an active product-prefix anchor",
   () => {
-    // coffee-machine-cm01-v3-mechanical-r3-{HEX64}-proof matches prefix b-10.
-    // This artifact is not in the catalog, so criterion (a) does not fire.
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const anchor = map.get(`artifact:${MECH_R3_PROOF_ID}`);
-    assertEquals(anchor?.target, "cm01-v3:drip-tray");
-    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchor, undefined);
   },
 );
 
 Deno.test(
-  "oracle requirements artifact resolves to assembly via prefix criterion (b-2)",
+  "archived requirements artifact keeps only its generic assembly nature",
   () => {
-    // oracle-requirements-{digest} is not in the catalog; prefix b-2 fires.
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const anchor = map.get(`artifact:${ORACLE_REQ_ID}`);
     assertEquals(anchor?.target, "assembly");
-    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchor?.criterion, "nature");
   },
 );
 
 Deno.test(
-  "sensitivity-relations artifact resolves to assembly via prefix criterion (b-5)",
+  "archived sensitivity artifact keeps only its generic assembly nature",
   () => {
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const anchor = map.get(`artifact:${SENS_REL_ID}`);
     assertEquals(anchor?.target, "assembly");
-    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchor?.criterion, "nature");
   },
 );
 
 Deno.test(
-  "drip-tray sensitivity capture resolves to cm01-v3:drip-tray via prefix criterion (b-13)",
+  "archived sensitivity capture does not receive an active product-prefix anchor",
   () => {
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const anchor = map.get(`artifact:${DT_SENS_CAPTURE_ID}`);
-    assertEquals(anchor?.target, "cm01-v3:drip-tray");
-    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchor, undefined);
   },
 );
 
@@ -573,8 +562,8 @@ Deno.test(
     assertEquals(resolution.anchors.has(`artifact:${ARCH_ID}`), false);
     assertEquals(resolution.ambiguousByRef.get(`artifact:${ARCH_ID}`), [
       "assembly",
-      "cm01-v3:drip-tray",
-      "cm01-v3:enclosure",
+      "generic-v3:drip-tray",
+      "generic-v3:enclosure",
     ]);
   },
 );
@@ -592,13 +581,13 @@ Deno.test(
 );
 
 Deno.test(
-  "R3 mesh-drip-tray change node resolves to cm01-v3:drip-tray via criterion (e)",
+  "R3 mesh-drip-tray change node resolves to generic-v3:drip-tray via criterion (e)",
   () => {
-    // change --changes--> artifact:mesh-drip-tray (cm01-v3:drip-tray).
+    // change --changes--> artifact:mesh-drip-tray (generic-v3:drip-tray).
     const map = buildPartAnchorage(FIXTURE_GRAPH, FIXTURE_CATALOG);
     const changeKey = `change:${R3}-extension:created:${R3}-mesh-drip-tray`;
     const anchor = map.get(changeKey);
-    assertEquals(anchor?.target, "cm01-v3:drip-tray");
+    assertEquals(anchor?.target, "generic-v3:drip-tray");
     assertEquals(anchor?.criterion, "change-consumption");
   },
 );
@@ -629,22 +618,16 @@ Deno.test(
 );
 
 // ---------------------------------------------------------------------------
-// Tests for b-16, b-17, b-18 — isolated nodes (no graph edges)
-//
-// These nodes appear in the live R18 graph but have no adjacent resolved
-// neighbours, so criteria (d) and (e) cannot resolve them.  They require
-// explicit prefix / suffix rules in the PREFIX_TABLE.
-//
-// The graphs below are minimal: a single isolated node per test.
+// Archived isolated records must remain unanchored without an exact catalog
+// binding or recorded provenance. The graphs below are intentionally minimal.
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "drip-tray height-correction action node resolves to cm01-v3:drip-tray via prefix criterion (b-16)",
+  "archived correction action is not selected by a product-specific fallback",
   () => {
-    // Action node generated by cm01-drip-tray-height-correction.ts:38,143.
-    // Id: coffee-machine-cm01-v3-drip-tray-height-28-to-30:recompute-cad-r2
-    const ACTION_ID =
-      "coffee-machine-cm01-v3-drip-tray-height-28-to-30:recompute-cad-r2";
+    // Action node generated by generic-drip-tray-height-correction.ts:38,143.
+    // Id: generic-product-v3-drip-tray-height-28-to-30:recompute-cad-r2
+    const ACTION_ID = "generic-product-v3-drip-tray-height-28-to-30:recompute-cad-r2";
     const g: ThreadGraph = {
       nodes: [
         {
@@ -661,18 +644,17 @@ Deno.test(
     };
     const map = buildPartAnchorage(g, FIXTURE_CATALOG);
     const anchor = map.get(`action:${ACTION_ID}`);
-    assertEquals(anchor?.target, "cm01-v3:drip-tray");
-    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchor, undefined);
   },
 );
 
 Deno.test(
-  "mechanical R2 run-queue artifact resolves to cm01-v3:drip-tray via prefix criterion (b-17)",
+  "archived verification queue is not selected by a product-specific fallback",
   () => {
-    // Artifact node whose run-id is defined in cm01-v3-r11-closeout.ts:19.
-    // Id: run:cm01-v3-r7-r10-28-to-30-queue-mechanical-r2:verify.coffee-machine-cm01-drip-tray-mechanical
+    // Artifact node whose run-id is defined in generic-v3-r11-closeout.ts:19.
+    // Id: run:generic-v3-r7-r10-28-to-30-queue-mechanical-r2:verify.generic-product-drip-tray-mechanical
     const RUN_ARTIFACT_ID =
-      "run:cm01-v3-r7-r10-28-to-30-queue-mechanical-r2:verify.coffee-machine-cm01-drip-tray-mechanical";
+      "run:generic-v3-r7-r10-28-to-30-queue-mechanical-r2:verify.generic-product-drip-tray-mechanical";
     const g: ThreadGraph = {
       nodes: [
         {
@@ -689,16 +671,15 @@ Deno.test(
     };
     const map = buildPartAnchorage(g, FIXTURE_CATALOG);
     const anchor = map.get(`artifact:${RUN_ARTIFACT_ID}`);
-    assertEquals(anchor?.target, "cm01-v3:drip-tray");
-    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchor, undefined);
   },
 );
 
 Deno.test(
-  "printability run artifact resolves to cm01-v3:drip-tray via suffix rule (b-18)",
+  "archived printability run is not selected by a product-specific fallback",
   () => {
     // Artifact node whose id ends with :drip-tray-printability, generated by
-    // coffee-machine-cm01-v3-printability-run-executor.ts:495.
+    // generic-product-v3-printability-run-executor.ts:495.
     // The runId prefix is variable (operator-supplied at dispatch time).
     const RUN_ARTIFACT_ID =
       "run:cmd:anchor-seq-b-printability-queue-20260805:drip-tray-printability";
@@ -718,20 +699,19 @@ Deno.test(
     };
     const map = buildPartAnchorage(g, FIXTURE_CATALOG);
     const anchor = map.get(`artifact:${RUN_ARTIFACT_ID}`);
-    assertEquals(anchor?.target, "cm01-v3:drip-tray");
-    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchor, undefined);
   },
 );
 
 // ---------------------------------------------------------------------------
-// Tests for generic multi-project prefixes (b-19 … b-24)
+// Tests for generic multi-project prefixes (b-1 … b-6)
 //
 // These isolated single-node graphs exercise the generic entries that apply
-// to any project beyond CM-01.
+// to any active project.
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "generic fea-proof artifact resolves to assembly via prefix criterion (b-21)",
+  "generic fea-proof artifact resolves to assembly via prefix criterion (b-3)",
   () => {
     // verify-seal-proof-case-run-executor.ts:508
     //   artifactId = `fea-proof-${captureFp.digest}`
@@ -764,7 +744,7 @@ Deno.test(
 );
 
 Deno.test(
-  "generic geometry artifact resolves to assembly via prefix criterion (b-20)",
+  "generic geometry artifact resolves to assembly via prefix criterion (b-2)",
   () => {
     // design-write-geometry-run-executor.ts:1525
     //   artifact.id !== `geometry-${digest}`

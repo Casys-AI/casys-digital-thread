@@ -42,9 +42,6 @@ If the preview falls back to a labelled demo fixture:
 2. Reload the browser page after the console starts or restarts.
 3. Check the harness health endpoint above.
 
-The [CoffeeMachine tutorial](../tutorials/coffee-machine-nominal.md) gives a concrete
-live result to look for.
-
 ## Know the boundary
 
 The harness is a narrow visual-test host for the existing fixed MCP App. It reads the

@@ -6,38 +6,62 @@ import {
   validateSimulationCaseV2,
 } from "./simulation-case-v2.ts";
 
-const CM01_PATH = "config/simulation-cases/coffee-machine-cm01-thermal-nominal-v2.json";
+function caseInput(): Record<string, unknown> {
+  return {
+    schemaVersion: "simulation-case/2.0",
+    id: "thermal-system-nominal-v2",
+    revision: 1,
+    scope: "Neutral thermal-system contract fixture.",
+    evidenceBoundary: "Schema and canonicalization only; no provider run is asserted.",
+    project: {
+      id: "thermal-system-project",
+      subjectId: "project:thermal-system",
+      baseThreadSnapshot: {
+        id: "project:thermal-system:r3",
+        revision: 3,
+        subjectId: "project:thermal-system",
+      },
+    },
+    kit: {
+      modelId: "thermal-system-model",
+      modelVersion: "1.0.0",
+      modelSha256: "a".repeat(64),
+    },
+    scenario: {
+      id: "nominal-heating",
+      sourceSha256: "b".repeat(64),
+      projectionSha256: "c".repeat(64),
+    },
+    parameters: [
+      { id: "targetTemperature", value: 333.15, unit: "K" },
+      { id: "ambientTemperature", value: 293.15, unit: "K" },
+    ],
+    expectedMetrics: [
+      { id: "settlingTime", unit: "s" },
+      { id: "peakTemperature", unit: "K" },
+    ],
+    parameterMode: "explicit-overrides",
+    timeoutMs: 15_000,
+  };
+}
 
 Deno.test("simulation-case/2.0 retains separate exact source and projection identities", async () => {
-  const source = JSON.parse(await Deno.readTextFile(CM01_PATH));
-  const simulationCase = validateSimulationCaseV2(source);
+  const simulationCase = validateSimulationCaseV2(caseInput());
   assertEquals(simulationCase.schemaVersion, SIMULATION_CASE_V2_SCHEMA);
   assertEquals(simulationCase.revision, 1);
-  assertEquals(
-    simulationCase.kit.modelSha256,
-    "a641b63a493435fd2ce8123a7b6afbd478656a124610ca33d22112985af8e8ec",
-  );
-  assertEquals(
-    simulationCase.scenario.sourceSha256,
-    "ef75820fad5e80a2c6a541e1d7ab4ac4983af417d769b970a17c57734ce93849",
-  );
-  assertEquals(
-    simulationCase.scenario.projectionSha256,
-    "057610356a675f16f9395cc3c1e1637ea0871ccb28c616cec284a9cf654268f3",
-  );
+  assertEquals(simulationCase.kit.modelSha256, "a".repeat(64));
+  assertEquals(simulationCase.scenario.sourceSha256, "b".repeat(64));
+  assertEquals(simulationCase.scenario.projectionSha256, "c".repeat(64));
   assertEquals(
     await fingerprintResourceBytes(
       new TextEncoder().encode(canonicalSimulationCaseV2Text(simulationCase)),
     ),
-    "7efeebf57c20cd2462395f8f47626392c3bb9be450c7ac2d471a9c2e060979bb",
+    "065187be150c4a05b176314e9614d5abce21dd1eda092bc2eddf8408d33e6966",
   );
 });
 
-Deno.test("simulation-case/2.0 rejects the V1 single scenario hash field", async () => {
-  const source = JSON.parse(await Deno.readTextFile(CM01_PATH)) as Record<
-    string,
-    unknown
-  >;
+Deno.test("simulation-case/2.0 rejects the V1 single scenario hash field", () => {
+  const source = caseInput();
   const scenario = source.scenario as Record<string, unknown>;
   source.scenario = {
     id: scenario.id,
@@ -50,11 +74,8 @@ Deno.test("simulation-case/2.0 rejects the V1 single scenario hash field", async
   );
 });
 
-Deno.test("simulation-case/2.0 canonical ordering uses code units rather than host locale", async () => {
-  const source = JSON.parse(await Deno.readTextFile(CM01_PATH)) as Record<
-    string,
-    unknown
-  >;
+Deno.test("simulation-case/2.0 canonical ordering uses code units rather than host locale", () => {
+  const source = caseInput();
   source.parameters = [
     { id: "zeta", value: 1, unit: "1" },
     { id: "alpha", value: 1, unit: "1" },

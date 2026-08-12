@@ -29,21 +29,17 @@ computed physics        mcp-calculix      Gmsh mesh + CalculiX FEA — stress, d
 verified verdict        constraint-solver units-aware evaluation, z3 satisfiability
 ```
 
-The CoffeeMachine dynamics branch is complementary: `mcp-modelica` runs approved
-Modelica scenarios to produce time, temperature and energy evidence; SysON and the
-constraint solver evaluate that evidence against requirements. It does not replace the
-CAD → FEA branch.
+The system-simulation branch is complementary: `mcp-modelica` runs approved Modelica
+scenarios to produce time, temperature and energy evidence; SysON and the constraint
+solver evaluate that evidence against reviewed requirements. It does not replace the CAD
+→ FEA branch.
 
 The target product should answer after each meaningful change the question that today
 often takes weeks between requirement freeze and design review: **does this design hold
-every requirement it traces to — with computed proof?** The clean, tracked CoffeeMachine
-CM-01 baseline aggregates observed SysON, Modelica, ERPNext and whole-machine build123d
-evidence at revision 5, before any mechanical criterion exists. Its r6 DripTray loop is
-retained as historical evidence. A distinct local CM-01 V3 path then records a reviewed
-`28 mm → 30 mm` correction: a failed R2 attempt remains evidence-free history, a
-correctly identified R3 successor carries the mechanical handoff and evaluations, and
-R12 explicitly closes the requirement family. This is a concept proof for one isolated
-DripTray, not whole-machine, release, manufacturing, or certification evidence.
+every requirement it traces to — with computed proof?** Each answer remains bounded to
+one reviewed project, exact source artifacts, explicit physical assumptions and
+persisted provider evidence. It never becomes a whole-product, release, manufacturing or
+certification claim by implication.
 
 ## Positioning
 
@@ -53,9 +49,9 @@ sound physical tools dispose. See
 [docs/explanations/positioning.md](docs/explanations/positioning.md) for the full
 analysis and references. What distinguishes this implementation:
 
-- **Model-grounded** — the verified CM-01 loop starts from a SysML v2 model. CAD-first
-  and product-first entries must recover and review missing intent before they can make
-  equivalent requirement claims.
+- **Model-grounded** — verified loops start from reviewed SysML v2 requirements.
+  CAD-first and product-first entries must recover and review missing intent before they
+  can make equivalent requirement claims.
 - **Units are values** — 2.5 kg against a 4 lb budget _fails_; unit-blind comparison is
   the false positive this stack exists to prevent.
 - **Composable at protocol level** — each engineering capability remains an independent
@@ -107,12 +103,12 @@ The `exports` named volume is build123d's CAD exchange and is mounted read-only 
 CalculiX, but a shared path is not provenance. The native thread contract requires
 `build123d_export` to hash the exact STEP bytes and CalculiX to attest the hash it
 consumed. Generic, content-addressed FEA inputs are staged instead in CalculiX's
-provider-private `/inputs` volume: it is neither an exchange nor evidence.
-CalculiX has a separately pinned release and retains its bounded run ledger in
+provider-private `/inputs` volume: it is neither an exchange nor evidence. CalculiX has
+a separately pinned release and retains its bounded run ledger in
 `casys-digital-thread-calculix-runs`; that ledger is not the CAD exchange. The separate
-`casys-digital-thread-modelica-runs` volume retains bounded, hashed OpenModelica records.
-Both provider run volumes survive a normal Compose restart and are read through their
-identity-bound MCP tools, never directly by the cockpit.
+`casys-digital-thread-modelica-runs` volume retains bounded, hashed OpenModelica
+records. Both provider run volumes survive a normal Compose restart and are read through
+their identity-bound MCP tools, never directly by the cockpit.
 
 ## Console and native Workbench
 
@@ -127,13 +123,6 @@ Elicitation preserves human authority without moving command input into the cock
 exposes no direct self-approval mutation. The MCP host must still present the
 elicitation to the person; signed MRTR state does not authenticate human presence by
 itself.
-
-For the exact, version-bound CoffeeMachine nominal run, the console also sends the
-measured temperature to `syson_constraint_evaluate` and displays the live result as a
-**provisional scenario contract**. The sole current condition is the scenario's declared
-`90 degC` target. It is intentionally not a product requirement, not a SysON project
-requirement, and the `900 s` scenario horizon remains provenance rather than an invented
-performance limit.
 
 ```bash
 npm --prefix src/ui ci
@@ -213,41 +202,17 @@ completion remain separate operations. See the
 [native preview how-to](docs/how-to/preview-native-workbench.md) and the
 [ThreadSnapshot reference](docs/reference/thread-snapshot.md).
 
-The tracked project under
-[`config/projects/coffee-machine-cm01.project.json`](config/projects/coffee-machine-cm01.project.json)
-references an exact observed r5 capture under `config/projects/baselines/`. On a fresh
-clone, it seeds active project revision 1 so the BFF can show the reviewed project,
-thread and exact STL without running a provider. That clean CM-01 state has one bundled
-mechanical proof-case decision, no approval, and zero agent runs; the agent must prepare
-its part, material, support, load, and acceptance proposal instead of asking the
-operator to invent those values. Later commands append immutable active project
-revisions. Technical snapshots and assets also prefer active local state when present,
-but a baseline is accepted only for the same exact ID or filename—never as a substitute
-for `latest` or for missing evidence.
-
-The tracked r5 SysON inventory contains two `RequirementUsage` elements and zero
-mechanical `ConstraintUsage` elements, so the clean baseline honestly has no mechanical
-verdict. The historical r6 reference added only two proposal-derived DripTray limits
-(`1 mm` and `20 MPa`) through an explicit reviewed mutation. The separate V3 correction
-path retains that history rather than treating it as current: its R2 failure has no
-substitute evidence, its recovered R3 successor is the current bounded proof, and its
-R12 requirement lineage is what lets the project close. Adding or replacing model-owned
-criteria is always an explicit domain mutation, never a UI workaround.
-
 [`experiments/thread-workflow/`](experiments/thread-workflow/) holds the frozen YAML DAG
 authoring prototype (spec and engine; no production caller). No dashboard-layout YAML,
 iframe host, or presentation-only MCP sits between the backend and provider-native MCP
 tools. See the [workflow reference](docs/reference/thread-workflows.md).
 
-The four tracked r5 branches share the system subject only through
-[`config/thread-subjects/coffee-machine-cm01.json`](config/thread-subjects/coffee-machine-cm01.json):
-reviewed SysON project ID, build123d STEP path, Modelica run ID, and ERPNext item code.
-Matching labels never create a join. The r6 mechanical branch consumes and attests its
-exact content-addressed DripTray STEP; it does not claim that the historical
-whole-machine r5 STEP was solved. The current assembly observes `94 degC` maximum water
-temperature, the canonical whole-machine STEP, and ERPNext's active default BOM for
-`CASYS-CM01`; it does not assert that the CAD branch caused the Modelica result, or that
-zero Bin rows means zero inventory.
+CM-01 has been fully retired from active code, configuration, scripts, catalogues and UI
+fixtures. Only the static
+[`state/fixtures/retired/cm01-v3/`](state/fixtures/retired/cm01-v3/) golden fixture and
+the original immutable records under [`state/local/`](state/local/) remain. They are
+audit evidence, not a template, fallback, operation or provider admission. See the
+[archived dossier](docs/legacy/cm01-v3.md).
 
 The shared visual baseline now lives in `@casys/mcp-view`, extracted from the ERPNext
 BOM palette: restrained cards, compact uppercase titles, dense metrics and tables,
@@ -260,12 +225,10 @@ keeps the checked-in bracket run explicitly labelled as demo. The documentation 
 organized with [Diátaxis](https://diataxis.fr/): start at the
 [documentation map](docs/README.md), follow the
 [product direction](docs/explanations/product-direction.md), follow the
-[CoffeeMachine run tutorial](docs/tutorials/coffee-machine-nominal.md), use the
 [browser-preview how-to](docs/how-to/preview-console.md), use the
-[native Workbench preview](docs/how-to/preview-native-workbench.md), or follow the
-[CM-01 V3 local golden-path guide](docs/how-to/run-cm01-v3-golden-local.md) and its
-[reviewed reference](docs/reference/cm01-v3-golden-reference.md). Look up exact paths
-and ports in the [workspace reference](docs/reference/workspace-map.md). The
+[native Workbench preview](docs/how-to/preview-native-workbench.md), or inspect the
+[CM-01 archive](docs/legacy/cm01-v3.md). Look up exact paths and ports in the
+[workspace reference](docs/reference/workspace-map.md). The
 [source-analysis and authority pipeline](docs/reference/analysis-authority-pipeline.md)
 documents how native agent-authored code remains free while source capture, parsing,
 review and provider dispatch stay causally explicit. The
@@ -274,30 +237,24 @@ model, and security boundary.
 
 ## Repository map
 
-| Path                                          | Contents                                                                                                                                                |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker-compose.yml`                          | The full stack: SysON + MCP servers over HTTP                                                                                                           |
-| `server.ts`, `src/`                           | Console, project control plane, thread contracts, and orchestration                                                                                     |
-| `config/mcp-fleet.json`                       | Desired fleet, topology, tools, views, and trust boundaries                                                                                             |
-| `config/projects/`                            | Versioned project intent plus exact observed baseline captures                                                                                          |
-| `experiments/thread-workflow/`                | Frozen YAML authoring prototype (reviewed spec + engine, no production caller)                                                                          |
-| `config/thread-subjects/`                     | Reviewed explicit provider-to-product identity bindings                                                                                                 |
-| `config/verification-plans/`                  | Versioned provisional scenario-contract plans                                                                                                           |
-| `config/mechanical-proof-cases/`              | Candidate mechanical proof-case declarations; authoring only — execution authority belongs to the sealed thread artifact                                |
-| `config/simulation-cases/`                    | Candidate simulation-case declarations (kit, scenario, parameter overrides); authoring only — execution authority belongs to the sealed thread artifact |
-| `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                                                                                                 |
-| `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                                                                                         |
-| `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence                                                                      |
-| `docs/README.md`                              | Diátaxis documentation map                                                                                                                              |
-| `docs/tutorials/`                             | End-to-end learning paths, including the real CoffeeMachine run                                                                                         |
-| `docs/how-to/`                                | Focused operating guides for native workflows and MCP Apps                                                                                              |
-| `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                                                                                                   |
-| `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                                                                                     |
-| `docs/reference/console.md`                   | Console resource, tools, truth model, limitations, and security boundary                                                                                |
-| `docs/explanations/positioning.md`            | Explanation: industry & SOTA positioning and references                                                                                                 |
-| `docs/reference/verification-architecture.md` | Explanation: CoffeeMachine verification boundaries and Modelica decision                                                                                |
-| `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                                                                                            |
-| `experiments/oracle/`                         | The oracle experiment — the project's decisive measurement                                                                                              |
+| Path                                          | Contents                                                                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `docker-compose.yml`                          | The full stack: SysON + MCP servers over HTTP                                                                            |
+| `server.ts`, `src/`                           | Console, project control plane, thread contracts, and orchestration                                                      |
+| `config/mcp-fleet.json`                       | Desired fleet, topology, tools, views, and trust boundaries                                                              |
+| `experiments/thread-workflow/`                | Frozen YAML authoring prototype (reviewed spec + engine, no production caller)                                           |
+| `config/mechanical-proof-cases/`              | Candidate mechanical proof-case declarations; authoring only — execution authority belongs to the sealed thread artifact |
+| `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                                                                  |
+| `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                                                          |
+| `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence                                       |
+| `docs/README.md`                              | Diátaxis documentation map                                                                                               |
+| `docs/how-to/`                                | Focused operating guides for native workflows and MCP Apps                                                               |
+| `docs/legacy/`                                | Non-executable historical dossiers; never active configuration or admission                                              |
+| `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                                                                    |
+| `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                                                      |
+| `docs/reference/console.md`                   | Console resource, tools, truth model, limitations, and security boundary                                                 |
+| `docs/explanations/positioning.md`            | Explanation: industry & SOTA positioning and references                                                                  |
+| `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                                                             |
 
 ## The ecosystem (public building blocks)
 

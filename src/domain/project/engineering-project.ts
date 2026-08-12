@@ -48,6 +48,7 @@ export type EngineeringProjectCommandName =
   | "project.plan-publish"
   | "project.change-append"
   | "work-item.reconcile-successor"
+  | "work-item.supersede-unstarted"
   | "decision.propose"
   | "decision.approve"
   | "decision.reject"
@@ -241,7 +242,7 @@ export type EngineeringWorkOwner = "human" | "agent" | "shared";
  * completed successor. It prevents a recovered successor from being
  * misreported as a successful execution of the failed work item.
  */
-export interface EngineeringWorkItemSuccessorReconciliation {
+export interface EngineeringWorkItemRunSuccessorReconciliation {
   readonly kind: "superseded-by-successor";
   readonly reconciledAt: IsoDateTime;
   readonly reconciledBy: EngineeringCommandActor;
@@ -263,6 +264,34 @@ export interface EngineeringWorkItemSuccessorReconciliation {
   readonly successorEvidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly rationale: string;
 }
+
+/**
+ * Human-recorded closeout for a work item that never acquired a run.
+ *
+ * This is intentionally not a disguised failed run: the predecessor has no
+ * `failedRunId`, no provider result and no successor evidence.  It records
+ * only that its pending decision was replaced by one already-approved
+ * successor decision for the narrowly registered operation transition.
+ */
+export interface EngineeringWorkItemUnstartedSuccessorReconciliation {
+  readonly kind: "superseded-by-successor";
+  readonly reconciledAt: IsoDateTime;
+  readonly reconciledBy: EngineeringCommandActor;
+  readonly successorWorkItemId: string;
+  readonly predecessorDecisionId: string;
+  readonly successorDecisionId: string;
+  readonly rationale: string;
+  /** Deliberately absent: no run was ever queued or executed. */
+  readonly failedRunId?: never;
+  readonly successorRunId?: never;
+  readonly successorRunSnapshot?: never;
+  readonly successorSnapshot?: never;
+  readonly successorEvidenceRefs?: never;
+}
+
+export type EngineeringWorkItemSuccessorReconciliation =
+  | EngineeringWorkItemRunSuccessorReconciliation
+  | EngineeringWorkItemUnstartedSuccessorReconciliation;
 
 /** How a work item relates to one reviewed gate in the canonical brief. */
 export type EngineeringGateClaimRole = "contributes-to" | "satisfies";
@@ -336,8 +365,8 @@ export interface EngineeringAgentRun {
   /** V3 execution anchor. V3 runs must use this field and never `baseSnapshot`. */
   readonly basis?: EngineeringBasisRef;
   /**
-   * V1-only exact thread state. It remains readable for the immutable CM-01
-   * history and is deliberately not a fallback for V3 execution.
+   * V1-only exact thread state. It remains readable for immutable historical
+   * projects and is deliberately not a fallback for V3 execution.
    */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
   readonly inputFingerprint?: ContentFingerprint;
@@ -457,6 +486,11 @@ export interface EngineeringDecision {
   readonly inputEvidenceRefs: readonly EngineeringThreadEntityRef[];
   readonly approvalIds: readonly string[];
   readonly supersedesDecisionId?: string;
+  /**
+   * Human-only inverse link for a legacy decision closed by an already-approved
+   * successor whose historical proposal cannot be rewritten.
+   */
+  readonly supersededByDecisionId?: string;
   readonly proposal?: EngineeringDecisionProposal;
 }
 
@@ -582,6 +616,24 @@ export type EngineeringProjectStatus =
   | "blocked"
   | "completed";
 
+/**
+ * A superseded decision is terminally satisfied only when its explicit
+ * successor is approved. This keeps a historical V1 decision visible without
+ * making it an unresolved gate after a reviewed replacement has taken over.
+ */
+export function isEngineeringDecisionSatisfied(
+  snapshot: EngineeringProjectSnapshot,
+  decision: EngineeringDecision,
+): boolean {
+  return decision.status === "approved" ||
+    (decision.status === "superseded" &&
+      snapshot.decisions.some((candidate) =>
+        candidate.status === "approved" &&
+        (candidate.supersedesDecisionId === decision.id ||
+          decision.supersededByDecisionId === candidate.id)
+      ));
+}
+
 /** Derive phase state from work, decisions, runs and blockers; never persist it. */
 export function deriveEngineeringPhaseStatus(
   snapshot: EngineeringProjectSnapshot,
@@ -609,10 +661,13 @@ export function deriveEngineeringPhaseStatus(
       item.status === "completed" ||
       (item.status === "cancelled" && item.reconciliation !== undefined)
     ) &&
-    requiredDecisions.every((decision) => decision.status === "approved") &&
+    requiredDecisions.every((decision) =>
+      isEngineeringDecisionSatisfied(snapshot, decision)
+    ) &&
     (phase.evidenceRefs.length > 0 ||
       workItems.some((item) =>
         item.reconciliation !== undefined &&
+        !("successorWorkItemId" in item.reconciliation) &&
         item.reconciliation.successorEvidenceRefs.length > 0
       ))
   ) return "completed";

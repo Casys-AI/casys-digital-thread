@@ -6,7 +6,10 @@ import {
 } from "../../domain/analysis/modelica-resumable-capabilities.ts";
 import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
 import { validateResolvedOperationPlanV2 } from "../../domain/analysis/resolved-operation-plan-v2.ts";
-import { canonicalProofText } from "../../domain/analysis/fea-proof-proposal.ts";
+import {
+  canonicalProofText,
+  encodeFeaProofDecisionParameters,
+} from "../../domain/analysis/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../../domain/analysis/mechanical-proof-case.ts";
 import {
   canonicalSimulationCaseV2Text,
@@ -276,6 +279,11 @@ Deno.test("RecordedOperationPlanResolver resolves CalculiX from proof-base ances
     version: "1.0",
     fingerprint: fixture.proofArtifact.fingerprint,
   });
+  assertEquals(fixture.proofCase.authorization, {
+    workItemId: "seal-work-fea",
+    decisionId: "seal-decision-fea",
+  });
+  assertEquals(plan.authorization.mrtr.decisionId, "decision-fea");
 });
 
 Deno.test("RecordedOperationPlanResolver rejects a transplanted CalculiX proof authority", async () => {
@@ -284,8 +292,68 @@ Deno.test("RecordedOperationPlanResolver rejects a transplanted CalculiX proof a
     () =>
       new RecordedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
     TypeError,
-    "does not bind the exact recorded-plan authority",
+    "FEA proof authority is not backed",
   );
+});
+
+Deno.test("RecordedOperationPlanResolver rejects missing or foreign CalculiX proof-seal lifecycle authority", async () => {
+  for (
+    const mutation of [
+      "missing-run",
+      "foreign-work",
+      "unapproved-decision",
+      "nonhuman-approval",
+    ] as const
+  ) {
+    const fixture = await calculixFixture();
+    const project = fixture.input.project as unknown as MutableProject;
+    if (mutation === "missing-run") {
+      project.agentRuns = project.agentRuns.filter((run: { id: string }) =>
+        run.id !== "seal-fea"
+      );
+    } else if (mutation === "foreign-work") {
+      requireProjectEntry(project.workItems, "seal-work-fea", "seal work item")
+        .operation.id = "foreign.seal";
+    } else if (mutation === "unapproved-decision") {
+      requireProjectEntry(project.decisions, "seal-decision-fea", "seal decision")
+        .status = "proposed";
+    } else {
+      requireProjectEntry(project.approvals, "seal-approval-fea", "seal approval")
+        .decidedByOrigin = "agent";
+    }
+    await refreshQueueBasisProjectFingerprint(fixture.input);
+    await assertRejects(
+      () =>
+        new RecordedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
+      TypeError,
+      "FEA proof authority",
+      mutation,
+    );
+  }
+});
+
+Deno.test("RecordedOperationPlanResolver rejects a CalculiX proof-seal result without exact evidence or direct lineage", async () => {
+  for (const mutation of ["evidence", "result-reference"] as const) {
+    const fixture = await calculixFixture();
+    const project = fixture.input.project as unknown as MutableProject;
+    if (mutation === "evidence") {
+      requireProjectEntry(project.agentRuns, "seal-fea", "seal run").evidenceRefs = [];
+    } else {
+      requireProjectEntry(project.agentRuns, "seal-fea", "seal run").resultSnapshot = {
+        snapshotId: "proof-base",
+        revision: 1,
+        subjectId: "subject-fea",
+      };
+    }
+    await refreshQueueBasisProjectFingerprint(fixture.input);
+    await assertRejects(
+      () =>
+        new RecordedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
+      TypeError,
+      mutation === "evidence" ? "FEA proof authority" : "direct immutable child",
+      mutation,
+    );
+  }
 });
 
 Deno.test("RecordedOperationPlanResolver rejects a CalculiX proof case from an unrelated Thread lineage", async () => {
@@ -827,10 +895,10 @@ async function calculixFixture(
     },
   };
   rawProof.authorization = {
-    workItemId: "work-fea",
+    workItemId: "seal-work-fea",
     decisionId: options.transplantedProofAuthority
       ? "decision-transplanted"
-      : "decision-fea",
+      : "seal-decision-fea",
   };
   rawProof.expectedCadArtifact = {
     format: "step",
@@ -944,6 +1012,91 @@ async function calculixFixture(
   const basis = successor(ancestor, basisArtifacts, "proof-seal");
   const stores = new Map([[ancestor.id, ancestor], [basis.id, basis]]);
   if (unrelated) stores.set(unrelated.id, unrelated);
+  const sealBasis = snapshotReference(ancestor);
+  const sealProposal = {
+    summary: "Seal the exact reviewed FEA proof case.",
+    parameters: encodeFeaProofDecisionParameters(
+      (await sha256Fingerprint(proofCase)).digest,
+      proofCase,
+      { id: geometryCapture.id, fingerprint: geometryCapture.fingerprint },
+      { id: requirementsArtifact.id, fingerprint: requirementsArtifact.fingerprint },
+    ),
+  };
+  const sealDecisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: sealBasis,
+    inputEvidenceRefs: [],
+    proposal: sealProposal,
+  });
+  const sealDecision = {
+    id: "seal-decision-fea",
+    phaseId: "seal-phase-fea",
+    title: "Approve exact FEA proof seal",
+    question: "Seal this reviewed proof case?",
+    status: "approved",
+    requestedAt: AT,
+    baseSnapshot: sealBasis,
+    inputFingerprint: sealDecisionFingerprint,
+    inputEvidenceRefs: [],
+    approvalIds: ["seal-approval-fea"],
+    proposal: sealProposal,
+  };
+  const sealApproval = {
+    id: "seal-approval-fea",
+    decisionId: sealDecision.id,
+    status: "approved",
+    requestedAt: AT,
+    decidedAt: AT,
+    decidedBy: "human-1",
+    decidedByOrigin: "human",
+    inputFingerprint: sealDecisionFingerprint,
+    inputEvidenceRefs: [],
+    baseSnapshot: sealBasis,
+  };
+  const sealOperation = {
+    id: "verify.seal-proof-case",
+    version: "1",
+    bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+  };
+  const sealRunFingerprint = await sha256Fingerprint({
+    workItemId: "seal-work-fea",
+    basis: { kind: "thread-snapshot", ...sealBasis },
+    operation: sealOperation,
+    approvedDecisions: [{
+      id: sealDecision.id,
+      inputFingerprint: sealDecisionFingerprint,
+    }],
+  });
+  const history = {
+    workItem: {
+      id: "seal-work-fea",
+      phaseId: "seal-phase-fea",
+      title: "Seal FEA proof",
+      description: "Seal the exact reviewed FEA proof case.",
+      kind: "verify",
+      operation: sealOperation,
+      status: "completed",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: artifactEvidenceRefs(basis, [proofArtifact]),
+      decisionIds: [sealDecision.id],
+      blockerIds: [],
+    },
+    run: {
+      id: "seal-fea",
+      workItemId: "seal-work-fea",
+      status: "completed",
+      summary: "Seal the exact reviewed FEA proof case.",
+      queuedAt: AT,
+      startedAt: AT,
+      completedAt: AT,
+      basis: { kind: "thread-snapshot", ...sealBasis },
+      inputFingerprint: sealRunFingerprint,
+      evidenceRefs: artifactEvidenceRefs(basis, [proofArtifact]),
+      resultSnapshot: snapshotReference(basis),
+    },
+    decision: sealDecision,
+    approval: sealApproval,
+  };
   const input = await planInput({
     basis,
     projectId: proofCase.project.id,
@@ -954,12 +1107,15 @@ async function calculixFixture(
       binding("proofCase", basis, proofArtifact.id),
       binding("geometry", basis, stepArtifact.id),
     ],
+    history,
   });
   return {
+    proofCase,
     proofArtifact,
     stepArtifact,
     stepBytes,
     input,
+    stores,
     dependencies: {
       snapshots: exactSnapshotReader(stores),
       artifacts: artifactReader(new Map([[proofArtifact.uri!, proofBytes]])),
@@ -1307,6 +1463,40 @@ type MutableSealRun = {
     id: string;
   }>;
 };
+
+type MutableProject = {
+  agentRuns: Array<{
+    id: string;
+    status: string;
+    resultSnapshot?: {
+      snapshotId: string;
+      revision: number;
+      subjectId: string;
+    };
+    evidenceRefs: Array<{
+      snapshotId: string;
+      snapshotRevision: number;
+      kind: string;
+      id: string;
+    }>;
+  }>;
+  workItems: Array<{
+    id: string;
+    operation: { id: string };
+  }>;
+  decisions: Array<{ id: string; status: string }>;
+  approvals: Array<{ id: string; decidedByOrigin: string }>;
+};
+
+function requireProjectEntry<T extends { id: string }>(
+  entries: readonly T[],
+  id: string,
+  label: string,
+): T {
+  const entry = entries.find((candidate) => candidate.id === id);
+  if (!entry) throw new Error(`Fixture ${label} ${id} is absent.`);
+  return entry;
+}
 
 function recordedSealRun(input: RegisteredRunPlanSealInput): MutableSealRun {
   const run = input.project.agentRuns.find((candidate) =>

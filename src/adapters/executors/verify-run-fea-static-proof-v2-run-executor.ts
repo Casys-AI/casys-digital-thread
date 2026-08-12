@@ -1443,8 +1443,6 @@ function assertProofMatchesAuthorization(
   if (
     proof.case.project.id !== authorization.plan.run.projectId ||
     proof.case.project.subjectId !== authorization.basis.subject.id ||
-    proof.case.authorization.workItemId !== authorization.workItem.id ||
-    proof.case.authorization.decisionId !== authorization.decision.id ||
     proof.case.id !== action.input.proofCase.id ||
     !fingerprintsEqual(proofArtifact.fingerprint, action.input.proofCase.fingerprint) ||
     proof.trustedRunId !== proofArtifact.producer.runId ||
@@ -1465,7 +1463,7 @@ function assertProofMatchesAuthorization(
   ) {
     throw commandError(
       "invalid_transition",
-      "Proof, MRTR authority, geometry and exact basis artifacts do not cross-attest.",
+      "Proof, geometry and exact basis artifacts do not cross-attest.",
     );
   }
 }

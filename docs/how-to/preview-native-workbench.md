@@ -16,7 +16,7 @@ documentary record into an empty technical graph. Its `GET` and SSE paths are pa
 opening the page never starts an engineering tool. The cockpit has no command path;
 human intent and consequential decisions stay in the paired agent conversation.
 
-## Prepare the clean CM-01 baseline
+## Select the focused generic project
 
 Install the UI dependencies once:
 
@@ -24,39 +24,16 @@ Install the UI dependencies once:
 npm --prefix src/ui ci
 ```
 
-The repository includes one domain-validated observed baseline specifically so preview
-does not require local state or a running provider.
+The Workbench is **focus-only**. It opens exactly the project selected by the durable
+cockpit focus, or the project ID explicitly passed by the operator. It never creates,
+seeds, selects, or falls back to retired evidence, a checked-in baseline, the latest
+thread head, or another project with the same subject.
 
-The current clean baseline ends at:
-
-```text
-coffee-machine-cm01:r5:coffee-machine-build-coffee-machine-cm01-cad-baseline-extension
-```
-
-It contains CM-01 SysON, Modelica, ERPNext and whole-machine CAD evidence. It contains
-no legacy support-bracket attachment and no claimed CalculiX result. It reports
-`requirements: 0` and `verdict: unavailable-no-model-owned-mechanical-criterion`; this
-is expected because the SysON inventory captured in r5 has no mechanical
-`ConstraintUsage`.
-
-[`config/projects/coffee-machine-cm01.project.json`](../../config/projects/coffee-machine-cm01.project.json)
-anchors project work and decisions to that exact baseline. It never uses a `latest`
-alias. If you deliberately rebuild CM-01 and publish another canonical revision, create
-a new reviewed project snapshot referencing the new exact ID; do not silently edit old
-evidence references in place.
-
-The capture itself and its lossless STL transport live under
-`config/projects/baselines/`. Both are labelled observed integration evidence, not a
-fixture and not proof that any provider is currently online. Active local snapshots and
-assets have read priority; the checked baseline is used only when the requested exact ID
-or filename is absent locally.
-
-The completed 2026-08-02 local reference path advances the technical thread to r6 and
-the active engineering project to r10. It adds an isolated DripTray STEP, exact CalculiX
-consumption, `0.10363294359363535 mm` displacement, `0.5309183805726515 MPa` von Mises
-stress, and two passing SysON evaluations against the approved `1 mm` / `20 MPa` limits.
-This is later local evidence; it neither rewrites the tracked r5 baseline nor proves the
-whole machine, release readiness, or certification.
+The current generic qualification candidate is `desk-lamp-dl04`. Its existing sealed
+geometry, requirements and proof evidence make it a useful focused project while
+preparing `verify.run-fea-static-proof@2`. This status is deliberately narrower than a
+live result: the new `@2` run remains unproven until its provider output and resulting
+thread evidence are captured, persisted and reread.
 
 ## Start the Workbench BFF
 
@@ -71,16 +48,15 @@ http://127.0.0.1:5173/
 ```
 
 No Docker service, Console MCP server, MCP Apps host, or provider MCP is required to
-read an already persisted project and thread. With the default arguments, first start
-seeds the tracked **V1 CM-01** project as active revision 1 under
-`state/local/engineering-projects/` if that active state is absent. Subsequent project
-commands create immutable numbered revisions there; they do not rewrite
-`config/projects/coffee-machine-cm01.project.json`.
+read an already persisted project and thread. With no durable focus and no explicit
+`--project-id`, the BFF reports that it is awaiting project context. It does not write
+state to make the page appear populated. Subsequent project commands create immutable
+numbered revisions under `state/local/engineering-projects/`; preview reads those
+revisions without rewriting checked-in configuration or historical evidence.
 
-That historic CM-01 seed is not a template or fallback for a V3 project. A V3 project
-has its own identity and active revision directory from the first intent. Before it has
-a declared root record, the BFF returns its planning surface even if another thread for
-the same subject happens to exist locally.
+A schema-3.0 project has its own identity and active revision directory from the first
+intent. Before it has a declared root record, the BFF returns its planning surface even
+if another thread for the same subject happens to exist locally.
 
 To open an already-created V3 project, name its project ID alone:
 
@@ -90,7 +66,8 @@ deno task preview:thread --project-id=<project-id>
 
 The BFF resolves the persisted project's subject (normally `project:<project-id>`) after
 opening its active revision. `--subject=<subject-id>` remains an explicit operator
-override; no-argument preview still opens historic CM-01.
+override. No-argument preview remains focus-only and never falls back to retired
+evidence.
 
 Refreshing the page performs one ordinary HTTP GET and opens one same-origin server-sent
 event stream. Neither path mutates project state nor reruns assembly, build123d,
@@ -118,7 +95,7 @@ From project revision 1 onward it renders the living brief, then the current pat
 engineering record without sending the person to another product page. A focus change
 creates no project, answer, run, tool call, evidence, or approval. Before an agent
 selects a target, workspace mode clearly says it is awaiting project context; it never
-silently falls back to CM-01.
+silently falls back to retired evidence.
 
 ## Inspect the truth boundary
 
@@ -126,7 +103,7 @@ silently falls back to CM-01.
 curl -i http://127.0.0.1:5175/api/thread/workbench
 ```
 
-For the default CM-01 technical-evidence surface, the response header contains:
+For a focused technical-evidence surface, the response header contains:
 
 ```text
 X-Casys-Data-Source: canonical-thread-snapshot
@@ -145,7 +122,7 @@ The JSON document is one atomic browser read model:
   "surface": "evidence",
   "project": {
     "schemaVersion": "1.0",
-    "project": { "id": "coffee-machine-cm01" },
+    "project": { "id": "desk-lamp-dl04" },
     "phases": [],
     "workItems": [],
     "agentRuns": [],
@@ -196,9 +173,8 @@ r2 with normalized identities for one blank, read-back SysON project container, 
 document, and root package, bound to the exact approved brief and documentary artifact.
 It makes no CAD, simulation, measurement, requirement evaluation, or physical verdict
 appear by itself. From that basis, the generic architecture, integer-requirements, and
-geometry-seal operations may publish their own exact reviewed descendants. The fixed
-CM-01 V3 catalog remains a separate product-specific evidence path. No surface receives
-an automatic schema conversion or thread-head fallback.
+geometry-seal operations may publish their own exact reviewed descendants. No surface
+receives an automatic schema conversion or thread-head fallback.
 
 Before serving planning, documentary, or evidence state, the BFF resolves every declared
 project snapshot by exact ID and validates its entity references. A missing exact
@@ -225,15 +201,15 @@ On the **evidence** surface, the projection must show:
 - source `observed`, not `fixture`;
 - exact producer and consumed SHA-256 values for every claimed CAD handoff;
 - the canonical whole-machine STEP after an explicit build run is attached;
-- SysON, Modelica, and ERPNext bootstrap branches, plus build123d and CalculiX only
-  after their explicit runs are published;
-- on the clean r5 head, zero mechanical requirements and an unavailable verdict;
-- on the published r6 head, the two DripTray requirements and their `pass` evaluations,
-  with an empty reconciled live overlay.
+- provider branches only after their explicit runs are published;
+- an unavailable verdict when no model-owned mechanical requirement is present; and
+- evaluations only after their exact requirements, observations and evidence have been
+  attached.
 
 On the **documentary** surface, the page instead shows the durable starting record and a
 plain-language boundary: technical proof is not recorded yet. It must not show an empty
-graph as if it were a technical model, nor reuse CM-01 component or evidence panels.
+graph as if it were a technical model, nor reuse another project's component or evidence
+panels.
 
 ## Review the initial V3 sequence
 
@@ -276,24 +252,17 @@ ordered interaction:
    evidence thread. Binary glTF exports are served and published as `.glb`, never as
    JSON `.gltf`.
 
-These are explicit bounded work items, not an automatic pipeline. To inspect the
-separate full CM-01 evidence path, open `coffee-machine-cm01-v3` and use the
-[golden-run guide](run-cm01-v3-golden-local.md) for its product-specific scope and
-closeout.
+These are explicit bounded work items, not an automatic pipeline.
 
 If the technical seed stops before attachment, the project remains on its documentary r1
 surface. The UI must not claim an r2 model or evidence merely because a provider write,
 authorization, or live milestone exists.
 
-## Follow agent work and decisions
-
-The CM-01 walkthrough below is the existing technical-evidence path. It remains useful
-for reviewing a bounded technical proof case, but it is not the V3 first-baseline flow
-above.
+## Review the focused project
 
 Open **Project**. Its notification view is deliberately a light signal and a route into
-the relevant dossier, not a form or command center. On a clean CM-01 active store it
-reports one bundled proof-case decision under **Agent preparing** and zero agent runs.
+the relevant dossier, not a form or command center. Its content is derived only from the
+focused project's exact immutable revision; no other record can be substituted.
 `required` is not a request for the person to invent material, support, load, or
 criterion values: it means the agent still owes one concrete, evidence-bound
 recommendation.
@@ -324,12 +293,11 @@ execute the exact reviewed architecture, integer-requirements, and geometry-seal
 contracts. These operations persist and read back their closed captures and refuse an
 uncertain non-idempotent write instead of retrying it blindly. Generic simulation,
 measurement, requirement evaluation, manufacturing, and certification still need their
-own reviewed executors and evidence contracts. The fixed CM-01 V3 catalog remains a
-product-specific reference; its historical proof is provenance, not a generic agent
-lifecycle recipe.
+own reviewed executors and evidence contracts.
 
-The page opens on **Project**, which answers what CM-01 is trying to achieve, what needs
-attention, and where to go next. The five product sections have distinct jobs:
+The page opens on **Project**, which answers what the focused project is trying to
+achieve, what needs attention, and where to go next. The five product sections have
+distinct jobs:
 
 - **Project** — objective, lightweight notifications, derived phase gates, current work,
   next work, blockers, and routes into the relevant context;
@@ -365,17 +333,16 @@ event:
   selected component;
 - read the exact provider IDs in the trace strip and open their canonical evidence in
   the right inspector;
-- select the root **CoffeeMachine CM-01**, then **build123d**, to orbit the real STL
-  display mesh; every reviewed child keeps its own exact assembly identity;
+- select a reviewed component, then **build123d**, to orbit its real STL display mesh;
+  every reviewed child keeps its own exact assembly identity;
 - treat `Unlinked facet`, `TRACE GAP`, and `UNLINKED` literally. They mean that the
   current snapshot has no reviewed provider identity for that component;
 - distinguish the STL display hash from the authoritative STEP SHA-256 shown below the
   viewer.
 
-The project declaration is loaded and domain-validated from
-`config/projects/coffee-machine-cm01.project.json`. The component declaration is loaded
-from `config/thread-subjects/coffee-machine-cm01.components.json`. The ERP identities
-are backed by the persisted full `erpnext_bom_get` document, not by the BOM-list header.
+Project and component declarations are domain-validated before projection. ERP
+identities must be backed by the persisted provider record, not by a display-only list
+header.
 
 The local snapshot records its exact provider revisions and capture timestamps. Treat it
 as integration evidence unless those provider revisions are released and reproduced in
@@ -388,9 +355,7 @@ references, explicit provider-to-subject and component identity, persisted Model
 observations and ERPNext BOM detail, passive read/SSE paths, signed revision-bound human
 elicitation in the agent channel, the bounded V3 documentary r1 flow, and the fixed
 r1-to-r2 SysON container seed with read-back normalized identities and no blind retry.
-It also proves one coherent native UI with shared selection and no nested Apps. The
-separate CM-01 V3 path proves its own current bounded DripTray evidence; the r5/r6
-records remain its historical provenance.
+It also proves one coherent native UI with shared selection and no nested Apps.
 
 It does **not** prove:
 
@@ -404,10 +369,6 @@ It does **not** prove:
   claim;
 - a browser command or provider-execution API. Explicit agent tools and registered
   backend runners own provider MCP calls and canonical publication.
-
-The assembly groups independent branches under a reviewed CM-01 identity; it does not
-manufacture causal links between the historical whole-machine CAD, thermal, ERP, or the
-separately generated DripTray FEA branch.
 
 ## Compare the preview paths
 

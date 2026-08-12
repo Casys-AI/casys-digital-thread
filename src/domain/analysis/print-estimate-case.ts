@@ -6,8 +6,8 @@
  * file; the agent never supplies provider names, profile parameters, geometry,
  * or density. The executor reads all values from the case; the profile content
  * comes from the committed INI file. No verdict, no evaluation, no pricing —
- * only observations with units. Project-specific CAD script renderers live in
- * domain/cm01/.
+ * only observations with units. Project-specific CAD script renderers live
+ * outside this generic schema.
  *
  * Profile provenance: the committed INI file at case.profile.repoPath is the
  * sole authority on print parameters. The server reads it, verifies its sha256

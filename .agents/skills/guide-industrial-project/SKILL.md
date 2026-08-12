@@ -106,6 +106,12 @@ For each approved objective, derive the smallest useful loop:
 6. produce a BOM and cost view whose evidence class is explicit;
 7. present only the consequential choices for human review.
 
+For the currently registered generic physical chain, the reviewed vocabulary is
+`model.write-architecture@1`, `model.write-requirements@1`, `design.write-geometry@1`,
+`verify.seal-proof-case@1`, then `verify.run-fea-static-proof@2`. Treat this list as
+discoverable server state: re-read the operation catalogue before planning and never
+substitute a retired product-specific identifier.
+
 Downloaded geometry is a starting artifact, not automatically a parametric or
 manufacturable model. Prefer editable source geometry; otherwise record the conversion
 and any lost design intent.
@@ -113,13 +119,14 @@ and any lost design intent.
 ## Propose corrections from measured sensitivities
 
 When a requirement fails and a correction is needed, look for sensitivity-study
-observations in the project's thread before proposing a parameter change. A sensitivity
-study (a registered `analyze.*sensitivity*` operation) publishes a measured derivative
-with its unit, base point, step and declared limitations. Cite that derivative and its
-neighbourhood when proposing the bounded correction — never propose a magnitude from
-intuition when a measured sensitivity exists. If none exists for the relevant parameter,
-propose running the registered sensitivity operation first; its case file is reviewed
-configuration, so the agent never supplies the parameter, step, mesh or metrics.
+observations in the project's thread before proposing a parameter change. A recorded
+sensitivity study publishes a measured derivative with its unit, base point, step and
+declared limitations. Cite that derivative and its neighbourhood when proposing the
+bounded correction — never propose a magnitude from intuition when a measured
+sensitivity exists. If none exists for the relevant parameter, first inspect the current
+registered-operation catalogue. Propose a new study only when the server actually
+exposes a reviewed generic operation; never invent an operation id or supply its
+parameter, step, mesh, or metrics from the conversation.
 
 A sensitivity result is data, not a verdict: it never satisfies a requirement by itself,
 and the proposed correction must still be recomputed and re-evaluated through the normal

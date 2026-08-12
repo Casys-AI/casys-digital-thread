@@ -5,7 +5,7 @@ import {
   recomputeGroupsForFocus,
   recomputeTransitionsForFocus,
 } from "./src/thread/recompute-model.ts";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -231,21 +231,21 @@ Deno.test("revision trail keeps declared older snapshots but excludes the curren
     nodes: [],
     edges: [],
     currentSnapshot: {
-      snapshotId: "thread-cm01-r3",
+      snapshotId: "thread-generic-r3",
       revision: 3,
-      subjectId: "CM-01",
+      subjectId: "GEN-01",
     },
     snapshotHistory: [
-      { snapshotId: "thread-cm01-r1", revision: 1, subjectId: "CM-01" },
-      { snapshotId: "thread-cm01-r2", revision: 2, subjectId: "CM-01" },
-      { snapshotId: "thread-cm01-r3", revision: 3, subjectId: "CM-01" },
-      { snapshotId: "thread-cm01-r2", revision: 2, subjectId: "CM-01" },
+      { snapshotId: "thread-generic-r1", revision: 1, subjectId: "GEN-01" },
+      { snapshotId: "thread-generic-r2", revision: 2, subjectId: "GEN-01" },
+      { snapshotId: "thread-generic-r3", revision: 3, subjectId: "GEN-01" },
+      { snapshotId: "thread-generic-r2", revision: 2, subjectId: "GEN-01" },
     ],
   });
 
   assertEquals(history.historicalSnapshots, [
-    { snapshotId: "thread-cm01-r2", revision: 2, subjectId: "CM-01" },
-    { snapshotId: "thread-cm01-r1", revision: 1, subjectId: "CM-01" },
+    { snapshotId: "thread-generic-r2", revision: 2, subjectId: "GEN-01" },
+    { snapshotId: "thread-generic-r1", revision: 1, subjectId: "GEN-01" },
   ]);
 });
 
@@ -267,8 +267,8 @@ Deno.test("revision trail focus does not pull an unrelated correction into revie
 
 Deno.test("labelled Cockpit fixture shows the DripTray correction without claiming thermal or BOM causality", () => {
   const history = buildRecomputeHistory({
-    nodes: COFFEE_MACHINE_THREAD_FIXTURE.graph.nodes,
-    edges: COFFEE_MACHINE_THREAD_FIXTURE.graph.edges,
+    nodes: GENERIC_THREAD_FIXTURE.graph.nodes,
+    edges: GENERIC_THREAD_FIXTURE.graph.edges,
   });
   const correction = history.transitions.find((transition) =>
     transition.changes.some((change) =>

@@ -1,7 +1,7 @@
 /**
  * Tests for evidence-graph-model.ts
  *
- * All fixtures are minimal synthetic graphs derived from the real CM-01 V3
+ * All fixtures are minimal synthetic graphs derived from the real GEN-01 V3
  * graph structure (175 nodes, 256 edges, 1 giant component + 12 small islands),
  * constructed so that each test exercises exactly one invariant.
  *

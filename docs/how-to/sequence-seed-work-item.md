@@ -109,7 +109,6 @@ reconciliation path: no separate closeout `ThreadSnapshot` is produced. The succ
 run's result is already the project thread head, so recording a redundant closeout
 snapshot would advance the thread revision without adding evidence.
 
-The full closeout path (which does produce a closeout snapshot) is used only by the
-CM-01 V3 R11/R12 history, where an explicit closeout snapshot was already committed
-before this tool existed. Both forms satisfy the phase completion invariant through
-`successorEvidenceRefs`.
+No product-specific closeout path is active. Direct reconciliation satisfies the phase
+completion invariant through `successorEvidenceRefs` without manufacturing technical
+evidence.

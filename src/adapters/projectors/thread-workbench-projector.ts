@@ -18,12 +18,6 @@ import {
   type ThreadComponentCatalog,
 } from "../../domain/thread/thread-component-catalog.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
-import {
-  CM01_V3_PRODUCT_STRUCTURE_IDENTITIES,
-} from "../../domain/cm01/cm01-v3-product-structure-identities.ts";
-import {
-  CM01_DRIP_TRAY_HEIGHT_28_TO_30_CORRECTION,
-} from "../../domain/cm01/cm01-drip-tray-height-correction.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type { AnalysisGraph } from "../../domain/analysis/analysis-graph.ts";
 import type {
@@ -427,7 +421,6 @@ function projectGraph(
       freshness: snapshot.freshness.status,
       summary: change.kind,
       recordedAt: snapshot.changeSet.appliedAt ?? snapshot.changeSet.createdAt,
-      ...affectedComponentForChange(change.id, components),
       selection: { kind: "change", id: snapshot.changeSet.id },
     })),
     ...topologicallySortedArtifacts(snapshot.artifacts).map(
@@ -647,28 +640,6 @@ function projectAnalysisScope(scope: AssertionScope): ThreadAnalysisScope {
         upper: { ...scope.upper },
       };
   }
-}
-
-/**
- * A correction may anchor to a component only when both sides name the same
- * reviewed identity. The projector deliberately does not inspect labels,
- * artifact names, CAD children, or ERP records to guess an anchor.
- */
-function affectedComponentForChange(
-  changeId: string,
-  components: ThreadWorkbenchSnapshot["components"],
-): Pick<ThreadGraphNode, "affectedComponentId"> | Record<never, never> {
-  const correction = CM01_DRIP_TRAY_HEIGHT_28_TO_30_CORRECTION;
-  if (changeId !== `${correction.id}:applied`) return {};
-  const identity = CM01_V3_PRODUCT_STRUCTURE_IDENTITIES.dripTray;
-  const component = components.components.find((candidate) =>
-    candidate.id === identity.componentId &&
-    candidate.bindings.some((binding) =>
-      binding.provider === identity.provider &&
-      binding.kind === identity.bindingKind && binding.status === "verified"
-    )
-  );
-  return component ? { affectedComponentId: component.id } : {};
 }
 
 function projectProvenanceGraphEdge(

@@ -7,19 +7,17 @@
  * command service just like a deployed recorded run.
  */
 
-import type { ResolvedOperationPlanV2 } from "../domain/analysis/resolved-operation-plan-v2.ts";
-import { canonicalProofText } from "../domain/analysis/fea-proof-proposal.ts";
+import {
+  canonicalProofText,
+  encodeFeaProofDecisionParameters,
+} from "../domain/analysis/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../domain/analysis/mechanical-proof-case.ts";
 import { fingerprintResourceBytes } from "../domain/analysis/provider-resource-reader.ts";
-import {
-  deterministicJson,
-  sha256Fingerprint,
-} from "../domain/kernel/deterministic-json.ts";
+import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import {
   EngineeringProjectCommandService,
 } from "../domain/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../domain/project/project-brief-command-service.ts";
-import type { RegisteredRunPlanSealInput } from "../domain/project/resolved-run-plan-sealer.ts";
 import type { ContentFingerprint } from "../domain/kernel/types.ts";
 import type {
   ThreadArtifact,
@@ -39,6 +37,7 @@ import { ApprovedBriefBaselineRunExecutor } from "../adapters/executors/approved
 import {
   CaptureBackedRunPlanSealer,
 } from "../adapters/plans/capture-backed-run-plan-sealer.ts";
+import { RecordedOperationPlanResolver } from "../adapters/plans/recorded-operation-plan-resolver.ts";
 import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
 import { FileEngineeringProjectRunLease } from "../adapters/stores/file-engineering-project-run-lease.ts";
 import { FileThreadSnapshotStore } from "../adapters/stores/file-thread-snapshot-store.ts";
@@ -104,17 +103,15 @@ export async function createRecordedCalculixV2Fixture(
     uriNamespace: "resolved-operation-plan",
     label: "Fixture resolved operation plan",
   });
-  const preparedBox: {
-    current?: Awaited<ReturnType<typeof sealedProofBranch>>;
-  } = {};
+  const resolverBox: { current?: RecordedOperationPlanResolver } = {};
   const plans = new CaptureBackedRunPlanSealer({
     store: planStore,
     resolver: {
       resolve: (input) => {
-        if (!preparedBox.current) {
-          throw new Error("Fixture proof branch is not yet sealed.");
+        if (!resolverBox.current) {
+          throw new Error("Fixture recorded CalculiX resolver is not ready.");
         }
-        return resolveFixturePlan(input, preparedBox.current);
+        return resolverBox.current.resolve(input);
       },
     },
   });
@@ -196,53 +193,103 @@ export async function createRecordedCalculixV2Fixture(
   const baselineReference = baselined.threadSnapshots[0]!;
   const baselineSnapshot = await snapshots.get(baselineReference.snapshotId);
   if (!baselineSnapshot) throw new Error("Fixture baseline ThreadSnapshot is absent.");
-  preparedBox.current = await sealedProofBranch(baselineSnapshot);
-  const prepared = preparedBox.current;
-  if (!prepared) throw new Error("Fixture proof branch failed to seal.");
-  await snapshots.save(prepared.basis);
+  // Assemble candidate source identities only to form the seal MRTR. The real
+  // capture is constructed after the distinct seal run is claimed, so its
+  // sealedAt field is the durable lifecycle timestamp rather than a fixture
+  // invention.
+  const candidate = await sealedProofBranch(baselineSnapshot, "pending");
+  const candidateDigest = await fingerprintResourceBytes(
+    new TextEncoder().encode(canonicalProofText(candidate.proofCase)),
+  );
 
-  // The proof branch reaches the Project head through a real command-service
-  // completion.  This avoids a test-only project-store mutation that would
-  // bypass immutable receipts and completion-evidence validation.
+  // The proof branch reaches the Project head through an actual, distinct
+  // verify.seal-proof-case@1 work item, human MRTR and completed run. It is
+  // intentionally not the later recorded CalculiX execution authority.
   project = await commands.appendChange(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
-    ...context("fixture:append-proof-branch", baselined.revision, now()),
+    ...context("fixture:append-proof-seal", baselined.revision, now()),
     baseSnapshot: baselineReference,
     phases: [{
-      id: "fixture-proof-branch",
-      name: "Fixture proof branch",
-      description: "Register the exact locally sealed proof branch.",
+      id: "fixture-proof-seal",
+      name: "Fixture proof seal",
+      description: "Seal the reviewed proof before the distinct recorded run.",
     }],
     workItems: [{
-      id: "fixture-proof-branch-item",
-      phaseId: "fixture-proof-branch",
+      id: "fixture-proof-seal-item",
+      phaseId: "fixture-proof-seal",
       owner: "agent",
       dependsOnWorkItemIds: ["baseline-item"],
-      decisionIds: [],
-      operation: { id: "fixture.artifacts-stub", version: "1", bindings: [] },
+      decisionIds: ["fixture-proof-seal-decision"],
+      operation: {
+        id: "verify.seal-proof-case",
+        version: "1",
+        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+      },
     }],
-    requiredDecisions: [],
+    requiredDecisions: [{
+      id: "fixture-proof-seal-decision",
+      phaseId: "fixture-proof-seal",
+      title: "Approve fixture proof seal",
+      question: "Approve the exact mechanical proof case for sealing?",
+    }],
+  });
+  project = await commands.proposeDecision(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
+    ...context("fixture:propose-proof-seal", project.revision, now()),
+    decisionId: "fixture-proof-seal-decision",
+    baseSnapshot: baselineReference,
+    proposal: {
+      summary: "Seal the exact reviewed proof case and its exact source artifacts.",
+      parameters: encodeFeaProofDecisionParameters(
+        candidateDigest,
+        candidate.proofCase,
+        {
+          id: candidate.geometryArtifact.id,
+          fingerprint: candidate.geometryArtifact.fingerprint,
+        },
+        {
+          id: candidate.requirementsArtifact.id,
+          fingerprint: candidate.requirementsArtifact.fingerprint,
+        },
+      ),
+    },
+  });
+  const sealDecision = project.decisions.find((item) =>
+    item.id === "fixture-proof-seal-decision"
+  )!;
+  project = await commands.approveDecision(RECORDED_CALCULIX_V2_FIXTURE_HUMAN, {
+    ...context("fixture:approve-proof-seal", project.revision, now()),
+    decisionId: sealDecision.id,
+    rationale: "The exact fixture proof seal is approved.",
+    inputFingerprint: sealDecision.inputFingerprint!,
   });
   project = await commands.queueRun(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
-    ...context("fixture:queue-proof-branch", project.revision, now()),
-    runId: "run:fixture-proof-branch",
-    workItemId: "fixture-proof-branch-item",
-    summary: "Register the exact sealed proof branch.",
+    ...context("fixture:queue-proof-seal", project.revision, now()),
+    runId: "run:fixture-seal-proof",
+    workItemId: "fixture-proof-seal-item",
+    summary: "Seal the exact reviewed fixture proof.",
     basis: { kind: "thread-snapshot", ...baselineReference },
   });
   project = await commands.claimRun(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
-    ...context("fixture:claim-proof-branch", project.revision, now()),
-    runId: "run:fixture-proof-branch",
-    summary: "Claim proof branch registration.",
+    ...context("fixture:claim-proof-seal", project.revision, now()),
+    runId: "run:fixture-seal-proof",
+    summary: "Claim fixture proof seal.",
   });
+  const sealRun = project.agentRuns.find((item) =>
+    item.id === "run:fixture-seal-proof"
+  )!;
+  if (!sealRun.startedAt) {
+    throw new Error("Fixture proof seal claim did not stamp startedAt.");
+  }
+  const prepared = await sealedProofBranch(baselineSnapshot, sealRun.startedAt);
+  await snapshots.save(prepared.basis);
   project = await commands.publishRun(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
-    ...context("fixture:publish-proof-branch", project.revision, now()),
-    runId: "run:fixture-proof-branch",
-    summary: "Publish proof branch registration.",
+    ...context("fixture:publish-proof-seal", project.revision, now()),
+    runId: "run:fixture-seal-proof",
+    summary: "Publish fixture proof seal.",
   });
   project = await commands.completeRun(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
-    ...context("fixture:complete-proof-branch", project.revision, now()),
-    runId: "run:fixture-proof-branch",
-    summary: "Complete proof branch registration.",
+    ...context("fixture:complete-proof-seal", project.revision, now()),
+    runId: "run:fixture-seal-proof",
+    summary: "Complete fixture proof seal.",
     resultSnapshot: {
       snapshotId: prepared.basis.id,
       revision: prepared.basis.revision,
@@ -261,6 +308,17 @@ export async function createRecordedCalculixV2Fixture(
     revision: prepared.basis.revision,
     subjectId: prepared.basis.subject.id,
   };
+  resolverBox.current = new RecordedOperationPlanResolver({
+    snapshots,
+    artifacts: {
+      read: (artifact) =>
+        Promise.resolve(
+          artifact.uri ? artifactBytesFor(prepared, artifact.uri) : undefined,
+        ),
+    },
+    stepAssets: { read: () => Promise.resolve(Uint8Array.from(prepared.stepBytes)) },
+    calculix: { elementOrder: 1, timeoutMs: 60_000 },
+  });
   project = await commands.appendChange(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
     ...context("fixture:append-recorded", project.revision, now()),
     baseSnapshot: basisReference,
@@ -347,7 +405,7 @@ export async function createRecordedCalculixV2Fixture(
   };
 }
 
-async function sealedProofBranch(ancestor: ThreadSnapshot) {
+async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
   const subjectId = ancestor.subject.id;
   const stepBytes = new TextEncoder().encode(
     "ISO-10303-21; recorded-calculix-fixture-step",
@@ -413,8 +471,8 @@ async function sealedProofBranch(ancestor: ThreadSnapshot) {
     },
   };
   rawProof.authorization = {
-    workItemId: "recorded-fea-item",
-    decisionId: "recorded-fea-decision",
+    workItemId: "fixture-proof-seal-item",
+    decisionId: "fixture-proof-seal-decision",
   };
   rawProof.expectedCadArtifact = {
     format: "step",
@@ -439,7 +497,7 @@ async function sealedProofBranch(ancestor: ThreadSnapshot) {
     },
     requirementsElementId: "fixture-requirements",
     schemaVersion: "fea-proof-case-capture/1.0",
-    sealedAt: "2026-08-12T03:00:00.000Z",
+    sealedAt,
     seedIdentity: {
       editingContextId: "fixture-editing-context",
       elementId: "fixture-requirements",
@@ -541,125 +599,15 @@ async function sealedProofBranch(ancestor: ThreadSnapshot) {
   };
 }
 
-async function resolveFixturePlan(
-  input: RegisteredRunPlanSealInput,
+function artifactBytesFor(
   prepared: Awaited<ReturnType<typeof sealedProofBranch>>,
-): Promise<ResolvedOperationPlanV2> {
-  const basis = input.run.basis;
-  const decision = input.project.decisions.find((item) =>
-    item.id === "recorded-fea-decision"
-  )!;
-  const approval = input.project.approvals.find((item) =>
-    item.id === decision.approvalIds.at(-1)
-  )!;
-  if (!basis || basis.kind !== "thread-snapshot" || !input.run.inputFingerprint) {
-    throw new Error("Fixture ROP requires an exact queued ThreadSnapshot run.");
+  uri: string,
+): Uint8Array | undefined {
+  if (uri === prepared.proofArtifact.uri) return Uint8Array.from(prepared.proofBytes);
+  if (uri === prepared.requirementsArtifact.uri) {
+    return Uint8Array.from(prepared.requirementsBytes);
   }
-  const source = (
-    bindingName: string,
-    role: string,
-    artifact: ThreadArtifact,
-    byteCount: number,
-  ) => ({
-    bindingName,
-    role,
-    threadRef: {
-      snapshotId: prepared.basis.id,
-      snapshotRevision: prepared.basis.revision,
-      kind: "artifact" as const,
-      id: artifact.id,
-    },
-    artifact: {
-      fingerprint: artifact.fingerprint,
-      byteCount,
-      mediaType: artifact.mediaType!,
-      casUri: artifact.uri!,
-    },
-  });
-  const proof = source(
-    "proofCase",
-    "proof-case",
-    prepared.proofArtifact,
-    prepared.proofBytes.byteLength,
-  );
-  const geometry = source(
-    "geometry",
-    "geometry-source",
-    prepared.stepArtifact,
-    prepared.stepBytes.byteLength,
-  );
-  return {
-    schemaVersion: "resolved-operation-plan/2.0",
-    id: input.run.id,
-    run: {
-      projectId: input.project.project.id,
-      runId: input.run.id,
-      workItemId: input.workItem.id,
-      inputFingerprint: input.run.inputFingerprint,
-      queueBasisProject: input.queueBasisProject,
-    },
-    workItem: {
-      id: input.workItem.id,
-      operation: { id: "verify.run-fea-static-proof", version: "2" },
-      operationFingerprint: await sha256Fingerprint(input.workItem.operation!),
-    },
-    authorization: {
-      kind: "human-mrtr-and-qualified-method",
-      mrtr: {
-        decisionId: decision.id,
-        decisionInputFingerprint: decision.inputFingerprint!,
-        approvalId: approval.id,
-        approvalFingerprint: await sha256Fingerprint(approval),
-      },
-      methodQualification: {
-        id: "qualified-static-structural-proof-case",
-        version: "1.0",
-        fingerprint: prepared.proofArtifact.fingerprint,
-      },
-    },
-    basis: {
-      kind: "thread-snapshot",
-      snapshotId: basis.snapshotId,
-      revision: basis.revision,
-      subjectId: basis.subjectId,
-      fingerprint: await sha256Fingerprint(prepared.basis),
-    },
-    sources: [proof, geometry],
-    action: {
-      kind: "static-structural-analysis",
-      provider: {
-        id: "mcp-calculix",
-        contract: { id: "calculix_solve_static_recorded", version: "1.0" },
-        executionIdentitySchema: "1.0",
-        runSchema: "2.0",
-        resultSchema: "2.0",
-      },
-      lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
-      requestId: "recorded-calculix-v2-request",
-      input: {
-        proofCase: {
-          id: prepared.proofCase.id,
-          fingerprint: prepared.proofArtifact.fingerprint,
-          sourceBinding: "proofCase",
-        },
-        geometrySourceBinding: "geometry",
-        effectiveElementOrder: 1,
-        effectiveTimeoutMs: 60_000,
-      },
-    },
-    expectedProviderResources: {
-      ledgerSchema: "provider-resource-acquisition-ledger/1.0",
-      captureManifestSchema: "provider-artifact-capture-manifest/1.0",
-      resourceProfile: { id: "mcp-calculix.recorded-static-artifacts", version: "1.0" },
-    },
-    recovery: {
-      policy: "mcp-calculix.recorded-static-recovery@1.0",
-      requestId: "recorded-calculix-v2-request",
-      mode: "same-request-readback-no-blind-redispatch",
-      ambiguousOutcome: "quarantine-for-human-review",
-      capturedOutcome: "cas-only-recovery",
-    },
-  };
+  return undefined;
 }
 
 function threadBinding(

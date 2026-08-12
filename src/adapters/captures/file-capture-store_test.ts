@@ -2,16 +2,12 @@ import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
-  CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR,
-  CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR,
-  CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
-  CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
-  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  GEOMETRY_CAPTURE_DESCRIPTOR,
   GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
-  ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
@@ -25,22 +21,20 @@ import {
 // instantiations become structurally identical and this directive would turn
 // into a spurious suppression, causing the type-checker to reject the file.
 function _assertKindIncompatible(
-  cadStore: FileCaptureStore<"cm01-semantic-cad">,
+  geometryStore: FileCaptureStore<"geometry-capture">,
 ): void {
-  // @ts-expect-error FileCaptureStore<"cm01-semantic-cad"> must not be
-  // assignable to FileCaptureStore<"cm01-drip-tray-mechanical">.
-  const _mechanical: FileCaptureStore<"cm01-drip-tray-mechanical"> = cadStore;
-  void _mechanical;
+  // @ts-expect-error FileCaptureStore<"geometry-capture"> must not be
+  // assignable to FileCaptureStore<"architecture-capture">.
+  const _architecture: FileCaptureStore<"architecture-capture"> = geometryStore;
+  void _architecture;
 }
 
 // ── URI namespace identity (the expected strings are hardcoded) ──────────────
 //
-// Any automated derivation of the namespace from the directory or kind would
-// silently produce the wrong URI for the architecture store
-// ("coffee-machine-cm01-v3-architecture" has no "-capture" suffix).
-// 552 casys:// URIs in state/ would be invalidated without any runtime error.
+// Any automated derivation of the namespace from the directory or kind could
+// silently invalidate URIs already persisted under state/.
 Deno.test(
-  "A capture store never derives its URI namespace from its directory",
+  "A capture store preserves its reviewed URI namespace",
   async () => {
     const fp = await sha256Fingerprint({ probe: "uri-namespace-test" });
     const d = fp.digest;
@@ -50,38 +44,16 @@ Deno.test(
       `casys://approved-brief-capture/sha256/${d}`,
     );
     assertEquals(
-      new FileCaptureStore(CM01_DRIP_TRAY_MECHANICAL_CAPTURE_DESCRIPTOR)
-        .uriFor(fp),
-      `casys://cm01-drip-tray-mechanical-capture/sha256/${d}`,
+      new FileCaptureStore(ARCHITECTURE_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://architecture-capture/sha256/${d}`,
     );
     assertEquals(
-      new FileCaptureStore(CM01_ERPNEXT_BOM_CAPTURE_DESCRIPTOR).uriFor(fp),
-      `casys://cm01-erpnext-bom-capture/sha256/${d}`,
-    );
-    assertEquals(
-      new FileCaptureStore(CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR).uriFor(fp),
-      `casys://cm01-nominal-modelica-capture/sha256/${d}`,
-    );
-    assertEquals(
-      new FileCaptureStore(CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR).uriFor(fp),
-      `casys://cm01-semantic-cad-capture/sha256/${d}`,
-    );
-    // NOTE: no "-capture" suffix — this is the irregular namespace.
-    assertEquals(
-      new FileCaptureStore(
-        COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-      ).uriFor(fp),
-      `casys://coffee-machine-cm01-v3-architecture/sha256/${d}`,
+      new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://geometry-capture/sha256/${d}`,
     );
     assertEquals(
       new FileCaptureStore(SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR).uriFor(fp),
       `casys://syson-model-seed-capture/sha256/${d}`,
-    );
-    assertEquals(
-      new FileCaptureStore(ORACLE_REQUIREMENTS_SEED_CAPTURE_DESCRIPTOR).uriFor(
-        fp,
-      ),
-      `casys://oracle-requirements-seed-capture/sha256/${d}`,
     );
     assertEquals(
       new FileCaptureStore(GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR).uriFor(fp),
@@ -103,7 +75,7 @@ Deno.test(
 Deno.test(
   "A capture store rejects a fingerprint whose digest is not lowercase 64-character hex",
   () => {
-    const store = new FileCaptureStore(CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR);
+    const store = new FileCaptureStore(APPROVED_BRIEF_CAPTURE_DESCRIPTOR);
 
     // digest too short
     assertThrows(
@@ -134,7 +106,7 @@ Deno.test(
     });
     try {
       const store = new FileCaptureStore({
-        ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
         directory,
       });
       const text = '{"kind":"round-trip"}';
@@ -152,7 +124,7 @@ Deno.test("A capture store persists a custom relative root", async () => {
   const directory = `casys-relative-captures-${crypto.randomUUID()}`;
   try {
     const store = new FileCaptureStore({
-      ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+      ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
       directory,
     });
     const text = '{"kind":"relative-root"}';
@@ -226,7 +198,7 @@ Deno.test(
     });
     try {
       const store = new FileCaptureStore({
-        ...CM01_SEMANTIC_CAD_CAPTURE_DESCRIPTOR,
+        ...GEOMETRY_CAPTURE_DESCRIPTOR,
         directory,
       });
       const text = '{"collision":"first"}';
@@ -256,7 +228,7 @@ Deno.test(
     });
     try {
       const store = new FileCaptureStore({
-        ...CM01_NOMINAL_MODELICA_CAPTURE_DESCRIPTOR,
+        ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
         directory,
       });
       const text = '{"integrity":"verified"}';

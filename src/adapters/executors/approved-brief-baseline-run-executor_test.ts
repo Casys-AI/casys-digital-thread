@@ -71,10 +71,10 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
   try {
     let project = await briefs.startProject(agent, {
       commandId: "start",
-      projectId: "coffee-machine-v3",
-      projectName: "Coffee Machine CM-01",
+      projectId: "generic-product-v1",
+      projectName: "Generic Industrial Product",
       issuedAt: "2026-08-03T08:59:00.000Z",
-      intent: "Build a reviewable coffee machine.",
+      intent: "Build a reviewable industrial product.",
       intentSource: { kind: "human", reference: "conversation:turn-1" },
     });
     project = await briefs.proposeBrief(agent, {
@@ -82,12 +82,12 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
       items: [{
         id: "objective",
         kind: "objective",
-        statement: "Prepare a reviewable coffee machine design.",
+        statement: "Prepare a reviewable industrial product design.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }, {
         id: "mission",
         kind: "mission-scenario",
-        statement: "Brew coffee safely under the intended operating conditions.",
+        statement: "Operate safely under the intended operating conditions.",
         sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
       }, {
         id: "success",
@@ -220,7 +220,7 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
 function context(commandId: string, expectedRevision: number) {
   return {
     commandId,
-    projectId: "coffee-machine-v3",
+    projectId: "generic-product-v1",
     expectedRevision,
     issuedAt: "2026-08-03T08:59:30.000Z",
   };

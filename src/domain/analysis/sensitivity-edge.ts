@@ -2,8 +2,8 @@
  * Domain contract for one sensitivity edge in a linearization study.
  *
  * INDIFFERENCE A LA SOURCE — the oracle that produced the measurement is not
- * named here. Mechanical/CalculiX today, thermal/Modelica tomorrow — same
- * contract. No CalculiX, no CM-01 identifiers live in this module.
+ * named here. Mechanical analysis today, thermal simulation tomorrow — same
+ * contract. No provider or product identifiers live in this module.
  *
  * An EDGE is a measured local derivative of one response metric with respect to
  * one driver parameter, valid in a declared neighborhood.

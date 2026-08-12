@@ -1,19 +1,18 @@
 /**
  * Tests for simulate-seal-simulation-case-run-executor.
  *
- * WHY A FICTITIOUS NON-CM01 PROJECT — the executor is generic; "cm01-seal-test"
- * proves that no project.id hardcoding leaks from the CM-01 path.
+ * WHY A FICTITIOUS PROJECT — the executor is generic; "simulation-seal-test"
+ * proves that no project.id hardcoding leaks from a historical path.
  *
- * WHY STUB readTextFile — the server-side catalog points to
- * config/simulation-cases/… which does not yet exist on disk.  Tests supply
+ * WHY STUB readTextFile + catalogue — active V1 admission is intentionally
+ * empty. Tests inject a closed fixture catalogue and in-memory source so the
  * an in-memory function instead of a real file so the test suite can run on any
  * checkout without a matching fixture on disk.
  *
- * WHY A STUB OPERATION REGISTRY — simulate.seal-simulation-case@1 is not yet
- * in the main registry (modifying registry.ts is out of scope).  The stub
- * accepts it as trusted + thread-snapshot basis and delegates every other
- * operation to the real registry.  This preserves the planning validation path
- * without silencing the constraint.
+ * WHY AN EXPLICIT OPERATION REGISTRY — the fixture pins the trusted operation
+ * and thread-snapshot basis while delegating every other operation to the real
+ * registry. This preserves the planning validation path without silencing the
+ * constraint.
  *
  * Coverage:
  *  - Human-origin rejection (no I/O touched)
@@ -79,9 +78,15 @@ const HUMAN: EngineeringProjectCommandOrigin = {
   actorId: "human:reviewer",
 };
 
-/** Fictitious non-CM01 project id — proves no project.id hardcoding leaks. */
-const PROJECT_ID = "cm01-seal-test";
+/** Fictitious project id — proves no project.id hardcoding leaks. */
+const PROJECT_ID = "simulation-seal-test";
 const SUBJECT_ID = `project:${PROJECT_ID}`;
+const TEST_SIMULATION_CASE_ID = "simulation-seal-test-thermal-nominal-v1";
+const RETIRED_CM01_SIMULATION_CASE_ID = "coffee-machine-cm01-thermal-nominal-v1";
+const TEST_SIMULATION_CASE_SOURCES: ReadonlyMap<string, string> = new Map([[
+  TEST_SIMULATION_CASE_ID,
+  "fixture-simulation-case.json",
+]]);
 
 // ---------------------------------------------------------------------------
 // Test 1: Human-origin rejection — no I/O touched
@@ -193,17 +198,15 @@ Deno.test(
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "simulate-seal executor rejects when the case ID is absent from the server-side catalog",
+  "simulate-seal executor rejects the retired CM-01 case before a source read",
   async () => {
     const directory = await Deno.makeTempDir({
       prefix: "casys-seal-catalog-absent-",
     });
     try {
-      // Build a case whose ID is NOT in SIMULATION_CASE_SOURCES.
-      const unknownId = "unknown-case-not-in-catalog";
-      const unknownCase = validateSimulationCase({
+      const retiredCase = validateSimulationCase({
         schemaVersion: "simulation-case/1.0",
-        id: unknownId,
+        id: RETIRED_CM01_SIMULATION_CASE_ID,
         revision: 1,
         scope: "test",
         evidenceBoundary: "demo",
@@ -227,24 +230,27 @@ Deno.test(
         parameterMode: "explicit-overrides",
         timeoutMs: 60000,
       });
-      const caseFp = await sha256Fingerprint(unknownCase);
+      const caseFp = await sha256Fingerprint(retiredCase);
       const caseDigest = caseFp.digest;
 
       const fixture = await queuedSealFixture(directory, {
         caseDigest,
-        simulationCase: unknownCase,
+        simulationCase: retiredCase,
         readTextFile: () =>
           Promise.reject(new Error("must not reach readTextFile for unknown case")),
       });
 
+      let sourceReads = 0;
       const executor = new SimulateSealSimulationCaseRunExecutor({
         projects: fixture.projects,
         commands: fixture.commands,
         snapshots: fixture.snapshots,
         simulationCaseCaptures: fixture.simulationCaseCaptures,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: () =>
-          Promise.reject(new Error("must not reach readTextFile for unknown case")),
+        readTextFile: () => {
+          sourceReads += 1;
+          return Promise.reject(new Error("retired simulation case must not be read"));
+        },
       });
 
       await assertRejects(
@@ -258,6 +264,11 @@ Deno.test(
           }),
         EngineeringProjectCommandError,
         "server-side catalog",
+      );
+      assertEquals(
+        sourceReads,
+        0,
+        "A retired simulation case must not reach its source.",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -293,6 +304,7 @@ Deno.test(
         snapshots: fixture.snapshots,
         simulationCaseCaptures: fixture.simulationCaseCaptures,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        simulationCaseSources: TEST_SIMULATION_CASE_SOURCES,
         readTextFile: makeReadStub(realCase),
       });
 
@@ -356,6 +368,7 @@ Deno.test(
         snapshots: fixture.snapshots,
         simulationCaseCaptures: fixture.simulationCaseCaptures,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        simulationCaseSources: TEST_SIMULATION_CASE_SOURCES,
         readTextFile: makeReadStub(realCase),
       });
 
@@ -393,7 +406,7 @@ Deno.test(
       const wrongSubjectId = `project:${wrongProjectId}`;
       const wrongCase = validateSimulationCase({
         schemaVersion: "simulation-case/1.0",
-        id: "coffee-machine-cm01-thermal-nominal-v1",
+        id: TEST_SIMULATION_CASE_ID,
         revision: 1,
         scope: "thermal-nominal",
         evidenceBoundary: "demo",
@@ -407,7 +420,7 @@ Deno.test(
           },
         },
         kit: {
-          modelId: "cm01-thermal-model",
+          modelId: "test-thermal-model",
           modelVersion: "1.0.0",
           modelSha256: "a".repeat(64),
         },
@@ -432,6 +445,7 @@ Deno.test(
         snapshots: fixture.snapshots,
         simulationCaseCaptures: fixture.simulationCaseCaptures,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        simulationCaseSources: TEST_SIMULATION_CASE_SOURCES,
         readTextFile: makeReadStub(wrongCase),
       });
 
@@ -484,7 +498,7 @@ Deno.test(
       let project = await briefs.startProject(AGENT, {
         commandId: "start-seal-test",
         projectId: PROJECT_ID,
-        projectName: "CM-01 seal test",
+        projectName: "Simulation seal test",
         issuedAt: "2026-08-09T09:59:00.000Z",
         intent: "Test the simulation-case seal executor.",
         intentSource: { kind: "human", reference: "conversation:seal-test" },
@@ -584,7 +598,7 @@ Deno.test(
       // Build the simulation case with the real r1 snapshot as reviewBasis.
       const simulationCase = validateSimulationCase({
         schemaVersion: "simulation-case/1.0",
-        id: "coffee-machine-cm01-thermal-nominal-v1",
+        id: TEST_SIMULATION_CASE_ID,
         revision: 1,
         scope: "thermal-nominal",
         evidenceBoundary: "demo",
@@ -598,7 +612,7 @@ Deno.test(
           },
         },
         kit: {
-          modelId: "cm01-thermal-model",
+          modelId: "test-thermal-model",
           modelVersion: "1.0.0",
           modelSha256: "a".repeat(64),
         },
@@ -649,7 +663,7 @@ Deno.test(
         decisionId: "seal-decision",
         baseSnapshot: r1Ref,
         proposal: {
-          summary: "Seal the coffee-machine-cm01-thermal-nominal-v1 simulation case.",
+          summary: "Seal the fixture thermal-nominal simulation case.",
           parameters: [...proposalParameters],
         },
       });
@@ -668,7 +682,7 @@ Deno.test(
         ...ctx("queue-seal", project.revision),
         runId,
         workItemId: "seal-item",
-        summary: "Seal coffee-machine-cm01-thermal-nominal-v1 into the thread.",
+        summary: "Seal the fixture thermal-nominal simulation case into the thread.",
         basis: basisRef,
       });
 
@@ -679,6 +693,7 @@ Deno.test(
         snapshots,
         simulationCaseCaptures,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        simulationCaseSources: TEST_SIMULATION_CASE_SOURCES,
         readTextFile,
         now: nowFn,
       });
@@ -847,7 +862,7 @@ async function queuedSealFixture(
   let project = await briefs.startProject(AGENT, {
     commandId: "start-proj",
     projectId: PROJECT_ID,
-    projectName: "CM-01 seal test",
+    projectName: "Simulation seal test",
     issuedAt: "2026-08-09T09:59:00.000Z",
     intent: "Test the simulate-seal executor.",
     intentSource: { kind: "human", reference: "conversation:seal" },
@@ -1015,7 +1030,7 @@ function makeTestCase(
 ): ReturnType<typeof validateSimulationCase> {
   return validateSimulationCase({
     schemaVersion: "simulation-case/1.0",
-    id: "coffee-machine-cm01-thermal-nominal-v1",
+    id: TEST_SIMULATION_CASE_ID,
     revision: 1,
     scope: "thermal-nominal",
     evidenceBoundary: "demo",
@@ -1029,7 +1044,7 @@ function makeTestCase(
       },
     },
     kit: {
-      modelId: "cm01-thermal-model",
+      modelId: "test-thermal-model",
       modelVersion: "1.0.0",
       modelSha256: "a".repeat(64),
     },
@@ -1043,7 +1058,7 @@ function makeTestCase(
 
 /**
  * Build a readTextFile stub that returns the JSON of the given case when the
- * executor asks for the catalog path of "coffee-machine-cm01-thermal-nominal-v1".
+ * executor asks for the path in the injected closed fixture catalogue.
  */
 function makeReadStub(
   simulationCase: ReturnType<typeof validateSimulationCase>,

@@ -5,8 +5,8 @@
  * Why this boundary exists: the printability case is a reviewed configuration
  * file; the agent never supplies provider names, thresholds, or geometry. The
  * executor reads thresholds from the case. No verdict, no evaluation — only
- * observations with units. Project-specific CAD script renderers live in
- * domain/cm01/.
+ * observations with units. Project-specific CAD script renderers live outside
+ * this generic schema.
  *
  * Threshold provenance: the values in the reviewed case are declared as
  * PROVISIONAL candidates. They were chosen from typical FDM desktop-printer

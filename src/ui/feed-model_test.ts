@@ -1105,11 +1105,11 @@ Deno.test(
     // anchorage uses kind:id format (as produced by buildPartAnchorage)
     const anchorage = anchoredResolution([
       ["artifact:obs-1", {
-        target: "cm01-v3:drip-tray",
+        target: "generic-v3:drip-tray",
         criterion: "prefix" as const,
       }],
       ["artifact:obs-2", {
-        target: "cm01-v3:drip-tray",
+        target: "generic-v3:drip-tray",
         criterion: "prefix" as const,
       }],
       ["artifact:cad-artifact", {
@@ -1118,7 +1118,7 @@ Deno.test(
       }],
     ]);
     const counts = buildFeedComponentCounts([obs1, obs2, cad], anchorage);
-    assertEquals(counts.get("cm01-v3:drip-tray"), 2, "two drip-tray events");
+    assertEquals(counts.get("generic-v3:drip-tray"), 2, "two drip-tray events");
     assertEquals(counts.get("assembly"), 1, "one assembly event");
     assertEquals(counts.size, 2, "exactly two distinct targets");
   },
@@ -1154,8 +1154,8 @@ Deno.test(
       ]),
       ambiguousByRef: new Map([
         ["observation:ambiguous-evidence", [
-          "cm01-v3:drip-tray",
-          "cm01-v3:enclosure",
+          "generic-v3:drip-tray",
+          "generic-v3:enclosure",
         ]],
       ]),
       orphanRefKeys: new Set(["artifact:unanchored-fact"]),
@@ -1248,13 +1248,13 @@ Deno.test(
     };
     const anchorage = anchoredResolution([
       ["observation:obs-drip-1", {
-        target: "cm01-v3:drip-tray",
+        target: "generic-v3:drip-tray",
         criterion: "change-consumption" as const,
       }],
     ]);
     const counts = buildFeedComponentCounts([obsNode], anchorage);
     assertEquals(
-      counts.get("cm01-v3:drip-tray"),
+      counts.get("generic-v3:drip-tray"),
       1,
       "observation node anchored to drip-tray via kind:id key",
     );
@@ -1302,14 +1302,14 @@ const FEED_TEST_COMPONENTS: ThreadComponentCatalog = {
       bindings: [],
     },
     {
-      id: "cm01-v3:drip-tray",
+      id: "generic-v3:drip-tray",
       label: "Drip tray",
       kind: "part",
       quantity: 1,
       bindings: [],
     },
     {
-      id: "cm01-v3:enclosure",
+      id: "generic-v3:enclosure",
       label: "Enclosure",
       kind: "part",
       quantity: 1,

@@ -12,7 +12,7 @@ import { exactFeaSolverResultForCapture } from "../../captures/fea-solver-captur
 Deno.test("CalculiX adapter lowers a sealed proof to the exact static-solve request", async () => {
   const proof = validateMechanicalProofCase(JSON.parse(
     await Deno.readTextFile(
-      "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+      "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
     ),
   ));
   const stagedPath = `/inputs/fea-${proof.expectedCadArtifact.sha256}.step`;
@@ -32,19 +32,19 @@ Deno.test("CalculiX adapter lowers a sealed proof to the exact static-solve requ
     step_path: stagedPath,
     expected_step_sha256: proof.expectedCadArtifact.sha256,
     mesh_size_mm: 5,
-    material: { e_mpa: 2200, nu: 0.35 },
+    material: { e_mpa: 69000, nu: 0.33 },
     selections: [
       {
         name: "FIXED",
-        box: { min: [-96, 66.5, -15], max: [96, 68.5, 15] },
+        box: { min: [-15, -15, 19], max: [15, 15, 22] },
       },
       {
         name: "LOADED",
-        box: { min: [-96, -68.5, -15], max: [96, -66.5, 15] },
+        box: { min: [345, -15, 331], max: [361, 15, 361] },
       },
     ],
     fixed: ["FIXED"],
-    loads: [{ selection: "LOADED", force_n: [0, 0, -100] }],
+    loads: [{ selection: "LOADED", force_n: [0, 0, -4.903325] }],
   });
   assertEquals(plan.executionOperation, {
     serverId: "calculix",
@@ -55,7 +55,7 @@ Deno.test("CalculiX adapter lowers a sealed proof to the exact static-solve requ
 Deno.test("CalculiX adapter rejects a staged location not bound to the exact STEP identity", async () => {
   const proof = validateMechanicalProofCase(JSON.parse(
     await Deno.readTextFile(
-      "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+      "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
     ),
   ));
 
@@ -80,7 +80,7 @@ Deno.test("CalculiX adapter rejects a staged location not bound to the exact STE
 Deno.test("CalculiX adapter owns the exact static-solve tool dispatch", async () => {
   const proof = validateMechanicalProofCase(JSON.parse(
     await Deno.readTextFile(
-      "config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+      "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
     ),
   ));
   const stagedPath = `/inputs/fea-${proof.expectedCadArtifact.sha256}.step`;
@@ -96,7 +96,7 @@ Deno.test("CalculiX adapter owns the exact static-solve tool dispatch", async ()
     },
     constraints: {
       fixedSelections: ["FIXED"],
-      loads: [{ selection: "LOADED", forceN: [0, 0, -100] }],
+      loads: [{ selection: "LOADED", forceN: [0, 0, -4.903325] }],
     },
     mesh: {
       nodes: 8,
@@ -155,7 +155,7 @@ Deno.test("CalculiX adapter owns the exact static-solve tool dispatch", async ()
       supports: [{ selectionId: "FIXED" }],
       loads: [{
         selectionId: "LOADED",
-        force: { value: [0, 0, -100], unit: "N" },
+        force: { value: [0, 0, -4.903325], unit: "N" },
       }],
     },
     mesh: { nodeCount: 8, elementCount: 4 },

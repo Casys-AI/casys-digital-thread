@@ -9,6 +9,7 @@ import {
   type EngineeringProjectSnapshot,
   type EngineeringProjectStatus,
   type EngineeringWorkItem,
+  isEngineeringDecisionSatisfied,
 } from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadGraphRef,
@@ -100,11 +101,6 @@ export interface CurrentProjectWork {
  * - a later operation is the exact same registered operation id at another
  *   version and explicitly consumes that correction record.
  *
- * One bounded exception is an identity-only evidence repair. It is attached
- * only when the exact registered repair operation directly supersedes the
- * retained R3/r10 evidence named in its input and that evidence already
- * belongs to the explicitly anchored component correction lifecycle.
- *
  * A second bounded exception is a model enrichment: a later phase whose every
  * artifact evidence is a sysml-model derived (recorded `derived_from`
  * lineage) from a sysml-model owned by a strictly earlier visible phase. It
@@ -122,12 +118,6 @@ export const PROJECT_PATH_PRESENTATION_POLICY = {
   macroStages: "initial project phases",
   lifecycleAttachments:
     "explicit correction component + supersedes lineage + versioned operation identity",
-  identityRepair: {
-    operationId: "repair.coffee-machine-cm01-drip-tray-mechanical-r3-identity",
-    operationVersion: "1",
-    requiredLineage:
-      "direct supersedes successor of an anchored R3/r10 correction descendant",
-  },
   modelEnrichment: {
     requiredLineage:
       "every artifact evidence is a sysml-model with recorded derived_from lineage to a sysml-model of a strictly earlier visible phase",
@@ -144,8 +134,6 @@ export interface ProjectPhaseLifecycle {
   readonly correctionCount: number;
   /** Historical operation attempts retained below this macro stage. */
   readonly revisionAttemptCount: number;
-  /** Identity-only repairs are retained beside the evidence, never as gates. */
-  readonly identityRepairCount?: number;
   /** Later phases that wrote into this phase's model (requirement anchoring). */
   readonly modelEnrichmentCount?: number;
   /** Measurement phases whose evidence fed a folded enrichment (sensitivity). */
@@ -197,8 +185,9 @@ export function buildProjectBrief(
           item.status === "completed"
         ).length,
         totalWorkItems: workItems.length,
-        approvedDecisions:
-          decisions.filter((decision) => decision.status === "approved").length,
+        approvedDecisions: decisions.filter((decision) =>
+          isEngineeringDecisionSatisfied(snapshot, decision)
+        ).length,
         requiredDecisions: decisions.length,
         evidenceCount: phase.evidenceRefs.length,
       };
@@ -367,19 +356,9 @@ export function buildProjectPath(
       attachment,
     ) => [attachment.phaseId, attachment.parentPhaseId]),
   );
-  const identityRepairs = identityRepairAttachments(
-    snapshot,
-    thread,
-    brief,
-    artifactPhases,
-    correctionEvidenceKeys,
-    corrections,
-    revisionParentByPhaseId,
-  );
   const hiddenPhaseIds = new Set([
     ...corrections.map((attachment) => attachment.phaseId),
     ...revisions.map((attachment) => attachment.phaseId),
-    ...identityRepairs.map((attachment) => attachment.phaseId),
   ]);
   const enrichments = modelEnrichmentAttachments(
     thread,
@@ -427,12 +406,6 @@ export function buildProjectPath(
     mutableLifecycle(lifecycles, parentPhaseId).revisionPhaseIds.add(
       revision.phaseId,
     );
-  }
-
-  for (const repair of identityRepairs) {
-    if (!phaseById.has(repair.parentPhaseId)) continue;
-    mutableLifecycle(lifecycles, repair.parentPhaseId).identityRepairPhaseIds
-      .add(repair.phaseId);
   }
 
   for (const enrichment of enrichments) {
@@ -493,16 +466,10 @@ interface RevisionAttachment {
   readonly parentPhaseId: string;
 }
 
-interface IdentityRepairAttachment {
-  readonly phaseId: string;
-  readonly parentPhaseId: string;
-}
-
 interface MutableProjectPhaseLifecycle {
   readonly affectedComponentIds: Set<string>;
   readonly correctionEvidenceKeys: Set<string>;
   readonly revisionPhaseIds: Set<string>;
-  readonly identityRepairPhaseIds: Set<string>;
   readonly enrichmentPhaseIds: Set<string>;
   readonly measurementPhaseIds: Set<string>;
 }
@@ -835,115 +802,6 @@ function revisionAttachments(
   return attachments;
 }
 
-/**
- * The r11 operation corrects a historical R3 evidence identity; it does not
- * make or verify a new product phase. The named operation is intentionally
- * narrow. Its input must name the old R3/r10 artifact, the phase must publish
- * a direct `supersedes` successor, and that old artifact must already be a
- * versioned descendant of the same explicit component correction.
- */
-function identityRepairAttachments(
-  snapshot: EngineeringProjectSnapshot,
-  thread: ThreadWorkbenchSnapshot,
-  brief: ProjectBrief,
-  artifactPhases: ReadonlyMap<string, ReadonlySet<string>>,
-  correctionEvidenceKeys: ReadonlySet<string>,
-  corrections: readonly CorrectionAttachment[],
-  revisionParentByPhaseId: ReadonlyMap<string, string>,
-): readonly IdentityRepairAttachment[] {
-  const attachments: IdentityRepairAttachment[] = [];
-  for (const candidate of brief.phases) {
-    const operations = phaseOperations(snapshot, candidate.phase);
-    if (!isExactIdentityRepairOperation(operations)) continue;
-    const historicalEvidenceKeys = threadEntityEvidenceKeys(operations);
-    const repairedEvidenceKeys = phaseArtifactEvidenceKeys(
-      snapshot,
-      candidate.phase,
-    );
-    if (historicalEvidenceKeys.size === 0 || repairedEvidenceKeys.size === 0) {
-      continue;
-    }
-
-    const macroPhaseIds = new Set<string>();
-    for (const edge of thread.graph.edges) {
-      if (
-        edge.relation !== "supersedes" || edge.from.kind !== "artifact" ||
-        edge.to.kind !== "artifact" ||
-        !historicalEvidenceKeys.has(graphRefKey(edge.from)) ||
-        !repairedEvidenceKeys.has(graphRefKey(edge.to))
-      ) continue;
-      for (
-        const sourcePhaseId of artifactPhases.get(graphRefKey(edge.from)) ?? []
-      ) {
-        const macroPhaseId = revisionParentByPhaseId.get(sourcePhaseId);
-        if (!macroPhaseId) continue;
-        const sourcePhase = brief.phases.find((item) =>
-          item.phase.id === sourcePhaseId
-        );
-        if (!sourcePhase) continue;
-        const consumedCorrections = correctionEvidenceKeysForPhase(
-          snapshot,
-          sourcePhase.phase,
-          correctionEvidenceKeys,
-        );
-        const anchoredCorrection = corrections.some((correction) =>
-          correction.parentPhaseIds.includes(macroPhaseId) &&
-          correction.affectedComponentIds.length > 0 &&
-          correction.evidenceKeys.some((key) => consumedCorrections.has(key))
-        );
-        if (anchoredCorrection) macroPhaseIds.add(macroPhaseId);
-      }
-    }
-    if (macroPhaseIds.size !== 1) continue;
-    attachments.push({
-      phaseId: candidate.phase.id,
-      parentPhaseId: [...macroPhaseIds][0]!,
-    });
-  }
-  return attachments;
-}
-
-function isExactIdentityRepairOperation(
-  operations: ReturnType<typeof phaseOperations>,
-): boolean {
-  return operations.length === 1 &&
-    operations[0]!.id ===
-      PROJECT_PATH_PRESENTATION_POLICY.identityRepair.operationId &&
-    operations[0]!.version ===
-      PROJECT_PATH_PRESENTATION_POLICY.identityRepair.operationVersion;
-}
-
-function threadEntityEvidenceKeys(
-  operations: ReturnType<typeof phaseOperations>,
-): ReadonlySet<string> {
-  return new Set(
-    operations.flatMap((operation) =>
-      operation.bindings.flatMap((binding) =>
-        binding.source.kind === "thread-entity"
-          ? [graphRefKey(binding.source.reference)]
-          : []
-      )
-    ),
-  );
-}
-
-function correctionEvidenceKeysForPhase(
-  snapshot: EngineeringProjectSnapshot,
-  phase: EngineeringProjectPhase,
-  correctionEvidenceKeys: ReadonlySet<string>,
-): ReadonlySet<string> {
-  return new Set(
-    phaseOperations(snapshot, phase).flatMap((operation) =>
-      operation.bindings.flatMap((binding) =>
-        binding.source.kind === "thread-entity" &&
-          correctionEvidenceKeys.has(graphRefKey(binding.source.reference))
-          ? [graphRefKey(binding.source.reference)]
-          : []
-      )
-    ),
-  );
-}
-
 function phaseOperations(
   snapshot: EngineeringProjectSnapshot,
   phase: EngineeringProjectPhase,
@@ -952,22 +810,6 @@ function phaseOperations(
     const item = snapshot.workItems.find((candidate) => candidate.id === id);
     return item?.operation ? [item.operation] : [];
   });
-}
-
-function phaseArtifactEvidenceKeys(
-  snapshot: EngineeringProjectSnapshot,
-  phase: EngineeringProjectPhase,
-): ReadonlySet<string> {
-  const workItems = phase.workItemIds.flatMap((id) => {
-    const item = snapshot.workItems.find((candidate) => candidate.id === id);
-    return item ? [item] : [];
-  });
-  return new Set([
-    ...phase.evidenceRefs,
-    ...workItems.flatMap((item) => item.evidenceRefs),
-  ].flatMap((reference) =>
-    reference.kind === "artifact" ? [graphRefKey(reference)] : []
-  ));
 }
 
 function phaseIsVersionedPredecessor(
@@ -1007,7 +849,6 @@ function mutableLifecycle(
     affectedComponentIds: new Set<string>(),
     correctionEvidenceKeys: new Set<string>(),
     revisionPhaseIds: new Set<string>(),
-    identityRepairPhaseIds: new Set<string>(),
     enrichmentPhaseIds: new Set<string>(),
     measurementPhaseIds: new Set<string>(),
   };
@@ -1021,12 +862,6 @@ function projectPhaseLifecycle(
   phaseById: ReadonlyMap<string, ProjectPhaseView>,
 ): ProjectPhaseLifecycle {
   const revisions = [...lifecycle.revisionPhaseIds]
-    .flatMap((id) => {
-      const view = phaseById.get(id);
-      return view ? [view] : [];
-    })
-    .toSorted((left, right) => left.phase.order - right.phase.order);
-  const identityRepairs = [...lifecycle.identityRepairPhaseIds]
     .flatMap((id) => {
       const view = phaseById.get(id);
       return view ? [view] : [];
@@ -1046,7 +881,6 @@ function projectPhaseLifecycle(
     .toSorted((left, right) => left.phase.order - right.phase.order);
   const latestLifecycleRecord = [
     ...revisions,
-    ...identityRepairs,
     ...enrichments,
     ...measurements,
   ]
@@ -1071,9 +905,6 @@ function projectPhaseLifecycle(
     affectedComponentIds: [...lifecycle.affectedComponentIds].toSorted(),
     correctionCount: lifecycle.correctionEvidenceKeys.size,
     revisionAttemptCount: revisions.length,
-    ...(identityRepairs.length > 0
-      ? { identityRepairCount: identityRepairs.length }
-      : {}),
     ...(enrichments.length > 0
       ? { modelEnrichmentCount: enrichments.length }
       : {}),

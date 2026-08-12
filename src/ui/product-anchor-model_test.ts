@@ -4,7 +4,7 @@ import {
   productDefinitionSummary,
   productStructureAvailability,
 } from "./src/thread/product-anchor-model.ts";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import type { ThreadComponent, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -12,13 +12,13 @@ import type { ThreadComponent, ThreadWorkbenchSnapshot } from "./src/thread/type
 function snapshotWith(
   components: ThreadComponent[],
 ): ThreadWorkbenchSnapshot {
-  const base = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const base = structuredClone(GENERIC_THREAD_FIXTURE);
   base.components.components = components;
   return base;
 }
 
 const CAPTURE_DIGEST = "c".repeat(64);
-const R3_PREFIX = `coffee-machine-cm01-v3-cad-r3-${CAPTURE_DIGEST}`;
+const R3_PREFIX = `generic-product-v3-cad-r3-${CAPTURE_DIGEST}`;
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
@@ -79,16 +79,16 @@ Deno.test("available product structure distinguishes roots from part occurrences
 Deno.test("buildCatalogArtifactAnchorMap anchors @3 assembly STEP to assembly component", () => {
   const stepId = `${R3_PREFIX}-step`;
   const assembly: ThreadComponent = {
-    id: "cm01-v3:coffee-machine",
-    label: "CoffeeMachine",
+    id: "generic-v3:generic-product",
+    label: "GenericAssembly",
     kind: "assembly",
     quantity: 1,
     bindings: [
       {
         provider: "syson",
         kind: "part-definition",
-        id: "sysml-coffee-machine",
-        label: "CoffeeMachine",
+        id: "sysml-generic-product",
+        label: "GenericAssembly",
         evidenceArtifactId: "arch-001",
         status: "verified",
       },
@@ -96,7 +96,7 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 assembly STEP to assembly co
         provider: "build123d",
         kind: "artifact",
         id: stepId,
-        label: "CM-01 30 mm DripTray assembly STEP export",
+        label: "GEN-01 30 mm DripTray assembly STEP export",
         evidenceArtifactId: stepId,
         status: "verified",
       },
@@ -106,9 +106,9 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 assembly STEP to assembly co
   const anchor = buildCatalogArtifactAnchorMap(snapshotWith([assembly]));
 
   // The STEP artifact is anchored to the assembly component
-  assertEquals(anchor.get(stepId), "cm01-v3:coffee-machine");
+  assertEquals(anchor.get(stepId), "generic-v3:generic-product");
   // The architecture artifact is also anchored via its own binding
-  assertEquals(anchor.get("arch-001"), "cm01-v3:coffee-machine");
+  assertEquals(anchor.get("arch-001"), "generic-v3:generic-product");
 });
 
 Deno.test("buildCatalogArtifactAnchorMap anchors @3 drip-tray mesh to the drip-tray part", () => {
@@ -116,8 +116,8 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 drip-tray mesh to the drip-t
   const stepId = `${R3_PREFIX}-step`;
 
   const assembly: ThreadComponent = {
-    id: "cm01-v3:coffee-machine",
-    label: "CoffeeMachine",
+    id: "generic-v3:generic-product",
+    label: "GenericAssembly",
     kind: "assembly",
     quantity: 1,
     bindings: [
@@ -125,24 +125,24 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 drip-tray mesh to the drip-t
         provider: "build123d",
         kind: "artifact",
         id: stepId,
-        label: "CM-01 assembly STEP",
+        label: "GEN-01 assembly STEP",
         evidenceArtifactId: stepId,
         status: "verified",
       },
     ],
   };
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
-    parentId: "cm01-v3:coffee-machine",
+    parentId: "generic-v3:generic-product",
     bindings: [
       {
         provider: "build123d",
         kind: "artifact",
         id: meshId,
-        label: "CM-01 drip-tray presentation STL",
+        label: "GEN-01 drip-tray presentation STL",
         evidenceArtifactId: meshId,
         status: "verified",
       },
@@ -154,11 +154,11 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 drip-tray mesh to the drip-t
   );
 
   // Assembly STEP → assembly component
-  assertEquals(anchor.get(stepId), "cm01-v3:coffee-machine");
+  assertEquals(anchor.get(stepId), "generic-v3:generic-product");
 
   // Drip-tray mesh → drip-tray part, NOT assembly
-  assertEquals(anchor.get(meshId), "cm01-v3:drip-tray");
-  assertEquals(anchor.get(stepId) !== "cm01-v3:drip-tray", true);
+  assertEquals(anchor.get(meshId), "generic-v3:drip-tray");
+  assertEquals(anchor.get(stepId) !== "generic-v3:drip-tray", true);
 });
 
 Deno.test("buildCatalogArtifactAnchorMap anchors @3 plan and script to assembly via digital-thread provider", () => {
@@ -166,8 +166,8 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 plan and script to assembly 
   const scriptId = `${R3_PREFIX}-script`;
 
   const assembly: ThreadComponent = {
-    id: "cm01-v3:coffee-machine",
-    label: "CoffeeMachine",
+    id: "generic-v3:generic-product",
+    label: "GenericAssembly",
     kind: "assembly",
     quantity: 1,
     bindings: [
@@ -175,7 +175,7 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 plan and script to assembly 
         provider: "digital-thread",
         kind: "artifact",
         id: planId,
-        label: "CM-01 30 mm DripTray semantic CAD plan",
+        label: "GEN-01 30 mm DripTray semantic CAD plan",
         evidenceArtifactId: planId,
         status: "verified",
       },
@@ -183,7 +183,7 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 plan and script to assembly 
         provider: "digital-thread",
         kind: "artifact",
         id: scriptId,
-        label: "CM-01 30 mm DripTray deterministic build123d script",
+        label: "GEN-01 30 mm DripTray deterministic build123d script",
         evidenceArtifactId: scriptId,
         status: "verified",
       },
@@ -192,8 +192,8 @@ Deno.test("buildCatalogArtifactAnchorMap anchors @3 plan and script to assembly 
 
   const anchor = buildCatalogArtifactAnchorMap(snapshotWith([assembly]));
 
-  assertEquals(anchor.get(planId), "cm01-v3:coffee-machine");
-  assertEquals(anchor.get(scriptId), "cm01-v3:coffee-machine");
+  assertEquals(anchor.get(planId), "generic-v3:generic-product");
+  assertEquals(anchor.get(scriptId), "generic-v3:generic-product");
 });
 
 Deno.test("buildCatalogArtifactAnchorMap never anchors a drip-tray mesh to the assembly", () => {
@@ -201,30 +201,30 @@ Deno.test("buildCatalogArtifactAnchorMap never anchors a drip-tray mesh to the a
   const meshAssemblyId = `${R3_PREFIX}-mesh-assembly`;
 
   const assembly: ThreadComponent = {
-    id: "cm01-v3:coffee-machine",
-    label: "CoffeeMachine",
+    id: "generic-v3:generic-product",
+    label: "GenericAssembly",
     kind: "assembly",
     quantity: 1,
     bindings: [{
       provider: "build123d",
       kind: "artifact",
       id: meshAssemblyId,
-      label: "CM-01 assembly presentation STL",
+      label: "GEN-01 assembly presentation STL",
       evidenceArtifactId: meshAssemblyId,
       status: "verified",
     }],
   };
   const dripTray: ThreadComponent = {
-    id: "cm01-v3:drip-tray",
+    id: "generic-v3:drip-tray",
     label: "DripTray",
     kind: "part",
     quantity: 1,
-    parentId: "cm01-v3:coffee-machine",
+    parentId: "generic-v3:generic-product",
     bindings: [{
       provider: "build123d",
       kind: "artifact",
       id: meshDripTrayId,
-      label: "CM-01 drip-tray presentation STL",
+      label: "GEN-01 drip-tray presentation STL",
       evidenceArtifactId: meshDripTrayId,
       status: "verified",
     }],
@@ -234,8 +234,8 @@ Deno.test("buildCatalogArtifactAnchorMap never anchors a drip-tray mesh to the a
     snapshotWith([assembly, dripTray]),
   );
 
-  assertEquals(anchor.get(meshAssemblyId), "cm01-v3:coffee-machine");
-  assertEquals(anchor.get(meshDripTrayId), "cm01-v3:drip-tray");
+  assertEquals(anchor.get(meshAssemblyId), "generic-v3:generic-product");
+  assertEquals(anchor.get(meshDripTrayId), "generic-v3:drip-tray");
   // Explicit check: drip-tray mesh must NOT be anchored to assembly
-  assertEquals(anchor.get(meshDripTrayId) !== "cm01-v3:coffee-machine", true);
+  assertEquals(anchor.get(meshDripTrayId) !== "generic-v3:generic-product", true);
 });

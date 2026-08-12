@@ -10,11 +10,6 @@ import {
 // Fixture helpers
 // ---------------------------------------------------------------------------
 
-const CONFIG_URL = new URL(
-  "../../../config/sensitivity-cases/coffee-machine-cm01-v3-drip-tray-size-z.json",
-  import.meta.url,
-);
-
 /** Minimal valid case JSON that passes all validators. */
 function minimalCaseJson(): Record<string, unknown> {
   return {
@@ -24,10 +19,10 @@ function minimalCaseJson(): Record<string, unknown> {
     scope: "Unit test scope.",
     evidenceBoundary: "Unit test boundary — not a verdict.",
     project: { id: "test-project", subjectId: "project:test-project" },
-    target: { componentKey: "drip-tray", semanticKey: "size-z" },
+    target: { componentKey: "cantilever", semanticKey: "length" },
     recipeSource: {
-      schemaVersion: "coffee-machine-semantic-recipe/2.0",
-      key: "cm01-drip-tray-height-30",
+      schemaVersion: "parametric-geometry-recipe/1.0",
+      key: "test-cantilever-length-30",
     },
     baseValue: { value: 30, unit: "mm" },
     step: { value: 1, unit: "mm" },
@@ -114,21 +109,6 @@ Deno.test(
     assertEquals(Object.isFrozen(sc.solver.supports), true);
   },
 );
-
-Deno.test("validateSensitivityStudyCase accepts the committed config case file", async () => {
-  const text = await Deno.readTextFile(CONFIG_URL);
-  const sc = validateSensitivityStudyCase(JSON.parse(text));
-  assertEquals(sc.schemaVersion, SENSITIVITY_STUDY_CASE_SCHEMA);
-  assertEquals(sc.target.componentKey, "drip-tray");
-  assertEquals(sc.target.semanticKey, "size-z");
-  assertEquals(sc.baseValue.value, 30);
-  assertEquals(sc.step.value, 1);
-  assertEquals(sc.step.unit, "mm");
-  assertEquals(sc.metrics.length, 2);
-  assertEquals(sc.metrics[0]!.id, "assembly_max_displacement");
-  assertEquals(sc.metrics[1]!.id, "assembly_max_von_mises");
-  assertEquals(sc.domain.limitations.length >= 1, true);
-});
 
 Deno.test("validateSensitivityStudyCase rejects step value of zero", () => {
   const bad = { ...minimalCaseJson(), step: { value: 0, unit: "mm" } };

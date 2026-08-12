@@ -1,6 +1,6 @@
 /**
- * Strict declaration of candidate inputs for the CM-01 mechanical-analysis
- * surface. This schema is not an execution receipt: validation establishes only
+ * Strict declaration of candidate inputs for a mechanical-analysis surface.
+ * This schema is not an execution receipt: validation establishes only
  * declaration shape and internal consistency. It does not prove that SysON was
  * queried, a decision was approved, inputs reached CalculiX, or results exist.
  */
@@ -37,7 +37,11 @@ export interface MechanicalProofCase {
     readonly modelElementId: string;
   };
   readonly authorization: {
-    /** Declared cross-references only; this schema does not resolve or approve them. */
+    /**
+     * Declared cross-references for the proof-case seal MRTR only; this schema
+     * does not resolve or approve them. A later CalculiX run has a distinct
+     * MRTR in its resolved operation plan and cannot reuse this authority.
+     */
     readonly workItemId: string;
     readonly decisionId: string;
   };

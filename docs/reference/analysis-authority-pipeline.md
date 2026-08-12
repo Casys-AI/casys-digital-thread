@@ -239,6 +239,16 @@ reviewed declaration, not a generic native-source AST. The recorded vertical cro
 exact, identity-bound MCP `resources/read` boundary and saves then rereads every
 acquired byte through local CAS.
 
+For a mechanical proof, this vertical deliberately has two non-substitutable admissions.
+The declaration's `authorization` is a **seal authorization**: it names the reviewed
+`verify.seal-proof-case@1` work and decision that created the sealed proof artifact. The
+later `verify.run-fea-static-proof@2` uses a separate **execution admission** in its
+`resolved-operation-plan/2.0`: a different run, work item, MRTR approval, exact basis
+and artifact bindings. The execution plan consumes the earlier sealed artifact; it must
+verify the historical seal lineage, but must not require the seal work or decision IDs
+to equal the run work or decision IDs. This separation prevents a proof file or a prior
+approval from becoming a reusable solver capability.
+
 Modelica `@2` consumes only `simulation-case/2.0`. This additive successor leaves
 `simulation-case/1.0` and its `scenario.sha256` field unchanged as `@1` history. V2
 instead records two provider facts with different meanings: `scenario.sourceSha256`
@@ -261,19 +271,21 @@ resumable request, resolved parameters, model, scenario, script, diagnostics, ev
 `run.json` and, on success, result CSV. It publishes normalized observations only: no
 requirement, evaluation, violation, action or verdict is manufactured.
 
-For CalculiX, the `@2` run rereads the sealed proof and exact STEP before staging the
-private provider input. It captures the fixed nine-resource profile: STEP, request, Gmsh
-input/log, mesh, CalculiX deck/log/data and result. The proof, requirements and result
-remain distinct inputs to the separate SysON evaluation call and its exact
-request/structured-response capture. These bytes make runtime provenance inspectable;
-they do not claim that an agent-authored arbitrary `.inp` deck is accepted or parsed.
+For CalculiX, the `@2` run rereads the historically sealed proof and exact STEP before
+staging the private provider input. Its separately approved execution admission binds
+the current descendant basis and those exact artifacts. It captures the fixed
+nine-resource profile: STEP, request, Gmsh input/log, mesh, CalculiX deck/log/data and
+result. The proof, requirements and result remain distinct inputs to the separate SysON
+evaluation call and its exact request/structured-response capture. These bytes make
+runtime provenance inspectable; they do not claim that an agent-authored arbitrary
+`.inp` deck is accepted or parsed.
 
 ## Current authority boundary
 
 The canonical analysis graph is now active, but it is deliberately a fact and
 traceability layer, not an execution gate. Its producers include the approved-brief
-baseline, the Modelica simulation-case seal, the CalculiX proof-case seal and the CM-01
-sensitivity executor. Modelica and CalculiX declaration nodes and scopes use the stable
+baseline, the Modelica simulation-case seal, the CalculiX proof-case seal and retained
+legacy observations. Modelica and CalculiX declaration nodes and scopes use the stable
 case/proof digest; each seal assertion keeps its run-scoped capture fingerprint only as
 evidence, so repeated seals can merge as parallel assertion occurrences without changing
 semantic identity. After its two solver runs, the sensitivity path creates one observed
@@ -293,18 +305,6 @@ The CAD integration still stops at passive source facts and sealed provenance. I
 not invent source-level CAD assertions from the parser. The Workbench does not infer
 component sensitivity from historical observation labels; such labels can neither create
 a relation nor establish authority.
-
-The CM-01 DFM and PrusaSlicer paths are likewise observational, not generic oracles.
-Their current WALs use a three-state `dispatched -> capture-recorded -> completed`
-lifecycle. Once dispatch may have happened, an unrecorded outcome is terminally unknown
-rather than eligible for blind redispatch; once the canonical capture is recorded,
-recovery reopens the same CAS bytes and never calls the provider again. Current
-printability and print-estimate captures bind the exact case digest, trusted run and
-dispatch basis. Only the persisted JSON capture is published as an artifact: STEP, STL
-and G-code digests remain attested fields because those binary bytes are not retained
-and reread by these executors. DFM conditions and slicer estimates become observations;
-they do not become requirements, evaluations or violations without a separately reviewed
-oracle contract.
 
 Already-published evidence is never repaired by editing an old snapshot or by teaching a
 projector a URI heuristic. When later code proves that a historical entity overstated

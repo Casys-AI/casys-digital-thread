@@ -13,7 +13,6 @@ import { listRegisteredEngineeringOperationKeys } from "./registry.ts";
 /** Every document that narrates the path by citing operation identifiers. */
 const OPERATION_CITING_DOCUMENTS = [
   "../../../.agents/skills/guide-industrial-project/SKILL.md",
-  "../../../docs/how-to/run-cm01-v3-golden-local.md",
 ] as const;
 
 /** Backtick-quoted exact operation references: `family.name@version`. */

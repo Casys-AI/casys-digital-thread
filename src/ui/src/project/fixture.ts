@@ -1,27 +1,27 @@
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "../thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "../thread/fixture.ts";
 import type { EngineeringEvidenceWorkbenchSnapshot } from "../thread/types.ts";
 
 /** Labelled UI fallback. It demonstrates project control, never production truth. */
-export const COFFEE_MACHINE_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
+export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
   schemaVersion: "1.0",
-  id: "project-snapshot-cm01-fixture",
+  id: "project-snapshot-generic-fixture",
   revision: 1,
-  generatedAt: COFFEE_MACHINE_THREAD_FIXTURE.generatedAt,
+  generatedAt: GENERIC_THREAD_FIXTURE.generatedAt,
   project: {
-    id: "project-cm01-fixture",
-    name: "Coffee Machine CM-01",
-    subjectId: COFFEE_MACHINE_THREAD_FIXTURE.subject.id,
+    id: "project-generic-fixture",
+    name: "Generic Product GEN-01",
+    subjectId: GENERIC_THREAD_FIXTURE.subject.id,
     objective: {
-      title: "Build a verifiable coffee-machine demonstrator",
+      title: "Build a verifiable generic-product demonstrator",
       statement:
         "Connect system intent, product geometry, simulation evidence and industrial records so every engineering decision can be reviewed against exact inputs.",
     },
   },
   threadSnapshots: [{
-    snapshotId: COFFEE_MACHINE_THREAD_FIXTURE.id,
+    snapshotId: GENERIC_THREAD_FIXTURE.id,
     revision: 1,
-    subjectId: COFFEE_MACHINE_THREAD_FIXTURE.subject.id,
+    subjectId: GENERIC_THREAD_FIXTURE.subject.id,
   }],
   phases: [
     phase("define", "Define", 1, ["work-define"], [], "change", "CHG-184"),
@@ -146,12 +146,12 @@ export const COFFEE_MACHINE_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
   }],
 };
 
-export const COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE:
+export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
   EngineeringEvidenceWorkbenchSnapshot = {
     schemaVersion: "engineering-workbench/0.2",
     surface: "evidence",
-    project: COFFEE_MACHINE_PROJECT_FIXTURE,
-    thread: COFFEE_MACHINE_THREAD_FIXTURE,
+    project: GENERIC_PROJECT_FIXTURE,
+    thread: GENERIC_THREAD_FIXTURE,
     alignment: {
       status: "aligned",
       projectThreadRevision: 1,
@@ -180,7 +180,7 @@ function phase(
     requiredDecisionIds,
     evidenceRefs: evidenceKind && evidenceId
       ? [{
-        snapshotId: COFFEE_MACHINE_THREAD_FIXTURE.id,
+        snapshotId: GENERIC_THREAD_FIXTURE.id,
         snapshotRevision: 1,
         kind: evidenceKind,
         id: evidenceId,

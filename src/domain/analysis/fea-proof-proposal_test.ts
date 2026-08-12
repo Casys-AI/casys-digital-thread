@@ -27,19 +27,19 @@ import { validateMechanicalProofCase } from "./mechanical-proof-case.ts";
 
 // ── Shared fixtures ───────────────────────────────────────────────────────────
 
-const REAL_PROOF_JSON = JSON.parse(
+const PROOF_JSON = JSON.parse(
   await Deno.readTextFile(
     new URL(
-      "../../../config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+      "../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
       import.meta.url,
     ),
   ),
 );
 
-const PROOF_CASE = validateMechanicalProofCase(REAL_PROOF_JSON);
+const PROOF_CASE = validateMechanicalProofCase(PROOF_JSON);
 
 const GEOMETRY_ARTIFACT = {
-  id: "cad-model-drip-tray-step-abc123",
+  id: "cad-model-articulated-arm-step-abc123",
   fingerprint: {
     algorithm: "sha256" as const,
     digest: "a".repeat(64),
@@ -47,32 +47,32 @@ const GEOMETRY_ARTIFACT = {
 };
 
 const REQUIREMENTS_ARTIFACT = {
-  id: "requirements-drip-tray-abc123",
+  id: "requirements-articulated-arm-abc123",
   fingerprint: {
     algorithm: "sha256" as const,
     digest: "b".repeat(64),
   },
 };
 
-/** Build the parametric proof case fixture used by CM-01. */
+/** Return the active parametric proof declaration used by these contract tests. */
 function makeParametricProofCase() {
   return PROOF_CASE;
 }
 
 /** Build a minimal imported-or-reconstructed proof case by patching cadSource. */
 function makeImportedProofCase() {
-  const raw = structuredClone(REAL_PROOF_JSON) as Record<string, unknown>;
+  const raw = structuredClone(PROOF_JSON) as Record<string, unknown>;
   raw["cadSource"] = {
     kind: "imported-or-reconstructed",
     method: "import",
     sources: [
       {
         id: "src-1",
-        name: "DripTray STEP from supplier",
+        name: "Articulated arm STEP from supplier",
         format: "step",
         sha256: "c".repeat(64),
         bytes: 12345,
-        sourceUri: "https://example.com/drip-tray.step",
+        sourceUri: "https://example.com/articulated-arm.step",
       },
     ],
     license: {
@@ -107,9 +107,9 @@ Deno.test("VERIFY_SEAL_PROOF_CASE_OPERATION has the specified id and version", (
 // ── canonicalProofText ────────────────────────────────────────────────────────
 
 Deno.test("canonicalProofText is stable regardless of JSON input key order", () => {
-  const proofA = validateMechanicalProofCase(REAL_PROOF_JSON);
+  const proofA = validateMechanicalProofCase(PROOF_JSON);
   // Shuffle keys at the root level in a clone.
-  const shuffled = structuredClone(REAL_PROOF_JSON) as Record<string, unknown>;
+  const shuffled = structuredClone(PROOF_JSON) as Record<string, unknown>;
   const entries = Object.entries(shuffled);
   entries.reverse();
   const reordered: Record<string, unknown> = {};

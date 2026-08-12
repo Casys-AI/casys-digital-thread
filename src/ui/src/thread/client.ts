@@ -1,11 +1,10 @@
-import { COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE } from "../project/fixture.ts";
 import {
   type EngineeringWorkbenchSnapshot,
   isEngineeringWorkbenchSnapshot,
 } from "./types.ts";
 
 export interface ThreadWorkbenchClient {
-  readonly source: "injected" | "http" | "fixture";
+  readonly source: "injected" | "http" | "unconfigured";
   load(signal?: AbortSignal): Promise<EngineeringWorkbenchSnapshot>;
   /** Optional server-pushed replacement workbench states. */
   subscribe?(
@@ -29,11 +28,28 @@ export type ThreadFetch = (
 export class StaticThreadWorkbenchClient implements ThreadWorkbenchClient {
   constructor(
     private readonly projection: EngineeringWorkbenchSnapshot,
-    readonly source: "injected" | "fixture",
+    readonly source: "injected",
   ) {}
 
   load(): Promise<EngineeringWorkbenchSnapshot> {
     return Promise.resolve(this.projection);
+  }
+}
+
+/**
+ * Deliberately visible missing-bootstrap state. The browser must never
+ * substitute a recorded product fixture for the active engineering project.
+ */
+export class UnconfiguredThreadWorkbenchClient
+  implements ThreadWorkbenchClient {
+  readonly source = "unconfigured" as const;
+
+  load(): Promise<EngineeringWorkbenchSnapshot> {
+    return Promise.reject(
+      new Error(
+        "Engineering Workbench bootstrap is required; no project projection was configured.",
+      ),
+    );
   }
 }
 
@@ -115,8 +131,5 @@ export function createThreadWorkbenchClient(
   if (bootstrap?.endpoint) {
     return new HttpThreadWorkbenchClient(bootstrap.endpoint);
   }
-  return new StaticThreadWorkbenchClient(
-    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
-    "fixture",
-  );
+  return new UnconfiguredThreadWorkbenchClient();
 }

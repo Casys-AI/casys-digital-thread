@@ -1,9 +1,7 @@
 # Explanation: why proofs and verdicts are separate
 
 > **Diátaxis category: explanation.** This page explains the architectural boundary. For
-> file locations, use the [building-block reference](../reference/building-blocks.md);
-> for a first run, use the
-> [CoffeeMachine tutorial](../tutorials/coffee-machine-nominal.md).
+> file locations, use the [building-block reference](../reference/building-blocks.md).
 
 A tool succeeding means it completed the work it owns. It does not mean a product is
 compliant. Geometry, FEA, and dynamic simulation answer different physical questions; a
@@ -50,12 +48,6 @@ The result may be `passed` or `failed`, but it may also be `unresolved` or `erro
 Those latter states are evidence that the comparison could not be made reliably, not
 concealed successes. Keeping this result in a separate stage makes its inputs
 inspectable and prevents accidental reuse of a verdict for a merely similar run.
-
-For CoffeeMachine, the current `water_temperature_max >= 90 degC` check is a versioned
-**provisional scenario contract**. It is applied only after exact model/scenario
-identity binding. It demonstrates the evidence-to-constraint path; it is not a product
-requirement stored in SysON, and the `900 s` horizon is provenance rather than an
-invented heat-up-time limit.
 
 ## The join is enforced, not merely intended
 

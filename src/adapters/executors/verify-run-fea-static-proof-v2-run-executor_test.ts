@@ -41,6 +41,25 @@ const PROVIDER_RUN_ID = "r-01234567-89ab-cdef-0123-456789abcdef";
 
 Deno.test("Recorded CalculiX @2 executes once, captures exact nine resources and durable SysON evidence", async () => {
   await withRuntime(async (runtime) => {
+    const queued = await runtime.fixture.projects.get(runtime.fixture.projectId);
+    assertExists(queued);
+    const executionRun = queued.agentRuns.find((run) =>
+      run.id === runtime.fixture.runId
+    );
+    assertExists(executionRun);
+    assertEquals(
+      runtime.fixture.proofCase.authorization,
+      {
+        workItemId: "fixture-proof-seal-item",
+        decisionId: "fixture-proof-seal-decision",
+      },
+      "the declaration retains its seal MRTR, not the later execution MRTR",
+    );
+    assertStrictEquals(executionRun.workItemId, "recorded-fea-item");
+    assertStrictEquals(
+      executionRun.workItemId === runtime.fixture.proofCase.authorization.workItemId,
+      false,
+    );
     const completed = await runtime.executor.execute(
       RECORDED_CALCULIX_V2_FIXTURE_AGENT,
       runtime.fixture.command,
@@ -291,7 +310,7 @@ Deno.test("Recorded CalculiX @2 reads provider-known and resources-captured stat
       projectId: runtime.fixture.projectId,
       runId: runtime.fixture.runId,
       planSha256: await runtime.planSha256(),
-      requestId: "recorded-calculix-v2-request",
+      requestId: await runtime.requestId(),
       preparedAt: "2026-08-12T04:00:00.000Z",
     });
     await runtime.attempts.markDispatched({
@@ -544,6 +563,7 @@ interface Runtime {
     },
   ): VerifyRunFeaStaticProofV2RunExecutor;
   planSha256(): Promise<string>;
+  requestId(): Promise<string>;
   seedResourcesCaptured(): Promise<void>;
 }
 
@@ -562,6 +582,16 @@ async function withRuntime(
 
 async function createRuntime(directory: string): Promise<Runtime> {
   const fixture = await createRecordedCalculixV2Fixture(directory);
+  const queuedProject = await fixture.projects.get(fixture.projectId);
+  const queuedRun = queuedProject?.agentRuns.find((run) => run.id === fixture.runId);
+  if (!queuedRun?.resolvedOperationPlan) {
+    throw new Error("Recorded CalculiX fixture has no resolved operation plan.");
+  }
+  const queuedPlan = await fixture.plans.read(queuedRun.resolvedOperationPlan);
+  if (queuedPlan.action.kind !== "static-structural-analysis") {
+    throw new Error("Recorded CalculiX fixture resolved a non-FEA plan.");
+  }
+  const requestId = queuedPlan.action.requestId;
   const attempts = new FileCalculixRecordedStaticAttemptStore(`${directory}/attempts`);
   const resourceStore = new FileByteStore({
     kind: "calculix-recorded-resource",
@@ -625,7 +655,7 @@ async function createRuntime(directory: string): Promise<Runtime> {
   let sysonFails = false;
   const completed: CalculixRecordedStaticCompleted = {
     status: "completed",
-    requestId: "recorded-calculix-v2-request",
+    requestId,
     requestSha256: "a".repeat(64),
     runId: PROVIDER_RUN_ID,
     resources: resources.map(({ bytes: _bytes, ...resource }) => resource),
@@ -956,6 +986,7 @@ async function createRuntime(directory: string): Promise<Runtime> {
       const plan = await fixture.plans.read(run.resolvedOperationPlan!);
       return (await fingerprintResolvedOperationPlanV2(plan)).digest;
     },
+    requestId: () => Promise.resolve(requestId),
     async seedResourcesCaptured() {
       const project = await fixture.projects.get(fixture.projectId);
       const run = project!.agentRuns.find((item) => item.id === fixture.runId)!;

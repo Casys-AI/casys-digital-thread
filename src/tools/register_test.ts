@@ -7,10 +7,13 @@ import type {
   ObservedContainer,
   RunDetail,
 } from "../domain/kernel/types.ts";
+import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import { createConsoleServer, parseConsoleCli } from "../../server.ts";
 import { PROJECT_REVIEW_INTENTS_RESOURCE_URI } from "./project-review-intent-subscription.ts";
 import { CONSOLE_RESOURCE_URI } from "./register.ts";
+
+const NEUTRAL_PROJECT_ID = "neutral-system-ns01";
 
 Deno.test("console CLI binds its durable review outbox independently of MCP port syntax", () => {
   assertEquals(
@@ -56,18 +59,47 @@ Deno.test("server composes one historical proof and requirements CAS for @1 and 
   );
 });
 
-Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
+Deno.test("server starts project control without seeding any project", async () => {
   const activeProjectDirectory = await Deno.makeTempDir({
+    prefix: "casys-project-tools-empty-",
+  });
+  try {
+    await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory,
+    });
+    const entries = [];
+    for await (const entry of Deno.readDir(activeProjectDirectory)) {
+      entries.push(entry.name);
+    }
+    assertEquals(entries, []);
+  } finally {
+    await Deno.remove(activeProjectDirectory, { recursive: true });
+  }
+});
+
+Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
+  const temporaryDirectory = await Deno.makeTempDir({
     prefix: "casys-project-tools-",
   });
+  const activeProjectDirectory = `${temporaryDirectory}/projects`;
+  const projectPath = `${temporaryDirectory}/neutral-project.json`;
+  await Deno.writeTextFile(
+    projectPath,
+    `${JSON.stringify(neutralProjectFixture())}\n`,
+  );
   const { app } = await createConsoleServer({
     manifest: manifestFixture(),
     runs: [runFixture()],
     probe: healthyProbe(),
     docker: unavailableDocker(),
     logger: () => {},
+    projectId: NEUTRAL_PROJECT_ID,
+    projectPath,
     activeProjectDirectory,
-    projectReviewIntentDirectory: `${activeProjectDirectory}/review-intents`,
+    projectReviewIntentDirectory: `${temporaryDirectory}/review-intents`,
   });
   assertEquals(app.getToolNames().sort(), [
     "cockpit_focus_set",
@@ -96,6 +128,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_snapshot",
     "project_start",
     "project_work_item_reconcile_successor",
+    "project_work_item_supersede_unstarted",
   ]);
   try {
     const built = Deno.statSync("src/ui/dist/console/index.html").isFile;
@@ -124,6 +157,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
   });
   try {
     const client = new TestMcpClient(`http://127.0.0.1:${port}/mcp`);
+    const projectId = NEUTRAL_PROJECT_ID;
     const discovered = await client.discover();
     assertEquals(discovered.resultType, "complete");
     assertEquals(discovered.serverInfo, {
@@ -157,6 +191,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_snapshot",
       "project_start",
       "project_work_item_reconcile_successor",
+      "project_work_item_supersede_unstarted",
     ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");
     assert(snapshotTool);
@@ -245,13 +280,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
 
     const projectSnapshot = await client.call("tools/call", {
       name: "project_snapshot",
-      arguments: { projectId: "coffee-machine-cm01" },
+      arguments: { projectId },
     });
     const project = projectSnapshot.structuredContent as Record<string, unknown>;
     assertEquals(project.schemaVersion, "1.0");
     assertEquals(
       (project.project as Record<string, unknown>).id,
-      "coffee-machine-cm01",
+      projectId,
     );
     assertEquals(project.revision, 1);
     assertStringIncludes(
@@ -260,10 +295,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     );
     const reviewIntents = await client.call("tools/call", {
       name: "project_review_intent_list",
-      arguments: { projectId: "coffee-machine-cm01" },
+      arguments: { projectId },
     });
     assertEquals(reviewIntents.structuredContent, {
-      projectId: "coffee-machine-cm01",
+      projectId,
       projectRevision: 1,
       count: 0,
       records: [],
@@ -271,10 +306,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
 
     const proposalArguments = {
       commandId: "mcp-proposal-material-1",
-      projectId: "coffee-machine-cm01",
+      projectId,
       expectedRevision: 1,
       issuedAt: "2026-08-01T22:10:00+08:00",
-      decisionId: "review-mechanical-proof-case",
+      decisionId: "review-neutral-material-card",
       proposal: {
         summary: "Use the reviewed aluminium material card.",
         parameters: [{
@@ -298,7 +333,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     );
     const proposedDecision = (proposedProject.decisions as Array<
       Record<string, unknown>
-    >).find((item) => item.id === "review-mechanical-proof-case")!;
+    >).find((item) => item.id === "review-neutral-material-card")!;
     assertEquals(proposedDecision.status, "proposed");
     assertEquals(
       (proposedDecision.proposal as Record<string, unknown>).proposedBy as Record<
@@ -322,7 +357,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       arguments: {
         ...proposalArguments,
         commandId: "mcp-stale-proposal-2",
-        decisionId: "review-mechanical-proof-case",
+        decisionId: "review-neutral-material-card",
       },
     });
     assertEquals(stale.isError, true);
@@ -340,6 +375,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           "project_decision_approve",
           "project_decision_reject",
           "project_agent_run_cancel",
+          "project_work_item_supersede_unstarted",
           "project_agent_run_queue",
         ]
           .includes(String(tool.name))
@@ -370,6 +406,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_execute" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_agent_run_queue" ||
+          tool.name === "project_work_item_supersede_unstarted" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject",
       );
@@ -408,10 +445,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
 
     const reviewIntent: ProjectReviewIntent = {
       intentId: "review-intent-mcp-sse-1",
-      projectId: "coffee-machine-cm01",
+      projectId,
       expectedRevision: 2,
-      decisionId: "review-mechanical-proof-case",
-      approvalId: "approval:review-mechanical-proof-case:mcp-sse-1",
+      decisionId: "review-neutral-material-card",
+      approvalId: "approval:review-neutral-material-card:mcp-sse-1",
       inputFingerprint: {
         algorithm: "sha256",
         digest: "b".repeat(64),
@@ -420,7 +457,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       submittedAt: "2026-08-09T12:00:00.000Z",
     };
     const reviewIntentStore = new FileProjectReviewIntentStore(
-      `${activeProjectDirectory}/review-intents`,
+      `${temporaryDirectory}/review-intents`,
     );
     await reviewIntentStore.append(reviewIntent);
 
@@ -503,7 +540,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     assertEquals(afterSignal.structuredContent, beforeSignal.structuredContent);
   } finally {
     await http.shutdown();
-    await Deno.remove(activeProjectDirectory, { recursive: true });
+    await Deno.remove(temporaryDirectory, { recursive: true });
   }
 });
 
@@ -643,6 +680,80 @@ async function parseResponse(
 ): Promise<Record<string, unknown>> {
   const text = await response.text();
   return JSON.parse(text);
+}
+
+function neutralProjectFixture(): EngineeringProjectSnapshot {
+  const generatedAt = "2026-08-01T14:00:00.000Z";
+  const phaseId = "review";
+  const workItemId = "review-neutral-material";
+  const decisionId = "review-neutral-material-card";
+  const blockerId = "missing-neutral-material-review";
+  return {
+    schemaVersion: "1.0",
+    id: `${NEUTRAL_PROJECT_ID}:project:r1`,
+    revision: 1,
+    generatedAt,
+    project: {
+      id: NEUTRAL_PROJECT_ID,
+      name: "Neutral engineering system",
+      subjectId: NEUTRAL_PROJECT_ID,
+      objective: {
+        title: "Maintain a reviewable engineering record",
+        statement:
+          "Exercise the project control boundary without a product-specific fixture.",
+      },
+    },
+    threadSnapshots: [{
+      snapshotId: `${NEUTRAL_PROJECT_ID}:thread:r1`,
+      revision: 1,
+      subjectId: NEUTRAL_PROJECT_ID,
+    }],
+    phases: [{
+      id: phaseId,
+      name: "Review",
+      order: 1,
+      description: "Review one bounded material proposal.",
+      workItemIds: [workItemId],
+      requiredDecisionIds: [decisionId],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: workItemId,
+      phaseId,
+      title: "Review the neutral material card",
+      description: "Record a human-reviewable material decision.",
+      kind: "review",
+      status: "waiting-for-decision",
+      owner: "shared",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [decisionId],
+      blockerIds: [blockerId],
+    }],
+    agentRuns: [],
+    decisions: [{
+      id: decisionId,
+      phaseId,
+      title: "Review the neutral material card",
+      question: "May the neutral material card be used for this bounded test?",
+      status: "required",
+      requestedAt: generatedAt,
+      inputEvidenceRefs: [],
+      approvalIds: [],
+    }],
+    approvals: [],
+    blockers: [{
+      id: blockerId,
+      phaseId,
+      title: "Material review is required",
+      description: "The test proposal still requires explicit human review.",
+      kind: "decision-required",
+      status: "open",
+      openedAt: generatedAt,
+      workItemIds: [workItemId],
+      decisionIds: [decisionId],
+    }],
+  };
 }
 
 function manifestFixture(): FleetManifest {

@@ -9,7 +9,7 @@
  * CLAUDE.md drifted into claiming the backend executes this DAG — so the
  * boundary is enforced here: no production module may import from
  * experiments/thread-workflow/. A documentary path reference (a string naming
- * the reviewed YAML, as in the CM-01 kit qualification) is allowed; an import
+ * a reviewed YAML fixture) is allowed; an import
  * would wire the engine into a lifecycle it does not implement.
  */
 

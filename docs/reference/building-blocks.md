@@ -20,9 +20,8 @@
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Provider topology            | [`docker-compose.yml`](../../docker-compose.yml)                                                                                                                                                         |
 | Desired fleet                | [`config/mcp-fleet.json`](../../config/mcp-fleet.json)                                                                                                                                                   |
-| CM-01 subject binding        | [`config/thread-subjects/coffee-machine-cm01.json`](../../config/thread-subjects/coffee-machine-cm01.json)                                                                                               |
 | Native workflow (frozen)     | [`experiments/thread-workflow/`](../../experiments/thread-workflow/)                                                                                                                                     |
-| Canonical linked state       | [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts)                                                                                                                                   |
+| Canonical linked state       | [`src/domain/thread/thread-snapshot.ts`](../../src/domain/thread/thread-snapshot.ts)                                                                                                                     |
 | Workflow compiler/executor   | [`experiments/thread-workflow/`](../../experiments/thread-workflow/) (frozen prototype)                                                                                                                  |
 | Workbench projection         | [`src/adapters/projectors/thread-workbench-projector.ts`](../../src/adapters/projectors/thread-workbench-projector.ts)                                                                                   |
 | Native Workbench UI          | [`src/ui/src/thread/`](../../src/ui/src/thread/)                                                                                                                                                         |
@@ -37,10 +36,9 @@
 | Recorded Modelica `@2`       | [`src/adapters/executors/simulate-run-modelica-scenario-v2-run-executor.ts`](../../src/adapters/executors/simulate-run-modelica-scenario-v2-run-executor.ts)                                             |
 | Recorded CalculiX `@2`       | [`src/adapters/executors/verify-run-fea-static-proof-v2-run-executor.ts`](../../src/adapters/executors/verify-run-fea-static-proof-v2-run-executor.ts)                                                   |
 
-The CM-01 manifest is the sole cross-provider join authority. It binds a SysON project,
-build123d artifact path, persisted Modelica run, and ERPNext item to one product
-subject. Provider display names and matching labels are evidence for people, not a
-machine join key.
+A reviewed subject manifest is the sole cross-provider join authority for its project.
+Provider display names and matching labels are evidence for people, not a machine join
+key.
 
 ## Product boundary
 

@@ -13,7 +13,6 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
 } from "../../domain/platform/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
-import { listCoffeeMachineCm01V3OperationDescriptors } from "./coffee-machine-cm01-v3-engineering-kits.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts";
@@ -468,8 +467,8 @@ const OPERATIONS = [
    * Observation only, never a verdict: a successful simulation publishes unit-
    * carrying observations and hashed artifacts with verdictStatus
    * "not_evaluated"; evaluation belongs to SysON. riskClass "low" matches the
-   * reviewed CM-01 thermal kit — the run adds isolated evidence without touching
-   * any model. The WAL records the provider run_id durably before readback, so
+   * reviewed qualified-kit contract — the run adds isolated evidence without
+   * touching any model. The WAL records the provider run_id durably before readback, so
    * recovery only ever re-reads (`modelica_run_get`), never re-simulates.
    */
   {
@@ -582,10 +581,6 @@ const OPERATIONS = [
       },
     ],
   },
-  // CM-01 is the static golden-path reference for future oracle onboarding.
-  // These descriptors are reviewed planning data only until a server-owned
-  // executor is explicitly registered for each one.
-  ...listCoffeeMachineCm01V3OperationDescriptors(),
   ...listInspectionDroneV4OperationDescriptors(),
   // The recorded-analysis descriptors become reachable only with the
   // composition-root resolver/sealer and fixed executors. Their provider

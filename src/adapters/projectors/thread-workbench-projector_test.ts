@@ -18,17 +18,17 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
 
   assertEquals(projection.schemaVersion, "thread-workbench/0.1");
   assertEquals(projection.source, "observed");
-  assertEquals(projection.subject.label, "Coffee Machine CM-01");
+  assertEquals(projection.subject.label, "Generic Product GEN-01");
   assertEquals(projection.evidenceFamilyGraph, {
     schemaVersion: "thread-evidence-family-graph/1.0",
-    asOf: { snapshotId: "thread-cm01-r2", revision: 2 },
+    asOf: { snapshotId: "thread-generic-r2", revision: 2 },
     families: [],
     edges: [],
     omittedSelfLoops: [],
     omittedCycleEdges: [],
   });
   assertEquals(projection.previous, {
-    snapshotId: "thread-cm01-r1",
+    snapshotId: "thread-generic-r1",
     revision: 1,
   });
   assertEquals(projection.change.id, "changes-r2");
@@ -797,56 +797,6 @@ Deno.test("Evidence keeps exact SysML structure before CAD and suppresses a decl
   );
 });
 
-Deno.test("the bounded DripTray correction anchors only to its verified V3 product identity", () => {
-  const canonical = linkedSnapshot();
-  canonical.changeSet.changes[0]!.id =
-    "coffee-machine-cm01-v3-drip-tray-height-28-to-30:applied";
-  canonical.artifacts.push({
-    id: "cm01-v3-architecture",
-    name: "CM-01 SysON architecture",
-    kind: "sysml-model",
-    version: "1",
-    fingerprint: fingerprint("c"),
-    mediaType: "application/json",
-    producer: operation(
-      "syson",
-      "syson_element_insert_sysml",
-      "architecture-r1",
-    ),
-    inputArtifactIds: [],
-    freshness: fresh(),
-  });
-  const catalog: ThreadComponentCatalog = {
-    schemaVersion: "thread-components/1.0",
-    authority: "workspace-declared",
-    subjectId: canonical.subject.id,
-    rationale: "Exact SysON component identity for the correction test.",
-    systemViews: {},
-    components: [{
-      id: "cm01-v3:drip-tray",
-      label: "A deliberately irrelevant friendly label",
-      kind: "part",
-      quantity: 1,
-      bindings: [{
-        provider: "syson",
-        kind: "part-definition",
-        id: "syson-part-definition-drip-tray",
-        label: "Provider label is not used for anchoring",
-        evidenceArtifactId: "cm01-v3-architecture",
-      }],
-    }],
-  };
-
-  const projection = projectThreadWorkbenchSnapshot(canonical, catalog);
-  const change = projection.graph.nodes.find((node) => node.entityKind === "change");
-  assertEquals(change?.affectedComponentId, "cm01-v3:drip-tray");
-
-  catalog.components[0]!.bindings[0]!.kind = "part-usage";
-  const unverifiedAnchor = projectThreadWorkbenchSnapshot(canonical, catalog)
-    .graph.nodes.find((node) => node.entityKind === "change");
-  assertEquals(unverifiedAnchor?.affectedComponentId, undefined);
-});
-
 function componentStructureFixture(): {
   canonical: ThreadSnapshot;
   catalog: ThreadComponentCatalog;
@@ -1053,13 +1003,13 @@ function linkedSnapshot(): ThreadSnapshot {
   const oracle = operation("mcp-syson", "evaluate_requirement", "eval-run-r2");
   return {
     schemaVersion: "1.0",
-    id: "thread-cm01-r2",
+    id: "thread-generic-r2",
     revision: 2,
-    previous: { snapshotId: "thread-cm01-r1", revision: 1 },
+    previous: { snapshotId: "thread-generic-r1", revision: 1 },
     generatedAt: AT,
     subject: {
-      id: "CM-01",
-      name: "Coffee Machine CM-01",
+      id: "GEN-01",
+      name: "Generic Product GEN-01",
       kind: "system",
       version: "2",
       modelArtifactId: "step-r2",

@@ -225,6 +225,20 @@ export interface ReconcileWorkItemWithSuccessorCommand
   readonly rationale: string;
 }
 
+/**
+ * Human-only closeout for legacy work that never reached queueing.  This is
+ * deliberately narrower than reconciliation: it records neither a failed run
+ * nor successor evidence and cannot be used to bypass a provider outcome.
+ */
+export interface SupersedeUnstartedWorkItemCommand
+  extends EngineeringProjectCommandInput {
+  readonly workItemId: string;
+  readonly predecessorDecisionId: string;
+  readonly successorWorkItemId: string;
+  readonly successorDecisionId: string;
+  readonly rationale: string;
+}
+
 export interface PublishProjectPlanCommand extends EngineeringProjectCommandInput {
   readonly startingPoint: EngineeringProjectStartingPoint;
   readonly phases: readonly PlannedEngineeringProjectPhase[];
@@ -379,6 +393,14 @@ export interface EngineeringProjectReconciliationSnapshotValidator {
     successorRunSnapshot: EngineeringThreadSnapshotRef,
     successorSnapshot: EngineeringThreadSnapshotRef,
   ): Promise<void>;
+  /**
+   * Resolve both immutable records and prove that the current project head
+   * descends from the completed successor result without writing a Thread.
+   */
+  validateCurrentHeadDescendsFrom(
+    currentHead: EngineeringThreadSnapshotRef,
+    ancestor: EngineeringThreadSnapshotRef,
+  ): Promise<void>;
 }
 
 /**
@@ -408,6 +430,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
     "agent-run.queue",
     "agent-run.cancel",
     "agent-run.reconcile-annotation",
+    "work-item.supersede-unstarted",
   ],
   agent: [
     "project.plan-publish",
@@ -1341,18 +1364,29 @@ export class EngineeringProjectCommandService {
             command.successorSnapshot,
           );
         } else {
-          // Direct reconciliation: the successor run result is already the
-          // project thread head — no separate closeout snapshot is produced.
+          // Direct reconciliation does not create a synthetic ThreadSnapshot.
+          // The successor result may already be an immutable ancestor of the
+          // current project head (e.g. a later independently published run).
+          // Prove that topology through the injected persistence reader; a
+          // familiar subject/revision is never accepted as a substitute.
+          const currentHead = draft.threadSnapshots.at(-1)!;
           if (
-            !sameSnapshotReference(
-              draft.threadSnapshots.at(-1)!,
-              command.successorRunSnapshot,
-            )
+            currentHead.subjectId !== command.successorRunSnapshot.subjectId ||
+            currentHead.revision < command.successorRunSnapshot.revision
           ) {
             invalidInput(
-              "Direct reconciliation requires the successor run snapshot to be the current project thread head.",
+              "Direct reconciliation requires the current project thread head to be at or after the successor run snapshot.",
             );
           }
+          if (!this.reconciliationSnapshotValidator) {
+            invalidInput(
+              "Direct reconciliation requires an exact persisted thread-lineage validator.",
+            );
+          }
+          await this.reconciliationSnapshotValidator.validateCurrentHeadDescendsFrom(
+            currentHead,
+            command.successorRunSnapshot,
+          );
         }
         const failedWork = findWorkItem(draft, command.failedWorkItemId);
         if (!failedWork) notFound("work item", command.failedWorkItemId);
@@ -1494,6 +1528,129 @@ export class EngineeringProjectCommandService {
             ? { successorSnapshot: structuredClone(command.successorSnapshot) }
             : {}),
           successorEvidenceRefs: structuredClone([...command.successorEvidenceRefs]),
+          rationale: command.rationale,
+        };
+        recomputeWorkReadiness(draft);
+      },
+    );
+  }
+
+  /**
+   * Supersede an unstarted legacy simulation-case seal through an already
+   * approved V2 decision.  It is a human-only project receipt: no run is
+   * created, cancelled or rewritten and no ThreadSnapshot is added.
+   */
+  supersedeUnstartedWorkItem(
+    origin: EngineeringProjectCommandOrigin,
+    command: SupersedeUnstartedWorkItemCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    return this.apply(
+      origin,
+      "work-item.supersede-unstarted",
+      command,
+      (draft, appliedAt) => {
+        nonEmpty(command.workItemId, "workItemId");
+        nonEmpty(command.predecessorDecisionId, "predecessorDecisionId");
+        nonEmpty(command.successorWorkItemId, "successorWorkItemId");
+        nonEmpty(command.successorDecisionId, "successorDecisionId");
+        nonEmpty(command.rationale, "rationale");
+        if (
+          command.workItemId === command.successorWorkItemId ||
+          command.predecessorDecisionId === command.successorDecisionId
+        ) {
+          invalidInput("An unstarted work item cannot supersede itself.");
+        }
+
+        const work = findWorkItem(draft, command.workItemId);
+        const successorWork = findWorkItem(draft, command.successorWorkItemId);
+        const predecessorDecision = findDecision(draft, command.predecessorDecisionId);
+        const successorDecision = findDecision(draft, command.successorDecisionId);
+        if (!work) notFound("work item", command.workItemId);
+        if (!successorWork) {
+          notFound("successor work item", command.successorWorkItemId);
+        }
+        if (!predecessorDecision) {
+          notFound("predecessor decision", command.predecessorDecisionId);
+        }
+        if (!successorDecision) {
+          notFound("successor decision", command.successorDecisionId);
+        }
+        if (
+          work.status !== "waiting-for-decision" || work.evidenceRefs.length !== 0 ||
+          work.reconciliation !== undefined ||
+          draft.agentRuns.some((run) => run.workItemId === work.id)
+        ) {
+          invalidTransition(
+            `Work item ${work.id} must be evidence-free, waiting for decision, and have no run before it can be superseded.`,
+          );
+        }
+        if (
+          predecessorDecision.status !== "proposed" ||
+          !work.decisionIds.includes(predecessorDecision.id) ||
+          !predecessorDecision.proposal || !predecessorDecision.inputFingerprint
+        ) {
+          invalidTransition(
+            `Predecessor decision ${predecessorDecision.id} must be the exact pending decision for ${work.id}.`,
+          );
+        }
+        const pendingApproval = [...predecessorDecision.approvalIds].reverse().map((
+          id,
+        ) => draft.approvals.find((approval) => approval.id === id)).find((approval) =>
+          approval?.status === "pending"
+        );
+        if (!pendingApproval) {
+          invalidTransition(
+            `Predecessor decision ${predecessorDecision.id} has no pending approval to revoke.`,
+          );
+        }
+        if (
+          successorDecision.status !== "approved" ||
+          !successorWork.decisionIds.includes(successorDecision.id) ||
+          !successorDecision.proposal || !successorDecision.inputFingerprint
+        ) {
+          invalidTransition(
+            `Successor decision ${successorDecision.id} must be approved for the unstarted replacement.`,
+          );
+        }
+        if (
+          work.operation?.id !== "simulate.seal-simulation-case" ||
+          work.operation.version !== "1" ||
+          successorWork.operation?.id !== "simulate.seal-simulation-case" ||
+          successorWork.operation.version !== "2" ||
+          deterministicJson(work.operation.bindings) !==
+            deterministicJson(successorWork.operation.bindings)
+        ) {
+          invalidInput(
+            "Unstarted supersession is registered only for identical bindings on simulate.seal-simulation-case@1 to @2.",
+          );
+        }
+        // The V2 successor can only replace the same reviewed product scope.
+        // Exact operation bindings and decision/work phase alignment are both
+        // required; the MRTR records the human judgement about version change.
+        if (
+          predecessorDecision.phaseId !== work.phaseId ||
+          successorDecision.phaseId !== successorWork.phaseId
+        ) {
+          invalidInput(
+            "The unstarted simulation seal transition requires exact decision/work phase alignment.",
+          );
+        }
+
+        pendingApproval.status = "revoked";
+        pendingApproval.decidedAt = appliedAt;
+        pendingApproval.decidedBy = origin.actorId;
+        pendingApproval.decidedByOrigin = origin.kind;
+        pendingApproval.rationale = command.rationale;
+        predecessorDecision.status = "superseded";
+        predecessorDecision.supersededByDecisionId = successorDecision.id;
+        work.status = "cancelled";
+        work.reconciliation = {
+          kind: "superseded-by-successor",
+          reconciledAt: appliedAt,
+          reconciledBy: actor(origin),
+          successorWorkItemId: successorWork.id,
+          predecessorDecisionId: predecessorDecision.id,
+          successorDecisionId: successorDecision.id,
           rationale: command.rationale,
         };
         recomputeWorkReadiness(draft);

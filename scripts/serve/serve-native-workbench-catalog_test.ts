@@ -1,10 +1,9 @@
 /**
- * Tests for `resolveSnapshotComponentCatalog` — the couture that chains the
- * CM-01 projector (subject-ID gated) with the generic architecture projector
- * (URI-prefix gated) inside serve-native-workbench.
+ * Tests for `resolveSnapshotComponentCatalog` — the generic architecture
+ * projector (URI-prefix gated) inside serve-native-workbench.
  *
  * Invariants proved:
- *  - A non-CM01 subject whose snapshot carries a generic architecture artifact
+ *  - A subject whose snapshot carries a generic architecture artifact
  *    (URI prefix "casys://architecture-capture/") receives its component catalog
  *    from the generic projector.
  *  - A snapshot with no matching architecture artifact returns `undefined` from
@@ -242,20 +241,11 @@ function snapshotWithoutArch(): ReturnType<typeof validateThreadSnapshot> {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 Deno.test(
-  "resolveSnapshotComponentCatalog returns a generic catalog for a non-CM01 subject with architecture artifact",
+  "resolveSnapshotComponentCatalog returns a generic catalog for an architecture artifact",
   async () => {
     const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
     const captureText = deterministicJson(captureRecord);
 
-    // CM-01 readers are never called for a non-CM01 subject.
-    const neverRead = {
-      read: (_fp: ContentFingerprint) =>
-        Promise.resolve(undefined as string | undefined),
-    };
-    const cm01Captures = {
-      architecture: neverRead,
-      partDefinitions: neverRead,
-    };
     // Generic reader returns the capture text for this exact fingerprint.
     const archCaptures = {
       read: (fp: ContentFingerprint) =>
@@ -266,7 +256,6 @@ Deno.test(
 
     const catalog = await resolveSnapshotComponentCatalog(
       snapshot,
-      cm01Captures,
       archCaptures,
     );
 
@@ -289,7 +278,7 @@ Deno.test(
   async () => {
     const snapshot = snapshotWithoutArch();
 
-    // Both readers never match — no architecture artifact in the snapshot.
+    // The generic reader never matches — no architecture artifact in the snapshot.
     const neverRead = {
       read: (_fp: ContentFingerprint) =>
         Promise.resolve(undefined as string | undefined),
@@ -297,14 +286,13 @@ Deno.test(
 
     const catalog = await resolveSnapshotComponentCatalog(
       snapshot,
-      { architecture: neverRead, partDefinitions: neverRead },
       neverRead,
     );
 
     assertEquals(
       catalog,
       undefined,
-      "no architecture artifact → both projectors return undefined",
+      "no architecture artifact → generic projector returns undefined",
     );
   },
 );
@@ -332,12 +320,8 @@ Deno.test(
       freshness: freshness(),
     });
     let geometryReads = 0;
-    const neverRead = {
-      read: (_fp: ContentFingerprint) => Promise.resolve(undefined),
-    };
     const catalog = await resolveSnapshotComponentCatalog(
       withGeometry,
-      { architecture: neverRead, partDefinitions: neverRead },
       {
         read: (fp: ContentFingerprint) =>
           fp.digest === captureFp.digest

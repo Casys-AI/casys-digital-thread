@@ -2,15 +2,15 @@
 
 > **Diátaxis category: reference.** This page describes the reviewed component catalog
 > implemented in
-> [`src/domain/thread-component-catalog.ts`](../../src/domain/thread-component-catalog.ts).
+> [`src/domain/thread/thread-component-catalog.ts`](../../src/domain/thread/thread-component-catalog.ts).
 
 A `ThreadComponentCatalog` gives one physical component a stable Workbench identity
 while preserving each provider's native identity. It is the navigation boundary used by
 the **Parts** workspace; it is not a name-matching service and it creates no causal edge
 in `ThreadSnapshot`.
 
-The current schema is `thread-components/1.0`. The CM-01 declaration is
-[`coffee-machine-cm01.components.json`](../../config/thread-subjects/coffee-machine-cm01.components.json).
+The current schema is `thread-components/1.0`. Catalogues are project-specific reviewed
+inputs; none is inferred from archived evidence or used as a Workbench fallback.
 
 ## Authority and evidence
 
@@ -33,14 +33,6 @@ IDs, unknown parents, and parent cycles are rejected.
 The declaration relates identities; it does not assert that SysON caused an ERP row or
 that CAD satisfies a requirement. Those claims still require typed canonical provenance,
 consumption attestation, and model-owned evaluation.
-
-## Current CM-01 structure
-
-The catalog contains one root assembly and ten child components. Each has an exact SysON
-`PartUsage`, ERPNext `Item`, and build123d assembly identity. The ERP evidence is the
-persisted full result of `erpnext_bom_get` for `BOM-CASYS-CM01-001`; the BOM-list header
-is not used as component proof. Child CAD bindings use the explicit `assembly-child`
-identity kind and point to the canonical whole-machine STEP evidence.
 
 ## System views and presentation assets
 

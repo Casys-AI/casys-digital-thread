@@ -108,11 +108,11 @@ export async function materializeAttestedMechanicalRun(
 
   return validateThreadSnapshot({
     schemaVersion: "1.0",
-    id: `coffee-machine-support-${stamp}`,
+    id: `attested-support-${stamp}`,
     revision: 1,
     generatedAt: capture.capturedAt,
     subject: {
-      id: "coffee-machine-support-bracket",
+      id: "attested-support-bracket",
       name: capture.subject,
       kind: "part",
       version: capture.cad.artifact.sha256.slice(0, 12),
@@ -137,7 +137,7 @@ export async function materializeAttestedMechanicalRun(
     artifacts: [
       {
         id: stepId,
-        name: "CoffeeMachine support bracket STEP",
+        name: "Generic product support bracket STEP",
         kind: "step",
         version: capture.cad.artifact.sha256.slice(0, 12),
         fingerprint: stepFingerprint,
@@ -243,7 +243,7 @@ export async function materializeAttestedMechanicalRun(
       addressesViolationIds: [],
       dependsOnActionIds: [],
       blockedReason:
-        "No mechanical ConstraintUsage with an approved limit is present in the CoffeeMachine model.",
+        "No mechanical ConstraintUsage with an approved limit is present in the generic product model.",
     }],
   });
 }

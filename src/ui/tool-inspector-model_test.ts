@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   graphNodeForSelection,
   resolveSelectedGraphEdge,
@@ -12,7 +12,7 @@ import type { ThreadGraphNode, ThreadWorkbenchSnapshot } from "./src/thread/type
 Deno.test("graph action keeps its own provider while exposing its richer record", () => {
   const node = graphNode("action", "ACT-INSPECT");
 
-  const context = resolveToolInspectorContext(COFFEE_MACHINE_THREAD_FIXTURE, {
+  const context = resolveToolInspectorContext(GENERIC_THREAD_FIXTURE, {
     node,
     record: node.selection,
   });
@@ -31,7 +31,7 @@ Deno.test("graph action keeps its own provider while exposing its richer record"
 
 Deno.test("graph-only consumption derives context from recorded neighbours", () => {
   const snapshot: ThreadWorkbenchSnapshot = structuredClone(
-    COFFEE_MACHINE_THREAD_FIXTURE,
+    GENERIC_THREAD_FIXTURE,
   );
   const node: ThreadGraphNode = {
     id: "graph:consumption:consume-step",
@@ -82,7 +82,7 @@ Deno.test("graph-only consumption derives context from recorded neighbours", () 
 Deno.test("graph node system owns model records without relying on flow aliases", () => {
   const node = graphNode("requirement", "REQ-MECH-014");
 
-  const context = resolveToolInspectorContext(COFFEE_MACHINE_THREAD_FIXTURE, {
+  const context = resolveToolInspectorContext(GENERIC_THREAD_FIXTURE, {
     node,
     record: node.selection,
   });
@@ -93,7 +93,7 @@ Deno.test("graph node system owns model records without relying on flow aliases"
 
 Deno.test("SysON facet inventory adds graph-only parts without counting artifact aliases twice", () => {
   const snapshot: ThreadWorkbenchSnapshot = structuredClone(
-    COFFEE_MACHINE_THREAD_FIXTURE,
+    GENERIC_THREAD_FIXTURE,
   );
   const duplicateModelStage = snapshot.flow.find((stage) =>
     stage.selection.kind === "artifact" &&
@@ -106,13 +106,13 @@ Deno.test("SysON facet inventory adds graph-only parts without counting artifact
   });
   snapshot.graph.nodes.push(
     {
-      id: "graph:part-definition:def-coffee-machine",
-      ref: { kind: "part-definition", id: "def-coffee-machine" },
+      id: "graph:part-definition:def-generic-product",
+      ref: { kind: "part-definition", id: "def-generic-product" },
       entityKind: "part-definition",
-      label: "CoffeeMachine",
+      label: "GenericAssembly",
       system: "syson",
       freshness: "fresh",
-      summary: "PartDefinition · def-coffee-machine",
+      summary: "PartDefinition · def-generic-product",
       selection: { kind: "artifact", id: "ART-SYSML-018" },
     },
     {
@@ -146,7 +146,7 @@ Deno.test("SysON facet inventory adds graph-only parts without counting artifact
   assertEquals(
     inventory.graphOnlyNodes.map((node) => node.ref),
     [
-      { kind: "part-definition", id: "def-coffee-machine" },
+      { kind: "part-definition", id: "def-generic-product" },
       { kind: "part-usage", id: "usage-drip-tray" },
     ],
   );
@@ -155,16 +155,16 @@ Deno.test("SysON facet inventory adds graph-only parts without counting artifact
 
 Deno.test("a graph-only SysML selection lists the structure and exposes its model artifact once", () => {
   const snapshot: ThreadWorkbenchSnapshot = structuredClone(
-    COFFEE_MACHINE_THREAD_FIXTURE,
+    GENERIC_THREAD_FIXTURE,
   );
   const definition: ThreadGraphNode = {
-    id: "graph:part-definition:def-coffee-machine",
-    ref: { kind: "part-definition", id: "def-coffee-machine" },
+    id: "graph:part-definition:def-generic-product",
+    ref: { kind: "part-definition", id: "def-generic-product" },
     entityKind: "part-definition",
-    label: "CoffeeMachine",
+    label: "GenericAssembly",
     system: "syson",
     freshness: "fresh",
-    summary: "PartDefinition · def-coffee-machine",
+    summary: "PartDefinition · def-generic-product",
     selection: { kind: "artifact", id: "ART-SYSML-018" },
   };
   const usage: ThreadGraphNode = {
@@ -206,7 +206,7 @@ Deno.test("a graph-only SysML selection lists the structure and exposes its mode
   assertEquals(
     context.graphOnlyNodes.map((node) => node.ref),
     [
-      { kind: "part-definition", id: "def-coffee-machine" },
+      { kind: "part-definition", id: "def-generic-product" },
       { kind: "part-usage", id: "usage-drip-tray" },
     ],
   );
@@ -223,7 +223,7 @@ Deno.test("a graph-only SysML selection lists the structure and exposes its mode
 
 Deno.test("edge routing does not leak the previous record into its handoff panel", () => {
   const target = resolveToolInspectorTarget(
-    COFFEE_MACHINE_THREAD_FIXTURE,
+    GENERIC_THREAD_FIXTURE,
     { kind: "edge", id: "fixture:input:step:fea" },
     { kind: "artifact", id: "ART-CAD-018" },
   );
@@ -233,7 +233,7 @@ Deno.test("edge routing does not leak the previous record into its handoff panel
 
 Deno.test("edge occurrence selection opens the second relation with a duplicate domain id", () => {
   const snapshot: ThreadWorkbenchSnapshot = structuredClone(
-    COFFEE_MACHINE_THREAD_FIXTURE,
+    GENERIC_THREAD_FIXTURE,
   );
   const first = {
     id: "duplicate-handoff",
@@ -262,7 +262,7 @@ Deno.test("edge occurrence selection opens the second relation with a duplicate 
 
 Deno.test("id-only edge selection refuses an ambiguous duplicate relation", () => {
   const snapshot: ThreadWorkbenchSnapshot = structuredClone(
-    COFFEE_MACHINE_THREAD_FIXTURE,
+    GENERIC_THREAD_FIXTURE,
   );
   const first = {
     id: "duplicate-handoff",
@@ -294,7 +294,7 @@ Deno.test(
     // reaching the component). The downstream sameRef() call crashed on
     // undefined.kind. After the fix, a valid ref simply absent from the current
     // graph projection must return undefined without throwing.
-    const result = graphNodeForSelection(COFFEE_MACHINE_THREAD_FIXTURE, {
+    const result = graphNodeForSelection(GENERIC_THREAD_FIXTURE, {
       kind: "artifact",
       id: "ART-NOT-IN-GRAPH",
     });
@@ -308,7 +308,7 @@ Deno.test(
   () => {
     // REQ-MECH-014 has exactly one graph node whose selection is this ref.
     const ref = { kind: "requirement" as const, id: "REQ-MECH-014" };
-    const result = graphNodeForSelection(COFFEE_MACHINE_THREAD_FIXTURE, ref);
+    const result = graphNodeForSelection(GENERIC_THREAD_FIXTURE, ref);
 
     assertEquals(result?.selection, ref);
   },
@@ -317,7 +317,7 @@ Deno.test(
 Deno.test(
   "graphNodeForSelection prefers the exact evidence node over SysML aliases sharing its selection",
   () => {
-    const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+    const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
     const artifactRef = { kind: "artifact" as const, id: "ART-CAD-018" };
     snapshot.graph.nodes.push({
       id: "graph:part-definition:def-bracket",
@@ -349,7 +349,7 @@ function graphNode(
   kind: ThreadGraphNode["ref"]["kind"],
   id: string,
 ): ThreadGraphNode {
-  const node = COFFEE_MACHINE_THREAD_FIXTURE.graph.nodes.find((candidate) =>
+  const node = GENERIC_THREAD_FIXTURE.graph.nodes.find((candidate) =>
     candidate.ref.kind === kind && candidate.ref.id === id
   );
   if (!node) throw new Error(`fixture graph node ${kind}:${id} not found`);

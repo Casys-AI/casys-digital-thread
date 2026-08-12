@@ -7,75 +7,52 @@ import {
 } from "./mechanical-proof-case.ts";
 
 const CONFIG_URL = new URL(
-  "../../../config/mechanical-proof-cases/coffee-machine-cm01-drip-tray-v1.json",
+  "../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
   import.meta.url,
 );
 const CONFIG_TEXT = await Deno.readTextFile(CONFIG_URL);
-const PROJECT = JSON.parse(
-  await Deno.readTextFile(
-    new URL(
-      "../../../config/projects/coffee-machine-cm01.project.json",
-      import.meta.url,
-    ),
-  ),
-) as Record<string, unknown>;
-const BASE_SNAPSHOT = JSON.parse(
-  await Deno.readTextFile(
-    new URL(
-      "../../../config/projects/baselines/coffee-machine-cm01.r5.thread-snapshot.json",
-      import.meta.url,
-    ),
-  ),
-) as Record<string, unknown>;
-const BUILD_DECLARATION = JSON.parse(
-  await Deno.readTextFile(
-    new URL(
-      "../../../config/thread-subjects/coffee-machine-cm01.build.json",
-      import.meta.url,
-    ),
-  ),
-) as Record<string, unknown>;
 
-Deno.test("CM-01 is one strict immutable mechanical proof declaration", () => {
+Deno.test("DL-04 is one strict immutable mechanical proof declaration", () => {
   const proofCase = validateMechanicalProofCase(caseInput());
 
   assertEquals(proofCase.schemaVersion, "mechanical-proof-case/1.0");
-  assertEquals(proofCase.project.id, "coffee-machine-cm01");
-  assertEquals(proofCase.project.subjectId, "coffee-machine-cm01");
+  assertEquals(proofCase.project.id, "desk-lamp-dl04");
+  assertEquals(proofCase.project.subjectId, "project:desk-lamp-dl04");
   assertEquals(
     proofCase.target.modelElementId,
-    "ea6cdc62-4e96-4485-8e8a-e5aa2cfaf7b9",
+    "b37e42b6-5faf-4c87-8704-f695568c08e8",
   );
   assertEquals(proofCase.expectedCadArtifact, {
     format: "step",
-    sha256: "ea061880c9efc043fa0ad8475594a12c447481723e4e46dfdd7dc62a8dca3c84",
-    bytes: 15490,
+    sha256: "c2f04aa6660caad85bc1a179d64ab2f68cd966781a2646a5c8e8be308fbe187f",
+    bytes: 22319,
   });
   assertEquals(proofCase.cadSource.kind, "parametric");
   if (proofCase.cadSource.kind !== "parametric") {
-    throw new Error("CM-01 must use its attested parametric definition.");
+    throw new Error("DL-04 must use its attested parametric definition.");
   }
   assertEquals(proofCase.cadSource.generator.definition, {
     mediaType: "text/x-python",
-    sha256: "d8926529fb20625cb5834703324c7dc8f24fe3bbf518829b7d34e3c09a19725e",
-    bytes: 110,
+    sha256: "4dc8adbc9ae879ddfdf851fe8d856417e55ab5ae9191decd3384d234f729625e",
+    bytes: 285,
   });
   assertEquals(proofCase.cadSource.engineeringBoundary, {
     designIntent: "partial",
     editableCad: "absent",
     manufacturability: "not-established",
     limitations: [
-      "The proof geometry is one isolated parametric box, not the editable CM-01 product CAD model.",
-      "The declaration contains no tolerances, interfaces, manufacturing features or fabrication process evidence.",
+      "The proof geometry is the isolated ArticulatedArm PartDefinition, not the assembled lamp.",
+      "The joint between the arm root and the weighted base is not modelled; the root is treated as fully fixed.",
+      "The declaration carries no tolerances, interfaces, manufacturing features or process evidence.",
     ],
   });
   assertEquals(proofCase.analysis.material.youngModulus, {
-    value: 2200,
+    value: 69000,
     unit: "MPa",
   });
   assertEquals(proofCase.analysis.mesh.targetSize, { value: 5, unit: "mm" });
   assertEquals(proofCase.analysis.loads[0].force, {
-    value: [0, 0, -100],
+    value: [0, 0, -4.903325],
     unit: "N",
   });
   assertEquals(
@@ -84,8 +61,8 @@ Deno.test("CM-01 is one strict immutable mechanical proof declaration", () => {
       requirement.limit,
     ]),
     [
-      ["maximum-displacement", { value: 1, unit: "mm" }],
-      ["maximum-von-mises-stress", { value: 20_000_000, unit: "Pa" }],
+      ["maximum-displacement", { value: 5, unit: "mm" }],
+      ["maximum-von-mises-stress", { value: 90_000_000, unit: "Pa" }],
     ],
   );
   assertEquals(Object.isFrozen(proofCase), true);
@@ -114,7 +91,7 @@ Deno.test("declaration identity binding matches only project, target, snapshot a
     },
     {
       path: "$binding.baseThreadSnapshot.revision",
-      mutate: (value) => object(value.baseThreadSnapshot).revision = 6,
+      mutate: (value) => object(value.baseThreadSnapshot).revision = 7,
     },
     {
       path: "$binding.targetModelElementId",
@@ -131,7 +108,7 @@ Deno.test("declaration identity binding matches only project, target, snapshot a
     },
     {
       path: "$binding.cadArtifact.bytes",
-      mutate: (value) => object(value.cadArtifact).bytes = 15491,
+      mutate: (value) => object(value.cadArtifact).bytes = 22320,
     },
   ];
 
@@ -144,35 +121,6 @@ Deno.test("declaration identity binding matches only project, target, snapshot a
       `${mismatch.path} does not match`,
     );
   }
-});
-
-Deno.test("CM-01 identities resolve to the tracked project, base snapshot and PartUsage", () => {
-  const proofCase = validateMechanicalProofCase(caseInput());
-  const projectIdentity = object(PROJECT.project);
-  assertEquals(projectIdentity.id, proofCase.project.id);
-  assertEquals(projectIdentity.subjectId, proofCase.project.subjectId);
-  assertEquals(BASE_SNAPSHOT.id, proofCase.project.baseThreadSnapshot.id);
-  assertEquals(BASE_SNAPSHOT.revision, proofCase.project.baseThreadSnapshot.revision);
-  assertEquals(
-    object(BASE_SNAPSHOT.subject).id,
-    proofCase.project.baseThreadSnapshot.subjectId,
-  );
-  const component = array(BUILD_DECLARATION.components).map(object).find((item) =>
-    item.id === proofCase.target.id
-  );
-  assertEquals(component?.partUsageId, proofCase.target.modelElementId);
-  assertEquals(
-    array(PROJECT.workItems).map(object).some((item) =>
-      item.id === proofCase.authorization.workItemId
-    ),
-    true,
-  );
-  assertEquals(
-    array(PROJECT.decisions).map(object).some((item) =>
-      item.id === proofCase.authorization.decisionId
-    ),
-    true,
-  );
 });
 
 Deno.test("mechanical proof declaration rejects legacy schemas and undeclared fields", () => {
@@ -279,7 +227,7 @@ Deno.test("mechanical proof declaration rejects inferred or invalid physical inp
   assertThrows(
     () => validateMechanicalProofCase(overlappingSelections),
     Error,
-    "support rear-face-fixed and load front-face-downward-force selection boxes must not overlap",
+    "support arm-root-fixed and load head-mass-at-tip selection boxes must not overlap",
   );
 });
 
@@ -390,16 +338,16 @@ function importedCadSource(): Record<string, unknown> {
     kind: "imported-or-reconstructed",
     method: "reverse-engineering",
     sources: [{
-      id: "vendor-drip-tray-scan",
-      name: "Vendor drip-tray reference mesh",
+      id: "vendor-arm-scan",
+      name: "Vendor arm reference mesh",
       format: "stl",
       sha256: "c".repeat(64),
       bytes: 98765,
-      sourceUri: "casys://supplier-evidence/drip-tray-reference.stl",
+      sourceUri: "casys://supplier-evidence/arm-reference.stl",
     }],
     license: {
       identifier: "LicenseRef-CASYS-Supplier-Evaluation",
-      evidenceUri: "casys://supplier-evidence/drip-tray-license.txt",
+      evidenceUri: "casys://supplier-evidence/arm-license.txt",
     },
     conversion: {
       tool: "surface-reconstruction",

@@ -5,20 +5,26 @@ import {
   OrderedEngineeringAssetReader,
 } from "./engineering-asset-resolver.ts";
 
-const ASSET = "coffee-machine-8208d581f067.stl";
-const EXPECTED_SHA256 =
-  "8208d581f06796b4e6b6c5f6f6dc4e3785245c251b355859d31ea69445ccaf7e";
+const ASSET = "generic-bracket.stl";
 
-Deno.test("checked-in presentation baseline decodes to the exact observed STL", async () => {
-  const reader = new Base64EngineeringAssetReader(
-    "config/projects/baselines/assets",
-  );
+Deno.test("base64 asset reader decodes the exact bytes from its configured directory", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "engineering-asset-reader-" });
+  try {
+    const expected = new TextEncoder().encode(
+      "solid generic-bracket\nendsolid generic-bracket\n",
+    );
+    await Deno.writeTextFile(
+      `${directory}/${ASSET}.base64`,
+      `${expected.toBase64()}\n`,
+    );
+    const reader = new Base64EngineeringAssetReader(directory);
 
-  const bytes = await reader.read(ASSET);
+    const bytes = await reader.read(ASSET);
 
-  if (!bytes) throw new Error("Versioned STL baseline is missing.");
-  assertEquals(bytes.byteLength, 56_284);
-  assertEquals(await sha256(bytes), EXPECTED_SHA256);
+    assertEquals(bytes, expected);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
 });
 
 Deno.test("engineering asset resolution gives active bytes priority", async () => {
@@ -31,13 +37,11 @@ Deno.test("engineering asset resolution gives active bytes priority", async () =
 });
 
 Deno.test("engineering asset resolution does not substitute another filename", async () => {
-  const reader = new Base64EngineeringAssetReader(
-    "config/projects/baselines/assets",
-  );
+  const reader = new Base64EngineeringAssetReader("unused-test-assets");
 
   assertEquals(await reader.read("another-model.stl"), undefined);
   await assertRejects(
-    () => reader.read("../coffee-machine-8208d581f067.stl"),
+    () => reader.read(`../${ASSET}`),
     TypeError,
     "not safe",
   );
@@ -49,13 +53,4 @@ class MemoryAssetReader implements EngineeringAssetReader {
   read(): Promise<Uint8Array | undefined> {
     return Promise.resolve(this.bytes);
   }
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    Uint8Array.from(bytes).buffer,
-  );
-  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
 }

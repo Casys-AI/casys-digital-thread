@@ -243,11 +243,11 @@ function buildOutcomes(
   reqs: MechanicalRequirement[],
 ): ReadonlyMap<
   string,
-  import("./cm01-drip-tray-mechanical-oracle.ts").ParsedOracleResult
+  import("./syson-constraint-oracle-outcome.ts").ParsedOracleResult
 > {
   const map = new Map<
     string,
-    import("./cm01-drip-tray-mechanical-oracle.ts").ParsedOracleResult
+    import("./syson-constraint-oracle-outcome.ts").ParsedOracleResult
   >();
   for (let i = 0; i < reqs.length; i++) {
     const entry = statuses[i]!;
@@ -450,7 +450,7 @@ Deno.test(
     // Outcomes map is empty — no matching id.
     const emptyOutcomes = new Map<
       string,
-      import("./cm01-drip-tray-mechanical-oracle.ts").ParsedOracleResult
+      import("./syson-constraint-oracle-outcome.ts").ParsedOracleResult
     >();
     assertThrows(
       () =>

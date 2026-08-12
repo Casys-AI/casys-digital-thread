@@ -22,10 +22,7 @@ import {
   FileCockpitFocusStore,
 } from "../../src/adapters/stores/file-cockpit-focus-store.ts";
 import {
-  APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
-  CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
-  COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -38,8 +35,6 @@ import {
   type SysmlSourceAnalysisReader,
 } from "../../src/adapters/captures/sysml-source-analysis-capture.ts";
 import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/captures/geometry-draft-capture.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../../src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
@@ -53,7 +48,6 @@ import {
   OrderedExactThreadSnapshotReader,
 } from "../../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../../src/adapters/stores/thread-snapshot-lineage.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../src/orchestration/operations/registry.ts";
 import {
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
@@ -78,10 +72,6 @@ import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../../src/domain/thread/thread-component-catalog.ts";
-import type {
-  Cm01V3ProductStructureCaptureReaders,
-} from "../../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
-import { resolveCoffeeMachineCm01V3ProductStructureCatalog } from "../../src/adapters/projectors/cm01-v3-product-structure-catalog.ts";
 import { resolveInspectionDroneV4ProductStructureCatalog } from "../../src/adapters/projectors/inspection-drone-v4-product-structure-catalog.ts";
 import type {
   GenericArchitectureCaptureReader,
@@ -89,35 +79,25 @@ import type {
 import { resolveGenericProductStructureCatalog } from "../../src/adapters/projectors/product-structure-catalog.ts";
 import type { GenericGeometryCaptureReader } from "../../src/adapters/projectors/geometry-bundle-product-catalog.ts";
 
-// ── Catalog resolution: CM-01 first, then generic fallback ───────────────────
+// ── Catalog resolution: generic active-project projection ────────────────────
 
 /**
- * Resolve a snapshot-bound component catalog using the known product projectors.
- *
- * CM-01 is tried first (subject-ID guard makes it a no-op for other projects).
- * When it returns `undefined`, the generic architecture projector runs as a
- * fallback: it resolves any subject whose thread carries an artifact written by
- * `model.write-architecture@1`.
+ * Resolve a snapshot-bound component catalog from generic, exact architecture
+ * evidence. Archived golden projects do not participate in the active BFF.
  *
  * Exported so it can be unit-tested without an HTTP layer.
  */
 export async function resolveSnapshotComponentCatalog(
   snapshot: ThreadSnapshot,
-  cm01Captures: Cm01V3ProductStructureCaptureReaders,
   archCaptures: GenericArchitectureCaptureReader,
   geometryCaptures?: GenericGeometryCaptureReader,
   sysmlSourceAnalysis?: SysmlSourceAnalysisReader,
 ): Promise<ThreadComponentCatalog | undefined> {
-  return (
-    await resolveCoffeeMachineCm01V3ProductStructureCatalog(
-      snapshot,
-      cm01Captures,
-    ) ?? await resolveGenericProductStructureCatalog(
-      snapshot,
-      archCaptures,
-      geometryCaptures,
-      sysmlSourceAnalysis,
-    )
+  return await resolveGenericProductStructureCatalog(
+    snapshot,
+    archCaptures,
+    geometryCaptures,
+    sysmlSourceAnalysis,
   );
 }
 
@@ -125,7 +105,7 @@ export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
   /** Read-side capability only; project commands stay in the paired MCP. */
   projectStore: Pick<EngineeringProjectRevisionStore, "get">;
-  /** EngineeringProject identity; defaults to subjectId only for CM-01 compatibility. */
+  /** EngineeringProject identity; never inferred from a thread subject. */
   projectId?: string;
   /** Agent-selected durable target. The BFF reads it, never mutates it. */
   cockpitFocus?: CockpitFocusStore;
@@ -167,23 +147,21 @@ export interface NativeWorkbenchHandlerOptions {
 }
 
 /**
- * CM-01 remains the no-argument preview, but a caller that names a project
- * must not also have to know the project's internal thread-subject identity.
+ * A caller that names a project does not also have to know the project's
+ * internal thread-subject identity.
  */
-export const NATIVE_WORKBENCH_LEGACY_PROJECT_ID = "coffee-machine-cm01";
-
 export function resolveNativeWorkbenchProjectId(
   explicitProjectId: string | undefined,
-  explicitSubjectId: string | undefined,
-): string {
-  return explicitProjectId ?? explicitSubjectId ??
-    NATIVE_WORKBENCH_LEGACY_PROJECT_ID;
+  _explicitSubjectId: string | undefined,
+): string | undefined {
+  return explicitProjectId;
 }
 
 export interface NativeWorkbenchStartupTarget {
   readonly hostname: string;
   readonly port: number;
-  readonly noSeed: boolean;
+  /** Kept for CLI compatibility; the native Workbench is always read-only. */
+  readonly noSeed: true;
   readonly workspaceId?: string;
   readonly projectId?: string;
   readonly explicitSubjectId?: string;
@@ -192,9 +170,9 @@ export interface NativeWorkbenchStartupTarget {
 /**
  * Resolve the BFF's startup target without touching project state.
  *
- * The historical fixed preview still defaults to CM-01 and seeds its active
- * revision when absent. A focused `--no-seed` cockpit instead waits for the
- * MCP-owned durable focus and therefore has no static project/subject fallback.
+ * The Workbench is read-only. It requires an explicit fixed target or a
+ * durable cockpit focus; it never substitutes a bootstrap project or seeds a
+ * project revision.
  */
 export function resolveNativeWorkbenchStartupTarget(
   cliArgs: Readonly<Record<string, string | undefined>>,
@@ -205,24 +183,28 @@ export function resolveNativeWorkbenchStartupTarget(
       "--host must be an explicit loopback hostname (127.0.0.1, localhost, or ::1).",
     );
   }
-  const noSeed = booleanFlag("no-seed", cliArgs);
+  // Preserve strict validation of the legacy flag while keeping startup
+  // read-only regardless of whether callers include it.
+  booleanFlag("no-seed", cliArgs);
   const workspaceId = cliArgs["workspace-id"];
   const explicitProjectId = cliArgs["project-id"];
   const explicitSubjectId = cliArgs["subject"];
+  if (explicitSubjectId !== undefined && explicitProjectId === undefined) {
+    throw new TypeError("--subject requires --project-id.");
+  }
   if (
-    noSeed && workspaceId === undefined && explicitProjectId === undefined &&
-    explicitSubjectId === undefined
+    workspaceId === undefined && explicitProjectId === undefined
   ) {
     throw new TypeError(
-      "--no-seed requires --workspace-id, --project-id, or --subject.",
+      "--workspace-id or --project-id is required; no bootstrap project is configured.",
     );
   }
-  const focusOnly = noSeed && workspaceId !== undefined &&
+  const focusOnly = workspaceId !== undefined &&
     explicitProjectId === undefined && explicitSubjectId === undefined;
   return {
     hostname,
     port: integerArgument("port", cliArgs) ?? 5173,
-    noSeed,
+    noSeed: true,
     workspaceId,
     projectId: focusOnly ? undefined : resolveNativeWorkbenchProjectId(
       explicitProjectId,
@@ -987,16 +969,12 @@ if (import.meta.main) {
   const {
     explicitSubjectId,
     hostname,
-    noSeed,
     port,
     projectId,
     workspaceId,
   } = startup;
   const snapshotDirectory = cliArgs["snapshot-dir"] ??
     "state/local/thread-snapshots";
-  const projectPath = projectId === undefined
-    ? undefined
-    : cliArgs["project"] ?? `config/projects/${projectId}.project.json`;
   const activeProjectDirectory = cliArgs["active-project-dir"] ??
     "state/local/engineering-projects";
   const projectBaselineDirectory = cliArgs["project-baseline-dir"] ??
@@ -1013,13 +991,6 @@ if (import.meta.main) {
   const reviewIntentMcpUrl = cliArgs["review-intent-mcp-url"] ??
     "http://127.0.0.1:3020/mcp";
   const focusDirectory = cliArgs["focus-dir"] ?? "state/local/cockpit-focus";
-  const approvedBriefCaptureDirectory = cliArgs["approved-brief-capture-dir"] ??
-    "state/local/approved-brief-captures";
-  const cm01ArchitectureCaptureDirectory = cliArgs["cm01-architecture-capture-dir"] ??
-    "state/local/coffee-machine-cm01-v3-architecture-captures";
-  const cm01PartDefinitionsCaptureDirectory =
-    cliArgs["cm01-part-definitions-capture-dir"] ??
-      "state/local/cm01-part-definitions-captures";
   const inspectionDroneV4PartDefinitionsCaptureDirectory =
     cliArgs["inspection-drone-v4-part-definitions-capture-dir"] ??
       "state/local/inspection-drone-v4-part-definitions-captures";
@@ -1036,18 +1007,6 @@ if (import.meta.main) {
   const cockpitFocus = workspaceId
     ? new FileCockpitFocusStore(focusDirectory)
     : undefined;
-  const captures = new FileCaptureStore({
-    ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
-    directory: approvedBriefCaptureDirectory,
-  });
-  const cm01ArchitectureCaptures = new FileCaptureStore({
-    ...COFFEE_MACHINE_CM01_V3_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-    directory: cm01ArchitectureCaptureDirectory,
-  });
-  const cm01PartDefinitionsCaptures = new FileCaptureStore({
-    ...CM01_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
-    directory: cm01PartDefinitionsCaptureDirectory,
-  });
   const inspectionDroneV4PartDefinitionsCaptures = new FileCaptureStore({
     ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
     directory: inspectionDroneV4PartDefinitionsCaptureDirectory,
@@ -1076,31 +1035,10 @@ if (import.meta.main) {
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: geometryCaptureDirectory,
   });
-  let projectStore: EngineeringProjectRevisionStore;
-  if (noSeed) {
-    // The paired MCP owns all project commands and initialisation. The cockpit
-    // opens the same immutable revisions directly and never seeds a fallback.
-    projectStore = new FileEngineeringProjectRevisionStore(
-      activeProjectDirectory,
-    );
-  } else {
-    if (projectId === undefined || projectPath === undefined) {
-      throw new Error("Seeded Workbench startup requires a fixed project.");
-    }
-    projectStore = (await createEngineeringProjectCommandRuntime({
-      projectId,
-      trackedManifestPath: projectPath,
-      activeDirectory: activeProjectDirectory,
-      evidenceSnapshots: projectSnapshots,
-      planning: {
-        operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
-      },
-      initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
-        store,
-        captures,
-      ),
-    })).projects;
-  }
+  // The paired MCP owns all project commands and initialisation. The cockpit
+  // reads existing immutable revisions and never seeds a fallback.
+  const projectStore: EngineeringProjectRevisionStore =
+    new FileEngineeringProjectRevisionStore(activeProjectDirectory);
   const subjectId = projectId === undefined
     ? undefined
     : await resolveNativeWorkbenchSubjectId(
@@ -1150,10 +1088,6 @@ if (import.meta.main) {
         },
       ) ?? await resolveSnapshotComponentCatalog(
         snapshot,
-        {
-          architecture: cm01ArchitectureCaptures,
-          partDefinitions: cm01PartDefinitionsCaptures,
-        },
         archCaptures,
         geometryCaptures,
         sysmlSourceAnalysis,
@@ -1203,9 +1137,6 @@ if (import.meta.main) {
           ? "Engineering project id: selected by durable cockpit focus"
           : `Engineering project id: ${projectId}`,
       );
-      if (projectPath !== undefined) {
-        console.log(`Engineering project: ${projectPath}`);
-      }
       console.log(`Active project revisions: ${activeProjectDirectory}`);
       console.log(`Versioned project baselines: ${projectBaselineDirectory}`);
       console.log(
@@ -1222,13 +1153,8 @@ if (import.meta.main) {
       if (workspaceId) {
         console.log(`Agent-selected cockpit workspace: ${workspaceId}`);
       }
-      if (noSeed) {
-        console.log(
-          "Project state: read-only active revisions (no fallback seeding)",
-        );
-      }
       console.log(
-        `Documentary baseline captures: ${approvedBriefCaptureDirectory}`,
+        "Project state: read-only active revisions (no fallback seeding)",
       );
       console.log(
         "Workbench review intents are durable but non-authoritative: project commands and signed human decisions remain in the paired MCP flow.",
@@ -1353,7 +1279,7 @@ function cockpitFocusUnavailable(
 }
 
 function configuredProjectId(options: NativeWorkbenchHandlerOptions): string {
-  const projectId = options.projectId ?? options.subjectId;
+  const projectId = options.projectId;
   if (projectId === undefined) {
     throw new Error(
       "Native Workbench requires a durable cockpit focus or a fixed project.",

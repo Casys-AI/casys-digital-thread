@@ -34,9 +34,30 @@ size, non-empty fixed supports and force loads, and exactly the displacement and
 Mises upper-bound criteria. Support and load selection boxes are closed and must not
 overlap; touching faces or edges are rejected because they may select shared entities.
 
-`elementOrder` is deliberately absent. The current CM-01 runner does not carry an
-element order into the reviewed effective arguments, so the declaration rejects that
+`elementOrder` is deliberately absent. The registered generic proof route does not carry
+an element order into its reviewed effective arguments, so the declaration rejects that
 field rather than recording a value the workflow cannot enforce.
+
+## Two distinct authorities: seal, then execution
+
+The `authorization` object carried by a `mechanical-proof-case/1.0` is the **historical
+seal authorization** only. Its `workItemId` and `decisionId` identify the human-reviewed
+`verify.seal-proof-case@1` work that turned the declaration into a sealed thread
+artifact. It establishes neither a queued solver run nor permission to execute one.
+
+`verify.run-fea-static-proof@2` has a separate **execution admission**: its own work
+item, exact run basis, server-sealed `resolved-operation-plan/2.0`, and its own MRTR
+approval. The plan binds the sealed proof and geometry artifacts as inputs; it does not
+copy or reinterpret the old seal decision. The two decisions are expected to have
+different IDs and may occur in different project revisions. Equality between a proof
+case's seal references and the `@2` run's admission references is therefore a rejection
+of a valid two-stage history, not a safety check.
+
+Both stages remain fail-closed. The seal is accepted only when its declared work,
+decision, approved brief binding, completed trusted run, sealing timestamp and resulting
+artifact can be verified from immutable project and thread history. The execution is
+accepted only when the new plan, run MRTR, exact basis and bound artifacts independently
+verify. Neither successful seal nor queued execution is a CalculiX result.
 
 ## Limited identity binding
 
@@ -50,15 +71,19 @@ must never be presented as a fail-closed execution attestation.
 
 ## The execution receipt, and what it binds
 
-`verify.run-fea-static-proof@1` is that receipt. It re-reads the sealed case,
-re-verifies the requirements tip on the execution basis, stages the exact STEP bytes
-under a purely content-addressed name, dispatches CalculiX with three-point SHA-256
-cross-attestation, evaluates through `syson_constraint_evaluate` at native units, and
-publishes observations, evaluations and any named violations with proposed actions. A
-`fail` verdict is publishable; `error` and `unresolved` never become `pass`.
+`verify.run-fea-static-proof@1` is the earlier execution receipt. Its additive `@2`
+successor uses the distinct execution admission described above. Both re-read the sealed
+case, re-verifies the requirements tip on the execution basis, stages the exact STEP
+bytes under a purely content-addressed name, dispatches CalculiX with three-point
+SHA-256 cross-attestation, evaluates through `syson_constraint_evaluate` at native
+units, and publishes observations, evaluations and any named violations with proposed
+actions. A `fail` verdict is publishable; `error` and `unresolved` never become `pass`.
 
-It first ran on 2026-08-10, on `desk-lamp-dl03` (thread r9) and `desk-lamp-dl04` (thread
-r8). Both published a mechanical verdict on an isolated articulated arm.
+The earlier `@1` receipt ran on 2026-08-10, on `desk-lamp-dl03` (thread r9) and
+`desk-lamp-dl04` (thread r8). Both published a mechanical verdict on an isolated
+articulated arm. `desk-lamp-dl04` is now the generic candidate for a real `@2`
+qualification, but no `@2` success may be claimed until that new run is captured,
+persisted and read back.
 
 ### Provenance a published run must satisfy
 

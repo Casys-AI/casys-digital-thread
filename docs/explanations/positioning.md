@@ -2,17 +2,9 @@
 
 _Written 2026-07-30, the day the chain shipped._
 
-> **Status update, 2026-08-02.** The native shell renders persisted `ThreadSnapshot`
-> revisions, and the first approved component loop has now run: SysON constraints →
-> build123d DripTray STEP → CalculiX → unit normalization → SysON verdicts. Its two
-> passing criteria were published in r6 and the bound project run completed in r10. This
-> proves one isolated concept DripTray only; the tracked r5 baseline still has no
-> mechanical `ConstraintUsage`, and no whole-machine, release, or certification claim
-> follows from the component run.
-
 This is explanatory context, not an operating guide. Start from the
-[documentation map](README.md) when you need a tutorial, a focused how-to, or an exact
-repository reference.
+[documentation map](../README.md) when you need a tutorial, a focused how-to, or an
+exact repository reference.
 
 ## Industry category: the executable digital thread
 
@@ -26,8 +18,8 @@ This project is building an **executable** thread: an agent traverses it, derive
 artifacts, and proves results against the model's own requirements. The target activity
 is **continuous virtual V&V** (the left branch of the V-cycle): _does this design hold
 every requirement it traces to, with computed proof, after a meaningful change?_ The
-current implementation proves that loop for one bounded CM-01 component case; it does
-not yet provide continuous correction across an arbitrary whole product.
+implementation records bounded component proof cases; it does not yet provide continuous
+correction across an arbitrary whole product.
 
 ### Digital twin, precisely
 
@@ -43,7 +35,7 @@ physical-asset identity, telemetry ingestion, timestamps and quality, time-serie
 ownership, state estimation or calibration, and a proven measurement-to-verdict lineage.
 Those are not implemented. Operational digital twin work is a V2 candidate after the
 beginner-facing V1 design loop is coherent. See
-[the product direction](explanations/product-direction.md).
+[the product direction](product-direction.md).
 
 ## Research category: physics-in-the-loop
 
@@ -93,8 +85,8 @@ They **close the loop**: generate → physics feedback → revise, and they meas
 improvement. On the maturity scale this project sits at "grounded, tool-verified" for
 one bounded proof case; the reusable correction loop is not yet closed. V1 must first
 generalize proof cases, connect the approved living brief to technical work, and make
-change, impact, evidence, and review legible to a beginner. `experiments/oracle/` can
-then measure the modeling agent's correction rate with and without the oracle chain;
+change, impact, evidence, and review legible to a beginner. A future benchmark can then
+measure the modeling agent's correction rate with and without computed feedback;
 Hephaestus-CCX provides a ready-made evaluation protocol rather than one to invent.
 
 ## The pitch, in one line

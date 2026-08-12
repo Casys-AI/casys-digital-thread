@@ -1,8 +1,9 @@
 # Reference: canonical `ThreadSnapshot` contract
 
 > **Diátaxis category: reference.** This page describes the domain contract implemented
-> in [`src/domain/thread-snapshot.ts`](../../src/domain/thread-snapshot.ts) and its
-> local immutable file adapter.
+> in
+> [`src/domain/thread/thread-snapshot.ts`](../../src/domain/thread/thread-snapshot.ts)
+> and its local immutable file adapter.
 
 `ThreadSnapshot` is the versioned, transport-independent state of one executable digital
 thread. It is the canonical product model shared by orchestration, persistence, and
@@ -16,10 +17,9 @@ uses a stable identifier.
 
 Provider evidence begins under provider-native identities. It may be attached to a
 common product subject only through a reviewed
-[`ThreadSubjectManifest`](../../src/domain/thread-subject-manifest.ts), currently
-[`coffee-machine-cm01.json`](../../config/thread-subjects/coffee-machine-cm01.json).
-Each binding is an exact `{provider, kind, id}` tuple. A matching label, part name, or
-model name is never enough to join two branches.
+[`ThreadSubjectManifest`](../../src/domain/thread/thread-subject-manifest.ts). Each
+binding is an exact `{provider, kind, id}` tuple. A matching label, part name or model
+name is never enough to join two branches.
 
 Providers contribute bounded `ThreadSnapshotExtension` values; the assembler is the sole
 component that advances the root revision and records its artifact changes. An extension
@@ -46,7 +46,7 @@ verifies another branch unless an explicit link exists in the snapshot.
 | `proposedActions` | Explicit recompute, correction, review, synchronization, or inspection   |
 
 The validator in
-[`src/domain/thread-snapshot-validation.ts`](../../src/domain/thread-snapshot-validation.ts)
+[`src/domain/thread/thread-snapshot-validation.ts`](../../src/domain/thread/thread-snapshot-validation.ts)
 rejects structurally invalid JSON and broken references. It never fills missing
 engineering data, invents units, or converts an unresolved state into success.
 
@@ -93,21 +93,13 @@ An evaluation has one of `pass`, `fail`, `unresolved`, or `error`. A failed eval
 may create a named violation linked to its requirement, observations, and evidence.
 `unresolved` and `error` remain visible outcomes; they are not optimistic passes.
 
-The tracked r5 CoffeeMachine inventory contains two `RequirementUsage` elements and zero
-mechanical `ConstraintUsage` elements. It therefore provides no mechanical verdict in
-the clean baseline. An empty extracted list always remains explicit; it is never treated
-as a pass.
-
-The approved CM-01 runner is a bounded later mutation. It writes and re-extracts exactly
-the reviewed DripTray limits (`assembly_max_displacement <= 1 mm` and
-`assembly_max_von_mises <= 20 MPa`), then publishes their evaluations only after exact
-CAD consumption and unit normalization have been validated. The 2026-08-02 reference run
-published both as `pass` in r6. The existing `90 degC` comparison remains a separate
-provisional scenario contract, not proof of either mechanical criterion.
+An empty extracted requirement list always remains explicit; it is never treated as a
+pass. A mechanical verdict may be published only after exact CAD consumption, unit
+normalization and the model-owned criteria have all been validated.
 
 ## Persistence and UI status
 
-[`src/domain/thread-snapshot-store.ts`](../../src/domain/thread-snapshot-store.ts)
+[`src/domain/thread/thread-snapshot-store.ts`](../../src/domain/thread/thread-snapshot-store.ts)
 defines the `get`, `latest`, and `save` persistence boundary.
 [`src/adapters/stores/file-thread-snapshot-store.ts`](../../src/adapters/stores/file-thread-snapshot-store.ts)
 implements it as immutable JSON documents under ignored local state. Saving identical
@@ -159,13 +151,9 @@ idempotent, and observing the stream cannot execute an engineering tool. Project
 commands may cause a new full replacement, but completion is accepted only after the
 cited exact technical snapshot and its entities already exist.
 
-A clean CM-01 bootstrap contains SysON, Modelica, and ERPNext evidence; the tracked r5
-baseline additionally contains the whole-machine build123d branch and still has zero
-mechanical criteria. In that state the UI says “verdict unavailable” instead of treating
-the absence of a violation as success. The approved r6 extension adds a separate
-content-addressed DripTray STEP, its verified CalculiX consumption, two observations,
-two model-owned requirements, and two passing evaluations. Neither state performs a
-solver run on UI load.
+The UI says “verdict unavailable” when no model-owned criterion and evaluation are
+present; it never treats the absence of a violation as success. Reading a snapshot or
+opening the UI never performs a solver run.
 
 Per-component identity is deliberately declared in the separate reviewed
 [`ThreadComponentCatalog`](thread-components.md). Its bindings cite artifacts in this

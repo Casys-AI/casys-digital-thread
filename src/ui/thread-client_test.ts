@@ -3,60 +3,39 @@ import {
   createThreadWorkbenchClient,
   HttpThreadWorkbenchClient,
 } from "./src/thread/client.ts";
-import { COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
-import { COFFEE_MACHINE_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
 import {
   isEngineeringWorkbenchSnapshot,
   isThreadWorkbenchSnapshot,
 } from "./src/thread/types.ts";
 
-Deno.test("native Workbench fallback is an explicitly labelled product fixture", async () => {
+Deno.test("native Workbench rejects a missing bootstrap instead of selecting a product fixture", async () => {
   const client = createThreadWorkbenchClient();
-  const workbench = await client.load();
-  assertEquals(workbench.surface, "evidence");
-  if (workbench.surface !== "evidence") {
-    throw new Error(
-      "Expected the labelled fallback to contain technical evidence.",
-    );
-  }
-  const snapshot = workbench.thread;
-
-  assertEquals(client.source, "fixture");
-  assertEquals(snapshot.source, "fixture");
-  assertEquals(snapshot.sourceLabel.includes("NOT LIVE EVIDENCE"), true);
-  assertEquals(snapshot.violations[0]?.id, "VIO-MECH-014");
-  assertEquals(
-    snapshot.artifacts.find((item) => item.id === "ART-FEA-018")?.dependsOn,
-    ["ART-STEP-018"],
-  );
-  assertEquals(
-    snapshot.artifacts.find((item) => item.id === "ART-FEA-018")
-      ?.attestation?.status,
-    "verified",
-  );
-  assertEquals(
-    snapshot.artifacts.find((item) => item.id === "ART-THERMAL-017")
-      ?.attestation?.status,
-    "mismatch",
+  assertEquals(client.source, "unconfigured");
+  await assertRejects(
+    () => client.load(),
+    Error,
+    "Engineering Workbench bootstrap is required",
   );
 });
 
 Deno.test("injected Workbench projection is preserved without a transport call", async () => {
   const client = createThreadWorkbenchClient({
-    projection: COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+    projection: GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   });
 
   assertEquals(client.source, "injected");
   assertStrictEquals(
     await client.load(),
-    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   );
   assertEquals(isEngineeringWorkbenchSnapshot(await client.load()), true);
 });
 
 Deno.test("Workbench contract accepts a planning surface only when no technical baseline is declared", () => {
   const planning = structuredClone(
-    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   ) as unknown as Record<string, unknown>;
   planning.surface = "planning";
   delete planning.thread;
@@ -99,14 +78,14 @@ Deno.test("Workbench contract accepts a planning surface only when no technical 
   (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [{
     snapshotId: "thread-r1",
     revision: 1,
-    subjectId: "CM-01",
+    subjectId: "GEN-01",
   }];
   assertEquals(isEngineeringWorkbenchSnapshot(planning), false);
 });
 
 Deno.test("Workbench contract rejects a planning activity that carries graph or provider payload", () => {
   const planning = structuredClone(
-    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   ) as unknown as Record<string, unknown>;
   planning.surface = "planning";
   delete planning.thread;
@@ -132,7 +111,7 @@ Deno.test("Workbench contract rejects a planning activity that carries graph or 
 });
 
 Deno.test("Workbench contract keeps a documentary baseline separate from an evidence thread", () => {
-  const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
+  const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
     schemaVersion: "engineering-workbench/0.2",
     surface: "documentary",
@@ -167,7 +146,7 @@ Deno.test("Workbench contract keeps a documentary baseline separate from an evid
 });
 
 Deno.test("Workbench contract accepts only the closed live SysON seed sequence on documentary r1", () => {
-  const fixture = structuredClone(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE);
+  const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
     schemaVersion: "engineering-workbench/0.2",
     surface: "documentary",
@@ -237,8 +216,8 @@ Deno.test("Workbench contract accepts only the closed live SysON seed sequence o
 
 Deno.test("the Workbench contract requires explicit flow dependencies", () => {
   const missingDependencies = JSON.parse(
-    JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),
-  ) as typeof COFFEE_MACHINE_THREAD_FIXTURE;
+    JSON.stringify(GENERIC_THREAD_FIXTURE),
+  ) as typeof GENERIC_THREAD_FIXTURE;
   delete (missingDependencies.flow[0] as { dependsOn?: string[] }).dependsOn;
 
   assertEquals(isThreadWorkbenchSnapshot(missingDependencies), false);
@@ -246,32 +225,32 @@ Deno.test("the Workbench contract requires explicit flow dependencies", () => {
 
 Deno.test("the Workbench contract requires a typed native graph", () => {
   const missingGraph = JSON.parse(
-    JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),
-  ) as Partial<typeof COFFEE_MACHINE_THREAD_FIXTURE>;
+    JSON.stringify(GENERIC_THREAD_FIXTURE),
+  ) as Partial<typeof GENERIC_THREAD_FIXTURE>;
   delete missingGraph.graph;
   assertEquals(isThreadWorkbenchSnapshot(missingGraph), false);
 
   const unsupportedRelation = JSON.parse(
-    JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),
-  ) as typeof COFFEE_MACHINE_THREAD_FIXTURE;
+    JSON.stringify(GENERIC_THREAD_FIXTURE),
+  ) as typeof GENERIC_THREAD_FIXTURE;
   unsupportedRelation.graph.edges[0].relation = "fuzzy_match" as never;
   assertEquals(isThreadWorkbenchSnapshot(unsupportedRelation), false);
 });
 
 Deno.test("the Workbench contract requires one non-empty structured requirement source identity", () => {
-  const missingSourceElementId = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const missingSourceElementId = structuredClone(GENERIC_THREAD_FIXTURE);
   delete (missingSourceElementId.requirements[0] as {
     sourceElementId?: string;
   }).sourceElementId;
   assertEquals(isThreadWorkbenchSnapshot(missingSourceElementId), false);
 
-  const blankSourceElementId = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const blankSourceElementId = structuredClone(GENERIC_THREAD_FIXTURE);
   blankSourceElementId.requirements[0]!.sourceElementId = "";
   assertEquals(isThreadWorkbenchSnapshot(blankSourceElementId), false);
 });
 
 Deno.test("the Workbench contract accepts qualified analysis assertions and rejects malformed detail", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
   const digest = "a".repeat(64);
   snapshot.graph.nodes.push({
     id: "analysis-node:wall-thickness",
@@ -374,12 +353,12 @@ Deno.test("the Workbench contract accepts qualified analysis assertions and reje
 });
 
 Deno.test("the Workbench contract accepts exact SysML structure nodes and rejects malformed model kinds", () => {
-  const snapshot = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const snapshot = structuredClone(GENERIC_THREAD_FIXTURE);
   snapshot.graph.nodes.push({
     id: "graph:part-definition:def-system",
     ref: { kind: "part-definition", id: "def-system" },
     entityKind: "part-definition",
-    label: "CoffeeMachine",
+    label: "GenericAssembly",
     system: "syson",
     freshness: "fresh",
     summary: "PartDefinition · def-system",
@@ -399,7 +378,7 @@ Deno.test("the Workbench contract accepts exact SysML structure nodes and reject
     from: { kind: "part-definition", id: "def-system" },
     to: { kind: "part-usage", id: "usage-tray" },
     relation: "contains",
-    rationale: "CoffeeMachine contains tray.",
+    rationale: "GenericAssembly contains tray.",
     origin: "structure",
   }, {
     id: "structure:typed-by:usage-tray:def-tray",
@@ -423,7 +402,7 @@ Deno.test("the Workbench contract accepts exact SysML structure nodes and reject
 });
 
 Deno.test("the Workbench contract accepts only its explicit activity role", () => {
-  const milestone = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const milestone = structuredClone(GENERIC_THREAD_FIXTURE);
   milestone.graph.nodes[0]!.activityRole = "milestone";
   assertEquals(isThreadWorkbenchSnapshot(milestone), true);
 
@@ -432,8 +411,8 @@ Deno.test("the Workbench contract accepts only its explicit activity role", () =
 });
 
 Deno.test("the Workbench accepts only a non-empty explicit correction component anchor", () => {
-  const anchored = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
-  anchored.graph.nodes[0]!.affectedComponentId = "cm01-v3:drip-tray";
+  const anchored = structuredClone(GENERIC_THREAD_FIXTURE);
+  anchored.graph.nodes[0]!.affectedComponentId = "generic-v3:drip-tray";
   assertEquals(isThreadWorkbenchSnapshot(anchored), true);
 
   anchored.graph.nodes[0]!.affectedComponentId = "";
@@ -444,15 +423,15 @@ Deno.test("the Workbench accepts only a non-empty explicit correction component 
 });
 
 Deno.test("the Workbench contract accepts only an exact immutable predecessor reference", () => {
-  const withPrevious = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const withPrevious = structuredClone(GENERIC_THREAD_FIXTURE);
   withPrevious.previous = {
-    snapshotId: "thread-cm01-r6",
+    snapshotId: "thread-generic-r6",
     revision: 6,
   };
   assertEquals(isThreadWorkbenchSnapshot(withPrevious), true);
 
   withPrevious.previous = {
-    snapshotId: "thread-cm01-r6",
+    snapshotId: "thread-generic-r6",
     revision: 6,
     source: "invented",
   } as never;
@@ -461,18 +440,18 @@ Deno.test("the Workbench contract accepts only an exact immutable predecessor re
 
 Deno.test("the Workbench contract requires evidence-backed component facets", () => {
   const missingComponents = JSON.parse(
-    JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),
-  ) as Partial<typeof COFFEE_MACHINE_THREAD_FIXTURE>;
+    JSON.stringify(GENERIC_THREAD_FIXTURE),
+  ) as Partial<typeof GENERIC_THREAD_FIXTURE>;
   delete missingComponents.components;
   assertEquals(isThreadWorkbenchSnapshot(missingComponents), false);
 
   const fuzzyBinding = JSON.parse(
-    JSON.stringify(COFFEE_MACHINE_THREAD_FIXTURE),
-  ) as typeof COFFEE_MACHINE_THREAD_FIXTURE;
+    JSON.stringify(GENERIC_THREAD_FIXTURE),
+  ) as typeof GENERIC_THREAD_FIXTURE;
   fuzzyBinding.components.components[0].bindings[0].status = "fuzzy" as never;
   assertEquals(isThreadWorkbenchSnapshot(fuzzyBinding), false);
 
-  const partDefinition = structuredClone(COFFEE_MACHINE_THREAD_FIXTURE);
+  const partDefinition = structuredClone(GENERIC_THREAD_FIXTURE);
   partDefinition.components.components[0].bindings[0].kind = "part-definition";
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), true);
 
@@ -495,7 +474,7 @@ Deno.test("HTTP Workbench client performs one uncached read-only JSON GET", asyn
         cache: init?.cache,
       });
       return Promise.resolve(
-        Response.json(COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE),
+        Response.json(GENERIC_ENGINEERING_WORKBENCH_FIXTURE),
       );
     },
   );
@@ -506,10 +485,10 @@ Deno.test("HTTP Workbench client performs one uncached read-only JSON GET", asyn
   if (snapshot.surface !== "evidence") {
     throw new Error("Expected the HTTP fixture to contain technical evidence.");
   }
-  assertEquals(snapshot.thread.id, COFFEE_MACHINE_THREAD_FIXTURE.id);
+  assertEquals(snapshot.thread.id, GENERIC_THREAD_FIXTURE.id);
   assertEquals(
     snapshot.project.project.subjectId,
-    COFFEE_MACHINE_THREAD_FIXTURE.subject.id,
+    GENERIC_THREAD_FIXTURE.subject.id,
   );
   assertEquals(requests, [
     { input: "/api/thread/workbench", method: "GET", cache: "no-store" },
@@ -527,7 +506,7 @@ Deno.test("HTTP Workbench client rejects an unsupported contract", async () => {
 
 Deno.test("HTTP Workbench client rejects malformed planning provenance", async () => {
   const malformed = structuredClone(
-    COFFEE_MACHINE_ENGINEERING_WORKBENCH_FIXTURE,
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   ) as unknown as Record<string, unknown>;
   malformed.surface = "planning";
   delete malformed.thread;
@@ -557,7 +536,7 @@ Deno.test("HTTP Workbench client rejects malformed planning provenance", async (
 Deno.test("HTTP Workbench client rejects a naked thread projection", async () => {
   const client = new HttpThreadWorkbenchClient(
     "/api/thread/workbench",
-    () => Promise.resolve(Response.json(COFFEE_MACHINE_THREAD_FIXTURE)),
+    () => Promise.resolve(Response.json(GENERIC_THREAD_FIXTURE)),
   );
 
   await assertRejects(() => client.load(), Error, "unsupported contract");

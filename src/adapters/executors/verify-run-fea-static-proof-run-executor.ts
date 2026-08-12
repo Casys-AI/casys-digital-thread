@@ -113,7 +113,7 @@ import {
   feaEvaluationsFromOracle,
   projectProofRequirementToOracle,
 } from "../captures/fea-oracle-adapter.ts";
-import type { ParsedOracleResult } from "../captures/cm01-drip-tray-mechanical-oracle.ts";
+import type { ParsedOracleResult } from "../captures/syson-constraint-oracle-outcome.ts";
 import {
   FeaStaticProofOutcomeUnknownError,
   FileFeaStaticProofAttemptStore,
@@ -1414,7 +1414,7 @@ export class VerifyRunFeaStaticProofRunExecutor {
         },
       );
 
-      // Violations + proposedActions 1:1 on fail (pattern CM-01 exact).
+      // Violations + proposedActions remain paired 1:1 on failure.
       const violations: ThreadViolation[] = evaluations.flatMap((ev) => {
         if (ev.status !== "fail") return [];
         return [{

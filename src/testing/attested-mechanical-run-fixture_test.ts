@@ -48,7 +48,7 @@ function capture() {
     schemaVersion: "attested-mechanical-run/1.0",
     capturedAt: "2026-08-01T03:03:48.000Z",
     source: "observed-local-uncommitted",
-    subject: "CoffeeMachine support bracket",
+    subject: "Generic product support bracket",
     providers: {
       build123d: {
         endpoint: "http://127.0.0.1:3014/mcp",
