@@ -22,6 +22,7 @@ import {
   buildProjectPath,
   projectPathStatusLabel,
   projectStatusTone,
+  selectCurrentProjectFocus,
   verificationChainDetail,
   workOwnerLabel,
   workStatusLabel,
@@ -47,7 +48,8 @@ export function ProjectOverview({
   const brief = buildProjectBrief(project);
   const currentWork = buildCurrentProjectWork(project);
   const projectPath = buildProjectPath(project, thread);
-  const leadRun = brief.activeRuns[0];
+  const currentFocus = selectCurrentProjectFocus(project);
+  const leadRun = currentFocus.activeRun;
   const openBlocker = brief.openBlockers[0];
 
   return (
@@ -184,8 +186,8 @@ export function ProjectOverview({
         >
           {leadRun
             ? <AgentRunSummary run={leadRun} project={project} />
-            : brief.currentWork[0]
-            ? <WorkItemSummary item={brief.currentWork[0]} />
+            : currentFocus.work
+            ? <WorkItemSummary item={currentFocus.work} />
             : brief.lastSettledRun
             ? (
               <AgentRunSummary

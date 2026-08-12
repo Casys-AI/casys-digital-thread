@@ -44,6 +44,22 @@ export interface ProjectBrief {
 }
 
 /**
+ * The one current operational focus rendered by every compact cockpit surface.
+ *
+ * A live run owns the focus while it exists. Between runs, project planning
+ * order is authoritative: later phases take precedence and the work-item
+ * order recorded by that phase is the stable tie-breaker. The physical order
+ * of append-only `workItems` and `decisions` arrays is audit history, not UI
+ * priority, so it must never decide what the cockpit calls current.
+ */
+export interface CurrentProjectFocus {
+  readonly activeRun: EngineeringAgentRun | undefined;
+  readonly work: EngineeringWorkItem | undefined;
+  /** A concrete human review proposal explicitly linked to the current work. */
+  readonly proposedDecision: EngineeringDecision | undefined;
+}
+
+/**
  * The single, factual priority for compact "agent now" surfaces. A settled
  * run is explicitly history: it is useful context between executions, never
  * a claim that an agent is still active.
@@ -193,15 +209,9 @@ export function buildProjectBrief(
     phases,
     completedPhases: phases.filter((phase) => phase.status === "completed")
       .length,
-    currentWork: snapshot.workItems.filter((item) =>
-      item.status === "in-progress" ||
-      item.status === "waiting-for-decision"
-    ),
+    currentWork: currentWorkItemsInPriorityOrder(snapshot),
     nextWork: snapshot.workItems.filter((item) => item.status === "ready"),
-    activeRuns: snapshot.agentRuns.filter((run) =>
-      run.status === "queued" || run.status === "running" ||
-      run.status === "waiting-for-decision" || run.status === "publishing"
-    ),
+    activeRuns: activeRunsInPriorityOrder(snapshot),
     lastSettledRun: snapshot.agentRuns
       .filter((run) =>
         run.status === "completed" || run.status === "failed" ||
@@ -222,20 +232,81 @@ export function buildProjectBrief(
   };
 }
 
+/**
+ * Select the current work once for every cockpit projection.
+ *
+ * `EngineeringProjectSnapshot` keeps append-only records, therefore its raw
+ * array order has no presentation authority. A live run is the only
+ * execution-time override; otherwise the immutable phase plan is used.
+ */
+export function selectCurrentProjectFocus(
+  snapshot: EngineeringProjectSnapshot,
+): CurrentProjectFocus {
+  const activeRun = activeRunsInPriorityOrder(snapshot)[0];
+  const workById = new Map(snapshot.workItems.map((item) => [item.id, item]));
+  const work = activeRun
+    ? workById.get(activeRun.workItemId)
+    : currentWorkItemsInPriorityOrder(snapshot)[0];
+  const decisionsById = new Map(
+    snapshot.decisions.map((decision) => [decision.id, decision]),
+  );
+  const proposedDecision = work?.decisionIds
+    .map((id) => decisionsById.get(id))
+    .find((decision) => decision?.status === "proposed");
+
+  return { activeRun, work, proposedDecision };
+}
+
 export function buildAgentNowPresentation(
   snapshot: EngineeringProjectSnapshot,
 ): AgentNowPresentation {
+  const focus = selectCurrentProjectFocus(snapshot);
+  if (focus.activeRun) return { kind: "active-run", run: focus.activeRun };
+  if (focus.work) return { kind: "current-work", work: focus.work };
+
   const brief = buildProjectBrief(snapshot);
-  const activeRun = brief.activeRuns[0];
-  if (activeRun) return { kind: "active-run", run: activeRun };
-
-  const currentWork = brief.currentWork[0];
-  if (currentWork) return { kind: "current-work", work: currentWork };
-
   if (brief.lastSettledRun) {
     return { kind: "last-settled-run", run: brief.lastSettledRun };
   }
   return { kind: "empty" };
+}
+
+function currentWorkItemsInPriorityOrder(
+  snapshot: EngineeringProjectSnapshot,
+): readonly EngineeringWorkItem[] {
+  const workById = new Map(snapshot.workItems.map((item) => [item.id, item]));
+  return snapshot.phases
+    .toSorted((left, right) =>
+      right.order - left.order ||
+      left.id.localeCompare(right.id)
+    )
+    .flatMap((phase) =>
+      phase.workItemIds.flatMap((id) => {
+        const item = workById.get(id);
+        return item && isCurrentWork(item) ? [item] : [];
+      })
+    );
+}
+
+function activeRunsInPriorityOrder(
+  snapshot: EngineeringProjectSnapshot,
+): readonly EngineeringAgentRun[] {
+  return snapshot.agentRuns
+    .filter(isActiveRun)
+    .toSorted((left, right) =>
+      agentRunRecordedAt(right).localeCompare(agentRunRecordedAt(left)) ||
+      left.id.localeCompare(right.id)
+    );
+}
+
+function isCurrentWork(item: EngineeringWorkItem): boolean {
+  return item.status === "in-progress" ||
+    item.status === "waiting-for-decision";
+}
+
+function isActiveRun(run: EngineeringAgentRun): boolean {
+  return run.status === "queued" || run.status === "running" ||
+    run.status === "waiting-for-decision" || run.status === "publishing";
 }
 
 export function buildCurrentProjectWork(

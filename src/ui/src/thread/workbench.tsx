@@ -45,6 +45,7 @@ import {
   buildProjectPath,
   projectPathStatusLabel,
   projectStatusTone,
+  selectCurrentProjectFocus,
 } from "../project/model.ts";
 import {
   ProjectNavigation,
@@ -812,6 +813,7 @@ export function ThreadWorkbench({
     }
   };
   const agentNow = buildAgentNowPresentation(project);
+  const currentFocus = selectCurrentProjectFocus(project);
   const projectPath = buildProjectPath(project, snapshot);
   // versionedProvenance and evidenceCanvas are memoized above (guarded
   // useMemo, same pattern as evidenceModel): a stable projection identity is
@@ -1279,16 +1281,12 @@ export function ThreadWorkbench({
             {activeView === "work" && (
               <details
                 class="project-activity-brief"
-                open={project.decisions.some((decision) =>
-                  decision.status === "proposed"
-                )}
+                open={currentFocus.proposedDecision !== undefined}
               >
                 <summary>
                   <span>PROJECT PULSE</span>
                   <strong>
-                    {project.decisions.some((decision) =>
-                        decision.status === "proposed"
-                      )
+                    {currentFocus.proposedDecision
                       ? "A recorded recommendation is ready to discuss"
                       : "Decision status, current work and blockers"}
                   </strong>

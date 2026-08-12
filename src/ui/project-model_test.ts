@@ -12,6 +12,7 @@ import {
   projectBriefStatusLabel,
   projectPathStatusLabel,
   projectStatusLabel,
+  selectCurrentProjectFocus,
   verificationChainDetail,
   workOwnerLabel,
 } from "./src/project/model.ts";
@@ -152,7 +153,9 @@ Deno.test("Project Path reads an unfinished lifecycle as retained history, never
   (retry as unknown as { status: string }).status = "ready";
 
   const path = buildProjectPath(mutable, thread);
-  const mechanical = path.phases.find((item) => item.phase.id === "verification");
+  const mechanical = path.phases.find((item) =>
+    item.phase.id === "verification"
+  );
   assertEquals(mechanical?.lifecycle?.state, "retained");
   for (const item of path.phases) {
     if (!item.lifecycle) continue;
@@ -274,7 +277,9 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
     "a measurement feeding a folded enrichment folds with it — it is " +
       "instrumentation of the model, not an engineering gate",
   );
-  const architecture = path.phases.find((item) => item.phase.id === "architecture");
+  const architecture = path.phases.find((item) =>
+    item.phase.id === "architecture"
+  );
   assertEquals(architecture?.lifecycle, {
     affectedComponentIds: [],
     correctionCount: 0,
@@ -290,7 +295,9 @@ Deno.test("Project Path folds the exact R3 identity repair into Mechanical proof
     includeIdentityRepair: true,
   });
   const path = buildProjectPath(project, thread);
-  const mechanical = path.phases.find((item) => item.phase.id === "verification");
+  const mechanical = path.phases.find((item) =>
+    item.phase.id === "verification"
+  );
 
   assertEquals(
     PROJECT_PATH_PRESENTATION_POLICY.identityRepair.operationId,
@@ -356,7 +363,8 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
                 snapshotRevision: 10,
               },
             ],
-            rationale: "The recorded R3 successor closed the failed R2 attempt.",
+            rationale:
+              "The recorded R3 successor closed the failed R2 attempt.",
           },
         }
         : item
@@ -445,12 +453,14 @@ Deno.test("browser project contract accepts an approved-brief baseline and rejec
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
   const forgedBasis = structuredClone(valid) as Record<string, unknown>;
-  const forgedRun = (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const forgedRun =
+    (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
   (forgedRun.basis as Record<string, unknown>).briefId = "other-approved-brief";
   assertEquals(isEngineeringProjectSnapshot(forgedBasis), false);
 
   const v1Fallback = structuredClone(valid) as Record<string, unknown>;
-  const fallbackRun = (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const fallbackRun =
+    (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
   delete fallbackRun.basis;
   fallbackRun.baseSnapshot = (v1Fallback.threadSnapshots as unknown[])[0];
   assertEquals(isEngineeringProjectSnapshot(v1Fallback), false);
@@ -465,7 +475,8 @@ Deno.test("browser project contract accepts a V3 run anchored to its declared th
   const project = structuredClone(
     COFFEE_MACHINE_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
-  const reference = (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
+  const reference =
+    (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
   project.schemaVersion = "3.0";
   project.agentRuns = [{
     id: "run-v3-thread-snapshot",
@@ -579,6 +590,157 @@ Deno.test("project brief keeps a rejected decision actionable", () => {
   assertEquals(brief.pendingDecisions[0]?.status, "rejected");
 });
 
+Deno.test("current project focus follows phase order and linked proposals despite reversed history arrays", () => {
+  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const v1Work = {
+    ...base.workItems.find((item) => item.id === "work-simulate")!,
+    title: "V1 seal retained in history",
+    decisionIds: ["decision-v1"],
+  };
+  const v2Work = {
+    ...v1Work,
+    id: "work-modelica-v2",
+    phaseId: "modelica-v2",
+    title: "V2 recorded Modelica run",
+    decisionIds: ["decision-v2"],
+  };
+  const v1Decision = {
+    ...base.decisions[0]!,
+    id: "decision-v1",
+    title: "V1 proposal",
+    status: "proposed" as const,
+  };
+  const v2Decision = {
+    ...v1Decision,
+    id: "decision-v2",
+    phaseId: "modelica-v2",
+    title: "V2 proposal",
+  };
+  const snapshot = {
+    ...base,
+    phases: [
+      ...base.phases,
+      {
+        ...base.phases.find((phase) => phase.id === "simulate")!,
+        id: "modelica-v2",
+        name: "Modelica V2",
+        order: 7,
+        workItemIds: [v2Work.id],
+        requiredDecisionIds: [v2Decision.id],
+      },
+    ],
+    // Append-only physical history must not decide the live cockpit focus.
+    workItems: [
+      v2Work,
+      v1Work,
+      ...base.workItems.filter((item) => item.id !== "work-simulate"),
+    ].toReversed(),
+    decisions: [v2Decision, v1Decision].toReversed(),
+    agentRuns: [],
+  };
+
+  const focus = selectCurrentProjectFocus(snapshot);
+  const brief = buildProjectBrief(snapshot);
+
+  assertEquals(focus.activeRun, undefined);
+  assertEquals(focus.work?.id, "work-modelica-v2");
+  assertEquals(focus.proposedDecision?.id, "decision-v2");
+  assertEquals(brief.currentWork.map((item) => item.id), [
+    "work-modelica-v2",
+    "work-simulate",
+  ]);
+});
+
+Deno.test("current project focus gives an active run and its linked proposal priority over a later phase", () => {
+  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const v1Work = {
+    ...base.workItems.find((item) => item.id === "work-simulate")!,
+    decisionIds: ["decision-v1"],
+  };
+  const v2Work = {
+    ...v1Work,
+    id: "work-modelica-v2",
+    phaseId: "modelica-v2",
+    title: "V2 recorded Modelica run",
+    decisionIds: ["decision-v2"],
+  };
+  const v1Decision = {
+    ...base.decisions[0]!,
+    id: "decision-v1",
+    title: "V1 proposal",
+    status: "proposed" as const,
+  };
+  const v2Decision = {
+    ...v1Decision,
+    id: "decision-v2",
+    phaseId: "modelica-v2",
+    title: "V2 proposal",
+  };
+  const snapshot = {
+    ...base,
+    phases: [
+      ...base.phases,
+      {
+        ...base.phases.find((phase) => phase.id === "simulate")!,
+        id: "modelica-v2",
+        name: "Modelica V2",
+        order: 7,
+        workItemIds: [v2Work.id],
+        requiredDecisionIds: [v2Decision.id],
+      },
+    ],
+    workItems: [
+      v1Work,
+      v2Work,
+      ...base.workItems.filter((item) => item.id !== "work-simulate"),
+    ],
+    decisions: [v1Decision, v2Decision],
+    agentRuns: [{
+      ...base.agentRuns[0]!,
+      id: "run-v1-active",
+      workItemId: v1Work.id,
+      status: "running" as const,
+      queuedAt: "2026-08-02T12:00:00.000Z",
+    }],
+  };
+
+  const focus = selectCurrentProjectFocus(snapshot);
+
+  assertEquals(focus.activeRun?.id, "run-v1-active");
+  assertEquals(focus.work?.id, "work-simulate");
+  assertEquals(focus.proposedDecision?.id, "decision-v1");
+});
+
+Deno.test("current project focus uses the recorded phase work order as its stable tie-breaker", () => {
+  const base = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
+  const first = {
+    ...base.workItems.find((item) => item.id === "work-simulate")!,
+    title: "First recorded Modelica action",
+  };
+  const second = {
+    ...first,
+    id: "work-simulate-second",
+    title: "Second recorded Modelica action",
+  };
+  const snapshot = {
+    ...base,
+    phases: base.phases.map((phase) =>
+      phase.id === "simulate"
+        ? { ...phase, workItemIds: [first.id, second.id] }
+        : phase
+    ),
+    // The append-only storage order is intentionally the opposite of the plan.
+    workItems: [
+      second,
+      first,
+      ...base.workItems.filter((item) => item.id !== "work-simulate"),
+    ].toReversed(),
+    agentRuns: [],
+  };
+
+  assertEquals(selectCurrentProjectFocus(snapshot).work?.id, first.id);
+});
+
 Deno.test("cockpit falls back to a named work item for an accidental run summary", () => {
   const snapshot = structuredClone(COFFEE_MACHINE_PROJECT_FIXTURE);
   const run = { ...snapshot.agentRuns[0]!, summary: "dsadsadas" };
@@ -677,7 +839,8 @@ function v3CancelledQueuedRunEnvelope(): Record<string, unknown> {
     },
     evidenceRefs: [],
     cancellation: {
-      rationale: "The reviewed queue entry was retired before any worker claim.",
+      rationale:
+        "The reviewed queue entry was retired before any worker claim.",
       cancelledAt,
       cancelledBy: { id: "human:owner", origin: "human" },
     },
@@ -1124,7 +1287,6 @@ Deno.test("agent-now presentation prioritises active work, then current work, th
   };
   const current = {
     ...base.workItems[0]!,
-    id: "work-current",
     status: "in-progress" as const,
   };
 

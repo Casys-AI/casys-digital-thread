@@ -12,6 +12,7 @@ import {
   agentRunSummary,
   buildAgentNowPresentation,
   buildProjectBrief,
+  selectCurrentProjectFocus,
   workOwnerLabel,
   workStatusLabel,
 } from "./model.ts";
@@ -21,12 +22,13 @@ export function ProjectWorkRibbon({ project }: {
 }): JSX.Element {
   const brief = buildProjectBrief(project);
   const agentNow = buildAgentNowPresentation(project);
-  const decisionToReview = project.decisions.find((decision) =>
-    decision.status === "proposed"
-  );
-  const decisionBeingPrepared = project.decisions.find((decision) =>
-    decision.status === "required" || decision.status === "rejected"
-  );
+  const currentFocus = selectCurrentProjectFocus(project);
+  const decisionToReview = currentFocus.proposedDecision;
+  const decisionBeingPrepared = currentFocus.work?.decisionIds
+    .map((id) => project.decisions.find((decision) => decision.id === id))
+    .find((decision) =>
+      decision?.status === "required" || decision?.status === "rejected"
+    );
   const blocker = brief.openBlockers[0];
   return (
     <section class="project-work-ribbon" aria-label="Shared work plan">
