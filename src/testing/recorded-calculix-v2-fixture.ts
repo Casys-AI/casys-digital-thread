@@ -451,7 +451,7 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
     "fixture-exact-step",
     "step",
     stepFingerprint,
-    `casys://fixture-step/sha256/${stepFingerprint.digest}`,
+    `/api/thread/assets/${stepFingerprint.digest}.step`,
     "model/step",
     [],
     geometryProducer,

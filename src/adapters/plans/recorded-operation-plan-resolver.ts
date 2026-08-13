@@ -12,6 +12,7 @@ import {
   type ResolvedOperationPlanSource,
   type ResolvedOperationPlanV2,
 } from "../../domain/analysis/resolved-operation-plan-v2.ts";
+import { canonicalCalculixStepAssetCasUri } from "../../domain/analysis/calculix-step-asset-uri.ts";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
   type ModelicaQualifiedManifestDocument,
@@ -456,7 +457,7 @@ export class RecordedOperationPlanResolver {
         "FEA proof capture and geometry binding are not the same exact STEP artifact.",
       );
     }
-    canonicalArtifactUri(geometry);
+    const geometryCasUri = canonicalCalculixStepAssetCasUri(geometry);
     const stepBytes = await this.options.stepAssets.read(geometry.fingerprint.digest);
     if (
       await fingerprintResourceBytes(stepBytes) !== geometry.fingerprint.digest ||
@@ -479,7 +480,14 @@ export class RecordedOperationPlanResolver {
       },
       sources: [
         await this.#artifactSource(snapshot, "proofCase", "proof-case", proofArtifact),
-        sourceFromBytes(snapshot, "geometry", "geometry-source", geometry, stepBytes),
+        sourceFromBytes(
+          snapshot,
+          "geometry",
+          "geometry-source",
+          geometry,
+          stepBytes,
+          geometryCasUri,
+        ),
       ],
       action: {
         kind: "static-structural-analysis",
@@ -1550,8 +1558,9 @@ function sourceFromBytes(
   role: string,
   artifact: ThreadArtifact,
   bytes: Uint8Array,
+  sealedCasUri?: string,
 ): ResolvedOperationPlanSource {
-  const uri = canonicalArtifactUri(artifact);
+  const uri = sealedCasUri ?? canonicalArtifactUri(artifact);
   if (bytes.byteLength < 1) {
     throw new TypeError(`Thread artifact ${artifact.id} is empty.`);
   }

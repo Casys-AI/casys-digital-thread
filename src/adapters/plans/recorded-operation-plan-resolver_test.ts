@@ -35,6 +35,7 @@ import {
 import {
   canonicalModelicaSimulationCaseQualificationCaptureText,
 } from "../captures/modelica-simulation-case-qualification-capture.ts";
+import type { CanonicalAssetReader } from "../executors/canonical-asset-reader.ts";
 import {
   RecordedOperationPlanResolver,
   type RecordedPlanArtifactReader,
@@ -262,14 +263,29 @@ Deno.test("RecordedOperationPlanResolver rejects a Modelica seal result ordered 
   );
 });
 
-Deno.test("RecordedOperationPlanResolver resolves CalculiX from proof-base ancestor and exact raw STEP", async () => {
+Deno.test("RecordedOperationPlanResolver resolves the public CalculiX STEP route to an exact internal CAS after rereading bytes", async () => {
   const fixture = await calculixFixture();
+  const reads: string[] = [];
+  fixture.dependencies.stepAssets = {
+    read: (digest) => {
+      reads.push(digest);
+      return Promise.resolve(fixture.stepBytes);
+    },
+  };
   const plan = await new RecordedOperationPlanResolver(fixture.dependencies).resolve(
     fixture.input,
   );
   validateResolvedOperationPlanV2(plan);
   assertEquals(plan.action.kind, "static-structural-analysis");
-  assertEquals(plan.sources[1].artifact.casUri, fixture.stepArtifact.uri);
+  assertEquals(
+    fixture.stepArtifact.uri,
+    `/api/thread/assets/${fixture.stepArtifact.fingerprint.digest}.step`,
+  );
+  assertEquals(
+    plan.sources[1].artifact.casUri,
+    `casys://thread-asset/sha256/${fixture.stepArtifact.fingerprint.digest}`,
+  );
+  assertEquals(reads, [fixture.stepArtifact.fingerprint.digest]);
   assertEquals(plan.expectedProviderResources.resourceProfile, {
     id: "mcp-calculix.recorded-static-artifacts",
     version: "1.0",
@@ -403,6 +419,88 @@ Deno.test("RecordedOperationPlanResolver rejects an aliased CalculiX STEP before
     "not the same exact STEP artifact",
   );
   assertEquals(reads, 0);
+});
+
+Deno.test("RecordedOperationPlanResolver rejects noncanonical CalculiX STEP addresses before asset access", async () => {
+  for (
+    const [label, stepUri] of [
+      [
+        "internal CAS used as Thread URI",
+        (digest: string) => `casys://thread-asset/sha256/${digest}`,
+      ],
+      [
+        "alias namespace",
+        (digest: string) => `casys://thread-asset-alias/sha256/${digest}`,
+      ],
+      [
+        "wrong public digest",
+        (_digest: string) => `/api/thread/assets/${"0".repeat(64)}.step`,
+      ],
+      [
+        "wrong public extension",
+        (digest: string) => `/api/thread/assets/${digest}.stp`,
+      ],
+      [
+        "public query",
+        (digest: string) => `/api/thread/assets/${digest}.step?download=1`,
+      ],
+      [
+        "public fragment",
+        (digest: string) => `/api/thread/assets/${digest}.step#asset`,
+      ],
+      [
+        "external origin",
+        (digest: string) => `https://example.invalid/api/thread/assets/${digest}.step`,
+      ],
+      [
+        "traversal",
+        (digest: string) => `/api/thread/assets/../${digest}.step`,
+      ],
+    ] as const
+  ) {
+    const fixture = await calculixFixture({ stepUri });
+    let reads = 0;
+    fixture.dependencies.stepAssets = {
+      read: () => {
+        reads += 1;
+        return Promise.resolve(fixture.stepBytes);
+      },
+    };
+    await assertRejects(
+      () =>
+        new RecordedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
+      TypeError,
+      "not its exact canonical public STEP asset",
+      label,
+    );
+    assertEquals(reads, 0, label);
+  }
+});
+
+Deno.test("RecordedOperationPlanResolver rejects a CalculiX geometry with another kind or media type before asset access", async () => {
+  for (
+    const [label, options] of [
+      ["wrong kind", { stepKind: "document" as const }],
+      ["wrong media type", { stepMediaType: "application/step" }],
+    ] as const
+  ) {
+    const fixture = await calculixFixture(options);
+    let reads = 0;
+    fixture.dependencies.stepAssets = {
+      read: () => {
+        reads += 1;
+        return Promise.resolve(fixture.stepBytes);
+      },
+    };
+    await assertRejects(
+      () =>
+        new RecordedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
+      TypeError,
+      "exact proof JSON document and STEP Thread artifact",
+      label,
+    );
+    assertEquals(reads, 0, label);
+  }
 });
 
 Deno.test("RecordedOperationPlanResolver rejects STEP bytes whose raw digest differs", async () => {
@@ -871,6 +969,9 @@ async function calculixFixture(
     aliasStepId?: boolean;
     transplantedProofAuthority?: boolean;
     unrelatedProofBasis?: boolean;
+    stepUri?: (digest: string) => string;
+    stepKind?: ThreadArtifact["kind"];
+    stepMediaType?: string;
   } = {},
 ) {
   const rawProof = JSON.parse(
@@ -944,10 +1045,11 @@ async function calculixFixture(
   );
   const capturedStepArtifact = threadArtifact(
     captureStepId,
-    "step",
+    options.stepKind ?? "step",
     stepFp,
-    casUri("thread-asset", stepFp.digest),
-    "model/step",
+    options.stepUri?.(stepFp.digest) ??
+      `/api/thread/assets/${stepFp.digest}.step`,
+    options.stepMediaType ?? "model/step",
     [],
     geometryProducer,
   );
@@ -1119,7 +1221,9 @@ async function calculixFixture(
     dependencies: {
       snapshots: exactSnapshotReader(stores),
       artifacts: artifactReader(new Map([[proofArtifact.uri!, proofBytes]])),
-      stepAssets: { read: () => Promise.resolve(stepBytes) },
+      stepAssets: {
+        read: (_digest: string) => Promise.resolve(stepBytes),
+      } satisfies CanonicalAssetReader,
     },
   };
 }

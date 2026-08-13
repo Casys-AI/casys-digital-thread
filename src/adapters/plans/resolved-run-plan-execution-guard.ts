@@ -17,6 +17,7 @@ import {
   validateResolvedOperationPlanRef,
   validateResolvedOperationPlanV2,
 } from "../../domain/analysis/resolved-operation-plan-v2.ts";
+import { canonicalCalculixStepAssetCasUri } from "../../domain/analysis/calculix-step-asset-uri.ts";
 import {
   fingerprintsEqual,
   sha256Fingerprint,
@@ -579,7 +580,7 @@ function requireExactSourceArtifacts(
     if (
       !fingerprintsEqual(artifact.fingerprint, source.artifact.fingerprint) ||
       artifact.mediaType !== source.artifact.mediaType ||
-      artifact.uri !== source.artifact.casUri
+      !sourceArtifactUriMatches(plan, source, artifact)
     ) {
       throw new TypeError(
         `Resolved plan source ${source.bindingName} does not match its exact Thread artifact.`,
@@ -588,6 +589,25 @@ function requireExactSourceArtifacts(
     indexed.set(source.bindingName, artifact);
   }
   return indexed;
+}
+
+function sourceArtifactUriMatches(
+  plan: ResolvedOperationPlanV2,
+  source: ResolvedOperationPlanV2["sources"][number],
+  artifact: ThreadArtifact,
+): boolean {
+  if (
+    plan.action.kind !== "static-structural-analysis" ||
+    source.bindingName !== plan.action.input.geometrySourceBinding
+  ) {
+    return artifact.uri === source.artifact.casUri;
+  }
+  try {
+    return source.role === "geometry-source" &&
+      source.artifact.casUri === canonicalCalculixStepAssetCasUri(artifact);
+  } catch {
+    return false;
+  }
 }
 
 function evidenceKeys(

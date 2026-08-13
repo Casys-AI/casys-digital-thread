@@ -242,7 +242,7 @@ function validCalculixPlan(): Record<string, unknown> {
       fingerprint: fingerprint("d"),
       byteCount: 128,
       mediaType: "model/step",
-      casUri: `casys://geometry-step/sha256/${"d".repeat(64)}`,
+      casUri: `casys://thread-asset/sha256/${"d".repeat(64)}`,
     },
   }];
   plan.action = {
@@ -651,7 +651,7 @@ Deno.test("ResolvedOperationPlan 2.0 keeps CalculiX proof case and geometry on d
     source.bindingName === "geometry"
   )!.artifact as Record<string, unknown>;
   geometryArtifact.fingerprint = structuredClone(proofArtifact.fingerprint);
-  geometryArtifact.casUri = `casys://geometry-step/sha256/${"c".repeat(64)}`;
+  geometryArtifact.casUri = `casys://thread-asset/sha256/${"c".repeat(64)}`;
   assertThrows(
     () => validateResolvedOperationPlanV2(sameArtifactBytes),
     TypeError,
@@ -719,6 +719,21 @@ Deno.test("ResolvedOperationPlan 2.0 validates a closed CalculiX action and its 
   assertEquals(
     validateResolvedOperationPlanV2(plan).action.kind,
     "static-structural-analysis",
+  );
+});
+
+Deno.test("ResolvedOperationPlan 2.0 rejects an aliased CalculiX geometry CAS namespace", () => {
+  const plan = validCalculixPlan();
+  const geometry = (plan.sources as Record<string, unknown>[]).find((source) =>
+    source.bindingName === "geometry"
+  )!;
+  const artifact = geometry.artifact as Record<string, unknown>;
+  artifact.casUri = `casys://thread-asset-alias/sha256/${"d".repeat(64)}`;
+
+  assertThrows(
+    () => validateResolvedOperationPlanV2(plan),
+    TypeError,
+    "must seal the exact thread-asset CAS URI",
   );
 });
 

@@ -22,6 +22,7 @@ import {
   sha256Fingerprint,
 } from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../kernel/types.ts";
+import { canonicalCalculixStepPlanCasUri } from "./calculix-step-asset-uri.ts";
 
 export const RESOLVED_OPERATION_PLAN_V2_SCHEMA = "resolved-operation-plan/2.0" as const;
 export const RESOLVED_OPERATION_PLAN_REF_SCHEMA =
@@ -993,6 +994,14 @@ function assertActionCaseMatchesSource(
     "model/step",
     `${path}.input.geometrySourceBinding`,
   );
+  if (
+    geometry.artifact.casUri !==
+      canonicalCalculixStepPlanCasUri(geometry.artifact.fingerprint)
+  ) {
+    throw new TypeError(
+      `${path}.input.geometrySourceBinding must seal the exact thread-asset CAS URI.`,
+    );
+  }
 }
 
 function assertDistinctSourceEvidence(

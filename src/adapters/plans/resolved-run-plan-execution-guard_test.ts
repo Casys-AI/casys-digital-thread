@@ -74,6 +74,15 @@ Deno.test("resolved run-plan execution guard admits one fully reread CalculiX au
     admitted.artifactsByBinding.get("geometry")?.mediaType,
     "model/step",
   );
+  assertEquals(
+    admitted.artifactsByBinding.get("geometry")?.uri,
+    `/api/thread/assets/${"9".repeat(64)}.step`,
+  );
+  assertEquals(
+    admitted.plan.sources.find((source) => source.bindingName === "geometry")
+      ?.artifact.casUri,
+    `casys://thread-asset/sha256/${"9".repeat(64)}`,
+  );
 });
 
 Deno.test("resolved run-plan execution guard permits the plan reader to follow only the run-stamped reference", async () => {
@@ -196,6 +205,101 @@ Deno.test("resolved run-plan execution guard rejects exact-source URI or fingerp
     () => admit({ ...fixture, plan, ...relinked }),
     TypeError,
     "does not match its exact Thread artifact",
+  );
+});
+
+Deno.test("resolved run-plan execution guard rejects CalculiX STEP projection or internal-CAS drift", async () => {
+  const wrongDigest = "0".repeat(64);
+  for (
+    const [label, mutateArtifact] of [
+      [
+        "wrong digest",
+        (artifact: ThreadArtifact) => {
+          (artifact as { uri?: string }).uri = `/api/thread/assets/${wrongDigest}.step`;
+        },
+      ],
+      [
+        "wrong extension",
+        (artifact: ThreadArtifact) => {
+          (artifact as { uri?: string }).uri =
+            `/api/thread/assets/${artifact.fingerprint.digest}.stp`;
+        },
+      ],
+      [
+        "query suffix",
+        (artifact: ThreadArtifact) => {
+          (artifact as { uri?: string }).uri =
+            `/api/thread/assets/${artifact.fingerprint.digest}.step?download=1`;
+        },
+      ],
+      [
+        "internal CAS exposed by Thread",
+        (artifact: ThreadArtifact) => {
+          (artifact as { uri?: string }).uri =
+            `casys://thread-asset/sha256/${artifact.fingerprint.digest}`;
+        },
+      ],
+      [
+        "wrong kind",
+        (artifact: ThreadArtifact) => {
+          (artifact as { kind: ThreadArtifact["kind"] }).kind = "document";
+        },
+      ],
+      [
+        "wrong media type",
+        (artifact: ThreadArtifact) => {
+          (artifact as { mediaType?: string }).mediaType = "application/step";
+        },
+      ],
+    ] as const
+  ) {
+    const fixture = await createFixture("calculix");
+    const snapshot = structuredClone(fixture.snapshot);
+    const geometry = snapshot.artifacts.find((artifact) =>
+      artifact.id === CALCULIX_GEOMETRY
+    )!;
+    mutateArtifact?.(geometry);
+    const validatedSnapshot = validateThreadSnapshot(snapshot);
+    const plan = structuredClone(fixture.plan);
+    (plan.basis as { fingerprint: ReturnType<typeof fingerprint> }).fingerprint =
+      await sha256Fingerprint(validatedSnapshot);
+    const relinked = await relinkPlanReference(fixture.project, plan);
+
+    await assertRejects(
+      () =>
+        admit({
+          ...fixture,
+          snapshot: validatedSnapshot,
+          plan,
+          ...relinked,
+        }),
+      TypeError,
+      "does not match its exact Thread artifact",
+      label,
+    );
+  }
+});
+
+Deno.test("resolved run-plan execution guard rejects an aliased CalculiX geometry CAS plan before basis admission", async () => {
+  const fixture = await createFixture("calculix");
+  const plan = structuredClone(fixture.plan);
+  const geometry = plan.sources.find((source) => source.bindingName === "geometry")!;
+  (geometry.artifact as { casUri: string }).casUri =
+    `casys://thread-asset-alias/sha256/${geometry.artifact.fingerprint.digest}`;
+
+  await assertRejects(
+    () =>
+      requireResolvedRunPlanExecution({
+        project: fixture.project,
+        runId: fixture.plan.run.runId,
+        expectedOperation: operationFor(fixture.kind),
+        expectedRunStatuses: ["queued"],
+        projects: fixture.store,
+        snapshots: { get: () => Promise.resolve(fixture.snapshot) },
+        plans: { read: () => Promise.resolve(plan) },
+      }),
+    TypeError,
+    "must seal the exact thread-asset CAS URI",
   );
 });
 
@@ -532,7 +636,9 @@ function sourcesFor(kind: RecordedKind, snapshot: ThreadSnapshot) {
       fingerprint: value.fingerprint,
       byteCount: value.id.length,
       mediaType: value.mediaType!,
-      casUri: value.uri!,
+      casUri: kind === "calculix" && bindingName === "geometry"
+        ? `casys://thread-asset/sha256/${value.fingerprint.digest}`
+        : value.uri!,
     },
   });
   if (kind === "modelica") {
@@ -864,7 +970,9 @@ function sourceArtifact(
     kind,
     version: "1",
     fingerprint: { algorithm: "sha256", digest },
-    uri: `casys://guard-source/sha256/${digest}`,
+    uri: kind === "step"
+      ? `/api/thread/assets/${digest}.step`
+      : `casys://guard-source/sha256/${digest}`,
     mediaType,
     producer: {
       serverId: "fixture-source",
