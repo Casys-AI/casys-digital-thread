@@ -17,9 +17,11 @@ import { useEffect, useMemo, useRef } from "preact/hooks";
 import Sigma from "sigma";
 import {
   buildExplorationModel,
+  buildExplorationRelationRecords,
   DISPLAY_KIND_LABELS,
   type DisplayKind,
   displayKindOf,
+  evidenceSystemFamily,
   type ExplorationLegendItem,
   readCssTokens,
   type SigmaEdgeAttrs,
@@ -29,7 +31,6 @@ import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type { ThreadGraphRef } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
-import { graphRelationAccessibleLabel } from "./graph-selection-model.ts";
 import { isUiOnlySysmlCompositeEdge } from "./sysml-composite-projection.ts";
 
 export interface EvidenceExplorationProps {
@@ -141,6 +142,7 @@ export function EvidenceExploration({
         labelRenderedSizeThreshold: compact ? 0 : 10,
         labelGridCellSize: compact ? 10 : 100,
         labelDensity: compact ? 1 : 0.07,
+        stagePadding: 30,
       },
     );
     sigmaRef.current = sigma;
@@ -155,9 +157,10 @@ export function EvidenceExploration({
       });
     });
 
-    // Relations are first-class evidence. MultiDirectedGraph keeps parallel
-    // handoffs distinct, and selecting one opens the same edge inspector as
-    // the Carte renderer.
+    // Relations are first-class evidence. A redundant structural/provenance
+    // pair may share one Sigma route, whose primary assertion opens the same
+    // exact inspector as the Carte renderer. Every member remains separately
+    // selectable in the accessible evidence table below.
     if (!compact) {
       sigma.on("clickEdge", ({ edge: edgeKey }) => {
         const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
@@ -238,15 +241,23 @@ export function EvidenceExploration({
     sigma.setSetting("edgeReducer", (_edge, data) => {
       const attrs = data as SigmaEdgeAttrs;
       const selected = selectedEdgeOccurrenceKey !== undefined &&
-        attrs.occurrenceKey === selectedEdgeOccurrenceKey;
+        attrs.memberOccurrenceKeys.includes(selectedEdgeOccurrenceKey);
+      const memberDisclosure = attrs.memberEdges.length > 1
+        ? `Shared route with ${attrs.memberEdges.length} recorded assertions; inspect each assertion in the accessible evidence table.`
+        : undefined;
       return selected
         ? {
           ...data,
           highlighted: true,
           color: explorationModel.tokens.blue,
           size: (data.size ?? 1.5) * 1.8,
+          label: memberDisclosure ?? data.label,
         }
-        : { ...data, highlighted: false };
+        : {
+          ...data,
+          highlighted: false,
+          label: memberDisclosure ?? data.label,
+        };
     });
     sigma.refresh();
   }, [selection, explorationModel, displayDepth, visibleKinds, projection]);
@@ -290,12 +301,16 @@ export function EvidenceExploration({
       };
     }
     const systemCounts = new Map<string, number>();
+    const visibleSystemsByFamily = new Map<string, Set<string>>();
     const componentCounts = new Map<number, number>();
     const kindCounts = new Map<DisplayKind, number>();
     explorationModel.graph.forEachNode((key, attrs) => {
       if (!isVisible(key, attrs)) return;
-      const system = attrs.node.system;
+      const system = evidenceSystemFamily(attrs.node.system);
       systemCounts.set(system, (systemCounts.get(system) ?? 0) + 1);
+      const visibleSystems = visibleSystemsByFamily.get(system) ?? new Set();
+      visibleSystems.add(attrs.node.system);
+      visibleSystemsByFamily.set(system, visibleSystems);
       if (attrs.componentId !== undefined) {
         componentCounts.set(
           attrs.componentId,
@@ -314,7 +329,11 @@ export function EvidenceExploration({
       }));
     return {
       systemLegend: explorationModel.systemLegend
-        .map((item) => ({ ...item, count: systemCounts.get(item.system) ?? 0 }))
+        .map((item) => ({
+          ...item,
+          systems: [...(visibleSystemsByFamily.get(item.system) ?? [])].sort(),
+          count: systemCounts.get(item.system) ?? 0,
+        }))
         .filter((item) => item.count > 0),
       legend: explorationModel.legend
         .map((item) => ({
@@ -352,41 +371,14 @@ export function EvidenceExploration({
       nodes.push({ key, label: attrs.label, ref: attrs.node.ref });
     });
     const nodeLabelByKey = new Map(nodes.map((node) => [node.key, node.label]));
-    const relationRecords: Array<{
-      key: string;
-      occurrenceKey: string;
-      label: string;
-      edgeId: string;
-      edge: SigmaEdgeAttrs["edge"];
-    }> = [];
-    explorationModel.graph.forEachEdge((key, attrs, source, target) => {
-      if (!visibleNodeKeys.has(source) || !visibleNodeKeys.has(target)) return;
-      if (isUiOnlySysmlCompositeEdge(attrs.edge)) return;
-      relationRecords.push({
-        key,
-        occurrenceKey: attrs.occurrenceKey,
-        label: attrs.label,
-        edgeId: attrs.edgeId,
-        edge: attrs.edge,
-      });
-    });
-    // Graphology preserves insertion order, but keyboard ordinals should not
-    // depend on a provider/SSE edge array order when the records themselves
-    // have stable occurrence identities.
-    const edges = relationRecords.sort((left, right) =>
-      left.occurrenceKey.localeCompare(right.occurrenceKey) ||
-      left.key.localeCompare(right.key)
-    ).map((edge, ordinal) => ({
-      ...edge,
-      accessibleLabel: graphRelationAccessibleLabel(
-        edge.edge,
-        nodeLabelByKey.get(`${edge.edge.from.kind}:${edge.edge.from.id}`) ??
-          `${edge.edge.from.kind}:${edge.edge.from.id}`,
-        nodeLabelByKey.get(`${edge.edge.to.kind}:${edge.edge.to.id}`) ??
-          `${edge.edge.to.kind}:${edge.edge.to.id}`,
-        ordinal,
-      ),
-    }));
+    // Build navigation from the COMPLETE projection, not Sigma's drawing
+    // quotient. A shared canvas route therefore still yields two exact rows
+    // and two independent inspector selections.
+    const edges = buildExplorationRelationRecords(
+      projection.edges,
+      visibleNodeKeys,
+      nodeLabelByKey,
+    );
     return { nodes, edges };
   }, [explorationModel, displayDepth, visibleKinds, projection]);
 
@@ -420,7 +412,10 @@ export function EvidenceExploration({
                 <span
                   key={item.system}
                   class="evidence-exploration-legend-chip"
-                  aria-label={`${item.label} — ${item.count} visible items`}
+                  aria-label={`${item.label} — ${item.count} visible items — recorded as ${
+                    item.systems.join(", ")
+                  }`}
+                  title={`Recorded systems: ${item.systems.join(", ")}`}
                 >
                   <span
                     class="evidence-exploration-legend-chip-dot"
@@ -493,6 +488,7 @@ function ExplorationKeyboardNavigation({
     accessibleLabel: string;
     edgeId: string;
     edge: SigmaEdgeAttrs["edge"];
+    visualRouteLabel?: string;
   }[];
   onSelectionChange: EvidenceExplorationProps["onSelectionChange"];
 }): JSX.Element {
@@ -502,7 +498,10 @@ function ExplorationKeyboardNavigation({
         ACCESSIBLE EVIDENCE TABLE ({nodes.length} items · {edges.length}{" "}
         relations)
       </summary>
-      <p>Use Tab to reach a record, then press Enter to inspect it.</p>
+      <p>
+        Use Tab to reach a record, then press Enter to inspect it. A shared
+        canvas route is listed here once per exact recorded assertion.
+      </p>
       <div class="evidence-exploration-table-wrap">
         <table>
           <caption class="sr-only">
@@ -537,6 +536,11 @@ function ExplorationKeyboardNavigation({
                 <td>Relation</td>
                 <td>
                   <span aria-hidden="true">{edge.label}</span>
+                  {edge.visualRouteLabel && (
+                    <span aria-hidden="true">
+                      {` · ${edge.visualRouteLabel}`}
+                    </span>
+                  )}
                   <span class="sr-only">{edge.accessibleLabel}</span>
                 </td>
                 <td>

@@ -18,9 +18,12 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   buildExplorationModel,
+  buildExplorationRelationRecords,
+  buildExplorationVisualEdgeGroups,
   type CssTokens,
   DISPLAY_KIND_LABELS,
   displayKindOf,
+  evidenceSystemFamily,
   FALLBACK_TOKENS,
   normalizeEdgeDirection,
   type SigmaEdgeAttrs,
@@ -28,7 +31,12 @@ import {
 } from "./src/thread/evidence-exploration-model.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 import { buildEvidenceCanvasProjection } from "./src/thread/evidence-canvas-model.ts";
-import { stubEdgeOccurrenceKey } from "./src/thread/versioned-provenance-model.ts";
+import {
+  buildVersionedGraphSelectionIndex,
+  buildVersionedProvenanceProjection,
+  edgeForVersionedGraphSelection,
+  stubEdgeOccurrenceKey,
+} from "./src/thread/versioned-provenance-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
@@ -527,6 +535,7 @@ Deno.test(
     );
     assertEquals(model.systemLegend, [{
       system: "build123d-sandbox",
+      systems: ["build123d-sandbox"],
       label: "build123d · CAD",
       color: "#a15c00",
       count: 1,
@@ -728,7 +737,7 @@ Deno.test(
 );
 
 Deno.test(
-  "the tool color key lists exactly the visible systems with the exact canvas colors",
+  "the tool color key lists visible families with the exact canvas colors",
   () => {
     const model = buildMinimalModel(
       [
@@ -750,7 +759,7 @@ Deno.test(
     const bySystem = new Map(
       model.systemLegend.map((item) => [item.system, item]),
     );
-    assertEquals(bySystem.size, 3, "One legend entry per visible system.");
+    assertEquals(bySystem.size, 3, "One legend entry per visible family.");
     // The legend color must equal the color painted on the canvas node.
     assertEquals(
       bySystem.get("modelica")?.color,
@@ -761,6 +770,151 @@ Deno.test(
       model.graph.getNodeAttributes("artifact:c1").color,
     );
     assertEquals(bySystem.get("modelica")?.count, 1);
+  },
+);
+
+Deno.test(
+  "CalculiX recording layers share one visual family without rewriting provenance",
+  () => {
+    const legacy = node("c1", "artifact", "calculix", "artifact");
+    const provider = node("c2", "artifact", "mcp-calculix", "artifact");
+    const model = buildMinimalModel(
+      [legacy, provider],
+      [edge("e1", legacy.ref, provider.ref)],
+    );
+
+    assertEquals(evidenceSystemFamily("calculix"), "calculix");
+    assertEquals(evidenceSystemFamily("mcp-calculix"), "calculix");
+    assertEquals(model.systemLegend, [{
+      system: "calculix",
+      systems: ["calculix", "mcp-calculix"],
+      label: "CalculiX · FEA",
+      color: FALLBACK_TOKENS.red,
+      count: 2,
+    }]);
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:c1", "color"),
+      FALLBACK_TOKENS.red,
+    );
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:c2", "color"),
+      FALLBACK_TOKENS.red,
+    );
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:c1", "node").system,
+      "calculix",
+    );
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:c2", "node").system,
+      "mcp-calculix",
+    );
+  },
+);
+
+Deno.test(
+  "geometry capture label counts explicit SysML part usages from recorded topology",
+  () => {
+    const architecture: ThreadGraphNode = {
+      ...node("architecture", "artifact", "syson", "artifact"),
+      artifactKind: "sysml-model",
+    };
+    const geometry: ThreadGraphNode = {
+      ...node("geometry", "artifact", "digital-thread", "artifact"),
+      artifactKind: "cad-model",
+      label: "Geometry: base, arm",
+    };
+    const definitionA = node(
+      "definition-a",
+      "part-definition",
+      "syson",
+      "part-definition",
+    );
+    const definitionB = node(
+      "definition-b",
+      "part-definition",
+      "syson",
+      "part-definition",
+    );
+    const usageA = node("usage-a", "part-usage", "syson", "part-usage");
+    const usageB = node("usage-b", "part-usage", "syson", "part-usage");
+    const stepA: ThreadGraphNode = {
+      ...node("step-a", "artifact", "build123d-sandbox", "artifact"),
+      artifactKind: "step",
+    };
+    const stepB: ThreadGraphNode = {
+      ...node("step-b", "artifact", "build123d-sandbox", "artifact"),
+      artifactKind: "step",
+    };
+    const model = buildMinimalModel(
+      [
+        architecture,
+        geometry,
+        definitionA,
+        definitionB,
+        usageA,
+        usageB,
+        stepA,
+        stepB,
+      ],
+      [
+        edge(
+          "architecture-geometry",
+          architecture.ref,
+          geometry.ref,
+          "derived_from",
+        ),
+        edge("geometry-step-a", geometry.ref, stepA.ref, "traces_to"),
+        edge("geometry-step-b", geometry.ref, stepB.ref, "traces_to"),
+        edge("definition-step-a", definitionA.ref, stepA.ref, "represented_by"),
+        edge("definition-step-b", definitionB.ref, stepB.ref, "represented_by"),
+        edge("usage-definition-a", usageA.ref, definitionA.ref, "typed_by"),
+        edge("usage-definition-b", usageB.ref, definitionB.ref, "typed_by"),
+      ],
+    );
+
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:geometry", "label"),
+      "Geometry bundle · 2 modeled parts",
+    );
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:geometry", "node").label,
+      "Geometry: base, arm",
+      "The canonical graph node label must remain untouched for inspection.",
+    );
+  },
+);
+
+Deno.test(
+  "geometry-like CAD topology without a SysML architecture keeps its canonical label",
+  () => {
+    const artifact: ThreadGraphNode = {
+      ...node("cad-model", "artifact", "digital-thread", "artifact"),
+      artifactKind: "cad-model",
+      label: "Reviewed CAD document",
+    };
+    const definition = node(
+      "definition",
+      "part-definition",
+      "syson",
+      "part-definition",
+    );
+    const usage = node("usage", "part-usage", "syson", "part-usage");
+    const step: ThreadGraphNode = {
+      ...node("step", "artifact", "build123d-sandbox", "artifact"),
+      artifactKind: "step",
+    };
+    const model = buildMinimalModel(
+      [artifact, definition, usage, step],
+      [
+        edge("artifact-step", artifact.ref, step.ref, "traces_to"),
+        edge("definition-step", definition.ref, step.ref, "represented_by"),
+        edge("usage-definition", usage.ref, definition.ref, "typed_by"),
+      ],
+    );
+    assertEquals(
+      model.graph.getNodeAttribute("artifact:cad-model", "label"),
+      "Reviewed CAD document",
+    );
   },
 );
 
@@ -870,6 +1024,185 @@ Deno.test(
       );
       assertNotEquals(label, "", `Empty label for kind '${kind}'`);
     }
+  },
+);
+
+Deno.test(
+  "Sigma draws one source route while the table retains derived_from and source_of",
+  () => {
+    const source = node("source", "artifact", "calculix", "artifact");
+    const observation = node(
+      "measure",
+      "observation",
+      "calculix",
+      "observation",
+    );
+    const derived: ThreadGraphEdge = {
+      ...edge(
+        "derived",
+        source.ref,
+        observation.ref,
+        "derived_from",
+      ),
+      origin: "provenance",
+    };
+    const sourceOf = edge(
+      "source-of",
+      source.ref,
+      observation.ref,
+      "source_of",
+    );
+    const versioned = buildVersionedProvenanceProjection(
+      { nodes: [source, observation], edges: [derived, sourceOf] },
+      EMPTY_FAMILY,
+    );
+    const projectedDerived = versioned.graph.edges.find((candidate) =>
+      candidate.id === derived.id
+    )!;
+    const projectedSourceOf = versioned.graph.edges.find((candidate) =>
+      candidate.id === sourceOf.id
+    )!;
+    const evidenceModel = buildEvidenceGraphModel(
+      versioned.graph,
+      EMPTY_FAMILY,
+      {},
+    );
+    const projection = buildEvidenceCanvasProjection(
+      evidenceModel,
+      0,
+      undefined,
+      new Map(),
+    );
+    const model = buildExplorationModel(
+      evidenceModel,
+      projection,
+      FALLBACK_TOKENS,
+    );
+
+    assertEquals(projection.edges.length, 2, "Projection stays complete.");
+    assertEquals(model.graph.size, 1, "Sigma draws one shared route.");
+    const attrs = model.graph.getEdgeAttributes(model.graph.edges()[0]!);
+    assertEquals(
+      attrs.edge,
+      projectedSourceOf,
+      "The precise structural edge is primary.",
+    );
+    assertEquals(attrs.memberEdges, [projectedSourceOf, projectedDerived]);
+    assertEquals(attrs.memberOccurrenceKeys.length, 2);
+    assertEquals(
+      attrs.label,
+      "source of + derived from · 2 recorded assertions",
+    );
+
+    const records = buildExplorationRelationRecords(
+      projection.edges,
+      new Set(["artifact:source", "observation:measure"]),
+      new Map([
+        ["artifact:source", "Solver result"],
+        ["observation:measure", "Measured displacement"],
+      ]),
+    );
+    assertEquals(records.length, 2, "The table lists both assertions.");
+    assertEquals(
+      new Set(records.map((record) => record.edgeId)),
+      new Set(["derived", "source-of"]),
+    );
+    assertEquals(
+      new Set(records.map((record) => record.edge)),
+      new Set([projectedDerived, projectedSourceOf]),
+      "Each table action retains its exact edge object for the inspector.",
+    );
+    assertEquals(
+      new Set(records.map((record) => record.occurrenceKey)).size,
+      2,
+    );
+    assertEquals(
+      records.every((record) =>
+        record.visualRouteLabel?.includes("2 recorded assertions") === true
+      ),
+      true,
+    );
+    const selectionIndex = buildVersionedGraphSelectionIndex(versioned);
+    for (const record of records) {
+      const inspectorEdge = edgeForVersionedGraphSelection(
+        versioned,
+        {
+          kind: "edge",
+          id: record.edgeId,
+          occurrence: {
+            key: record.occurrenceKey,
+            edge: record.edge,
+          },
+        },
+        selectionIndex,
+      );
+      assertEquals(inspectorEdge?.id, record.edge.id);
+      assertEquals(inspectorEdge?.relation, record.edge.relation);
+      assertEquals(inspectorEdge?.from, record.edge.from);
+      assertEquals(inspectorEdge?.to, record.edge.to);
+      assertEquals(inspectorEdge?.attestation, record.edge.attestation);
+    }
+  },
+);
+
+Deno.test(
+  "Sigma draws one input route only when derived_from has the same attestation",
+  () => {
+    const input = node("input", "artifact", "build123d", "artifact");
+    const result = node("result", "artifact", "calculix", "artifact");
+    const attestation = {
+      consumptionId: "consumption-1",
+      status: "verified" as const,
+      producerFingerprint: "sha256:a",
+      consumedFingerprint: "sha256:a",
+      checkedAt: "2026-08-13T00:00:00.000Z",
+    };
+    const derived: ThreadGraphEdge = {
+      ...edge("derived", input.ref, result.ref, "derived_from"),
+      origin: "provenance",
+      attestation,
+    };
+    const inputTo: ThreadGraphEdge = {
+      ...edge("input-to", input.ref, result.ref, "input_to"),
+      attestation: { ...attestation },
+    };
+    const groups = buildExplorationVisualEdgeGroups([derived, inputTo]);
+
+    assertEquals(groups.length, 1);
+    assertEquals(groups[0]!.primary, inputTo);
+    assertEquals(groups[0]!.members, [inputTo, derived]);
+
+    const mismatch: ThreadGraphEdge = {
+      ...inputTo,
+      attestation: { ...attestation, status: "mismatch" },
+    };
+    assertEquals(
+      buildExplorationVisualEdgeGroups([derived, mismatch]).length,
+      2,
+      "A different attestation fails open.",
+    );
+  },
+);
+
+Deno.test(
+  "Sigma fails open when redundant route candidates are ambiguous",
+  () => {
+    const from = ref("input", "artifact");
+    const to = ref("result", "artifact");
+    const derivedA: ThreadGraphEdge = {
+      ...edge("derived-a", from, to, "derived_from"),
+      origin: "provenance",
+    };
+    const derivedB: ThreadGraphEdge = {
+      ...edge("derived-b", from, to, "derived_from"),
+      origin: "provenance",
+    };
+    const inputTo = edge("input", from, to, "input_to");
+
+    assertEquals(
+      buildExplorationVisualEdgeGroups([derivedA, inputTo, derivedB]).length,
+      3,
+    );
   },
 );
 
@@ -1009,5 +1342,184 @@ Deno.test("Sigma does not merge occurrence groups when recorded ids contain pipe
   assertEquals(
     model.graph.mapEdges((_key, attrs) => attrs.edgeId).sort(),
     ["handoff|one", "handoff|two"],
+  );
+});
+
+Deno.test("exploration labels preserve canonical evidence records", () => {
+  const step = {
+    ...node("step", "artifact", "build123d", "artifact"),
+    artifactKind: "step",
+    label: "Authoritative STEP: ArticulatedArm",
+  };
+  const proof = {
+    ...node("proof", "artifact", "digital-thread", "artifact"),
+    artifactKind: "document",
+    label: "FEA proof case seal: desk-lamp arm cantilever revision one",
+  };
+  const solverInput = {
+    ...node("input", "artifact", "mcp-calculix", "artifact"),
+    artifactKind: "solver-input",
+    label: "CalculiX input.step",
+  };
+  const result = {
+    ...node("result", "artifact", "mcp-calculix", "artifact"),
+    artifactKind: "solver-result",
+    label: "CalculiX result.json",
+  };
+  const evaluationRecord = {
+    ...node("evaluation-record", "artifact", "digital-thread", "artifact"),
+    artifactKind: "evidence",
+    label: "Recorded SysON FEA evaluation",
+  };
+  const displacementObservation = {
+    ...node(
+      "displacement-observation",
+      "observation",
+      "mcp-calculix",
+      "observation",
+    ),
+    label: "maximumDisplacement measured by CalculiX",
+  };
+  const stressObservation = {
+    ...node(
+      "stress-observation",
+      "observation",
+      "mcp-calculix",
+      "observation",
+    ),
+    label: "maximumVonMisesStress measured by CalculiX",
+  };
+  const displacementRequirement = {
+    ...node(
+      "displacement-requirement",
+      "requirement",
+      "syson",
+      "requirement",
+    ),
+    label: "Maximum arm tip displacement",
+  };
+  const stressRequirement = {
+    ...node("stress-requirement", "requirement", "syson", "requirement"),
+    label: "Maximum arm von Mises stress",
+  };
+  const displacementEvaluation = {
+    ...node(
+      "displacement-evaluation",
+      "evaluation",
+      "syson",
+      "evaluation",
+    ),
+    label: "maximumDisplacement evaluation",
+  };
+  const stressEvaluation = {
+    ...node("stress-evaluation", "evaluation", "syson", "evaluation"),
+    label: "maximumVonMisesStress evaluation",
+  };
+  const nodes = [
+    step,
+    proof,
+    solverInput,
+    result,
+    evaluationRecord,
+    displacementObservation,
+    stressObservation,
+    displacementRequirement,
+    stressRequirement,
+    displacementEvaluation,
+    stressEvaluation,
+  ];
+  const edges = [
+    edge("step-proof", step.ref, proof.ref, "derived_from"),
+    edge("step-input", step.ref, solverInput.ref, "input_to"),
+    edge("input-result", solverInput.ref, result.ref, "input_to"),
+    edge("result-record", result.ref, evaluationRecord.ref, "input_to"),
+    edge("proof-record", proof.ref, evaluationRecord.ref, "input_to"),
+    edge(
+      "record-evaluation",
+      evaluationRecord.ref,
+      displacementEvaluation.ref,
+      "evidences",
+    ),
+    edge(
+      "record-stress-evaluation",
+      evaluationRecord.ref,
+      stressEvaluation.ref,
+      "evidences",
+    ),
+    edge(
+      "result-displacement-observation",
+      result.ref,
+      displacementObservation.ref,
+      "source_of",
+    ),
+    edge(
+      "result-stress-observation",
+      result.ref,
+      stressObservation.ref,
+      "source_of",
+    ),
+    edge(
+      "displacement-observation-evaluation",
+      displacementObservation.ref,
+      displacementEvaluation.ref,
+      "uses",
+    ),
+    edge(
+      "stress-observation-evaluation",
+      stressObservation.ref,
+      stressEvaluation.ref,
+      "uses",
+    ),
+    edge(
+      "displacement-requirement-evaluation",
+      displacementRequirement.ref,
+      displacementEvaluation.ref,
+      "evaluates",
+    ),
+    edge(
+      "stress-requirement-evaluation",
+      stressRequirement.ref,
+      stressEvaluation.ref,
+      "evaluates",
+    ),
+  ];
+  const evidenceModel = buildEvidenceGraphModel(
+    { nodes, edges },
+    EMPTY_FAMILY,
+  );
+  const projection = {
+    nodes,
+    edges,
+    displayedCount: nodes.length,
+    foldedInstrumentCount: 0,
+    isFiltered: false,
+    supportingNodeCount: 0,
+  };
+  const model = buildExplorationModel(
+    evidenceModel,
+    projection,
+    FALLBACK_TOKENS,
+  );
+  const modelAgain = buildExplorationModel(
+    evidenceModel,
+    projection,
+    FALLBACK_TOKENS,
+  );
+
+  assertEquals(model.graph.order, 11);
+  for (const canonicalNode of nodes) {
+    const key = `${canonicalNode.ref.kind}:${canonicalNode.ref.id}`;
+    assertEquals(
+      modelAgain.graph.getNodeAttribute(key, "label"),
+      model.graph.getNodeAttribute(key, "label"),
+    );
+    assertEquals(
+      model.graph.getNodeAttribute(key, "node").label,
+      canonicalNode.label,
+    );
+  }
+  assertEquals(
+    model.graph.getNodeAttribute("artifact:step", "label"),
+    step.label,
   );
 });

@@ -709,7 +709,36 @@ function projectStructuralGraphEdges(
       ];
     })
   );
-  return [...artifactEdges, ...observationEdges];
+  const provenanceTracePairs = new Set(
+    snapshot.provenance.flatMap((link) => {
+      if (link.relation !== "traces_to") return [];
+      const direction = GRAPH_PROVENANCE_DIRECTION[link.relation];
+      const from = direction === "forward" ? link.from : link.to;
+      const to = direction === "forward" ? link.to : link.from;
+      return [`${entityKey(from)}->${entityKey(to)}`];
+    }),
+  );
+  const requirementEdges = snapshot.requirements.flatMap((requirement) => {
+    const source = context.artifacts.get(requirement.trace.sourceArtifactId);
+    if (!source) return [];
+    const from = { kind: "artifact", id: source.id } as const;
+    const to = { kind: "requirement", id: requirement.id } as const;
+    if (provenanceTracePairs.has(`${entityKey(from)}->${entityKey(to)}`)) {
+      return [];
+    }
+    return [
+      {
+        id: `structure:requirement-source:${source.id}:${requirement.id}`,
+        from,
+        to,
+        relation: "traces_to",
+        rationale:
+          `${source.name} is the explicit source artifact of ${requirement.name}.`,
+        origin: "structure",
+      } satisfies ThreadGraphEdge,
+    ];
+  });
+  return [...artifactEdges, ...observationEdges, ...requirementEdges];
 }
 
 type ProjectedComponent = ThreadWorkbenchSnapshot["components"]["components"][number];

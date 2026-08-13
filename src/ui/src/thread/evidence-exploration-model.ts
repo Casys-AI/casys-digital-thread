@@ -43,7 +43,11 @@ import {
   structuredOccurrenceKey,
   threadGraphEdgeRecordSignature,
 } from "./versioned-provenance-model.ts";
-import { displayedGraphEdgeOccurrenceKey } from "./graph-selection-model.ts";
+import {
+  displayedGraphEdgeOccurrenceKey,
+  graphRelationAccessibleLabel,
+} from "./graph-selection-model.ts";
+import { isUiOnlySysmlCompositeEdge } from "./sysml-composite-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -116,11 +120,35 @@ export interface SigmaEdgeAttrs {
   edgeId: string;
   /** Exact occurrence selected by Sigma, retained through the inspector. */
   edge: ThreadGraphEdge;
+  /**
+   * Every exact assertion represented by this one visual route. The first
+   * member is `edge`; secondary members remain separately selectable in the
+   * accessible evidence table.
+   */
+  memberEdges: readonly ThreadGraphEdge[];
+  /** Occurrence identity for every member, used to highlight the shared route. */
+  memberOccurrenceKeys: readonly string[];
   label: string;
   /** "stub" marks synthetic connector edges rendered with a dashed style. */
   edgeType: "regular" | "stub";
   color: string;
   size: number;
+}
+
+export interface ExplorationRelationRecord {
+  readonly key: string;
+  readonly occurrenceKey: string;
+  readonly label: string;
+  readonly accessibleLabel: string;
+  readonly edgeId: string;
+  readonly edge: ThreadGraphEdge;
+  /** Visible disclosure when several exact assertions share one drawn route. */
+  readonly visualRouteLabel?: string;
+}
+
+interface ExplorationVisualEdgeGroup {
+  readonly primary: ThreadGraphEdge;
+  readonly members: readonly ThreadGraphEdge[];
 }
 
 /** Prepared model consumed directly by the EvidenceExploration component. */
@@ -130,8 +158,10 @@ export interface SigmaEdgeAttrs {
  * that differs from what `nodeColorFor` actually renders.
  */
 export interface SystemLegendItem {
-  /** Raw system id as recorded on the nodes (e.g. "calculix"). */
+  /** Stable visual family id (e.g. "calculix"). */
   readonly system: string;
+  /** Exact producer ids represented by this family; provenance stays distinct. */
+  readonly systems: readonly string[];
   /** Human label (e.g. "FEA · CalculiX"). */
   readonly label: string;
   /** The exact node color used on the canvas for this system. */
@@ -152,8 +182,8 @@ export interface ExplorationModel {
    */
   readonly legend: readonly ExplorationLegendItem[];
   /**
-   * Tool color key derived from the VISIBLE nodes — one entry per producing
-   * system present in the projection, with the exact canvas color.
+   * Tool color key derived from the VISIBLE nodes — one entry per visual tool
+   * family present in the projection, with exact producer ids retained.
    */
   readonly systemLegend: readonly SystemLegendItem[];
   readonly tokens: CssTokens;
@@ -183,6 +213,104 @@ export function normalizeEdgeDirection(
   _relation: ThreadGraphEdge["relation"],
 ): { from: string; to: string } {
   return { from: fromKey, to: toKey };
+}
+
+/**
+ * Returns one drawing route for an exact redundant assertion pair while
+ * retaining both recorded edge objects on the route.
+ *
+ * Only the projector-owned pairings below are eligible:
+ *
+ *   provenance `derived_from` + structural `input_to`
+ *   provenance `derived_from` + structural `source_of`
+ *
+ * The structural assertion is the visual primary because it names the more
+ * precise role. Any ambiguity, synthetic/UI route, incompatible endpoint
+ * kind or attestation difference fails open and draws every assertion.
+ */
+export function buildExplorationVisualEdgeGroups(
+  edges: readonly ThreadGraphEdge[],
+): readonly ExplorationVisualEdgeGroup[] {
+  const byDirectionalPair = new Map<string, ThreadGraphEdge[]>();
+  for (const edge of edges) {
+    const key = `${nodeKey(edge.from)}\u0000${nodeKey(edge.to)}`;
+    const candidates = byDirectionalPair.get(key) ?? [];
+    candidates.push(edge);
+    byDirectionalPair.set(key, candidates);
+  }
+
+  const primaryBySecondary = new Map<ThreadGraphEdge, ThreadGraphEdge>();
+  const secondaryByPrimary = new Map<ThreadGraphEdge, ThreadGraphEdge>();
+  for (const candidates of byDirectionalPair.values()) {
+    const derived = candidates.filter(isCollapsibleDerivedFrom);
+    const structural = candidates.filter(isCollapsibleStructuralRelation);
+    if (derived.length !== 1 || structural.length !== 1) continue;
+    const secondary = derived[0]!;
+    const primary = structural[0]!;
+    if (!relationsDescribeSameRoute(primary)) continue;
+    if (!sameAttestation(primary, secondary)) continue;
+    primaryBySecondary.set(secondary, primary);
+    secondaryByPrimary.set(primary, secondary);
+  }
+
+  return edges.flatMap((edge) => {
+    if (primaryBySecondary.has(edge)) return [];
+    const secondary = secondaryByPrimary.get(edge);
+    return [{ primary: edge, members: secondary ? [edge, secondary] : [edge] }];
+  });
+}
+
+/**
+ * Builds the keyboard/table records from the complete projection, never from
+ * Sigma's visual quotient. Therefore every assertion keeps its own exact id,
+ * occurrence key, attestation and inspector action even when two assertions
+ * share one canvas line.
+ */
+export function buildExplorationRelationRecords(
+  edges: readonly ThreadGraphEdge[],
+  visibleNodeKeys: ReadonlySet<string>,
+  nodeLabelByKey: ReadonlyMap<string, string>,
+): readonly ExplorationRelationRecord[] {
+  const visibleEdges = edges.filter((edge) =>
+    visibleNodeKeys.has(nodeKey(edge.from)) &&
+    visibleNodeKeys.has(nodeKey(edge.to)) &&
+    !isUiOnlySysmlCompositeEdge(edge)
+  );
+  const keyFor = makeSigmaEdgeKeyFactory(visibleEdges);
+  const groupByMember = new Map<ThreadGraphEdge, ExplorationVisualEdgeGroup>();
+  for (const group of buildExplorationVisualEdgeGroups(visibleEdges)) {
+    for (const member of group.members) groupByMember.set(member, group);
+  }
+  const records = visibleEdges.map((edge) => {
+    const group = groupByMember.get(edge);
+    const sharedRoute = group && group.members.length > 1
+      ? `Shared canvas route: ${visualRouteLabel(group.members)}`
+      : undefined;
+    return {
+      key: keyFor(edge),
+      occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
+      label: relationLabel(edge),
+      edgeId: edge.id,
+      edge,
+      visualRouteLabel: sharedRoute,
+    };
+  }).sort((left, right) =>
+    left.occurrenceKey.localeCompare(right.occurrenceKey) ||
+    left.key.localeCompare(right.key)
+  );
+  return records.map((record, ordinal) => ({
+    ...record,
+    accessibleLabel: `${
+      graphRelationAccessibleLabel(
+        record.edge,
+        nodeLabelByKey.get(nodeKey(record.edge.from)) ??
+          nodeKey(record.edge.from),
+        nodeLabelByKey.get(nodeKey(record.edge.to)) ??
+          nodeKey(record.edge.to),
+        ordinal,
+      )
+    }${record.visualRouteLabel ? ` ${record.visualRouteLabel}.` : ""}`,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -242,27 +370,32 @@ export function buildExplorationModel(
       y: 0,
       size: nodeSizeFor(node),
       color: nodeColorFor(node, tokens),
-      label: node.label,
+      label: explorationNodeLabel(node, evidenceModel),
       componentId: compId,
     });
   }
 
-  // Separate regular edges from synthetic stubs.
-  const regularEdges = (displayEdges as ThreadGraphEdge[]).filter(
-    (e) => !e.id.startsWith("stub:"),
+  // The projection stays complete and canonical. Sigma alone consumes this
+  // drawing quotient, where one exact structural/provenance pair becomes one
+  // route whose attributes retain both recorded assertions.
+  const visualEdgeGroups = buildExplorationVisualEdgeGroups(displayEdges);
+  const regularEdgeGroups = visualEdgeGroups.filter(
+    ({ primary }) => !primary.id.startsWith("stub:"),
   );
-  const stubEdges = (displayEdges as ThreadGraphEdge[]).filter((e) =>
-    e.id.startsWith("stub:")
+  const stubEdgeGroups = visualEdgeGroups.filter(({ primary }) =>
+    primary.id.startsWith("stub:")
   );
 
   // Graphology edge keys are graph-local occurrence keys, not domain ids:
   // historic imports may contain duplicate edge.id values. Keep edgeId on the
   // attrs for the inspector while assigning every rendered occurrence a
   // deterministic, collision-free key.
-  const edgeKeyFor = makeSigmaEdgeKeyFactory(displayEdges);
+  const edgeKeyFor = makeSigmaEdgeKeyFactory(
+    visualEdgeGroups.map(({ primary }) => primary),
+  );
 
   // Add regular edges to the graphology graph.
-  for (const edge of regularEdges) {
+  for (const { primary: edge, members } of regularEdgeGroups) {
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
     if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
@@ -272,7 +405,9 @@ export function buildExplorationModel(
       occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
       edgeId: edge.id,
       edge,
-      label: edge.relation.replaceAll("_", " ").replaceAll("-", " "),
+      memberEdges: members,
+      memberOccurrenceKeys: members.map(displayedGraphEdgeOccurrenceKey),
+      label: visualRouteLabel(members),
       edgeType: "regular",
       color: tokens.lineStrong,
       size: 2,
@@ -280,7 +415,7 @@ export function buildExplorationModel(
   }
 
   // Add stub edges (dashed rendering cue for folded instruments).
-  for (const edge of stubEdges) {
+  for (const { primary: edge, members } of stubEdgeGroups) {
     const from = nodeKey(edge.from);
     const to = nodeKey(edge.to);
     if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
@@ -290,6 +425,8 @@ export function buildExplorationModel(
       occurrenceKey: displayedGraphEdgeOccurrenceKey(edge),
       edgeId: edge.id,
       edge,
+      memberEdges: members,
+      memberOccurrenceKeys: members.map(displayedGraphEdgeOccurrenceKey),
       label: edge.rationale ?? `via ${edge.relation} — folded`,
       edgeType: "stub",
       color: tokens.muted,
@@ -321,10 +458,9 @@ export function buildExplorationModel(
       g.setNode(key, { width: 120, height: 40 });
     });
 
-    // Feed normalized edges to dagre. Use all projection edges (both regular
-    // and stubs) so isolated nodes get pulled into the rank ordering when
-    // they are still connected via a stub after instrument folding.
-    for (const edge of [...regularEdges, ...stubEdges]) {
+    // Feed the same visual quotient to dagre so a redundant assertion pair
+    // cannot add layout weight or a second line between identical endpoints.
+    for (const { primary: edge } of visualEdgeGroups) {
       const from = nodeKey(edge.from);
       const to = nodeKey(edge.to);
       if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) continue;
@@ -402,23 +538,34 @@ export function buildExplorationModel(
     }),
   );
 
-  // Tool color key: one entry per system present among the VISIBLE nodes,
-  // carrying the exact color nodeColorFor paints — the legend can therefore
-  // never drift from the canvas.
-  const systemCounts = new Map<string, number>();
+  // Tool color key: one entry per visual tool family among the VISIBLE nodes.
+  // Raw producer ids remain on each node and in `systems`, so grouping
+  // `calculix` with `mcp-calculix` cannot erase provenance in the inspector.
+  const systemCounts = new Map<
+    string,
+    { count: number; systems: Set<string> }
+  >();
   for (const node of displayNodes) {
-    systemCounts.set(node.system, (systemCounts.get(node.system) ?? 0) + 1);
+    const system = evidenceSystemFamily(node.system);
+    const entry = systemCounts.get(system) ?? {
+      count: 0,
+      systems: new Set<string>(),
+    };
+    entry.count += 1;
+    entry.systems.add(node.system);
+    systemCounts.set(system, entry);
   }
   const systemLegend: SystemLegendItem[] = [...systemCounts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([system, count]) => ({
+    .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+    .map(([system, entry]) => ({
       system,
+      systems: [...entry.systems].sort(),
       label: SYSTEM_LEGEND_LABEL[system] ?? system,
       color: nodeColorFor(
         { system } as ThreadGraphNode,
         tokens,
       ),
-      count,
+      count: entry.count,
     }));
 
   return { graph, legend, systemLegend, tokens, hiddenSupportingCount };
@@ -445,6 +592,91 @@ const SYSTEM_LEGEND_LABEL: Record<string, string> = {
   "cad": "CAD · semantic concept",
   "thread": "Thread · semantic concept",
 };
+
+/**
+ * Canonical visual identity of one recorded producer system.
+ *
+ * This is deliberately presentation-only: `ThreadGraphNode.system` is never
+ * rewritten. The two CalculiX ids describe different recorded layers of the
+ * same solver family, so they share one color and legend entry while their
+ * exact source ids remain inspectable.
+ */
+export function evidenceSystemFamily(system: string): string {
+  const normalized = system.toLowerCase();
+  if (normalized === "calculix" || normalized === "mcp-calculix") {
+    return "calculix";
+  }
+  return system;
+}
+
+/**
+ * Clarifies the sealed geometry-capture node without mutating its canonical
+ * label or inventing a shortcut edge to the SysML model.
+ *
+ * A geometry bundle is recognized only from the recorded topology:
+ *   architecture artifact -> geometry capture -> represented CAD assets,
+ * with SysML PartUsage -> PartDefinition -> represented asset chains. The
+ * count is therefore the number of explicit modeled usages, not text parsed
+ * from a friendly label or artifact id.
+ */
+export function explorationNodeLabel(
+  node: ThreadGraphNode,
+  evidenceModel: EvidenceGraphModel,
+): string {
+  if (
+    node.entityKind !== "artifact" || node.artifactKind !== "cad-model" ||
+    node.system !== "digital-thread"
+  ) {
+    return node.label;
+  }
+
+  const nodeByRef = new Map(
+    evidenceModel.nodes.map((candidate) => [nodeKey(candidate.ref), candidate]),
+  );
+  const geometryKey = nodeKey(node.ref);
+  const hasArchitectureInput = evidenceModel.edges.some((edge) => {
+    if (
+      nodeKey(edge.to) !== geometryKey ||
+      (edge.relation !== "derived_from" && edge.relation !== "input_to")
+    ) {
+      return false;
+    }
+    const source = nodeByRef.get(nodeKey(edge.from));
+    return source?.entityKind === "artifact" &&
+      source.artifactKind === "sysml-model";
+  });
+  if (!hasArchitectureInput) return node.label;
+
+  const representedAssetKeys = new Set(
+    evidenceModel.edges
+      .filter((edge) =>
+        edge.relation === "traces_to" && nodeKey(edge.from) === geometryKey
+      )
+      .map((edge) => nodeKey(edge.to)),
+  );
+  const representedDefinitionKeys = new Set(
+    evidenceModel.edges
+      .filter((edge) =>
+        edge.relation === "represented_by" &&
+        edge.from.kind === "part-definition" &&
+        representedAssetKeys.has(nodeKey(edge.to))
+      )
+      .map((edge) => nodeKey(edge.from)),
+  );
+  const modeledUsageKeys = new Set(
+    evidenceModel.edges
+      .filter((edge) =>
+        edge.relation === "typed_by" && edge.from.kind === "part-usage" &&
+        representedDefinitionKeys.has(nodeKey(edge.to))
+      )
+      .map((edge) => nodeKey(edge.from)),
+  );
+
+  if (modeledUsageKeys.size === 0) return node.label;
+  return `Geometry bundle · ${modeledUsageKeys.size} modeled part${
+    modeledUsageKeys.size === 1 ? "" : "s"
+  }`;
+}
 
 // ---------------------------------------------------------------------------
 // CSS token reader (call in component mount, not at model-build time)
@@ -517,6 +749,53 @@ function nodeKey(ref: ThreadGraphRef): string {
   return `${ref.kind}:${ref.id}`;
 }
 
+function isCollapsibleDerivedFrom(edge: ThreadGraphEdge): boolean {
+  return isRecordedCanvasEdge(edge) && edge.origin === "provenance" &&
+    edge.relation === "derived_from";
+}
+
+function isCollapsibleStructuralRelation(edge: ThreadGraphEdge): boolean {
+  return isRecordedCanvasEdge(edge) && edge.origin === "structure" &&
+    (edge.relation === "input_to" || edge.relation === "source_of");
+}
+
+function isRecordedCanvasEdge(edge: ThreadGraphEdge): boolean {
+  return !edge.id.startsWith("stub:") && !isUiOnlySysmlCompositeEdge(edge) &&
+    edge.analysis === undefined;
+}
+
+function relationsDescribeSameRoute(edge: ThreadGraphEdge): boolean {
+  if (edge.relation === "input_to") {
+    return edge.from.kind === "artifact" && edge.to.kind === "artifact";
+  }
+  return edge.relation === "source_of" && edge.from.kind === "artifact" &&
+    edge.to.kind === "observation";
+}
+
+function sameAttestation(
+  left: ThreadGraphEdge,
+  right: ThreadGraphEdge,
+): boolean {
+  const a = left.attestation;
+  const b = right.attestation;
+  if (!a || !b) return a === b;
+  return a.consumptionId === b.consumptionId && a.status === b.status &&
+    a.producerFingerprint === b.producerFingerprint &&
+    a.consumedFingerprint === b.consumedFingerprint &&
+    a.checkedAt === b.checkedAt;
+}
+
+function relationLabel(edge: ThreadGraphEdge): string {
+  return edge.relation.replaceAll("_", " ").replaceAll("-", " ");
+}
+
+function visualRouteLabel(members: readonly ThreadGraphEdge[]): string {
+  const relations = members.map(relationLabel);
+  return members.length === 1
+    ? relations[0]!
+    : `${relations.join(" + ")} · ${members.length} recorded assertions`;
+}
+
 /**
  * Makes graph-local edge keys. A domain edge id is only unique by convention,
  * so it must never be handed directly to MultiDirectedGraph. The signature
@@ -566,7 +845,7 @@ function nodeSizeFor(node: ThreadGraphNode): number {
  * tokens so the graph reads as the same design system as the SVG canvas.
  */
 function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
-  switch (node.system) {
+  switch (evidenceSystemFamily(node.system)) {
     case "syson":
     case "sysml":
       return tokens.cyan;

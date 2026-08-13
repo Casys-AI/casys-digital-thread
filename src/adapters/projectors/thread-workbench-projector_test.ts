@@ -113,6 +113,14 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
     consumedFingerprint: `sha256:${"a".repeat(64)}`,
     checkedAt: AT,
   });
+  assertEquals(
+    projection.graph.edges.filter((edge) =>
+      edge.relation === "traces_to" &&
+      edge.from.kind === "artifact" && edge.from.id === "step-r2" &&
+      edge.to.kind === "requirement" && edge.to.id === "REQ-STRESS"
+    ).map((edge) => edge.origin),
+    ["provenance"],
+  );
 });
 
 Deno.test("the Workbench projects a qualified sensitivity assertion separately from provenance", () => {
@@ -387,7 +395,7 @@ Deno.test("the Workbench projects only the latest revision change summary", () =
   assertEquals(canonical.changeSet.changes.length, 2);
 });
 
-Deno.test("the flow does not invent requirement, evaluation, or violation dependencies", () => {
+Deno.test("the graph links a requirement only to its explicit source capture", () => {
   const canonical = clone(linkedSnapshot());
   canonical.provenance = [];
 
@@ -399,15 +407,25 @@ Deno.test("the flow does not invent requirement, evaluation, or violation depend
   assertEquals(dependencies["flow:observation:OBS-STRESS"], [
     "flow:artifact:fea-r2",
   ]);
-  // The remaining causal edges need their canonical provenance link; matching
-  // IDs in arrays alone are not enough to fabricate an edge.
+  // Requirement capture is an explicit structural fact. It does not grant a
+  // planning dependency or imply evaluation and violation authority.
   assertEquals(dependencies["flow:requirement:REQ-STRESS"], []);
   assertEquals(dependencies["flow:evaluation:EVAL-STRESS"], []);
   assertEquals(dependencies["flow:violation:VIO-STRESS"], []);
   assertEquals(graphEdgeSignatures(projection), [
     "input_to:artifact:step-r2->artifact:fea-r2:structure",
     "source_of:artifact:fea-r2->observation:OBS-STRESS:structure",
+    "traces_to:artifact:step-r2->requirement:REQ-STRESS:structure",
   ]);
+
+  canonical.requirements[0]!.trace.sourceArtifactId = "missing-requirement-capture";
+  const missingSourceProjection = projectThreadWorkbenchSnapshot(canonical);
+  assertEquals(
+    missingSourceProjection.graph.edges.some((edge) =>
+      edge.to.kind === "requirement" && edge.to.id === "REQ-STRESS"
+    ),
+    false,
+  );
 });
 
 Deno.test("a consumer fingerprint mismatch is visible and stales dependent UI evidence", () => {
